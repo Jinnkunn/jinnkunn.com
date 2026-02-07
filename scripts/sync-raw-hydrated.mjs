@@ -57,22 +57,23 @@ async function fetchText(url) {
 }
 
 function extractBlogPostSlugsFromRss(rss) {
-  const matches = Array.from(
-    rss.matchAll(/<link>(https?:\/\/[^<]*\/blog\/list\/[^<]+)<\/link>/g)
-  ).map((m) => m[1]);
+  const items = Array.from(rss.matchAll(/<item>[\s\S]*?<\/item>/g)).map((m) => m[0]);
+  const out = [];
 
-  const slugs = new Set();
-  for (const u of matches) {
+  for (const item of items) {
+    const link = item.match(/<link>([^<]+)<\/link>/)?.[1]?.trim();
+    if (!link) continue;
     try {
-      const url = new URL(u);
-      const parts = url.pathname.split("/").filter(Boolean);
-      const idx = parts.indexOf("list");
-      if (parts[0] === "blog" && idx === 1 && parts[2]) slugs.add(parts[2]);
+      const u = new URL(link);
+      if (u.origin !== ORIGIN) continue;
+      out.push(u.pathname);
     } catch {
       // ignore
     }
   }
-  return Array.from(slugs);
+
+  // Dedupe (RSS can repeat links).
+  return Array.from(new Set(out));
 }
 
 async function syncFeeds() {
@@ -109,10 +110,11 @@ async function getHydratedMainHtml(page, url) {
 
 async function main() {
   const rss = await syncFeeds();
-  const blogSlugs = extractBlogPostSlugsFromRss(rss);
+  const itemRoutes = extractBlogPostSlugsFromRss(rss);
+  const blogRoutes = itemRoutes.filter((p) => p.startsWith("/blog/list/"));
+  const pageRoutes = itemRoutes.filter((p) => !p.startsWith("/blog/list/"));
 
-  const blogRoutes = blogSlugs.map((s) => `/blog/list/${s}`);
-  const routes = [...STATIC_ROUTES, ...blogRoutes];
+  const routes = [...STATIC_ROUTES, ...blogRoutes, ...pageRoutes];
 
   console.log(`Sync origin: ${ORIGIN}`);
   console.log(`Routes: ${routes.length}`);
@@ -156,4 +158,3 @@ main().catch((err) => {
   console.error(err?.stack || String(err));
   process.exitCode = 1;
 });
-

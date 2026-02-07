@@ -1,10 +1,13 @@
-import { readdir } from "node:fs/promises";
+import fs from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 
 export type BlogPostIndexItem = {
+  kind: "list" | "page";
   slug: string;
+  href: string;
   title: string;
   dateText: string | null;
   dateIso: string | null; // YYYY-MM-DD if parseable
@@ -55,6 +58,34 @@ export function parseBlogMetaFromMain(mainHtml: string): {
   return { title, dateText, dateIso };
 }
 
+function parseRssItemPaths(rss: string): string[] {
+  const items = Array.from(rss.matchAll(/<item>[\s\S]*?<\/item>/g)).map((m) => m[0]);
+  const out: string[] = [];
+
+  for (const item of items) {
+    const link = item.match(/<link>([^<]+)<\/link>/)?.[1]?.trim();
+    if (!link) continue;
+    try {
+      const u = new URL(link);
+      // Only keep path; the runtime will serve locally.
+      out.push(u.pathname);
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(new Set(out));
+}
+
+async function tryReadLocalBlogRss(): Promise<string | null> {
+  const p = path.join(process.cwd(), "public", "blog.rss");
+  try {
+    return await readFile(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 export async function getBlogPostSlugs(): Promise<string[]> {
   const dir = path.join(process.cwd(), "content", "raw", "blog", "list");
   const files = await readdir(dir);
@@ -65,13 +96,56 @@ export async function getBlogPostSlugs(): Promise<string[]> {
 }
 
 export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
-  const slugs = await getBlogPostSlugs();
-  const items: BlogPostIndexItem[] = [];
+  const rss = await tryReadLocalBlogRss();
+  const candidates = rss ? parseRssItemPaths(rss) : null;
 
-  for (const slug of slugs) {
-    const main = await loadRawMainHtml(`blog/list/${slug}`);
-    const meta = parseBlogMetaFromMain(main);
-    items.push({ slug, title: meta.title, dateText: meta.dateText, dateIso: meta.dateIso });
+  const items: BlogPostIndexItem[] = [];
+  const root = path.join(process.cwd(), "content", "raw");
+
+  const paths =
+    candidates ??
+    (await getBlogPostSlugs()).map((s) => `/blog/list/${s}`);
+
+  for (const pathname of paths) {
+    if (pathname.startsWith("/blog/list/")) {
+      const slug = pathname.split("/").filter(Boolean)[2] || "";
+      if (!slug) continue;
+      const local = path.join(root, "blog", "list", `${slug}.html`);
+      if (!fs.existsSync(local)) continue;
+
+      const main = await loadRawMainHtml(`blog/list/${slug}`);
+      const meta = parseBlogMetaFromMain(main);
+      items.push({
+        kind: "list",
+        slug,
+        href: `/blog/list/${slug}`,
+        title: meta.title,
+        dateText: meta.dateText,
+        dateIso: meta.dateIso,
+      });
+      continue;
+    }
+
+    const slug = pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+    if (!slug) continue;
+    const local = path.join(root, `${slug}.html`);
+    if (!fs.existsSync(local)) continue;
+
+    try {
+      const main = await loadRawMainHtml(slug);
+      const meta = parseBlogMetaFromMain(main);
+      items.push({
+        kind: "page",
+        slug,
+        href: `/${slug}`,
+        title: meta.title,
+        dateText: meta.dateText,
+        dateIso: meta.dateIso,
+      });
+    } catch {
+      // If a page isn't a "blog-like" Notion page, skip it (prevents polluting /blog).
+      continue;
+    }
   }
 
   // Sort by date desc (unknown dates last), then by slug.
@@ -79,18 +153,18 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
     if (a.dateIso && b.dateIso) return a.dateIso < b.dateIso ? 1 : a.dateIso > b.dateIso ? -1 : 0;
     if (a.dateIso && !b.dateIso) return -1;
     if (!a.dateIso && b.dateIso) return 1;
-    return a.slug.localeCompare(b.slug);
+    return a.href.localeCompare(b.href);
   });
 
   return items;
 }
 
-export async function getAdjacentBlogPosts(slug: string): Promise<{
+export async function getAdjacentBlogPosts(href: string): Promise<{
   prev: BlogPostIndexItem | null;
   next: BlogPostIndexItem | null;
 }> {
   const idx = await getBlogIndex();
-  const i = idx.findIndex((it) => it.slug === slug);
+  const i = idx.findIndex((it) => it.href === href);
   if (i === -1) return { prev: null, next: null };
   // Newest first: "prev" means newer, "next" means older.
   return {

@@ -69,12 +69,12 @@ export default async function BlogPage() {
           <div className="notion-collection-list">
             {posts.map((p) => (
               <div
-                key={p.slug}
+                key={p.href}
                 className="notion-collection-list__item"
                 id={`block-blog-list-${p.slug}`}
               >
                 <Link
-                  href={`/blog/list/${p.slug}`}
+                  href={p.href}
                   className="notion-link notion-collection-list__item-anchor"
                   aria-label={p.title}
                 />
@@ -101,4 +101,3 @@ export default async function BlogPage() {
     </main>
   );
 }
-

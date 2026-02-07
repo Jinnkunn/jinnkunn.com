@@ -53,7 +53,7 @@ export default async function BlogPostPage({
     const parts = splitBlogArticleInner(articleInner);
     const headings = extractHeadingsFromHtml(parts.bodyHtml).slice(0, 40);
 
-    const adj = await getAdjacentBlogPosts(post);
+    const adj = await getAdjacentBlogPosts(`/blog/list/${post}`);
     const hasProperties = Boolean(parts.propertiesHtml && parts.propertiesHtml.includes("notion-page__properties"));
 
     const mainId = `page-blog-list-${post}`;
@@ -109,7 +109,7 @@ export default async function BlogPostPage({
                 {adj.prev ? (
                   <Link
                     className="notion-link link"
-                    href={`/blog/list/${adj.prev.slug}`}
+                    href={adj.prev.href}
                   >
                     ← {adj.prev.title}
                   </Link>
@@ -126,7 +126,7 @@ export default async function BlogPostPage({
                 {adj.next ? (
                   <Link
                     className="notion-link link"
-                    href={`/blog/list/${adj.next.slug}`}
+                    href={adj.next.href}
                   >
                     {adj.next.title} →
                   </Link>

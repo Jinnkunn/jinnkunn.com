@@ -220,7 +220,7 @@
   /* Yellow "marker" that can animate without breaking across wrapped lines. */
   background-image: linear-gradient(
     to top,
-    hsl(38 152% 80%) 50%,
+    hsl(38 100% 80%) 50%,
     transparent 50%
   );
   background-size: 100% 220%;
@@ -324,4 +324,32 @@
     top: -10px;
     right: -10px;
   }
+}
+
+/* Notion code blocks: make copy usable on touch and provide "Copied" feedback. */
+.notion-code__copy-button {
+  /* Ensure it paints above the <pre> (in DOM order the <pre> comes later). */
+  z-index: 2;
+}
+
+.notion-code:focus-within .notion-code__copy-button {
+  opacity: 1;
+  pointer-events: all;
+}
+
+@media (hover: none) {
+  .notion-code .notion-code__copy-button {
+    opacity: 1;
+    pointer-events: all;
+  }
+}
+
+.notion-code__copy-button[data-copied="true"] {
+  opacity: 1;
+  pointer-events: all;
+  background: var(--color-bg-yellow);
+}
+
+.notion-code__copy-button[data-copied="true"]:hover {
+  background: var(--color-bg-yellow);
 }

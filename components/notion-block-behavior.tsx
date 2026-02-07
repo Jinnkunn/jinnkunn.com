@@ -122,6 +122,62 @@ function findLightboxSrcFromTarget(target: Element): string | null {
   return null;
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const t = (text ?? "").replace(/\s+$/, "");
+  if (!t) return false;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(t);
+      return true;
+    }
+  } catch {
+    // fall through to legacy execCommand
+  }
+
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = t;
+    ta.setAttribute("readonly", "true");
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function setCopyButtonState(btn: HTMLElement, copied: boolean) {
+  btn.setAttribute("data-copied", copied ? "true" : "false");
+
+  // Keep this robust against Notion/Super markup variations (sometimes text is a node).
+  const fallback = copied ? "Copied" : "Copy";
+  const original = btn.getAttribute("data-label") || "Copy";
+  if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", original);
+
+  const desired = copied ? "Copied" : original;
+  // Update the last text node if present; otherwise append a span label.
+  const nodes = Array.from(btn.childNodes);
+  const lastText = [...nodes].reverse().find((n) => n.nodeType === Node.TEXT_NODE);
+  if (lastText) {
+    lastText.textContent = ` ${desired}`.replace(/^ /, "");
+    return;
+  }
+
+  let label = btn.querySelector<HTMLElement>("[data-copy-label]");
+  if (!label) {
+    label = document.createElement("span");
+    label.setAttribute("data-copy-label", "true");
+    btn.appendChild(label);
+  }
+  label.textContent = fallback;
+}
+
 export default function NotionBlockBehavior() {
   const pathname = usePathname();
 
@@ -157,6 +213,24 @@ export default function NotionBlockBehavior() {
     const onClick = (e: MouseEvent) => {
       const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
+
+      // Code block copy button (Notion code blocks).
+      const copyBtn = target.closest<HTMLElement>(".notion-code__copy-button");
+      if (copyBtn) {
+        const codeRoot = copyBtn.closest(".notion-code");
+        const codeEl = codeRoot?.querySelector("pre > code") ?? codeRoot?.querySelector("code");
+        const text = (codeEl?.textContent ?? "").replace(/\n$/, "");
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        void (async () => {
+          const ok = await copyTextToClipboard(text);
+          setCopyButtonState(copyBtn, ok);
+          window.setTimeout(() => setCopyButtonState(copyBtn, false), ok ? 1200 : 800);
+        })();
+        return;
+      }
 
       // Image lightbox: click on a Notion image to open full-size.
       const isNotionImage =
