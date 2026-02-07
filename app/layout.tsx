@@ -20,6 +20,12 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr" className="theme-light">
       <head>
+        <link rel="dns-prefetch" href="https://assets-v2.super.so" />
+        <link rel="preconnect" href="https://assets-v2.super.so" crossOrigin="anonymous" />
+
+        {/* Preload the home LCP image. This is safe across routes and improves first paint for `/`. */}
+        <link rel="preload" as="image" href="/assets/profile.png" fetchPriority="high" />
+
         {/* Super/Notion CSS (downloaded from the original site) */}
         <link rel="stylesheet" href="/styles/super-inline.css" />
         <link rel="stylesheet" href="/styles/static.css" />

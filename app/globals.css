@@ -31,3 +31,12 @@
     inset: -10px;
   }
 }
+
+/* Better mobile viewport sizing on iOS/modern browsers (prevents 100vh issues). */
+@supports (height: 100dvh) {
+  @media (max-width: 546px) {
+    .super-navbar__menu-wrapper {
+      height: calc(100dvh - var(--navbar-height) + 1px);
+    }
+  }
+}

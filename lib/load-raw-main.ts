@@ -11,10 +11,30 @@ function rewriteRawHtml(html: string): string {
   const remoteLogo =
     "https://assets.super.so/e331c927-5859-4092-b1ca-16eddc17b1bb/uploads/logo/712f74e3-00ca-453b-9511-39896485699f.png";
 
-  return html
+  const rewritten = html
     .replaceAll(remoteProfilePublic, "/assets/profile.png")
     .replaceAll(remoteProfileOptimized, "/assets/profile.png")
     .replaceAll(remoteLogo, "/assets/logo.png");
+
+  // Improve LCP: the profile image is above-the-fold on `/` but is marked as lazy in the raw HTML.
+  // This doesn't affect visuals, only loading priority.
+  return rewritten.replace(/<img\b[^>]*>/gi, (tag) => {
+    if (!tag.includes("/assets/profile.png")) return tag;
+    let out = tag.replace(
+      /\sloading=(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+      ""
+    );
+    out = out.replace(
+      /\sfetchpriority=(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+      ""
+    );
+    if (out.endsWith("/>")) {
+      out = out.slice(0, -2) + ' loading="eager" fetchpriority="high" />';
+    } else if (out.endsWith(">")) {
+      out = out.slice(0, -1) + ' loading="eager" fetchpriority="high">';
+    }
+    return out;
+  });
 }
 
 export async function loadRawMainHtml(slug: string): Promise<string> {
