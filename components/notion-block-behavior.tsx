@@ -85,6 +85,21 @@ function focusAfterScroll(el: HTMLElement) {
   el.focus({ preventScroll: true });
 }
 
+function flashAnchorTarget(el: HTMLElement) {
+  // Subtle arrival feedback after TOC jumps / deep links.
+  // Implemented as a transient data-attribute so CSS can animate it.
+  if (prefersReducedMotion()) return;
+  el.setAttribute("data-anchor-flash", "true");
+  window.setTimeout(() => {
+    // If navigation happened, `el` might be gone; guard via try/catch.
+    try {
+      el.removeAttribute("data-anchor-flash");
+    } catch {
+      // ignore
+    }
+  }, 950);
+}
+
 function scrollToElementTop(el: HTMLElement) {
   const offset = getNavbarHeightPx() + 24;
   const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - offset);
@@ -96,6 +111,7 @@ function scrollToElementTop(el: HTMLElement) {
   const tick = () => {
     const remaining = Math.abs(window.scrollY - top);
     if (remaining < 2 || Date.now() >= deadline) {
+      flashAnchorTarget(el);
       focusAfterScroll(el);
       return;
     }

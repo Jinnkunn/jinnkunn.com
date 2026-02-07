@@ -174,6 +174,24 @@ html {
   scroll-padding-top: calc(var(--navbar-height) + 24px);
 }
 
+/* Page enter: subtle fade/slide for content only (v1-consistent). */
+@media (prefers-reduced-motion: no-preference) {
+  #main-content > main {
+    animation: page-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Touch feedback: Notion list rows have hover on desktop; add :active for mobile. */
 .notion-collection-list__item:active {
   background-color: var(--color-ui-hover-bg);
@@ -364,6 +382,42 @@ html {
   transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1), ease;
 }
 
+/* Anchor arrival: brief, subtle highlight on the target block after TOC jumps. */
+[data-anchor-flash="true"] {
+  position: relative;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-anchor-flash="true"]::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    top: -4px;
+    bottom: -4px;
+    border-radius: 10px;
+    pointer-events: none;
+    background: hsl(38 100% 80% / 0.55);
+    filter: saturate(0.95);
+    animation: anchor-flash 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes anchor-flash {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notion-root a.notion-link.link,
   .notion-text a.notion-link.link,
@@ -486,6 +540,25 @@ html {
   .notion-toggle__summary:active {
     background: rgba(55, 53, 47, 0.06);
     border-radius: 6px;
+  }
+}
+
+/* Toggles: subtle content entrance (no height animation). */
+@media (prefers-reduced-motion: no-preference) {
+  .notion-toggle.open > .notion-toggle__content {
+    animation: toggle-content-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
+  }
+}
+
+@keyframes toggle-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
