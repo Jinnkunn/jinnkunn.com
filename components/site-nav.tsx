@@ -1,52 +1,19 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import SiteNavBehavior from "@/components/site-nav-behavior";
 
 type MenuItem = {
   href: string;
   label: string;
 };
 
-function useBodyScrollLock(locked: boolean) {
-  useEffect(() => {
-    if (!locked) return;
-
-    // iOS-friendly scroll lock: preserve scroll position and avoid background scroll.
-    const { body, documentElement } = document;
-    const scrollY = window.scrollY || documentElement.scrollTop || 0;
-
-    const prev = {
-      position: body.style.position,
-      top: body.style.top,
-      left: body.style.left,
-      right: body.style.right,
-      width: body.style.width,
-      overflow: body.style.overflow,
-    };
-
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
-    body.style.overflow = "hidden";
-
-    return () => {
-      body.style.position = prev.position;
-      body.style.top = prev.top;
-      body.style.left = prev.left;
-      body.style.right = prev.right;
-      body.style.width = prev.width;
-      body.style.overflow = prev.overflow;
-      window.scrollTo(0, scrollY);
-    };
-  }, [locked]);
-}
+const topItems: MenuItem[] = [
+  { href: "/", label: "Home" },
+  { href: "/news", label: "News" },
+  { href: "/publications", label: "Publications" },
+  { href: "/works", label: "Works" },
+];
 
 const moreItems: MenuItem[] = [
-  // Match the original site's "More" dropdown.
   { href: "/blog", label: "Blog" },
   { href: "/teaching", label: "Teaching" },
   { href: "/bio", label: "BIO" },
@@ -54,109 +21,9 @@ const moreItems: MenuItem[] = [
 ];
 
 export default function SiteNav() {
-  const pathname = usePathname();
-  const navRef = useRef<HTMLElement | null>(null);
-  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
-  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
-  const firstMoreItemRef = useRef<HTMLAnchorElement | null>(null);
-  const firstMobileItemRef = useRef<HTMLAnchorElement | null>(null);
-
-  const topItems = useMemo<MenuItem[]>(
-    () => [
-      { href: "/", label: "Home" },
-      { href: "/news", label: "News" },
-      { href: "/publications", label: "Publications" },
-      { href: "/works", label: "Works" },
-    ],
-    []
-  );
-
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const moreListContentRef = useRef<HTMLDivElement | null>(null);
-  const [moreViewportHeight, setMoreViewportHeight] = useState<number>(208);
-  const [moreViewportWidth, setMoreViewportWidth] = useState<number>(320);
-
-  const closeAll = () => {
-    setMoreOpen(false);
-    setMenuOpen(false);
-  };
-
-  useEffect(() => {
-    // close popovers on navigation
-    closeAll();
-  }, [pathname]);
-
-  useEffect(() => {
-    // Close menus on outside click/tap + ESC.
-    if (!moreOpen && !menuOpen) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      const nav = navRef.current;
-      if (!nav) return;
-      if (e.target instanceof Node && nav.contains(e.target)) return;
-      closeAll();
-    };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      closeAll();
-      // return focus to the most relevant trigger
-      if (menuOpen) menuButtonRef.current?.focus();
-      else if (moreOpen) moreButtonRef.current?.focus();
-    };
-
-    window.addEventListener("pointerdown", onPointerDown, { passive: true });
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [moreOpen, menuOpen]);
-
-  // Mobile UX: prevent background scroll when the hamburger menu is open.
-  useBodyScrollLock(menuOpen);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const raf = requestAnimationFrame(() => {
-      firstMobileItemRef.current?.focus();
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const raf = requestAnimationFrame(() => {
-      firstMoreItemRef.current?.focus();
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [moreOpen]);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-
-    const update = () => {
-      const el = moreListContentRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      if (r.width > 0) setMoreViewportWidth(Math.ceil(r.width));
-      if (r.height > 0) setMoreViewportHeight(Math.ceil(r.height));
-    };
-
-    const raf = requestAnimationFrame(update);
-    window.addEventListener("resize", update, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", update);
-    };
-  }, [moreOpen]);
-
   return (
     <nav
-      ref={navRef}
+      id="site-nav"
       aria-label="Main"
       data-orientation="horizontal"
       dir="ltr"
@@ -167,6 +34,9 @@ export default function SiteNav() {
         WebkitBoxShadow: "var(--navbar-shadow)",
       }}
     >
+      {/* Tiny client-side enhancer: handles open/close, scroll lock, and active link classes. */}
+      <SiteNavBehavior />
+
       <div className="super-navbar__content">
         <Link href="/" className="notion-link super-navbar__logo">
           <span className="super-navbar__logo-text" style={{ fontSize: 16 }}>
@@ -182,12 +52,7 @@ export default function SiteNav() {
           >
             {topItems.map((it) => (
               <li key={it.href}>
-                <Link
-                  href={it.href}
-                  className={`notion-link super-navbar__item${
-                    pathname === it.href ? " active" : ""
-                  }`}
-                >
+                <Link href={it.href} className="notion-link super-navbar__item">
                   {it.label}
                 </Link>
               </li>
@@ -195,17 +60,13 @@ export default function SiteNav() {
 
             <li>
               <button
-                ref={moreButtonRef}
+                id="more-trigger"
                 type="button"
                 className="super-navbar__list"
-                aria-expanded={moreOpen}
+                aria-expanded="false"
                 aria-haspopup="menu"
                 aria-controls="more-menu"
-                data-state={moreOpen ? "open" : "closed"}
-                onClick={() => {
-                  setMenuOpen(false);
-                  setMoreOpen((v) => !v);
-                }}
+                data-state="closed"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -247,16 +108,12 @@ export default function SiteNav() {
           </div>
 
           <button
-            ref={menuButtonRef}
+            id="mobile-trigger"
             type="button"
             className="super-navbar__button super-navbar__menu-open"
             aria-label="Menu"
-            aria-expanded={menuOpen}
+            aria-expanded="false"
             aria-controls="mobile-menu"
-            onClick={() => {
-              setMoreOpen(false);
-              setMenuOpen((v) => !v);
-            }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -279,75 +136,64 @@ export default function SiteNav() {
       </div>
 
       <div className="super-navbar__viewport-wrapper">
-        {moreOpen ? (
+        <div
+          id="more-menu"
+          data-state="closed"
+          data-orientation="horizontal"
+          className="super-navbar__viewport single-column"
+          style={{
+            display: "none",
+            transform:
+              "translateX(calc(-178px + (var(--navbar-list-width-single-column) / 2)))",
+            ["--radix-navigation-menu-viewport-width" as never]:
+              "320px" as never,
+            ["--radix-navigation-menu-viewport-height" as never]:
+              "208px" as never,
+          }}
+        >
           <div
-            id="more-menu"
-            data-state="open"
             data-orientation="horizontal"
-            className="super-navbar__viewport single-column"
-            style={{
-              // Mirror Super/Radix's positioning behavior for this specific site.
-              transform:
-                "translateX(calc(-178px + (var(--navbar-list-width-single-column) / 2)))",
-              ["--radix-navigation-menu-viewport-width" as never]:
-                `${moreViewportWidth}px` as never,
-              ["--radix-navigation-menu-viewport-height" as never]:
-                `${moreViewportHeight}px` as never,
-            }}
+            className="super-navbar__list-content single-column"
+            dir="ltr"
           >
-            <div
-              ref={moreListContentRef}
-              data-orientation="horizontal"
-              className="super-navbar__list-content single-column"
-              dir="ltr"
-            >
-              <ul className="super-navbar__list-content-column" role="menu">
-                {moreItems.map((it) => (
-                  <li key={it.href}>
-                    <Link
-                      href={it.href}
-                      role="menuitem"
-                      className="notion-link super-navbar__list-item"
-                      onClick={() => setMoreOpen(false)}
-                      ref={it.href === moreItems[0]?.href ? firstMoreItemRef : undefined}
-                    >
-                      <div className="super-navbar__list-item-content">
-                        <div className="super-navbar__list-item-heading">
-                          {it.label}
-                        </div>
+            <ul className="super-navbar__list-content-column" role="menu">
+              {moreItems.map((it) => (
+                <li key={it.href}>
+                  <Link
+                    href={it.href}
+                    role="menuitem"
+                    className="notion-link super-navbar__list-item"
+                  >
+                    <div className="super-navbar__list-item-content">
+                      <div className="super-navbar__list-item-heading">
+                        {it.label}
                       </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
-        ) : null}
+        </div>
       </div>
 
-      {menuOpen ? (
-        <div id="mobile-menu" className="super-navbar__menu-wrapper enter-done">
-          <div className="super-navbar__menu">
-            <div className="super-navigation-menu__items-wrapper">
-              <div className="super-navigation-menu__items">
-                {[...topItems, ...moreItems].map((it, idx) => (
-                  <Link
-                    key={it.href}
-                    href={it.href}
-                    className={`notion-link super-navbar__item${
-                      pathname === it.href ? " active" : ""
-                    }`}
-                    onClick={() => setMenuOpen(false)}
-                    ref={idx === 0 ? firstMobileItemRef : undefined}
-                  >
-                    {it.label}
-                  </Link>
-                ))}
-              </div>
+      <div id="mobile-menu" className="super-navbar__menu-wrapper" hidden>
+        <div className="super-navbar__menu">
+          <div className="super-navigation-menu__items-wrapper">
+            <div className="super-navigation-menu__items">
+              {[...topItems, ...moreItems].map((it) => (
+                <Link
+                  key={it.href}
+                  href={it.href}
+                  className="notion-link super-navbar__item"
+                >
+                  {it.label}
+                </Link>
+              ))}
             </div>
           </div>
         </div>
-      ) : null}
+      </div>
     </nav>
   );
 }

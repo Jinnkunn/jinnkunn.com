@@ -14,6 +14,11 @@
   touch-action: manipulation;
 }
 
+/* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
+#mobile-menu[hidden] {
+  display: none;
+}
+
 /* Mobile usability: increase tap targets without changing visual layout. */
 @media (max-width: 546px) {
   .super-navbar__logo,
