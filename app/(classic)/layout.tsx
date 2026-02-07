@@ -2,6 +2,7 @@ import Script from "next/script";
 
 import SiteFooter from "@/components/site-footer";
 import SiteNav from "@/components/site-nav";
+import NotionBlockBehavior from "@/components/notion-block-behavior";
 
 // Route-scoped global CSS for the classic (1:1) version.
 // Next.js v16 no longer reliably applies `head.tsx` link tags in route groups,
@@ -23,6 +24,8 @@ export default function ClassicLayout({
         <div className="notion-navbar">
           <SiteNav />
         </div>
+        {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
+        <NotionBlockBehavior />
         <div id="main-content" className="super-content-wrapper">
           {children}
         </div>

@@ -212,6 +212,8 @@
 .notion-link.link {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+  display: inline !important;
+  position: relative;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.16em;
@@ -219,6 +221,16 @@
   border-radius: 8px;
   transition: background-color 160ms ease, text-decoration-color 160ms ease,
     color 160ms ease;
+}
+
+.notion-root a.notion-link.link::after,
+.notion-text a.notion-link.link::after,
+.notion-link.link::after {
+  /* Disable the super-inline.css hover-highlighter pseudo-element: it doesn't
+   * render well when the link wraps across lines.
+   */
+  content: none !important;
+  display: none !important;
 }
 
 .notion-root a.notion-link.link:hover,

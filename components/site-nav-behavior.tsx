@@ -308,6 +308,34 @@ export default function SiteNavBehavior() {
       setMoreOpen(!moreOpen);
     };
 
+    // Desktop UX: open "More" on hover (mouse), while keeping click/touch behavior unchanged.
+    const canHover =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches;
+    let moreHoverCloseTimer: number | null = null;
+    const clearMoreHoverClose = () => {
+      if (moreHoverCloseTimer) window.clearTimeout(moreHoverCloseTimer);
+      moreHoverCloseTimer = null;
+    };
+    const scheduleMoreHoverClose = () => {
+      if (!canHover) return;
+      clearMoreHoverClose();
+      moreHoverCloseTimer = window.setTimeout(() => {
+        setMoreOpen(false);
+      }, 120);
+    };
+
+    const onMorePointerEnter = () => {
+      if (!canHover) return;
+      clearMoreHoverClose();
+      setMoreOpen(true);
+    };
+
+    const onMorePointerLeave = () => {
+      if (!canHover) return;
+      scheduleMoreHoverClose();
+    };
+
     const onMoreTriggerKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -406,6 +434,10 @@ export default function SiteNavBehavior() {
     moreBtn.addEventListener("click", onMoreClick);
     moreBtn.addEventListener("keydown", onMoreTriggerKeyDown);
     moreMenu.addEventListener("keydown", onMoreMenuKeyDown, true);
+    moreBtn.addEventListener("pointerenter", onMorePointerEnter);
+    moreBtn.addEventListener("pointerleave", onMorePointerLeave);
+    moreMenu.addEventListener("pointerenter", onMorePointerEnter);
+    moreMenu.addEventListener("pointerleave", onMorePointerLeave);
     mobileBtn.addEventListener("click", onMobileClick);
     mobileBackdrop.addEventListener("click", onBackdropClick);
     mobileClose.addEventListener("click", onCloseBtnClick);
@@ -422,6 +454,11 @@ export default function SiteNavBehavior() {
       moreBtn.removeEventListener("click", onMoreClick);
       moreBtn.removeEventListener("keydown", onMoreTriggerKeyDown);
       moreMenu.removeEventListener("keydown", onMoreMenuKeyDown, true);
+      moreBtn.removeEventListener("pointerenter", onMorePointerEnter);
+      moreBtn.removeEventListener("pointerleave", onMorePointerLeave);
+      moreMenu.removeEventListener("pointerenter", onMorePointerEnter);
+      moreMenu.removeEventListener("pointerleave", onMorePointerLeave);
+      clearMoreHoverClose();
       mobileBtn.removeEventListener("click", onMobileClick);
       mobileBackdrop.removeEventListener("click", onBackdropClick);
       mobileClose.removeEventListener("click", onCloseBtnClick);
