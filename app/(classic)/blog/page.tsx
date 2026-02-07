@@ -66,18 +66,26 @@ export default async function BlogPage() {
             </h3>
           </div>
 
-          <div className="notion-collection-list">
+          <div className="notion-collection-list" role="list" aria-label="Blog posts">
             {posts.map((p) => (
               <div
                 key={p.href}
                 className="notion-collection-list__item"
                 id={`block-blog-list-${p.slug}`}
+                role="listitem"
               >
                 <Link
                   href={p.href}
                   className="notion-link notion-collection-list__item-anchor"
-                  aria-label={p.title}
-                />
+                  aria-label={
+                    p.dateText ? `${p.title} (${p.dateText})` : p.title
+                  }
+                >
+                  <span className="sr-only">
+                    {p.title}
+                    {p.dateText ? ` (${p.dateText})` : ""}
+                  </span>
+                </Link>
 
                 <div className="notion-property notion-property__title notion-semantic-string">
                   <div className="notion-property__title__icon-wrapper">

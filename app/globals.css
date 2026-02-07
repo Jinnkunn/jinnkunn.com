@@ -34,6 +34,19 @@
   border-radius: 10px;
 }
 
+/* Utility: screen-reader-only text. */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 .super-navbar button.super-navbar__button,
 .super-navbar button.super-navbar__list {
   appearance: none;
@@ -159,6 +172,11 @@
 /* Anchor jumps (TOC, deep links): keep targets visible under the sticky navbar. */
 html {
   scroll-padding-top: calc(var(--navbar-height) + 24px);
+}
+
+/* Touch feedback: Notion list rows have hover on desktop; add :active for mobile. */
+.notion-collection-list__item:active {
+  background-color: var(--color-ui-hover-bg);
 }
 
 /* Blog post template extras (keep v1 clean, but add functional TOC + prev/next). */

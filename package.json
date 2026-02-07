@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "sync:raw": "node scripts/sync-raw-hydrated.mjs"
+    "sync:raw": "node scripts/sync-raw-hydrated.mjs",
+    "snapshot:ui": "node scripts/ui-snapshots.mjs"
   },
   "dependencies": {
     "next": "16.1.6",
