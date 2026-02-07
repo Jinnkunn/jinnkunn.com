@@ -35,6 +35,35 @@ function initToggles(root: ParentNode) {
   }
 }
 
+function decodeHashToId(hash: string): string | null {
+  const h = (hash ?? "").trim();
+  if (!h || !h.startsWith("#") || h.length < 2) return null;
+  const raw = h.slice(1);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // If it's not valid URI encoding, still try the raw string.
+    return raw;
+  }
+}
+
+function openToggleAncestors(target: Element) {
+  // Works for markup where toggle children are nested under `.notion-toggle__content`.
+  // (Some Super exports don't nest children; in that case there is nothing reliable to open.)
+  const toggles: HTMLElement[] = [];
+  let cur: Element | null = target;
+  while (cur) {
+    const t = cur.closest(".notion-toggle.closed") as HTMLElement | null;
+    if (!t) break;
+    toggles.push(t);
+    cur = t.parentElement;
+  }
+
+  // Open outer -> inner to avoid hiding inner content behind a closed parent.
+  toggles.reverse();
+  for (const t of toggles) setToggleState(t, true);
+}
+
 function lockBodyScroll() {
   const { body, documentElement } = document;
   const scrollY = window.scrollY || documentElement.scrollTop || 0;
@@ -286,9 +315,25 @@ export default function NotionBlockBehavior() {
       closeBtn.focus();
     };
 
+    const revealHashTarget = (hashOrHref: string) => {
+      const id = decodeHashToId(hashOrHref);
+      if (!id) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      openToggleAncestors(el);
+    };
+
     const onClick = (e: MouseEvent) => {
       const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
+
+      // In-page anchors: ensure the destination isn't inside a closed toggle.
+      // We don't prevent default; this only prepares the layout before the scroll jump.
+      const hashLink = target.closest<HTMLAnchorElement>('a[href^="#"]');
+      if (hashLink) {
+        const href = hashLink.getAttribute("href") || "";
+        if (href.startsWith("#")) revealHashTarget(href);
+      }
 
       // Code block copy button (Notion code blocks).
       const copyBtn = target.closest<HTMLElement>(".notion-code__copy-button");
@@ -373,9 +418,15 @@ export default function NotionBlockBehavior() {
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown, true);
 
+    const onHashChange = () => revealHashTarget(window.location.hash);
+    window.addEventListener("hashchange", onHashChange);
+    // Initial load into a deep link.
+    window.setTimeout(() => revealHashTarget(window.location.hash), 0);
+
     return () => {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("hashchange", onHashChange);
       cleanupTocSpy();
       lightboxEl.removeEventListener("click", onLightboxClick);
       closeLightbox();
