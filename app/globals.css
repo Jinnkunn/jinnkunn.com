@@ -464,6 +464,24 @@ html {
   background: var(--color-bg-yellow);
 }
 
+/* Notion toggles: visible keyboard focus + basic touch feedback (v1-consistent). */
+.notion-toggle__summary:focus-visible {
+  outline: 2px solid rgba(46, 170, 220, 0.7);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (hover: none) {
+  .notion-toggle__summary {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .notion-toggle__summary:active {
+    background: rgba(55, 53, 47, 0.06);
+    border-radius: 6px;
+  }
+}
+
 /* Notion callouts: tighter alignment and better mobile spacing (v1-consistent). */
 .notion-callout {
   align-items: flex-start;
@@ -509,6 +527,40 @@ html {
 .notion-code pre {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+}
+
+/* Publications page: improve scan-ability while keeping the original v1 look. */
+.page__publications h2.notion-heading {
+  margin-top: 1.75rem;
+}
+
+.page__publications .notion-toggle {
+  margin: 10px 0;
+}
+
+.page__publications .notion-toggle__summary {
+  padding: 6px 0;
+}
+
+.page__publications .notion-toggle__summary > span.notion-semantic-string {
+  flex: 1;
+  min-width: 0;
+}
+
+.page__publications .notion-toggle__content {
+  margin-top: 6px;
+}
+
+.page__publications blockquote.notion-quote {
+  margin-top: 6px;
+  margin-bottom: 10px;
+}
+
+/* Make publication "type badges" (conference/journal/arXiv) read as pills. */
+.page__publications .highlighted-background code.code {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.78em;
 }
 
 /* Optional: make long tables easier to read on desktop with sticky headers. */
