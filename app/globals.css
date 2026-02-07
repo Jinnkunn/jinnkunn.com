@@ -316,13 +316,17 @@ html {
    * Use background-size instead of a ::after overlay to avoid awkward
    * geometry across multi-line fragments.
    */
-  background-image: linear-gradient(hsl(38 100% 80%), hsl(38 100% 80%));
-  background-repeat: no-repeat;
-  background-position: 0 86%;
-  background-size: 100% 0.42em;
-  transition: background-size 560ms cubic-bezier(0, 0.8, 0.13, 1),
-    background-position 560ms cubic-bezier(0, 0.8, 0.13, 1),
+  background-image:
+    linear-gradient(hsl(38 100% 80% / 0.9), hsl(38 100% 80% / 0.9)),
+    linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat, no-repeat;
+  /* Keep the highlight anchored to the baseline so the animation doesn't "jump" on hover. */
+  background-position: 0 100%, 0 calc(100% - 0.08em);
+  /* 1) marker highlight height  2) underline width */
+  background-size: 100% 0.4em, 0% 1px;
+  transition: background-size 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
     color 160ms ease;
+  will-change: background-size;
 }
 
 .notion-root a.notion-link.link::after,
@@ -342,8 +346,7 @@ html {
 .notion-list-item a.notion-link[href]:hover,
 .notion-caption a.notion-link[href]:hover,
 .notion-quote a.notion-link[href]:hover {
-  background-position: 0 8%;
-  background-size: 100% 1.18em;
+  background-size: 100% 1.05em, 100% 1px;
 }
 
 .notion-root a.notion-link.link:focus-visible,
@@ -353,8 +356,7 @@ html {
 .notion-list-item a.notion-link[href]:focus-visible,
 .notion-caption a.notion-link[href]:focus-visible,
 .notion-quote a.notion-link[href]:focus-visible {
-  background-position: 0 8%;
-  background-size: 100% 1.18em;
+  background-size: 100% 1.05em, 100% 1px;
 }
 
 @media (prefers-reduced-motion: reduce) {
