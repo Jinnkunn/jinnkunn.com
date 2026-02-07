@@ -1,0 +1,67 @@
+.footer {
+  border-top: 1px solid rgba(20, 20, 20, 0.10);
+  background: rgba(251, 248, 241, 0.66);
+}
+
+.inner {
+  width: min(1040px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 22px 0 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.brand {
+  font-family: var(--v2-font-serif), Georgia, "Times New Roman", Times, serif;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.note {
+  margin-top: 6px;
+  color: rgba(20, 20, 20, 0.65);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.note a {
+  color: rgba(20, 20, 20, 0.78);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(20, 20, 20, 0.20);
+}
+
+.note a:hover {
+  border-bottom-color: rgba(20, 20, 20, 0.48);
+}
+
+.right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.right a {
+  text-decoration: none;
+  color: rgba(20, 20, 20, 0.72);
+  font-weight: 650;
+  padding: 8px 10px;
+  border-radius: 999px;
+}
+
+.right a:hover {
+  color: rgba(20, 20, 20, 0.92);
+  background: rgba(20, 20, 20, 0.06);
+}
+
+@media (max-width: 700px) {
+  .inner {
+    width: min(1040px, calc(100% - 32px));
+    flex-direction: column;
+  }
+  .right {
+    justify-content: flex-start;
+  }
+}

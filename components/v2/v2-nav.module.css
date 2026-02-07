@@ -1,0 +1,206 @@
+.wrap {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid rgba(20, 20, 20, 0.10);
+  background: rgba(251, 248, 241, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.inner {
+  width: min(1040px, calc(100% - 48px));
+  margin: 0 auto;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--v2-ink);
+  min-width: 0;
+}
+
+.brandMark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: rgba(20, 20, 20, 0.92);
+  color: var(--v2-paper-2);
+}
+
+.brandText {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.link {
+  text-decoration: none;
+  color: rgba(20, 20, 20, 0.76);
+  font-weight: 650;
+  padding: 9px 10px;
+  border-radius: 999px;
+}
+
+.link:hover {
+  color: var(--v2-ink);
+  background: rgba(20, 20, 20, 0.06);
+}
+
+.moreBtn {
+  all: unset;
+  cursor: pointer;
+  color: rgba(20, 20, 20, 0.76);
+  font-weight: 650;
+  padding: 9px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.moreBtn:hover {
+  color: var(--v2-ink);
+  background: rgba(20, 20, 20, 0.06);
+}
+
+.chev {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  opacity: 0.7;
+}
+
+.menuBtn {
+  display: none;
+  all: unset;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 20, 20, 0.14);
+  background: rgba(255, 255, 255, 0.44);
+  font-weight: 700;
+}
+
+.more {
+  width: min(1040px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 0 0 14px;
+}
+
+.moreInner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 10px 0;
+}
+
+.moreLink {
+  text-decoration: none;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 20, 20, 0.12);
+  background: rgba(255, 255, 255, 0.44);
+  color: var(--v2-ink);
+  font-weight: 650;
+}
+
+.moreLink:hover {
+  border-color: rgba(20, 20, 20, 0.22);
+}
+
+.drawer {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 20, 0.18);
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 14px;
+}
+
+.drawerTop {
+  width: min(520px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid rgba(20, 20, 20, 0.10);
+}
+
+.drawerTitle {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(20, 20, 20, 0.70);
+}
+
+.closeBtn {
+  all: unset;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.10);
+}
+
+.drawerList {
+  width: min(520px, 100%);
+  background: rgba(251, 248, 241, 0.98);
+  border: 1px solid rgba(20, 20, 20, 0.14);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.20);
+}
+
+.drawerLink {
+  display: block;
+  text-decoration: none;
+  color: var(--v2-ink);
+  font-weight: 750;
+  padding: 14px 14px;
+  border-top: 1px solid rgba(20, 20, 20, 0.10);
+}
+
+.drawerLink:first-child {
+  border-top: 0;
+}
+
+.drawerLink:hover {
+  background: rgba(20, 20, 20, 0.06);
+}
+
+@media (max-width: 700px) {
+  .inner {
+    width: min(1040px, calc(100% - 32px));
+  }
+  .nav {
+    display: none;
+  }
+  .menuBtn {
+    display: inline-flex;
+  }
+  .more {
+    width: min(1040px, calc(100% - 32px));
+  }
+}
+

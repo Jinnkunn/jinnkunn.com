@@ -1,0 +1,13 @@
+/* Classic (1:1) styling: load the static Super/Notion CSS from /public/styles.
+ *
+ * We keep these as public assets to match the original site, but import a
+ * shim here so Next attaches them to the classic route segment only.
+ *
+ * Order matters.
+ */
+
+@import url("/styles/super-inline.css");
+@import url("/styles/static.css");
+@import url("/styles/notion.css");
+@import url("/styles/super-nav.css");
+
