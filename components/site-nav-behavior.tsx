@@ -68,6 +68,45 @@ function lockBodyScroll() {
   };
 }
 
+function setBackgroundInert(open: boolean) {
+  // Keep the dialog usable while preventing background focus/scroll/interaction.
+  // We target only obvious siblings of the navbar in the classic layout.
+  const main = document.getElementById("main-content");
+  const skip = document.querySelector<HTMLElement>(".skip-link");
+  const footer = document.querySelector<HTMLElement>("footer.super-footer");
+  const targets = [skip, main, footer].filter(Boolean) as HTMLElement[];
+
+  for (const el of targets) {
+    if (open) {
+      el.setAttribute("inert", "");
+      el.setAttribute("aria-hidden", "true");
+    } else {
+      el.removeAttribute("inert");
+      el.removeAttribute("aria-hidden");
+    }
+  }
+}
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  const candidates = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    )
+  );
+
+  return candidates
+    .filter((el) => {
+      // Exclude the invisible full-screen close backdrop from tab order.
+      if (el.id === "mobile-backdrop") return false;
+      // Exclude explicitly non-tabbable elements.
+      if (el.getAttribute("tabindex") === "-1") return false;
+      const s = window.getComputedStyle(el);
+      if (s.visibility === "hidden" || s.display === "none") return false;
+      return true;
+    })
+    .filter((el) => container.contains(el));
+}
+
 export default function SiteNavBehavior() {
   const pathname = usePathname();
 
@@ -116,6 +155,7 @@ export default function SiteNavBehavior() {
     let unlockScroll: null | (() => void) = null;
     let moreCloseTimer: number | null = null;
     let mobileCloseTimer: number | null = null;
+    let mobilePrevFocus: HTMLElement | null = null;
 
     const getMoreItems = () =>
       Array.from(
@@ -171,7 +211,10 @@ export default function SiteNavBehavior() {
       }
     };
 
-    const setMobileOpen = (open: boolean) => {
+    const setMobileOpen = (
+      open: boolean,
+      opts: { restoreFocus?: boolean } = {}
+    ) => {
       if (mobileOpen === open) return;
       mobileOpen = open;
       mobileBtn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -182,8 +225,11 @@ export default function SiteNavBehavior() {
         // Ensure the other menu is closed.
         setMoreOpen(false);
 
+        mobilePrevFocus = document.activeElement as HTMLElement | null;
         mobileMenu.hidden = false;
         mobileMenu.removeAttribute("inert");
+        mobileMenu.setAttribute("data-state", "open");
+        setBackgroundInert(true);
 
         mobileMenu.classList.remove("exit", "exit-active");
         mobileMenu.classList.add("enter");
@@ -195,13 +241,13 @@ export default function SiteNavBehavior() {
         if (!unlockScroll) unlockScroll = lockBodyScroll();
 
         requestAnimationFrame(() => {
-          const first = mobileDialog.querySelector<HTMLElement>(
-            "a.super-navbar__item"
-          );
-          first?.focus();
+          const focusables = getFocusable(mobileDialog);
+          (focusables[0] ?? mobileClose ?? mobileBtn)?.focus?.();
         });
       } else {
         mobileMenu.setAttribute("inert", "");
+        mobileMenu.setAttribute("data-state", "closed");
+        setBackgroundInert(false);
         if (prefersReducedMotion) {
           mobileMenu.hidden = true;
           mobileMenu.classList.remove("enter", "enter-active", "enter-done");
@@ -222,6 +268,15 @@ export default function SiteNavBehavior() {
           unlockScroll();
           unlockScroll = null;
         }
+
+        if (opts.restoreFocus) {
+          const toFocus =
+            (mobilePrevFocus && document.contains(mobilePrevFocus)
+              ? mobilePrevFocus
+              : mobileBtn) ?? mobileBtn;
+          requestAnimationFrame(() => toFocus?.focus?.());
+        }
+        mobilePrevFocus = null;
       }
     };
 
@@ -239,7 +294,7 @@ export default function SiteNavBehavior() {
       if (mobileOpen) {
         if (mobileBtn.contains(t) || mobileDialog.contains(t)) return;
         // Clicked somewhere else (including the backdrop) -> close.
-        return setMobileOpen(false);
+        return setMobileOpen(false, { restoreFocus: true });
       }
 
       // If "More" is open, close it when clicking outside its button/menu,
@@ -257,14 +312,7 @@ export default function SiteNavBehavior() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab" && mobileOpen) {
         // Focus trap for the mobile menu.
-        const focusables = Array.from(
-          mobileDialog.querySelectorAll<HTMLElement>(
-            'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
-          )
-        ).filter((el) => {
-          const s = window.getComputedStyle(el);
-          return s.visibility !== "hidden" && s.display !== "none";
-        });
+        const focusables = getFocusable(mobileDialog);
 
         if (focusables.length > 0) {
           const first = focusables[0];
@@ -290,8 +338,18 @@ export default function SiteNavBehavior() {
       const focusMore = moreOpen;
       const focusMobile = mobileOpen;
       closeAll();
-      if (focusMobile) mobileBtn.focus();
+      if (focusMobile) (mobilePrevFocus ?? mobileBtn).focus();
       else if (focusMore) moreBtn.focus();
+    };
+
+    const onFocusIn = (e: FocusEvent) => {
+      if (!mobileOpen) return;
+      const t = e.target instanceof Node ? e.target : null;
+      if (!t) return;
+      if (mobileDialog.contains(t)) return;
+      // If focus escapes (e.g., iOS + external keyboard quirks), pull it back.
+      const focusables = getFocusable(mobileDialog);
+      (focusables[0] ?? mobileClose ?? mobileBtn)?.focus?.();
     };
 
     const onNavClickCapture = (e: MouseEvent) => {
@@ -408,14 +466,12 @@ export default function SiteNavBehavior() {
 
     const onBackdropClick = (e: MouseEvent) => {
       e.preventDefault();
-      setMobileOpen(false);
-      mobileBtn.focus();
+      setMobileOpen(false, { restoreFocus: true });
     };
 
     const onCloseBtnClick = (e: MouseEvent) => {
       e.preventDefault();
-      setMobileOpen(false);
-      mobileBtn.focus();
+      setMobileOpen(false, { restoreFocus: true });
     };
 
     // Initial state
@@ -426,10 +482,12 @@ export default function SiteNavBehavior() {
     mobileBtn.setAttribute("aria-expanded", "false");
     mobileMenu.hidden = true;
     mobileMenu.setAttribute("inert", "");
+    mobileMenu.setAttribute("data-state", "closed");
     setActiveLinks(nav);
 
     window.addEventListener("pointerdown", onPointerDown, { passive: true });
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("focusin", onFocusIn);
     nav.addEventListener("click", onNavClickCapture, true);
     moreBtn.addEventListener("click", onMoreClick);
     moreBtn.addEventListener("keydown", onMoreTriggerKeyDown);
@@ -443,13 +501,17 @@ export default function SiteNavBehavior() {
     mobileClose.addEventListener("click", onCloseBtnClick);
 
     // Update active classes on client-side navigations (best-effort).
-    const onPopState = () => setActiveLinks(nav);
+    const onPopState = () => {
+      closeAll();
+      setActiveLinks(nav);
+    };
     window.addEventListener("popstate", onPopState);
 
     return () => {
       clearTimers();
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("focusin", onFocusIn);
       nav.removeEventListener("click", onNavClickCapture, true);
       moreBtn.removeEventListener("click", onMoreClick);
       moreBtn.removeEventListener("keydown", onMoreTriggerKeyDown);
@@ -464,6 +526,7 @@ export default function SiteNavBehavior() {
       mobileClose.removeEventListener("click", onCloseBtnClick);
       window.removeEventListener("popstate", onPopState);
       if (unlockScroll) unlockScroll();
+      setBackgroundInert(false);
     };
   }, []);
 
