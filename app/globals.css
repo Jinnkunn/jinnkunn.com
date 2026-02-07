@@ -201,3 +201,37 @@
     text-align: left;
   }
 }
+
+/* Fix multi-line link hover/focus aesthetics.
+ *
+ * Some upstream "animated underline" techniques look bad once a link wraps.
+ * We use a wrap-safe underline + subtle background that clones per line box.
+ */
+.notion-root a.notion-link.link,
+.notion-text a.notion-link.link,
+.notion-link.link {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  text-decoration-color: rgba(55, 53, 47, 0.35);
+  border-radius: 8px;
+  transition: background-color 160ms ease, text-decoration-color 160ms ease,
+    color 160ms ease;
+}
+
+.notion-root a.notion-link.link:hover,
+.notion-text a.notion-link.link:hover,
+.notion-link.link:hover {
+  background-color: rgba(55, 53, 47, 0.06);
+  text-decoration-color: rgba(55, 53, 47, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notion-root a.notion-link.link,
+  .notion-text a.notion-link.link,
+  .notion-link.link {
+    transition: none !important;
+  }
+}

@@ -33,6 +33,8 @@ export async function generateStaticParams(): Promise<
     .filter((rel) => rel.endsWith(".html"))
     .map((rel) => rel.slice(0, -".html".length))
     .filter((rel) => rel !== "index")
+    // `/blog` is rendered by a dedicated route using a consistent template.
+    .filter((rel) => rel !== "blog")
     // Blog posts are rendered by a dedicated route using a consistent template.
     .filter((rel) => !rel.startsWith("blog/list/"))
     .map((rel) => ({ slug: rel.split("/").filter(Boolean) }));
