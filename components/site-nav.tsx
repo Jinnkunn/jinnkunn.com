@@ -112,6 +112,7 @@ export default function SiteNav() {
             type="button"
             className="super-navbar__button super-navbar__menu-open"
             aria-label="Menu"
+            aria-haspopup="dialog"
             aria-expanded="false"
             aria-controls="mobile-menu"
           >
@@ -141,6 +142,8 @@ export default function SiteNav() {
           data-state="closed"
           data-orientation="horizontal"
           className="super-navbar__viewport single-column"
+          role="menu"
+          aria-labelledby="more-trigger"
           style={{
             display: "none",
             transform:
@@ -178,7 +181,12 @@ export default function SiteNav() {
       </div>
 
       <div id="mobile-menu" className="super-navbar__menu-wrapper" hidden>
-        <div className="super-navbar__menu">
+        <div
+          className="super-navbar__menu"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+        >
           <div className="super-navigation-menu__items-wrapper">
             <div className="super-navigation-menu__items">
               {[...topItems, ...moreItems].map((it) => (

@@ -6,8 +6,10 @@
  * Order matters.
  */
 
-@import url("/styles/super-inline.css");
-@import url("/styles/static.css");
-@import url("/styles/notion.css");
-@import url("/styles/super-nav.css");
-
+/* Import from the filesystem so Next bundles everything into a single hashed CSS
+ * file (better caching + no runtime @import waterfall).
+ */
+@import "../../public/styles/super-inline.css";
+@import "../../public/styles/static.css";
+@import "../../public/styles/notion.css";
+@import "../../public/styles/super-nav.css";

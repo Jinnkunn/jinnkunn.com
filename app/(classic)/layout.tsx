@@ -16,11 +16,16 @@ export default function ClassicLayout({
   return (
     <>
       <div className="super-root">
+        <a className="skip-link" href="#main-content">
+          Skip to content
+        </a>
         {/* Match Super's structure: a sticky "notion-navbar" wrapper containing the super navbar. */}
         <div className="notion-navbar">
           <SiteNav />
         </div>
-        <div className="super-content-wrapper">{children}</div>
+        <div id="main-content" className="super-content-wrapper">
+          {children}
+        </div>
         <SiteFooter />
       </div>
 

@@ -20,8 +20,13 @@ function setActiveLinks(root: HTMLElement) {
     try {
       const href = new URL(a.href, window.location.href);
       const path = normalizePath(href.pathname);
-      if (path === current) a.classList.add("active");
-      else a.classList.remove("active");
+      if (path === current) {
+        a.classList.add("active");
+        a.setAttribute("aria-current", "page");
+      } else {
+        a.classList.remove("active");
+        a.removeAttribute("aria-current");
+      }
     } catch {
       // ignore invalid URLs
     }
@@ -80,6 +85,10 @@ export default function SiteNavBehavior() {
 
     if (!moreBtn || !moreMenu || !mobileBtn || !mobileMenu) return;
 
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
     let moreOpen = false;
     let mobileOpen = false;
     let unlockScroll: null | (() => void) = null;
@@ -106,19 +115,27 @@ export default function SiteNavBehavior() {
 
         moreMenu.style.display = "";
         moreMenu.setAttribute("data-state", "open");
+        moreMenu.removeAttribute("inert");
         // Focus the first item for keyboard users.
-        requestAnimationFrame(() => {
-          const first = moreMenu.querySelector<HTMLElement>(
-            "a.super-navbar__list-item"
-          );
-          first?.focus();
-        });
+        if (!prefersReducedMotion) {
+          requestAnimationFrame(() => {
+            const first = moreMenu.querySelector<HTMLElement>(
+              "a.super-navbar__list-item"
+            );
+            first?.focus();
+          });
+        }
       } else {
         moreMenu.setAttribute("data-state", "closed");
-        // Let fadeOut play, then remove from flow/pointer-events.
-        moreCloseTimer = window.setTimeout(() => {
+        moreMenu.setAttribute("inert", "");
+        if (prefersReducedMotion) {
           moreMenu.style.display = "none";
-        }, 220);
+        } else {
+          // Let fadeOut play, then remove from flow/pointer-events.
+          moreCloseTimer = window.setTimeout(() => {
+            moreMenu.style.display = "none";
+          }, 220);
+        }
       }
     };
 
@@ -134,6 +151,8 @@ export default function SiteNavBehavior() {
         setMoreOpen(false);
 
         mobileMenu.hidden = false;
+        mobileMenu.removeAttribute("inert");
+
         mobileMenu.classList.remove("exit", "exit-active");
         mobileMenu.classList.add("enter");
         requestAnimationFrame(() => {
@@ -150,15 +169,22 @@ export default function SiteNavBehavior() {
           first?.focus();
         });
       } else {
-        mobileMenu.classList.remove("enter", "enter-active", "enter-done");
-        mobileMenu.classList.add("exit");
-        requestAnimationFrame(() => {
-          mobileMenu.classList.add("exit-active");
-        });
-        mobileCloseTimer = window.setTimeout(() => {
+        mobileMenu.setAttribute("inert", "");
+        if (prefersReducedMotion) {
           mobileMenu.hidden = true;
+          mobileMenu.classList.remove("enter", "enter-active", "enter-done");
           mobileMenu.classList.remove("exit", "exit-active");
-        }, 280);
+        } else {
+          mobileMenu.classList.remove("enter", "enter-active", "enter-done");
+          mobileMenu.classList.add("exit");
+          requestAnimationFrame(() => {
+            mobileMenu.classList.add("exit-active");
+          });
+          mobileCloseTimer = window.setTimeout(() => {
+            mobileMenu.hidden = true;
+            mobileMenu.classList.remove("exit", "exit-active");
+          }, 280);
+        }
 
         if (unlockScroll) {
           unlockScroll();
@@ -178,6 +204,36 @@ export default function SiteNavBehavior() {
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Tab" && mobileOpen) {
+        // Focus trap for the mobile menu.
+        const focusables = Array.from(
+          mobileMenu.querySelectorAll<HTMLElement>(
+            'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => {
+          const s = window.getComputedStyle(el);
+          return s.visibility !== "hidden" && s.display !== "none";
+        });
+
+        if (focusables.length > 0) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          const active = document.activeElement as HTMLElement | null;
+          if (e.shiftKey) {
+            if (!active || active === first || !mobileMenu.contains(active)) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else {
+            if (!active || active === last || !mobileMenu.contains(active)) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+        return;
+      }
+
       if (e.key !== "Escape") return;
       e.preventDefault();
       const focusMore = moreOpen;
@@ -208,9 +264,11 @@ export default function SiteNavBehavior() {
     // Initial state
     moreMenu.style.display = "none";
     moreMenu.setAttribute("data-state", "closed");
+    moreMenu.setAttribute("inert", "");
     moreBtn.setAttribute("aria-expanded", "false");
     mobileBtn.setAttribute("aria-expanded", "false");
     mobileMenu.hidden = true;
+    mobileMenu.setAttribute("inert", "");
     setActiveLinks(nav);
 
     window.addEventListener("pointerdown", onPointerDown, { passive: true });
