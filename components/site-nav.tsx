@@ -187,17 +187,27 @@ export default function SiteNav() {
           aria-modal="true"
           aria-label="Site menu"
         >
-          <div className="super-navigation-menu__items-wrapper">
-            <div className="super-navigation-menu__items">
-              {[...topItems, ...moreItems].map((it) => (
-                <Link
-                  key={it.href}
-                  href={it.href}
-                  className="notion-link super-navbar__item"
-                >
-                  {it.label}
-                </Link>
-              ))}
+          <button
+            id="mobile-backdrop"
+            type="button"
+            className="super-navbar__menu-backdrop"
+            aria-label="Close menu"
+            tabIndex={-1}
+          />
+
+          <div className="super-navbar__menu-surface">
+            <div className="super-navigation-menu__items-wrapper">
+              <div className="super-navigation-menu__items">
+                {[...topItems, ...moreItems].map((it) => (
+                  <Link
+                    key={it.href}
+                    href={it.href}
+                    className="notion-link super-navbar__item"
+                  >
+                    {it.label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </div>

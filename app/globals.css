@@ -49,6 +49,25 @@
   display: none;
 }
 
+/* Mobile menu backdrop: when the menu is full-screen on small devices, this
+ * captures taps on empty space to close, without blocking taps on menu items.
+ */
+.super-navbar__menu-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: default;
+  z-index: 0;
+}
+
+.super-navbar__menu-surface {
+  position: relative;
+  z-index: 1;
+}
+
 /* Mobile usability: increase tap targets without changing visual layout. */
 @media (max-width: 546px) {
   .super-navbar__logo,
@@ -76,6 +95,13 @@
   }
 }
 
+/* iOS/Android: prevent background scroll chaining when the menu is open. */
+@media (max-width: 546px) {
+  .super-navbar__menu-wrapper {
+    overscroll-behavior: contain;
+  }
+}
+
 /* Respect reduced motion preferences for menu animations. */
 @media (prefers-reduced-motion: reduce) {
   .super-navbar__viewport[data-state="open"],
@@ -93,5 +119,9 @@
     transition: none !important;
     transform: none !important;
     opacity: 1 !important;
+  }
+
+  .super-navbar__menu-backdrop {
+    transition: none !important;
   }
 }

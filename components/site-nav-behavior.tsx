@@ -82,8 +82,22 @@ export default function SiteNavBehavior() {
     const mobileMenu = document.getElementById(
       "mobile-menu"
     ) as HTMLElement | null;
+    const mobileBackdrop = document.getElementById(
+      "mobile-backdrop"
+    ) as HTMLButtonElement | null;
+    const mobileDialog = mobileMenu?.querySelector(
+      ".super-navbar__menu"
+    ) as HTMLElement | null;
 
-    if (!moreBtn || !moreMenu || !mobileBtn || !mobileMenu) return;
+    if (
+      !moreBtn ||
+      !moreMenu ||
+      !mobileBtn ||
+      !mobileMenu ||
+      !mobileBackdrop ||
+      !mobileDialog
+    )
+      return;
 
     const prefersReducedMotion =
       typeof window !== "undefined" &&
@@ -163,7 +177,7 @@ export default function SiteNavBehavior() {
         if (!unlockScroll) unlockScroll = lockBodyScroll();
 
         requestAnimationFrame(() => {
-          const first = mobileMenu.querySelector<HTMLElement>(
+          const first = mobileDialog.querySelector<HTMLElement>(
             "a.super-navbar__item"
           );
           first?.focus();
@@ -199,7 +213,26 @@ export default function SiteNavBehavior() {
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      if (e.target instanceof Node && nav.contains(e.target)) return;
+      const t = e.target instanceof Node ? e.target : null;
+      if (!t) return closeAll();
+
+      // If mobile menu is open, allow "tap outside" inside the nav wrapper
+      // (on the backdrop area) to close it.
+      if (mobileOpen) {
+        if (mobileBtn.contains(t) || mobileDialog.contains(t)) return;
+        // Clicked somewhere else (including the backdrop) -> close.
+        return setMobileOpen(false);
+      }
+
+      // If "More" is open, close it when clicking outside its button/menu,
+      // even if still inside the navbar region.
+      if (moreOpen) {
+        if (moreBtn.contains(t) || moreMenu.contains(t)) return;
+        return setMoreOpen(false);
+      }
+
+      // Otherwise, only close menus when clicking outside the nav entirely.
+      if (nav.contains(t)) return;
       closeAll();
     };
 
@@ -207,7 +240,7 @@ export default function SiteNavBehavior() {
       if (e.key === "Tab" && mobileOpen) {
         // Focus trap for the mobile menu.
         const focusables = Array.from(
-          mobileMenu.querySelectorAll<HTMLElement>(
+          mobileDialog.querySelectorAll<HTMLElement>(
             'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
           )
         ).filter((el) => {
@@ -261,6 +294,12 @@ export default function SiteNavBehavior() {
       setMobileOpen(!mobileOpen);
     };
 
+    const onBackdropClick = (e: MouseEvent) => {
+      e.preventDefault();
+      setMobileOpen(false);
+      mobileBtn.focus();
+    };
+
     // Initial state
     moreMenu.style.display = "none";
     moreMenu.setAttribute("data-state", "closed");
@@ -276,6 +315,7 @@ export default function SiteNavBehavior() {
     nav.addEventListener("click", onNavClickCapture, true);
     moreBtn.addEventListener("click", onMoreClick);
     mobileBtn.addEventListener("click", onMobileClick);
+    mobileBackdrop.addEventListener("click", onBackdropClick);
 
     // Update active classes on client-side navigations (best-effort).
     const onPopState = () => setActiveLinks(nav);
@@ -288,6 +328,7 @@ export default function SiteNavBehavior() {
       nav.removeEventListener("click", onNavClickCapture, true);
       moreBtn.removeEventListener("click", onMoreClick);
       mobileBtn.removeEventListener("click", onMobileClick);
+      mobileBackdrop.removeEventListener("click", onBackdropClick);
       window.removeEventListener("popstate", onPopState);
       if (unlockScroll) unlockScroll();
     };
