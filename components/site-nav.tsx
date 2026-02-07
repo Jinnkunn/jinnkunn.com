@@ -9,6 +9,42 @@ type MenuItem = {
   label: string;
 };
 
+function useBodyScrollLock(locked: boolean) {
+  useEffect(() => {
+    if (!locked) return;
+
+    // iOS-friendly scroll lock: preserve scroll position and avoid background scroll.
+    const { body, documentElement } = document;
+    const scrollY = window.scrollY || documentElement.scrollTop || 0;
+
+    const prev = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+
+    return () => {
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.left = prev.left;
+      body.style.right = prev.right;
+      body.style.width = prev.width;
+      body.style.overflow = prev.overflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, [locked]);
+}
+
 const moreItems: MenuItem[] = [
   // Match the original site's "More" dropdown.
   { href: "/blog", label: "Blog" },
@@ -22,6 +58,8 @@ export default function SiteNav() {
   const navRef = useRef<HTMLElement | null>(null);
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const firstMoreItemRef = useRef<HTMLAnchorElement | null>(null);
+  const firstMobileItemRef = useRef<HTMLAnchorElement | null>(null);
 
   const topItems = useMemo<MenuItem[]>(
     () => [
@@ -78,15 +116,24 @@ export default function SiteNav() {
     };
   }, [moreOpen, menuOpen]);
 
+  // Mobile UX: prevent background scroll when the hamburger menu is open.
+  useBodyScrollLock(menuOpen);
+
   useEffect(() => {
-    // Mobile UX: prevent background scroll when the hamburger menu is open.
     if (!menuOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    const raf = requestAnimationFrame(() => {
+      firstMobileItemRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const raf = requestAnimationFrame(() => {
+      firstMoreItemRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [moreOpen]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -155,7 +202,10 @@ export default function SiteNav() {
                 aria-haspopup="menu"
                 aria-controls="more-menu"
                 data-state={moreOpen ? "open" : "closed"}
-                onClick={() => setMoreOpen((v) => !v)}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setMoreOpen((v) => !v);
+                }}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -203,7 +253,10 @@ export default function SiteNav() {
             aria-label="Menu"
             aria-expanded={menuOpen}
             aria-controls="mobile-menu"
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={() => {
+              setMoreOpen(false);
+              setMenuOpen((v) => !v);
+            }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -256,6 +309,7 @@ export default function SiteNav() {
                       role="menuitem"
                       className="notion-link super-navbar__list-item"
                       onClick={() => setMoreOpen(false)}
+                      ref={it.href === moreItems[0]?.href ? firstMoreItemRef : undefined}
                     >
                       <div className="super-navbar__list-item-content">
                         <div className="super-navbar__list-item-heading">
@@ -276,7 +330,7 @@ export default function SiteNav() {
           <div className="super-navbar__menu">
             <div className="super-navigation-menu__items-wrapper">
               <div className="super-navigation-menu__items">
-                {[...topItems, ...moreItems].map((it) => (
+                {[...topItems, ...moreItems].map((it, idx) => (
                   <Link
                     key={it.href}
                     href={it.href}
@@ -284,6 +338,7 @@ export default function SiteNav() {
                       pathname === it.href ? " active" : ""
                     }`}
                     onClick={() => setMenuOpen(false)}
+                    ref={idx === 0 ? firstMobileItemRef : undefined}
                   >
                     {it.label}
                   </Link>

@@ -29,7 +29,10 @@ export default function RootLayout({
       </head>
       <body>
         <div className="super-root">
-          <SiteNav />
+          {/* Match Super's structure: a sticky "notion-navbar" wrapper containing the super navbar. */}
+          <div className="notion-navbar">
+            <SiteNav />
+          </div>
           <div className="super-content-wrapper">{children}</div>
           <SiteFooter />
         </div>

@@ -11,4 +11,23 @@
   border: 0;
   font: inherit;
   color: inherit;
+  touch-action: manipulation;
+}
+
+/* Mobile usability: increase tap targets without changing visual layout. */
+@media (max-width: 546px) {
+  .super-navbar__logo,
+  .super-navbar__button,
+  .super-navbar__list {
+    position: relative;
+  }
+
+  .super-navbar__logo::before,
+  .super-navbar__button::before,
+  .super-navbar__list::before {
+    content: "";
+    position: absolute;
+    /* Expand hit area while keeping the visible layout identical. */
+    inset: -10px;
+  }
 }
