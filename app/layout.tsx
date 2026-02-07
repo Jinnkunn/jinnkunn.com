@@ -42,14 +42,19 @@ export default function RootLayout({
         {/* CSS: keep as render-blocking to avoid FOUC, but preload to start downloads earlier. */}
         <link rel="preload" as="style" href="/styles/super-inline.css" fetchPriority="high" />
         <link rel="preload" as="style" href="/styles/notion.css" fetchPriority="high" />
-        <link rel="preload" as="style" href="/styles/super.css" fetchPriority="high" />
+        <link rel="preload" as="style" href="/styles/super-nav.css" fetchPriority="high" />
         <link rel="preload" as="style" href="/styles/static.css" />
+        <link rel="preload" as="style" href="/styles/super.css" />
 
         {/* Super/Notion CSS (downloaded from the original site) */}
         <link rel="stylesheet" href="/styles/super-inline.css" />
         <link rel="stylesheet" href="/styles/static.css" />
         <link rel="stylesheet" href="/styles/notion.css" />
-        <link rel="stylesheet" href="/styles/super.css" />
+        <link rel="stylesheet" href="/styles/super-nav.css" />
+        {/* Defer the rest of super.css to reduce render-blocking CSS. */}
+        <noscript>
+          <link rel="stylesheet" href="/styles/super.css" />
+        </noscript>
         {/* KaTeX styles removed from critical path (next-chunk.css). Add it back only if you render KaTeX. */}
       </head>
       <body>
@@ -61,6 +66,18 @@ export default function RootLayout({
           <div className="super-content-wrapper">{children}</div>
           <SiteFooter />
         </div>
+
+        {/* Load deferred CSS after the page becomes interactive (tiny, one-time). */}
+        <Script id="defer-super-css" strategy="afterInteractive">{`
+          (function() {
+            if (document.querySelector('link[data-deferred-super-css]')) return;
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/styles/super.css';
+            link.setAttribute('data-deferred-super-css', 'true');
+            document.head.appendChild(link);
+          })();
+        `}</Script>
 
         {/* Cloudflare email decode (used by original HTML for obfuscated email addresses) */}
         <Script
