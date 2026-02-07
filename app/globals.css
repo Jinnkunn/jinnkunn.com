@@ -365,6 +365,11 @@ html {
   }
 }
 
+/* Embeds: hide the loading overlay once the iframe has loaded (client behavior). */
+.notion-embed[data-loaded="true"] .notion-embed__loader {
+  display: none !important;
+}
+
 /* Notion image lightbox (minimal, v1-consistent). */
 .notion-image img {
   cursor: zoom-in;

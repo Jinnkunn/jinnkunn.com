@@ -6,17 +6,36 @@ First, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Content Sync (Super/Notion Clone)
+
+This repo renders pages from `content/raw/**/*.html` (hydrated HTML captured from the live Super site).
+
+```bash
+npm run sync:raw
+```
+
+## UI Regression Snapshots
+
+```bash
+npm run snapshot:ui
+```
+
+Outputs go to `output/ui-snapshots/<timestamp>/`.
+
+## Notion Block Audit
+
+This scans the current raw HTML and lists all `notion-*` and `super-*` classes in use. This is how we
+know which Notion/Super block styles we must support.
+
+```bash
+npm run audit:notion
+```
+
+Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-audit/latest.*`.
 
 ## Learn More
 
