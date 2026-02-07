@@ -540,11 +540,21 @@ html {
 
 .page__publications .notion-toggle__summary {
   padding: 6px 0;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .page__publications .notion-toggle__summary > span.notion-semantic-string {
   flex: 1;
   min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.page__publications .notion-toggle__trigger {
+  /* Align the triangle with the first text line for multi-line titles. */
+  margin-top: 2px;
 }
 
 .page__publications .notion-toggle__content {
@@ -558,6 +568,8 @@ html {
 
 /* Make publication "type badges" (conference/journal/arXiv) read as pills. */
 .page__publications .highlighted-background code.code {
+  display: inline-block;
+  white-space: nowrap;
   padding: 1px 6px;
   border-radius: 999px;
   font-size: 0.78em;
