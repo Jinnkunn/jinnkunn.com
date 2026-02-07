@@ -39,6 +39,12 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
 
+        {/* CSS: keep as render-blocking to avoid FOUC, but preload to start downloads earlier. */}
+        <link rel="preload" as="style" href="/styles/super-inline.css" fetchPriority="high" />
+        <link rel="preload" as="style" href="/styles/notion.css" fetchPriority="high" />
+        <link rel="preload" as="style" href="/styles/super.css" fetchPriority="high" />
+        <link rel="preload" as="style" href="/styles/static.css" />
+
         {/* Super/Notion CSS (downloaded from the original site) */}
         <link rel="stylesheet" href="/styles/super-inline.css" />
         <link rel="stylesheet" href="/styles/static.css" />
