@@ -18,6 +18,10 @@ const nextConfig = {
         headers: [{ key: "Cache-Control", value: assetCache }],
       },
       {
+        source: "/fonts/:path*",
+        headers: [{ key: "Cache-Control", value: assetCache }],
+      },
+      {
         source: "/styles/:path*",
         headers: [{ key: "Cache-Control", value: assetCache }],
       },

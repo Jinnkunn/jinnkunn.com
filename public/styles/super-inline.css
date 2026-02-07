@@ -3,23 +3,7 @@
         font-family: "Noto Sans";
         font-style: normal;
         font-weight: 400;
-        src: url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-regular.eot"); /* IE9 Compat Modes */
-        
-          src: local(""),
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-regular.eot?#iefix")
-            format("embedded-opentype"),
-            /* IE6-IE8 */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-regular.woff2")
-            format("woff2"),
-            /* Super Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-regular.woff")
-            format("woff"),
-            /* Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-regular.ttf")
-            format("truetype"),
-            /* Safari, Android, iOS */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-regular.svg#NotoSans")
-            format("svg"); /* Legacy iOS */
+        src: url("/fonts/noto-sans-v27-regular.woff2") format("woff2");
         
       }
     
@@ -27,23 +11,7 @@
         font-family: "Noto Sans";
         font-style: normal;
         font-weight: 500;
-        src: url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-500.eot"); /* IE9 Compat Modes */
-        
-          src: local(""),
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-500.eot?#iefix")
-            format("embedded-opentype"),
-            /* IE6-IE8 */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-500.woff2")
-            format("woff2"),
-            /* Super Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-500.woff")
-            format("woff"),
-            /* Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-500.ttf")
-            format("truetype"),
-            /* Safari, Android, iOS */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-500.svg#NotoSans")
-            format("svg"); /* Legacy iOS */
+        src: url("/fonts/noto-sans-v27-500.woff2") format("woff2");
         
       }
     
@@ -51,23 +19,7 @@
         font-family: "Noto Sans";
         font-style: normal;
         font-weight: 600;
-        src: url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-600.eot"); /* IE9 Compat Modes */
-        
-          src: local(""),
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-600.eot?#iefix")
-            format("embedded-opentype"),
-            /* IE6-IE8 */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-600.woff2")
-            format("woff2"),
-            /* Super Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-600.woff")
-            format("woff"),
-            /* Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-600.ttf")
-            format("truetype"),
-            /* Safari, Android, iOS */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-600.svg#NotoSans")
-            format("svg"); /* Legacy iOS */
+        src: url("/fonts/noto-sans-v27-600.woff2") format("woff2");
         
       }
     
@@ -75,23 +27,7 @@
         font-family: "Noto Sans";
         font-style: normal;
         font-weight: 700;
-        src: url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-700.eot"); /* IE9 Compat Modes */
-        
-          src: local(""),
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-700.eot?#iefix")
-            format("embedded-opentype"),
-            /* IE6-IE8 */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-700.woff2")
-            format("woff2"),
-            /* Super Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-700.woff")
-            format("woff"),
-            /* Modern Browsers */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-700.ttf")
-            format("truetype"),
-            /* Safari, Android, iOS */
-            url("https://assets-v2.super.so/global/fonts/Noto_Sans/noto-sans-v27-latin-ext_latin_cyrillic-ext_cyrillic-700.svg#NotoSans")
-            format("svg"); /* Legacy iOS */
+        src: url("/fonts/noto-sans-v27-700.woff2") format("woff2");
         
       }
 
