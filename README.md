@@ -26,6 +26,16 @@ npm run snapshot:ui
 
 Outputs go to `output/ui-snapshots/<timestamp>/`.
 
+## UI Smoke Checks
+
+Quick end-to-end checks for critical interactions (nav, mobile menu, toggles, code copy, lightbox, embeds):
+
+```bash
+npm run smoke:ui
+```
+
+Outputs go to `output/ui-smoke/<timestamp>/` and `output/ui-smoke/latest.json`.
+
 ## Notion Block Audit
 
 This scans the current raw HTML and lists all `notion-*` and `super-*` classes in use. This is how we

@@ -9,7 +9,8 @@
     "lint": "eslint",
     "sync:raw": "node scripts/sync-raw-hydrated.mjs",
     "snapshot:ui": "node scripts/ui-snapshots.mjs",
-    "audit:notion": "node scripts/audit-notion-blocks.mjs"
+    "audit:notion": "node scripts/audit-notion-blocks.mjs",
+    "smoke:ui": "node scripts/smoke-ui.mjs"
   },
   "dependencies": {
     "next": "16.1.6",
