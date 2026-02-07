@@ -542,6 +542,8 @@ html {
   padding: 6px 0;
   align-items: flex-start;
   gap: 6px;
+  border-radius: 10px;
+  transition: background-color 140ms ease;
 }
 
 .page__publications .notion-toggle__summary > span.notion-semantic-string {
@@ -555,6 +557,25 @@ html {
 .page__publications .notion-toggle__trigger {
   /* Align the triangle with the first text line for multi-line titles. */
   margin-top: 2px;
+}
+
+.page__publications .notion-toggle__summary {
+  /* Make each item feel like a tappable row without changing the Notion look. */
+  padding: 8px 10px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page__publications .notion-toggle__summary:hover {
+    background: var(--color-ui-hover-bg);
+  }
+}
+
+.page__publications .notion-toggle.open > .notion-toggle__summary {
+  background: rgba(55, 53, 47, 0.045);
+}
+
+.page__publications .notion-toggle.open > .notion-toggle__summary:hover {
+  background: rgba(55, 53, 47, 0.065);
 }
 
 .page__publications .notion-toggle__content {
