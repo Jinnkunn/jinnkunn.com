@@ -281,7 +281,11 @@ html {
  */
 .notion-root a.notion-link.link,
 .notion-text a.notion-link.link,
-.notion-link.link {
+.notion-link.link,
+.notion-text a.notion-link[href],
+.notion-list-item a.notion-link[href],
+.notion-caption a.notion-link[href],
+.notion-quote a.notion-link[href] {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
   display: inline !important;
@@ -315,14 +319,22 @@ html {
 
 .notion-root a.notion-link.link:hover,
 .notion-text a.notion-link.link:hover,
-.notion-link.link:hover {
+.notion-link.link:hover,
+.notion-text a.notion-link[href]:hover,
+.notion-list-item a.notion-link[href]:hover,
+.notion-caption a.notion-link[href]:hover,
+.notion-quote a.notion-link[href]:hover {
   background-position: 0 8%;
   background-size: 100% 1.18em;
 }
 
 .notion-root a.notion-link.link:focus-visible,
 .notion-text a.notion-link.link:focus-visible,
-.notion-link.link:focus-visible {
+.notion-link.link:focus-visible,
+.notion-text a.notion-link[href]:focus-visible,
+.notion-list-item a.notion-link[href]:focus-visible,
+.notion-caption a.notion-link[href]:focus-visible,
+.notion-quote a.notion-link[href]:focus-visible {
   background-position: 0 8%;
   background-size: 100% 1.18em;
 }
