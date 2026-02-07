@@ -64,6 +64,46 @@ function openToggleAncestors(target: Element) {
   for (const t of toggles) setToggleState(t, true);
 }
 
+function prefersReducedMotion(): boolean {
+  try {
+    return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+  } catch {
+    return false;
+  }
+}
+
+function getNavbarHeightPx(): number {
+  const nav =
+    document.querySelector<HTMLElement>(".notion-navbar") ??
+    document.getElementById("site-nav");
+  return nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+}
+
+function focusAfterScroll(el: HTMLElement) {
+  // Keep `tabindex="-1"` so focus sticks (removing tabindex from a focused element can blur it).
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  el.focus({ preventScroll: true });
+}
+
+function scrollToElementTop(el: HTMLElement) {
+  const offset = getNavbarHeightPx() + 24;
+  const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - offset);
+  const behavior: ScrollBehavior = prefersReducedMotion() ? "auto" : "smooth";
+  window.scrollTo({ top, behavior });
+
+  // Cross-browser `scrollend` isn't reliable; settle by polling a short window.
+  const deadline = Date.now() + (behavior === "smooth" ? 900 : 0);
+  const tick = () => {
+    const remaining = Math.abs(window.scrollY - top);
+    if (remaining < 2 || Date.now() >= deadline) {
+      focusAfterScroll(el);
+      return;
+    }
+    window.requestAnimationFrame(tick);
+  };
+  window.requestAnimationFrame(tick);
+}
+
 function lockBodyScroll() {
   const { body, documentElement } = document;
   const scrollY = window.scrollY || documentElement.scrollTop || 0;
@@ -360,7 +400,33 @@ export default function NotionBlockBehavior() {
       const hashLink = target.closest<HTMLAnchorElement>('a[href^="#"]');
       if (hashLink) {
         const href = hashLink.getAttribute("href") || "";
-        if (href.startsWith("#")) revealHashTarget(href);
+        if (href.startsWith("#")) {
+          const id = decodeHashToId(href);
+          const el = id ? (document.getElementById(id) as HTMLElement | null) : null;
+
+          // If this is a TOC jump, improve UX with smooth scroll + focus.
+          const isToc = Boolean(hashLink.closest("ul.notion-table-of-contents"));
+
+          if (id && el) {
+            openToggleAncestors(el);
+            if (isToc) {
+              e.preventDefault();
+              // Keep URL in sync without forcing the browser to jump instantly.
+              try {
+                history.pushState(null, "", `#${encodeURIComponent(id)}`);
+              } catch {
+                // ignore
+              }
+              scrollToElementTop(el);
+              return;
+            }
+            // Non-TOC anchor: keep default browser behavior.
+            return;
+          }
+
+          // If target doesn't exist (or is a different kind of anchor), still try revealing toggles.
+          revealHashTarget(href);
+        }
       }
 
       // Code block copy button (Notion code blocks).
