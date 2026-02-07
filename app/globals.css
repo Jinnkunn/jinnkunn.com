@@ -425,3 +425,67 @@ html {
 .notion-code__copy-button[data-copied="true"]:hover {
   background: var(--color-bg-yellow);
 }
+
+/* Notion callouts: tighter alignment and better mobile spacing (v1-consistent). */
+.notion-callout {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.notion-callout .notion-callout__icon {
+  top: 0; /* avoid baseline drift on multi-line callouts */
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.notion-callout .notion-callout__content {
+  margin-inline-start: 0; /* gap handles spacing */
+  min-width: 0;
+}
+
+@media (max-width: 546px) {
+  .notion-callout {
+    gap: 8px;
+  }
+}
+
+/* Equations: make horizontal overflow usable on mobile/iOS (avoid layout break). */
+.notion-equation__block {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.notion-equation.notion-equation__inline {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Tables/collections: smooth horizontal scroll on touch, prevent scroll chaining. */
+.notion-table__wrapper,
+.notion-collection-table__wrapper {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.notion-code pre {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Optional: make long tables easier to read on desktop with sticky headers. */
+@media (min-width: 900px) {
+  .notion-collection-table th {
+    position: sticky;
+    top: calc(var(--navbar-height) + 12px);
+    z-index: 2;
+    background: var(--color-bg-default);
+  }
+
+  .notion-table.col-header tr:first-child td {
+    position: sticky;
+    top: calc(var(--navbar-height) + 12px);
+    z-index: 2;
+    background: var(--color-bg-default);
+  }
+}
