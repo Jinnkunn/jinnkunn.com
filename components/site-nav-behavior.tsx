@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 function normalizePath(p: string): string {
   if (!p) return "/";
@@ -59,6 +60,8 @@ function lockBodyScroll() {
 }
 
 export default function SiteNavBehavior() {
+  const pathname = usePathname();
+
   useEffect(() => {
     const nav = document.getElementById("site-nav");
     if (!nav) return;
@@ -231,6 +234,14 @@ export default function SiteNavBehavior() {
       if (unlockScroll) unlockScroll();
     };
   }, []);
+
+  // Keep active link highlighting correct on App Router client navigations.
+  useEffect(() => {
+    const nav = document.getElementById("site-nav");
+    if (!nav) return;
+    // Defer one frame so DOM reflects the latest navigation state.
+    requestAnimationFrame(() => setActiveLinks(nav));
+  }, [pathname]);
 
   return null;
 }
