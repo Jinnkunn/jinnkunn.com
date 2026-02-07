@@ -169,6 +169,69 @@ html {
   color: var(--color-text-gray);
 }
 
+.blog-post-layout {
+  display: block;
+}
+
+.blog-post-content {
+  min-width: 0;
+}
+
+/* Desktop: move TOC into a right rail and make it sticky (keeps v1 minimal but more usable). */
+@media (min-width: 1100px) {
+  .blog-post-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-areas: "content toc";
+    gap: 34px;
+    align-items: start;
+  }
+
+  .blog-post-content {
+    grid-area: content;
+    min-width: 0;
+  }
+
+  .blog-post-toc {
+    grid-area: toc;
+    position: sticky;
+    top: calc(var(--navbar-height) + 24px);
+    align-self: start;
+    max-height: calc(100vh - var(--navbar-height) - 56px);
+    overflow: auto;
+    padding: 6px 0;
+  }
+
+  .blog-post-toc #block-blog-toc {
+    margin-top: 0;
+  }
+}
+
+/* TOC scroll-spy highlight (subtle, v1-consistent). */
+#block-blog-toc .notion-table-of-contents__item[data-active="true"] {
+  position: relative;
+}
+
+#block-blog-toc .notion-table-of-contents__item[data-active="true"] .notion-link {
+  color: var(--color-text-default);
+}
+
+#block-blog-toc .notion-table-of-contents__item[data-active="true"] .notion-semantic-string {
+  font-weight: 600;
+}
+
+#block-blog-toc .notion-table-of-contents__item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 0.78em;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-bg-yellow);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
 .blog-post-nav {
   margin-top: 22px;
 }

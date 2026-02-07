@@ -178,6 +178,82 @@ function setCopyButtonState(btn: HTMLElement, copied: boolean) {
   label.textContent = fallback;
 }
 
+function initBlogTocScrollSpy() {
+  const toc = document.getElementById("block-blog-toc");
+  if (!toc) return () => {};
+
+  const items = Array.from(
+    toc.querySelectorAll<HTMLElement>(".notion-table-of-contents__item[data-toc-target]")
+  );
+  const targets = items
+    .map((it) => it.getAttribute("data-toc-target"))
+    .filter(Boolean) as string[];
+
+  if (targets.length === 0) return () => {};
+
+  const getNavbarHeight = () => {
+    const nav = document.querySelector<HTMLElement>(".notion-navbar") ?? document.getElementById("site-nav");
+    return nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+  };
+
+  let raf = 0;
+  let activeId: string | null = null;
+
+  const setActive = (id: string | null) => {
+    if (activeId === id) return;
+    activeId = id;
+    for (const it of items) {
+      const t = it.getAttribute("data-toc-target");
+      const on = Boolean(id && t === id);
+      it.setAttribute("data-active", on ? "true" : "false");
+      const a = it.querySelector("a[href^=\"#\"]");
+      if (a) {
+        if (on) a.setAttribute("aria-current", "true");
+        else a.removeAttribute("aria-current");
+      }
+    }
+  };
+
+  const computeActive = () => {
+    raf = 0;
+    const offset = getNavbarHeight() + 26; // matches scroll-padding-top (+ a small cushion)
+    const y = window.scrollY + offset;
+
+    let best: { id: string; top: number } | null = null;
+    for (const id of targets) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      if (top <= y + 1) {
+        if (!best || top > best.top) best = { id, top };
+      }
+    }
+
+    // If we haven't reached the first heading yet, keep the first item active.
+    if (!best) setActive(targets[0] ?? null);
+    else setActive(best.id);
+  };
+
+  const requestCompute = () => {
+    if (raf) return;
+    raf = window.requestAnimationFrame(computeActive);
+  };
+
+  // Initial + during scroll.
+  requestCompute();
+  window.addEventListener("scroll", requestCompute, { passive: true });
+  window.addEventListener("resize", requestCompute);
+
+  // Images/code blocks can shift layout after hydration; re-check once everything is loaded.
+  window.addEventListener("load", requestCompute, { once: true });
+
+  return () => {
+    if (raf) window.cancelAnimationFrame(raf);
+    window.removeEventListener("scroll", requestCompute);
+    window.removeEventListener("resize", requestCompute);
+  };
+}
+
 export default function NotionBlockBehavior() {
   const pathname = usePathname();
 
@@ -292,12 +368,15 @@ export default function NotionBlockBehavior() {
     });
     lightboxEl.addEventListener("click", onLightboxClick);
 
+    const cleanupTocSpy = initBlogTocScrollSpy();
+
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown, true);
 
     return () => {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown, true);
+      cleanupTocSpy();
       lightboxEl.removeEventListener("click", onLightboxClick);
       closeLightbox();
     };

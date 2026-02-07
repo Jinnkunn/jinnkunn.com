@@ -81,26 +81,34 @@ export default async function BlogPostPage({
             <div dangerouslySetInnerHTML={{ __html: parts.propertiesHtml }} />
           ) : null}
 
-          {headings.length > 0 ? (
-            <ul id="block-blog-toc" className="notion-table-of-contents color-gray">
-              {headings.map((h) => (
-                <li key={h.id} className="notion-table-of-contents__item">
-                  <a className="notion-link" href={`#${h.id}`}>
-                    <div
-                      className="notion-semantic-string"
-                      style={{ marginInlineStart: h.level === 3 ? 12 : 0 }}
+          <div className="blog-post-layout">
+            {headings.length > 0 ? (
+              <aside className="blog-post-toc" aria-label="Table of contents">
+                <ul id="block-blog-toc" className="notion-table-of-contents color-gray">
+                  {headings.map((h) => (
+                    <li
+                      key={h.id}
+                      className="notion-table-of-contents__item"
+                      data-toc-target={h.id}
                     >
-                      {h.text}
-                    </div>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+                      <a className="notion-link" href={`#${h.id}`}>
+                        <div
+                          className="notion-semantic-string"
+                          style={{ marginInlineStart: h.level === 3 ? 12 : 0 }}
+                        >
+                          {h.text}
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </aside>
+            ) : null}
 
-          {parts.bodyHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: parts.bodyHtml }} />
-          ) : null}
+            {parts.bodyHtml ? (
+              <div className="blog-post-content" dangerouslySetInnerHTML={{ __html: parts.bodyHtml }} />
+            ) : null}
+          </div>
 
           <div className="blog-post-nav">
             <div className="notion-divider" />
