@@ -288,17 +288,18 @@ html {
   position: relative;
   text-decoration: none !important;
   padding: 0 0.06em;
-  border-radius: 8px;
-  /* Yellow "marker" that can animate without breaking across wrapped lines. */
-  background-image: linear-gradient(
-    to top,
-    hsl(38 100% 80%) 50%,
-    transparent 50%
-  );
-  background-size: 100% 220%;
+  border-radius: 7px;
+
+  /* Yellow "marker" that animates nicely even when the link wraps lines.
+   * Use background-size instead of a ::after overlay to avoid awkward
+   * geometry across multi-line fragments.
+   */
+  background-image: linear-gradient(hsl(38 100% 80%), hsl(38 100% 80%));
   background-repeat: no-repeat;
-  background-position: 0 100%;
-  transition: background-position 560ms cubic-bezier(0, 0.8, 0.13, 1),
+  background-position: 0 86%;
+  background-size: 100% 0.42em;
+  transition: background-size 560ms cubic-bezier(0, 0.8, 0.13, 1),
+    background-position 560ms cubic-bezier(0, 0.8, 0.13, 1),
     color 160ms ease;
 }
 
@@ -315,13 +316,15 @@ html {
 .notion-root a.notion-link.link:hover,
 .notion-text a.notion-link.link:hover,
 .notion-link.link:hover {
-  background-position: 0 10%;
+  background-position: 0 8%;
+  background-size: 100% 1.18em;
 }
 
 .notion-root a.notion-link.link:focus-visible,
 .notion-text a.notion-link.link:focus-visible,
 .notion-link.link:focus-visible {
-  background-position: 0 10%;
+  background-position: 0 8%;
+  background-size: 100% 1.18em;
 }
 
 @media (prefers-reduced-motion: reduce) {
