@@ -19,6 +19,9 @@ const moreItems: MenuItem[] = [
 
 export default function SiteNav() {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const topItems = useMemo<MenuItem[]>(
     () => [
@@ -37,11 +40,53 @@ export default function SiteNav() {
   const [moreViewportHeight, setMoreViewportHeight] = useState<number>(208);
   const [moreViewportWidth, setMoreViewportWidth] = useState<number>(320);
 
-  useEffect(() => {
-    // close popovers on navigation
+  const closeAll = () => {
     setMoreOpen(false);
     setMenuOpen(false);
+  };
+
+  useEffect(() => {
+    // close popovers on navigation
+    closeAll();
   }, [pathname]);
+
+  useEffect(() => {
+    // Close menus on outside click/tap + ESC.
+    if (!moreOpen && !menuOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const nav = navRef.current;
+      if (!nav) return;
+      if (e.target instanceof Node && nav.contains(e.target)) return;
+      closeAll();
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      closeAll();
+      // return focus to the most relevant trigger
+      if (menuOpen) menuButtonRef.current?.focus();
+      else if (moreOpen) moreButtonRef.current?.focus();
+    };
+
+    window.addEventListener("pointerdown", onPointerDown, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreOpen, menuOpen]);
+
+  useEffect(() => {
+    // Mobile UX: prevent background scroll when the hamburger menu is open.
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -64,6 +109,7 @@ export default function SiteNav() {
 
   return (
     <nav
+      ref={navRef}
       aria-label="Main"
       data-orientation="horizontal"
       dir="ltr"
@@ -102,9 +148,12 @@ export default function SiteNav() {
 
             <li>
               <button
+                ref={moreButtonRef}
                 type="button"
                 className="super-navbar__list"
                 aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                aria-controls="more-menu"
                 data-state={moreOpen ? "open" : "closed"}
                 onClick={() => setMoreOpen((v) => !v)}
               >
@@ -148,9 +197,12 @@ export default function SiteNav() {
           </div>
 
           <button
+            ref={menuButtonRef}
             type="button"
             className="super-navbar__button super-navbar__menu-open"
             aria-label="Menu"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-menu"
             onClick={() => setMenuOpen((v) => !v)}
           >
             <svg
@@ -176,6 +228,7 @@ export default function SiteNav() {
       <div className="super-navbar__viewport-wrapper">
         {moreOpen ? (
           <div
+            id="more-menu"
             data-state="open"
             data-orientation="horizontal"
             className="super-navbar__viewport single-column"
@@ -195,10 +248,15 @@ export default function SiteNav() {
               className="super-navbar__list-content single-column"
               dir="ltr"
             >
-              <ul className="super-navbar__list-content-column">
+              <ul className="super-navbar__list-content-column" role="menu">
                 {moreItems.map((it) => (
                   <li key={it.href}>
-                    <Link href={it.href} className="notion-link super-navbar__list-item">
+                    <Link
+                      href={it.href}
+                      role="menuitem"
+                      className="notion-link super-navbar__list-item"
+                      onClick={() => setMoreOpen(false)}
+                    >
                       <div className="super-navbar__list-item-content">
                         <div className="super-navbar__list-item-heading">
                           {it.label}
@@ -214,7 +272,7 @@ export default function SiteNav() {
       </div>
 
       {menuOpen ? (
-        <div className="super-navbar__menu-wrapper enter-done">
+        <div id="mobile-menu" className="super-navbar__menu-wrapper enter-done">
           <div className="super-navbar__menu">
             <div className="super-navigation-menu__items-wrapper">
               <div className="super-navigation-menu__items">
@@ -225,6 +283,7 @@ export default function SiteNav() {
                     className={`notion-link super-navbar__item${
                       pathname === it.href ? " active" : ""
                     }`}
+                    onClick={() => setMenuOpen(false)}
                   >
                     {it.label}
                   </Link>

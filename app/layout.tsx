@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 import SiteFooter from "@/components/site-footer";
@@ -34,9 +35,10 @@ export default function RootLayout({
         </div>
 
         {/* Cloudflare email decode (used by original HTML for obfuscated email addresses) */}
-        <script
+        <Script
           data-cfasync="false"
           src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"
+          strategy="afterInteractive"
         />
       </body>
     </html>
