@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:raw": "node scripts/sync-raw-hydrated.mjs"
   },
   "dependencies": {
     "next": "16.1.6",
@@ -20,6 +21,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "playwright-core": "^1.58.2",
+    "playwright-core": "^1.55.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
