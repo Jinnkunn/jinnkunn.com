@@ -36,6 +36,25 @@ npm run smoke:ui
 
 Outputs go to `output/ui-smoke/<timestamp>/` and `output/ui-smoke/latest.json`.
 
+## One-Command Verification
+
+Run the full pipeline:
+
+- sync raw HTML from the live site
+- audit Notion/Super blocks in use
+- run UI smoke checks
+- generate UI snapshots
+
+```bash
+npm run check:ui
+```
+
+To skip syncing (offline / only validate current local content):
+
+```bash
+SKIP_SYNC=1 npm run check:ui
+```
+
 ## Notion Block Audit
 
 This scans the current raw HTML and lists all `notion-*` and `super-*` classes in use. This is how we
