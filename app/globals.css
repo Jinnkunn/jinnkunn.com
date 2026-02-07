@@ -1,0 +1,14 @@
+/* Intentionally minimal.
+ *
+ * The 1:1 site styling is loaded via <link rel="stylesheet"> tags in
+ * app/layout.tsx pointing at files under public/styles/.
+ */
+
+.super-navbar button.super-navbar__button,
+.super-navbar button.super-navbar__list {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
