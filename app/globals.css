@@ -156,6 +156,11 @@
   }
 }
 
+/* Anchor jumps (TOC, deep links): keep targets visible under the sticky navbar. */
+html {
+  scroll-padding-top: calc(var(--navbar-height) + 24px);
+}
+
 /* Blog post template extras (keep v1 clean, but add functional TOC + prev/next). */
 .blog-post-meta {
   margin-top: 10px;
