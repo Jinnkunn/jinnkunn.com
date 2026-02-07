@@ -31,7 +31,7 @@ export default function RootLayout({
         <link rel="stylesheet" href="/styles/static.css" />
         <link rel="stylesheet" href="/styles/notion.css" />
         <link rel="stylesheet" href="/styles/super.css" />
-        <link rel="stylesheet" href="/styles/next-chunk.css" />
+        {/* KaTeX styles removed from critical path (next-chunk.css). Add it back only if you render KaTeX. */}
       </head>
       <body>
         <div className="super-root">
