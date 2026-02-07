@@ -97,6 +97,62 @@ async function getHydratedMainHtml(page, url) {
   // Wait a tick for client hydration; Super/Next may render blocks after initial DOMContentLoaded.
   await page.waitForTimeout(900);
 
+  // Freeze Super/Notion toggles into static HTML.
+  // Super renders toggle content lazily on click and often removes it again when closed.
+  // For a faithful static clone, we open each toggle once, capture its content, then
+  // inject a persistent `.notion-toggle__content` so our site can toggle via CSS/classes.
+  await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const click = (el) => {
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    };
+    const waitForContent = async (toggle, maxMs) => {
+      const start = Date.now();
+      while (Date.now() - start < maxMs) {
+        const c = toggle.querySelector(".notion-toggle__content");
+        if (c && c.innerHTML && c.innerHTML.trim()) return c;
+        await sleep(40);
+      }
+      return toggle.querySelector(".notion-toggle__content");
+    };
+
+    const toggles = Array.from(document.querySelectorAll(".notion-toggle"));
+    for (const t of toggles) {
+      const summary = t.querySelector(".notion-toggle__summary");
+      if (!summary) continue;
+
+      const wasOpen = t.classList.contains("open") && !t.classList.contains("closed");
+
+      // Ensure it's open so the live site populates the content.
+      if (!wasOpen) {
+        click(summary);
+        await sleep(60);
+      }
+
+      const liveContent = await waitForContent(t, 900);
+      const captured = liveContent?.innerHTML ?? "";
+
+      // Restore original open/closed state (live site may remove content on close).
+      if (!wasOpen) {
+        click(summary);
+        await sleep(60);
+      }
+
+      if (captured.trim()) {
+        // Remove any transient content nodes left behind.
+        t.querySelectorAll(".notion-toggle__content").forEach((el) => el.remove());
+        const c = document.createElement("div");
+        c.className = "notion-toggle__content";
+        c.innerHTML = captured;
+        t.appendChild(c);
+      }
+
+      // Restore classes exactly; our clone uses these classes for state.
+      t.classList.toggle("open", wasOpen);
+      t.classList.toggle("closed", !wasOpen);
+    }
+  });
+
   const mainHtml = await page.evaluate(() => {
     const m = document.querySelector("main");
     return m ? m.outerHTML : "";
