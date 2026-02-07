@@ -19,25 +19,6 @@ export default function Head() {
         type="font/woff2"
         crossOrigin="anonymous"
       />
-
-      {/* CSS: keep as render-blocking to avoid FOUC, but preload to start downloads earlier. */}
-      <link rel="preload" as="style" href="/styles/super-inline.css" fetchPriority="high" />
-      <link rel="preload" as="style" href="/styles/notion.css" fetchPriority="high" />
-      <link rel="preload" as="style" href="/styles/super-nav.css" fetchPriority="high" />
-      <link rel="preload" as="style" href="/styles/static.css" />
-      <link rel="preload" as="style" href="/styles/super.css" />
-
-      {/* Super/Notion CSS (downloaded from the original site) */}
-      <link rel="stylesheet" href="/styles/super-inline.css" />
-      <link rel="stylesheet" href="/styles/static.css" />
-      <link rel="stylesheet" href="/styles/notion.css" />
-      <link rel="stylesheet" href="/styles/super-nav.css" />
-
-      {/* Defer the rest of super.css to reduce render-blocking CSS (noscript fallback). */}
-      <noscript>
-        <link rel="stylesheet" href="/styles/super.css" />
-      </noscript>
     </>
   );
 }
-

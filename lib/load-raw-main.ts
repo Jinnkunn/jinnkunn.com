@@ -1,6 +1,27 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+function normalizeRoutePath(routePath: string): string {
+  let p = (routePath ?? "").trim();
+  // Drop any leading/trailing slashes so `path.join(root, p + ".html")` can't ignore root.
+  p = p.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!p) return "index";
+  return p;
+}
+
+function resolveRawHtmlFile(routePath: string): string {
+  const root = path.join(process.cwd(), "content", "raw");
+  const rel = normalizeRoutePath(routePath);
+
+  // Normalize and ensure the resolved path stays within `content/raw`.
+  const file = path.normalize(path.join(root, `${rel}.html`));
+  const rootNorm = path.normalize(root + path.sep);
+  if (!file.startsWith(rootNorm)) {
+    throw new Error(`Invalid route path: ${routePath}`);
+  }
+  return file;
+}
+
 function rewriteRawHtml(html: string): string {
   // Use local copies for a few key assets so the clone is self-contained.
   const remoteProfilePublic =
@@ -18,7 +39,7 @@ function rewriteRawHtml(html: string): string {
 
   // Improve LCP: the profile image is above-the-fold on `/` but is marked as lazy in the raw HTML.
   // This doesn't affect visuals, only loading priority.
-  return rewritten.replace(/<img\b[^>]*>/gi, (tag) => {
+  const lcpTweaked = rewritten.replace(/<img\b[^>]*>/gi, (tag) => {
     if (!tag.includes("/assets/profile.png")) return tag;
     let out = tag.replace(
       /\sloading=(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
@@ -35,10 +56,15 @@ function rewriteRawHtml(html: string): string {
     }
     return out;
   });
+
+  // Rewrite hard-coded absolute links back to local routes.
+  return lcpTweaked
+    .replaceAll("https://jinkunchen.com", "")
+    .replaceAll("http://jinkunchen.com", "");
 }
 
 export async function loadRawMainHtml(slug: string): Promise<string> {
-  const file = path.join(process.cwd(), "content", "raw", `${slug}.html`);
+  const file = resolveRawHtmlFile(slug);
   const html = await readFile(file, "utf8");
 
   const m = html.match(/<main\b[\s\S]*?<\/main>/i);

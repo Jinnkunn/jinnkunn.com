@@ -29,18 +29,6 @@ export default function ClassicLayout({
         <SiteFooter />
       </div>
 
-      {/* Load deferred CSS after the page becomes interactive (tiny, one-time). */}
-      <Script id="defer-super-css" strategy="afterInteractive">{`
-        (function() {
-          if (document.querySelector('link[data-deferred-super-css]')) return;
-          var link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = '/styles/super.css';
-          link.setAttribute('data-deferred-super-css', 'true');
-          document.head.appendChild(link);
-        })();
-      `}</Script>
-
       {/* Cloudflare email decode (used by original HTML for obfuscated email addresses) */}
       <Script
         data-cfasync="false"

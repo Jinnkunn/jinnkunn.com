@@ -159,9 +159,9 @@ export default function SiteNav() {
             className="super-navbar__list-content single-column"
             dir="ltr"
           >
-            <ul className="super-navbar__list-content-column" role="menu">
+            <ul className="super-navbar__list-content-column" role="none">
               {moreItems.map((it) => (
-                <li key={it.href}>
+                <li key={it.href} role="none">
                   <Link
                     href={it.href}
                     role="menuitem"

@@ -117,6 +117,20 @@ export default function SiteNavBehavior() {
     let moreCloseTimer: number | null = null;
     let mobileCloseTimer: number | null = null;
 
+    const getMoreItems = () =>
+      Array.from(
+        moreMenu.querySelectorAll<HTMLElement>("a.super-navbar__list-item")
+      );
+
+    const focusMoreItem = (which: "first" | "last" | number) => {
+      const items = getMoreItems();
+      if (items.length === 0) return;
+      if (which === "first") return items[0]?.focus();
+      if (which === "last") return items[items.length - 1]?.focus();
+      const idx = ((which % items.length) + items.length) % items.length;
+      return items[idx]?.focus();
+    };
+
     const clearTimers = () => {
       if (moreCloseTimer) window.clearTimeout(moreCloseTimer);
       if (mobileCloseTimer) window.clearTimeout(mobileCloseTimer);
@@ -124,7 +138,10 @@ export default function SiteNavBehavior() {
       mobileCloseTimer = null;
     };
 
-    const setMoreOpen = (open: boolean) => {
+    const setMoreOpen = (
+      open: boolean,
+      opts: { focus?: "first" | "last" } = {}
+    ) => {
       if (moreOpen === open) return;
       moreOpen = open;
       moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -138,15 +155,8 @@ export default function SiteNavBehavior() {
         moreMenu.style.display = "";
         moreMenu.setAttribute("data-state", "open");
         moreMenu.removeAttribute("inert");
-        // Focus the first item for keyboard users.
-        if (!prefersReducedMotion) {
-          requestAnimationFrame(() => {
-            const first = moreMenu.querySelector<HTMLElement>(
-              "a.super-navbar__list-item"
-            );
-            first?.focus();
-          });
-        }
+        // Only move focus when explicitly requested (keyboard open).
+        if (opts.focus) requestAnimationFrame(() => focusMoreItem(opts.focus!));
       } else {
         moreMenu.setAttribute("data-state", "closed");
         moreMenu.setAttribute("inert", "");
@@ -294,7 +304,73 @@ export default function SiteNavBehavior() {
 
     const onMoreClick = (e: MouseEvent) => {
       e.preventDefault();
+      // Clicking should NOT steal focus into the menu.
       setMoreOpen(!moreOpen);
+    };
+
+    const onMoreTriggerKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMoreOpen(true, { focus: "first" });
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMoreOpen(true, { focus: "last" });
+        return;
+      }
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const next = !moreOpen;
+        setMoreOpen(next, next ? { focus: "first" } : {});
+        return;
+      }
+      if (e.key === "Escape" && moreOpen) {
+        e.preventDefault();
+        setMoreOpen(false);
+      }
+    };
+
+    const onMoreMenuKeyDown = (e: KeyboardEvent) => {
+      if (!moreOpen) return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMoreOpen(false);
+        moreBtn.focus();
+        return;
+      }
+
+      if (e.key === "Tab") {
+        // Close the menu as focus leaves naturally.
+        setMoreOpen(false);
+        return;
+      }
+
+      const items = getMoreItems();
+      if (items.length === 0) return;
+      const active = document.activeElement as HTMLElement | null;
+      const idx = Math.max(0, items.findIndex((el) => el === active));
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        focusMoreItem(idx + 1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        focusMoreItem(idx - 1);
+        return;
+      }
+      if (e.key === "Home") {
+        e.preventDefault();
+        focusMoreItem("first");
+        return;
+      }
+      if (e.key === "End") {
+        e.preventDefault();
+        focusMoreItem("last");
+      }
     };
 
     const onMobileClick = (e: MouseEvent) => {
@@ -328,6 +404,8 @@ export default function SiteNavBehavior() {
     window.addEventListener("keydown", onKeyDown);
     nav.addEventListener("click", onNavClickCapture, true);
     moreBtn.addEventListener("click", onMoreClick);
+    moreBtn.addEventListener("keydown", onMoreTriggerKeyDown);
+    moreMenu.addEventListener("keydown", onMoreMenuKeyDown, true);
     mobileBtn.addEventListener("click", onMobileClick);
     mobileBackdrop.addEventListener("click", onBackdropClick);
     mobileClose.addEventListener("click", onCloseBtnClick);
@@ -342,6 +420,8 @@ export default function SiteNavBehavior() {
       window.removeEventListener("keydown", onKeyDown);
       nav.removeEventListener("click", onNavClickCapture, true);
       moreBtn.removeEventListener("click", onMoreClick);
+      moreBtn.removeEventListener("keydown", onMoreTriggerKeyDown);
+      moreMenu.removeEventListener("keydown", onMoreMenuKeyDown, true);
       mobileBtn.removeEventListener("click", onMobileClick);
       mobileBackdrop.removeEventListener("click", onBackdropClick);
       mobileClose.removeEventListener("click", onCloseBtnClick);
