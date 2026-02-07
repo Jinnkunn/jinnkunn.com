@@ -68,6 +68,36 @@
   z-index: 1;
 }
 
+/* Close button styling inside the mobile menu header. Keep it simple and consistent. */
+.super-navbar__menu .super-navbar__menu-actions {
+  display: none;
+}
+
+@media (max-width: 546px) {
+  .super-navbar__menu .super-navbar__menu-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 12px 16px 8px 16px;
+  }
+}
+
+.super-navbar__menu .super-navbar__menu-close {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  border-radius: 999px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 650;
+  color: var(--color-text-default);
+  cursor: pointer;
+}
+
+.super-navbar__menu .super-navbar__menu-close:hover {
+  background: rgba(55, 53, 47, 0.06);
+}
+
 /* Mobile usability: increase tap targets without changing visual layout. */
 @media (max-width: 546px) {
   .super-navbar__logo,

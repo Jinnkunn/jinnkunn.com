@@ -36,6 +36,7 @@ function setActiveLinks(root: HTMLElement) {
 function lockBodyScroll() {
   const { body, documentElement } = document;
   const scrollY = window.scrollY || documentElement.scrollTop || 0;
+  const scrollbarWidth = Math.max(0, window.innerWidth - documentElement.clientWidth);
 
   const prev = {
     position: body.style.position,
@@ -44,6 +45,7 @@ function lockBodyScroll() {
     right: body.style.right,
     width: body.style.width,
     overflow: body.style.overflow,
+    paddingRight: body.style.paddingRight,
   };
 
   body.style.position = "fixed";
@@ -52,6 +54,7 @@ function lockBodyScroll() {
   body.style.right = "0";
   body.style.width = "100%";
   body.style.overflow = "hidden";
+  if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
 
   return () => {
     body.style.position = prev.position;
@@ -60,6 +63,7 @@ function lockBodyScroll() {
     body.style.right = prev.right;
     body.style.width = prev.width;
     body.style.overflow = prev.overflow;
+    body.style.paddingRight = prev.paddingRight;
     window.scrollTo(0, scrollY);
   };
 }
@@ -85,6 +89,9 @@ export default function SiteNavBehavior() {
     const mobileBackdrop = document.getElementById(
       "mobile-backdrop"
     ) as HTMLButtonElement | null;
+    const mobileClose = document.getElementById(
+      "mobile-close"
+    ) as HTMLButtonElement | null;
     const mobileDialog = mobileMenu?.querySelector(
       ".super-navbar__menu"
     ) as HTMLElement | null;
@@ -95,6 +102,7 @@ export default function SiteNavBehavior() {
       !mobileBtn ||
       !mobileMenu ||
       !mobileBackdrop ||
+      !mobileClose ||
       !mobileDialog
     )
       return;
@@ -300,6 +308,12 @@ export default function SiteNavBehavior() {
       mobileBtn.focus();
     };
 
+    const onCloseBtnClick = (e: MouseEvent) => {
+      e.preventDefault();
+      setMobileOpen(false);
+      mobileBtn.focus();
+    };
+
     // Initial state
     moreMenu.style.display = "none";
     moreMenu.setAttribute("data-state", "closed");
@@ -316,6 +330,7 @@ export default function SiteNavBehavior() {
     moreBtn.addEventListener("click", onMoreClick);
     mobileBtn.addEventListener("click", onMobileClick);
     mobileBackdrop.addEventListener("click", onBackdropClick);
+    mobileClose.addEventListener("click", onCloseBtnClick);
 
     // Update active classes on client-side navigations (best-effort).
     const onPopState = () => setActiveLinks(nav);
@@ -329,6 +344,7 @@ export default function SiteNavBehavior() {
       moreBtn.removeEventListener("click", onMoreClick);
       mobileBtn.removeEventListener("click", onMobileClick);
       mobileBackdrop.removeEventListener("click", onBackdropClick);
+      mobileClose.removeEventListener("click", onCloseBtnClick);
       window.removeEventListener("popstate", onPopState);
       if (unlockScroll) unlockScroll();
     };

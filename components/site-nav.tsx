@@ -196,6 +196,16 @@ export default function SiteNav() {
           />
 
           <div className="super-navbar__menu-surface">
+            <div className="super-navbar__menu-actions">
+              <button
+                id="mobile-close"
+                type="button"
+                className="super-navbar__item super-navbar__menu-close"
+                aria-label="Close menu"
+              >
+                Close
+              </button>
+            </div>
             <div className="super-navigation-menu__items-wrapper">
               <div className="super-navigation-menu__items">
                 {[...topItems, ...moreItems].map((it) => (
