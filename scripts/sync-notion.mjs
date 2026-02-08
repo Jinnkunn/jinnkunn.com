@@ -1585,6 +1585,31 @@ async function main() {
   const routes = Object.fromEntries(allPages.map((p) => [p.routePath, p.id]));
   writeFile(path.join(OUT_DIR, "routes.json"), JSON.stringify(routes, null, 2) + "\n");
 
+  // Route explorer manifest (used by /__routes).
+  const navHrefToGroup = new Map();
+  for (const it of cfg?.nav?.top || []) navHrefToGroup.set(normalizeHref(it.href), "top");
+  for (const it of cfg?.nav?.more || []) navHrefToGroup.set(normalizeHref(it.href), "more");
+
+  const routeManifest = allPages.map((p) => {
+    const navGroup = navHrefToGroup.get(p.routePath) || "";
+    const overridden = routeOverrides.has(p.id);
+    return {
+      id: p.id,
+      title: p.title,
+      kind: p.kind,
+      routePath: p.routePath,
+      parentId: p.parentId,
+      parentRoutePath: p.parentRoutePath || "/",
+      navGroup,
+      overridden,
+    };
+  });
+
+  writeFile(
+    path.join(OUT_DIR, "routes-manifest.json"),
+    JSON.stringify(routeManifest, null, 2) + "\n",
+  );
+
   console.log("[sync:notion] Done.");
 }
 
