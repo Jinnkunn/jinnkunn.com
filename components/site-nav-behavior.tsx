@@ -195,6 +195,14 @@ export default function SiteNavBehavior() {
         moreMenu.style.display = "";
         moreMenu.setAttribute("data-state", "open");
         moreMenu.removeAttribute("inert");
+        // Dynamic height: let the dropdown size itself based on the number of items.
+        // This matches Super's behavior and avoids hard-coded viewport heights.
+        requestAnimationFrame(() => {
+          const content = moreMenu.querySelector<HTMLElement>(".super-navbar__list-content");
+          if (!content) return;
+          const h = Math.max(0, content.scrollHeight);
+          moreMenu.style.setProperty("--radix-navigation-menu-viewport-height", `${h}px`);
+        });
         // Only move focus when explicitly requested (keyboard open).
         if (opts.focus) requestAnimationFrame(() => focusMoreItem(opts.focus!));
       } else {

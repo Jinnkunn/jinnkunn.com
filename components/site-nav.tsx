@@ -166,8 +166,6 @@ export default function SiteNav() {
               "translateX(calc(-178px + (var(--navbar-list-width-single-column) / 2)))",
             ["--radix-navigation-menu-viewport-width" as never]:
               "320px" as never,
-            ["--radix-navigation-menu-viewport-height" as never]:
-              "208px" as never,
           }}
         >
           <div
