@@ -29,6 +29,21 @@ function setToggleState(toggle: HTMLElement, open: boolean) {
 function initToggles(root: ParentNode) {
   const toggles = Array.from(root.querySelectorAll<HTMLElement>(".notion-toggle"));
   for (const t of toggles) {
+    // Tag toggle "kind" based on its visible label, so CSS can apply typography
+    // standards to special sections (e.g., references/footnotes) without relying
+    // on unstable block IDs.
+    const summary = t.querySelector<HTMLElement>(".notion-toggle__summary");
+    const label =
+      summary?.querySelector(".notion-semantic-string")?.textContent ??
+      summary?.textContent ??
+      "";
+    const normalized = label.replace(/\s+/g, " ").trim().toLowerCase();
+    if (normalized) {
+      if (/(^|[\s:])references([\s:]|$)/i.test(normalized) || /参考文献/.test(label)) {
+        t.setAttribute("data-toggle-kind", "references");
+      }
+    }
+
     const open = t.classList.contains("open") || !t.classList.contains("closed");
     // If content exists, reflect state via `hidden` for a11y (CSS still controls layout).
     setToggleState(t, open);

@@ -289,6 +289,47 @@ async function main() {
       await context.close();
     }
 
+    // References typography (ensure it's not oversized)
+    {
+      const context = await browser.newContext({
+        viewport: { width: 1200, height: 800 },
+      });
+      const page = await context.newPage();
+      const url = `${baseURL}/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models`;
+      await page.goto(url, { waitUntil: "networkidle" });
+
+      try {
+        const refsToggle = page.locator(".notion-toggle-heading-1", {
+          hasText: "References",
+        });
+        const hasRefs = (await refsToggle.count()) > 0;
+        if (!hasRefs) {
+          record("notion:references-toggle-present", false);
+        } else {
+          record("notion:references-toggle-present", true);
+          const summary = refsToggle.locator(".notion-toggle__summary").first();
+          await summary.scrollIntoViewIfNeeded();
+          await summary.click();
+          await page.waitForTimeout(250);
+
+          const kind = await refsToggle.first().getAttribute("data-toggle-kind");
+          record("notion:references-toggle-kind", kind === "references", { kind });
+
+          const content = refsToggle.locator(".notion-toggle__content").first();
+          const fontSize = await content.evaluate((el) =>
+            parseFloat(getComputedStyle(el).fontSize || "0"),
+          );
+          record("notion:references-font-size", fontSize > 0 && fontSize <= 15, {
+            fontSize,
+          });
+        }
+      } catch (e) {
+        record("notion:references-typography", false, { error: String(e) });
+      }
+
+      await context.close();
+    }
+
     const allOk = results.checks.every((c) => c.ok);
     results.ok = allOk;
 

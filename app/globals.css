@@ -4,6 +4,13 @@
  * app/layout.tsx pointing at files under public/styles/.
  */
 
+/* v1 typography scale (used by our small overrides to keep things consistent). */
+:root {
+  --v1-type-body: 16px;
+  --v1-type-small: 14px;
+  --v1-type-ref: 14px;
+}
+
 /* A11y: keyboard-only skip link (invisible unless focused). */
 .skip-link {
   position: absolute;
@@ -200,7 +207,7 @@ html {
 /* Blog post template extras (keep v1 clean, but add functional TOC + prev/next). */
 .blog-post-meta {
   margin-top: 10px;
-  font-size: 14px;
+  font-size: var(--v1-type-small);
   line-height: 1.4;
   color: var(--color-text-gray);
 }
@@ -560,6 +567,29 @@ html {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Standard typography: captions + meta a bit smaller, references like footnotes. */
+.notion-caption {
+  font-size: var(--v1-type-small);
+}
+
+.notion-page__properties {
+  font-size: var(--v1-type-small);
+}
+
+.notion-toggle[data-toggle-kind="references"] .notion-toggle__content {
+  font-size: var(--v1-type-ref);
+  line-height: 1.55;
+}
+
+.notion-toggle[data-toggle-kind="references"] .notion-list-item {
+  margin: 0.25em 0;
+}
+
+.notion-toggle[data-toggle-kind="references"] .notion-quote,
+.notion-toggle[data-toggle-kind="references"] .notion-text__content {
+  font-size: inherit;
 }
 
 /* Notion callouts: tighter alignment and better mobile spacing (v1-consistent). */

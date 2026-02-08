@@ -47,10 +47,12 @@ export default async function SlugPage({
 }) {
   const { slug } = await params;
 
+  let html: string;
   try {
-    const html = await loadRawMainHtml(slug.join("/"));
-    return <RawHtml html={html} />;
+    html = await loadRawMainHtml(slug.join("/"));
   } catch {
     notFound();
   }
+
+  return <RawHtml html={html} />;
 }
