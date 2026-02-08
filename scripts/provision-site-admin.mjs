@@ -288,6 +288,7 @@ async function main() {
     const deployUrl = deployToken
       ? `${deployBase}/api/deploy?token=${encodeURIComponent(deployToken)}`
       : `${deployBase}/api/deploy?token=YOUR_DEPLOY_TOKEN`;
+    const shouldUpdateDeployLink = Boolean(deployToken);
 
     if (!deployHeading) {
       await appendBlocks(adminPageId, [
@@ -324,7 +325,7 @@ async function main() {
       const idx = blocks.findIndex((b) => compactId(b.id) === compactId(deployHeading.id));
       const after = idx >= 0 ? blocks.slice(idx + 1) : blocks;
       const callout = after.find((b) => b?.type === "callout");
-      if (callout) {
+      if (callout && shouldUpdateDeployLink) {
         await updateBlock(compactId(callout.id), {
           callout: {
             ...(callout.callout || {}),
