@@ -6,17 +6,44 @@ import type { Metadata } from "next";
 export const dynamic = "force-static";
 export const dynamicParams = false;
 
+function escapeHtml(s: string): string {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#x27;");
+}
+
+function extractTitleFromMainHtml(mainHtml: string): string {
+  const m = String(mainHtml || "").match(
+    /<h1\b[^>]*class="notion-header__title"[^>]*>([\s\S]*?)<\/h1>/i,
+  );
+  if (!m) return "Blog";
+  // Title is plain text in our generated HTML (already escaped), but keep it safe.
+  const raw = m[1].replace(/<[^>]+>/g, "").trim();
+  return raw || "Blog";
+}
+
+function buildBreadcrumbsHtml({ title, slug }: { title: string; slug: string }): string {
+  const safeTitle = escapeHtml(title);
+  const safeSlug = escapeHtml(slug);
+  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb"><a href="/" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">Home</div></a><span class="notion-breadcrumb__divider">/</span><a href="/blog" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">Blog</div></a><span class="notion-breadcrumb__divider">/</span><a href="/blog/${safeSlug}" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${safeTitle}</div></a></div></div>`;
+}
+
 function rewriteBlogPostMainHtml(input: string, { slug }: { slug: string }): string {
   let out = input;
 
-  // Remove the middle breadcrumb "List" (the one that links to /blog/list).
+  // Replace the whole breadcrumb block so we always get:
+  //   Home / Blog / <post title>
+  // This avoids depending on the Notion hierarchy (which may include an
+  // intermediate "List" database) and matches the original site's UX.
+  const title = extractTitleFromMainHtml(out);
+  const breadcrumbs = buildBreadcrumbsHtml({ title, slug });
   out = out.replace(
-    /<span class="notion-breadcrumb__divider">\/\s*<\/span>\s*<a\b[^>]*\bhref="\/blog\/list"[^>]*>[\s\S]*?<\/a>/i,
-    "",
+    /<div class="super-navbar__breadcrumbs"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i,
+    breadcrumbs,
   );
-
-  // Keep the last crumb link consistent with the canonical route.
-  out = out.replaceAll(`href="/blog/list/${slug}"`, `href="/blog/${slug}"`);
 
   return out;
 }
@@ -51,4 +78,3 @@ export default async function BlogPostPage({
   const rewritten = rewriteBlogPostMainHtml(raw, { slug });
   return <RawHtml html={rewritten} />;
 }
-

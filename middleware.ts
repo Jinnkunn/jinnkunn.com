@@ -90,6 +90,15 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
+  // Some Notion structures expose a top-level `/list` database that backs the blog.
+  // Keep the public URL space clean and canonicalize it to `/blog`.
+  if (pathname === "/list" || pathname.startsWith("/list/")) {
+    const rest = pathname.replace(/^\/list\/?/, "");
+    const url = req.nextUrl.clone();
+    url.pathname = rest ? `/blog/${rest}` : "/blog";
+    return NextResponse.redirect(url, 308);
+  }
+
   // Support old-style internal links that point to a Notion page id path
   // (e.g. "/<32hex>") by redirecting to the resolved route path.
   const idMatch = pathname.match(/^\/([0-9a-f]{32})(?:\/)?$/i);
