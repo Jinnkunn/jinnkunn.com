@@ -42,9 +42,15 @@ export default async function BlogListPage() {
         style={{ position: "absolute" }}
       >
         <div className="notion-breadcrumb">
-          <Link href="/" className="notion-link notion-breadcrumb__item single">
+          <Link href="/" className="notion-link notion-breadcrumb__item">
             <div className="notion-navbar__title notion-breadcrumb__title">
               Hi there!
+            </div>
+          </Link>
+          <span className="notion-breadcrumb__divider">/</span>
+          <Link href="/blog/list" className="notion-link notion-breadcrumb__item">
+            <div className="notion-navbar__title notion-breadcrumb__title">
+              List
             </div>
           </Link>
         </div>
@@ -100,4 +106,3 @@ export default async function BlogListPage() {
     </main>
   );
 }
-

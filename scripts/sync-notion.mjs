@@ -792,12 +792,8 @@ function renderRichTextItem(rt, ctx) {
     inner = escapeHtml(rt?.plain_text ?? "");
   }
 
-  if (annotations.code) inner = `<code class="code">${inner}</code>`;
-  if (annotations.bold) inner = `<strong>${inner}</strong>`;
-  if (annotations.italic) inner = `<em>${inner}</em>`;
-  if (annotations.underline) inner = `<u>${inner}</u>`;
-  if (annotations.strikethrough) inner = `<s>${inner}</s>`;
-
+  // Super/Notion export wraps anchors *inside* typography wrappers.
+  // We mirror that order to ensure the upstream CSS selectors match 1:1.
   if (href) {
     const external = /^https?:\/\//i.test(href);
     const attrs = external
@@ -806,12 +802,25 @@ function renderRichTextItem(rt, ctx) {
     inner = `<a href="${escapeHtml(href)}" class="notion-link link"${attrs}>${inner}</a>`;
   }
 
+  if (annotations.underline) inner = `<u>${inner}</u>`;
+  if (annotations.strikethrough) inner = `<s>${inner}</s>`;
+  if (annotations.bold) inner = `<strong>${inner}</strong>`;
+  if (annotations.code) inner = `<code class="code">${inner}</code>`;
+
   if (color.endsWith("_background")) {
     const bg = color.replace(/_background$/, "");
-    inner = `<span class="highlighted-background bg-${escapeHtml(bg)}">${inner}</span>`;
+    const bgSafe = escapeHtml(bg);
+    inner = `<span class="highlighted-background bg-${bgSafe}">${inner}</span>`;
+    // Super wraps most background colors with a matching text color span so
+    // inline <code> inherits the expected label color via `.highlighted-color .code`.
+    if (bg !== "yellow") {
+      inner = `<span class="highlighted-color color-${bgSafe}">${inner}</span>`;
+    }
   } else if (color !== "default") {
     inner = `<span class="highlighted-color color-${escapeHtml(color)}">${inner}</span>`;
   }
+
+  if (annotations.italic) inner = `<em>${inner}</em>`;
 
   return inner;
 }
@@ -1162,14 +1171,28 @@ async function renderBlock(b, ctx) {
 function renderBreadcrumbs(node, cfg, ctx) {
   if (node.routePath === "/") return "";
 
-  // Super's "simple" theme shows a single breadcrumb item (the site root title)
-  // on all non-home pages.
   const homeTitle =
     String(ctx?.homeTitle ?? "").trim() ||
     (cfg.nav?.top?.find?.((x) => x.href === "/")?.label || "Home");
 
-  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb"><a href="/" class="notion-link notion-breadcrumb__item single"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
+  const homePageId = String(ctx?.homePageId ?? "").trim();
+  const homeIdAttr = homePageId
+    ? ` id="block-${escapeHtml(homePageId)}"`
+    : "";
+
+  const pageKey =
+    node.routePath === "/"
+      ? "index"
+      : node.routePath.replace(/^\/+/, "").replace(/\//g, "-") || "index";
+
+  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb"><a${homeIdAttr} href="/" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
     homeTitle,
+  )}</div></a><span class="notion-breadcrumb__divider">/</span><a id="block-${escapeHtml(
+    pageKey,
+  )}" href="${escapeHtml(
+    node.routePath,
+  )}" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
+    node.title,
   )}</div></a></div></div>`;
 }
 
@@ -1380,8 +1403,10 @@ async function main() {
   console.log(`[sync:notion] Pages: ${allPages.length}`);
   const dbById = new Map(allPages.filter((p) => p.kind === "database").map((p) => [p.id, p]));
   const nodeById = new Map(allPages.map((p) => [p.id, p]));
-  const homeTitle = allPages.find((p) => p.routePath === "/")?.title || "Home";
-  const ctx = { routeByPageId, dbById, nodeById, homeTitle };
+  const homePage = allPages.find((p) => p.routePath === "/") || null;
+  const homeTitle = homePage?.title || "Home";
+  const homeRoutePageId = homePage?.id || "";
+  const ctx = { routeByPageId, dbById, nodeById, homeTitle, homePageId: homeRoutePageId };
 
   for (const p of allPages) {
     const mainHtml =

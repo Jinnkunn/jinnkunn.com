@@ -5,6 +5,27 @@ export const runtime = "nodejs";
 
 const NOTION_API = "https://api.notion.com/v1";
 
+type NotionListResponse<T> = {
+  results?: T[];
+  has_more?: boolean;
+  next_cursor?: string | null;
+};
+
+type NotionChildDatabaseBlock = {
+  id: string;
+  type?: string;
+  child_database?: { title?: string };
+};
+
+type NotionPage = {
+  id?: string;
+} & Record<string, unknown>;
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  return v as Record<string, unknown>;
+}
+
 function json(
   body: unknown,
   init?: { status?: number; headers?: Record<string, string> },
@@ -75,7 +96,7 @@ async function notionRequest(
     body?: unknown;
     searchParams?: Record<string, string | number | undefined>;
   } = {},
-) {
+): Promise<unknown> {
   const token = process.env.NOTION_TOKEN?.trim() ?? "";
   const notionVersion = process.env.NOTION_VERSION?.trim() ?? "2022-06-28";
   if (!token) throw new Error("Missing NOTION_TOKEN");
@@ -110,15 +131,15 @@ async function notionRequest(
       `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
     );
   }
-  return json as any;
+  return json;
 }
 
 async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
   let cursor: string | undefined = undefined;
   for (let page = 0; page < 6; page++) {
-    const data = await notionRequest(`blocks/${adminPageId}/children`, {
+    const data = (await notionRequest(`blocks/${adminPageId}/children`, {
       searchParams: { page_size: 100, start_cursor: cursor },
-    });
+    })) as NotionListResponse<NotionChildDatabaseBlock>;
 
     const results = Array.isArray(data?.results) ? data.results : [];
     for (const b of results) {
@@ -128,7 +149,7 @@ async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
     }
 
     if (!data?.has_more) break;
-    cursor = data?.next_cursor;
+    cursor = data?.next_cursor ?? undefined;
     if (!cursor) break;
   }
   return null;
@@ -137,24 +158,24 @@ async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
 async function queryDatabase(
   databaseId: string,
   body: Record<string, unknown>,
-): Promise<any[]> {
-  const out: any[] = [];
+): Promise<NotionPage[]> {
+  const out: NotionPage[] = [];
   let cursor: string | undefined = undefined;
 
   for (let page = 0; page < 10; page++) {
-    const data = await notionRequest(`databases/${databaseId}/query`, {
+    const data = (await notionRequest(`databases/${databaseId}/query`, {
       method: "POST",
       body: {
         page_size: 100,
         start_cursor: cursor,
         ...body,
       },
-    });
+    })) as NotionListResponse<NotionPage>;
 
     const results = Array.isArray(data?.results) ? data.results : [];
     out.push(...results);
     if (!data?.has_more) break;
-    cursor = data?.next_cursor;
+    cursor = data?.next_cursor ?? undefined;
     if (!cursor) break;
   }
   return out;
@@ -273,26 +294,29 @@ export async function POST(req: Request) {
     return json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let evt: any = null;
+  let evt: unknown = null;
   try {
     evt = rawBody ? JSON.parse(rawBody) : null;
   } catch {
     return json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const eventType = String(evt?.type ?? "").trim();
-  const payload = evt?.payload ?? {};
+  const evtObj = asRecord(evt) ?? {};
+  const eventType = String(evtObj.type ?? "").trim();
+  const payloadObj = asRecord(evtObj.payload) ?? {};
+  const deploymentObj = asRecord(payloadObj.deployment) ?? {};
+  const linksObj = asRecord(payloadObj.links) ?? {};
   if (!eventType) return json({ ok: true, skipped: true });
 
-  const createdAtMs = Number(evt?.createdAt ?? Date.now());
+  const createdAtMs = Number(evtObj.createdAt ?? Date.now());
   const eventCreatedAtIso = new Date(
     Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
   ).toISOString();
 
-  const deploymentId = String(payload?.deployment?.id ?? payload?.id ?? "").trim();
-  const deploymentUrl = String(payload?.deployment?.url ?? payload?.url ?? "").trim();
-  const dashboardUrl = String(payload?.links?.deployment ?? "").trim();
-  const target = String(payload?.deployment?.target ?? "").trim();
+  const deploymentId = String(deploymentObj.id ?? payloadObj.id ?? "").trim();
+  const deploymentUrl = String(deploymentObj.url ?? payloadObj.url ?? "").trim();
+  const dashboardUrl = String(linksObj.deployment ?? "").trim();
+  const target = String(deploymentObj.target ?? "").trim();
 
   const adminPageId = compactNotionId(
     process.env.NOTION_SITE_ADMIN_PAGE_ID?.trim() ?? "",

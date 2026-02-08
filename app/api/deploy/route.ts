@@ -4,6 +4,18 @@ export const runtime = "nodejs";
 
 const NOTION_API = "https://api.notion.com/v1";
 
+type NotionListResponse<T> = {
+  results?: T[];
+  has_more?: boolean;
+  next_cursor?: string | null;
+};
+
+type NotionChildDatabaseBlock = {
+  id: string;
+  type?: string;
+  child_database?: { title?: string };
+};
+
 function json(
   body: unknown,
   init?: { status?: number; headers?: Record<string, string> },
@@ -53,7 +65,7 @@ async function notionRequest(
     body?: unknown;
     searchParams?: Record<string, string | number | undefined>;
   } = {},
-) {
+): Promise<unknown> {
   const token = process.env.NOTION_TOKEN?.trim() ?? "";
   const notionVersion = process.env.NOTION_VERSION?.trim() ?? "2022-06-28";
   if (!token) throw new Error("Missing NOTION_TOKEN");
@@ -88,15 +100,15 @@ async function notionRequest(
       `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
     );
   }
-  return json as any;
+  return json;
 }
 
 async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
   let cursor: string | undefined = undefined;
   for (let page = 0; page < 6; page++) {
-    const data = await notionRequest(`blocks/${adminPageId}/children`, {
+    const data = (await notionRequest(`blocks/${adminPageId}/children`, {
       searchParams: { page_size: 100, start_cursor: cursor },
-    });
+    })) as NotionListResponse<NotionChildDatabaseBlock>;
 
     const results = Array.isArray(data?.results) ? data.results : [];
     for (const b of results) {
@@ -106,7 +118,7 @@ async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
     }
 
     if (!data?.has_more) break;
-    cursor = data?.next_cursor;
+    cursor = data?.next_cursor ?? undefined;
     if (!cursor) break;
   }
   return null;

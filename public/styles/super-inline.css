@@ -973,32 +973,28 @@ html.theme-light {
   background-color: transparent;
 }
 
-a.notion-link.link {
-  display: inline;
+/* Super custom CSS parity: "ink rise" highlight on Notion content links. */
+a[class="notion-link link"] {
+  display: inline-block;
   position: relative;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  padding: 0.06em 0.1em;
-  margin: -0.06em -0.1em;
-  border-radius: 0.14em;
+  z-index: 0;
   text-decoration-line: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;
   text-decoration-skip-ink: auto;
   text-decoration-color: rgba(55, 53, 47, 0.55);
-  background-image: linear-gradient(
-    180deg,
-    hsl(38 100% 92%) 0%,
-    hsl(38 100% 86%) 70%,
-    hsl(38 100% 84%) 100%
-  );
-  background-repeat: no-repeat;
-  background-position: 0 100%;
-  background-size: 100% 0.36em;
-  /* A smoother "ink rise": slower start + less snappy than the default Super easing. */
-  transition:
-    background-size 620ms cubic-bezier(0.4, 0, 0.2, 1),
-    text-decoration-color 240ms ease;
+}
+
+a[class="notion-link link"]:after {
+  content: "";
+  position: absolute;
+  top: 66%;
+  bottom: 0;
+  left: 0;
+  right: -0.1em;
+  background-color: hsl(38, 152%, 80%);
+  z-index: -1;
+  transition: top 800ms cubic-bezier(0, 0.8, 0.13, 1);
 }
 
 html.theme-light .notion-semantic-string .link {
@@ -1006,12 +1002,15 @@ html.theme-light .notion-semantic-string .link {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  a.notion-link.link {
+  a[class="notion-link link"]:after {
     transition: none;
   }
 }
 
-a.notion-link.link:hover {
-  background-size: 100% 1.15em;
+a[class="notion-link link"]:hover:after {
+  top: 2%;
+}
+
+a[class="notion-link link"]:hover {
   text-decoration-color: rgba(55, 53, 47, 0.78);
 }

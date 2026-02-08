@@ -39,9 +39,15 @@ export default async function BlogPage() {
     <main id="page-blog" className="super-content page__blog parent-page__blog">
       <div className="super-navbar__breadcrumbs" style={{ position: "absolute" }}>
         <div className="notion-breadcrumb">
-          <Link href="/" className="notion-link notion-breadcrumb__item single">
+          <Link href="/" className="notion-link notion-breadcrumb__item">
             <div className="notion-navbar__title notion-breadcrumb__title">
               Hi there!
+            </div>
+          </Link>
+          <span className="notion-breadcrumb__divider">/</span>
+          <Link href="/blog" className="notion-link notion-breadcrumb__item">
+            <div className="notion-navbar__title notion-breadcrumb__title">
+              Blog
             </div>
           </Link>
         </div>

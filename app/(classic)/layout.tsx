@@ -20,10 +20,7 @@ export default function ClassicLayout({
         <a className="skip-link" href="#main-content">
           Skip to content
         </a>
-        {/* Match Super's structure: a sticky "notion-navbar" wrapper containing the super navbar. */}
-        <div className="notion-navbar">
-          <SiteNav />
-        </div>
+        <SiteNav />
         {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
         <NotionBlockBehavior />
         <div id="main-content" className="super-content-wrapper">
