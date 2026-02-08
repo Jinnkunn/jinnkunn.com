@@ -182,6 +182,7 @@ function mapEventToResult(eventType: string) {
     case "deployment.created":
       return "Building";
     case "deployment.ready":
+    case "deployment.succeeded":
       return "Ready";
     case "deployment.error":
       return "Error";
@@ -341,4 +342,3 @@ export async function POST(req: Request) {
 export async function GET() {
   return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 }
-
