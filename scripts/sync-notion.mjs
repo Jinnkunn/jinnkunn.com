@@ -1012,7 +1012,8 @@ async function renderBlock(b, ctx) {
       ? `<figcaption class="notion-caption notion-semantic-string">${caption}</figcaption>`
       : "";
     const altText = escapeHtml(richTextPlain(img.caption ?? []) || "image");
-    return `<div id="${blockIdAttr}" class="notion-image page-width"><span data-full-size="${escapeHtml(
+    // Super's default alignment is start, even inside columns.
+    return `<div id="${blockIdAttr}" class="notion-image align-start page-width"><span data-full-size="${escapeHtml(
       publicSrc || "",
     )}" data-lightbox-src="${escapeHtml(
       publicSrc || "",
@@ -1052,14 +1053,37 @@ async function renderBlock(b, ctx) {
   if (b.type === "column_list") {
     const cols = Array.isArray(b.__children) ? b.__children : [];
     const n = cols.length || 1;
+
+    // Notion provides `column.width_ratio` for column blocks. Super computes
+    // widths sequentially from left-to-right: each non-last column gets a
+    // (remaining / remainingColumns) * width_ratio share; the last column gets
+    // the remaining space. This matches the original site proportions.
+    const widths = [];
+    let remaining = 1;
+    for (let i = 0; i < cols.length; i++) {
+      if (i === cols.length - 1) {
+        widths.push(remaining);
+        break;
+      }
+      const ratioRaw = Number(cols[i]?.column?.width_ratio);
+      const ratio = Number.isFinite(ratioRaw) && ratioRaw > 0 ? ratioRaw : 1;
+      const defaultWidth = remaining / (cols.length - i);
+      let w = defaultWidth * ratio;
+      // Clamp to avoid invalid CSS in case Notion data is unexpected.
+      w = Math.max(0, Math.min(remaining, w));
+      widths.push(w);
+      remaining -= w;
+    }
+
     let inner = `<div id="${blockIdAttr}" class="notion-column-list">`;
     for (let i = 0; i < cols.length; i++) {
       const col = cols[i];
       const colId = compactId(col.id);
-      const width = `(100% - var(--column-spacing) * ${n - 1}) * ${1 / n}`;
-      const margin = i === 0 ? "" : ` margin-inline-start: var(--column-spacing);`;
+      const frac = widths[i] ?? 1 / n;
+      const width = `(100% - var(--column-spacing) * ${n - 1}) * ${frac}`;
+      const margin = i === 0 ? "" : `;margin-inline-start:var(--column-spacing)`;
       const colKids = Array.isArray(col.__children) ? col.__children : [];
-      inner += `<div id="block-${colId}" class="notion-column" style="width: calc(${width});${margin}">${await renderBlocks(
+      inner += `<div id="block-${colId}" class="notion-column" style="width:calc(${width})${margin}">${await renderBlocks(
         colKids,
         ctx,
       )}</div>`;
