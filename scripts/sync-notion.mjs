@@ -112,6 +112,14 @@ function slugify(input) {
   return s;
 }
 
+function normalizeRoutePath(p) {
+  const raw = String(p || "").trim();
+  if (!raw) return "";
+  let out = raw.startsWith("/") ? raw : `/${raw}`;
+  out = out.replace(/\/+$/g, "");
+  return out || "/";
+}
+
 async function sleep(ms) {
   await new Promise((r) => setTimeout(r, ms));
 }
@@ -221,6 +229,17 @@ async function findFirstJsonCodeBlock(blockId, maxDepth = 4) {
   return null;
 }
 
+async function getPageTitle(pageId) {
+  const data = await notionRequest(`pages/${pageId}`);
+  const props = data?.properties && typeof data.properties === "object" ? data.properties : {};
+  for (const v of Object.values(props)) {
+    if (v && typeof v === "object" && v.type === "title") {
+      return richTextPlain(v.title ?? []) || "Untitled";
+    }
+  }
+  return "Untitled";
+}
+
 async function buildPageTree(parentPageId) {
   const blocks = await listBlockChildren(parentPageId);
   const pages = blocks
@@ -252,7 +271,7 @@ function pickHomePageId(nodes, cfg) {
   return nodes[0]?.id ?? "";
 }
 
-function assignRoutes(nodes, { homePageId }, parentSegments = []) {
+function assignRoutes(nodes, { homePageId, routeOverrides }, parentSegments = []) {
   const used = new Set();
 
   for (const n of nodes) {
@@ -261,6 +280,11 @@ function assignRoutes(nodes, { homePageId }, parentSegments = []) {
     if (parentSegments.length === 0 && n.id === homePageId) {
       n.routeSegments = [];
       n.routePath = "/";
+    } else if (routeOverrides && routeOverrides.has(n.id)) {
+      const routePath = routeOverrides.get(n.id);
+      n.routePath = routePath;
+      n.routeSegments =
+        routePath === "/" ? [] : routePath.split("/").filter(Boolean);
     } else {
       let seg = desired;
       if (used.has(seg)) seg = `${seg}-${n.id.slice(0, 6)}`;
@@ -270,7 +294,7 @@ function assignRoutes(nodes, { homePageId }, parentSegments = []) {
     }
 
     const nextParentSegments = n.routePath === "/" ? [] : n.routeSegments;
-    assignRoutes(n.children, { homePageId }, nextParentSegments);
+    assignRoutes(n.children, { homePageId, routeOverrides }, nextParentSegments);
   }
 }
 
@@ -661,6 +685,17 @@ async function main() {
   const cfg = deepMerge(DEFAULT_CONFIG, parsed);
 
   const rootPageId = compactId(cfg?.content?.rootPageId) || adminPageId;
+  const configuredHomePageId = compactId(cfg?.content?.homePageId);
+  const homePageId = configuredHomePageId || rootPageId;
+  const routeOverrides = new Map();
+  if (isObject(cfg?.content?.routeOverrides)) {
+    for (const [k, v] of Object.entries(cfg.content.routeOverrides)) {
+      const id = compactId(k);
+      const route = normalizeRoutePath(v);
+      if (!id || !route) continue;
+      routeOverrides.set(id, route);
+    }
+  }
 
   console.log(`[sync:notion] Admin page: ${adminPageId}`);
   console.log(`[sync:notion] Content root: ${rootPageId}`);
@@ -670,22 +705,68 @@ async function main() {
   rmDir(OUT_RAW_DIR);
   ensureDir(OUT_RAW_DIR);
 
-  const top = await buildPageTree(rootPageId);
-  if (!top.length) {
-    throw new Error(
-      "No child pages found under the configured content root page. Create child pages under the Site Admin page (or set content.rootPageId).",
-    );
+  // Routing model:
+  // - If homePageId === rootPageId, we include the root page itself at `/`.
+  //   Its child pages become `/child`, `/child/grandchild`, etc.
+  // - Otherwise (root is a container), we render only child pages, using the
+  //   classic "one of the top-level children becomes `/`" mapping.
+  let allPages = [];
+  let routeByPageId = new Map();
+  const routeToPageId = new Map();
+
+  if (homePageId === rootPageId) {
+    const rootTitle = await getPageTitle(rootPageId);
+    const rootNode = {
+      id: rootPageId,
+      title: rootTitle,
+      children: await buildPageTree(rootPageId),
+      parentId: "",
+      routePath: "/",
+      routeSegments: [],
+    };
+
+    assignRoutes(rootNode.children, { homePageId, routeOverrides });
+
+    const descendants = flattenPages(rootNode.children);
+    allPages = [rootNode, ...descendants];
+    for (const p of allPages) {
+      if (routeToPageId.has(p.routePath)) {
+        throw new Error(
+          `Duplicate route '${p.routePath}' for pages ${routeToPageId.get(
+            p.routePath,
+          )} and ${p.id}. Add content.routeOverrides to resolve.`,
+        );
+      }
+      routeToPageId.set(p.routePath, p.id);
+      routeByPageId.set(p.id, p.routePath);
+    }
+  } else {
+    const top = await buildPageTree(rootPageId);
+    if (!top.length) {
+      throw new Error(
+        "No child pages found under the configured content root page. Create child pages under the root page (or set content.rootPageId).",
+      );
+    }
+
+    const topHomePageId = pickHomePageId(top, cfg);
+    assignRoutes(top, { homePageId: topHomePageId, routeOverrides });
+    allPages = flattenPages(top);
+    for (const p of allPages) {
+      if (routeToPageId.has(p.routePath)) {
+        throw new Error(
+          `Duplicate route '${p.routePath}' for pages ${routeToPageId.get(
+            p.routePath,
+          )} and ${p.id}. Add content.routeOverrides to resolve.`,
+        );
+      }
+      routeToPageId.set(p.routePath, p.id);
+      routeByPageId.set(p.id, p.routePath);
+    }
   }
 
-  const homePageId = pickHomePageId(top, cfg);
-  assignRoutes(top, { homePageId });
-
   // Build lookup tables (used for page mentions and child_page blocks).
-  const allPages = flattenPages(top);
-  const routeByPageId = new Map();
   const pageByRoute = new Map();
   for (const p of allPages) {
-    routeByPageId.set(p.id, p.routePath);
     pageByRoute.set(p.routePath, p);
   }
 

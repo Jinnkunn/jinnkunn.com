@@ -21,6 +21,10 @@
 /.playwright-cli/
 /output/
 
+# notion generated content/assets (synced at build time)
+/content/generated/
+/public/notion-assets/
+
 # production
 /build
 
