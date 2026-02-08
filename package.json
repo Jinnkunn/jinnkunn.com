@@ -17,7 +17,9 @@
     "check:ui": "node scripts/check-ui.mjs"
   },
   "dependencies": {
+    "katex": "^0.16.28",
     "next": "16.1.6",
+    "prismjs": "^1.30.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

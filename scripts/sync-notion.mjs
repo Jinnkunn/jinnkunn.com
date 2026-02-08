@@ -17,6 +17,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import katex from "katex";
 
 const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
@@ -120,6 +122,24 @@ function normalizeRoutePath(p) {
   let out = raw.startsWith("/") ? raw : `/${raw}`;
   out = out.replace(/\/+$/g, "");
   return out || "/";
+}
+
+function sha256Hex(input) {
+  return crypto.createHash("sha256").update(String(input), "utf8").digest("hex");
+}
+
+function renderKatex(expression, { displayMode }) {
+  const expr = String(expression ?? "").trim();
+  if (!expr) return "";
+  try {
+    return katex.renderToString(expr, {
+      displayMode: Boolean(displayMode),
+      throwOnError: false,
+      strict: "ignore",
+    });
+  } catch {
+    return escapeHtml(expr);
+  }
 }
 
 async function sleep(ms) {
@@ -401,6 +421,44 @@ async function loadConfigFromAdminDatabases(adminPageId) {
   return cfg;
 }
 
+async function loadProtectedRoutesFromAdminDatabases(adminPageId) {
+  const databases = await findChildDatabases(adminPageId);
+  const protectedDb = findDbByTitle(databases, "Protected Routes");
+  if (!protectedDb) return [];
+
+  const rows = await queryDatabase(protectedDb.id);
+  const out = [];
+
+  for (const row of rows) {
+    const enabled = getPropCheckbox(row, "Enabled");
+    if (enabled === false) continue;
+
+    const rawPath = getPropString(row, "Path");
+    const password = getPropString(row, "Password");
+    if (!rawPath || !password) continue;
+
+    const path = normalizeRoutePath(rawPath);
+    if (!path) continue;
+
+    const modeRaw = (getPropString(row, "Mode") || "exact").toLowerCase();
+    const mode = modeRaw === "prefix" ? "prefix" : "exact";
+
+    const id = compactId(row.id).slice(0, 12);
+    const token = sha256Hex(`${path}\n${password}`);
+
+    out.push({ id, path, mode, token });
+  }
+
+  // Deterministic order: exact before prefix, then longer paths first for prefix matching.
+  out.sort((a, b) => {
+    if (a.mode !== b.mode) return a.mode === "exact" ? -1 : 1;
+    if (a.path.length !== b.path.length) return b.path.length - a.path.length;
+    return a.path.localeCompare(b.path);
+  });
+
+  return out;
+}
+
 async function getPageTitle(pageId) {
   const data = await notionRequest(`pages/${pageId}`);
   const props = data?.properties && typeof data.properties === "object" ? data.properties : {};
@@ -412,35 +470,133 @@ async function getPageTitle(pageId) {
   return "Untitled";
 }
 
+function getTitleFromPageObject(page) {
+  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
+  for (const v of Object.values(props)) {
+    if (v && typeof v === "object" && v.type === "title") {
+      const t = richTextPlain(v.title ?? []).trim();
+      if (t) return t;
+    }
+  }
+  return "Untitled";
+}
+
+function toDateIso(start) {
+  const s = String(start || "").trim();
+  if (!s) return null;
+  // Prefer YYYY-MM-DD if the value is ISO datetime.
+  const m = s.match(/^\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : null;
+}
+
+function formatDateLong(start) {
+  const iso = toDateIso(start);
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function extractFirstDateProperty(page) {
+  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
+  for (const [name, v] of Object.entries(props)) {
+    if (!v || typeof v !== "object") continue;
+    if (v.type !== "date") continue;
+    const start = v.date?.start;
+    const iso = toDateIso(start);
+    const text = formatDateLong(start);
+    if (!iso || !text) continue;
+    return { name, id: String(v.id || ""), iso, text };
+  }
+  return null;
+}
+
 async function buildPageTree(parentPageId) {
   const blocks = await listBlockChildren(parentPageId);
-  const pages = blocks
-    .filter((b) => b?.type === "child_page" && b?.child_page?.title)
-    .map((b) => ({
-      id: compactId(b.id),
-      title: b.child_page.title,
-      children: [],
-      parentId: compactId(parentPageId),
-      routePath: "",
-      routeSegments: [],
-    }));
+  const out = [];
 
-  for (const p of pages) {
-    p.children = await buildPageTree(p.id);
+  for (const b of blocks) {
+    if (b?.type === "child_page" && b?.child_page?.title) {
+      const node = {
+        kind: "page",
+        id: compactId(b.id),
+        title: b.child_page.title,
+        children: [],
+        parentId: compactId(parentPageId),
+        routePath: "",
+        routeSegments: [],
+      };
+      node.children = await buildPageTree(node.id);
+      out.push(node);
+      continue;
+    }
+
+    if (b?.type === "child_database") {
+      const dbId = compactId(b.id);
+      const title = String(b.child_database?.title ?? "").trim() || "Database";
+
+      const rows = await queryDatabase(dbId);
+      const items = rows
+        .filter((p) => !p?.archived && !p?.in_trash)
+        .map((p) => {
+          const date = extractFirstDateProperty(p);
+          return {
+            kind: "page",
+            id: compactId(p.id),
+            title: getTitleFromPageObject(p),
+            children: [],
+            parentId: dbId,
+            routePath: "",
+            routeSegments: [],
+            __page: p,
+            __date: date,
+          };
+        });
+
+      // Match Super's "newest first" behavior when a Date property exists.
+      items.sort((a, b) => {
+        const ai = a.__date?.iso || "";
+        const bi = b.__date?.iso || "";
+        if (ai && bi) return ai < bi ? 1 : ai > bi ? -1 : 0;
+        if (ai && !bi) return -1;
+        if (!ai && bi) return 1;
+        return a.title.localeCompare(b.title);
+      });
+
+      for (const it of items) {
+        it.children = await buildPageTree(it.id);
+      }
+
+      out.push({
+        kind: "database",
+        id: dbId,
+        title,
+        children: items,
+        parentId: compactId(parentPageId),
+        routePath: "",
+        routeSegments: [],
+      });
+    }
   }
 
-  return pages;
+  return out;
 }
 
 function pickHomePageId(nodes, cfg) {
   const configured = compactId(cfg?.content?.homePageId);
   if (configured) return configured;
-  const byTitle = nodes.find((n) => {
+  const pageNodes = nodes.filter((n) => n.kind !== "database");
+  const byTitle = pageNodes.find((n) => {
     const s = slugify(n.title);
     return s === "home" || s === "index";
   });
   if (byTitle) return byTitle.id;
-  return nodes[0]?.id ?? "";
+  return pageNodes[0]?.id ?? "";
 }
 
 function assignRoutes(nodes, { homePageId, routeOverrides }, parentSegments = []) {
@@ -493,7 +649,71 @@ function pickCalloutBgClass(color) {
 
 function pageIconSvg() {
   // Matches the common "page" icon used by Super.
-  return `<svg class="notion-icon notion-icon__page" viewBox="0 0 16 16" width="18" height="18" style="width: 20px; height: 20px; font-size: 20px; fill: var(--color-text-default-light);"><path d="M4.35645 15.4678H11.6367C13.0996 15.4678 13.8584 14.6953 13.8584 13.2256V7.02539C13.8584 6.0752 13.7354 5.6377 13.1406 5.03613L9.55176 1.38574C8.97754 0.804688 8.50586 0.667969 7.65137 0.667969H4.35645C2.89355 0.667969 2.13477 1.44043 2.13477 2.91016V13.2256C2.13477 14.7021 2.89355 15.4678 4.35645 15.4678ZM4.46582 14.1279C3.80273 14.1279 3.47461 13.7793 3.47461 13.1436V2.99219C3.47461 2.36328 3.80273 2.00781 4.46582 2.00781H7.37793V5.75391C7.37793 6.73145 7.86328 7.20312 8.83398 7.20312H12.5186V13.1436C12.5186 13.7793 12.1836 14.1279 11.5205 14.1279H4.46582ZM8.95703 6.02734C8.67676 6.02734 8.56055 5.9043 8.56055 5.62402V2.19238L12.334 6.02734H8.95703ZM10.4336 9.00098H5.42969C5.16992 9.00098 4.98535 9.19238 4.98535 9.43164C4.98535 9.67773 5.16992 9.86914 5.42969 9.86914H10.4336C10.6797 9.86914 10.8643 9.67773 10.8643 9.43164C10.8643 9.19238 10.6797 9.00098 10.4336 9.00098ZM10.4336 11.2979H5.42969C5.16992 11.2979 4.98535 11.4893 4.98535 11.7354C4.98535 11.9746 5.16992 12.1592 5.42969 12.1592H10.4336C10.6797 12.1592 10.8643 11.9746 10.8643 11.7354C10.8643 11.4893 10.6797 11.2979 10.4336 11.2979Z"></path></svg>`;
+  return `<svg class="notion-icon notion-icon__page" viewBox="0 0 16 16" width="18" height="18" style="width: 18px; height: 18px; font-size: 18px; fill: var(--color-text-default-light);"><path d="M4.35645 15.4678H11.6367C13.0996 15.4678 13.8584 14.6953 13.8584 13.2256V7.02539C13.8584 6.0752 13.7354 5.6377 13.1406 5.03613L9.55176 1.38574C8.97754 0.804688 8.50586 0.667969 7.65137 0.667969H4.35645C2.89355 0.667969 2.13477 1.44043 2.13477 2.91016V13.2256C2.13477 14.7021 2.89355 15.4678 4.35645 15.4678ZM4.46582 14.1279C3.80273 14.1279 3.47461 13.7793 3.47461 13.1436V2.99219C3.47461 2.36328 3.80273 2.00781 4.46582 2.00781H7.37793V5.75391C7.37793 6.73145 7.86328 7.20312 8.83398 7.20312H12.5186V13.1436C12.5186 13.7793 12.1836 14.1279 11.5205 14.1279H4.46582ZM8.95703 6.02734C8.67676 6.02734 8.56055 5.9043 8.56055 5.62402V2.19238L12.334 6.02734H8.95703ZM10.4336 9.00098H5.42969C5.16992 9.00098 4.98535 9.19238 4.98535 9.43164C4.98535 9.67773 5.16992 9.86914 5.42969 9.86914H10.4336C10.6797 9.86914 10.8643 9.67773 10.8643 9.43164C10.8643 9.19238 10.6797 9.00098 10.4336 9.00098ZM10.4336 11.2979H5.42969C5.16992 11.2979 4.98535 11.4893 4.98535 11.7354C4.98535 11.9746 5.16992 12.1592 5.42969 12.1592H10.4336C10.6797 12.1592 10.8643 11.9746 10.8643 11.7354C10.8643 11.4893 10.6797 11.2979 10.4336 11.2979Z"></path></svg>`;
+}
+
+function calendarIconSvg16() {
+  // Matches the icon used in Super's page properties ("Date").
+  return `<svg viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M3.29688 14.4561H12.7031C14.1797 14.4561 14.9453 13.6904 14.9453 12.2344V3.91504C14.9453 2.45215 14.1797 1.69336 12.7031 1.69336H3.29688C1.82031 1.69336 1.05469 2.45215 1.05469 3.91504V12.2344C1.05469 13.6973 1.82031 14.4561 3.29688 14.4561ZM3.27637 13.1162C2.70898 13.1162 2.39453 12.8154 2.39453 12.2207V5.9043C2.39453 5.30273 2.70898 5.00879 3.27637 5.00879H12.71C13.2842 5.00879 13.6055 5.30273 13.6055 5.9043V12.2207C13.6055 12.8154 13.2842 13.1162 12.71 13.1162H3.27637ZM6.68066 7.38086H7.08398C7.33008 7.38086 7.41211 7.30566 7.41211 7.05957V6.66309C7.41211 6.41699 7.33008 6.3418 7.08398 6.3418H6.68066C6.44141 6.3418 6.35938 6.41699 6.35938 6.66309V7.05957C6.35938 7.30566 6.44141 7.38086 6.68066 7.38086ZM8.92285 7.38086H9.31934C9.56543 7.38086 9.64746 7.30566 9.64746 7.05957V6.66309C9.64746 6.41699 9.56543 6.3418 9.31934 6.3418H8.92285C8.67676 6.3418 8.59473 6.41699 8.59473 6.66309V7.05957C8.59473 7.30566 8.67676 7.38086 8.92285 7.38086ZM11.1582 7.38086H11.5547C11.8008 7.38086 11.8828 7.30566 11.8828 7.05957V6.66309C11.8828 6.41699 11.8008 6.3418 11.5547 6.3418H11.1582C10.9121 6.3418 10.8301 6.41699 10.8301 6.66309V7.05957C10.8301 7.30566 10.9121 7.38086 11.1582 7.38086ZM4.44531 9.58203H4.84863C5.09473 9.58203 5.17676 9.50684 5.17676 9.26074V8.86426C5.17676 8.61816 5.09473 8.54297 4.84863 8.54297H4.44531C4.20605 8.54297 4.12402 8.61816 4.12402 8.86426V9.26074C4.12402 9.50684 4.20605 9.58203 4.44531 9.58203ZM6.68066 9.58203H7.08398C7.33008 9.58203 7.41211 9.50684 7.41211 9.26074V8.86426C7.41211 8.61816 7.33008 8.54297 7.08398 8.54297H6.68066C6.44141 8.54297 6.35938 8.61816 6.35938 8.86426V9.26074C6.35938 9.50684 6.44141 9.58203 6.68066 9.58203ZM8.92285 9.58203H9.31934C9.56543 9.58203 9.64746 9.50684 9.64746 9.26074V8.86426C9.64746 8.61816 9.56543 8.54297 9.31934 8.54297H8.92285C8.67676 8.54297 8.59473 8.61816 8.59473 8.86426V9.26074C8.59473 9.50684 8.67676 9.58203 8.92285 9.58203ZM11.1582 9.58203H11.5547C11.8008 9.58203 11.8828 9.50684 11.8828 9.26074V8.86426C11.8828 8.61816 11.8008 8.54297 11.5547 8.54297H11.1582C10.9121 8.54297 10.8301 8.61816 10.8301 8.86426V9.26074C10.8301 9.50684 10.9121 9.58203 11.1582 9.58203ZM4.44531 11.7832H4.84863C5.09473 11.7832 5.17676 11.708 5.17676 11.4619V11.0654C5.17676 10.8193 5.09473 10.7441 4.84863 10.7441H4.44531C4.20605 10.7441 4.12402 10.8193 4.12402 11.0654V11.4619C4.12402 11.708 4.20605 11.7832 4.44531 11.7832ZM6.68066 11.7832H7.08398C7.33008 11.7832 7.41211 11.708 7.41211 11.4619V11.0654C7.41211 10.8193 7.33008 10.7441 7.08398 10.7441H6.68066C6.44141 10.7441 6.35938 10.8193 6.35938 11.0654V11.4619C6.35938 11.708 6.44141 11.7832 6.68066 11.7832ZM8.92285 11.7832H9.31934C9.56543 11.7832 9.64746 11.708 9.64746 11.4619V11.0654C9.64746 10.8193 9.56543 10.7441 9.31934 10.7441H8.92285C8.67676 10.7441 8.59473 10.8193 8.59473 11.0654V11.4619C8.59473 11.708 8.67676 11.7832 8.92285 11.7832Z"></path></svg>`;
+}
+
+function personIconSvg16() {
+  // Matches the icon used in Super's page properties ("Person").
+  return `<svg viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M10.9536 7.90088C12.217 7.90088 13.2559 6.79468 13.2559 5.38525C13.2559 4.01514 12.2114 2.92017 10.9536 2.92017C9.70142 2.92017 8.65137 4.02637 8.65698 5.39087C8.6626 6.79468 9.69019 7.90088 10.9536 7.90088ZM4.4231 8.03003C5.52368 8.03003 6.42212 7.05859 6.42212 5.83447C6.42212 4.63843 5.51245 3.68945 4.4231 3.68945C3.33374 3.68945 2.41846 4.64966 2.41846 5.84009C2.42407 7.05859 3.32251 8.03003 4.4231 8.03003ZM1.37964 13.168H5.49561C4.87231 12.292 5.43384 10.6074 6.78711 9.51807C6.18628 9.14746 5.37769 8.87231 4.4231 8.87231C1.95239 8.87231 0.262207 10.6917 0.262207 12.1628C0.262207 12.7974 0.548584 13.168 1.37964 13.168ZM7.50024 13.168H14.407C15.4009 13.168 15.7322 12.8423 15.7322 12.2864C15.7322 10.8489 13.8679 8.88354 10.9536 8.88354C8.04492 8.88354 6.17505 10.8489 6.17505 12.2864C6.17505 12.8423 6.50635 13.168 7.50024 13.168Z"></path></svg>`;
+}
+
+function extractFirstPeopleProperty(page) {
+  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
+  for (const [name, v] of Object.entries(props)) {
+    if (!v || typeof v !== "object") continue;
+    if (v.type !== "people") continue;
+    const people = Array.isArray(v.people) ? v.people : [];
+    const names = people.map((p) => String(p?.name || "").trim()).filter(Boolean);
+    if (!names.length) continue;
+    return { name, id: String(v.id || ""), names };
+  }
+  return null;
+}
+
+function renderPagePropertiesFromPageObject(pageObj) {
+  const date = extractFirstDateProperty(pageObj);
+  const people = extractFirstPeopleProperty(pageObj);
+
+  const props = [];
+
+  if (date) {
+    const propId = date.id ? String(date.id).replace(/[^a-z0-9]/gi, "") : "";
+    const dateClass = propId ? ` property-${escapeHtml(propId)}` : "";
+    props.push(
+      `<div class="notion-page__property"><div class="notion-page__property-name-wrapper"><div class="notion-page__property-icon-wrapper">${calendarIconSvg16()}</div><div class="notion-page__property-name"><span>${escapeHtml(
+        date.name,
+      )}</span></div></div><div class="notion-property notion-property__date${dateClass} notion-semantic-string"><span class="date">${escapeHtml(
+        date.text,
+      )}</span></div></div>`,
+    );
+  }
+
+  if (people) {
+    const propId = people.id ? String(people.id).replace(/[^a-z0-9]/gi, "") : "";
+    const personClass = propId ? ` property-${escapeHtml(propId)}` : "";
+    const primary = people.names[0] || "Person";
+    const avatarLetter = escapeHtml(primary.trim().slice(0, 1).toUpperCase() || "P");
+    props.push(
+      `<div class="notion-page__property"><div class="notion-page__property-name-wrapper"><div class="notion-page__property-icon-wrapper">${personIconSvg16()}</div><div class="notion-page__property-name"><span>${escapeHtml(
+        people.name,
+      )}</span></div></div><div class="notion-property notion-property__person${personClass} notion-semantic-string no-wrap"><span class="individual-with-image"><div class="individual-letter-avatar">${avatarLetter}</div><span>${escapeHtml(
+        primary,
+      )}</span></span></div></div>`,
+    );
+  }
+
+  if (!props.length) return "";
+  return `<div class="notion-page__properties">${props.join("")}<div id="block-root-divider" class="notion-divider"></div></div>`;
+}
+
+function embedSpinnerSvg() {
+  // Matches the inline SVG loader used by Super embeds.
+  return `<svg class="super-loader__spinner" viewBox="0 0 24 24"><defs><linearGradient x1="28.1542969%" y1="63.7402344%" x2="74.6289062%" y2="17.7832031%" id="linearGradient-1"><stop stop-color="rgba(164, 164, 164, 1)" offset="0%"></stop><stop stop-color="rgba(164, 164, 164, 0)" stop-opacity="0" offset="100%"></stop></linearGradient></defs><g id="Page-1" stroke="none" stroke-width="1" fill="none"><g transform="translate(-236.000000, -286.000000)"><g transform="translate(238.000000, 286.000000)"><circle id="Oval-2" stroke="url(#linearGradient-1)" stroke-width="4" cx="10" cy="12" r="10"></circle><path d="M10,2 C4.4771525,2 0,6.4771525 0,12" id="Oval-2" stroke="rgba(164, 164, 164, 1)" stroke-width="4"></path><rect id="Rectangle-1" fill="rgba(164, 164, 164, 1)" x="8" y="0" width="4" height="4" rx="8"></rect></g></g></g></g></svg>`;
 }
 
 function richTextPlain(richText) {
@@ -505,17 +725,72 @@ function renderRichText(richText, ctx) {
   return items.map((rt) => renderRichTextItem(rt, ctx)).join("");
 }
 
+function rewriteHref(rawHref, ctx) {
+  const href = String(rawHref ?? "").trim();
+  if (!href) return "";
+
+  const routeByPageId = ctx?.routeByPageId;
+
+  let url;
+  let isAbsolute = false;
+  try {
+    url = new URL(href);
+    isAbsolute = true;
+  } catch {
+    try {
+      // Parse relative URLs consistently.
+      url = new URL(href, "https://local.invalid");
+    } catch {
+      return href;
+    }
+  }
+
+  const host = String(url.host || "").toLowerCase();
+
+  // If this is a Notion page URL (or a super-exported "/<pageId>" path), map it
+  // to the discovered route so internal links don't break.
+  const compact = compactId(href);
+  if (compact && routeByPageId?.has?.(compact)) {
+    const mapped = routeByPageId.get(compact);
+    if (mapped) return mapped;
+  }
+
+  // Rewrite absolute links to the production domain back into relative paths so
+  // the clone site stays self-contained across deployments/domains.
+  const isProdDomain =
+    host === "jinkunchen.com" ||
+    host === "www.jinkunchen.com" ||
+    host === "jinnkunn.com" ||
+    host === "www.jinnkunn.com";
+  if (isAbsolute && isProdDomain) {
+    return `${url.pathname || "/"}${url.search || ""}${url.hash || ""}`;
+  }
+
+  return href;
+}
+
 function renderRichTextItem(rt, ctx) {
   const annotations = rt?.annotations ?? {};
   const color = String(annotations.color || "default");
-  const href =
+  const href = rewriteHref(
     rt?.href ||
-    rt?.text?.link?.url ||
-    (rt?.type === "mention" && rt?.mention?.type === "page"
-      ? ctx.routeByPageId.get(compactId(rt?.mention?.page?.id)) || ""
-      : "");
+      rt?.text?.link?.url ||
+      (rt?.type === "mention" && rt?.mention?.type === "page"
+        ? ctx.routeByPageId.get(compactId(rt?.mention?.page?.id)) || ""
+        : ""),
+    ctx,
+  );
 
-  let inner = escapeHtml(rt?.plain_text ?? "");
+  let inner = "";
+  if (rt?.type === "equation") {
+    const expr = rt?.equation?.expression ?? rt?.plain_text ?? "";
+    inner = `<span class="notion-equation notion-equation__inline">${renderKatex(
+      expr,
+      { displayMode: false },
+    )}</span>`;
+  } else {
+    inner = escapeHtml(rt?.plain_text ?? "");
+  }
 
   if (annotations.code) inner = `<code class="code">${inner}</code>`;
   if (annotations.bold) inner = `<strong>${inner}</strong>`;
@@ -666,6 +941,45 @@ async function renderBlock(b, ctx) {
     return `<div id="${blockIdAttr}" class="notion-divider"></div>`;
   }
 
+  if (b.type === "equation") {
+    const expr = b.equation?.expression ?? "";
+    return `<span id="${blockIdAttr}" class="notion-equation notion-equation__block">${renderKatex(
+      expr,
+      { displayMode: true },
+    )}</span>`;
+  }
+
+  if (b.type === "embed") {
+    const e = b.embed ?? {};
+    const url = String(e.url || "").trim();
+    const caption = renderRichText(e.caption ?? [], ctx);
+    const figcaption = caption
+      ? `<figcaption class="notion-caption notion-semantic-string">${caption}</figcaption>`
+      : "";
+
+    let host = "";
+    try {
+      host = url ? new URL(url).hostname : "";
+    } catch {
+      // ignore
+    }
+
+    const sandbox =
+      "allow-scripts allow-popups allow-forms allow-same-origin allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation";
+
+    const iframe = url
+      ? `<iframe src="${escapeHtml(
+          url,
+        )}" title="${escapeHtml(
+          host || url,
+        )}" sandbox="${escapeHtml(
+          sandbox,
+        )}" allowfullscreen="" loading="lazy" frameborder="0"></iframe>`
+      : "";
+
+    return `<span id="${blockIdAttr}" class="notion-embed" style="display:block;width:100%"><span class="notion-embed__content" style="display:flex;width:100%"><span class="notion-embed__loader" style="display:inline-block">${embedSpinnerSvg()}</span><span class="notion-embed__container__wrapper" style="width:100%;display:flex;height:320px"><span style="width:100%;height:100%;display:block" class="notion-embed__container">${iframe}</span></span></span>${figcaption}</span>`;
+  }
+
   if (b.type === "table_of_contents") {
     const headings = ctx.headings ?? [];
     const items = headings
@@ -768,6 +1082,36 @@ async function renderBlock(b, ctx) {
     return `<li id="${blockIdAttr}" class="notion-list-item notion-semantic-string">${inner}${nested}</li>`;
   }
 
+  if (b.type === "child_database") {
+    const dbId = compactId(b.id);
+    const db = ctx.dbById?.get?.(dbId) ?? null;
+    const title = String(b.child_database?.title ?? "").trim() || db?.title || "List";
+
+    if (!db) {
+      const href = ctx.routeByPageId.get(dbId) ?? "#";
+      return `<a id="${blockIdAttr}" href="${escapeHtml(
+        href,
+      )}" class="notion-page"><span class="notion-page__icon">${pageIconSvg()}</span><span class="notion-page__title notion-semantic-string">${escapeHtml(
+        title,
+      )}</span></a>`;
+    }
+
+    const pageKey =
+      db.routePath === "/"
+        ? "index"
+        : db.routePath.replace(/^\/+/, "").replace(/\//g, "-");
+    const items = (db.children || [])
+      .filter((x) => x.kind !== "database")
+      .map((it) => renderCollectionListItem(it, { listKey: pageKey }))
+      .join("");
+
+    return `<div id="${blockIdAttr}" class="notion-collection inline"><div class="notion-collection__header-wrapper"><h3 class="notion-collection__header"><span class="notion-semantic-string">${escapeHtml(
+      title,
+    )}</span></h3></div><div class="notion-collection-list" role="list" aria-label="${escapeHtml(
+      title,
+    )}">${items}</div></div>`;
+  }
+
   if (b.type === "child_page") {
     const title = b.child_page?.title ?? "Untitled";
     const pageId = compactId(b.id);
@@ -791,27 +1135,18 @@ async function renderBlock(b, ctx) {
   return "";
 }
 
-function renderBreadcrumbs(routePath, title, cfg) {
-  if (routePath === "/") return "";
-  const crumbs = [
-    `<a href="/" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
-      cfg.nav?.top?.find?.((x) => x.href === "/")?.label || "Home",
-    )}</div></a>`,
-  ];
+function renderBreadcrumbs(node, cfg, ctx) {
+  if (node.routePath === "/") return "";
 
-  // Keep MVP simple: only show the current page.
-  crumbs.push(`<span class="notion-breadcrumb__divider">/</span>`);
-  crumbs.push(
-    `<a href="${escapeHtml(
-      routePath,
-    )}" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
-      title,
-    )}</div></a>`,
-  );
+  // Super's "simple" theme shows a single breadcrumb item (the site root title)
+  // on all non-home pages.
+  const homeTitle =
+    String(ctx?.homeTitle ?? "").trim() ||
+    (cfg.nav?.top?.find?.((x) => x.href === "/")?.label || "Home");
 
-  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb">${crumbs.join(
-    "",
-  )}</div></div>`;
+  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb"><a href="/" class="notion-link notion-breadcrumb__item single"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
+    homeTitle,
+  )}</div></a></div></div>`;
 }
 
 async function renderPageMain(page, blocks, cfg, ctx) {
@@ -827,13 +1162,14 @@ async function renderPageMain(page, blocks, cfg, ctx) {
 
   const mainId = `page-${pageKey}`;
   const mainClass = `super-content page__${pageKey} parent-page__${parentKey}`;
-  const breadcrumbs = renderBreadcrumbs(page.routePath, page.title, cfg);
+  const breadcrumbs = renderBreadcrumbs(page, cfg, ctx);
 
   // Headings needed for TOC blocks.
   const headings = collectHeadings(blocks);
   const localCtx = { ...ctx, headings };
 
   const body = await renderBlocks(blocks, localCtx);
+  const propsHtml = page.__page ? renderPagePropertiesFromPageObject(page.__page) : "";
 
   return `<main id="${escapeHtml(mainId)}" class="${escapeHtml(
     mainClass,
@@ -841,7 +1177,62 @@ async function renderPageMain(page, blocks, cfg, ctx) {
     page.title,
   )}</h1></div></div></div><article id="block-${escapeHtml(
     pageKey,
-  )}" class="notion-root max-width has-footer">${body}</article></main>`;
+  )}" class="notion-root max-width has-footer">${propsHtml}${body}</article></main>`;
+}
+
+function renderCollectionListItem(item, { listKey }) {
+  const slug = item.routePath.split("/").filter(Boolean).slice(-1)[0] || item.id.slice(0, 8);
+  const blockId = `block-${listKey}-${slug}`;
+
+  const date = item.__date;
+  const propId = date?.id ? String(date.id).replace(/[^a-z0-9]/gi, "") : "";
+  const dateClass = propId ? ` property-${escapeHtml(propId)}` : "";
+  const dateHtml = date?.text
+    ? `<div class="notion-property notion-property__date${dateClass} notion-collection-list__item-property notion-semantic-string no-wrap"><span class="date">${escapeHtml(
+        date.text,
+      )}</span></div>`
+    : "";
+
+  return `<div id="${escapeHtml(
+    blockId,
+  )}" class="notion-collection-list__item "><a id="${escapeHtml(
+    blockId,
+  )}" href="${escapeHtml(
+    item.routePath,
+  )}" class="notion-link notion-collection-list__item-anchor"></a><div class="notion-property notion-property__title notion-semantic-string"><div class="notion-property__title__icon-wrapper">${pageIconSvg()}</div>${escapeHtml(
+    item.title,
+  )}</div><div class="notion-collection-list__item-content">${dateHtml}</div></div>`;
+}
+
+function renderDatabaseMain(db, cfg, ctx) {
+  const pageKey =
+    db.routePath === "/" ? "index" : db.routePath.replace(/^\/+/, "").replace(/\//g, "-");
+  const parentKey =
+    db.parentRoutePath === "/"
+      ? "index"
+      : (db.parentRoutePath || "/").replace(/^\/+/, "").replace(/\//g, "-") ||
+        "index";
+
+  const mainId = `page-${pageKey}`;
+  const mainClass = `super-content page__${pageKey} parent-page__${parentKey}`;
+  const breadcrumbs = renderBreadcrumbs(db, cfg, ctx);
+
+  const items = (db.children || [])
+    .filter((x) => x.kind !== "database")
+    .map((it) => renderCollectionListItem(it, { listKey: pageKey }))
+    .join("");
+
+  return `<main id="${escapeHtml(
+    mainId,
+  )}" class="${escapeHtml(
+    mainClass,
+  )}">${breadcrumbs}<div class="notion-header collection"><div class="notion-header__cover no-cover no-icon"></div><div class="notion-header__content no-cover no-icon"><div class="notion-header__title-wrapper" style="display:flex"><h1 class="notion-header__title">${escapeHtml(
+    db.title,
+  )}</h1></div><div class="notion-header__description notion-semantic-string"></div></div></div><article id="block-${escapeHtml(
+    pageKey,
+  )}" class="notion-root full-width has-footer notion-collection notion-collection-page collection-${escapeHtml(
+    db.id,
+  )}"><div class="notion-collection-list">${items}</div></article></main>`;
 }
 
 async function main() {
@@ -890,6 +1281,7 @@ async function main() {
   if (homePageId === rootPageId) {
     const rootTitle = await getPageTitle(rootPageId);
     const rootNode = {
+      kind: "page",
       id: rootPageId,
       title: rootTitle,
       children: await buildPageTree(rootPageId),
@@ -953,13 +1345,28 @@ async function main() {
   const siteConfigOutPath = path.join(OUT_DIR, "site-config.json");
   writeFile(siteConfigOutPath, JSON.stringify(cfg, null, 2) + "\n");
 
+  // Access control config (optional).
+  const protectedRoutes = await loadProtectedRoutesFromAdminDatabases(adminPageId);
+  writeFile(
+    path.join(OUT_DIR, "protected-routes.json"),
+    JSON.stringify(protectedRoutes, null, 2) + "\n",
+  );
+
   // Sync pages.
   console.log(`[sync:notion] Pages: ${allPages.length}`);
-  const ctx = { routeByPageId };
+  const dbById = new Map(allPages.filter((p) => p.kind === "database").map((p) => [p.id, p]));
+  const nodeById = new Map(allPages.map((p) => [p.id, p]));
+  const homeTitle = allPages.find((p) => p.routePath === "/")?.title || "Home";
+  const ctx = { routeByPageId, dbById, nodeById, homeTitle };
 
   for (const p of allPages) {
-    const blocks = await hydrateBlocks(await listBlockChildren(p.id));
-    const mainHtml = await renderPageMain(p, blocks, cfg, ctx);
+    const mainHtml =
+      p.kind === "database"
+        ? renderDatabaseMain(p, cfg, ctx)
+        : await (async () => {
+            const blocks = await hydrateBlocks(await listBlockChildren(p.id));
+            return await renderPageMain(p, blocks, cfg, ctx);
+          })();
     const rel = routePathToHtmlRel(p.routePath);
     const outPath = path.join(OUT_RAW_DIR, rel);
     writeFile(outPath, mainHtml + "\n");

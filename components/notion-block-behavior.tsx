@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+type PrismModule = {
+  highlightElement: (el: Element) => void;
+};
+
 function isProbablyInteractiveToggleTarget(el: Element): boolean {
   // Avoid toggling when clicking an actual link inside the summary.
   return !Boolean(el.closest("a[href]"));
@@ -39,7 +43,12 @@ function initToggles(root: ParentNode) {
       "";
     const normalized = label.replace(/\s+/g, " ").trim().toLowerCase();
     if (normalized) {
-      if (/(^|[\s:])references([\s:]|$)/i.test(normalized) || /参考文献/.test(label)) {
+      if (
+        /(^|[\s:])(reference|references|bibliography|citations)([\s:]|$)/i.test(
+          normalized,
+        ) ||
+        /参考文献/.test(label)
+      ) {
         t.setAttribute("data-toggle-kind", "references");
       }
     }
@@ -420,6 +429,127 @@ function initEmbeds(root: ParentNode) {
   };
 }
 
+function getLanguageFromCodeEl(codeEl: HTMLElement): string {
+  for (const cls of Array.from(codeEl.classList)) {
+    if (cls.startsWith("language-")) return cls.slice("language-".length).toLowerCase();
+  }
+  const pre = codeEl.closest("pre");
+  if (pre) {
+    for (const cls of Array.from(pre.classList)) {
+      if (cls.startsWith("language-")) return cls.slice("language-".length).toLowerCase();
+    }
+  }
+  return "";
+}
+
+function normalizePrismLanguage(raw: string): string | null {
+  const l = String(raw || "").trim().toLowerCase();
+  if (!l) return null;
+
+  const alias: Record<string, string> = {
+    // common
+    "plain": "plaintext",
+    "text": "plaintext",
+    "plain text": "plaintext",
+    "plain-text": "plaintext",
+    "plaintext": "plaintext",
+    // shell
+    "shell": "bash",
+    "sh": "bash",
+    "zsh": "bash",
+    // js/ts
+    "js": "javascript",
+    "ts": "typescript",
+    "jsx": "jsx",
+    "tsx": "tsx",
+    // markdown
+    "md": "markdown",
+    // misc
+    "yml": "yaml",
+    "py": "python",
+  };
+
+  return alias[l] || l;
+}
+
+const PRISM_LANGUAGE_LOADERS: Record<string, () => Promise<unknown>> = {
+  // Base languages
+  javascript: () => import("prismjs/components/prism-javascript"),
+  typescript: () => import("prismjs/components/prism-typescript"),
+  jsx: () => import("prismjs/components/prism-jsx"),
+  tsx: () => import("prismjs/components/prism-tsx"),
+
+  bash: () => import("prismjs/components/prism-bash"),
+  python: () => import("prismjs/components/prism-python"),
+  json: () => import("prismjs/components/prism-json"),
+  yaml: () => import("prismjs/components/prism-yaml"),
+  toml: () => import("prismjs/components/prism-toml"),
+  sql: () => import("prismjs/components/prism-sql"),
+  diff: () => import("prismjs/components/prism-diff"),
+
+  // Markdown depends on markup + others; Prism will gracefully fall back if some are missing.
+  markdown: () => import("prismjs/components/prism-markdown"),
+};
+
+async function initCodeHighlighting(root: ParentNode) {
+  const codeEls = Array.from(
+    root.querySelectorAll<HTMLElement>("pre > code, pre > code[class*='language-']"),
+  );
+
+  const targets = codeEls.filter((codeEl) => {
+    // Skip if it's already tokenized (e.g., raw Super exports).
+    if (codeEl.querySelector(".token")) return false;
+
+    const lang = normalizePrismLanguage(getLanguageFromCodeEl(codeEl));
+    if (!lang) return false;
+    if (lang === "plaintext") return false;
+    return true;
+  });
+
+  if (targets.length === 0) return;
+
+  let Prism: PrismModule | null = null;
+  try {
+    const mod = (await import("prismjs")) as unknown as PrismModule & { default?: PrismModule };
+    Prism = (mod.default || mod) as PrismModule;
+  } catch {
+    return;
+  }
+
+  try {
+    // Some Prism language components expect a global `Prism` variable.
+    (window as unknown as { Prism?: PrismModule }).Prism = Prism;
+  } catch {
+    // ignore
+  }
+
+  const langs = new Set<string>();
+  for (const el of targets) {
+    const lang = normalizePrismLanguage(getLanguageFromCodeEl(el));
+    if (lang) langs.add(lang);
+  }
+
+  // Load requested languages (best-effort).
+  for (const lang of langs) {
+    const loader = PRISM_LANGUAGE_LOADERS[lang];
+    if (!loader) continue;
+    try {
+      await loader();
+    } catch {
+      // ignore missing language components
+    }
+  }
+
+  // Highlight after languages are registered.
+  for (const el of targets) {
+    try {
+      Prism.highlightElement(el);
+    } catch {
+      // ignore per-block errors
+    }
+  }
+}
+
 export default function NotionBlockBehavior() {
   const pathname = usePathname();
 
@@ -427,6 +557,7 @@ export default function NotionBlockBehavior() {
     const root = document.getElementById("main-content") ?? document;
     initToggles(root);
     const cleanupEmbeds = initEmbeds(root);
+    void initCodeHighlighting(root);
 
     const { el: lightboxEl, img: lightboxImg, closeBtn } = ensureLightbox();
     let unlockScroll: null | (() => void) = null;

@@ -10,6 +10,8 @@
  * file (better caching + no runtime @import waterfall).
  */
 @import "../../public/styles/super-inline.css";
+/* KaTeX: required for Notion equation blocks rendered during sync. */
+@import "katex/dist/katex.min.css";
 @import "../../public/styles/static.css";
 @import "../../public/styles/notion.css";
 @import "../../public/styles/super.css";

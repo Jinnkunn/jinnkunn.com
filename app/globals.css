@@ -8,7 +8,7 @@
 :root {
   --v1-type-body: 16px;
   --v1-type-small: 14px;
-  --v1-type-ref: 14px;
+  --v1-type-ref: 13px;
 }
 
 /* A11y: keyboard-only skip link (invisible unless focused). */
@@ -317,78 +317,6 @@ html {
   }
 }
 
-/* Fix multi-line link hover/focus aesthetics.
- *
- * Some upstream "animated underline" techniques look bad once a link wraps.
- * We re-implement the original "yellow highlight" in a wrap-safe way.
- */
-.notion-root a.notion-link.link,
-.notion-text a.notion-link.link,
-.notion-link.link,
-.notion-text a.notion-link[href],
-.notion-list-item a.notion-link[href],
-.notion-caption a.notion-link[href],
-.notion-quote a.notion-link[href] {
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-  display: inline !important;
-  position: relative;
-  text-decoration: none !important;
-  padding: 0 0.06em;
-  border-radius: 7px;
-
-  /* Yellow "marker" that animates nicely even when the link wraps lines.
-   * Use background-size instead of a ::after overlay to avoid awkward
-   * geometry across multi-line fragments.
-   */
-  background-image:
-    linear-gradient(hsl(38 100% 80% / 0.9), hsl(38 100% 80% / 0.9)),
-    linear-gradient(currentColor, currentColor);
-  background-repeat: no-repeat, no-repeat;
-  /* Keep the highlight anchored to the baseline so the animation doesn't "jump" on hover. */
-  background-position: 0 100%, 0 calc(100% - 0.08em);
-  /* 1) marker highlight height  2) underline width */
-  background-size: 100% 0.4em, 0% 1px;
-  transition: background-size 420ms cubic-bezier(0.2, 0.82, 0.2, 1),
-    color 160ms ease;
-  will-change: background-size;
-}
-
-.notion-root a.notion-link.link::after,
-.notion-text a.notion-link.link::after,
-.notion-link.link::after {
-  /* Disable the super-inline.css hover-highlighter pseudo-element: it doesn't
-   * render well when the link wraps across lines.
-   */
-  content: none !important;
-  display: none !important;
-}
-
-.notion-root a.notion-link.link:hover,
-.notion-text a.notion-link.link:hover,
-.notion-link.link:hover,
-.notion-text a.notion-link[href]:hover,
-.notion-list-item a.notion-link[href]:hover,
-.notion-caption a.notion-link[href]:hover,
-.notion-quote a.notion-link[href]:hover {
-  background-size: 100% 1.05em, 100% 1px;
-  /* Slower "ink rise" on hover for a more premium feel. */
-  transition-duration: 620ms, 160ms;
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1), ease;
-}
-
-.notion-root a.notion-link.link:focus-visible,
-.notion-text a.notion-link.link:focus-visible,
-.notion-link.link:focus-visible,
-.notion-text a.notion-link[href]:focus-visible,
-.notion-list-item a.notion-link[href]:focus-visible,
-.notion-caption a.notion-link[href]:focus-visible,
-.notion-quote a.notion-link[href]:focus-visible {
-  background-size: 100% 1.05em, 100% 1px;
-  transition-duration: 620ms, 160ms;
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1), ease;
-}
-
 /* Anchor arrival: brief, subtle highlight on the target block after TOC jumps. */
 [data-anchor-flash="true"] {
   position: relative;
@@ -426,9 +354,8 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notion-root a.notion-link.link,
-  .notion-text a.notion-link.link,
-  .notion-link.link {
+  /* Keep any hover-driven effects subtle for users that prefer reduced motion. */
+  a[class="notion-link link"] {
     transition: none !important;
   }
 }
@@ -578,6 +505,24 @@ html {
   font-size: var(--v1-type-small);
 }
 
+/* Inline code: Notion uses <code class="code"> (not Prism). */
+code.code {
+  font-family: Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+  font-size: 0.92em;
+  line-height: 1.35;
+  background: var(--color-code-bg);
+  color: rgb(55, 53, 47);
+  padding: 0.14em 0.32em;
+  border-radius: 4px;
+  border: 1px solid rgba(55, 53, 47, 0.08);
+}
+
+/* When code is inside a highlighted pill/badge, let the highlight background win. */
+.highlighted-background code.code {
+  background: transparent;
+  border-color: transparent;
+}
+
 .notion-toggle[data-toggle-kind="references"] .notion-toggle__content {
   font-size: var(--v1-type-ref);
   line-height: 1.55;
@@ -637,6 +582,74 @@ html {
 .notion-code pre {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+}
+
+/* Prism token colors (light) tuned to Notion code blocks. */
+.notion-code .token.comment,
+.notion-code .token.prolog,
+.notion-code .token.doctype,
+.notion-code .token.cdata {
+  color: rgba(55, 53, 47, 0.55);
+}
+
+.notion-code .token.punctuation {
+  color: rgba(55, 53, 47, 0.92);
+}
+
+.notion-code .token.namespace {
+  opacity: 0.7;
+}
+
+.notion-code .token.property,
+.notion-code .token.tag,
+.notion-code .token.constant,
+.notion-code .token.symbol,
+.notion-code .token.deleted {
+  color: #d73a49;
+}
+
+.notion-code .token.boolean,
+.notion-code .token.number {
+  color: #005cc5;
+}
+
+.notion-code .token.selector,
+.notion-code .token.attr-name,
+.notion-code .token.string,
+.notion-code .token.char,
+.notion-code .token.builtin,
+.notion-code .token.inserted {
+  color: #22863a;
+}
+
+.notion-code .token.operator,
+.notion-code .token.entity,
+.notion-code .token.url {
+  color: #b15c00;
+}
+
+.notion-code .token.atrule,
+.notion-code .token.attr-value,
+.notion-code .token.keyword {
+  color: #6f42c1;
+}
+
+.notion-code .token.function,
+.notion-code .token.class-name {
+  color: #005cc5;
+}
+
+.notion-code .token.regex,
+.notion-code .token.important,
+.notion-code .token.variable {
+  color: #e36209;
+}
+
+.notion-code .token.bold {
+  font-weight: 700;
+}
+.notion-code .token.italic {
+  font-style: italic;
 }
 
 /* Publications page: improve scan-ability while keeping the original v1 look. */
@@ -704,6 +717,8 @@ html {
   padding: 1px 6px;
   border-radius: 999px;
   font-size: 0.78em;
+  background: transparent;
+  border-color: transparent;
 }
 
 /* Optional: make long tables easier to read on desktop with sticky headers. */

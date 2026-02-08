@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -87,12 +86,26 @@ async function tryReadLocalBlogRss(): Promise<string | null> {
 }
 
 export async function getBlogPostSlugs(): Promise<string[]> {
-  const dir = path.join(process.cwd(), "content", "raw", "blog", "list");
-  const files = await readdir(dir);
-  return files
-    .filter((f) => f.endsWith(".html"))
-    .map((f) => f.slice(0, -".html".length))
-    .sort();
+  const dirs = [
+    path.join(process.cwd(), "content", "generated", "raw", "blog", "list"),
+    path.join(process.cwd(), "content", "raw", "blog", "list"),
+  ];
+
+  const out = new Set<string>();
+  for (const dir of dirs) {
+    try {
+      const files = await readdir(dir);
+      for (const f of files) {
+        if (!f.endsWith(".html")) continue;
+        const slug = f.slice(0, -".html".length);
+        if (slug) out.add(slug);
+      }
+    } catch {
+      // dir doesn't exist; skip
+    }
+  }
+
+  return Array.from(out).sort();
 }
 
 export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
@@ -100,20 +113,25 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
   const candidates = rss ? parseRssItemPaths(rss) : null;
 
   const items: BlogPostIndexItem[] = [];
-  const root = path.join(process.cwd(), "content", "raw");
 
+  // Prefer the locally-synced HTML files (authoritative after Notion sync).
+  // RSS is treated as a fallback for older builds that might not have files present.
+  const slugs = await getBlogPostSlugs();
   const paths =
-    candidates ??
-    (await getBlogPostSlugs()).map((s) => `/blog/list/${s}`);
+    slugs.length > 0
+      ? slugs.map((s) => `/blog/list/${s}`)
+      : candidates ?? [];
 
   for (const pathname of paths) {
     if (pathname.startsWith("/blog/list/")) {
       const slug = pathname.split("/").filter(Boolean)[2] || "";
       if (!slug) continue;
-      const local = path.join(root, "blog", "list", `${slug}.html`);
-      if (!fs.existsSync(local)) continue;
-
-      const main = await loadRawMainHtml(`blog/list/${slug}`);
+      let main: string;
+      try {
+        main = await loadRawMainHtml(`blog/list/${slug}`);
+      } catch {
+        continue;
+      }
       const meta = parseBlogMetaFromMain(main);
       items.push({
         kind: "list",
@@ -128,8 +146,6 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
 
     const slug = pathname.replace(/^\/+/, "").replace(/\/+$/, "");
     if (!slug) continue;
-    const local = path.join(root, `${slug}.html`);
-    if (!fs.existsSync(local)) continue;
 
     try {
       const main = await loadRawMainHtml(slug);

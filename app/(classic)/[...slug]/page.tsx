@@ -56,8 +56,10 @@ export async function generateStaticParams(): Promise<
 
   return rels
     .filter((rel) => rel !== "index")
-    // `/blog` is rendered by a dedicated route using a consistent template.
+    // `/blog` is rendered by a dedicated route to avoid route conflicts with `/blog/list`.
     .filter((rel) => rel !== "blog")
+    // `/blog/list` is rendered by a dedicated route using a consistent template.
+    .filter((rel) => rel !== "blog/list")
     // Blog posts are rendered by a dedicated route using a consistent template.
     .filter((rel) => !rel.startsWith("blog/list/"))
     .map((rel) => ({ slug: rel.split("/").filter(Boolean) }));

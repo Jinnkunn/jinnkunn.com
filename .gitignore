@@ -22,8 +22,12 @@
 /output/
 
 # notion generated content/assets (synced at build time)
-/content/generated/
+/content/generated/*
 /public/notion-assets/
+
+# Allow committing a small stub config file so middleware/imports work even
+# when Notion sync hasn't run locally.
+!/content/generated/protected-routes.json
 
 # production
 /build

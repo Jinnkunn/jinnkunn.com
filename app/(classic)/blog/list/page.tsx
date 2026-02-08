@@ -6,7 +6,7 @@ import { getBlogIndex } from "@/lib/blog";
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
-  title: "Blog",
+  title: "Blog List",
   description: "Jinkun's Blog",
 };
 
@@ -32,12 +32,15 @@ function PageIcon() {
   );
 }
 
-export default async function BlogPage() {
+export default async function BlogListPage() {
   const posts = await getBlogIndex();
 
   return (
-    <main id="page-blog" className="super-content page__blog parent-page__blog">
-      <div className="super-navbar__breadcrumbs" style={{ position: "absolute" }}>
+    <main id="page-blog-list" className="super-content page__blog-list parent-page__blog">
+      <div
+        className="super-navbar__breadcrumbs"
+        style={{ position: "absolute" }}
+      >
         <div className="notion-breadcrumb">
           <Link href="/" className="notion-link notion-breadcrumb__item single">
             <div className="notion-navbar__title notion-breadcrumb__title">
@@ -51,27 +54,27 @@ export default async function BlogPage() {
         <div className="notion-header__cover no-cover no-icon" />
         <div className="notion-header__content no-cover no-icon">
           <div className="notion-header__title-wrapper" style={{ display: "flex" }}>
-            <h1 className="notion-header__title">Blog</h1>
+            <h1 className="notion-header__title">List</h1>
           </div>
           <div className="notion-header__description notion-semantic-string" />
         </div>
       </div>
 
       <article
-        id="block-blog"
+        id="block-blog-list"
         className="notion-root full-width has-footer notion-collection notion-collection-page"
       >
         <div className="notion-collection-list" role="list" aria-label="Blog posts">
           {posts.map((p) => (
             <div
               key={p.href}
-              id={`block-blog-${p.slug}`}
+              id={`block-blog-list-${p.slug}`}
               className="notion-collection-list__item"
               role="listitem"
             >
               <Link
                 href={p.href}
-                id={`block-blog-${p.slug}`}
+                id={`block-blog-list-${p.slug}`}
                 className="notion-link notion-collection-list__item-anchor"
                 aria-label={p.dateText ? `${p.title} (${p.dateText})` : p.title}
               />
@@ -97,3 +100,4 @@ export default async function BlogPage() {
     </main>
   );
 }
+

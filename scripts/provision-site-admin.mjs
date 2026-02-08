@@ -76,6 +76,13 @@ function richText(content) {
   return [{ type: "text", text: { content: c } }];
 }
 
+function richTextLink(label, url) {
+  const l = String(label ?? "").trim();
+  const u = String(url ?? "").trim();
+  if (!l || !u) return richText(l);
+  return [{ type: "text", text: { content: l, link: { url: u } } }];
+}
+
 async function notionRequest(pathname, { method = "GET", body, searchParams } = {}) {
   const token = process.env.NOTION_TOKEN?.trim() ?? "";
   if (!token) throw new Error("Missing NOTION_TOKEN");
@@ -142,6 +149,10 @@ async function updateBlock(blockId, patch) {
   await notionRequest(`blocks/${blockId}`, { method: "PATCH", body: patch });
 }
 
+async function archiveBlock(blockId) {
+  await updateBlock(blockId, { archived: true });
+}
+
 async function findFirstJsonCodeBlock(blockId) {
   const blocks = await listBlockChildren(blockId);
   for (const b of blocks) {
@@ -169,6 +180,15 @@ function findTextBlock(blocks, { type, includes }) {
     if (text.toLowerCase().includes(want)) return b;
   }
   return null;
+}
+
+function getTextFromBlock(block) {
+  if (!block || typeof block !== "object") return "";
+  const type = block.type;
+  if (!type) return "";
+  const rt = block?.[type]?.rich_text ?? [];
+  if (!Array.isArray(rt)) return "";
+  return rt.map((x) => x?.plain_text ?? "").join("").trim();
 }
 
 function findHeadingBlock(blocks, { level, includes }) {
@@ -232,7 +252,7 @@ async function main() {
     await updateBlock(compactId(intro.id), {
       paragraph: {
         rich_text: richText(
-          "This page is the site backend. Edit the Settings / Navigation databases below, then trigger a deploy to publish changes.",
+          "This page is the site backend. Edit the Settings / Navigation databases below, then trigger a deploy to publish changes. Pages are discovered automatically from the configured Notion root (including database entries like Blog posts).",
         ),
       },
     });
@@ -251,6 +271,82 @@ async function main() {
   const hasSettingsDb = Boolean(findChildDatabaseBlock(blocks, "Site Settings"));
   const hasNavDb = Boolean(findChildDatabaseBlock(blocks, "Navigation"));
   const hasOverridesDb = Boolean(findChildDatabaseBlock(blocks, "Route Overrides"));
+  const hasProtectedDb = Boolean(findChildDatabaseBlock(blocks, "Protected Routes"));
+
+  // 0) Deploy section (best-effort). Notion doesn't support real "buttons", but a link works.
+  const deployHeading = findHeadingBlock(blocks, { level: 2, includes: "Deploy" });
+  {
+    const deployBase =
+      String(process.env.DEPLOY_BASE_URL || "").trim().replace(/\/+$/, "") ||
+      "https://jinnkunn-com.vercel.app";
+    const deployTokenRaw = String(process.env.DEPLOY_TOKEN || "").trim();
+    const deployToken =
+      deployTokenRaw && !["undefined", "null"].includes(deployTokenRaw.toLowerCase())
+        ? deployTokenRaw
+        : "";
+    const deployUrl = deployToken
+      ? `${deployBase}/api/deploy?token=${encodeURIComponent(deployToken)}`
+      : `${deployBase}/api/deploy?token=YOUR_DEPLOY_TOKEN`;
+
+    if (!deployHeading) {
+      await appendBlocks(adminPageId, [
+        { object: "block", type: "divider", divider: {} },
+        {
+          object: "block",
+          type: "heading_2",
+          heading_2: { rich_text: richText("Deploy") },
+        },
+        {
+          object: "block",
+          type: "callout",
+          callout: {
+            icon: { type: "emoji", emoji: "🚀" },
+            color: "gray_background",
+            rich_text: [
+              ...richText("Click to deploy: "),
+              ...richTextLink("Deploy now", deployUrl),
+            ],
+          },
+        },
+        {
+          object: "block",
+          type: "paragraph",
+          paragraph: {
+            rich_text: richText(
+              "If this link returns Unauthorized, set DEPLOY_TOKEN on Vercel and re-run this provision script with the same DEPLOY_TOKEN to update the link.",
+            ),
+          },
+        },
+      ]);
+    } else {
+      // Update existing deploy link if the section already exists.
+      const idx = blocks.findIndex((b) => compactId(b.id) === compactId(deployHeading.id));
+      const after = idx >= 0 ? blocks.slice(idx + 1) : blocks;
+      const callout = after.find((b) => b?.type === "callout");
+      if (callout) {
+        await updateBlock(compactId(callout.id), {
+          callout: {
+            ...(callout.callout || {}),
+            rich_text: [
+              ...richText("Click to deploy: "),
+              ...richTextLink("Deploy now", deployUrl),
+            ],
+          },
+        });
+      }
+
+      const tipText =
+        "If this link returns Unauthorized, set DEPLOY_TOKEN on Vercel and re-run this provision script with the same DEPLOY_TOKEN to update the link.";
+
+      // Update older tip copy (we've used a few variants across iterations).
+      const tip =
+        findTextBlock(after, { type: "paragraph", includes: "Unauthorized" }) ||
+        findTextBlock(after, { type: "paragraph", includes: "notion button" }) ||
+        findTextBlock(after, { type: "paragraph", includes: "deploy url" }) ||
+        findTextBlock(after, { type: "paragraph", includes: "tip:" });
+      if (tip) await updateBlock(compactId(tip.id), { paragraph: { rich_text: richText(tipText) } });
+    }
+  }
 
   // 1) Settings DB
   if (!hasSettingsDb) {
@@ -416,6 +512,59 @@ async function main() {
     }
   }
 
+  // 4) Protected Routes (Optional)
+  if (!hasProtectedDb) {
+    await appendBlocks(adminPageId, [
+      { object: "block", type: "divider", divider: {} },
+      {
+        object: "block",
+        type: "heading_2",
+        heading_2: { rich_text: richText("Protected Routes (Optional)") },
+      },
+      {
+        object: "block",
+        type: "paragraph",
+        paragraph: {
+          rich_text: richText(
+            "Add paths that should require a password. This is a lightweight access control feature (not intended for high-stakes security).",
+          ),
+        },
+      },
+    ]);
+
+    await createInlineDatabase({
+      parentPageId: adminPageId,
+      title: "Protected Routes",
+      properties: {
+        Name: { title: {} },
+        Path: { rich_text: {} },
+        Mode: {
+          select: {
+            options: [
+              { name: "exact", color: "gray" },
+              { name: "prefix", color: "brown" },
+            ],
+          },
+        },
+        Password: { rich_text: {} },
+        Enabled: { checkbox: {} },
+      },
+    });
+  }
+
+  // 5) Cleanup: archive obvious empty paragraphs that accumulate from manual edits.
+  // (Keep this conservative; we only remove blocks that are truly empty.)
+  for (const b of blocks) {
+    if (b?.type !== "paragraph") continue;
+    const t = getTextFromBlock(b);
+    if (t) continue;
+    try {
+      await archiveBlock(compactId(b.id));
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+
   console.log("[provision:admin] Done.");
 }
 
@@ -423,4 +572,3 @@ main().catch((err) => {
   console.error(err?.stack || String(err));
   process.exitCode = 1;
 });
-
