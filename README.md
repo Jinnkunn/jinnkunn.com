@@ -12,7 +12,7 @@ This repo can compile a Notion page tree into a static Next.js site.
 
 - Create a Notion page (e.g. `Site Admin`).
 - Under it, create child pages (these become site pages, recursive).
-- Add a **Code** block (language: `json`) containing site config. Example:
+- Add a **Code** block (language: `json`) containing site config (legacy/advanced). Example:
 
 ```json
 {
@@ -35,6 +35,22 @@ This repo can compile a Notion page tree into a static Next.js site.
     "homePageId": null
   }
 }
+```
+
+#### Optional: Provision Databases (Recommended)
+
+To make the `Site Admin` page feel like a real backend, you can provision 3 inline databases:
+
+- `Site Settings` (site name, SEO, content root/home page id)
+- `Navigation` (top nav + More dropdown)
+- `Route Overrides` (optional pageId -> route mapping)
+
+If these databases exist, `npm run sync:notion` will prefer them over the JSON code block.
+
+To auto-create and seed them from the existing JSON config:
+
+```bash
+npm run provision:admin
 ```
 
 ### 2) Notion Integration + Env Vars

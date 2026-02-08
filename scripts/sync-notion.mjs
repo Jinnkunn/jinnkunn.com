@@ -52,6 +52,8 @@ const DEFAULT_CONFIG = {
   content: {
     rootPageId: null, // defaults to NOTION_SITE_ADMIN_PAGE_ID
     homePageId: null, // defaults to first child page titled "Home"/"Index" (or the first child page)
+    // Optional: map Notion page id -> route path (e.g. { "<pageId>": "/chen" }).
+    routeOverrides: null,
   },
 };
 
@@ -193,6 +195,28 @@ async function listBlockChildren(blockId) {
   return out;
 }
 
+async function queryDatabase(databaseId, { filter, sorts } = {}) {
+  const out = [];
+  let cursor = undefined;
+  for (;;) {
+    const data = await notionRequest(`databases/${databaseId}/query`, {
+      method: "POST",
+      body: {
+        page_size: 100,
+        start_cursor: cursor,
+        filter,
+        sorts,
+      },
+    });
+    const results = Array.isArray(data?.results) ? data.results : [];
+    out.push(...results);
+    if (!data?.has_more) break;
+    cursor = data?.next_cursor;
+    if (!cursor) break;
+  }
+  return out;
+}
+
 async function hydrateBlocks(blocks) {
   for (const b of blocks) {
     if (b?.has_children) {
@@ -227,6 +251,154 @@ async function findFirstJsonCodeBlock(blockId, maxDepth = 4) {
   }
 
   return null;
+}
+
+async function findChildDatabases(blockId, maxDepth = 4) {
+  const out = [];
+  const blocks = await listBlockChildren(blockId);
+  for (const b of blocks) {
+    if (b?.type === "child_database") {
+      out.push({
+        id: compactId(b.id),
+        title: b.child_database?.title ?? "",
+      });
+      continue;
+    }
+  }
+
+  if (maxDepth <= 0) return out;
+  for (const b of blocks) {
+    if (!b?.has_children) continue;
+    out.push(...(await findChildDatabases(b.id, maxDepth - 1)));
+  }
+
+  return out;
+}
+
+function propPlainTextFromRichText(prop) {
+  const rt = prop?.rich_text ?? [];
+  if (!Array.isArray(rt)) return "";
+  return rt.map((x) => x?.plain_text ?? "").join("");
+}
+
+function propPlainTextFromTitle(prop) {
+  const rt = prop?.title ?? [];
+  if (!Array.isArray(rt)) return "";
+  return rt.map((x) => x?.plain_text ?? "").join("");
+}
+
+function getProperty(page, name) {
+  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
+  return props[name];
+}
+
+function getPropString(page, name) {
+  const p = getProperty(page, name);
+  if (!p || typeof p !== "object") return "";
+  if (p.type === "title") return propPlainTextFromTitle(p).trim();
+  if (p.type === "rich_text") return propPlainTextFromRichText(p).trim();
+  if (p.type === "select") return (p.select?.name ?? "").trim();
+  if (p.type === "url") return (p.url ?? "").trim();
+  return "";
+}
+
+function getPropNumber(page, name) {
+  const p = getProperty(page, name);
+  if (!p || typeof p !== "object") return null;
+  if (p.type !== "number") return null;
+  return typeof p.number === "number" ? p.number : null;
+}
+
+function getPropCheckbox(page, name) {
+  const p = getProperty(page, name);
+  if (!p || typeof p !== "object") return null;
+  if (p.type !== "checkbox") return null;
+  return typeof p.checkbox === "boolean" ? p.checkbox : null;
+}
+
+function findDbByTitle(databases, title) {
+  const want = slugify(title);
+  return databases.find((d) => slugify(d.title) === want) || null;
+}
+
+async function loadConfigFromAdminDatabases(adminPageId) {
+  // These databases are provisioned by `scripts/provision-site-admin.mjs`.
+  const databases = await findChildDatabases(adminPageId);
+  const settingsDb = findDbByTitle(databases, "Site Settings");
+  const navDb = findDbByTitle(databases, "Navigation");
+  const overridesDb = findDbByTitle(databases, "Route Overrides");
+
+  if (!settingsDb && !navDb && !overridesDb) return null;
+
+  const cfg = structuredClone(DEFAULT_CONFIG);
+
+  // 1) Site Settings (single-row)
+  if (settingsDb) {
+    const rows = await queryDatabase(settingsDb.id);
+    const row = rows[0];
+    if (row) {
+      const siteName = getPropString(row, "Site Name");
+      const lang = getPropString(row, "Lang");
+      const seoTitle = getPropString(row, "SEO Title");
+      const seoDescription = getPropString(row, "SEO Description");
+      const favicon = getPropString(row, "Favicon");
+      const rootPageId = getPropString(row, "Root Page ID");
+      const homePageId = getPropString(row, "Home Page ID");
+
+      if (siteName) cfg.siteName = siteName;
+      if (lang) cfg.lang = lang;
+      if (seoTitle) cfg.seo.title = seoTitle;
+      if (seoDescription) cfg.seo.description = seoDescription;
+      if (favicon) cfg.seo.favicon = favicon;
+      if (rootPageId) cfg.content.rootPageId = rootPageId;
+      if (homePageId) cfg.content.homePageId = homePageId;
+    }
+  }
+
+  // 2) Navigation
+  if (navDb) {
+    const rows = await queryDatabase(navDb.id);
+    const items = rows
+      .map((row) => {
+        const enabled = getPropCheckbox(row, "Enabled");
+        const group = (getPropString(row, "Group") || "").toLowerCase();
+        const href = getPropString(row, "Href");
+        const label = getPropString(row, "Label") || getPropString(row, "Name");
+        const order = getPropNumber(row, "Order") ?? 0;
+        return { enabled, group, href, label, order };
+      })
+      .filter((it) => (it.enabled ?? true) && it.href && it.label && it.group);
+
+    const sortByOrder = (a, b) => (a.order || 0) - (b.order || 0);
+    const top = items
+      .filter((it) => it.group === "top")
+      .sort(sortByOrder)
+      .map(({ href, label }) => ({ href, label }));
+    const more = items
+      .filter((it) => it.group === "more")
+      .sort(sortByOrder)
+      .map(({ href, label }) => ({ href, label }));
+
+    if (top.length) cfg.nav.top = top;
+    if (more.length) cfg.nav.more = more;
+  }
+
+  // 3) Route Overrides
+  if (overridesDb) {
+    const rows = await queryDatabase(overridesDb.id);
+    const overrides = {};
+    for (const row of rows) {
+      const enabled = getPropCheckbox(row, "Enabled");
+      if (enabled === false) continue;
+      const pageId = getPropString(row, "Page ID");
+      const routePath = getPropString(row, "Route Path");
+      if (!pageId || !routePath) continue;
+      overrides[pageId] = routePath;
+    }
+    if (Object.keys(overrides).length) cfg.content.routeOverrides = overrides;
+  }
+
+  return cfg;
 }
 
 async function getPageTitle(pageId) {
@@ -680,9 +852,10 @@ async function main() {
     );
   }
 
-  const configJson = await findFirstJsonCodeBlock(adminPageId);
+  const dbCfg = await loadConfigFromAdminDatabases(adminPageId);
+  const configJson = dbCfg ? null : await findFirstJsonCodeBlock(adminPageId);
   const parsed = configJson ? JSON.parse(configJson) : {};
-  const cfg = deepMerge(DEFAULT_CONFIG, parsed);
+  const cfg = deepMerge(DEFAULT_CONFIG, dbCfg || parsed);
 
   const rootPageId = compactId(cfg?.content?.rootPageId) || adminPageId;
   const configuredHomePageId = compactId(cfg?.content?.homePageId);
