@@ -37,6 +37,9 @@ const DEFAULT_CONFIG = {
       "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
     favicon: "/assets/favicon.png",
   },
+  integrations: {
+    googleAnalyticsId: "",
+  },
   nav: {
     top: [
       { href: "/", label: "Home" },
@@ -385,6 +388,7 @@ async function loadConfigFromAdminDatabases(adminPageId) {
       const seoTitle = getPropString(row, "SEO Title");
       const seoDescription = getPropString(row, "SEO Description");
       const favicon = getPropString(row, "Favicon");
+      const gaId = getPropString(row, "Google Analytics ID");
       const rootPageId = getPropString(row, "Root Page ID");
       const homePageId = getPropString(row, "Home Page ID");
 
@@ -393,6 +397,10 @@ async function loadConfigFromAdminDatabases(adminPageId) {
       if (seoTitle) cfg.seo.title = seoTitle;
       if (seoDescription) cfg.seo.description = seoDescription;
       if (favicon) cfg.seo.favicon = favicon;
+      if (gaId) {
+        cfg.integrations = cfg.integrations || {};
+        cfg.integrations.googleAnalyticsId = gaId;
+      }
       if (rootPageId) cfg.content.rootPageId = rootPageId;
       if (homePageId) cfg.content.homePageId = homePageId;
     }

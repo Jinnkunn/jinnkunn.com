@@ -25,6 +25,9 @@ const DEFAULT_CONFIG = {
       "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
     favicon: "/assets/favicon.png",
   },
+  integrations: {
+    googleAnalyticsId: "",
+  },
   nav: {
     top: [
       { href: "/", label: "Home" },
@@ -151,6 +154,10 @@ async function updateBlock(blockId, patch) {
 
 async function updateDatabase(databaseId, patch) {
   await notionRequest(`databases/${databaseId}`, { method: "PATCH", body: patch });
+}
+
+async function getDatabase(databaseId) {
+  return await notionRequest(`databases/${databaseId}`, { method: "GET" });
 }
 
 async function archiveBlock(blockId) {
@@ -480,6 +487,7 @@ async function main() {
         "SEO Title": { rich_text: {} },
         "SEO Description": { rich_text: {} },
         Favicon: { rich_text: {} },
+        "Google Analytics ID": { rich_text: {} },
         "Root Page ID": { rich_text: {} },
         "Home Page ID": { rich_text: {} },
       },
@@ -494,10 +502,28 @@ async function main() {
         "SEO Title": { rich_text: richText(cfg.seo?.title) },
         "SEO Description": { rich_text: richText(cfg.seo?.description) },
         Favicon: { rich_text: richText(cfg.seo?.favicon) },
+        "Google Analytics ID": {
+          rich_text: richText(cfg.integrations?.googleAnalyticsId || ""),
+        },
         "Root Page ID": { rich_text: richText(cfg.content?.rootPageId) },
         "Home Page ID": { rich_text: richText(cfg.content?.homePageId) },
       },
     });
+  } else {
+    // Upgrade schema if Site Settings already exists.
+    const dbBlock = findChildDatabaseBlock(blocks, "Site Settings");
+    const dbId = dbBlock ? compactId(dbBlock.id) : "";
+    if (dbId) {
+      const db = await getDatabase(dbId).catch(() => null);
+      const props = db?.properties && typeof db.properties === "object" ? db.properties : {};
+      if (!props["Google Analytics ID"]) {
+        await updateDatabase(dbId, {
+          properties: {
+            "Google Analytics ID": { rich_text: {} },
+          },
+        });
+      }
+    }
   }
 
   // 1.5) Deploy Logs DB (Optional but recommended)

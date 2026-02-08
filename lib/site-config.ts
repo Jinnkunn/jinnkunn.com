@@ -15,6 +15,9 @@ export type SiteConfig = {
     description: string;
     favicon: string; // Path under /public (e.g. "/assets/favicon.png")
   };
+  integrations?: {
+    googleAnalyticsId?: string; // GA4 measurement ID (e.g. "G-XXXXXXX")
+  };
   nav: {
     top: NavItem[];
     more: NavItem[];
@@ -30,6 +33,7 @@ const DEFAULT_CONFIG: SiteConfig = {
       "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
     favicon: "/assets/favicon.png",
   },
+  integrations: {},
   nav: {
     top: [
       { href: "/", label: "Home" },
@@ -82,6 +86,13 @@ function normalizeConfig(input: unknown): SiteConfig {
     cfg.seo.favicon = asString(input.seo.favicon) ?? cfg.seo.favicon;
   }
 
+  if (isObject(input.integrations)) {
+    cfg.integrations = cfg.integrations ?? {};
+    cfg.integrations.googleAnalyticsId =
+      asString(input.integrations.googleAnalyticsId) ??
+      cfg.integrations.googleAnalyticsId;
+  }
+
   if (isObject(input.nav)) {
     cfg.nav.top = asNavItems(input.nav.top) ?? cfg.nav.top;
     cfg.nav.more = asNavItems(input.nav.more) ?? cfg.nav.more;
@@ -120,4 +131,3 @@ export const getSiteConfig = cache((): SiteConfig => {
   const parsed = readJsonFile(file);
   return normalizeConfig(parsed);
 });
-
