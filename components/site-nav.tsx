@@ -201,16 +201,6 @@ export default function SiteNav() {
           />
 
           <div className="super-navbar__menu-surface">
-            <div className="super-navbar__menu-actions">
-              <button
-                id="mobile-close"
-                type="button"
-                className="super-navbar__item super-navbar__menu-close"
-                aria-label="Close menu"
-              >
-                Close
-              </button>
-            </div>
             <div className="super-navigation-menu__items-wrapper">
               <div className="super-navigation-menu__items">
                 {[...topItems, ...moreItems].map((it) => (
@@ -223,6 +213,34 @@ export default function SiteNav() {
                   </Link>
                 ))}
               </div>
+            </div>
+
+            {/* Mobile: close action belongs after the nav items (less empty space up top). */}
+            <div className="super-navbar__menu-footer">
+              <button
+                id="mobile-close"
+                type="button"
+                className="super-navbar__menu-close"
+                aria-label="Close menu"
+              >
+                <span className="sr-only">Close</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
