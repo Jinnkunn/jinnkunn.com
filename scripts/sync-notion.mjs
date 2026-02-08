@@ -124,6 +124,17 @@ function normalizeRoutePath(p) {
   return out || "/";
 }
 
+function normalizeHref(href) {
+  const raw = String(href || "").trim();
+  if (!raw) return "";
+
+  // Keep absolute/external links intact.
+  if (/^(https?:\/\/|mailto:|tel:|#)/i.test(raw)) return raw;
+
+  // Treat everything else as an internal route.
+  return normalizeRoutePath(raw);
+}
+
 function sha256Hex(input) {
   return crypto.createHash("sha256").update(String(input), "utf8").digest("hex");
 }
@@ -382,7 +393,7 @@ async function loadConfigFromAdminDatabases(adminPageId) {
       .map((row) => {
         const enabled = getPropCheckbox(row, "Enabled");
         const group = (getPropString(row, "Group") || "").toLowerCase();
-        const href = getPropString(row, "Href");
+        const href = normalizeHref(getPropString(row, "Href"));
         const label = getPropString(row, "Label") || getPropString(row, "Name");
         const order = getPropNumber(row, "Order") ?? 0;
         return { enabled, group, href, label, order };
@@ -411,7 +422,7 @@ async function loadConfigFromAdminDatabases(adminPageId) {
       const enabled = getPropCheckbox(row, "Enabled");
       if (enabled === false) continue;
       const pageId = getPropString(row, "Page ID");
-      const routePath = getPropString(row, "Route Path");
+      const routePath = normalizeRoutePath(getPropString(row, "Route Path"));
       if (!pageId || !routePath) continue;
       overrides[pageId] = routePath;
     }
@@ -609,7 +620,7 @@ function assignRoutes(nodes, { homePageId, routeOverrides }, parentSegments = []
       n.routeSegments = [];
       n.routePath = "/";
     } else if (routeOverrides && routeOverrides.has(n.id)) {
-      const routePath = routeOverrides.get(n.id);
+      const routePath = normalizeRoutePath(routeOverrides.get(n.id));
       n.routePath = routePath;
       n.routeSegments =
         routePath === "/" ? [] : routePath.split("/").filter(Boolean);
