@@ -149,6 +149,10 @@ async function updateBlock(blockId, patch) {
   await notionRequest(`blocks/${blockId}`, { method: "PATCH", body: patch });
 }
 
+async function updateDatabase(databaseId, patch) {
+  await notionRequest(`databases/${databaseId}`, { method: "PATCH", body: patch });
+}
+
 async function archiveBlock(blockId) {
   await updateBlock(blockId, { archived: true });
 }
@@ -245,6 +249,10 @@ async function main() {
   const jsonBlock = await findFirstJsonCodeBlock(adminPageId);
   const parsed = jsonBlock?.json ? JSON.parse(jsonBlock.json) : {};
   const cfg = deepMerge(DEFAULT_CONFIG, parsed);
+
+  // Cleanup: remove older helper copy that is now redundant with the Settings DB.
+  const contentRoot = findTextBlock(blocks, { type: "paragraph", includes: "content root page:" });
+  if (contentRoot) await archiveBlock(compactId(contentRoot.id));
 
   // Update copy to point people at the databases first.
   const intro = findTextBlock(blocks, { type: "paragraph", includes: "site backend" });
@@ -421,7 +429,7 @@ async function main() {
         type: "paragraph",
         paragraph: {
           rich_text: richText(
-            "Each time you click Deploy now, the site will write a row here with the trigger timestamp + response. This makes the backend feel more like Super.so.",
+            "Each time you click Deploy now, the site writes a row here. With the Vercel webhook configured, the status will auto-update to Ready/Error when the deploy finishes.",
           ),
         },
       },
@@ -437,15 +445,84 @@ async function main() {
           select: {
             options: [
               { name: "Triggered", color: "green" },
+              { name: "Building", color: "yellow" },
+              { name: "Ready", color: "blue" },
+              { name: "Error", color: "red" },
+              { name: "Canceled", color: "gray" },
               { name: "Failed", color: "red" },
             ],
           },
         },
+        Target: {
+          select: {
+            options: [
+              { name: "production", color: "green" },
+              { name: "preview", color: "gray" },
+              { name: "staging", color: "orange" },
+            ],
+          },
+        },
+        "Deployment ID": { rich_text: {} },
+        Deployment: { url: {} },
+        Dashboard: { url: {} },
+        "Last Event": { rich_text: {} },
         "HTTP Status": { number: { format: "number" } },
         Request: { url: {} },
         Message: { rich_text: {} },
       },
     });
+  } else {
+    // Upgrade schema if Deploy Logs already exists.
+    const dbBlock = findChildDatabaseBlock(blocks, "Deploy Logs");
+    if (dbBlock) {
+      const dbId = compactId(dbBlock.id);
+      await updateDatabase(dbId, {
+        properties: {
+          Result: {
+            select: {
+              options: [
+                { name: "Triggered", color: "green" },
+                { name: "Building", color: "yellow" },
+                { name: "Ready", color: "blue" },
+                { name: "Error", color: "red" },
+                { name: "Canceled", color: "gray" },
+                { name: "Failed", color: "red" },
+              ],
+            },
+          },
+          Target: {
+            select: {
+              options: [
+                { name: "production", color: "green" },
+                { name: "preview", color: "gray" },
+                { name: "staging", color: "orange" },
+              ],
+            },
+          },
+          "Deployment ID": { rich_text: {} },
+          Deployment: { url: {} },
+          Dashboard: { url: {} },
+          "Last Event": { rich_text: {} },
+        },
+      });
+    }
+
+    // Refresh the descriptive paragraph copy (avoid older variants lingering).
+    const deployLogsHeading = findHeadingBlock(blocks, { level: 2, includes: "Deploy Logs" });
+    if (deployLogsHeading) {
+      const idx = blocks.findIndex((b) => compactId(b.id) === compactId(deployLogsHeading.id));
+      const after = idx >= 0 ? blocks.slice(idx + 1) : blocks;
+      const p = after.find((b) => b?.type === "paragraph");
+      if (p) {
+        await updateBlock(compactId(p.id), {
+          paragraph: {
+            rich_text: richText(
+              "Each time you click Deploy now, the site writes a row here. With the Vercel webhook configured, the status will auto-update to Ready/Error when the deploy finishes.",
+            ),
+          },
+        });
+      }
+    }
   }
 
   // 2) Navigation DB
