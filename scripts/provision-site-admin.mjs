@@ -272,6 +272,7 @@ async function main() {
   const hasNavDb = Boolean(findChildDatabaseBlock(blocks, "Navigation"));
   const hasOverridesDb = Boolean(findChildDatabaseBlock(blocks, "Route Overrides"));
   const hasProtectedDb = Boolean(findChildDatabaseBlock(blocks, "Protected Routes"));
+  const hasDeployLogsDb = Boolean(findChildDatabaseBlock(blocks, "Deploy Logs"));
 
   // 0) Deploy section (best-effort). Notion doesn't support real "buttons", but a link works.
   const deployHeading = findHeadingBlock(blocks, { level: 2, includes: "Deploy" });
@@ -401,6 +402,47 @@ async function main() {
         Favicon: { rich_text: richText(cfg.seo?.favicon) },
         "Root Page ID": { rich_text: richText(cfg.content?.rootPageId) },
         "Home Page ID": { rich_text: richText(cfg.content?.homePageId) },
+      },
+    });
+  }
+
+  // 1.5) Deploy Logs DB (Optional but recommended)
+  if (!hasDeployLogsDb) {
+    await appendBlocks(adminPageId, [
+      { object: "block", type: "divider", divider: {} },
+      {
+        object: "block",
+        type: "heading_2",
+        heading_2: { rich_text: richText("Deploy Logs") },
+      },
+      {
+        object: "block",
+        type: "paragraph",
+        paragraph: {
+          rich_text: richText(
+            "Each time you click Deploy now, the site will write a row here with the trigger timestamp + response. This makes the backend feel more like Super.so.",
+          ),
+        },
+      },
+    ]);
+
+    await createInlineDatabase({
+      parentPageId: adminPageId,
+      title: "Deploy Logs",
+      properties: {
+        Name: { title: {} },
+        "Triggered At": { date: {} },
+        Result: {
+          select: {
+            options: [
+              { name: "Triggered", color: "green" },
+              { name: "Failed", color: "red" },
+            ],
+          },
+        },
+        "HTTP Status": { number: { format: "number" } },
+        Request: { url: {} },
+        Message: { rich_text: {} },
       },
     });
   }
