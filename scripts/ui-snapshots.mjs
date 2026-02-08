@@ -113,8 +113,8 @@ async function main() {
     const targets = [
       "/", // navbar + hero layout
       "/news", // dated headings + link styles
-      "/blog", // list template
-      "/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models", // long links + toggle + TOC
+      "/blog", // blog home (Notion page)
+      "/blog/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models", // long links + toggle + TOC
       "/publications", // long toggle summaries + metadata
       "/works", // toggles
       "/notice", // link styles + lists

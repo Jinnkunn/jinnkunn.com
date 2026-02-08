@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteNavBehavior from "@/components/site-nav-behavior";
+import SiteSearchBehavior from "@/components/site-search-behavior";
 import { getSiteConfig } from "@/lib/site-config";
 
 type MenuItem = {
@@ -41,6 +42,8 @@ export default function SiteNav() {
     >
       {/* Tiny client-side enhancer: handles open/close, scroll lock, and active link classes. */}
       <SiteNavBehavior />
+      {/* Search overlay behavior (Super-like). */}
+      <SiteSearchBehavior />
 
       <div className="super-navbar__content">
         <Link href="/" className="notion-link super-navbar__logo">
@@ -94,7 +97,15 @@ export default function SiteNav() {
         </div>
 
         <div className="super-navbar__actions">
-          <div className="super-navbar__button super-navbar__search" aria-hidden>
+          <button
+            id="search-trigger"
+            type="button"
+            className="super-navbar__button super-navbar__search"
+            aria-label="Search"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="notion-search"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="20"
@@ -110,7 +121,7 @@ export default function SiteNav() {
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.3-4.3" />
             </svg>
-          </div>
+          </button>
 
           <button
             id="mobile-trigger"

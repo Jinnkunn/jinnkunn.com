@@ -60,6 +60,19 @@ a[href*="semanticscholar.org/"].notion-link.link:before {
   background-position: center;
 }
 
+/* Icon-prefixed links: keep the highlight background aligned to the text (not under the icon). */
+a[href="/chen"].notion-link.link,
+a[href="https://twitter.com/_jinnkunn"].notion-link.link,
+a[href="/blog"].notion-link.link,
+a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link,
+a[href="https://dal.ca/"].notion-link.link,
+a[href*="scholar.google"].notion-link.link,
+a[href*="researchgate.net"].notion-link.link,
+a[href^="https://orcid.org/"].notion-link.link,
+a[href*="semanticscholar.org/"].notion-link.link {
+  --link-highlight-left: 28px;
+}
+
 /*a[href="https://exorcat.com"].notion-link.link:before {*/
 /*  background-image: url(/web_image/exorcat.svg);*/
 /*  background-size: 26px 26px;*/
@@ -929,8 +942,9 @@ html.theme-light {
       --image-border-radii: calc(var(--border-radii-layout) - 5px);
       /* Typography */
       --title-size: 2.5rem;
-      --quote-size: 1.2rem;
-      --quote-size-large: 1.4rem;
+      /* Super/Site parity: quotes (used heavily in Publications toggles) should read like body text. */
+      --quote-size: 1rem;
+      --quote-size-large: 1.1rem;
       --heading-size: 1rem;
       --primary-font: Noto Sans, Noto Sans-fallback, Helvetica, Apple Color Emoji,
         Segoe UI Emoji, NotoColorEmoji, Noto Color Emoji,
@@ -978,9 +992,10 @@ a[class="notion-link link"] {
   display: inline-block;
   position: relative;
   z-index: 0;
+  --link-highlight-left: 0px;
   text-decoration-line: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.18em;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
   text-decoration-skip-ink: auto;
   text-decoration-color: rgba(55, 53, 47, 0.55);
 }
@@ -990,11 +1005,12 @@ a[class="notion-link link"]:after {
   position: absolute;
   top: 66%;
   bottom: 0;
-  left: 0;
+  left: var(--link-highlight-left);
   right: -0.1em;
   background-color: hsl(38, 152%, 80%);
   z-index: -1;
-  transition: top 800ms cubic-bezier(0, 0.8, 0.13, 1);
+  border-radius: 4px;
+  transition: top 980ms cubic-bezier(0, 0.8, 0.13, 1);
 }
 
 html.theme-light .notion-semantic-string .link {

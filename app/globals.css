@@ -732,20 +732,26 @@ html {
 }
 
 .notion-lightbox__close {
-  position: absolute;
-  top: -14px;
-  right: -14px;
-  width: 40px;
-  height: 40px;
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(20, 20, 20, 0.55);
   color: #fff;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
 }
 
 .notion-lightbox__close:hover {
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(20, 20, 20, 0.72);
 }
 
 @media (max-width: 546px) {
@@ -753,8 +759,8 @@ html {
     padding: 16px;
   }
   .notion-lightbox__close {
-    top: -10px;
-    right: -10px;
+    top: 14px;
+    right: 14px;
   }
 }
 
@@ -791,6 +797,30 @@ html {
   outline: 2px solid rgba(46, 170, 220, 0.7);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+/* Publications: add the subtle gray "row" affordance on hover/open (as in the original Super site). */
+.page__publications .notion-toggle__summary {
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-inline-start: -12px; /* keep text aligned while enlarging the hover target */
+  margin-inline-end: -12px;
+  transition: background-color 140ms ease;
+}
+
+.page__publications .notion-toggle__summary:hover {
+  background: rgba(55, 53, 47, 0.06);
+}
+
+.page__publications .notion-toggle.open > .notion-toggle__summary {
+  background: rgba(55, 53, 47, 0.06);
+}
+
+/* Publications: the inline "conference"/labels are Notion inline code; tighten to match the original chips. */
+.page__publications .notion-toggle__summary .notion-semantic-string .code,
+.page__publications .notion-toggle__content .notion-semantic-string .code {
+  border-radius: 3px;
+  padding: 0.16em 0.34em;
 }
 
 /* Publications: Super-like grey hover/selected state for each entry title. */

@@ -203,7 +203,13 @@ function ensureLightbox(): {
 
   el.innerHTML = `
     <div class="notion-lightbox__surface">
-      <button type="button" class="notion-lightbox__close" aria-label="Close">×</button>
+      <button type="button" class="notion-lightbox__close" aria-label="Close">
+        <span class="sr-only">Close</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <path d="M18 6 6 18"></path>
+          <path d="m6 6 12 12"></path>
+        </svg>
+      </button>
       <img class="notion-lightbox__img" alt="" />
     </div>
   `;
@@ -656,7 +662,14 @@ export default function NotionBlockBehavior() {
         const src = findLightboxSrcFromTarget(target);
         if (src) {
           // Home page profile photo should not be zoomable.
-          if (/\/assets\/profile\.png(\?|#|$)/.test(src)) return;
+          // We can't rely on the image URL (Notion assets vary), so use layout heuristics:
+          // first column image within the home hero column list.
+          const isHomeHeroProfile =
+            Boolean(target.closest(".page__index")) &&
+            Boolean(target.closest(".notion-column-list")) &&
+            Boolean(target.closest(".notion-column")?.matches?.(":first-child")) &&
+            Boolean(target.closest(".notion-image"));
+          if (isHomeHeroProfile) return;
           e.preventDefault();
           e.stopPropagation();
           openLightbox(src);

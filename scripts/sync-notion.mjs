@@ -1351,15 +1351,35 @@ function renderCollectionListItem(item, { listKey }) {
       )}</span></div>`
     : "";
 
+  const href = canonicalizePublicHref(item.routePath);
+
   return `<div id="${escapeHtml(
     blockId,
   )}" class="notion-collection-list__item "><a id="${escapeHtml(
     blockId,
   )}" href="${escapeHtml(
-    item.routePath,
+    href,
   )}" class="notion-link notion-collection-list__item-anchor"></a><div class="notion-property notion-property__title notion-semantic-string"><div class="notion-property__title__icon-wrapper">${pageIconSvg()}</div>${escapeHtml(
     item.title,
   )}</div><div class="notion-collection-list__item-content">${dateHtml}</div></div>`;
+}
+
+function canonicalizePublicHref(href) {
+  const p = String(href || "");
+  if (!p.startsWith("/")) return p;
+
+  // Canonicalize blog collection paths to avoid redirect hops:
+  // - /blog/list/<slug> -> /blog/<slug>
+  // - /list/<slug> -> /blog/<slug>
+  if (p === "/blog/list" || p.startsWith("/blog/list/")) {
+    const rest = p.replace(/^\/blog\/list\/?/, "");
+    return rest ? `/blog/${rest}` : "/blog";
+  }
+  if (p === "/list" || p.startsWith("/list/")) {
+    const rest = p.replace(/^\/list\/?/, "");
+    return rest ? `/blog/${rest}` : "/blog";
+  }
+  return p;
 }
 
 function renderDatabaseMain(db, cfg, ctx) {
