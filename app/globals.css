@@ -370,6 +370,12 @@ html {
   cursor: zoom-in;
 }
 
+/* Home page profile photo should not look interactive (no zoom). */
+.page__index .notion-image img[src*="/assets/profile.png"],
+.page__index .notion-image img[src*="profile.png"] {
+  cursor: default;
+}
+
 .notion-lightbox {
   position: fixed;
   inset: 0;

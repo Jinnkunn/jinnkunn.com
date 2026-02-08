@@ -655,6 +655,8 @@ export default function NotionBlockBehavior() {
       if (isNotionImage) {
         const src = findLightboxSrcFromTarget(target);
         if (src) {
+          // Home page profile photo should not be zoomable.
+          if (/\/assets\/profile\.png(\?|#|$)/.test(src)) return;
           e.preventDefault();
           e.stopPropagation();
           openLightbox(src);
