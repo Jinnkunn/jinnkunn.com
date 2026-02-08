@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getSiteConfig } from "@/lib/site-config";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -23,7 +24,10 @@ export default function RootLayout({
   const cfg = getSiteConfig();
   return (
     <html lang={cfg.lang || "en"} dir="ltr" className="theme-light">
-      <body>{children}</body>
+      <body>
+        {children}
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
