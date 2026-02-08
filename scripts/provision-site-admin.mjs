@@ -157,7 +157,7 @@ async function archiveBlock(blockId) {
   await updateBlock(blockId, { archived: true });
 }
 
-async function findFirstJsonCodeBlock(blockId) {
+async function findFirstJsonCodeBlock(blockId, maxDepth = 4) {
   const blocks = await listBlockChildren(blockId);
   for (const b of blocks) {
     if (b?.type !== "code") continue;
@@ -172,6 +172,14 @@ async function findFirstJsonCodeBlock(blockId) {
       // keep looking
     }
   }
+
+  if (maxDepth <= 0) return null;
+  for (const b of blocks) {
+    if (!b?.has_children) continue;
+    const found = await findFirstJsonCodeBlock(b.id, maxDepth - 1);
+    if (found) return found;
+  }
+
   return null;
 }
 
@@ -266,13 +274,89 @@ async function main() {
     });
   }
 
-  const jsonHeading = findHeadingBlock(blocks, { level: 2, includes: "Site config" });
-  if (jsonHeading) {
-    await updateBlock(compactId(jsonHeading.id), {
-      heading_2: {
-        rich_text: richText("Advanced config (JSON fallback)"),
-      },
-    });
+  // Hide the JSON fallback by moving it into a toggle at the bottom of the page.
+  // This keeps the page feeling like a real backend (Super.so style) while still
+  // preserving the fallback for local dev / emergency recovery.
+  const hasAdvancedToggle = blocks.some((b) => {
+    if (b?.type !== "toggle") return false;
+    return getTextFromBlock(b).toLowerCase().includes("advanced config");
+  });
+
+  const jsonHeading =
+    findHeadingBlock(blocks, { level: 2, includes: "Advanced config" }) ||
+    findHeadingBlock(blocks, { level: 2, includes: "Site config" });
+
+  if (!hasAdvancedToggle && jsonHeading) {
+    const idx = blocks.findIndex((b) => compactId(b.id) === compactId(jsonHeading.id));
+    let codeBlock = null;
+    for (let i = idx + 1; i < blocks.length && i < idx + 10; i++) {
+      const b = blocks[i];
+      if (b?.type === "code") {
+        const rt = b?.code?.rich_text ?? [];
+        const text = rt.map((x) => x?.plain_text ?? "").join("");
+        const t = text.trim();
+        if (t.startsWith("{")) {
+          try {
+            JSON.parse(t);
+            codeBlock = b;
+          } catch {
+            // not json
+          }
+        }
+        break;
+      }
+      if (b?.type?.startsWith("heading_") || b?.type === "child_database") break;
+    }
+
+    // Only migrate if we actually found a valid JSON code block.
+    const jsonText =
+      codeBlock?.type === "code"
+        ? (codeBlock.code?.rich_text ?? []).map((x) => x?.plain_text ?? "").join("").trim()
+        : "";
+
+    if (jsonText) {
+      // Append at the bottom so the main controls stay focused.
+      await appendBlocks(adminPageId, [
+        { object: "block", type: "divider", divider: {} },
+        {
+          object: "block",
+          type: "toggle",
+          toggle: {
+            rich_text: richText("Advanced config (JSON fallback)"),
+            children: [
+              {
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                  rich_text: richText(
+                    "Prefer the Settings / Navigation databases above. This JSON is a fallback that the build can read if the databases are missing.",
+                  ),
+                },
+              },
+              {
+                object: "block",
+                type: "code",
+                code: {
+                  rich_text: richText(jsonText),
+                  language: "json",
+                },
+              },
+            ],
+          },
+        },
+      ]);
+
+      // Archive the old divider above the heading, if it exists (it's now redundant).
+      if (idx > 0 && blocks[idx - 1]?.type === "divider") {
+        await archiveBlock(compactId(blocks[idx - 1].id));
+      }
+
+      await archiveBlock(compactId(jsonHeading.id));
+      if (codeBlock) await archiveBlock(compactId(codeBlock.id));
+    }
+  } else if (jsonHeading) {
+    // If the toggle exists, any remaining heading is redundant.
+    await archiveBlock(compactId(jsonHeading.id));
   }
 
   // Ensure we don't create duplicates if this script is re-run.
