@@ -41,7 +41,7 @@ export default async function BlogPage() {
         <div className="notion-breadcrumb">
           <Link href="/" className="notion-link notion-breadcrumb__item">
             <div className="notion-navbar__title notion-breadcrumb__title">
-              Hi there!
+              Home
             </div>
           </Link>
           <span className="notion-breadcrumb__divider">/</span>

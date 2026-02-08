@@ -44,7 +44,13 @@ export default async function BlogListPage() {
         <div className="notion-breadcrumb">
           <Link href="/" className="notion-link notion-breadcrumb__item">
             <div className="notion-navbar__title notion-breadcrumb__title">
-              Hi there!
+              Home
+            </div>
+          </Link>
+          <span className="notion-breadcrumb__divider">/</span>
+          <Link href="/blog" className="notion-link notion-breadcrumb__item">
+            <div className="notion-navbar__title notion-breadcrumb__title">
+              Blog
             </div>
           </Link>
           <span className="notion-breadcrumb__divider">/</span>

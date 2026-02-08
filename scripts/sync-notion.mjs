@@ -1171,29 +1171,53 @@ async function renderBlock(b, ctx) {
 function renderBreadcrumbs(node, cfg, ctx) {
   if (node.routePath === "/") return "";
 
-  const homeTitle =
-    String(ctx?.homeTitle ?? "").trim() ||
-    (cfg.nav?.top?.find?.((x) => x.href === "/")?.label || "Home");
-
   const homePageId = String(ctx?.homePageId ?? "").trim();
-  const homeIdAttr = homePageId
-    ? ` id="block-${escapeHtml(homePageId)}"`
-    : "";
+  const nodeById = ctx?.nodeById instanceof Map ? ctx.nodeById : null;
 
-  const pageKey =
-    node.routePath === "/"
-      ? "index"
-      : node.routePath.replace(/^\/+/, "").replace(/\//g, "-") || "index";
+  // User requirement: breadcrumbs should follow Notion hierarchy, and the homepage
+  // should be displayed as "Home" regardless of the actual Notion page title.
+  const HOME_LABEL = "Home";
 
-  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb"><a${homeIdAttr} href="/" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
-    homeTitle,
-  )}</div></a><span class="notion-breadcrumb__divider">/</span><a id="block-${escapeHtml(
-    pageKey,
-  )}" href="${escapeHtml(
-    node.routePath,
-  )}" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
-    node.title,
-  )}</div></a></div></div>`;
+  const chain = [];
+  const seen = new Set();
+  let cur = node;
+
+  // Walk up the Notion tree using parentId pointers.
+  while (cur && cur.id && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    chain.push(cur);
+    if (cur.id === homePageId || cur.routePath === "/") break;
+    const parentId = String(cur.parentId || "").trim();
+    if (!parentId || !nodeById) break;
+    cur = nodeById.get(parentId) || null;
+  }
+
+  chain.reverse();
+
+  // Ensure Home is always the first crumb.
+  if (!chain.length || chain[0].routePath !== "/") {
+    chain.unshift({
+      id: homePageId || "home",
+      title: HOME_LABEL,
+      routePath: "/",
+    });
+  }
+
+  const items = chain
+    .filter((n) => n && typeof n === "object" && n.routePath)
+    .map((n) => {
+      const isHome = n.routePath === "/" || (homePageId && n.id === homePageId);
+      const label = isHome ? HOME_LABEL : String(n.title || "").trim() || "Untitled";
+      const idAttr = n.id ? ` id="block-${escapeHtml(n.id)}"` : "";
+      return `<a${idAttr} href="${escapeHtml(
+        n.routePath,
+      )}" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${escapeHtml(
+        label,
+      )}</div></a>`;
+    });
+
+  const joined = items.join('<span class="notion-breadcrumb__divider">/</span>');
+  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb">${joined}</div></div>`;
 }
 
 async function renderPageMain(page, blocks, cfg, ctx) {
