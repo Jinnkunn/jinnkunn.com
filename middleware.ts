@@ -80,6 +80,16 @@ export function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname || "/";
   if (isBypassedPath(pathname)) return NextResponse.next();
 
+  // Canonicalize old blog URLs:
+  // - /blog/list/<slug> -> /blog/<slug>
+  // - /blog/list -> /blog
+  if (pathname === "/blog/list" || pathname.startsWith("/blog/list/")) {
+    const rest = pathname.replace(/^\/blog\/list\/?/, "");
+    const url = req.nextUrl.clone();
+    url.pathname = rest ? `/blog/${rest}` : "/blog";
+    return NextResponse.redirect(url, 308);
+  }
+
   // Support old-style internal links that point to a Notion page id path
   // (e.g. "/<32hex>") by redirecting to the resolved route path.
   const idMatch = pathname.match(/^\/([0-9a-f]{32})(?:\/)?$/i);

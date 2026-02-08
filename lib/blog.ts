@@ -119,15 +119,17 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
   const slugs = await getBlogPostSlugs();
   const paths =
     slugs.length > 0
-      ? slugs.map((s) => `/blog/list/${s}`)
+      ? slugs.map((s) => `/blog/${s}`)
       : candidates ?? [];
 
   for (const pathname of paths) {
-    if (pathname.startsWith("/blog/list/")) {
-      const slug = pathname.split("/").filter(Boolean)[2] || "";
+    // Canonical blog post route: /blog/<slug>
+    if (pathname.startsWith("/blog/") && !pathname.startsWith("/blog/list/")) {
+      const slug = pathname.split("/").filter(Boolean)[1] || "";
       if (!slug) continue;
       let main: string;
       try {
+        // Source of truth stays under `blog/list/` (Notion structure); route is prettier.
         main = await loadRawMainHtml(`blog/list/${slug}`);
       } catch {
         continue;
@@ -136,7 +138,7 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
       items.push({
         kind: "list",
         slug,
-        href: `/blog/list/${slug}`,
+        href: `/blog/${slug}`,
         title: meta.title,
         dateText: meta.dateText,
         dateIso: meta.dateIso,
