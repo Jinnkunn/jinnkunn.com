@@ -376,6 +376,24 @@ html {
   cursor: default;
 }
 
+/* Home hero: match Super proportions by constraining the profile image size. */
+@media (min-width: 760px) {
+  .page__index .notion-column-list {
+    align-items: center;
+  }
+
+  .page__index .notion-column-list > .notion-column:first-child .notion-image {
+    max-width: 260px;
+    margin-inline: auto;
+  }
+
+  .page__index .notion-column-list > .notion-column:first-child .notion-image img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+}
+
 .notion-lightbox {
   position: fixed;
   inset: 0;
@@ -510,6 +528,39 @@ html {
     transition: opacity 120ms linear;
     transform: none;
   }
+}
+
+/* Publications: details typography should match body size (avoid oversized quote/tags). */
+.page__publications .notion-toggle__content {
+  font-size: 16px;
+  line-height: 1.5rem;
+}
+
+.page__publications .notion-toggle__content .notion-quote {
+  font-size: inherit;
+}
+
+.page__publications .notion-toggle__content .notion-quote > * {
+  font-size: inherit;
+}
+
+/* Publications: tag pills (conference / arXiv.org / journal) should be compact. */
+.page__publications .highlighted-background.bg-red,
+.page__publications .highlighted-background.bg-purple,
+.page__publications .highlighted-background.bg-orange {
+  display: inline-block;
+  padding: 0.08em 0.32em;
+  border-radius: 3px;
+  margin: 0 0.15em;
+}
+
+.page__publications .highlighted-background.bg-red .code,
+.page__publications .highlighted-background.bg-purple .code,
+.page__publications .highlighted-background.bg-orange .code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.92em;
 }
 
 @media (hover: none) {
