@@ -505,6 +505,14 @@ html {
   font-size: var(--v1-type-small);
 }
 
+/* Super custom CSS parity (original site):
+ * Keep quote content the same size as body text (otherwise `--quote-size`
+ * makes quote children feel oversized, especially inside toggles).
+ */
+.notion-quote > * {
+  font-size: 16px;
+}
+
 /* Inline code: Notion uses <code class="code"> (not Prism). */
 code.code {
   font-family: Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
@@ -650,75 +658,6 @@ code.code {
 }
 .notion-code .token.italic {
   font-style: italic;
-}
-
-/* Publications page: improve scan-ability while keeping the original v1 look. */
-.page__publications h2.notion-heading {
-  margin-top: 1.75rem;
-}
-
-.page__publications .notion-toggle {
-  margin: 10px 0;
-}
-
-.page__publications .notion-toggle__summary {
-  padding: 6px 0;
-  align-items: flex-start;
-  gap: 6px;
-  border-radius: 10px;
-  transition: background-color 140ms ease;
-}
-
-.page__publications .notion-toggle__summary > span.notion-semantic-string {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-}
-
-.page__publications .notion-toggle__trigger {
-  /* Align the triangle with the first text line for multi-line titles. */
-  margin-top: 2px;
-}
-
-.page__publications .notion-toggle__summary {
-  /* Make each item feel like a tappable row without changing the Notion look. */
-  padding: 8px 10px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .page__publications .notion-toggle__summary:hover {
-    background: var(--color-ui-hover-bg);
-  }
-}
-
-.page__publications .notion-toggle.open > .notion-toggle__summary {
-  background: rgba(55, 53, 47, 0.045);
-}
-
-.page__publications .notion-toggle.open > .notion-toggle__summary:hover {
-  background: rgba(55, 53, 47, 0.065);
-}
-
-.page__publications .notion-toggle__content {
-  margin-top: 6px;
-}
-
-.page__publications blockquote.notion-quote {
-  margin-top: 6px;
-  margin-bottom: 10px;
-}
-
-/* Make publication "type badges" (conference/journal/arXiv) read as pills. */
-.page__publications .highlighted-background code.code {
-  display: inline-block;
-  white-space: nowrap;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 0.78em;
-  background: transparent;
-  border-color: transparent;
 }
 
 /* Optional: make long tables easier to read on desktop with sticky headers. */
