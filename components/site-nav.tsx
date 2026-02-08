@@ -1,19 +1,20 @@
 import Link from "next/link";
 import SiteNavBehavior from "@/components/site-nav-behavior";
+import { getSiteConfig } from "@/lib/site-config";
 
 type MenuItem = {
   href: string;
   label: string;
 };
 
-const topItems: MenuItem[] = [
+const defaultTopItems: MenuItem[] = [
   { href: "/", label: "Home" },
   { href: "/news", label: "News" },
   { href: "/publications", label: "Publications" },
   { href: "/works", label: "Works" },
 ];
 
-const moreItems: MenuItem[] = [
+const defaultMoreItems: MenuItem[] = [
   { href: "/blog", label: "Blog" },
   { href: "/teaching", label: "Teaching" },
   { href: "/bio", label: "BIO" },
@@ -21,6 +22,10 @@ const moreItems: MenuItem[] = [
 ];
 
 export default function SiteNav() {
+  const cfg = getSiteConfig();
+  const topItems: MenuItem[] = cfg.nav.top?.length ? cfg.nav.top : defaultTopItems;
+  const moreItems: MenuItem[] = cfg.nav.more?.length ? cfg.nav.more : defaultMoreItems;
+
   return (
     <nav
       id="site-nav"
@@ -40,7 +45,7 @@ export default function SiteNav() {
       <div className="super-navbar__content">
         <Link href="/" className="notion-link super-navbar__logo">
           <span className="super-navbar__logo-text" style={{ fontSize: 16 }}>
-            Jinkun Chen.
+            {cfg.siteName}
           </span>
         </Link>
 

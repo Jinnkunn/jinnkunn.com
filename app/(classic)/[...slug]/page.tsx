@@ -1,7 +1,7 @@
 import RawHtml from "@/components/raw-html";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { notFound } from "next/navigation";
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 export const dynamic = "force-static";
@@ -21,17 +21,40 @@ async function listHtmlFilesRec(dir: string): Promise<string[]> {
   return out;
 }
 
+async function listHtmlFilesRecIfExists(dir: string): Promise<string[]> {
+  try {
+    const st = await stat(dir);
+    if (!st.isDirectory()) return [];
+  } catch {
+    return [];
+  }
+  return await listHtmlFilesRec(dir);
+}
+
 export async function generateStaticParams(): Promise<
   Array<{ slug: string[] }>
 > {
-  const root = path.join(process.cwd(), "content", "raw");
-  const files = await listHtmlFilesRec(root);
+  const roots = [
+    path.join(process.cwd(), "content", "generated", "raw"),
+    path.join(process.cwd(), "content", "raw"),
+  ];
 
-  return files
-    .map((abs) => path.relative(root, abs))
-    .map((rel) => rel.replace(/\\/g, "/"))
-    .filter((rel) => rel.endsWith(".html"))
-    .map((rel) => rel.slice(0, -".html".length))
+  const rels: string[] = [];
+  const seen = new Set<string>();
+
+  for (const root of roots) {
+    const files = await listHtmlFilesRecIfExists(root);
+    for (const abs of files) {
+      const rel = path.relative(root, abs).replace(/\\/g, "/");
+      if (!rel.endsWith(".html")) continue;
+      const noExt = rel.slice(0, -".html".length);
+      if (seen.has(noExt)) continue;
+      seen.add(noExt);
+      rels.push(noExt);
+    }
+  }
+
+  return rels
     .filter((rel) => rel !== "index")
     // `/blog` is rendered by a dedicated route using a consistent template.
     .filter((rel) => rel !== "blog")

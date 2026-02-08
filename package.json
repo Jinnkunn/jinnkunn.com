@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "prebuild": "node scripts/prebuild.mjs",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "sync:raw": "node scripts/sync-raw-hydrated.mjs",
+    "sync:notion": "node scripts/sync-notion.mjs",
     "snapshot:ui": "node scripts/ui-snapshots.mjs",
     "audit:notion": "node scripts/audit-notion-blocks.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",

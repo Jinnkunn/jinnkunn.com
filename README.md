@@ -1,18 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
 ## Getting Started
-
-First, run the development server:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Notion-Backed Site (Super-Like)
 
-## Content Sync (Super/Notion Clone)
+This repo can compile a Notion page tree into a static Next.js site.
 
-This repo renders pages from `content/raw/**/*.html` (hydrated HTML captured from the live Super site).
+### 1) Create Notion "Site Admin" Page
+
+- Create a Notion page (e.g. `Site Admin`).
+- Under it, create child pages (these become site pages, recursive).
+- Add a **Code** block (language: `json`) containing site config. Example:
+
+```json
+{
+  "siteName": "Jinkun Chen.",
+  "lang": "en",
+  "seo": {
+    "title": "Jinkun Chen",
+    "description": "Personal site.",
+    "favicon": "/assets/favicon.png"
+  },
+  "nav": {
+    "top": [
+      { "href": "/", "label": "Home" },
+      { "href": "/publications", "label": "Publications" }
+    ],
+    "more": [{ "href": "/blog", "label": "Blog" }]
+  },
+  "content": {
+    "rootPageId": null,
+    "homePageId": null
+  }
+}
+```
+
+### 2) Notion Integration + Env Vars
+
+- Create a Notion internal integration, copy its secret token.
+- Share the `Site Admin` page with that integration.
+- Set env vars (see `.env.example`).
+
+### 3) Sync
+
+```bash
+npm run sync:notion
+```
+
+This generates:
+- `content/generated/site-config.json`
+- `content/generated/raw/<route>.html`
+
+`npm run build` automatically runs Notion sync first when `NOTION_*` env vars are set.
+
+## Deploy Button (Notion -> Vercel)
+
+The site exposes `/api/deploy?token=...` which triggers a Vercel Deploy Hook.
+
+Required env:
+- `DEPLOY_TOKEN`
+- `VERCEL_DEPLOY_HOOK_URL`
+
+In Notion, create a button or link pointing to:
+
+`https://<your-site-domain>/api/deploy?token=<DEPLOY_TOKEN>`
+
+## Legacy Content Sync (Clone Mode)
+
+This repo can also sync hydrated HTML from an existing Super site into `content/raw/`:
 
 ```bash
 npm run sync:raw

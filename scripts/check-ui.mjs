@@ -25,9 +25,12 @@ async function main() {
   const skipSync = process.env.SKIP_SYNC === "1" || process.env.SKIP_SYNC === "true";
 
   if (!skipSync) {
-    await run("npm", ["run", "sync:raw"]);
+    const hasNotion =
+      Boolean(process.env.NOTION_TOKEN) && Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID);
+    const syncScript = hasNotion ? "sync:notion" : "sync:raw";
+    await run("npm", ["run", syncScript]);
   } else {
-    console.log("[check:ui] SKIP_SYNC enabled; skipping `npm run sync:raw`");
+    console.log("[check:ui] SKIP_SYNC enabled; skipping content sync");
   }
 
   await run("npm", ["run", "audit:notion"]);
@@ -39,4 +42,3 @@ main().catch((err) => {
   console.error(err?.stack || String(err));
   process.exit(1);
 });
-

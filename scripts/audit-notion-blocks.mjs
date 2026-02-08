@@ -1,7 +1,10 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const RAW_DIR = path.join(process.cwd(), "content", "raw");
+const RAW_DIRS = [
+  path.join(process.cwd(), "content", "generated", "raw"),
+  path.join(process.cwd(), "content", "raw"),
+];
 const OUT_DIR = path.join(process.cwd(), "output", "notion-block-audit");
 
 function isoStampForPath(d = new Date()) {
@@ -39,21 +42,29 @@ function isNotionOrSuperClass(token) {
 }
 
 async function main() {
-  const rawDirStat = await stat(RAW_DIR).catch(() => null);
-  if (!rawDirStat || !rawDirStat.isDirectory()) {
+  const existingDirs = [];
+  for (const d of RAW_DIRS) {
+    const st = await stat(d).catch(() => null);
+    if (st?.isDirectory()) existingDirs.push(d);
+  }
+  if (!existingDirs.length) {
     console.error(
-      `Missing ${RAW_DIR}. Run \`npm run sync:raw\` first to fetch raw HTML content.`,
+      `Missing content roots. Run \`npm run sync:notion\` (preferred) or \`npm run sync:raw\` first.`,
     );
     process.exit(1);
   }
 
-  const files = (await walk(RAW_DIR)).filter((p) => p.endsWith(".html"));
+  const files = [];
+  for (const d of existingDirs) {
+    files.push(...(await walk(d)));
+  }
+  const htmlFiles = files.filter((p) => p.endsWith(".html"));
   const counts = new Map();
   const byClassFiles = new Map(); // class -> Set(file)
 
   const classAttrRe = /class\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
-  for (const file of files) {
+  for (const file of htmlFiles) {
     const html = await readFile(file, "utf8");
     for (const m of html.matchAll(classAttrRe)) {
       const classValue = m[1] ?? m[2] ?? "";
@@ -81,7 +92,7 @@ async function main() {
 
   const json = {
     generatedAt: new Date().toISOString(),
-    filesScanned: files.length,
+    filesScanned: htmlFiles.length,
     uniqueClassCount: uniqueClasses.length,
     uniqueClasses,
     topClasses,
@@ -140,4 +151,3 @@ main().catch((err) => {
   console.error(err?.stack || String(err));
   process.exit(1);
 });
-

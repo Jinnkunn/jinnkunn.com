@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -9,8 +10,7 @@ function normalizeRoutePath(routePath: string): string {
   return p;
 }
 
-function resolveRawHtmlFile(routePath: string): string {
-  const root = path.join(process.cwd(), "content", "raw");
+function resolveRawHtmlFileInRoot(root: string, routePath: string): string {
   const rel = normalizeRoutePath(routePath);
 
   // Normalize and ensure the resolved path stays within `content/raw`.
@@ -20,6 +20,23 @@ function resolveRawHtmlFile(routePath: string): string {
     throw new Error(`Invalid route path: ${routePath}`);
   }
   return file;
+}
+
+function resolveRawHtmlFile(routePath: string): string {
+  const legacyRoot = path.join(process.cwd(), "content", "raw");
+  const generatedRoot = path.join(process.cwd(), "content", "generated", "raw");
+
+  const candidates = [
+    resolveRawHtmlFileInRoot(generatedRoot, routePath),
+    resolveRawHtmlFileInRoot(legacyRoot, routePath),
+  ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+
+  // Default to legacy path so the error message points at the well-known folder.
+  return candidates[candidates.length - 1];
 }
 
 function rewriteRawHtml(html: string): string {
