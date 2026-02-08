@@ -4,6 +4,13 @@ import path from "node:path";
 const nextConfig = {
   // Avoid Next.js incorrectly inferring the repo root due to other lockfiles on the machine.
   outputFileTracingRoot: path.resolve("."),
+  // The site loads Notion-rendered HTML from the filesystem at runtime
+  // (`content/generated/raw/**`). These files are created during `prebuild`,
+  // so we must explicitly include them in Next's output file tracing, otherwise
+  // Vercel deployments won't contain the freshly-synced content.
+  outputFileTracingIncludes: {
+    "/**": ["content/generated/**", "content/raw/**"],
+  },
   turbopack: {
     root: path.resolve("."),
   },

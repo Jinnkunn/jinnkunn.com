@@ -363,6 +363,7 @@ async function main() {
   const hasSettingsDb = Boolean(findChildDatabaseBlock(blocks, "Site Settings"));
   const hasNavDb = Boolean(findChildDatabaseBlock(blocks, "Navigation"));
   const hasOverridesDb = Boolean(findChildDatabaseBlock(blocks, "Route Overrides"));
+  const hasIncludedPagesDb = Boolean(findChildDatabaseBlock(blocks, "Included Pages"));
   const hasProtectedDb = Boolean(findChildDatabaseBlock(blocks, "Protected Routes"));
   const hasDeployLogsDb = Boolean(findChildDatabaseBlock(blocks, "Deploy Logs"));
 
@@ -714,6 +715,56 @@ async function main() {
         },
       });
     }
+  }
+
+  // 3.5) Included Pages (Optional)
+  // Some pages may not be discovered as descendants (e.g., moved pages, pages living outside the root,
+  // or blocks nested in complex layouts if discovery ever misses them). This database lets you
+  // explicitly include additional Notion pages in the site tree.
+  if (!hasIncludedPagesDb) {
+    await appendBlocks(adminPageId, [
+      { object: "block", type: "divider", divider: {} },
+      {
+        object: "block",
+        type: "heading_2",
+        heading_2: { rich_text: richText("Included Pages (Optional)") },
+      },
+      {
+        object: "block",
+        type: "paragraph",
+        paragraph: {
+          rich_text: richText(
+            "Explicitly include extra Notion pages in the site (in addition to the pages discovered under the configured Root Page). Provide the Page ID (or URL). Optionally set a Route Path to force the URL.",
+          ),
+        },
+      },
+    ]);
+
+    const dbId = await createInlineDatabase({
+      parentPageId: adminPageId,
+      title: "Included Pages",
+      properties: {
+        Name: { title: {} },
+        Enabled: { checkbox: {} },
+        "Page ID": { rich_text: {} },
+        "Route Path": { rich_text: {} },
+        Order: { number: { format: "number" } },
+        Note: { rich_text: {} },
+      },
+    });
+
+    // Seed a disabled example row to make the UX obvious.
+    await createDatabaseRow({
+      databaseId: dbId,
+      properties: {
+        Name: { title: richText("Example (disable or delete)") },
+        Enabled: { checkbox: false },
+        "Page ID": { rich_text: richText("PASTE_NOTION_PAGE_ID_OR_URL") },
+        "Route Path": { rich_text: richText("/example") },
+        Order: { number: 999 },
+        Note: { rich_text: richText("Optional: force route path, otherwise slug is derived from title.") },
+      },
+    });
   }
 
   // 4) Protected Routes (Optional)

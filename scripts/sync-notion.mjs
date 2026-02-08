@@ -226,6 +226,18 @@ async function listBlockChildren(blockId) {
   return out;
 }
 
+// Cache to avoid re-fetching children when we need to traverse deep block trees.
+// Keyed by compact block ID.
+const __blockChildrenCache = new Map();
+async function listBlockChildrenCached(blockId) {
+  const key = compactId(blockId) || String(blockId || "").trim();
+  if (!key) return [];
+  if (__blockChildrenCache.has(key)) return __blockChildrenCache.get(key);
+  const kids = await listBlockChildren(key);
+  __blockChildrenCache.set(key, kids);
+  return kids;
+}
+
 async function queryDatabase(databaseId, { filter, sorts } = {}) {
   const out = [];
   let cursor = undefined;
@@ -251,7 +263,7 @@ async function queryDatabase(databaseId, { filter, sorts } = {}) {
 async function hydrateBlocks(blocks) {
   for (const b of blocks) {
     if (b?.has_children) {
-      const kids = await listBlockChildren(b.id);
+      const kids = await listBlockChildrenCached(b.id);
       b.__children = await hydrateBlocks(kids);
     }
   }
@@ -259,7 +271,7 @@ async function hydrateBlocks(blocks) {
 }
 
 async function findFirstJsonCodeBlock(blockId, maxDepth = 4) {
-  const blocks = await listBlockChildren(blockId);
+  const blocks = await listBlockChildrenCached(blockId);
   for (const b of blocks) {
     if (b?.type !== "code") continue;
     const rt = b?.code?.rich_text ?? [];
@@ -286,7 +298,7 @@ async function findFirstJsonCodeBlock(blockId, maxDepth = 4) {
 
 async function findChildDatabases(blockId, maxDepth = 4) {
   const out = [];
-  const blocks = await listBlockChildren(blockId);
+  const blocks = await listBlockChildrenCached(blockId);
   for (const b of blocks) {
     if (b?.type === "child_database") {
       out.push({
@@ -432,6 +444,37 @@ async function loadConfigFromAdminDatabases(adminPageId) {
   return cfg;
 }
 
+async function loadIncludedPagesFromAdminDatabases(adminPageId) {
+  const databases = await findChildDatabases(adminPageId);
+  const includedDb = findDbByTitle(databases, "Included Pages");
+  if (!includedDb) return [];
+
+  const rows = await queryDatabase(includedDb.id);
+  const items = rows
+    .map((row) => {
+      const enabled = getPropCheckbox(row, "Enabled");
+      if (enabled === false) return null;
+
+      const pageIdRaw = getPropString(row, "Page ID");
+      const pageId = compactId(pageIdRaw);
+      if (!pageId) return null;
+
+      const routePath = normalizeRoutePath(getPropString(row, "Route Path"));
+      const order = getPropNumber(row, "Order") ?? 0;
+      const name = getPropString(row, "Name") || getPropString(row, "Title") || "";
+
+      return { pageId, routePath: routePath || "", order, name };
+    })
+    .filter(Boolean);
+
+  items.sort((a, b) => {
+    if ((a.order || 0) !== (b.order || 0)) return (a.order || 0) - (b.order || 0);
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+
+  return items;
+}
+
 async function loadProtectedRoutesFromAdminDatabases(adminPageId) {
   const databases = await findChildDatabases(adminPageId);
   const protectedDb = findDbByTitle(databases, "Protected Routes");
@@ -528,7 +571,32 @@ function extractFirstDateProperty(page) {
 }
 
 async function buildPageTree(parentPageId) {
-  const blocks = await listBlockChildren(parentPageId);
+  // Scan recursively so we discover child pages/databases nested inside toggles/columns/callouts/etc.
+  const blocks = await (async () => {
+    const top = await listBlockChildrenCached(parentPageId);
+    const stack = [...top].reverse();
+    const out = [];
+    const seen = new Set(); // block id
+
+    while (stack.length) {
+      const b = stack.pop();
+      if (!b || !b.id) continue;
+      const bid = compactId(b.id);
+      if (bid && seen.has(bid)) continue;
+      if (bid) seen.add(bid);
+
+      out.push(b);
+
+      if (b?.has_children) {
+        const kids = await listBlockChildrenCached(b.id);
+        // Preserve Notion order: parent, then its children, then next sibling.
+        for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+      }
+    }
+
+    return out;
+  })();
+
   const out = [];
 
   for (const b of blocks) {
@@ -1343,6 +1411,15 @@ async function main() {
     }
   }
 
+  // Optional explicit includes (Site Admin -> Included Pages).
+  const includedPages = await loadIncludedPagesFromAdminDatabases(adminPageId);
+  for (const it of includedPages) {
+    if (it?.pageId && it?.routePath) {
+      // Explicit route path should win over other mappings.
+      routeOverrides.set(it.pageId, it.routePath);
+    }
+  }
+
   console.log(`[sync:notion] Admin page: ${adminPageId}`);
   console.log(`[sync:notion] Content root: ${rootPageId}`);
   console.log(`[sync:notion] Output: ${path.relative(ROOT, OUT_DIR)}`);
@@ -1372,6 +1449,26 @@ async function main() {
       routeSegments: [],
     };
 
+    // Merge explicitly included pages as additional root children.
+    if (includedPages.length) {
+      const existing = new Set(flattenPages(rootNode.children).map((n) => n.id));
+      for (const it of includedPages) {
+        if (!it?.pageId || existing.has(it.pageId) || it.pageId === rootPageId) continue;
+        const t = await getPageTitle(it.pageId);
+        const node = {
+          kind: "page",
+          id: it.pageId,
+          title: t,
+          children: await buildPageTree(it.pageId),
+          parentId: rootPageId,
+          routePath: "",
+          routeSegments: [],
+        };
+        rootNode.children.push(node);
+        existing.add(it.pageId);
+      }
+    }
+
     assignRoutes(rootNode.children, { homePageId, routeOverrides });
 
     const descendants = flattenPages(rootNode.children);
@@ -1393,6 +1490,25 @@ async function main() {
       throw new Error(
         "No child pages found under the configured content root page. Create child pages under the root page (or set content.rootPageId).",
       );
+    }
+
+    // Merge explicitly included pages as additional top-level nodes.
+    if (includedPages.length) {
+      const existing = new Set(flattenPages(top).map((n) => n.id));
+      for (const it of includedPages) {
+        if (!it?.pageId || existing.has(it.pageId) || it.pageId === rootPageId) continue;
+        const t = await getPageTitle(it.pageId);
+        top.push({
+          kind: "page",
+          id: it.pageId,
+          title: t,
+          children: await buildPageTree(it.pageId),
+          parentId: rootPageId,
+          routePath: "",
+          routeSegments: [],
+        });
+        existing.add(it.pageId);
+      }
     }
 
     const topHomePageId = pickHomePageId(top, cfg);
@@ -1448,7 +1564,7 @@ async function main() {
       p.kind === "database"
         ? renderDatabaseMain(p, cfg, ctx)
         : await (async () => {
-            const blocks = await hydrateBlocks(await listBlockChildren(p.id));
+            const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
             return await renderPageMain(p, blocks, cfg, ctx);
           })();
     const rel = routePathToHtmlRel(p.routePath);
