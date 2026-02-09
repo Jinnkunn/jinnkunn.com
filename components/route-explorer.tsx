@@ -25,6 +25,24 @@ type AdminConfig = {
   protectedByPath: Record<string, { mode: "exact" | "prefix" }>; // path -> mode
 };
 
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Z" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 function normalizeRoutePath(p: string): string {
   const raw = String(p || "").trim();
   if (!raw) return "";
@@ -289,18 +307,20 @@ export default function RouteExplorer({
     }
   };
 
-  const isEffectivelyProtected = (routePath: string): boolean => {
+  const findEffectiveProtection = (
+    routePath: string,
+  ): { sourcePath: string; mode: "exact" | "prefix" } | null => {
     const p = normalizeRoutePath(routePath);
+    let best: { sourcePath: string; mode: "exact" | "prefix" } | null = null;
     for (const [k, v] of Object.entries(cfg.protectedByPath || {})) {
       const kp = normalizeRoutePath(k);
       if (!kp || kp === "/") continue;
-      if (v?.mode === "prefix") {
-        if (p === kp || p.startsWith(`${kp}/`)) return true;
-      } else {
-        if (p === kp) return true;
+      // Product decision: any protection applies to a subtree. Choose the most specific match.
+      if (p === kp || p.startsWith(`${kp}/`)) {
+        if (!best || kp.length > best.sourcePath.length) best = { sourcePath: kp, mode: v.mode };
       }
     }
-    return false;
+    return best;
   };
 
   return (
@@ -392,14 +412,16 @@ export default function RouteExplorer({
 
         {visible.map((it) => {
           const p = normalizeRoutePath(it.routePath);
+          const match = findEffectiveProtection(it.routePath);
           const directProtected = Boolean(cfg.protectedByPath[p]);
-          const effectiveProtected = isEffectivelyProtected(it.routePath);
+          const effectiveProtected = Boolean(match);
           const inheritedProtected = effectiveProtected && !directProtected;
           const protectedState = directProtected
             ? "direct"
             : inheritedProtected
               ? "inherited"
               : "0";
+          const protectedSource = match?.sourcePath || "";
 
           return (
             <div
@@ -409,6 +431,7 @@ export default function RouteExplorer({
               data-nav={it.navGroup ? "1" : "0"}
               data-overridden={it.overridden ? "1" : "0"}
               data-protected={protectedState}
+              data-protected-source={protectedSource || ""}
             >
               <div className="routes-explorer__cell routes-explorer__cell--title" role="cell">
                 <div
@@ -484,14 +507,19 @@ export default function RouteExplorer({
                     ) : null}
                     {directProtected ? (
                       <span className="routes-explorer__pill routes-explorer__pill--protected">
-                        protected
+                        <LockIcon className="routes-explorer__pill-icon" /> Password
                       </span>
                     ) : inheritedProtected ? (
                       <span
                         className="routes-explorer__pill routes-explorer__pill--protected routes-explorer__pill--protected-inherited"
-                        title="Inherited from a protected parent route"
+                        title={
+                          protectedSource
+                            ? `Inherited from ${protectedSource}`
+                            : "Inherited from a protected parent route"
+                        }
                       >
-                        protected
+                        <LockIcon className="routes-explorer__pill-icon" /> Password{" "}
+                        <span className="routes-explorer__pill-suffix">inherited</span>
                       </span>
                     ) : null}
                   </div>
@@ -542,12 +570,18 @@ export default function RouteExplorer({
                       <input
                         className="routes-explorer__admin-input"
                         type="password"
+                        disabled={inheritedProtected}
                         placeholder={
-                          effectiveProtected
-                            ? "Set new password (blank = disable)"
-                            : "Set password (blank = disabled)"
+                          inheritedProtected
+                            ? protectedSource
+                              ? `Inherited from ${protectedSource}`
+                              : "Inherited from parent route"
+                            : effectiveProtected
+                              ? "Set new password (blank = disable)"
+                              : "Set password (blank = disabled)"
                         }
                         onKeyDown={(e) => {
+                          if (inheritedProtected) return;
                           if (e.key !== "Enter") return;
                           const pwd = (e.target as HTMLInputElement).value;
                           void saveProtection(it.routePath, "prefix", pwd);
@@ -557,8 +591,9 @@ export default function RouteExplorer({
                       <button
                         type="button"
                         className="routes-explorer__admin-btn"
-                        disabled={busyId === it.routePath}
+                        disabled={busyId === it.routePath || inheritedProtected}
                         onClick={(e) => {
+                          if (inheritedProtected) return;
                           const row = e.currentTarget.closest(
                             ".routes-explorer__admin-row",
                           ) as HTMLElement | null;
@@ -573,12 +608,32 @@ export default function RouteExplorer({
                       <button
                         type="button"
                         className="routes-explorer__admin-btn"
-                        disabled={busyId === it.routePath}
+                        disabled={busyId === it.routePath || inheritedProtected}
                         onClick={() => void saveProtection(it.routePath, "exact", "")}
+                        title={
+                          inheritedProtected
+                            ? "Inherited protection must be managed on the parent route."
+                            : "Disable password protection for this route"
+                        }
                       >
                         Disable
                       </button>
                     </div>
+                    {inheritedProtected ? (
+                      <div className="routes-explorer__admin-note">
+                        This route is protected by a parent rule{" "}
+                        {protectedSource ? (
+                          <>
+                            (
+                            <code className="routes-explorer__admin-note-code">
+                              {protectedSource}
+                            </code>
+                            )
+                          </>
+                        ) : null}
+                        . To change protection, edit that parent route.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

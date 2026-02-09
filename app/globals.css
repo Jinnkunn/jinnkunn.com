@@ -465,6 +465,7 @@ html {
 /* Protection state: make it obvious when a page is password-protected. */
 .routes-explorer__row[data-protected="direct"] {
   background: rgba(255, 236, 179, 0.24);
+  box-shadow: inset 3px 0 0 rgba(222, 120, 49, 0.35);
 }
 
 .routes-explorer__row[data-protected="direct"]:hover {
@@ -478,6 +479,7 @@ html {
 
 .routes-explorer__row[data-protected="inherited"] {
   background: rgba(255, 236, 179, 0.14);
+  box-shadow: inset 3px 0 0 rgba(222, 120, 49, 0.2);
 }
 
 .routes-explorer__row[data-protected="inherited"]:hover {
@@ -588,6 +590,19 @@ html {
   margin-inline-end: 6px;
 }
 
+.routes-explorer__pill-icon {
+  width: 12px;
+  height: 12px;
+  margin-inline-end: 6px;
+  opacity: 0.85;
+}
+
+.routes-explorer__pill-suffix {
+  font-weight: 600;
+  opacity: 0.72;
+  margin-inline-start: 6px;
+}
+
 .routes-explorer__pill--nav {
   border-color: rgba(46, 170, 220, 0.28);
   background: rgba(46, 170, 220, 0.08);
@@ -617,6 +632,21 @@ html {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.routes-explorer__admin-note {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.66);
+  line-height: 1.4;
+  padding-left: 110px; /* align with grid label column */
+}
+
+.routes-explorer__admin-note-code {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .routes-explorer__admin-row {
