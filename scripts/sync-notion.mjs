@@ -354,7 +354,13 @@ async function getDatabaseInfo(databaseId) {
 
 async function hydrateBlocks(blocks) {
   for (const b of blocks) {
-    if (b?.has_children) {
+    // Avoid hydrating child pages/databases: we only render them as links,
+    // and pulling their full subtree makes search noisy + sync slower.
+    const t = String(b?.type || "");
+    const shouldSkip =
+      t === "child_page" || t === "child_database" || t === "link_to_page";
+
+    if (b?.has_children && !shouldSkip) {
       const kids = await listBlockChildrenCached(b.id);
       b.__children = await hydrateBlocks(kids);
     }
