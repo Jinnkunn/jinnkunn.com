@@ -321,7 +321,7 @@ html {
 
 /* Route explorer (/__routes): minimal, admin-like, consistent with v1. */
 .routes-explorer {
-  max-width: 980px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 36px 20px 72px 20px;
 }
@@ -431,7 +431,10 @@ html {
   margin-top: 14px;
   border: 1px solid rgba(55, 53, 47, 0.16);
   border-radius: 16px;
-  overflow: hidden;
+  /* Admin tables can overflow horizontally (many controls). Allow scrolling instead of clipping. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -440,6 +443,8 @@ html {
   grid-template-columns: 1.15fr 0.85fr 1.4fr;
   gap: 0;
   border-top: 1px solid rgba(55, 53, 47, 0.08);
+  /* Ensure long admin controls don't get clipped; table becomes horizontally scrollable. */
+  min-width: 1080px;
 }
 
 .routes-explorer__row--head {
@@ -463,6 +468,43 @@ html {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.routes-explorer__tree {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.routes-explorer__expander {
+  appearance: none;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(55, 53, 47, 0.8);
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.routes-explorer__expander:hover {
+  background: rgba(55, 53, 47, 0.04);
+}
+
+.routes-explorer__chev {
+  display: block;
+  width: 12px;
+  height: 12px;
+  transition: transform 160ms ease;
+}
+
+.routes-explorer__expander[data-open="false"] .routes-explorer__chev {
+  transform: rotate(-90deg);
 }
 
 .routes-explorer__id {
@@ -557,13 +599,13 @@ html {
 
 .routes-explorer__admin-input,
 .routes-explorer__admin-select {
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
   border: 1px solid rgba(55, 53, 47, 0.14);
   background: rgba(255, 255, 255, 0.9);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   min-width: 0;
 }
 
@@ -574,10 +616,10 @@ html {
 .routes-explorer__admin-btn {
   appearance: none;
   border: 1px solid rgba(55, 53, 47, 0.14);
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.9);
-  height: 34px;
-  padding: 0 10px;
+  height: 40px;
+  padding: 0 12px;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -597,6 +639,7 @@ html {
 @media (max-width: 820px) {
   .routes-explorer__row {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
   .routes-explorer__row--head {
     display: none;
@@ -771,6 +814,15 @@ html {
   padding-left: var(--padding-left);
   padding-right: var(--padding-right);
   color: var(--color-text-default);
+}
+
+@media (max-width: 546px) {
+  /* On mobile, align breadcrumbs with the navbar logo padding (Super-like). */
+  .super-root .super-content > .super-navbar__breadcrumbs {
+    margin-top: 8px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
 
 .super-root .super-content > .super-navbar__breadcrumbs .notion-breadcrumb__divider {

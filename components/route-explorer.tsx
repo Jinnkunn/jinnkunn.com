@@ -33,7 +33,9 @@ function normalizeRoutePath(p: string): string {
   return out || "/";
 }
 
-function buildTreeOrder(items: RouteManifestItem[]): Array<RouteManifestItem & { depth: number }> {
+function buildTreeOrder(
+  items: RouteManifestItem[]
+): Array<RouteManifestItem & { depth: number; hasChildren: boolean }> {
   const byId = new Map<string, RouteManifestItem>();
   for (const it of items) byId.set(it.id, it);
 
@@ -53,13 +55,13 @@ function buildTreeOrder(items: RouteManifestItem[]): Array<RouteManifestItem & {
   const roots = items.filter((it) => !it.parentId || !byId.has(it.parentId));
   sortChildren(roots);
 
-  const out: Array<RouteManifestItem & { depth: number }> = [];
+  const out: Array<RouteManifestItem & { depth: number; hasChildren: boolean }> = [];
   const seen = new Set<string>();
 
   const dfs = (node: RouteManifestItem, depth: number) => {
     if (!node?.id || seen.has(node.id)) return;
     seen.add(node.id);
-    out.push({ ...node, depth });
+    out.push({ ...node, depth, hasChildren: (kids.get(node.id) || []).length > 0 });
     const children = kids.get(node.id) || [];
     sortChildren(children);
     for (const c of children) dfs(c, depth + 1);
@@ -81,6 +83,7 @@ export default function RouteExplorer({
   const [cfg, setCfg] = useState<AdminConfig>({ overrides: {}, protectedByPath: {} });
   const [busyId, setBusyId] = useState<string>("");
   const [err, setErr] = useState<string>("");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +131,44 @@ export default function RouteExplorer({
     });
     return out;
   }, [ordered, q, filter]);
+
+  const visible = useMemo(() => {
+    // When searching, don't hide nodes via collapse (users need to see matches).
+    const query = normalizeQuery(q);
+    if (query) return filtered;
+
+    const collapsedSet = new Set<string>(
+      Object.entries(collapsed)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+    );
+    const byId = new Map<string, RouteManifestItem>();
+    for (const it of items) byId.set(it.id, it);
+
+    const isHidden = (node: RouteManifestItem) => {
+      let pid = node.parentId || "";
+      while (pid) {
+        if (collapsedSet.has(pid)) return true;
+        const p = byId.get(pid);
+        pid = p?.parentId || "";
+      }
+      return false;
+    };
+
+    return filtered.filter((it) => !isHidden(it));
+  }, [filtered, collapsed, q, items]);
+
+  const toggleCollapsed = (id: string) => {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const collapseAll = () => {
+    const next: Record<string, boolean> = {};
+    for (const it of ordered) if (it.hasChildren) next[it.id] = true;
+    setCollapsed(next);
+  };
+
+  const expandAll = () => setCollapsed({});
 
   const saveOverride = async (pageId: string, routePath: string) => {
     setBusyId(pageId);
@@ -233,6 +274,27 @@ export default function RouteExplorer({
               </button>
             ))}
           </div>
+
+          <div className="routes-explorer__filter" role="group" aria-label="Tree controls">
+            <button
+              type="button"
+              className="routes-explorer__filter-btn"
+              onClick={expandAll}
+              disabled={Boolean(normalizeQuery(q))}
+              title={normalizeQuery(q) ? "Clear search to use tree folding" : "Expand all"}
+            >
+              Expand
+            </button>
+            <button
+              type="button"
+              className="routes-explorer__filter-btn"
+              onClick={collapseAll}
+              disabled={Boolean(normalizeQuery(q))}
+              title={normalizeQuery(q) ? "Clear search to use tree folding" : "Collapse all"}
+            >
+              Collapse
+            </button>
+          </div>
         </div>
       </div>
 
@@ -256,7 +318,7 @@ export default function RouteExplorer({
           </div>
         </div>
 
-        {filtered.map((it) => (
+        {visible.map((it) => (
           <div
             key={it.id}
             className="routes-explorer__row"
@@ -266,10 +328,36 @@ export default function RouteExplorer({
           >
             <div className="routes-explorer__cell routes-explorer__cell--title" role="cell">
               <div
-                className="routes-explorer__title-main"
-                style={{ paddingLeft: Math.min(28, it.depth * 12) }}
+                className="routes-explorer__tree"
+                style={{ paddingLeft: Math.min(56, it.depth * 16) }}
               >
-                {it.title || "Untitled"}
+                {it.hasChildren ? (
+                  <button
+                    type="button"
+                    className="routes-explorer__expander"
+                    data-open={collapsed[it.id] ? "false" : "true"}
+                    aria-label={collapsed[it.id] ? "Expand" : "Collapse"}
+                    onClick={() => toggleCollapsed(it.id)}
+                    title={collapsed[it.id] ? "Expand" : "Collapse"}
+                  >
+                    <svg
+                      className="routes-explorer__chev"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                ) : (
+                  <span style={{ width: 22, height: 22, flex: "0 0 auto" }} />
+                )}
+
+                <div className="routes-explorer__title-main">{it.title || "Untitled"}</div>
               </div>
               <div className="routes-explorer__id">
                 {it.id}{" "}

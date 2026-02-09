@@ -220,7 +220,10 @@ export default function SiteAdminConfigClient() {
 
             <div className="routes-explorer__cell routes-explorer__cell--kind" role="cell">
               <div className="routes-explorer__admin" style={{ marginTop: 0 }}>
-                <div className="routes-explorer__admin-row" style={{ gridTemplateColumns: "88px 110px 1fr auto auto" }}>
+                <div
+                  className="routes-explorer__admin-row"
+                  style={{ gridTemplateColumns: "72px 110px 72px 70px auto" }}
+                >
                   <label className="routes-explorer__admin-label">Order</label>
                   <input
                     className="routes-explorer__admin-input"
@@ -282,7 +285,11 @@ export default function SiteAdminConfigClient() {
                 { k: "homePageId", label: "Home Page ID" },
               ] as const
             ).map((f) => (
-              <div key={f.k} className="routes-explorer__admin-row">
+              <div
+                key={f.k}
+                className="routes-explorer__admin-row"
+                style={{ gridTemplateColumns: "160px 1fr" }}
+              >
                 <label className="routes-explorer__admin-label">{f.label}</label>
                 <input
                   className="routes-explorer__admin-input"
