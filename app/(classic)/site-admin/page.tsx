@@ -36,6 +36,12 @@ export default async function SiteAdminHome() {
             <div className="notion-text notion-text__content notion-semantic-string">
               <ul>
                 <li>
+                  <Link href="/site-admin/config" className="notion-link link">
+                    Config
+                  </Link>{" "}
+                  (site settings + navigation)
+                </li>
+                <li>
                   <Link href="/site-admin/routes" className="notion-link link">
                     Routes
                   </Link>{" "}
@@ -58,4 +64,3 @@ export default async function SiteAdminHome() {
     </main>
   );
 }
-

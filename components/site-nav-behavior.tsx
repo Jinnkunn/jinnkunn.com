@@ -156,6 +156,7 @@ export default function SiteNavBehavior() {
     let moreCloseTimer: number | null = null;
     let mobileCloseTimer: number | null = null;
     let mobilePrevFocus: HTMLElement | null = null;
+    let moreResizeObserver: ResizeObserver | null = null;
 
     const getMoreItems = () =>
       Array.from(
@@ -195,17 +196,39 @@ export default function SiteNavBehavior() {
         moreMenu.style.display = "";
         moreMenu.setAttribute("data-state", "open");
         moreMenu.removeAttribute("inert");
-        // Dynamic height: let the dropdown size itself based on the number of items.
-        // This matches Super's behavior and avoids hard-coded viewport heights.
-        requestAnimationFrame(() => {
-          const content = moreMenu.querySelector<HTMLElement>(".super-navbar__list-content");
+        // Dynamic height: size the dropdown based on the *rendered* list height.
+        // NOTE: `.super-navbar__list-content` has `max-height` + `overflow:auto`, so
+        // `scrollHeight` can be larger than what is actually rendered, causing a
+        // too-tall dropdown. Use `getBoundingClientRect().height` instead.
+        const syncMoreHeight = () => {
+          const content = moreMenu.querySelector<HTMLElement>(
+            ".super-navbar__list-content"
+          );
           if (!content) return;
-          const h = Math.max(0, content.scrollHeight);
-          moreMenu.style.setProperty("--radix-navigation-menu-viewport-height", `${h}px`);
+          const rect = content.getBoundingClientRect();
+          const h = Math.max(0, Math.ceil(rect.height));
+          moreMenu.style.setProperty(
+            "--radix-navigation-menu-viewport-height",
+            `${h}px`
+          );
+        };
+
+        requestAnimationFrame(() => {
+          syncMoreHeight();
+          // Keep height correct across responsive reflows / font swaps while open.
+          const content = moreMenu.querySelector<HTMLElement>(
+            ".super-navbar__list-content"
+          );
+          if (content && typeof ResizeObserver !== "undefined") {
+            moreResizeObserver?.disconnect();
+            moreResizeObserver = new ResizeObserver(() => syncMoreHeight());
+            moreResizeObserver.observe(content);
+          }
         });
         // Only move focus when explicitly requested (keyboard open).
         if (opts.focus) requestAnimationFrame(() => focusMoreItem(opts.focus!));
       } else {
+        moreResizeObserver?.disconnect();
         moreMenu.setAttribute("data-state", "closed");
         moreMenu.setAttribute("inert", "");
         if (prefersReducedMotion) {
@@ -517,6 +540,7 @@ export default function SiteNavBehavior() {
 
     return () => {
       clearTimers();
+      moreResizeObserver?.disconnect();
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("focusin", onFocusIn);
