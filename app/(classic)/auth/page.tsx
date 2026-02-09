@@ -46,7 +46,7 @@ export default async function AuthPage({
           </p>
         ) : null}
 
-        <form method="post" action="/api/auth" className="notion-form">
+        <form method="post" action="/api/site-auth" className="notion-form">
           <input type="hidden" name="next" value={nextPath} />
           <input type="hidden" name="rid" value={rid} />
 

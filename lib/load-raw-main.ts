@@ -75,7 +75,12 @@ function rewriteRawHtml(html: string): string {
   });
 
   // Rewrite hard-coded absolute links back to local routes.
-  return lcpTweaked
+  const breadcrumbFixed = lcpTweaked.replace(
+    /<div class="super-navbar__breadcrumbs"\s+style="position:absolute">/gi,
+    '<div class="super-navbar__breadcrumbs">',
+  );
+
+  return breadcrumbFixed
     .replaceAll("https://jinkunchen.com", "")
     .replaceAll("http://jinkunchen.com", "");
 }

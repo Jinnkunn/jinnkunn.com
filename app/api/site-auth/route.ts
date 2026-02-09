@@ -24,7 +24,10 @@ function normalizeNextPath(p: unknown): string {
   return raw;
 }
 
-function redirectToAuth(req: Request, { next, rid, error }: { next: string; rid?: string; error?: string }) {
+function redirectToAuth(
+  req: Request,
+  { next, rid, error }: { next: string; rid?: string; error?: string },
+) {
   const url = new URL(req.url);
   url.pathname = "/auth";
   url.search = "";

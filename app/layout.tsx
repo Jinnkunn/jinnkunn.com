@@ -3,6 +3,7 @@ import Script from "next/script";
 import { getSiteConfig } from "@/lib/site-config";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
+import Providers from "@/components/providers";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang={cfg.lang || "en"} dir="ltr" className="theme-light">
       <body>
-        {children}
+        <Providers>{children}</Providers>
         <SpeedInsights />
         <Analytics />
         {gaId ? (

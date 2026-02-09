@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import protectedRoutes from "@/content/generated/protected-routes.json";
 import routes from "@/content/generated/routes.json";
+import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 
 type ProtectedRoute = {
   id: string;
@@ -78,9 +79,23 @@ function findProtectedMatch(pathname: string, routes: ProtectedRoute[]): Protect
 // - blog URL canonicalization
 // - Notion ID path canonicalization
 // - optional password-protected routes
-export function proxy(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const pathname = req.nextUrl.pathname || "/";
   if (isBypassedPath(pathname)) return NextResponse.next();
+
+  // /site-admin must be protected (GitHub allowlist).
+  if (pathname === "/site-admin/login" || pathname.startsWith("/site-admin/login/")) {
+    return NextResponse.next();
+  }
+  if (pathname === "/site-admin" || pathname.startsWith("/site-admin/")) {
+    const ok = await isSiteAdminAuthorized(req);
+    if (!ok) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/site-admin/login";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url, 302);
+    }
+  }
 
   // Canonicalize old blog URLs:
   // - /blog/list/<slug> -> /blog/<slug>
@@ -134,4 +149,3 @@ export function proxy(req: NextRequest) {
 export const config = {
   matcher: "/:path*",
 };
-

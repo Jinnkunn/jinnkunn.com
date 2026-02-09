@@ -1304,7 +1304,7 @@ function renderBreadcrumbs(node, cfg, ctx) {
     });
 
   const joined = items.join('<span class="notion-breadcrumb__divider">/</span>');
-  return `<div class="super-navbar__breadcrumbs" style="position:absolute"><div class="notion-breadcrumb">${joined}</div></div>`;
+  return `<div class="super-navbar__breadcrumbs"><div class="notion-breadcrumb">${joined}</div></div>`;
 }
 
 async function renderPageMain(page, blocks, cfg, ctx) {
