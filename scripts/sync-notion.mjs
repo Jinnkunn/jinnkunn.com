@@ -1198,7 +1198,7 @@ async function renderBlock(b, ctx) {
       .filter((r) => r?.type === "table_row" || r?.table_row)
       .map((r, rowIdx) => {
         const cells = Array.isArray(r?.table_row?.cells) ? r.table_row.cells : [];
-        const tds: string[] = [];
+        const tds = [];
 
         for (let col = 0; col < width; col++) {
           const cell = cells[col];
