@@ -807,6 +807,54 @@ function richTextPlain(richText) {
   return (richText || []).map((x) => x?.plain_text ?? "").join("");
 }
 
+function extractPlainTextFromBlocks(blocks, out = []) {
+  const arr = Array.isArray(blocks) ? blocks : [];
+
+  const push = (s) => {
+    const t = String(s || "").replace(/\s+/g, " ").trim();
+    if (t) out.push(t);
+  };
+
+  for (const b of arr) {
+    if (!b || !b.type) continue;
+    const t = b.type;
+    const data = b[t];
+
+    // Common Notion pattern: most text blocks have `rich_text`.
+    if (data && Array.isArray(data.rich_text)) push(richTextPlain(data.rich_text));
+
+    // Headings use `rich_text` too, but keep explicit for clarity.
+    if (t === "heading_1") push(richTextPlain(b.heading_1?.rich_text));
+    if (t === "heading_2") push(richTextPlain(b.heading_2?.rich_text));
+    if (t === "heading_3") push(richTextPlain(b.heading_3?.rich_text));
+
+    // Code blocks.
+    if (t === "code") push(richTextPlain(b.code?.rich_text));
+
+    // Callouts include both icon and rich text; icon isn't searchable.
+    if (t === "callout") push(richTextPlain(b.callout?.rich_text));
+
+    // Bookmark/caption text can be useful.
+    if (t === "bookmark") {
+      push(richTextPlain(b.bookmark?.caption));
+      push(String(b.bookmark?.url || ""));
+    }
+
+    // Table rows have cells; keep as plain text.
+    if (t === "table_row") {
+      const cells = Array.isArray(b.table_row?.cells) ? b.table_row.cells : [];
+      for (const cell of cells) push(richTextPlain(cell));
+    }
+
+    // Recurse into hydrated children (toggles, lists, columns, etc.).
+    if (Array.isArray(b.__children) && b.__children.length) {
+      extractPlainTextFromBlocks(b.__children, out);
+    }
+  }
+
+  return out;
+}
+
 function renderRichText(richText, ctx) {
   const items = Array.isArray(richText) ? richText : [];
   return items.map((rt) => renderRichTextItem(rt, ctx)).join("");
@@ -1587,19 +1635,46 @@ async function main() {
   const homeRoutePageId = homePage?.id || "";
   const ctx = { routeByPageId, dbById, nodeById, homeTitle, homePageId: homeRoutePageId };
 
+  const searchIndex = [];
   for (const p of allPages) {
-    const mainHtml =
-      p.kind === "database"
-        ? renderDatabaseMain(p, cfg, ctx)
-        : await (async () => {
-            const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
-            return await renderPageMain(p, blocks, cfg, ctx);
-          })();
+    const mainHtml = await (p.kind === "database"
+      ? (async () => {
+          const childTitles = (p.children || [])
+            .filter((x) => x && x.kind !== "database")
+            .map((x) => String(x.title || "").trim())
+            .filter(Boolean)
+            .join("\n");
+          searchIndex.push({
+            id: p.id,
+            title: p.title,
+            kind: p.kind,
+            routePath: p.routePath,
+            text: `${p.title}\n${childTitles}`.trim(),
+          });
+          return renderDatabaseMain(p, cfg, ctx);
+        })()
+      : (async () => {
+          const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
+          const text = extractPlainTextFromBlocks(blocks).join("\n");
+          searchIndex.push({
+            id: p.id,
+            title: p.title,
+            kind: p.kind,
+            routePath: p.routePath,
+            text,
+          });
+          return await renderPageMain(p, blocks, cfg, ctx);
+        })());
     const rel = routePathToHtmlRel(p.routePath);
     const outPath = path.join(OUT_RAW_DIR, rel);
     writeFile(outPath, mainHtml + "\n");
     console.log(`[sync:notion] Wrote ${rel}`);
   }
+
+  writeFile(
+    path.join(OUT_DIR, "search-index.json"),
+    JSON.stringify(searchIndex, null, 2) + "\n",
+  );
 
   // Small debug artifact: route map.
   const routes = Object.fromEntries(allPages.map((p) => [p.routePath, p.id]));

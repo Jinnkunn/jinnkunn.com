@@ -7,6 +7,7 @@ type SearchItem = {
   title: string;
   routePath: string;
   kind: string;
+  snippet?: string;
 };
 
 function escapeHtml(s: string): string {
@@ -95,6 +96,7 @@ function renderResults(list: HTMLElement, items: SearchItem[]) {
       const title = escapeHtml(it.title || "Untitled");
       const route = escapeHtml(it.routePath || "/");
       const kind = escapeHtml(it.kind || "page");
+      const snippet = escapeHtml(it.snippet || "");
       return `
         <div class="notion-search__result-item-wrapper${last ? " last" : ""}">
           <a class="notion-search__result-item ${kind}" href="${route}" role="option" aria-selected="false">
@@ -102,7 +104,11 @@ function renderResults(list: HTMLElement, items: SearchItem[]) {
               <div class="notion-search__result-item-title">
                 <span class="notion-semantic-string">${title}</span>
               </div>
-              <div class="notion-search__result-item-text">${route}</div>
+              ${
+                snippet
+                  ? `<div class="notion-search__result-item-text">${snippet}</div><div class="notion-search__result-item-meta">${route}</div>`
+                  : `<div class="notion-search__result-item-text">${route}</div>`
+              }
             </div>
             <div class="notion-search__result-item-enter-icon" aria-hidden="true">↵</div>
           </a>
@@ -125,13 +131,15 @@ async function fetchResults(q: string, signal: AbortSignal): Promise<SearchItem[
     .map((x) => {
       if (!x || typeof x !== "object") return null;
       const o = x as Record<string, unknown>;
-      return {
+      const it: SearchItem = {
         title: String(o.title || ""),
         routePath: String(o.routePath || ""),
         kind: String(o.kind || "page"),
-      } satisfies SearchItem;
+        snippet: String(o.snippet || ""),
+      };
+      return it;
     })
-    .filter((x): x is SearchItem => Boolean(x?.routePath));
+    .filter((x): x is SearchItem => Boolean(x && x.routePath));
 }
 
 export default function SiteSearchBehavior() {
@@ -141,7 +149,7 @@ export default function SiteSearchBehavior() {
     const trigger = document.getElementById("search-trigger") as HTMLButtonElement | null;
     if (!trigger) return;
 
-    const { root, wrapper, box, input, clearBtn, list, footer } = ensureSearch();
+    const { root, wrapper, input, clearBtn, list, footer } = ensureSearch();
 
     let open = false;
     let lastFocus: HTMLElement | null = null;
@@ -221,6 +229,12 @@ export default function SiteSearchBehavior() {
 
     const onClear = (e: MouseEvent) => {
       e.preventDefault();
+      if (!open) return;
+      // Super-like behavior: "X" clears if there is input; otherwise it closes.
+      if (!input.value.trim()) {
+        close();
+        return;
+      }
       input.value = "";
       input.focus();
       renderEmpty(list);
@@ -261,4 +275,3 @@ export default function SiteSearchBehavior() {
 
   return null;
 }
-
