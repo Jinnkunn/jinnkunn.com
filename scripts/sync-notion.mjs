@@ -615,7 +615,11 @@ async function buildPageTree(
 
       out.push(b);
 
-      if (b?.has_children) {
+      // IMPORTANT: don't expand child_page/child_database here. We treat them as
+      // nodes and recurse using their canonical ids, otherwise we "inline" the
+      // subtree at the wrong parent and duplicate routes.
+      const t = String(b?.type || "");
+      if (b?.has_children && t !== "child_page" && t !== "child_database") {
         const kids = await listBlockChildrenCached(b.id);
         // Preserve Notion order: parent, then its children, then next sibling.
         for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
