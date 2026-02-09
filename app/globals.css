@@ -41,6 +41,44 @@
   border-radius: 10px;
 }
 
+/* Content links: restore the Super-like "ink rise" highlight (hover fills from bottom).
+ * Some overrides later in the stack can accidentally shift the highlight; this pins it.
+ */
+:where(.super-root) a[class="notion-link link"] {
+  /* Keep icons out of the highlight by reserving space in padding (set per-icon link elsewhere). */
+  --link-icon-space: 0px;
+  padding-left: calc(var(--link-icon-space) + 0.08em);
+
+  background-repeat: no-repeat !important;
+  background-position: 0 100% !important;
+  /* Paint into padding so the highlight doesn't look "cut in half". */
+  background-clip: padding-box !important;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+
+  /* Force a stable highlight + transition (prevents regressions from upstream CSS). */
+  background-image: linear-gradient(
+    to top,
+    rgba(246, 228, 183, 0.88) 0%,
+    rgba(246, 228, 183, 0.88) 100%
+  ) !important;
+  background-size: 100% 0.42em !important;
+  transition:
+    background-size 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    text-decoration-color 180ms ease !important;
+}
+
+:where(.super-root) a[class="notion-link link"]:hover {
+  /* Slightly taller than 1em so it can cover the full line box across fonts. */
+  background-size: 100% 1.65em !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.super-root) a[class="notion-link link"] {
+    transition: none !important;
+  }
+}
+
 /* Utility: screen-reader-only text. */
 .sr-only {
   position: absolute !important;
