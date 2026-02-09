@@ -942,9 +942,9 @@ html {
 
 /* Home hero: match Super proportions by constraining the profile image size. */
 @media (min-width: 760px) {
-  /* Keep columns aligned to the top (Super-like). */
+  /* Match Super's default column layout: stretch columns to equal height. */
   .page__index .notion-column-list {
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   .page__index .notion-column-list > .notion-column:first-child .notion-image {
