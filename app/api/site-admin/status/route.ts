@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
+import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
@@ -42,11 +43,23 @@ function pickCommitSha(): string {
   ).trim();
 }
 
+function safeDir(filePath: string): { exists: boolean; mtimeMs?: number; size?: number; count?: number } {
+  try {
+    const st = fs.statSync(filePath);
+    if (!st.isDirectory()) return { exists: false };
+    const items = fs.readdirSync(filePath);
+    return { exists: true, mtimeMs: st.mtimeMs, size: st.size, count: items.length };
+  } catch {
+    return { exists: false };
+  }
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return auth.res;
 
   const allow = parseAllowedAdminUsers();
+  const allowContent = parseAllowedContentUsers();
 
   const syncMeta = getSyncMeta();
   const site = getSiteConfig();
@@ -60,6 +73,9 @@ export async function GET(req: NextRequest) {
     routesManifest: safeStat(path.join(generatedDir, "routes-manifest.json")),
     protectedRoutes: safeStat(path.join(generatedDir, "protected-routes.json")),
     syncMeta: safeStat(path.join(generatedDir, "sync-meta.json")),
+    searchIndex: safeStat(path.join(generatedDir, "search-index.json")),
+    routesJson: safeStat(path.join(generatedDir, "routes.json")),
+    notionSyncCache: safeDir(path.join(root, ".next", "cache", "notion-sync")),
   };
 
   const commitSha = pickCommitSha();
@@ -76,6 +92,7 @@ export async function GET(req: NextRequest) {
       hasDeployHookUrl: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL?.trim()),
       hasNextAuthSecret: Boolean((process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim()),
       githubAllowlistCount: allow.size,
+      contentGithubAllowlistCount: allowContent.size,
     },
     build: {
       commitSha,
@@ -97,4 +114,3 @@ export async function GET(req: NextRequest) {
     files,
   });
 }
-

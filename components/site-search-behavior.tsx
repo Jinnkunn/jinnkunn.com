@@ -82,6 +82,12 @@ function ensureSearch(): {
   box: HTMLElement;
   input: HTMLInputElement;
   clearBtn: HTMLButtonElement;
+  closeBtn: HTMLButtonElement;
+  filterAll: HTMLButtonElement;
+  filterPages: HTMLButtonElement;
+  filterBlog: HTMLButtonElement;
+  filterDatabases: HTMLButtonElement;
+  scopeBtn: HTMLButtonElement;
   list: HTMLElement;
   footer: HTMLElement;
 } {
@@ -91,10 +97,43 @@ function ensureSearch(): {
     const box = existing.querySelector<HTMLElement>(".notion-search__box");
     const input = existing.querySelector<HTMLInputElement>("#notion-search-input");
     const clearBtn = existing.querySelector<HTMLButtonElement>("#notion-search-clear");
+    const closeBtn = existing.querySelector<HTMLButtonElement>("#notion-search-close");
+    const filterAll = existing.querySelector<HTMLButtonElement>("#notion-search-filter-all");
+    const filterPages = existing.querySelector<HTMLButtonElement>("#notion-search-filter-pages");
+    const filterBlog = existing.querySelector<HTMLButtonElement>("#notion-search-filter-blog");
+    const filterDatabases = existing.querySelector<HTMLButtonElement>("#notion-search-filter-databases");
+    const scopeBtn = existing.querySelector<HTMLButtonElement>("#notion-search-scope");
     const list = existing.querySelector<HTMLElement>("#notion-search-results");
     const footer = existing.querySelector<HTMLElement>("#notion-search-footer");
-    if (wrapper && box && input && clearBtn && list && footer) {
-      return { root: existing, wrapper, box, input, clearBtn, list, footer };
+    if (
+      wrapper &&
+      box &&
+      input &&
+      clearBtn &&
+      closeBtn &&
+      filterAll &&
+      filterPages &&
+      filterBlog &&
+      filterDatabases &&
+      scopeBtn &&
+      list &&
+      footer
+    ) {
+      return {
+        root: existing,
+        wrapper,
+        box,
+        input,
+        clearBtn,
+        closeBtn,
+        filterAll,
+        filterPages,
+        filterBlog,
+        filterDatabases,
+        scopeBtn,
+        list,
+        footer,
+      };
     }
   }
 
@@ -113,12 +152,28 @@ function ensureSearch(): {
             </svg>
           </div>
           <input id="notion-search-input" type="search" placeholder="Search..." autocomplete="off" spellcheck="false" />
-          <button id="notion-search-clear" class="notion-search__clear" type="button" aria-label="Clear">
+          <button id="notion-search-clear" class="notion-search__clear" type="button" aria-label="Clear query" title="Clear">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M20 6H9l-5 6 5 6h11V6z"></path>
+              <path d="m12 10 4 4"></path>
+              <path d="m16 10-4 4"></path>
+            </svg>
+          </button>
+          <button id="notion-search-close" class="notion-search__close" type="button" aria-label="Close search" title="Close">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
               <path d="M18 6 6 18"></path>
               <path d="m6 6 12 12"></path>
             </svg>
           </button>
+        </div>
+        <div class="notion-search__filters" role="group" aria-label="Search filters">
+          <div class="notion-search__filter-pills" role="tablist" aria-label="Type filter">
+            <button id="notion-search-filter-all" class="notion-search__pill is-active" type="button" role="tab" aria-selected="true" data-type="all">All</button>
+            <button id="notion-search-filter-pages" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="pages">Pages</button>
+            <button id="notion-search-filter-blog" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="blog">Blog</button>
+            <button id="notion-search-filter-databases" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="databases">Databases</button>
+          </div>
+          <button id="notion-search-scope" class="notion-search__pill notion-search__pill--scope" type="button" aria-pressed="false" title="Search only in the current section">This section</button>
         </div>
         <div id="notion-search-results" class="notion-search__result-list" role="listbox" aria-label="Search results"></div>
         <div id="notion-search-footer" class="notion-search__result-footer"></div>
@@ -132,9 +187,29 @@ function ensureSearch(): {
   const box = root.querySelector<HTMLElement>(".notion-search__box")!;
   const input = root.querySelector<HTMLInputElement>("#notion-search-input")!;
   const clearBtn = root.querySelector<HTMLButtonElement>("#notion-search-clear")!;
+  const closeBtn = root.querySelector<HTMLButtonElement>("#notion-search-close")!;
+  const filterAll = root.querySelector<HTMLButtonElement>("#notion-search-filter-all")!;
+  const filterPages = root.querySelector<HTMLButtonElement>("#notion-search-filter-pages")!;
+  const filterBlog = root.querySelector<HTMLButtonElement>("#notion-search-filter-blog")!;
+  const filterDatabases = root.querySelector<HTMLButtonElement>("#notion-search-filter-databases")!;
+  const scopeBtn = root.querySelector<HTMLButtonElement>("#notion-search-scope")!;
   const list = root.querySelector<HTMLElement>("#notion-search-results")!;
   const footer = root.querySelector<HTMLElement>("#notion-search-footer")!;
-  return { root, wrapper, box, input, clearBtn, list, footer };
+  return {
+    root,
+    wrapper,
+    box,
+    input,
+    clearBtn,
+    closeBtn,
+    filterAll,
+    filterPages,
+    filterBlog,
+    filterDatabases,
+    scopeBtn,
+    list,
+    footer,
+  };
 }
 
 function renderEmpty(list: HTMLElement) {
@@ -178,9 +253,15 @@ function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
     .join("");
 }
 
-async function fetchResults(q: string, signal: AbortSignal): Promise<SearchItem[]> {
+async function fetchResults(
+  q: string,
+  opts: { type: string; scope: string },
+  signal: AbortSignal,
+): Promise<SearchItem[]> {
   const url = new URL("/api/search", window.location.origin);
   url.searchParams.set("q", q);
+  if (opts.type && opts.type !== "all") url.searchParams.set("type", opts.type);
+  if (opts.scope) url.searchParams.set("scope", opts.scope);
   const res = await fetch(url, { signal, headers: { "cache-control": "no-store" } });
   if (!res.ok) return [];
   const data = (await res.json().catch(() => null)) as unknown;
@@ -210,13 +291,71 @@ export default function SiteSearchBehavior() {
     const trigger = document.getElementById("search-trigger") as HTMLButtonElement | null;
     if (!trigger) return;
 
-    const { root, wrapper, input, clearBtn, list, footer } = ensureSearch();
+    const {
+      root,
+      wrapper,
+      input,
+      clearBtn,
+      closeBtn,
+      filterAll,
+      filterPages,
+      filterBlog,
+      filterDatabases,
+      scopeBtn,
+      list,
+      footer,
+    } = ensureSearch();
 
     let open = false;
     let lastFocus: HTMLElement | null = null;
     let aborter: AbortController | null = null;
     let debounceTimer: number | null = null;
     let activeIndex = -1;
+    let filterType: "all" | "pages" | "blog" | "databases" = "all";
+    let scopeEnabled = false;
+    let scopePrefix = "";
+    let scopeLabel = "";
+
+    const computeScope = (): { prefix: string; label: string } => {
+      const p = String(window.location.pathname || "/");
+      if (!p || p === "/" || p.startsWith("/site-admin")) return { prefix: "", label: "" };
+      // Blog: keep it tight.
+      if (p === "/blog" || p.startsWith("/blog/")) return { prefix: "/blog", label: "Blog" };
+      const seg = p.split("/").filter(Boolean)[0] || "";
+      if (!seg) return { prefix: "", label: "" };
+      const prefix = `/${seg}`;
+      const label = seg.charAt(0).toUpperCase() + seg.slice(1);
+      return { prefix, label };
+    };
+
+    const setFilterPillState = () => {
+      const set = (btn: HTMLButtonElement, on: boolean) => {
+        btn.classList.toggle("is-active", on);
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+      };
+      set(filterAll, filterType === "all");
+      set(filterPages, filterType === "pages");
+      set(filterBlog, filterType === "blog");
+      set(filterDatabases, filterType === "databases");
+
+      if (scopePrefix && scopeLabel) {
+        scopeBtn.classList.remove("is-hidden");
+        scopeBtn.textContent = scopeEnabled ? `In ${scopeLabel}` : "This section";
+        scopeBtn.setAttribute("aria-pressed", scopeEnabled ? "true" : "false");
+        scopeBtn.classList.toggle("is-active", scopeEnabled);
+      } else {
+        scopeBtn.classList.add("is-hidden");
+        scopeBtn.setAttribute("aria-pressed", "false");
+        scopeBtn.classList.remove("is-active");
+      }
+    };
+
+    const setClearState = () => {
+      const has = Boolean(input.value.trim());
+      clearBtn.classList.toggle("is-hidden", !has);
+      clearBtn.setAttribute("aria-hidden", has ? "false" : "true");
+      clearBtn.tabIndex = has ? 0 : -1;
+    };
 
     const getResultItems = (): HTMLAnchorElement[] =>
       Array.from(list.querySelectorAll<HTMLAnchorElement>(".notion-search__result-item"));
@@ -261,6 +400,13 @@ export default function SiteSearchBehavior() {
       if (open) {
         lastFocus = document.activeElement as HTMLElement | null;
         input.value = "";
+        filterType = "all";
+        scopeEnabled = false;
+        const s = computeScope();
+        scopePrefix = s.prefix;
+        scopeLabel = s.label;
+        setFilterPillState();
+        setClearState();
         renderEmpty(list);
         activeIndex = -1;
         renderFooterHint("idle");
@@ -355,7 +501,11 @@ export default function SiteSearchBehavior() {
       activeIndex = -1;
 
       void (async () => {
-        const items = await fetchResults(query, aborter!.signal).catch(() => []);
+        const items = await fetchResults(
+          query,
+          { type: filterType, scope: scopeEnabled ? scopePrefix : "" },
+          aborter!.signal,
+        ).catch(() => []);
         if (aborter?.signal.aborted) return;
         renderResults(list, items, query);
         if (items.length) setActive(0);
@@ -365,6 +515,7 @@ export default function SiteSearchBehavior() {
 
     const onInput = () => {
       if (!open) return;
+      setClearState();
       if (debounceTimer) window.clearTimeout(debounceTimer);
       debounceTimer = window.setTimeout(() => runSearch(input.value), 140);
     };
@@ -373,16 +524,20 @@ export default function SiteSearchBehavior() {
       e.preventDefault();
       e.stopPropagation();
       if (!open) return;
-      // Super-like behavior: "X" clears if there is input; otherwise it closes.
-      if (!input.value.trim()) {
-        close();
-        return;
-      }
+      if (!input.value.trim()) return;
       input.value = "";
       input.focus();
+      setClearState();
       renderEmpty(list);
       activeIndex = -1;
       renderFooterHint("idle");
+    };
+
+    const onClose = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!open) return;
+      close();
     };
 
     trigger.addEventListener("click", onTriggerClick);
@@ -390,6 +545,34 @@ export default function SiteSearchBehavior() {
     document.addEventListener("keydown", onKeyDown, true);
     input.addEventListener("input", onInput);
     clearBtn.addEventListener("click", onClear);
+    closeBtn.addEventListener("click", onClose);
+
+    const onFilterClick = (e: MouseEvent) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (!t) return;
+      const btn = t.closest("button[data-type]") as HTMLButtonElement | null;
+      if (!btn) return;
+      const next = String(btn.getAttribute("data-type") || "all") as typeof filterType;
+      if (!open) return;
+      filterType = (["all", "pages", "blog", "databases"].includes(next) ? next : "all") as typeof filterType;
+      setFilterPillState();
+      runSearch(input.value);
+    };
+
+    const onScopeClick = (e: MouseEvent) => {
+      e.preventDefault();
+      if (!open) return;
+      if (!scopePrefix) return;
+      scopeEnabled = !scopeEnabled;
+      setFilterPillState();
+      runSearch(input.value);
+    };
+
+    filterAll.addEventListener("click", onFilterClick);
+    filterPages.addEventListener("click", onFilterClick);
+    filterBlog.addEventListener("click", onFilterClick);
+    filterDatabases.addEventListener("click", onFilterClick);
+    scopeBtn.addEventListener("click", onScopeClick);
 
     // Close on navigation.
     if (open) close();
@@ -400,6 +583,12 @@ export default function SiteSearchBehavior() {
       document.removeEventListener("keydown", onKeyDown, true);
       input.removeEventListener("input", onInput);
       clearBtn.removeEventListener("click", onClear);
+      closeBtn.removeEventListener("click", onClose);
+      filterAll.removeEventListener("click", onFilterClick);
+      filterPages.removeEventListener("click", onFilterClick);
+      filterBlog.removeEventListener("click", onFilterClick);
+      filterDatabases.removeEventListener("click", onFilterClick);
+      scopeBtn.removeEventListener("click", onScopeClick);
       aborter?.abort();
       aborter = null;
     };

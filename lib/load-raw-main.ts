@@ -135,6 +135,24 @@ function rewriteRawHtml(html: string): string {
         "\n</span>\n$1",
       );
 
+    // Publications: enforce the original layout inside expanded details:
+    // Authors line
+    // (blank line)
+    // tag: venue/link line
+    //
+    // Our CSS keeps `white-space: normal`, so we use real <br> tags.
+    out = out.replace(
+      /<\/em>(?:\s*<br\s*\/?>\s*)*<em><span class="highlighted-color/gi,
+      "</em><br><br><em><span class=\"highlighted-color",
+    );
+
+    // Some exports place the tag line immediately after a closing span + newline.
+    // Convert that newline gap into <br><br> so the layout matches the original site.
+    out = out.replace(
+      /<\/span>\r?\n{1,2}((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
+      "</span><br><br>$1",
+    );
+
     // Final clamp: ensure the "authors line" and the following "tag/venue line" have
     // exactly one blank line between them (2 consecutive newlines), not 0 and not 2+.
     out = out.replace(

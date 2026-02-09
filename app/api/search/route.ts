@@ -214,19 +214,78 @@ function isIgnoredPath(routePath: string): boolean {
 }
 
 function buildSnippet(text: string, ql: string): string {
-  const raw = String(text || "");
+  return buildSnippetByTerms(text, [ql]);
+}
+
+function tokenizeQuery(q: string): string[] {
+  return String(q || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function bestPos(hay: string, terms: string[]): number {
+  let best = -1;
+  for (const t of terms) {
+    if (!t) continue;
+    const i = hay.indexOf(t);
+    if (i < 0) continue;
+    if (best === -1 || i < best) best = i;
+  }
+  return best;
+}
+
+function buildSnippetByTerms(text: string, terms: string[]): string {
+  const raw0 = String(text || "");
+  const raw = raw0.replace(/\s+/g, " ").trim();
+  if (!raw) return "";
   const hay = safeLower(raw);
-  const idx = hay.indexOf(ql);
+  const idx = bestPos(hay, terms);
   if (idx < 0) return "";
 
-  // Keep it compact and readable; search overlay isn't a full preview.
-  const radius = 70;
-  const start = Math.max(0, idx - radius);
-  const end = Math.min(raw.length, idx + ql.length + radius);
-  let s = raw.slice(start, end).replace(/\s+/g, " ").trim();
-  if (start > 0) s = `… ${s}`;
-  if (end < raw.length) s = `${s} …`;
-  return s;
+  // Prefer sentence boundaries for a more readable excerpt.
+  const maxLen = 190;
+  const leftWindow = 140;
+  const rightWindow = 180;
+
+  const lookLeft = raw.slice(Math.max(0, idx - leftWindow), idx);
+  const lookRight = raw.slice(idx, Math.min(raw.length, idx + rightWindow));
+
+  const leftBoundaryCandidates = [
+    lookLeft.lastIndexOf(". "),
+    lookLeft.lastIndexOf("! "),
+    lookLeft.lastIndexOf("? "),
+    lookLeft.lastIndexOf("; "),
+  ];
+  let leftBoundary = Math.max(...leftBoundaryCandidates);
+  if (leftBoundary < 0) leftBoundary = lookLeft.lastIndexOf(" ");
+  const start = Math.max(0, idx - lookLeft.length + (leftBoundary >= 0 ? leftBoundary + 2 : 0));
+
+  const rightBoundaryCandidates = [
+    lookRight.indexOf(". "),
+    lookRight.indexOf("! "),
+    lookRight.indexOf("? "),
+    lookRight.indexOf("; "),
+  ].filter((n) => n >= 0);
+  let end = Math.min(raw.length, idx + lookRight.length);
+  if (rightBoundaryCandidates.length) {
+    end = Math.min(end, idx + Math.min(...rightBoundaryCandidates) + 1);
+  } else {
+    // fallback to a word boundary
+    const s = raw.slice(idx, Math.min(raw.length, idx + rightWindow));
+    const sp = s.lastIndexOf(" ");
+    if (sp > 60) end = idx + sp;
+  }
+
+  // Clamp and add ellipses.
+  let snippet = raw.slice(start, end).trim();
+  if (snippet.length > maxLen) snippet = snippet.slice(0, maxLen).trim();
+  if (start > 0) snippet = `… ${snippet}`;
+  if (end < raw.length) snippet = `${snippet} …`;
+  return snippet;
 }
 
 export async function GET(req: Request) {
@@ -234,7 +293,14 @@ export async function GET(req: Request) {
   const q = normalizeQuery(url.searchParams.get("q") || "");
   if (!q) return json({ items: [] });
 
+  const type = String(url.searchParams.get("type") || "all")
+    .trim()
+    .toLowerCase();
+  const scopeRaw = String(url.searchParams.get("scope") || "").trim();
+  const scope = scopeRaw && scopeRaw.startsWith("/") ? normalizePath(scopeRaw) : "";
+
   const ql = q.toLowerCase();
+  const terms = tokenizeQuery(q);
   const index = readSearchIndex().filter((it) => !isIgnoredPath(it.routePath));
   const manifest = readManifest().filter((it) => !isIgnoredPath(it.routePath));
   const byRoute = new Map<string, ManifestItem>();
@@ -245,18 +311,50 @@ export async function GET(req: Request) {
     if (id) byId.set(id, it);
   }
 
+  const inScope = (routePath: string): boolean => {
+    if (!scope) return true;
+    const p = canonicalizePublicRoute(routePath);
+    return p === scope || p.startsWith(`${scope}/`);
+  };
+
+  const matchType = (kind: string, routePath: string): boolean => {
+    const p = canonicalizePublicRoute(routePath);
+    const k = String(kind || "").toLowerCase();
+    if (type === "database" || type === "databases") return k === "database";
+    if (type === "blog") {
+      // Treat the backing Notion database routes (/blog/list, /list) as databases, not "blog pages".
+      if (k === "database") return false;
+      const raw = normalizePath(routePath);
+      if (
+        raw === "/blog/list" ||
+        raw.startsWith("/blog/list/") ||
+        raw === "/list" ||
+        raw.startsWith("/list/")
+      ) {
+        return false;
+      }
+      return p === "/blog" || p.startsWith("/blog/");
+    }
+    if (type === "page" || type === "pages") return k === "page" && !(p === "/blog" || p.startsWith("/blog/"));
+    return true; // all
+  };
+
   // Prefer the richer, content-based index if present; otherwise fall back.
   if (index.length) {
     const matches = index
       .filter((it) => {
-        const hay = `${safeLower(it.title)}\n${safeLower(it.routePath)}\n${safeLower(it.text)}`;
-        return hay.includes(ql);
+        const canon = canonicalizePublicRoute(it.routePath);
+        if (!inScope(canon)) return false;
+        if (!matchType(it.kind, canon)) return false;
+        const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(it.text)}`;
+        if (terms.length <= 1) return hay.includes(ql);
+        return terms.every((t) => hay.includes(t));
       })
       .map((it) => {
         const canon = canonicalizePublicRoute(it.routePath);
-        const titlePos = safeLower(it.title).indexOf(ql);
-        const routePos = safeLower(canon).indexOf(ql);
-        const textPos = safeLower(it.text).indexOf(ql);
+        const titlePos = bestPos(safeLower(it.title), terms);
+        const routePos = bestPos(safeLower(canon), terms);
+        const textPos = bestPos(safeLower(it.text), terms);
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const textLenPenalty = Math.min(900, Math.floor(String(it.text || "").length / 140));
         // Rank: title > route > content. Earlier match positions are better.
@@ -274,7 +372,7 @@ export async function GET(req: Request) {
         title: it.routePath === "/" ? "Home" : it.title || "Untitled",
         routePath: canon,
         kind: it.kind || "page",
-        snippet: buildSnippet(it.text || "", ql),
+        snippet: buildSnippetByTerms(it.text || "", terms),
         breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
       }));
 
@@ -285,17 +383,22 @@ export async function GET(req: Request) {
 
   const matches = all
     .filter((it) => {
-      const hay = `${safeLower(it.title)}\n${safeLower(it.routePath)}\n${safeLower(it.id)}`;
-      return hay.includes(ql);
+      const canon = canonicalizePublicRoute(it.routePath);
+      if (!inScope(canon)) return false;
+      if (!matchType(it.kind, canon)) return false;
+      const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(it.id)}`;
+      if (terms.length <= 1) return hay.includes(ql);
+      return terms.every((t) => hay.includes(t));
     })
     .map((it) => {
       // Rank: title matches first, then route matches, then shorter routes.
-      const titlePos = safeLower(it.title).indexOf(ql);
-      const routePos = safeLower(it.routePath).indexOf(ql);
+      const canon = canonicalizePublicRoute(it.routePath);
+      const titlePos = bestPos(safeLower(it.title), terms);
+      const routePos = bestPos(safeLower(canon), terms);
       const score =
         (titlePos === -1 ? 50 : titlePos) +
         (routePos === -1 ? 80 : routePos + 10) +
-        Math.min(200, it.routePath.length / 8);
+        Math.min(200, canon.length / 8);
       return { it, score };
     })
     .sort((a, b) => a.score - b.score)

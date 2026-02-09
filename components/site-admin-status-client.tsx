@@ -16,6 +16,7 @@ type StatusPayload = {
     hasDeployHookUrl: boolean;
     hasNextAuthSecret: boolean;
     githubAllowlistCount: number;
+    contentGithubAllowlistCount: number;
   };
   build: {
     commitSha: string;
@@ -47,6 +48,9 @@ type StatusPayload = {
     routesManifest: Stat;
     protectedRoutes: Stat;
     syncMeta: Stat;
+    searchIndex: Stat;
+    routesJson: Stat;
+    notionSyncCache: Stat & { count?: number };
   };
 };
 
@@ -203,6 +207,14 @@ export default function SiteAdminStatusClient() {
                 <dt>Routes</dt>
                 <dd>{payload.content.routesDiscovered}</dd>
               </div>
+              <div className="site-admin-kv__row">
+                <dt>Overrides</dt>
+                <dd>{payload.content.syncMeta?.routeOverrides ?? "—"}</dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Protected rules</dt>
+                <dd>{payload.content.syncMeta?.protectedRules ?? "—"}</dd>
+              </div>
             </dl>
           </div>
 
@@ -221,6 +233,12 @@ export default function SiteAdminStatusClient() {
                 <dt>GitHub allowlist</dt>
                 <dd>
                   <code className="code">{payload.env.githubAllowlistCount}</code>
+                </dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Content allowlist</dt>
+                <dd>
+                  <code className="code">{payload.env.contentGithubAllowlistCount}</code>
                 </dd>
               </div>
               <div className="site-admin-kv__row">
@@ -243,6 +261,8 @@ export default function SiteAdminStatusClient() {
                   ["routes-manifest.json", payload.files.routesManifest],
                   ["protected-routes.json", payload.files.protectedRoutes],
                   ["sync-meta.json", payload.files.syncMeta],
+                  ["search-index.json", payload.files.searchIndex],
+                  ["routes.json", payload.files.routesJson],
                 ] as const
               ).map(([name, st]) => (
                 <div className="site-admin-kv__row" key={name}>
@@ -253,6 +273,20 @@ export default function SiteAdminStatusClient() {
                   </dd>
                 </div>
               ))}
+
+              <div className="site-admin-kv__row">
+                <dt>Notion sync cache</dt>
+                <dd>
+                  <Badge ok={payload.files.notionSyncCache.exists}>
+                    {payload.files.notionSyncCache.exists ? "present" : "missing"}
+                  </Badge>{" "}
+                  <span className="site-admin-kv__muted">
+                    {payload.files.notionSyncCache.exists
+                      ? `${payload.files.notionSyncCache.count ?? 0} entries`
+                      : "—"}
+                  </span>
+                </dd>
+              </div>
             </dl>
           </div>
         </div>
@@ -260,4 +294,3 @@ export default function SiteAdminStatusClient() {
     </section>
   );
 }
-

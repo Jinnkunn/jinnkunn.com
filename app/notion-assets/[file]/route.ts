@@ -1,0 +1,80 @@
+import { NextResponse } from "next/server";
+
+function dashify32(id32: string): string {
+  const s = id32.replace(/-/g, "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(s)) return "";
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
+}
+
+type NotionBlock = {
+  type?: string;
+  image?: {
+    type?: "file" | "external";
+    file?: { url?: string };
+    external?: { url?: string };
+  };
+  file?: {
+    type?: "file" | "external";
+    file?: { url?: string };
+    external?: { url?: string };
+  };
+  pdf?: {
+    type?: "file" | "external";
+    file?: { url?: string };
+    external?: { url?: string };
+  };
+};
+
+function pickAssetUrl(block: NotionBlock): string {
+  const t = String(block?.type || "");
+  const any = block as any;
+  const obj = any?.[t];
+  if (!obj || typeof obj !== "object") return "";
+  const kind = String(obj.type || "");
+  if (kind === "external") return String(obj.external?.url || "");
+  if (kind === "file") return String(obj.file?.url || "");
+  return "";
+}
+
+// Fallback for Notion-hosted "file" assets:
+// - Our sync tries to download to /public/notion-assets at build time.
+// - If that directory isn't present in a deployment (or a file is missing),
+//   this route resolves the latest signed URL from Notion and redirects.
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ file: string }> },
+) {
+  const { file } = await params;
+  const m = String(file || "").match(/^([0-9a-f]{32})\.[a-z0-9]{1,6}$/i);
+  if (!m) return new NextResponse("Not found", { status: 404 });
+
+  const notionToken = process.env.NOTION_TOKEN || "";
+  if (!notionToken) return new NextResponse("Not configured", { status: 404 });
+
+  const dashed = dashify32(m[1]!);
+  if (!dashed) return new NextResponse("Not found", { status: 404 });
+
+  const res = await fetch(`https://api.notion.com/v1/blocks/${dashed}`, {
+    headers: {
+      Authorization: `Bearer ${notionToken}`,
+      "Notion-Version": "2022-06-28",
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) return new NextResponse("Not found", { status: 404 });
+
+  const block = (await res.json().catch(() => null)) as NotionBlock | null;
+  if (!block) return new NextResponse("Not found", { status: 404 });
+
+  const url = pickAssetUrl(block);
+  if (!url) return new NextResponse("Not found", { status: 404 });
+
+  // Notion "file" URLs are short-lived (S3 signed URLs). Keep CDN cache short.
+  const out = NextResponse.redirect(url, { status: 302 });
+  out.headers.set(
+    "Cache-Control",
+    "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
+  );
+  return out;
+}
