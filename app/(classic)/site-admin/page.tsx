@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import SiteAdminDeployClient from "@/components/site-admin-deploy-client";
 import SiteAdminStatusClient from "@/components/site-admin-status-client";
+import SiteAdminBreadcrumbs from "@/components/site-admin-breadcrumbs";
 
 export const metadata: Metadata = {
   title: "Site Admin",
@@ -13,6 +14,12 @@ export const dynamic = "force-dynamic";
 export default async function SiteAdminHome() {
   return (
     <main id="page-site-admin" className="super-content page__site-admin parent-page__index">
+      <SiteAdminBreadcrumbs
+        crumbs={[
+          { href: "/", label: "Home" },
+          { href: "/site-admin", label: "Site Admin" },
+        ]}
+      />
       <div className="notion-header page">
         <div className="notion-header__cover no-cover no-icon" />
         <div className="notion-header__content max-width no-cover no-icon">

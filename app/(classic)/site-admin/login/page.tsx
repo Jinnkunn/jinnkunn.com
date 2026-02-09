@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SiteAdminLoginClient from "@/components/site-admin-login-client";
+import SiteAdminBreadcrumbs from "@/components/site-admin-breadcrumbs";
 
 export const metadata: Metadata = {
   title: "Site Admin Login",
@@ -18,6 +19,13 @@ export default async function SiteAdminLoginPage({
 
   return (
     <main id="page-site-admin-login" className="super-content page__site-admin-login parent-page__index">
+      <SiteAdminBreadcrumbs
+        crumbs={[
+          { href: "/", label: "Home" },
+          { href: "/site-admin", label: "Site Admin" },
+          { href: "/site-admin/login", label: "Login" },
+        ]}
+      />
       <div className="notion-header page">
         <div className="notion-header__cover no-cover no-icon" />
         <div className="notion-header__content max-width no-cover no-icon">
@@ -36,4 +44,3 @@ export default async function SiteAdminLoginPage({
     </main>
   );
 }
-
