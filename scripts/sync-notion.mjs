@@ -263,6 +263,20 @@ async function queryDatabase(databaseId, { filter, sorts } = {}) {
   return out;
 }
 
+// Cache database -> canonical parent page id so we can ignore linked database views.
+const __dbParentPageCache = new Map(); // dbId -> parentPageId ("" if workspace/unknown)
+async function getDatabaseParentPageId(databaseId) {
+  const dbId = compactId(databaseId);
+  if (!dbId) return "";
+  if (__dbParentPageCache.has(dbId)) return __dbParentPageCache.get(dbId);
+  const db = await notionRequest(`databases/${dbId}`);
+  const parent = db?.parent ?? null;
+  const parentPageId =
+    parent && parent.type === "page_id" ? compactId(parent.page_id) : "";
+  __dbParentPageCache.set(dbId, parentPageId);
+  return parentPageId;
+}
+
 async function hydrateBlocks(blocks) {
   for (const b of blocks) {
     if (b?.has_children) {
@@ -578,7 +592,13 @@ function extractFirstDateProperty(page) {
   return null;
 }
 
-async function buildPageTree(parentPageId) {
+async function buildPageTree(
+  parentPageId,
+  {
+    seenDatabases,
+  } = {},
+) {
+  const seenDb = seenDatabases || new Set();
   // Scan recursively so we discover child pages/databases nested inside toggles/columns/callouts/etc.
   const blocks = await (async () => {
     const top = await listBlockChildrenCached(parentPageId);
@@ -618,7 +638,7 @@ async function buildPageTree(parentPageId) {
         routePath: "",
         routeSegments: [],
       };
-      node.children = await buildPageTree(node.id);
+      node.children = await buildPageTree(node.id, { seenDatabases: seenDb });
       out.push(node);
       continue;
     }
@@ -626,6 +646,17 @@ async function buildPageTree(parentPageId) {
     if (b?.type === "child_database") {
       const dbId = compactId(b.id);
       const title = String(b.child_database?.title ?? "").trim() || "Database";
+
+      // If this database's canonical parent is another page, this is a linked view.
+      // Skip it to avoid duplicating routes (Super-like behavior).
+      if (dbId) {
+        const canonicalParent = await getDatabaseParentPageId(dbId);
+        if (canonicalParent && canonicalParent !== compactId(parentPageId)) {
+          continue;
+        }
+        if (seenDb.has(dbId)) continue;
+        seenDb.add(dbId);
+      }
 
       const rows = await queryDatabase(dbId);
       const items = rows
@@ -656,7 +687,7 @@ async function buildPageTree(parentPageId) {
       });
 
       for (const it of items) {
-        it.children = await buildPageTree(it.id);
+        it.children = await buildPageTree(it.id, { seenDatabases: seenDb });
       }
 
       out.push({
@@ -1515,11 +1546,12 @@ async function main() {
 
   if (homePageId === rootPageId) {
     const rootTitle = await getPageTitle(rootPageId);
+    const seenDatabases = new Set();
     const rootNode = {
       kind: "page",
       id: rootPageId,
       title: rootTitle,
-      children: await buildPageTree(rootPageId),
+      children: await buildPageTree(rootPageId, { seenDatabases }),
       parentId: "",
       routePath: "/",
       routeSegments: [],
@@ -1535,7 +1567,7 @@ async function main() {
           kind: "page",
           id: it.pageId,
           title: t,
-          children: await buildPageTree(it.pageId),
+          children: await buildPageTree(it.pageId, { seenDatabases }),
           parentId: rootPageId,
           routePath: "",
           routeSegments: [],
@@ -1561,7 +1593,8 @@ async function main() {
       routeByPageId.set(p.id, p.routePath);
     }
   } else {
-    const top = await buildPageTree(rootPageId);
+    const seenDatabases = new Set();
+    const top = await buildPageTree(rootPageId, { seenDatabases });
     if (!top.length) {
       throw new Error(
         "No child pages found under the configured content root page. Create child pages under the root page (or set content.rootPageId).",
@@ -1578,7 +1611,7 @@ async function main() {
           kind: "page",
           id: it.pageId,
           title: t,
-          children: await buildPageTree(it.pageId),
+          children: await buildPageTree(it.pageId, { seenDatabases }),
           parentId: rootPageId,
           routePath: "",
           routeSegments: [],

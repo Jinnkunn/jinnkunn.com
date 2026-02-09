@@ -58,7 +58,10 @@ function findProtectedMatch(pathname: string, routes: ProtectedRoute[]): Protect
   // Prefer exact matches first.
   for (const r of routes) {
     if (r.mode !== "exact") continue;
-    if (normalizePathname(r.path) === p) return r;
+    const rp = normalizePathname(r.path);
+    // Product decision: protecting a page protects its subtree (Super-like),
+    // even if older configs stored it as "exact".
+    if (rp === p || p.startsWith(`${rp}/`)) return r;
   }
 
   // Then longest prefix.
