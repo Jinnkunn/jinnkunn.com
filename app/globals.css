@@ -1882,6 +1882,9 @@ html {
   padding: 6px;
   margin: -6px -6px -6px 0;
   border-radius: 10px;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .notion-search__clear:hover {
@@ -1912,15 +1915,26 @@ html {
 
 .notion-search__result-item:link,
 .notion-search__result-item:visited {
-  color: var(--color-text-default);
+  color: var(--color-text-default) !important;
 }
 
 .notion-search__result-item:visited {
-  color: var(--color-text-default);
+  color: var(--color-text-default) !important;
 }
 
 .notion-search__result-item:hover {
   background: rgba(55, 53, 47, 0.06);
+}
+
+.notion-search__result-item * {
+  color: inherit;
+}
+
+.notion-search__hl {
+  background: rgba(255, 237, 176, 0.9);
+  box-shadow: inset 0 -2px 0 rgba(201, 165, 74, 0.55);
+  border-radius: 4px;
+  padding: 0 2px;
 }
 
 .notion-search__result-item.is-active {

@@ -19,6 +19,62 @@ function escapeHtml(s: string): string {
     .replaceAll("'", "&#x27;");
 }
 
+function tokenizeQuery(q: string): string[] {
+  return String(q || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function escapeAndHighlight(raw: string, terms: string[]): string {
+  const s = String(raw || "");
+  if (!s) return "";
+  if (!terms.length) return escapeHtml(s);
+
+  const hay = s.toLowerCase();
+  type Range = { start: number; end: number };
+  const ranges: Range[] = [];
+
+  for (const t of terms) {
+    if (!t) continue;
+    let from = 0;
+    for (;;) {
+      const i = hay.indexOf(t, from);
+      if (i < 0) break;
+      ranges.push({ start: i, end: i + t.length });
+      from = i + Math.max(1, t.length);
+      if (ranges.length > 60) break;
+    }
+    if (ranges.length > 60) break;
+  }
+
+  if (!ranges.length) return escapeHtml(s);
+
+  ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: Range[] = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (!last || r.start > last.end) {
+      merged.push({ start: r.start, end: r.end });
+      continue;
+    }
+    last.end = Math.max(last.end, r.end);
+  }
+
+  let out = "";
+  let cur = 0;
+  for (const r of merged) {
+    if (r.start > cur) out += escapeHtml(s.slice(cur, r.start));
+    out += `<span class="notion-search__hl">${escapeHtml(s.slice(r.start, r.end))}</span>`;
+    cur = r.end;
+  }
+  if (cur < s.length) out += escapeHtml(s.slice(cur));
+  return out;
+}
+
 function ensureSearch(): {
   root: HTMLElement;
   wrapper: HTMLElement;
@@ -88,25 +144,26 @@ function renderLoader(list: HTMLElement) {
   list.innerHTML = `<div class="notion-search__result-loader">Searching...</div>`;
 }
 
-function renderResults(list: HTMLElement, items: SearchItem[]) {
+function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
   if (!items.length) return renderEmpty(list);
+  const terms = tokenizeQuery(query);
   list.innerHTML = items
     .map((it, idx) => {
       const last = idx === items.length - 1;
-      const title = escapeHtml(it.title || "Untitled");
+      const titleHtml = escapeAndHighlight(it.title || "Untitled", terms);
       const route = escapeHtml(it.routePath || "/");
       const kind = escapeHtml(it.kind || "page");
-      const snippet = escapeHtml(it.snippet || "");
+      const snippetHtml = escapeAndHighlight(it.snippet || "", terms);
       return `
         <div class="notion-search__result-item-wrapper${last ? " last" : ""}">
           <a class="notion-search__result-item ${kind}" href="${route}" role="option" aria-selected="false">
             <div class="notion-search__result-item-content">
               <div class="notion-search__result-item-title">
-                <span class="notion-semantic-string">${title}</span>
+                <span class="notion-semantic-string">${titleHtml}</span>
               </div>
               ${
-                snippet
-                  ? `<div class="notion-search__result-item-text">${snippet}</div><div class="notion-search__result-item-meta">${route}</div>`
+                snippetHtml
+                  ? `<div class="notion-search__result-item-text">${snippetHtml}</div><div class="notion-search__result-item-meta">${route}</div>`
                   : `<div class="notion-search__result-item-text">${route}</div>`
               }
             </div>
@@ -296,7 +353,7 @@ export default function SiteSearchBehavior() {
       void (async () => {
         const items = await fetchResults(query, aborter!.signal).catch(() => []);
         if (aborter?.signal.aborted) return;
-        renderResults(list, items);
+        renderResults(list, items, query);
         if (items.length) setActive(0);
         renderFooterHint("results");
       })();
