@@ -12,6 +12,7 @@ type ManifestItem = {
   routePath: string;
   navGroup?: string;
   overridden?: boolean;
+  parentId?: string;
 };
 
 type SearchIndexItem = {
@@ -127,6 +128,7 @@ function readManifest(): ManifestItem[] {
             routePath: String(x.routePath || ""),
             navGroup: String(x.navGroup || ""),
             overridden: Boolean(x.overridden),
+            parentId: String(x.parentId || ""),
           };
           if (!it.routePath) return null;
           return it;
@@ -140,6 +142,66 @@ function readManifest(): ManifestItem[] {
 
 function normalizeQuery(q: string): string {
   return q.trim().replace(/\s+/g, " ");
+}
+
+function normalizePath(p: string): string {
+  const s = String(p || "").trim();
+  if (!s) return "/";
+  if (s === "/") return "/";
+  return s.endsWith("/") ? s.slice(0, -1) : s;
+}
+
+function canonicalizePublicRoute(routePath: string): string {
+  const p = normalizePath(routePath);
+  if (p === "/blog/list") return "/blog";
+  if (p.startsWith("/blog/list/")) return p.replace(/^\/blog\/list\//, "/blog/");
+  if (p === "/list") return "/blog";
+  if (p.startsWith("/list/")) return p.replace(/^\/list\//, "/blog/");
+  return p;
+}
+
+function buildBreadcrumb(
+  routePath: string,
+  byRoute: Map<string, ManifestItem>,
+  byId: Map<string, ManifestItem>,
+): string {
+  const startRoute = normalizePath(routePath);
+  const start = byRoute.get(startRoute) || null;
+  if (!start) return "";
+
+  const parts: Array<{ title: string; routePath: string }> = [];
+  const seen = new Set<string>();
+
+  let cur: ManifestItem | null = start;
+  let guard = 0;
+  while (cur && guard++ < 200) {
+    const id = String(cur.id || "").replace(/-/g, "").toLowerCase();
+    if (!id || seen.has(id)) break;
+    seen.add(id);
+
+    const rp = normalizePath(String(cur.routePath || "/"));
+    const title = rp === "/" ? "Home" : String(cur.title || "").trim() || "Untitled";
+
+    // Hide internal list helpers in breadcrumbs:
+    // - Blog database pages often sit under /blog/list.
+    // - We want: Home / Blog / Post
+    const hide =
+      rp === "/blog/list" ||
+      rp === "/list" ||
+      String(cur.title || "").trim().toLowerCase() === "list";
+
+    if (!hide) parts.push({ title, routePath: rp });
+
+    const pid = String(cur.parentId || "").replace(/-/g, "").toLowerCase();
+    cur = pid ? byId.get(pid) || null : null;
+  }
+
+  parts.reverse();
+  const out: string[] = [];
+  for (const p of parts) {
+    if (!out.length || out[out.length - 1] !== p.title) out.push(p.title);
+  }
+  return out.join(" / ");
 }
 
 function isIgnoredPath(routePath: string): boolean {
@@ -174,6 +236,14 @@ export async function GET(req: Request) {
 
   const ql = q.toLowerCase();
   const index = readSearchIndex().filter((it) => !isIgnoredPath(it.routePath));
+  const manifest = readManifest().filter((it) => !isIgnoredPath(it.routePath));
+  const byRoute = new Map<string, ManifestItem>();
+  const byId = new Map<string, ManifestItem>();
+  for (const it of manifest) {
+    byRoute.set(normalizePath(it.routePath), it);
+    const id = String(it.id || "").replace(/-/g, "").toLowerCase();
+    if (id) byId.set(id, it);
+  }
 
   // Prefer the richer, content-based index if present; otherwise fall back.
   if (index.length) {
@@ -183,30 +253,35 @@ export async function GET(req: Request) {
         return hay.includes(ql);
       })
       .map((it) => {
+        const canon = canonicalizePublicRoute(it.routePath);
         const titlePos = safeLower(it.title).indexOf(ql);
-        const routePos = safeLower(it.routePath).indexOf(ql);
+        const routePos = safeLower(canon).indexOf(ql);
         const textPos = safeLower(it.text).indexOf(ql);
+        const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
+        const textLenPenalty = Math.min(900, Math.floor(String(it.text || "").length / 140));
         // Rank: title > route > content. Earlier match positions are better.
         const score =
           (titlePos === -1 ? 5000 : titlePos) +
           (routePos === -1 ? 8000 : routePos + 50) +
           (textPos === -1 ? 12000 : textPos + 200) +
-          Math.min(300, it.routePath.length * 2);
-        return { it, score };
+          homePenalty +
+          textLenPenalty;
+        return { it, score, canon };
       })
       .sort((a, b) => a.score - b.score)
       .slice(0, 20)
-      .map(({ it }) => ({
+      .map(({ it, canon }) => ({
         title: it.routePath === "/" ? "Home" : it.title || "Untitled",
-        routePath: it.routePath,
+        routePath: canon,
         kind: it.kind || "page",
         snippet: buildSnippet(it.text || "", ql),
+        breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
       }));
 
     return json({ items: matches });
   }
 
-  const all = readManifest().filter((it) => !isIgnoredPath(it.routePath));
+  const all = manifest;
 
   const matches = all
     .filter((it) => {
@@ -227,8 +302,9 @@ export async function GET(req: Request) {
     .slice(0, 20)
     .map(({ it }) => ({
       title: it.routePath === "/" ? "Home" : it.title || "Untitled",
-      routePath: it.routePath,
+      routePath: canonicalizePublicRoute(it.routePath),
       kind: it.kind || "page",
+      breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (it.routePath === "/" ? "Home" : ""),
     }));
 
   return json({ items: matches });

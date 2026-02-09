@@ -8,6 +8,7 @@ type SearchItem = {
   routePath: string;
   kind: string;
   snippet?: string;
+  breadcrumb?: string;
 };
 
 function escapeHtml(s: string): string {
@@ -154,6 +155,8 @@ function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
       const route = escapeHtml(it.routePath || "/");
       const kind = escapeHtml(it.kind || "page");
       const snippetHtml = escapeAndHighlight(it.snippet || "", terms);
+      const crumbRaw = String(it.breadcrumb || "").trim();
+      const crumbHtml = crumbRaw ? escapeHtml(crumbRaw) : "";
       return `
         <div class="notion-search__result-item-wrapper${last ? " last" : ""}">
           <a class="notion-search__result-item ${kind}" href="${route}" role="option" aria-selected="false">
@@ -163,8 +166,8 @@ function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
               </div>
               ${
                 snippetHtml
-                  ? `<div class="notion-search__result-item-text">${snippetHtml}</div><div class="notion-search__result-item-meta">${route}</div>`
-                  : `<div class="notion-search__result-item-text">${route}</div>`
+                  ? `<div class="notion-search__result-item-text">${snippetHtml}</div><div class="notion-search__result-item-meta">${crumbHtml || route}</div>`
+                  : `<div class="notion-search__result-item-text">${crumbHtml || route}</div>`
               }
             </div>
             <div class="notion-search__result-item-enter-icon" aria-hidden="true">↵</div>
@@ -193,6 +196,7 @@ async function fetchResults(q: string, signal: AbortSignal): Promise<SearchItem[
         routePath: String(o.routePath || ""),
         kind: String(o.kind || "page"),
         snippet: String(o.snippet || ""),
+        breadcrumb: String(o.breadcrumb || ""),
       };
       return it;
     })
