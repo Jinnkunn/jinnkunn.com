@@ -693,7 +693,7 @@ html {
 .notion-table-of-contents
   .notion-table-of-contents__item[data-active="true"]
   .notion-link {
-  color: var(--color-text-default);
+  color: inherit;
 }
 
 .notion-table-of-contents
@@ -702,16 +702,11 @@ html {
   font-weight: 600;
 }
 
-.notion-table-of-contents .notion-table-of-contents__item[data-active="true"]::before {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: 0.78em;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--color-bg-yellow);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+.notion-table-of-contents
+  .notion-table-of-contents__item[data-active="true"]
+  .notion-semantic-string:not(.no-border) {
+  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-thickness: 2px;
 }
 
 .blog-post-nav {

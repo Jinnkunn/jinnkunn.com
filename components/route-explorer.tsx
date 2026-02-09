@@ -34,25 +34,57 @@ function normalizeRoutePath(p: string): string {
 }
 
 function buildTreeOrder(
-  items: RouteManifestItem[]
+  items: RouteManifestItem[],
 ): Array<RouteManifestItem & { depth: number; hasChildren: boolean }> {
   const byId = new Map<string, RouteManifestItem>();
   for (const it of items) byId.set(it.id, it);
 
-  const kids = new Map<string, RouteManifestItem[]>();
+  // Defensive parent resolution:
+  // - Prefer Notion parentId when present and resolvable.
+  // - Otherwise derive parent from the longest routePath prefix in the set.
+  const byRoute = new Map<string, RouteManifestItem>();
+  for (const it of items) byRoute.set(it.routePath, it);
+
+  const effectiveParentId = new Map<string, string>(); // id -> parentId
   for (const it of items) {
     const pid = it.parentId || "";
+    if (pid && byId.has(pid)) {
+      effectiveParentId.set(it.id, pid);
+      continue;
+    }
+    const p = normalizeRoutePath(it.routePath);
+    if (p === "/") {
+      effectiveParentId.set(it.id, "");
+      continue;
+    }
+    const segs = p.split("/").filter(Boolean);
+    let parent: RouteManifestItem | null = null;
+    for (let i = segs.length - 1; i >= 1; i--) {
+      const prefix = `/${segs.slice(0, i).join("/")}`;
+      const hit = byRoute.get(prefix) || null;
+      if (hit) {
+        parent = hit;
+        break;
+      }
+    }
+    effectiveParentId.set(it.id, parent?.id || "");
+  }
+
+  const kids = new Map<string, RouteManifestItem[]>();
+  for (const it of items) {
+    const pid = effectiveParentId.get(it.id) || "";
     const arr = kids.get(pid) || [];
     arr.push(it);
     kids.set(pid, arr);
   }
 
   const sortChildren = (arr: RouteManifestItem[]) => {
+    // URL sort is predictable and matches the Super-like "path list" mental model.
     arr.sort((a, b) => a.routePath.localeCompare(b.routePath));
     return arr;
   };
 
-  const roots = items.filter((it) => !it.parentId || !byId.has(it.parentId));
+  const roots = items.filter((it) => !(effectiveParentId.get(it.id) || ""));
   sortChildren(roots);
 
   const out: Array<RouteManifestItem & { depth: number; hasChildren: boolean }> = [];
@@ -117,6 +149,16 @@ export default function RouteExplorer({
 
   const ordered = useMemo(() => buildTreeOrder(items), [items]);
 
+  // Default: only show root + one level (Super-like). Deeper folders start collapsed.
+  useEffect(() => {
+    if (Object.keys(collapsed).length > 0) return;
+    const next: Record<string, boolean> = {};
+    for (const it of ordered) {
+      if (it.hasChildren && it.depth >= 1) next[it.id] = true;
+    }
+    setCollapsed(next);
+  }, [ordered, collapsed]);
+
   const filtered = useMemo(() => {
     const query = normalizeQuery(q);
     const out = ordered.filter((it) => {
@@ -145,7 +187,21 @@ export default function RouteExplorer({
     const byId = new Map<string, RouteManifestItem>();
     for (const it of items) byId.set(it.id, it);
 
+    const collapsedPrefixes: Array<string> = [];
+    for (const it of items) {
+      if (!collapsedSet.has(it.id)) continue;
+      const p = normalizeRoutePath(it.routePath);
+      if (p) collapsedPrefixes.push(p);
+    }
+
     const isHidden = (node: RouteManifestItem) => {
+      // Prefix fallback: even if parent pointers are missing, hide descendants of collapsed route paths.
+      const rp = normalizeRoutePath(node.routePath);
+      for (const cp of collapsedPrefixes) {
+        if (cp === "/") continue;
+        if (rp !== cp && (rp === cp || rp.startsWith(`${cp}/`))) return true;
+      }
+
       let pid = node.parentId || "";
       while (pid) {
         if (collapsedSet.has(pid)) return true;
@@ -200,10 +256,12 @@ export default function RouteExplorer({
     }
   };
 
-  const saveProtection = async (path: string, mode: "exact" | "prefix", password: string) => {
+  const saveProtection = async (path: string, _mode: "exact" | "prefix", password: string) => {
     setBusyId(path);
     setErr("");
     try {
+      // Product decision: protecting a page must protect its subtree (Super-like).
+      const mode: "prefix" = "prefix";
       const res = await fetch("/api/site-admin/routes", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -229,6 +287,20 @@ export default function RouteExplorer({
     } finally {
       setBusyId("");
     }
+  };
+
+  const isEffectivelyProtected = (routePath: string): boolean => {
+    const p = normalizeRoutePath(routePath);
+    for (const [k, v] of Object.entries(cfg.protectedByPath || {})) {
+      const kp = normalizeRoutePath(k);
+      if (!kp || kp === "/") continue;
+      if (v?.mode === "prefix") {
+        if (p === kp || p.startsWith(`${kp}/`)) return true;
+      } else {
+        if (p === kp) return true;
+      }
+    }
+    return false;
   };
 
   return (
@@ -398,7 +470,7 @@ export default function RouteExplorer({
                       overridden
                     </span>
                   ) : null}
-                  {cfg.protectedByPath[normalizeRoutePath(it.routePath)] ? (
+                  {isEffectivelyProtected(it.routePath) ? (
                     <span className="routes-explorer__pill">protected</span>
                   ) : null}
                 </div>
@@ -452,21 +524,11 @@ export default function RouteExplorer({
                     <label className="routes-explorer__admin-label">
                       Password
                     </label>
-                    <select
-                      className="routes-explorer__admin-select"
-                      key={`prot:${it.routePath}:${cfg.protectedByPath[normalizeRoutePath(it.routePath)]?.mode || "exact"}`}
-                      defaultValue={
-                        cfg.protectedByPath[normalizeRoutePath(it.routePath)]?.mode || "exact"
-                      }
-                    >
-                      <option value="exact">exact</option>
-                      <option value="prefix">prefix</option>
-                    </select>
                     <input
                       className="routes-explorer__admin-input"
                       type="password"
                       placeholder={
-                        cfg.protectedByPath[normalizeRoutePath(it.routePath)]
+                        isEffectivelyProtected(it.routePath)
                           ? "Set new password (blank = disable)"
                           : "Set password (blank = disabled)"
                       }
@@ -475,12 +537,8 @@ export default function RouteExplorer({
                         const row = (e.target as HTMLInputElement).closest(
                           ".routes-explorer__admin-row",
                         ) as HTMLElement | null;
-                        const sel = row?.querySelector("select") as HTMLSelectElement | null;
                         const pwd = (e.target as HTMLInputElement).value;
-                        const mode = (sel?.value === "prefix" ? "prefix" : "exact") as
-                          | "exact"
-                          | "prefix";
-                        void saveProtection(it.routePath, mode, pwd);
+                        void saveProtection(it.routePath, "prefix", pwd);
                         (e.target as HTMLInputElement).value = "";
                       }}
                     />
@@ -492,13 +550,9 @@ export default function RouteExplorer({
                         const row = e.currentTarget.closest(
                           ".routes-explorer__admin-row",
                         ) as HTMLElement | null;
-                        const sel = row?.querySelector("select") as HTMLSelectElement | null;
                         const input = row?.querySelector("input") as HTMLInputElement | null;
-                        const mode = (sel?.value === "prefix" ? "prefix" : "exact") as
-                          | "exact"
-                          | "prefix";
                         const pwd = input?.value || "";
-                        void saveProtection(it.routePath, mode, pwd);
+                        void saveProtection(it.routePath, "prefix", pwd);
                         if (input) input.value = "";
                       }}
                     >

@@ -401,8 +401,9 @@ export async function POST(req: NextRequest) {
     if (kind === "protected") {
       if (!protectedDbId) return json({ ok: false, error: "Missing Protected Routes DB" }, { status: 500 });
       const path = String(body?.path || "").trim();
-      const modeRaw = String(body?.mode || "exact").toLowerCase();
-      const mode = modeRaw === "prefix" ? "prefix" : "exact";
+      // Product decision: protecting a page must protect its subtree (Super-like),
+      // so we always store prefix rules.
+      const mode: "prefix" = "prefix";
       const password = String(body?.password || "").trim();
       if (!path) return json({ ok: false, error: "Missing path" }, { status: 400 });
 
@@ -426,4 +427,3 @@ export async function POST(req: NextRequest) {
     return json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
-
