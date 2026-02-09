@@ -1191,6 +1191,12 @@ html {
   font-size: 14px;
 }
 
+.site-admin-form__textarea--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+}
+
 .site-admin-form__input:focus-visible,
 .site-admin-form__textarea:focus-visible {
   outline: 3px solid rgba(46, 170, 220, 0.35);

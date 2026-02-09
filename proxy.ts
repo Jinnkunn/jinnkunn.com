@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import protectedRoutes from "@/content/generated/protected-routes.json";
 import routesManifest from "@/content/generated/routes-manifest.json";
 import routes from "@/content/generated/routes.json";
+import { isContentGithubAuthorized } from "@/lib/content-auth";
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 
 type ProtectedRoute = {
@@ -200,7 +201,7 @@ export async function proxy(req: NextRequest) {
   const authKind = (match.auth || "password") as "password" | "github";
 
   if (authKind === "github") {
-    const ok = await isSiteAdminAuthorized(req);
+    const ok = await isContentGithubAuthorized(req);
     if (ok) return NextResponse.next();
     const url = req.nextUrl.clone();
     url.pathname = "/site-admin/login";

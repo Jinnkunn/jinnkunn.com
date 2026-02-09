@@ -28,6 +28,17 @@ const OUT_DIR = path.join(ROOT, "content", "generated");
 const OUT_RAW_DIR = path.join(OUT_DIR, "raw");
 const OUT_PUBLIC_ASSETS_DIR = path.join(ROOT, "public", "notion-assets");
 
+// Best-effort build cache:
+// - On Vercel, `.next/cache` is cached between builds, so this can dramatically reduce sync time.
+// - Cache is always validated using Notion `last_edited_time` (page/database), so it's safe to reuse.
+const CACHE_DIR = path.join(ROOT, ".next", "cache", "notion-sync");
+const CACHE_ENABLED = !["0", "false", "no"].includes(
+  String(process.env.NOTION_SYNC_CACHE || "1").trim().toLowerCase(),
+);
+const CACHE_FORCE = ["1", "true", "yes"].includes(
+  String(process.env.NOTION_SYNC_FORCE || "").trim().toLowerCase(),
+);
+
 const DEFAULT_CONFIG = {
   siteName: "Jinkun Chen.",
   lang: "en",
@@ -39,6 +50,11 @@ const DEFAULT_CONFIG = {
   },
   integrations: {
     googleAnalyticsId: "",
+  },
+  security: {
+    // Comma-separated GitHub logins (no @), stored in Notion settings and compiled into site-config.json.
+    // Used for GitHub-protected content pages (not /site-admin, which uses SITE_ADMIN_GITHUB_USERS env).
+    contentGithubUsers: [],
   },
   nav: {
     top: [
@@ -62,8 +78,58 @@ const DEFAULT_CONFIG = {
   },
 };
 
+function parseGithubUserList(raw) {
+  const items = String(raw || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.replace(/^@/, "").toLowerCase());
+  // Dedupe but keep stable ordering.
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    if (seen.has(it)) continue;
+    seen.add(it);
+    out.push(it);
+  }
+  return out;
+}
+
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
+}
+
+function readJsonFile(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonAtomic(filePath, value) {
+  ensureDir(path.dirname(filePath));
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n");
+  fs.renameSync(tmp, filePath);
+}
+
+function cacheFile(kind, id) {
+  const safeKind = String(kind || "misc").replace(/[^a-z0-9_-]/gi, "_");
+  const safeId = String(id || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return path.join(CACHE_DIR, safeKind, `${safeId}.json`);
+}
+
+function stripTreeForCache(value) {
+  // Drop heavy Notion API objects that we don't need for routing/tree reuse.
+  // Rendering uses a separate cache (page-render) keyed by last_edited_time.
+  return JSON.parse(
+    JSON.stringify(value, (k, v) => {
+      if (k === "__page") return undefined;
+      return v;
+    }),
+  );
 }
 
 function writeFile(filePath, contents) {
@@ -277,6 +343,15 @@ async function getDatabaseParentPageId(databaseId) {
   return parentPageId;
 }
 
+async function getDatabaseInfo(databaseId) {
+  const dbId = compactId(databaseId);
+  if (!dbId) return { id: "", title: "Database", lastEdited: "" };
+  const db = await notionRequest(`databases/${dbId}`);
+  const title = String(db?.title?.[0]?.plain_text || "").trim() || "Database";
+  const lastEdited = String(db?.last_edited_time || "").trim();
+  return { id: dbId, title, lastEdited };
+}
+
 async function hydrateBlocks(blocks) {
   for (const b of blocks) {
     if (b?.has_children) {
@@ -403,6 +478,7 @@ async function loadConfigFromAdminDatabases(adminPageId) {
       const seoDescription = getPropString(row, "SEO Description");
       const favicon = getPropString(row, "Favicon");
       const gaId = getPropString(row, "Google Analytics ID");
+      const contentGithubUsers = getPropString(row, "Content GitHub Users");
       const rootPageId = getPropString(row, "Root Page ID");
       const homePageId = getPropString(row, "Home Page ID");
 
@@ -414,6 +490,10 @@ async function loadConfigFromAdminDatabases(adminPageId) {
       if (gaId) {
         cfg.integrations = cfg.integrations || {};
         cfg.integrations.googleAnalyticsId = gaId;
+      }
+      if (contentGithubUsers) {
+        cfg.security = cfg.security || { contentGithubUsers: [] };
+        cfg.security.contentGithubUsers = parseGithubUserList(contentGithubUsers);
       }
       if (rootPageId) cfg.content.rootPageId = rootPageId;
       if (homePageId) cfg.content.homePageId = homePageId;
@@ -554,15 +634,24 @@ async function loadProtectedRoutesFromAdminDatabases(adminPageId, { routeToPageI
   return out;
 }
 
-async function getPageTitle(pageId) {
-  const data = await notionRequest(`pages/${pageId}`);
+async function getPageInfo(pageId) {
+  const pid = compactId(pageId);
+  if (!pid) return { id: "", title: "Untitled", lastEdited: "" };
+  const data = await notionRequest(`pages/${pid}`);
+  const lastEdited = String(data?.last_edited_time || "").trim();
   const props = data?.properties && typeof data.properties === "object" ? data.properties : {};
   for (const v of Object.values(props)) {
     if (v && typeof v === "object" && v.type === "title") {
-      return richTextPlain(v.title ?? []) || "Untitled";
+      const title = richTextPlain(v.title ?? []) || "Untitled";
+      return { id: pid, title, lastEdited };
     }
   }
-  return "Untitled";
+  return { id: pid, title: "Untitled", lastEdited };
+}
+
+async function getPageTitle(pageId) {
+  const info = await getPageInfo(pageId);
+  return info.title || "Untitled";
 }
 
 function getTitleFromPageObject(page) {
@@ -618,6 +707,35 @@ async function buildPageTree(
   } = {},
 ) {
   const seenDb = seenDatabases || new Set();
+
+  const pid = compactId(parentPageId);
+  let pageLastEdited = "";
+  if (CACHE_ENABLED && !CACHE_FORCE && pid) {
+    try {
+      const info = await getPageInfo(pid);
+      const lastEdited = info.lastEdited || "";
+      pageLastEdited = lastEdited;
+      if (lastEdited) {
+        const file = cacheFile("page-tree", pid);
+        const cached = readJsonFile(file);
+        const cachedEdited = cached?.lastEdited ? String(cached.lastEdited) : "";
+        if (cached && cachedEdited && cachedEdited === lastEdited && Array.isArray(cached.children)) {
+          // Ensure any databases in the cached subtree are marked as seen, otherwise later
+          // traversals could re-include them.
+          const stack = [...cached.children];
+          while (stack.length) {
+            const n = stack.pop();
+            if (!n || typeof n !== "object") continue;
+            if (n.kind === "database" && n.id) seenDb.add(String(n.id));
+            if (Array.isArray(n.children)) stack.push(...n.children);
+          }
+          return cached.children;
+        }
+      }
+    } catch {
+      // ignore cache failures
+    }
+  }
   // Scan recursively so we discover child pages/databases nested inside toggles/columns/callouts/etc.
   const blocks = await (async () => {
     const top = await listBlockChildrenCached(parentPageId);
@@ -681,6 +799,30 @@ async function buildPageTree(
         seenDb.add(dbId);
       }
 
+      // Database caching: databases can change (rows added/edited) without the parent page changing.
+      // Cache the rendered tree for the database keyed by Notion database `last_edited_time`.
+      let dbLastEdited = "";
+      if (CACHE_ENABLED && !CACHE_FORCE && dbId) {
+        try {
+          const info = await getDatabaseInfo(dbId);
+          dbLastEdited = info.lastEdited || "";
+          if (dbLastEdited) {
+            const file = cacheFile("db-tree", dbId);
+            const cached = readJsonFile(file);
+            const cachedEdited = cached?.lastEdited ? String(cached.lastEdited) : "";
+            if (cached && cachedEdited && cachedEdited === dbLastEdited && cached.node) {
+              const node = cached.node;
+              // Ensure parent pointers are consistent (defensive).
+              node.parentId = compactId(parentPageId);
+              out.push(node);
+              continue;
+            }
+          }
+        } catch {
+          // ignore db cache failures
+        }
+      }
+
       const rows = await queryDatabase(dbId);
       const items = rows
         .filter((p) => !p?.archived && !p?.in_trash)
@@ -713,7 +855,7 @@ async function buildPageTree(
         it.children = await buildPageTree(it.id, { seenDatabases: seenDb });
       }
 
-      out.push({
+      const dbNode = {
         kind: "database",
         id: dbId,
         title,
@@ -721,7 +863,37 @@ async function buildPageTree(
         parentId: compactId(parentPageId),
         routePath: "",
         routeSegments: [],
-      });
+      };
+      out.push(dbNode);
+
+      if (CACHE_ENABLED && !CACHE_FORCE && dbId) {
+        try {
+          if (!dbLastEdited) dbLastEdited = (await getDatabaseInfo(dbId)).lastEdited || "";
+          if (dbLastEdited) {
+            writeJsonAtomic(cacheFile("db-tree", dbId), {
+              lastEdited: dbLastEdited,
+              node: stripTreeForCache(dbNode),
+            });
+          }
+        } catch {
+          // ignore cache write failures
+        }
+      }
+    }
+  }
+
+  if (CACHE_ENABLED && !CACHE_FORCE && pid) {
+    try {
+      let lastEdited = pageLastEdited;
+      if (!lastEdited) lastEdited = (await getPageInfo(pid)).lastEdited || "";
+      if (lastEdited) {
+        writeJsonAtomic(cacheFile("page-tree", pid), {
+          lastEdited,
+          children: stripTreeForCache(out),
+        });
+      }
+    } catch {
+      // ignore cache write errors
     }
   }
 
@@ -1817,6 +1989,38 @@ async function main() {
           return renderDatabaseMain(p, cfg, ctx);
         })()
       : (async () => {
+          let lastEdited = "";
+          try {
+            if (p.__page?.last_edited_time) lastEdited = String(p.__page.last_edited_time || "").trim();
+          } catch {
+            // ignore
+          }
+          if (!lastEdited) {
+            // Fetch page metadata (cheap) so we can validate the build cache.
+            try {
+              lastEdited = (await getPageInfo(p.id)).lastEdited || "";
+            } catch {
+              // ignore
+            }
+          }
+
+          const cachePath = cacheFile("page-render", p.id);
+          if (CACHE_ENABLED && !CACHE_FORCE && lastEdited) {
+            const cached = readJsonFile(cachePath);
+            const cachedEdited = cached?.lastEdited ? String(cached.lastEdited) : "";
+            if (cached && cachedEdited === lastEdited && typeof cached.html === "string") {
+              const text = String(cached.text || "").trim();
+              searchIndex.push({
+                id: p.id,
+                title: p.title,
+                kind: p.kind,
+                routePath: p.routePath,
+                text,
+              });
+              return String(cached.html);
+            }
+          }
+
           const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
           const text = extractPlainTextFromBlocks(blocks).join("\n");
           searchIndex.push({
@@ -1826,7 +2030,17 @@ async function main() {
             routePath: p.routePath,
             text,
           });
-          return await renderPageMain(p, blocks, cfg, ctx);
+          const html = await renderPageMain(p, blocks, cfg, ctx);
+
+          if (CACHE_ENABLED && !CACHE_FORCE && lastEdited) {
+            try {
+              writeJsonAtomic(cachePath, { lastEdited, html, text });
+            } catch {
+              // ignore cache write failures
+            }
+          }
+
+          return html;
         })());
     const rel = routePathToHtmlRel(p.routePath);
     const outPath = path.join(OUT_RAW_DIR, rel);

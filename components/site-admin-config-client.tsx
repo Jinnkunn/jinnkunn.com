@@ -10,6 +10,7 @@ type SiteSettings = {
   seoDescription: string;
   favicon: string;
   googleAnalyticsId: string;
+  contentGithubUsers: string;
   rootPageId: string;
   homePageId: string;
 };
@@ -103,6 +104,7 @@ export default function SiteAdminConfigClient() {
         seoDescription: draftSettings.seoDescription,
         favicon: draftSettings.favicon,
         googleAnalyticsId: draftSettings.googleAnalyticsId,
+        contentGithubUsers: draftSettings.contentGithubUsers,
         rootPageId: draftSettings.rootPageId,
         homePageId: draftSettings.homePageId,
       };
@@ -403,6 +405,18 @@ export default function SiteAdminConfigClient() {
                   setDraftSettings((prev) => (prev ? { ...prev, googleAnalyticsId: e.target.value } : prev))
                 }
                 placeholder="G-XXXXXXXXXX"
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Content GitHub Users</label>
+              <textarea
+                className="site-admin-form__textarea site-admin-form__textarea--mono"
+                value={asString(draftSettings.contentGithubUsers)}
+                onChange={(e) =>
+                  setDraftSettings((prev) => (prev ? { ...prev, contentGithubUsers: e.target.value } : prev))
+                }
+                placeholder="comma-separated GitHub usernames (e.g. jinnkunn, alice, bob)"
               />
             </div>
 

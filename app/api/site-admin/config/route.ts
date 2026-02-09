@@ -38,6 +38,10 @@ function slugify(input: string): string {
     .replace(/-+$/, "");
 }
 
+function isObject(x: unknown): x is Record<string, unknown> {
+  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
+}
+
 const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
 
@@ -127,6 +131,24 @@ function findDbByTitle(dbs: Array<{ id: string; title: string }>, title: string)
   return dbs.find((d) => slugify(d.title) === want) || null;
 }
 
+async function ensureSiteSettingsDbSchema(databaseId: string) {
+  const id = compactId(databaseId);
+  if (!id) return;
+
+  const db = (await notionRequest(`databases/${id}`)) as unknown;
+  const props =
+    isObject(db) && isObject(db.properties) ? (db.properties as Record<string, unknown>) : {};
+  const need: Record<string, unknown> = {};
+
+  // Add missing properties lazily so /site-admin can run even if the admin DBs
+  // were provisioned before we introduced new fields.
+  if (!props["Google Analytics ID"]) need["Google Analytics ID"] = { rich_text: {} };
+  if (!props["Content GitHub Users"]) need["Content GitHub Users"] = { rich_text: {} };
+
+  if (Object.keys(need).length === 0) return;
+  await notionRequest(`databases/${id}`, { method: "PATCH", body: { properties: need } });
+}
+
 async function queryDatabase(databaseId: string) {
   const out: any[] = [];
   let cursor: string | undefined = undefined;
@@ -183,6 +205,7 @@ type SiteSettings = {
   seoDescription: string;
   favicon: string;
   googleAnalyticsId: string;
+  contentGithubUsers: string;
   rootPageId: string;
   homePageId: string;
 };
@@ -207,6 +230,7 @@ async function loadConfigFromNotion(): Promise<{ settings: SiteSettings | null; 
 
   let settings: SiteSettings | null = null;
   if (settingsDb?.id) {
+    await ensureSiteSettingsDbSchema(settingsDb.id);
     const rows = await queryDatabase(settingsDb.id);
     const row = rows[0] ?? null;
     if (row?.id) {
@@ -218,6 +242,7 @@ async function loadConfigFromNotion(): Promise<{ settings: SiteSettings | null; 
         seoDescription: getPropString(row, "SEO Description"),
         favicon: getPropString(row, "Favicon"),
         googleAnalyticsId: getPropString(row, "Google Analytics ID"),
+        contentGithubUsers: getPropString(row, "Content GitHub Users"),
         rootPageId: getPropString(row, "Root Page ID"),
         homePageId: getPropString(row, "Home Page ID"),
       };
@@ -260,6 +285,8 @@ async function updateSiteSettings(rowId: string, patch: Partial<Omit<SiteSetting
   if (patch.favicon !== undefined) properties["Favicon"] = { rich_text: richText(patch.favicon) };
   if (patch.googleAnalyticsId !== undefined)
     properties["Google Analytics ID"] = { rich_text: richText(patch.googleAnalyticsId) };
+  if (patch.contentGithubUsers !== undefined)
+    properties["Content GitHub Users"] = { rich_text: richText(patch.contentGithubUsers) };
   if (patch.rootPageId !== undefined) properties["Root Page ID"] = { rich_text: richText(patch.rootPageId) };
   if (patch.homePageId !== undefined) properties["Home Page ID"] = { rich_text: richText(patch.homePageId) };
 
@@ -360,4 +387,3 @@ export async function POST(req: NextRequest) {
     return json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
-

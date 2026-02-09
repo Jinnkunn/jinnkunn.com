@@ -28,6 +28,10 @@ const DEFAULT_CONFIG = {
   integrations: {
     googleAnalyticsId: "",
   },
+  security: {
+    // Comma-separated GitHub logins (no @). Used for GitHub-protected content pages.
+    contentGithubUsers: "",
+  },
   nav: {
     top: [
       { href: "/", label: "Home" },
@@ -488,6 +492,7 @@ async function main() {
         "SEO Description": { rich_text: {} },
         Favicon: { rich_text: {} },
         "Google Analytics ID": { rich_text: {} },
+        "Content GitHub Users": { rich_text: {} },
         "Root Page ID": { rich_text: {} },
         "Home Page ID": { rich_text: {} },
       },
@@ -505,6 +510,7 @@ async function main() {
         "Google Analytics ID": {
           rich_text: richText(cfg.integrations?.googleAnalyticsId || ""),
         },
+        "Content GitHub Users": { rich_text: richText(cfg.security?.contentGithubUsers || "") },
         "Root Page ID": { rich_text: richText(cfg.content?.rootPageId) },
         "Home Page ID": { rich_text: richText(cfg.content?.homePageId) },
       },
@@ -520,6 +526,13 @@ async function main() {
         await updateDatabase(dbId, {
           properties: {
             "Google Analytics ID": { rich_text: {} },
+          },
+        });
+      }
+      if (!props["Content GitHub Users"]) {
+        await updateDatabase(dbId, {
+          properties: {
+            "Content GitHub Users": { rich_text: {} },
           },
         });
       }
