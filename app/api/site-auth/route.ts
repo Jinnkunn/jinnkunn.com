@@ -7,6 +7,9 @@ export const runtime = "nodejs";
 
 type ProtectedRoute = {
   id: string;
+  auth?: "password" | "github";
+  key?: "pageId" | "path";
+  pageId?: string;
   path: string;
   mode: "exact" | "prefix";
   token: string;
@@ -47,7 +50,13 @@ export async function POST(req: Request) {
   const route = routes.find((r) => r.id === rid);
   if (!route) return redirectToAuth(req, { next, rid, error: "1" });
 
-  const computed = sha256Hex(`${route.path}\n${password}`);
+  if ((route.auth || "password") !== "password") {
+    return redirectToAuth(req, { next, rid, error: "1" });
+  }
+
+  const key = (route.key || (route.pageId ? "pageId" : "path")) as "pageId" | "path";
+  const secret = key === "pageId" ? String(route.pageId || route.id || "") : String(route.path || "");
+  const computed = sha256Hex(`${secret}\n${password}`);
   if (computed !== route.token) return redirectToAuth(req, { next, rid, error: "1" });
 
   const res = NextResponse.redirect(new URL(next, req.url), { status: 302 });
@@ -64,4 +73,3 @@ export async function POST(req: Request) {
 
   return res;
 }
-

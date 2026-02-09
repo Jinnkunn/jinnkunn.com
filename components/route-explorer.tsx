@@ -22,7 +22,11 @@ async function copyToClipboard(text: string) {
 
 type AdminConfig = {
   overrides: Record<string, string>; // pageId -> routePath
-  protectedByPath: Record<string, { mode: "exact" | "prefix" }>; // path -> mode
+  protectedByPageId: Record<
+    string,
+    { auth: "password" | "github"; mode: "exact" | "prefix"; path: string }
+  >; // pageId -> protection rule
+  protectedByPath: Record<string, { auth: "password" | "github"; mode: "exact" | "prefix" }>; // legacy path -> rule
 };
 
 function IconButton({
@@ -181,6 +185,15 @@ function normalizeRoutePath(p: string): string {
   return out || "/";
 }
 
+function compactId(idOrUrl: string): string {
+  const s = String(idOrUrl || "").trim();
+  const m =
+    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
+    s.match(/[0-9a-f]{32}/i);
+  if (!m) return "";
+  return m[0].replace(/-/g, "").toLowerCase();
+}
+
 function buildTree(
   items: RouteManifestItem[],
 ): {
@@ -281,11 +294,18 @@ export default function RouteExplorer({
 }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "nav" | "overrides">("all");
-  const [cfg, setCfg] = useState<AdminConfig>({ overrides: {}, protectedByPath: {} });
+  const [cfg, setCfg] = useState<AdminConfig>({
+    overrides: {},
+    protectedByPageId: {},
+    protectedByPath: {},
+  });
   const [busyId, setBusyId] = useState<string>("");
   const [err, setErr] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openAdmin, setOpenAdmin] = useState<Record<string, boolean>>({});
+  const [accessChoice, setAccessChoice] = useState<Record<string, "public" | "password" | "github">>(
+    {},
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -299,14 +319,29 @@ export default function RouteExplorer({
           if (!it?.pageId || !it?.routePath) continue;
           overrides[String(it.pageId)] = String(it.routePath);
         }
-        const protectedByPath: Record<string, { mode: "exact" | "prefix" }> = {};
+        const pathToPageId = new Map<string, string>();
+        for (const it of items) pathToPageId.set(normalizeRoutePath(it.routePath), it.id);
+
+        const protectedByPageId: AdminConfig["protectedByPageId"] = {};
+        const protectedByPath: AdminConfig["protectedByPath"] = {};
         for (const it of data.protectedRoutes || []) {
           if (!it?.path || !it?.mode) continue;
           const p = normalizeRoutePath(String(it.path));
           if (!p) continue;
-          protectedByPath[p] = { mode: it.mode === "prefix" ? "prefix" : "exact" };
+          const mode: "exact" | "prefix" = it.mode === "prefix" ? "prefix" : "exact";
+          const auth: "password" | "github" = it.auth === "github" ? "github" : "password";
+          const pid = compactId(String(it.pageId || ""));
+          if (pid) {
+            protectedByPageId[pid] = { auth, mode, path: p };
+            continue;
+          }
+
+          // Back-compat for legacy DB rows that only stored Path.
+          const mapped = pathToPageId.get(p) || "";
+          if (mapped) protectedByPageId[mapped] = { auth, mode, path: p };
+          else protectedByPath[p] = { auth, mode };
         }
-        if (!cancelled) setCfg({ overrides, protectedByPath });
+        if (!cancelled) setCfg({ overrides, protectedByPageId, protectedByPath });
       } catch (e: any) {
         if (!cancelled) setErr(String(e?.message || e));
       }
@@ -315,7 +350,7 @@ export default function RouteExplorer({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [items]);
 
   const tree = useMemo(() => buildTree(items), [items]);
   const ordered = tree.ordered;
@@ -447,30 +482,54 @@ export default function RouteExplorer({
     }
   };
 
-  const saveProtection = async (path: string, _mode: "exact" | "prefix", password: string) => {
-    setBusyId(path);
+  const saveAccess = async ({
+    pageId,
+    path,
+    access,
+    password,
+  }: {
+    pageId: string;
+    path: string;
+    access: "public" | "password" | "github";
+    password?: string;
+  }) => {
+    setBusyId(pageId);
     setErr("");
     try {
-      // Product decision: protecting a page must protect its subtree (Super-like).
-      const mode: "prefix" = "prefix";
       const res = await fetch("/api/site-admin/routes", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           kind: "protected",
+          pageId,
           path,
-          mode,
-          password: password.trim(),
+          auth: access,
+          password: String(password || "").trim(),
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       setCfg((prev) => {
-        const next = { ...prev, protectedByPath: { ...prev.protectedByPath } };
+        const next: AdminConfig = {
+          overrides: prev.overrides,
+          protectedByPageId: { ...prev.protectedByPageId },
+          protectedByPath: { ...prev.protectedByPath },
+        };
+        const pid = compactId(pageId);
         const p = normalizeRoutePath(path);
-        if (!password.trim()) delete next.protectedByPath[p];
-        else next.protectedByPath[p] = { mode };
+
+        // Public means remove any direct protection for this page.
+        if (access === "public") {
+          delete next.protectedByPageId[pid];
+          if (p) delete next.protectedByPath[p];
+          return next;
+        }
+
+        if (!pid) return next;
+        const auth: "password" | "github" = access === "github" ? "github" : "password";
+        next.protectedByPageId[pid] = { auth, mode: "prefix", path: p };
+        if (p) delete next.protectedByPath[p];
         return next;
       });
     } catch (e: any) {
@@ -480,21 +539,73 @@ export default function RouteExplorer({
     }
   };
 
-  const findEffectiveProtection = (
-    routePath: string,
-  ): { sourcePath: string; mode: "exact" | "prefix" } | null => {
-    const p = normalizeRoutePath(routePath);
-    let best: { sourcePath: string; mode: "exact" | "prefix" } | null = null;
-    for (const [k, v] of Object.entries(cfg.protectedByPath || {})) {
-      const kp = normalizeRoutePath(k);
-      if (!kp || kp === "/") continue;
-      // Product decision: any protection applies to a subtree. Choose the most specific match.
-      if (p === kp || p.startsWith(`${kp}/`)) {
-        if (!best || kp.length > best.sourcePath.length) best = { sourcePath: kp, mode: v.mode };
+  const byId = useMemo(() => {
+    const m = new Map<string, RouteManifestItem>();
+    for (const it of items) m.set(it.id, it);
+    return m;
+  }, [items]);
+
+  const findEffectiveAccess = useMemo(() => {
+    const directById = cfg.protectedByPageId || {};
+    const legacyByPath = cfg.protectedByPath || {};
+
+    const findLegacyByPath = (routePath: string) => {
+      const p = normalizeRoutePath(routePath);
+      let best: { sourcePath: string; auth: "password" | "github" } | null = null;
+      for (const [k, v] of Object.entries(legacyByPath)) {
+        const kp = normalizeRoutePath(k);
+        if (!kp || kp === "/") continue;
+        if (p === kp || p.startsWith(`${kp}/`)) {
+          if (!best || kp.length > best.sourcePath.length) best = { sourcePath: kp, auth: v.auth };
+        }
       }
-    }
-    return best;
-  };
+      return best;
+    };
+
+    return (pageId: string, routePath: string) => {
+      const pid = compactId(pageId);
+      const direct = pid ? directById[pid] : null;
+      if (direct) {
+        return {
+          auth: direct.auth,
+          direct: true,
+          inherited: false,
+          sourceId: pid,
+          sourcePath: byId.get(pid)?.routePath || direct.path || routePath,
+        };
+      }
+
+      // Inherit by Notion hierarchy (parentId chain), not by URL prefix.
+      let cur = tree.parentById.get(pid) || "";
+      let guard = 0;
+      while (cur && guard++ < 300) {
+        const hit = directById[cur];
+        if (hit) {
+          return {
+            auth: hit.auth,
+            direct: false,
+            inherited: true,
+            sourceId: cur,
+            sourcePath: byId.get(cur)?.routePath || hit.path || "",
+          };
+        }
+        cur = tree.parentById.get(cur) || "";
+      }
+
+      // Back-compat fallback: legacy path-only rule.
+      const legacy = findLegacyByPath(routePath);
+      if (legacy) {
+        return {
+          auth: legacy.auth,
+          direct: false,
+          inherited: true,
+          sourceId: "",
+          sourcePath: legacy.sourcePath,
+        };
+      }
+      return null;
+    };
+  }, [cfg.protectedByPageId, cfg.protectedByPath, tree.parentById, byId]);
 
   return (
     <div className="routes-explorer">
@@ -573,8 +684,8 @@ export default function RouteExplorer({
       <div className="routes-tree" role="list" aria-label="Routes">
         {visible.map((it) => {
           const p = normalizeRoutePath(it.routePath);
-          const match = findEffectiveProtection(it.routePath);
-          const directProtected = Boolean(cfg.protectedByPath[p]);
+          const match = findEffectiveAccess(it.id, it.routePath);
+          const directProtected = Boolean(cfg.protectedByPageId[compactId(it.id)]);
           const effectiveProtected = Boolean(match);
           const inheritedProtected = effectiveProtected && !directProtected;
           const protectedState = directProtected
@@ -589,6 +700,13 @@ export default function RouteExplorer({
           const overridePending =
             Boolean(overrideValue) && normalizeRoutePath(overrideValue) !== normalizeRoutePath(it.routePath);
           const indent = Math.min(56, it.depth * 16);
+          const directAccess: "public" | "password" | "github" = directProtected
+            ? cfg.protectedByPageId[compactId(it.id)]?.auth === "github"
+              ? "github"
+              : "password"
+            : "public";
+          const selectedAccess =
+            accessChoice[it.id] || (inheritedProtected ? (match?.auth === "github" ? "github" : "password") : directAccess);
 
           return (
             <div
@@ -669,7 +787,8 @@ export default function RouteExplorer({
                     ) : null}
                     {directProtected ? (
                       <span className="routes-explorer__pill routes-explorer__pill--protected">
-                        <LockIcon className="routes-explorer__pill-icon" /> Password
+                        <LockIcon className="routes-explorer__pill-icon" />{" "}
+                        {match?.auth === "github" ? "GitHub" : "Password"}
                       </span>
                     ) : inheritedProtected ? (
                       <span
@@ -680,7 +799,8 @@ export default function RouteExplorer({
                             : "Inherited from a protected parent route"
                         }
                       >
-                        <LockIcon className="routes-explorer__pill-icon" /> Password{" "}
+                        <LockIcon className="routes-explorer__pill-icon" />{" "}
+                        {match?.auth === "github" ? "GitHub" : "Password"}{" "}
                         <span className="routes-explorer__pill-suffix">inherited</span>
                       </span>
                     ) : null}
@@ -865,11 +985,30 @@ export default function RouteExplorer({
                     <section className="routes-tree__panel-card">
                       <div className="routes-tree__panel-head">
                         <div>
-                          <div className="routes-tree__panel-title">Password</div>
+                          <div className="routes-tree__panel-title">Access</div>
                           <div className="routes-tree__panel-sub">
-                            Protects this route and all children (prefix match).
+                            Protects this page and all children, based on Notion page hierarchy.
                           </div>
                         </div>
+                      </div>
+
+                      <div className="routes-tree__panel-row">
+                        <label className="routes-tree__panel-label">Type</label>
+                        <select
+                          className="routes-explorer__admin-select"
+                          value={selectedAccess}
+                          disabled={inheritedProtected}
+                          onChange={(e) =>
+                            setAccessChoice((prev) => ({
+                              ...prev,
+                              [it.id]: (e.target.value as any) || "public",
+                            }))
+                          }
+                        >
+                          <option value="public">public</option>
+                          <option value="password">password</option>
+                          <option value="github">github</option>
+                        </select>
                       </div>
 
                       <div className="routes-tree__panel-row">
@@ -877,21 +1016,34 @@ export default function RouteExplorer({
                         <input
                           className="routes-explorer__admin-input"
                           type="password"
-                          disabled={inheritedProtected}
+                          disabled={inheritedProtected || selectedAccess !== "password"}
                           placeholder={
                             inheritedProtected
                               ? protectedSource
                                 ? `Inherited from ${protectedSource}`
                                 : "Inherited from parent route"
-                              : effectiveProtected
-                                ? "Set new password (blank = disable)"
-                                : "Set password (blank = disabled)"
+                              : selectedAccess === "password"
+                                ? effectiveProtected
+                                  ? "Set new password (blank = disable)"
+                                  : "Set password"
+                                : selectedAccess === "github"
+                                  ? "No password for GitHub"
+                                  : "Public"
                           }
                           onKeyDown={(e) => {
                             if (inheritedProtected) return;
                             if (e.key !== "Enter") return;
-                            const pwd = (e.target as HTMLInputElement).value;
-                            void saveProtection(it.routePath, "prefix", pwd);
+                            const root = e.currentTarget.closest(
+                              ".routes-tree__panel-card",
+                            ) as HTMLElement | null;
+                            const pwd = (root?.querySelector('input[type="password"]') as HTMLInputElement | null)
+                              ?.value;
+                            void saveAccess({
+                              pageId: it.id,
+                              path: it.routePath,
+                              access: selectedAccess,
+                              password: pwd || "",
+                            });
                             (e.target as HTMLInputElement).value = "";
                           }}
                         />
@@ -901,15 +1053,20 @@ export default function RouteExplorer({
                         <button
                           type="button"
                           className="routes-explorer__admin-btn"
-                          disabled={busyId === it.routePath || inheritedProtected}
+                          disabled={busyId === it.id || inheritedProtected}
                           onClick={(e) => {
                             if (inheritedProtected) return;
                             const root = e.currentTarget.closest(
                               ".routes-tree__panel-card",
                             ) as HTMLElement | null;
-                            const input = root?.querySelector("input") as HTMLInputElement | null;
+                            const input = root?.querySelector('input[type="password"]') as HTMLInputElement | null;
                             const pwd = input?.value || "";
-                            void saveProtection(it.routePath, "prefix", pwd);
+                            void saveAccess({
+                              pageId: it.id,
+                              path: it.routePath,
+                              access: selectedAccess,
+                              password: pwd,
+                            });
                             if (input) input.value = "";
                           }}
                         >
@@ -918,21 +1075,27 @@ export default function RouteExplorer({
                         <button
                           type="button"
                           className="routes-explorer__admin-btn"
-                          disabled={busyId === it.routePath || inheritedProtected}
-                          onClick={() => void saveProtection(it.routePath, "exact", "")}
+                          disabled={busyId === it.id || inheritedProtected}
+                          onClick={() =>
+                            void saveAccess({
+                              pageId: it.id,
+                              path: it.routePath,
+                              access: "public",
+                            })
+                          }
                           title={
                             inheritedProtected
                               ? "Inherited protection must be managed on the parent route."
-                              : "Disable password protection for this route"
+                              : "Make this page public"
                           }
                         >
-                          Disable
+                          Public
                         </button>
                       </div>
 
                       {inheritedProtected ? (
                         <div className="routes-tree__panel-note">
-                          This route is protected by a parent rule{" "}
+                          This page is protected by a parent rule{" "}
                           {protectedSource ? (
                             <>
                               (
@@ -942,7 +1105,11 @@ export default function RouteExplorer({
                               )
                             </>
                           ) : null}
-                          . To change protection, edit that parent route.
+                          . To change access, edit that parent page.
+                        </div>
+                      ) : selectedAccess === "github" ? (
+                        <div className="routes-tree__panel-note">
+                          GitHub-protected pages require signing in with an allowed GitHub account.
                         </div>
                       ) : null}
                     </section>

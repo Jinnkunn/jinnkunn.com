@@ -497,7 +497,7 @@ async function loadIncludedPagesFromAdminDatabases(adminPageId) {
   return items;
 }
 
-async function loadProtectedRoutesFromAdminDatabases(adminPageId) {
+async function loadProtectedRoutesFromAdminDatabases(adminPageId, { routeToPageId } = {}) {
   const databases = await findChildDatabases(adminPageId);
   const protectedDb = findDbByTitle(databases, "Protected Routes");
   if (!protectedDb) return [];
@@ -510,23 +510,42 @@ async function loadProtectedRoutesFromAdminDatabases(adminPageId) {
     if (enabled === false) continue;
 
     const rawPath = getPropString(row, "Path");
+    const path = rawPath ? normalizeRoutePath(rawPath) : "";
     const password = getPropString(row, "Password");
-    if (!rawPath || !password) continue;
+    const pageId = compactId(getPropString(row, "Page ID")) || (path && routeToPageId?.get(path)) || "";
 
-    const path = normalizeRoutePath(rawPath);
-    if (!path) continue;
+    const authRaw = (getPropString(row, "Auth") || "").trim().toLowerCase();
+    const auth = authRaw === "github" ? "github" : "password";
+
+    // For password auth we need a password. For GitHub auth we don't.
+    if (auth === "password" && (!password || (!pageId && !path))) continue;
+    if (auth === "github" && (!pageId && !path)) continue;
 
     const modeRaw = (getPropString(row, "Mode") || "exact").toLowerCase();
     const mode = modeRaw === "prefix" ? "prefix" : "exact";
 
-    const id = compactId(row.id).slice(0, 12);
-    const token = sha256Hex(`${path}\n${password}`);
+    // Prefer pageId-based rules (stable under URL overrides). Fall back to path-based.
+    const key = pageId ? "pageId" : "path";
+    const id = pageId || compactId(row.id).slice(0, 12);
+    const token = auth === "password" ? sha256Hex(`${pageId || path}\n${password}`) : "";
 
-    out.push({ id, path, mode, token });
+    out.push({
+      id,
+      auth,
+      key,
+      pageId: pageId || "",
+      path: path || "",
+      mode,
+      token,
+    });
   }
 
-  // Deterministic order: exact before prefix, then longer paths first for prefix matching.
+  // Deterministic order:
+  // - pageId rules before path rules (more robust)
+  // - exact before prefix (legacy)
+  // - longer paths first for prefix matching (legacy)
   out.sort((a, b) => {
+    if (a.key !== b.key) return a.key === "pageId" ? -1 : 1;
     if (a.mode !== b.mode) return a.mode === "exact" ? -1 : 1;
     if (a.path.length !== b.path.length) return b.path.length - a.path.length;
     return a.path.localeCompare(b.path);
@@ -1747,7 +1766,7 @@ async function main() {
   writeFile(siteConfigOutPath, JSON.stringify(cfg, null, 2) + "\n");
 
   // Access control config (optional).
-  const protectedRoutes = await loadProtectedRoutesFromAdminDatabases(adminPageId);
+  const protectedRoutes = await loadProtectedRoutesFromAdminDatabases(adminPageId, { routeToPageId });
   writeFile(
     path.join(OUT_DIR, "protected-routes.json"),
     JSON.stringify(protectedRoutes, null, 2) + "\n",

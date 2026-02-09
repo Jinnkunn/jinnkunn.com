@@ -96,6 +96,28 @@ async function notionRequest(
   throw lastErr ?? new Error("Notion API request failed");
 }
 
+async function ensureProtectedDbSchema(databaseId: string) {
+  if (!databaseId) return;
+  const db: any = await notionRequest(`databases/${databaseId}`);
+  const props = db?.properties && typeof db.properties === "object" ? db.properties : {};
+
+  const patch: any = { properties: {} as any };
+  if (!props["Page ID"]) patch.properties["Page ID"] = { rich_text: {} };
+  if (!props["Auth"]) {
+    patch.properties["Auth"] = {
+      select: {
+        options: [
+          { name: "Password", color: "red" },
+          { name: "GitHub", color: "blue" },
+        ],
+      },
+    };
+  }
+
+  if (!Object.keys(patch.properties).length) return;
+  await notionRequest(`databases/${databaseId}`, { method: "PATCH", body: patch });
+}
+
 async function listBlockChildren(blockId: string): Promise<any[]> {
   const out: any[] = [];
   let cursor: string | undefined = undefined;
@@ -241,37 +263,59 @@ async function disableOverride({
 async function upsertProtected({
   protectedDbId,
   notionDbId,
+  pageId,
   path,
   mode,
   password,
+  auth,
 }: {
   protectedDbId: string;
   notionDbId: string;
+  pageId: string;
   path: string;
   mode: "exact" | "prefix";
   password: string;
+  auth: "password" | "github";
 }) {
   const normalized = normalizeRoutePath(path);
   if (!normalized) throw new Error("Missing path");
+  const pid = compactId(pageId);
+  if (!pid) throw new Error("Missing pageId");
   const pwd = String(password || "").trim();
-  if (!pwd) throw new Error("Missing password");
+  if (auth === "password" && !pwd) throw new Error("Missing password");
 
-  const rows = await queryDatabase(protectedDbId, {
-    filter: { property: "Path", rich_text: { equals: normalized } },
-  });
-  const row = rows[0] ?? null;
+  // Prefer existing row by Page ID (stable under URL overrides). Fall back to Path for legacy rows.
+  let row: any = null;
+  try {
+    const rowsByPid = await queryDatabase(protectedDbId, {
+      filter: { property: "Page ID", rich_text: { equals: pid } },
+    });
+    row = rowsByPid[0] ?? null;
+  } catch {
+    // ignore
+  }
+  if (!row?.id) {
+    const rowsByPath = await queryDatabase(protectedDbId, {
+      filter: { property: "Path", rich_text: { equals: normalized } },
+    });
+    row = rowsByPath[0] ?? null;
+  }
 
   const properties = {
     Name: { title: [{ type: "text", text: { content: normalized } }] },
+    "Page ID": { rich_text: [{ type: "text", text: { content: pid } }] },
     Path: { rich_text: [{ type: "text", text: { content: normalized } }] },
     Mode: { select: { name: mode } },
-    Password: { rich_text: [{ type: "text", text: { content: pwd } }] },
+    Auth: { select: { name: auth === "github" ? "GitHub" : "Password" } },
+    Password: {
+      rich_text: auth === "password" ? [{ type: "text", text: { content: pwd } }] : [],
+    },
     Enabled: { checkbox: true },
   };
 
   if (row?.id) {
     await notionRequest(`pages/${compactId(row.id)}`, { method: "PATCH", body: { properties } });
-    return { rowId: compactId(row.id), path: normalized, mode, enabled: true };
+    return { rowId: compactId(row.id), pageId: pid, path: normalized, mode, auth, enabled: true };
   }
 
   const created: any = await notionRequest("pages", {
@@ -281,21 +325,44 @@ async function upsertProtected({
       properties,
     },
   });
-  return { rowId: compactId(created?.id || ""), path: normalized, mode, enabled: true };
+  return {
+    rowId: compactId(created?.id || ""),
+    pageId: pid,
+    path: normalized,
+    mode,
+    auth,
+    enabled: true,
+  };
 }
 
 async function disableProtected({
   protectedDbId,
+  pageId,
   path,
 }: {
   protectedDbId: string;
+  pageId: string;
   path: string;
 }) {
   const normalized = normalizeRoutePath(path);
-  const rows = await queryDatabase(protectedDbId, {
-    filter: { property: "Path", rich_text: { equals: normalized } },
-  });
-  const row = rows[0] ?? null;
+  const pid = compactId(pageId);
+  let row: any = null;
+  if (pid) {
+    try {
+      const rowsByPid = await queryDatabase(protectedDbId, {
+        filter: { property: "Page ID", rich_text: { equals: pid } },
+      });
+      row = rowsByPid[0] ?? null;
+    } catch {
+      // ignore
+    }
+  }
+  if (!row?.id) {
+    const rowsByPath = await queryDatabase(protectedDbId, {
+      filter: { property: "Path", rich_text: { equals: normalized } },
+    });
+    row = rowsByPath[0] ?? null;
+  }
   if (!row?.id) return { ok: true };
   await notionRequest(`pages/${compactId(row.id)}`, {
     method: "PATCH",
@@ -312,6 +379,7 @@ async function getAdminDbIds() {
   const dbs = await findChildDatabases(adminPageId);
   const overrides = findDbByTitle(dbs, "Route Overrides");
   const protectedDb = findDbByTitle(dbs, "Protected Routes");
+  if (protectedDb?.id) await ensureProtectedDbSchema(protectedDb.id);
   return {
     adminPageId,
     overridesDbId: overrides?.id || "",
@@ -343,11 +411,14 @@ export async function GET(req: NextRequest) {
       .map((row: any) => {
         const enabled = getPropCheckbox(row, "Enabled");
         if (enabled === false) return null;
+        const pageId = compactId(getPropString(row, "Page ID"));
         const path = normalizeRoutePath(getPropString(row, "Path"));
         const modeRaw = (getPropString(row, "Mode") || "exact").toLowerCase();
         const mode = modeRaw === "prefix" ? "prefix" : "exact";
         if (!path) return null;
-        return { rowId: compactId(row.id), path, mode, enabled: true };
+        const authRaw = (getPropString(row, "Auth") || "").toLowerCase();
+        const auth = authRaw === "github" ? "github" : "password";
+        return { rowId: compactId(row.id), pageId, path, mode, auth, enabled: true };
       })
       .filter(Boolean);
 
@@ -400,24 +471,43 @@ export async function POST(req: NextRequest) {
 
     if (kind === "protected") {
       if (!protectedDbId) return json({ ok: false, error: "Missing Protected Routes DB" }, { status: 500 });
+      const pageId = compactId(String(body?.pageId || ""));
       const path = String(body?.path || "").trim();
       // Product decision: protecting a page must protect its subtree (Super-like),
       // so we always store prefix rules.
       const mode: "prefix" = "prefix";
       const password = String(body?.password || "").trim();
+      const authKindRaw = String(body?.auth || "password").trim().toLowerCase();
+      const authKind: "public" | "password" | "github" =
+        authKindRaw === "public" ? "public" : authKindRaw === "github" ? "github" : "password";
+      if (!pageId) return json({ ok: false, error: "Missing pageId" }, { status: 400 });
       if (!path) return json({ ok: false, error: "Missing path" }, { status: 400 });
 
-      if (!password) {
-        await disableProtected({ protectedDbId, path });
+      // Public = disable any protection rule for this page.
+      if (authKind === "public") {
+        await disableProtected({ protectedDbId, pageId, path });
         return json({ ok: true });
+      }
+
+      // Disable password protection if password is blank.
+      if (authKind === "password" && !password) {
+        await disableProtected({ protectedDbId, pageId, path });
+        return json({ ok: true });
+      }
+
+      // GitHub auth doesn't use a password; blank means "enable GitHub auth".
+      if (authKind === "github" && password) {
+        return json({ ok: false, error: "GitHub auth does not use a password" }, { status: 400 });
       }
 
       const out = await upsertProtected({
         protectedDbId,
         notionDbId: protectedDbId, // database id
+        pageId,
         path,
         mode,
         password,
+        auth: authKind,
       });
       return json({ ok: true, protected: out });
     }

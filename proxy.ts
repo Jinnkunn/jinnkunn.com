@@ -2,11 +2,15 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import protectedRoutes from "@/content/generated/protected-routes.json";
+import routesManifest from "@/content/generated/routes-manifest.json";
 import routes from "@/content/generated/routes.json";
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 
 type ProtectedRoute = {
   id: string;
+  auth?: "password" | "github";
+  key?: "pageId" | "path";
+  pageId?: string;
   path: string;
   mode: "exact" | "prefix";
   token: string;
@@ -24,6 +28,22 @@ const pageIdToRoute: Record<string, string> = (() => {
     }
   } catch {
     // ignore (missing routes.json in dev before first sync)
+  }
+  return out;
+})();
+
+const parentByPageId: Record<string, string> = (() => {
+  const out: Record<string, string> = {};
+  try {
+    const items = Array.isArray(routesManifest) ? (routesManifest as any[]) : [];
+    for (const it of items) {
+      const id = String(it?.id || "").replace(/-/g, "").toLowerCase();
+      if (!id) continue;
+      const pid = String(it?.parentId || "").replace(/-/g, "").toLowerCase();
+      out[id] = pid || "";
+    }
+  } catch {
+    // ignore
   }
   return out;
 })();
@@ -75,6 +95,42 @@ function findProtectedMatch(pathname: string, routes: ProtectedRoute[]): Protect
     }
   }
   return best;
+}
+
+function lookupPageIdForPath(pathname: string): string {
+  const p = normalizePathname(pathname);
+  const direct = (routes as any)?.[p];
+  if (typeof direct === "string" && direct) return direct.replace(/-/g, "").toLowerCase();
+
+  // Canonical blog routes (/blog/<slug>) map to Notion's /blog/list/<slug>.
+  const m = p.match(/^\/blog\/([^/]+)$/);
+  if (m) {
+    const alt = `/blog/list/${m[1]}`;
+    const hit = (routes as any)?.[alt];
+    if (typeof hit === "string" && hit) return hit.replace(/-/g, "").toLowerCase();
+  }
+
+  return "";
+}
+
+function findProtectedByPageHierarchy(pageId: string, rules: ProtectedRoute[]): ProtectedRoute | null {
+  const byId: Record<string, ProtectedRoute> = {};
+  for (const r of rules) {
+    if ((r.key || "") !== "pageId") continue;
+    const pid = String(r.pageId || r.id || "").replace(/-/g, "").toLowerCase();
+    if (!pid) continue;
+    // Prefer password rules over github when both exist on the same node (rare).
+    if (!byId[pid] || (byId[pid]!.auth || "password") !== "password") byId[pid] = r;
+  }
+
+  let cur = String(pageId || "").replace(/-/g, "").toLowerCase();
+  let guard = 0;
+  while (cur && guard++ < 200) {
+    const hit = byId[cur];
+    if (hit) return hit;
+    cur = parentByPageId[cur] || "";
+  }
+  return null;
 }
 
 // NOTE: Next.js 16 deprecates `middleware.ts` in favor of `proxy.ts`.
@@ -135,8 +191,22 @@ export async function proxy(req: NextRequest) {
   const rules = (protectedRoutes || []) as ProtectedRoute[];
   if (!Array.isArray(rules) || rules.length === 0) return NextResponse.next();
 
-  const match = findProtectedMatch(pathname, rules);
+  // Prefer page-hierarchy rules (robust under URL overrides).
+  const pageId = lookupPageIdForPath(pathname);
+  const matchByPage = pageId ? findProtectedByPageHierarchy(pageId, rules) : null;
+  const match = matchByPage || findProtectedMatch(pathname, rules);
   if (!match) return NextResponse.next();
+
+  const authKind = (match.auth || "password") as "password" | "github";
+
+  if (authKind === "github") {
+    const ok = await isSiteAdminAuthorized(req);
+    if (ok) return NextResponse.next();
+    const url = req.nextUrl.clone();
+    url.pathname = "/site-admin/login";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url, 302);
+  }
 
   const cookieName = `site_auth_${match.id}`;
   const cookie = req.cookies.get(cookieName)?.value ?? "";
