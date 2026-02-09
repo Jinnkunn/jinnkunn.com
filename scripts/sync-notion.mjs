@@ -1386,6 +1386,40 @@ async function renderBlock(b, ctx) {
   // Fallback: if the block has children, still render them so content isn't lost.
   const kids = Array.isArray(b.__children) ? b.__children : [];
   if (kids.length) {
+    // Some Notion block types still come back as `unsupported` but their children
+    // are still usable. Most importantly: tables. If we see a block whose children
+    // are entirely table rows, render it as a table instead of dropping it.
+    const tableRows = kids.filter((k) => k?.type === "table_row" || k?.table_row);
+    const looksLikeTable = tableRows.length > 0 && tableRows.length === kids.length;
+    if (looksLikeTable) {
+      let width = 0;
+      for (const r of tableRows) {
+        const cells = r?.table_row?.cells;
+        if (!Array.isArray(cells)) continue;
+        width = Math.max(width, cells.length);
+      }
+      width = Math.max(1, width || 0);
+
+      const rowHtml = tableRows
+        .map((r) => {
+          const cells = Array.isArray(r?.table_row?.cells) ? r.table_row.cells : [];
+          const tds = [];
+          for (let col = 0; col < width; col++) {
+            const cell = cells[col];
+            const rich = Array.isArray(cell) ? cell : [];
+            const content = rich.length ? renderRichText(rich, ctx) : "";
+            const inner = content
+              ? `<div class="notion-table__cell notion-semantic-string">${content}</div>`
+              : `<div class="notion-table__cell notion-semantic-string"><div class="notion-table__empty-cell"></div></div>`;
+            tds.push(`<td>${inner}</td>`);
+          }
+          return `<tr>${tds.join("")}</tr>`;
+        })
+        .join("");
+
+      return `<div id="${blockIdAttr}" class="notion-table__wrapper"><table class="notion-table">${rowHtml}</table></div>`;
+    }
+
     return `<div id="${blockIdAttr}" class="notion-unsupported">${await renderBlocks(
       kids,
       ctx,

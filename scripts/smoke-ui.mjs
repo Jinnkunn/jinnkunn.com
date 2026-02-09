@@ -172,7 +172,8 @@ async function main() {
         viewport: { width: 1200, height: 800 },
       });
       const page = await context.newPage();
-      const url = `${baseURL}/30040d70fdf58106bc92ee4e16cdbba2`;
+      // Pick a stable blog post that includes toggles + code blocks.
+      const url = `${baseURL}/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities`;
       await page.goto(url, { waitUntil: "networkidle" });
 
       // Toggle expand/collapse (if present)

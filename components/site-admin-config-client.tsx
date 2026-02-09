@@ -29,6 +29,14 @@ function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // ignore
+  }
+}
+
 function asString(x: unknown): string {
   return typeof x === "string" ? x : "";
 }
@@ -43,6 +51,7 @@ export default function SiteAdminConfigClient() {
   const [err, setErr] = useState("");
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [nav, setNav] = useState<NavItemRow[]>([]);
+  const [openNav, setOpenNav] = useState<Record<string, boolean>>({});
 
   const [draftSettings, setDraftSettings] = useState<SiteSettings | null>(null);
   const [navDraft, setNavDraft] = useState<Record<string, Partial<NavItemRow>>>({});
@@ -64,6 +73,7 @@ export default function SiteAdminConfigClient() {
           setDraftSettings(data.settings ? { ...data.settings } : null);
           setNav(data.nav || []);
           setNavDraft({});
+          setOpenNav({});
         }
       } catch (e: any) {
         if (!cancelled) setErr(String(e?.message || e));
@@ -115,6 +125,18 @@ export default function SiteAdminConfigClient() {
     setNavDraft((prev) => ({ ...prev, [rowId]: { ...(prev[rowId] || {}), ...patch } }));
   };
 
+  const clearNavDraft = (rowId: string) => {
+    setNavDraft((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  };
+
+  const toggleOpenNav = (rowId: string) => {
+    setOpenNav((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
+  };
+
   const saveNavRow = async (row: NavItemRow) => {
     setBusy(true);
     setErr("");
@@ -164,7 +186,10 @@ export default function SiteAdminConfigClient() {
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       const created = data.created as NavItemRow | null;
-      if (created?.rowId) setNav((prev) => [...prev, created].sort((a, b) => a.order - b.order));
+      if (created?.rowId) {
+        setNav((prev) => [...prev, created].sort((a, b) => a.order - b.order));
+        setOpenNav((prev) => ({ ...prev, [created.rowId]: true }));
+      }
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -172,86 +197,130 @@ export default function SiteAdminConfigClient() {
     }
   };
 
-  const renderNavTable = (rows: NavItemRow[]) => (
-    <div className="routes-explorer__table" role="table" aria-label="Navigation items">
-      <div className="routes-explorer__row routes-explorer__row--head" role="row">
-        <div className="routes-explorer__cell routes-explorer__cell--title" role="columnheader">
-          Label
-        </div>
-        <div className="routes-explorer__cell routes-explorer__cell--route" role="columnheader">
-          Href
-        </div>
-        <div className="routes-explorer__cell routes-explorer__cell--kind" role="columnheader">
-          Meta
-        </div>
-      </div>
-
+  const renderNavList = (rows: NavItemRow[], group: "top" | "more") => (
+    <div className="site-admin-nav" role="list" aria-label={`Navigation (${group})`}>
       {rows.map((it) => {
+        const open = Boolean(openNav[it.rowId]);
         const d = navDraft[it.rowId] || {};
         const dirty = Object.keys(d).length > 0;
+        const label = asString(d.label ?? it.label);
+        const href = asString(d.href ?? it.href);
+        const order = asNumber(d.order ?? it.order);
+        const enabled = Boolean(d.enabled ?? it.enabled);
+
         return (
-          <div key={it.rowId} className="routes-explorer__row" role="row">
-            <div className="routes-explorer__cell routes-explorer__cell--title" role="cell">
-              <input
-                className="routes-explorer__admin-input"
-                value={asString(d.label ?? it.label)}
-                onChange={(e) => updateNavDraftField(it.rowId, { label: e.target.value })}
-              />
-              <div className="routes-explorer__id">
-                {it.rowId}{" "}
+          <div key={it.rowId} className="site-admin-nav__row" role="listitem" data-open={open ? "1" : "0"}>
+            <div className="site-admin-nav__row-top">
+              <div className="site-admin-nav__left">
                 <button
                   type="button"
-                  className="routes-explorer__copy"
-                  onClick={() => navigator.clipboard?.writeText(it.rowId)}
+                  className="site-admin-nav__expander"
+                  aria-label={open ? "Collapse item" : "Expand item"}
+                  aria-expanded={open}
+                  onClick={() => toggleOpenNav(it.rowId)}
+                  title={open ? "Collapse" : "Expand"}
                 >
-                  Copy
+                  <svg className="site-admin-nav__chev" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
-              </div>
-            </div>
 
-            <div className="routes-explorer__cell routes-explorer__cell--route" role="cell">
-              <input
-                className="routes-explorer__admin-input"
-                value={asString(d.href ?? it.href)}
-                onChange={(e) => updateNavDraftField(it.rowId, { href: e.target.value })}
-                placeholder="/blog"
-              />
-            </div>
-
-            <div className="routes-explorer__cell routes-explorer__cell--kind" role="cell">
-              <div className="routes-explorer__admin" style={{ marginTop: 0 }}>
-                <div
-                  className="routes-explorer__admin-row"
-                  style={{ gridTemplateColumns: "72px 110px 72px 70px auto" }}
-                >
-                  <label className="routes-explorer__admin-label">Order</label>
-                  <input
-                    className="routes-explorer__admin-input"
-                    inputMode="numeric"
-                    value={String(asNumber(d.order ?? it.order))}
-                    onChange={(e) => updateNavDraftField(it.rowId, { order: asNumber(e.target.value) })}
-                  />
-                  <label className="routes-explorer__admin-label" style={{ justifySelf: "start" }}>
-                    Enabled
-                  </label>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(d.enabled ?? it.enabled)}
-                    onChange={(e) => updateNavDraftField(it.rowId, { enabled: e.target.checked })}
-                    aria-label="Enabled"
-                    style={{ height: 18, width: 18, alignSelf: "center" }}
-                  />
-                  <button
-                    type="button"
-                    className={cn("routes-explorer__admin-btn", dirty ? "" : "is-muted")}
-                    disabled={busy || !dirty}
-                    onClick={() => saveNavRow(it)}
-                  >
-                    Save
-                  </button>
+                <div className="site-admin-nav__text">
+                  <div className="site-admin-nav__headline">
+                    <span className="site-admin-nav__label">{label || "Untitled"}</span>
+                    <span className="site-admin-nav__href">{href || "(missing href)"}</span>
+                  </div>
+                  <div className="site-admin-nav__subline">
+                    <code className="site-admin-nav__id">{it.rowId}</code>
+                    <button
+                      type="button"
+                      className="site-admin-nav__copy"
+                      onClick={() => copyToClipboard(it.rowId)}
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              <div className="site-admin-nav__right">
+                <span className="routes-explorer__pill routes-explorer__pill--nav">#{order}</span>
+                <label className="site-admin-nav__switch">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) => updateNavDraftField(it.rowId, { enabled: e.target.checked })}
+                    aria-label="Enabled"
+                  />
+                  <span>Enabled</span>
+                </label>
+              </div>
             </div>
+
+            {open ? (
+              <div className="site-admin-nav__panel">
+                <div className="site-admin-form site-admin-form--compact" role="group" aria-label="Edit item">
+                  <div className="site-admin-form__row">
+                    <label className="site-admin-form__label">Label</label>
+                    <input
+                      className="site-admin-form__input"
+                      value={label}
+                      onChange={(e) => updateNavDraftField(it.rowId, { label: e.target.value })}
+                      placeholder="Home"
+                    />
+                  </div>
+
+                  <div className="site-admin-form__row">
+                    <label className="site-admin-form__label">Href</label>
+                    <input
+                      className="site-admin-form__input site-admin-form__input--mono"
+                      value={href}
+                      onChange={(e) => updateNavDraftField(it.rowId, { href: e.target.value })}
+                      placeholder="/blog"
+                    />
+                  </div>
+
+                  <div className="site-admin-form__row">
+                    <label className="site-admin-form__label">Order</label>
+                    <input
+                      className="site-admin-form__input site-admin-form__input--mono"
+                      inputMode="numeric"
+                      value={String(order)}
+                      onChange={(e) => updateNavDraftField(it.rowId, { order: asNumber(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="site-admin-form__actions">
+                    <button
+                      type="button"
+                      className="site-admin-form__btn"
+                      disabled={busy || !dirty}
+                      onClick={() => saveNavRow(it)}
+                      title={dirty ? "Save changes to Notion" : "No changes"}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className={cn("site-admin-form__btn", dirty ? "" : "is-muted")}
+                      disabled={busy || !dirty}
+                      onClick={() => clearNavDraft(it.rowId)}
+                      title="Discard local edits"
+                    >
+                      Revert
+                    </button>
+                    <button
+                      type="button"
+                      className="site-admin-form__btn"
+                      disabled={busy}
+                      onClick={() => toggleOpenNav(it.rowId)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -259,7 +328,7 @@ export default function SiteAdminConfigClient() {
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+    <div className="site-admin-config">
       <section>
         <h2 className="notion-heading notion-semantic-string">Config</h2>
         <p className="notion-text notion-text__content notion-semantic-string">
@@ -269,43 +338,100 @@ export default function SiteAdminConfigClient() {
 
       {err ? <div className="routes-explorer__error">{err}</div> : null}
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <section className="site-admin-config__section">
         <h3 className="notion-heading notion-semantic-string">Site Settings</h3>
         {draftSettings ? (
-          <div className="routes-explorer__admin" style={{ marginTop: 0 }}>
-            {(
-              [
-                { k: "siteName", label: "Site Name" },
-                { k: "lang", label: "Lang" },
-                { k: "seoTitle", label: "SEO Title" },
-                { k: "seoDescription", label: "SEO Description" },
-                { k: "favicon", label: "Favicon" },
-                { k: "googleAnalyticsId", label: "GA ID" },
-                { k: "rootPageId", label: "Root Page ID" },
-                { k: "homePageId", label: "Home Page ID" },
-              ] as const
-            ).map((f) => (
-              <div
-                key={f.k}
-                className="routes-explorer__admin-row"
-                style={{ gridTemplateColumns: "160px 1fr" }}
-              >
-                <label className="routes-explorer__admin-label">{f.label}</label>
-                <input
-                  className="routes-explorer__admin-input"
-                  value={asString((draftSettings as any)[f.k])}
-                  onChange={(e) => setDraftSettings((prev) => (prev ? { ...prev, [f.k]: e.target.value } : prev))}
-                />
-              </div>
-            ))}
+          <div className="site-admin-form" role="form" aria-label="Site settings">
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Site Name</label>
+              <input
+                className="site-admin-form__input"
+                value={asString(draftSettings.siteName)}
+                onChange={(e) => setDraftSettings((prev) => (prev ? { ...prev, siteName: e.target.value } : prev))}
+                placeholder="Jinkun Chen."
+              />
+            </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-              <button
-                type="button"
-                className="routes-explorer__admin-btn"
-                disabled={busy}
-                onClick={saveSettings}
-              >
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Lang</label>
+              <input
+                className="site-admin-form__input site-admin-form__input--mono"
+                value={asString(draftSettings.lang)}
+                onChange={(e) => setDraftSettings((prev) => (prev ? { ...prev, lang: e.target.value } : prev))}
+                placeholder="en"
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">SEO Title</label>
+              <input
+                className="site-admin-form__input"
+                value={asString(draftSettings.seoTitle)}
+                onChange={(e) => setDraftSettings((prev) => (prev ? { ...prev, seoTitle: e.target.value } : prev))}
+                placeholder="Jinkun Chen"
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">SEO Description</label>
+              <textarea
+                className="site-admin-form__textarea"
+                value={asString(draftSettings.seoDescription)}
+                onChange={(e) =>
+                  setDraftSettings((prev) => (prev ? { ...prev, seoDescription: e.target.value } : prev))
+                }
+                placeholder="Short description for search engines."
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Favicon</label>
+              <input
+                className="site-admin-form__input"
+                value={asString(draftSettings.favicon)}
+                onChange={(e) => setDraftSettings((prev) => (prev ? { ...prev, favicon: e.target.value } : prev))}
+                placeholder="/favicon.ico"
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Google Analytics ID</label>
+              <input
+                className="site-admin-form__input site-admin-form__input--mono"
+                value={asString(draftSettings.googleAnalyticsId)}
+                onChange={(e) =>
+                  setDraftSettings((prev) => (prev ? { ...prev, googleAnalyticsId: e.target.value } : prev))
+                }
+                placeholder="G-XXXXXXXXXX"
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Root Page ID</label>
+              <input
+                className="site-admin-form__input site-admin-form__input--mono"
+                value={asString(draftSettings.rootPageId)}
+                onChange={(e) =>
+                  setDraftSettings((prev) => (prev ? { ...prev, rootPageId: e.target.value } : prev))
+                }
+                placeholder="Notion page id"
+              />
+            </div>
+
+            <div className="site-admin-form__row">
+              <label className="site-admin-form__label">Home Page ID</label>
+              <input
+                className="site-admin-form__input site-admin-form__input--mono"
+                value={asString(draftSettings.homePageId)}
+                onChange={(e) =>
+                  setDraftSettings((prev) => (prev ? { ...prev, homePageId: e.target.value } : prev))
+                }
+                placeholder="Notion page id"
+              />
+            </div>
+
+            <div className="site-admin-form__actions">
+              <button type="button" className="site-admin-form__btn" disabled={busy} onClick={saveSettings}>
                 Save Settings
               </button>
             </div>
@@ -317,34 +443,34 @@ export default function SiteAdminConfigClient() {
         )}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <section className="site-admin-config__section">
         <h3 className="notion-heading notion-semantic-string">Navigation</h3>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span className="routes-explorer__pill routes-explorer__pill--nav">top</span>
           <button
             type="button"
-            className="routes-explorer__admin-btn"
+            className="site-admin-form__btn"
             disabled={busy}
             onClick={() => addNavRow("top")}
           >
             Add top item
           </button>
         </div>
-        {renderNavTable(navByGroup.top)}
+        {renderNavList(navByGroup.top, "top")}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
           <span className="routes-explorer__pill">more</span>
           <button
             type="button"
-            className="routes-explorer__admin-btn"
+            className="site-admin-form__btn"
             disabled={busy}
             onClick={() => addNavRow("more")}
           >
             Add more item
           </button>
         </div>
-        {renderNavTable(navByGroup.more)}
+        {renderNavList(navByGroup.more, "more")}
       </section>
     </div>
   );
