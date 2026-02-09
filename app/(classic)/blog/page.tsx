@@ -80,9 +80,9 @@ function buildBlogListHtml(items: Awaited<ReturnType<typeof getBlogIndex>>): str
     .join("");
 
   return (
+    // Keep it minimal: no extra "List" heading (matches the original site's blog landing).
     `<div class="notion-collection inline">` +
-    `<div class="notion-collection__header-wrapper"><h3 class="notion-collection__header"><span class="notion-semantic-string">List</span></h3></div>` +
-    `<div class="notion-collection-list" role="list" aria-label="List">` +
+    `<div class="notion-collection-list" role="list" aria-label="Blog posts">` +
     `${rows}` +
     `</div>` +
     `</div>`

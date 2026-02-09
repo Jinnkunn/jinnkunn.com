@@ -229,6 +229,7 @@ export default function SiteSearchBehavior() {
 
     const onClear = (e: MouseEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       if (!open) return;
       // Super-like behavior: "X" clears if there is input; otherwise it closes.
       if (!input.value.trim()) {

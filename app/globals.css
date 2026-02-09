@@ -877,6 +877,12 @@ html {
   color: var(--color-text-default);
 }
 
+/* Keep navbar logo + breadcrumbs perfectly aligned by sharing the same horizontal padding. */
+.super-navbar .super-navbar__content {
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
 @media (max-width: 546px) {
   /* On mobile, align breadcrumbs with the navbar logo padding (Super-like). */
   .super-root .super-content > .super-navbar__breadcrumbs {
@@ -1021,6 +1027,7 @@ html {
   margin-inline-start: -12px; /* keep text aligned while enlarging the hover target */
   margin-inline-end: -12px;
   /* Background is handled by ::before to avoid "double" layers. */
+  background: transparent !important;
 }
 
 /* Publications: the inline "conference"/labels are Notion inline code; tighten to match the original chips. */
@@ -1072,8 +1079,8 @@ html {
 
 /* Publications: details typography should match body size (avoid oversized quote/tags). */
 .page__publications .notion-toggle__content {
-  font-size: 15px;
-  line-height: 1.5rem;
+  font-size: var(--v1-type-body);
+  line-height: 1.55;
 }
 
 .page__publications .notion-toggle__content .notion-quote {
@@ -1089,10 +1096,10 @@ html {
 .page__publications .highlighted-background.bg-purple,
 .page__publications .highlighted-background.bg-orange {
   display: inline-block;
-  padding: 0.18em 0.5em;
+  padding: 0.2em 0.54em;
   border-radius: 4px;
   margin: 0 0.12em;
-  line-height: 1.15;
+  line-height: 1.25; /* avoid vertical clipping, especially for italic text like "conference" */
   vertical-align: baseline;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
@@ -1207,6 +1214,11 @@ html {
   padding: 10px 12px;
   border-radius: 12px;
   text-decoration: none;
+  color: var(--color-text-default);
+}
+
+.notion-search__result-item:link,
+.notion-search__result-item:visited {
   color: var(--color-text-default);
 }
 

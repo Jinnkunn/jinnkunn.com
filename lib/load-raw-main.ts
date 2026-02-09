@@ -80,7 +80,17 @@ function rewriteRawHtml(html: string): string {
     '<div class="super-navbar__breadcrumbs">',
   );
 
-  return breadcrumbFixed
+  // Canonicalize blog URLs:
+  // - Notion structure often nests posts under `/blog/list/<slug>` or `/list/<slug>`
+  // - Public routes should always be `/blog/<slug>` (matches original site UX)
+  const blogCanon = breadcrumbFixed
+    .replaceAll('href="/blog/list/', 'href="/blog/')
+    .replaceAll('href="/list/', 'href="/blog/')
+    // A few Notion exports include absolute URLs without quoting.
+    .replaceAll("href=/blog/list/", "href=/blog/")
+    .replaceAll("href=/list/", "href=/blog/");
+
+  return blogCanon
     .replaceAll("https://jinkunchen.com", "")
     .replaceAll("http://jinkunchen.com", "");
 }
