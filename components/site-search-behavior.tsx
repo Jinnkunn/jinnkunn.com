@@ -155,6 +155,41 @@ export default function SiteSearchBehavior() {
     let lastFocus: HTMLElement | null = null;
     let aborter: AbortController | null = null;
     let debounceTimer: number | null = null;
+    let activeIndex = -1;
+
+    const getResultItems = (): HTMLAnchorElement[] =>
+      Array.from(list.querySelectorAll<HTMLAnchorElement>(".notion-search__result-item"));
+
+    const setActive = (idx: number) => {
+      const items = getResultItems();
+      if (!items.length) {
+        activeIndex = -1;
+        return;
+      }
+      const next = Math.max(0, Math.min(idx, items.length - 1));
+      activeIndex = next;
+      for (let i = 0; i < items.length; i += 1) {
+        const el = items[i]!;
+        const on = i === activeIndex;
+        el.classList.toggle("is-active", on);
+        el.setAttribute("aria-selected", on ? "true" : "false");
+      }
+      items[activeIndex]!.scrollIntoView({ block: "nearest" });
+    };
+
+    const renderFooterHint = (mode: "idle" | "results") => {
+      if (mode === "idle") {
+        footer.innerHTML = `<div class="notion-search__result-footer-shortcut">Esc</div> to close`;
+        return;
+      }
+      footer.innerHTML =
+        `<div class="notion-search__result-footer-shortcut">Esc</div> close` +
+        `<span class="notion-search__result-footer-dot">·</span>` +
+        `<div class="notion-search__result-footer-shortcut">↑</div>` +
+        `<div class="notion-search__result-footer-shortcut">↓</div> navigate` +
+        `<span class="notion-search__result-footer-dot">·</span>` +
+        `<div class="notion-search__result-footer-shortcut">↵</div> open`;
+    };
 
     const setOpen = (next: boolean) => {
       open = next;
@@ -166,19 +201,22 @@ export default function SiteSearchBehavior() {
         lastFocus = document.activeElement as HTMLElement | null;
         input.value = "";
         renderEmpty(list);
-        footer.innerHTML = `<div class="notion-search__result-footer-shortcut">Esc</div> to close`;
+        activeIndex = -1;
+        renderFooterHint("idle");
         window.setTimeout(() => input.focus(), 0);
       } else {
         aborter?.abort();
         aborter = null;
         if (debounceTimer) window.clearTimeout(debounceTimer);
         debounceTimer = null;
+        activeIndex = -1;
         if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
         lastFocus = null;
       }
     };
 
     const close = () => setOpen(false);
+    const openSearch = () => setOpen(true);
 
     const onTriggerClick = (e: MouseEvent) => {
       e.preventDefault();
@@ -192,11 +230,50 @@ export default function SiteSearchBehavior() {
       close();
     };
 
+    const isTypingContext = (t: EventTarget | null) => {
+      const el = t instanceof Element ? t : null;
+      if (!el) return false;
+      if (el.closest("[contenteditable='true']")) return true;
+      const tag = el.tagName?.toLowerCase?.() || "";
+      return tag === "input" || tag === "textarea" || tag === "select";
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!open) return;
+      // Global open shortcuts (Super-like).
+      if (!open) {
+        if (isTypingContext(e.target)) return;
+        const k = e.key.toLowerCase();
+        if ((k === "k" && (e.metaKey || e.ctrlKey)) || e.key === "/") {
+          e.preventDefault();
+          openSearch();
+        }
+        return;
+      }
+
       if (e.key === "Escape") {
         e.preventDefault();
         close();
+        return;
+      }
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActive(activeIndex + 1);
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActive(activeIndex - 1);
+        return;
+      }
+
+      if (e.key === "Enter") {
+        const items = getResultItems();
+        const el = items[activeIndex] || items[0];
+        if (!el) return;
+        e.preventDefault();
+        el.click();
       }
     };
 
@@ -206,18 +283,22 @@ export default function SiteSearchBehavior() {
         aborter?.abort();
         aborter = null;
         renderEmpty(list);
+        activeIndex = -1;
+        renderFooterHint("idle");
         return;
       }
 
       aborter?.abort();
       aborter = new AbortController();
       renderLoader(list);
+      activeIndex = -1;
 
       void (async () => {
         const items = await fetchResults(query, aborter!.signal).catch(() => []);
         if (aborter?.signal.aborted) return;
         renderResults(list, items);
-        footer.innerHTML = `<strong>${items.length}</strong> results`;
+        if (items.length) setActive(0);
+        renderFooterHint("results");
       })();
     };
 
@@ -239,7 +320,8 @@ export default function SiteSearchBehavior() {
       input.value = "";
       input.focus();
       renderEmpty(list);
-      footer.innerHTML = `<div class="notion-search__result-footer-shortcut">Esc</div> to close`;
+      activeIndex = -1;
+      renderFooterHint("idle");
     };
 
     trigger.addEventListener("click", onTriggerClick);

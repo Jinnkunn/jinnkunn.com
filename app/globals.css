@@ -1917,6 +1917,15 @@ html {
   background: rgba(55, 53, 47, 0.06);
 }
 
+.notion-search__result-item.is-active {
+  background: rgba(55, 53, 47, 0.08);
+}
+
+.notion-search__result-item:focus-visible {
+  outline: 2px solid rgba(46, 170, 220, 0.65);
+  outline-offset: 2px;
+}
+
 .notion-search__result-item-title {
   font-weight: 650;
 }
@@ -1962,6 +1971,10 @@ html {
   background: rgba(255, 255, 255, 0.75);
   font-weight: 650;
   opacity: 0.85;
+}
+
+.notion-search__result-footer-dot {
+  opacity: 0.55;
 }
 
 .page__publications .highlighted-background.bg-red .code,
