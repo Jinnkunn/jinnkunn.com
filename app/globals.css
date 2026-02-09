@@ -1755,7 +1755,8 @@ html {
 /* Publications: details typography should match body size (avoid oversized quote/tags). */
 .page__publications .notion-toggle__content {
   font-size: var(--v1-type-body);
-  line-height: 1.55;
+  /* Match the original Super site: 16px with 24px line-height. */
+  line-height: 1.5;
 }
 
 .page__publications .notion-toggle__content .notion-quote {
