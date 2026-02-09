@@ -42,6 +42,7 @@ a[href="/"].notion-link.link:before,*/
 a[href="/chen"].notion-link.link:before,
 a[href="https://twitter.com/_jinnkunn"].notion-link.link:before,
 a[href="/blog"].notion-link.link:before,
+a[href="/blog.rss"].notion-link.link:before,
 a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before,
 a[href="https://dal.ca/"].notion-link.link:before,
 a[href*="scholar.google"].notion-link.link:before,
@@ -66,6 +67,7 @@ a[href*="semanticscholar.org/"].notion-link.link:before {
 a[href="/chen"].notion-link.link,
 a[href="https://twitter.com/_jinnkunn"].notion-link.link,
 a[href="/blog"].notion-link.link,
+a[href="/blog.rss"].notion-link.link,
 a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link,
 a[href="https://dal.ca/"].notion-link.link,
 a[href*="scholar.google"].notion-link.link,
@@ -92,6 +94,11 @@ a[href="https://twitter.com/_jinnkunn"].notion-link.link:before {
 
 a[href="/blog"].notion-link.link:before {
   background-image: url(/web_image/blog-b.svg);
+}
+
+a[href="/blog.rss"].notion-link.link:before {
+  background-image: url(/web_image/rss.svg);
+  background-size: 20px 20px;
 }
 
 a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before {
@@ -1013,6 +1020,8 @@ a.notion-link.link {
     rgba(246, 228, 183, 0.88) 100%
   );
   background-repeat: no-repeat;
+  /* Prevent icon-prefixed links from showing highlight behind the icon box. */
+  background-origin: content-box;
   background-size: 100% 0.42em;
   background-position: 0 100%;
   background-clip: content-box;

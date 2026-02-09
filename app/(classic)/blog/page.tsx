@@ -79,10 +79,16 @@ function buildBlogListHtml(items: Awaited<ReturnType<typeof getBlogIndex>>): str
     })
     .join("");
 
+  const collectionAnchorId = "blog-list";
   return (
-    // Keep it minimal: no extra "List" heading (matches the original site's blog landing).
     `<div class="notion-collection inline">` +
-    `<div class="notion-collection-list" role="list" aria-label="Blog posts">` +
+    `<div class="notion-collection__header-wrapper">` +
+    `<h3 class="notion-collection__header">` +
+    `<a class="notion-anchor" href="#${collectionAnchorId}"></a>` +
+    `<span class="notion-semantic-string">List</span>` +
+    `</h3>` +
+    `</div>` +
+    `<div id="${collectionAnchorId}" class="notion-collection-list">` +
     `${rows}` +
     `</div>` +
     `</div>`

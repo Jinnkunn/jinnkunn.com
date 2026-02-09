@@ -1767,6 +1767,17 @@ html {
   font-size: inherit;
 }
 
+/* Publications: normalize quote whitespace (avoid accidental extra blank lines from source newlines),
+   and enforce the "authors" line + blank line + "tag: venue" line layout like the original site. */
+.page__publications .notion-toggle__content .notion-quote .notion-semantic-string {
+  white-space: normal;
+}
+
+.page__publications .notion-toggle__content .notion-quote em:has(.code) {
+  display: block;
+  margin-top: 14px;
+}
+
 /* Publications: tag pills (conference / arXiv.org / journal) should be compact. */
 .page__publications .highlighted-background.bg-red,
 .page__publications .highlighted-background.bg-purple,
