@@ -41,45 +41,6 @@
   border-radius: 10px;
 }
 
-/* Content links: restore the Super-like "ink rise" highlight (hover fills from bottom).
- * Some overrides later in the stack can accidentally shift the highlight; this pins it.
- */
-/* Use class selectors (not exact class="...") because Notion can add extra classes. */
-:where(.super-root) :where(.notion-text, .notion-quote, .notion-callout, .notion-list, .notion-table) a.notion-link.link {
-  /* Keep icons out of the highlight by reserving space in padding (set per-icon link elsewhere). */
-  --link-icon-space: 0px;
-  padding-left: calc(var(--link-icon-space) + 0.08em);
-
-  background-repeat: no-repeat !important;
-  background-position: 0 100% !important;
-  /* Paint into padding so the highlight doesn't look "cut in half". */
-  background-clip: padding-box !important;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-
-  /* Force a stable highlight + transition (prevents regressions from upstream CSS). */
-  background-image: linear-gradient(
-    to top,
-    rgba(246, 228, 183, 0.88) 0%,
-    rgba(246, 228, 183, 0.88) 100%
-  ) !important;
-  background-size: 100% 0.42em !important;
-  transition:
-    background-size 620ms cubic-bezier(0.16, 1, 0.3, 1),
-    text-decoration-color 180ms ease !important;
-}
-
-:where(.super-root) :where(.notion-text, .notion-quote, .notion-callout, .notion-list, .notion-table) a.notion-link.link:hover {
-  /* Fill the full line box (and multi-line wraps) reliably. */
-  background-size: 100% 100% !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :where(.super-root) :where(.notion-text, .notion-quote, .notion-callout, .notion-list, .notion-table) a.notion-link.link {
-    transition: none !important;
-  }
-}
-
 /* Utility: screen-reader-only text. */
 .sr-only {
   position: absolute !important;
@@ -1774,41 +1735,20 @@ html {
 
 /* Publications: Super-like grey hover/selected state for each entry title. */
 .page__publications .notion-toggle > .notion-toggle__summary {
-  position: relative;
-  z-index: 0;
-}
-
-.page__publications .notion-toggle > .notion-toggle__summary > * {
-  position: relative;
-  z-index: 1;
-}
-
-.page__publications .notion-toggle > .notion-toggle__summary::before {
-  content: "";
-  position: absolute;
-  /* Expand to match Super's "pill" background without changing layout. */
-  inset: -10px -14px;
-  background: rgba(55, 53, 47, 0.06);
-  border-radius: 16px;
-  opacity: 0;
-  transform: scale(0.98);
   transition:
-    opacity 160ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    background-color 160ms cubic-bezier(0.2, 0.9, 0.2, 1),
     transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
 }
 
-.page__publications .notion-toggle.open > .notion-toggle__summary::before,
-.page__publications .notion-toggle > .notion-toggle__summary:hover::before,
-.page__publications .notion-toggle > .notion-toggle__summary:focus-visible::before {
-  opacity: 1;
-  transform: scale(1);
+.page__publications .notion-toggle.open > .notion-toggle__summary,
+.page__publications .notion-toggle > .notion-toggle__summary:hover,
+.page__publications .notion-toggle > .notion-toggle__summary:focus-visible {
+  background: rgba(55, 53, 47, 0.06) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .page__publications .notion-toggle > .notion-toggle__summary::before {
-    transition: opacity 120ms linear;
-    transform: none;
+  .page__publications .notion-toggle > .notion-toggle__summary {
+    transition: background-color 120ms linear;
   }
 }
 

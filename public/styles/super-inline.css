@@ -991,7 +991,7 @@ html.theme-light {
 }
 
 /* Super custom CSS parity: "ink rise" highlight on Notion content links. */
-a[class="notion-link link"] {
+a.notion-link.link {
   position: relative;
   z-index: 0;
   /* Icon links set `--link-icon-space` so the icon lives in padding, not under the highlight. */
@@ -1027,13 +1027,13 @@ html.theme-light .notion-semantic-string .link {
   text-decoration-color: rgba(55, 53, 47, 0.55);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  a[class="notion-link link"] {
+  @media (prefers-reduced-motion: reduce) {
+  a.notion-link.link {
     transition: none;
   }
 }
 
-a[class="notion-link link"]:hover {
+a.notion-link.link:hover {
   background-size: 100% 1.35em;
   text-decoration-color: rgba(55, 53, 47, 0.78);
 }
