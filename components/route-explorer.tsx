@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
 
@@ -25,6 +25,52 @@ type AdminConfig = {
   protectedByPath: Record<string, { mode: "exact" | "prefix" }>; // path -> mode
 };
 
+function IconButton({
+  children,
+  className,
+  label,
+  onClick,
+  disabled,
+  href,
+  title,
+}: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  href?: string;
+  title?: string;
+}) {
+  const cls = cn("routes-tree__icon-btn", className || "");
+  if (href) {
+    return (
+      <a
+        className={cls}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={label}
+        title={title || label}
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={cls}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={title || label}
+    >
+      {children}
+    </button>
+  );
+}
+
 function LockIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -39,6 +85,90 @@ function LockIcon({ className }: { className?: string }) {
     >
       <path d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Z" />
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+function RouteKindIcon({
+  className,
+  kind,
+  hasChildren,
+  isHome,
+}: {
+  className?: string;
+  kind: string;
+  hasChildren: boolean;
+  isHome: boolean;
+}) {
+  if (isHome) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 10.5 12 3l9 7.5" />
+        <path d="M5 9.75V21h14V9.75" />
+      </svg>
+    );
+  }
+
+  if (kind === "database") {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 6.5h16" />
+        <path d="M4 10.5h16" />
+        <path d="M4 14.5h16" />
+        <path d="M4 18.5h16" />
+        <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Z" />
+      </svg>
+    );
+  }
+
+  if (hasChildren) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v9A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5v-11Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7 3h7l3 3v15a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z" />
+      <path d="M14 3v4a2 2 0 0 0 2 2h4" />
     </svg>
   );
 }
@@ -155,6 +285,7 @@ export default function RouteExplorer({
   const [busyId, setBusyId] = useState<string>("");
   const [err, setErr] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [openAdmin, setOpenAdmin] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +387,9 @@ export default function RouteExplorer({
 
     return filtered.filter((it) => !isHiddenByCollapsedAncestor(it.id));
   }, [filtered, collapsed, q, tree.parentById]);
+
+  const toggleOpenAdmin = (id: string) =>
+    setOpenAdmin((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const toggleCollapsed = (id: string) => {
     setCollapsed((prev) => {
@@ -436,19 +570,7 @@ export default function RouteExplorer({
         <span className="routes-explorer__count-label">routes</span>
       </div>
 
-      <div className="routes-explorer__table" role="table" aria-label="Routes">
-        <div className="routes-explorer__row routes-explorer__row--head" role="row">
-          <div className="routes-explorer__cell routes-explorer__cell--title" role="columnheader">
-            Title
-          </div>
-          <div className="routes-explorer__cell routes-explorer__cell--route" role="columnheader">
-            URL
-          </div>
-          <div className="routes-explorer__cell routes-explorer__cell--kind" role="columnheader">
-            Admin
-          </div>
-        </div>
-
+      <div className="routes-tree" role="list" aria-label="Routes">
         {visible.map((it) => {
           const p = normalizeRoutePath(it.routePath);
           const match = findEffectiveProtection(it.routePath);
@@ -461,22 +583,28 @@ export default function RouteExplorer({
               ? "inherited"
               : "0";
           const protectedSource = match?.sourcePath || "";
+          const isHome = p === "/";
+          const adminOpen = Boolean(openAdmin[it.id]);
+          const overrideValue = cfg.overrides[it.id] || "";
+          const overridePending =
+            Boolean(overrideValue) && normalizeRoutePath(overrideValue) !== normalizeRoutePath(it.routePath);
+          const indent = Math.min(56, it.depth * 16);
 
           return (
             <div
               key={it.id}
-              className="routes-explorer__row"
-              role="row"
+              className="routes-tree__row"
+              role="listitem"
               data-nav={it.navGroup ? "1" : "0"}
               data-overridden={it.overridden ? "1" : "0"}
               data-protected={protectedState}
               data-protected-source={protectedSource || ""}
+              data-depth={String(it.depth)}
+              data-admin-open={adminOpen ? "1" : "0"}
+              style={{ ["--indent" as any]: `${indent}px` }}
             >
-              <div className="routes-explorer__cell routes-explorer__cell--title" role="cell">
-                <div
-                  className="routes-explorer__tree"
-                  style={{ paddingLeft: Math.min(56, it.depth * 16) }}
-                >
+              <div className="routes-tree__row-top">
+                <div className="routes-tree__left">
                   {it.hasChildren ? (
                     <button
                       type="button"
@@ -503,34 +631,29 @@ export default function RouteExplorer({
                     <span style={{ width: 22, height: 22, flex: "0 0 auto" }} />
                   )}
 
-                  <div className="routes-explorer__title-main">{it.title || "Untitled"}</div>
+                  <RouteKindIcon
+                    className="routes-tree__kind-icon"
+                    kind={it.kind}
+                    hasChildren={it.hasChildren}
+                    isHome={isHome}
+                  />
+
+                  <div className="routes-tree__text">
+                    <div className="routes-tree__pathline">
+                      <code className="routes-tree__path">{it.routePath}</code>
+                      {isHome ? <span className="routes-tree__home">(home)</span> : null}
+                    </div>
+                    <div className="routes-tree__subline">
+                      <span className="routes-tree__title">{it.title || "Untitled"}</span>
+                      <span className="routes-tree__dot" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="routes-tree__id">{it.id}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="routes-explorer__id">
-                  {it.id}{" "}
-                  <button
-                    type="button"
-                    className="routes-explorer__copy"
-                    onClick={() => copyToClipboard(it.id)}
-                    aria-label={`Copy page id ${it.id}`}
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-              <div className="routes-explorer__cell routes-explorer__cell--route" role="cell">
-                <code className="routes-explorer__code">{it.routePath}</code>
-                <button
-                  type="button"
-                  className="routes-explorer__copy"
-                  onClick={() => copyToClipboard(it.routePath)}
-                  aria-label={`Copy ${it.routePath}`}
-                >
-                  Copy
-                </button>
-              </div>
-              <div className="routes-explorer__cell routes-explorer__cell--kind" role="cell">
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div className="routes-tree__right">
+                  <div className="routes-tree__badges">
                     <span
                       className={cn(
                         "routes-explorer__pill",
@@ -539,9 +662,9 @@ export default function RouteExplorer({
                     >
                       {it.navGroup ? `nav:${it.navGroup}` : it.kind}
                     </span>
-                    {it.overridden ? (
+                    {it.overridden || overridePending ? (
                       <span className="routes-explorer__pill routes-explorer__pill--override">
-                        overridden
+                        {overridePending ? "override (pending)" : "overridden"}
                       </span>
                     ) : null}
                     {directProtected ? (
@@ -563,119 +686,269 @@ export default function RouteExplorer({
                     ) : null}
                   </div>
 
-                  <div className="routes-explorer__admin">
-                    <div className="routes-explorer__admin-row">
-                      <label className="routes-explorer__admin-label">Override URL</label>
-                      <input
-                        className="routes-explorer__admin-input"
-                        key={`ov:${it.id}:${cfg.overrides[it.id] || ""}`}
-                        defaultValue={cfg.overrides[it.id] || ""}
-                        placeholder="e.g. /my-page (blank = auto)"
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter") return;
-                          const v = (e.target as HTMLInputElement).value;
-                          void saveOverride(it.id, v);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="routes-explorer__admin-btn"
-                        disabled={busyId === it.id}
-                        onClick={(e) => {
-                          const input = (e.currentTarget.parentElement?.querySelector("input") ||
-                            null) as HTMLInputElement | null;
-                          void saveOverride(it.id, input?.value || "");
-                        }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="routes-explorer__admin-btn"
-                        disabled={busyId === it.id}
-                        onClick={(e) => {
-                          const input = (e.currentTarget.parentElement?.querySelector("input") ||
-                            null) as HTMLInputElement | null;
-                          if (input) input.value = "";
-                          void saveOverride(it.id, "");
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
+                  <div className="routes-tree__actions">
+                    <IconButton
+                      href={it.routePath}
+                      label={`Open ${it.routePath}`}
+                      title="Open page"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="routes-tree__icon">
+                        <path
+                          d="M14 4h6v6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M10 14 20 4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M20 14v6H4V4h6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </IconButton>
 
-                    <div className="routes-explorer__admin-row">
-                      <label className="routes-explorer__admin-label">Password</label>
-                      <input
-                        className="routes-explorer__admin-input"
-                        type="password"
-                        disabled={inheritedProtected}
-                        placeholder={
-                          inheritedProtected
-                            ? protectedSource
-                              ? `Inherited from ${protectedSource}`
-                              : "Inherited from parent route"
-                            : effectiveProtected
-                              ? "Set new password (blank = disable)"
-                              : "Set password (blank = disabled)"
-                        }
-                        onKeyDown={(e) => {
-                          if (inheritedProtected) return;
-                          if (e.key !== "Enter") return;
-                          const pwd = (e.target as HTMLInputElement).value;
-                          void saveProtection(it.routePath, "prefix", pwd);
-                          (e.target as HTMLInputElement).value = "";
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="routes-explorer__admin-btn"
-                        disabled={busyId === it.routePath || inheritedProtected}
-                        onClick={(e) => {
-                          if (inheritedProtected) return;
-                          const row = e.currentTarget.closest(
-                            ".routes-explorer__admin-row",
-                          ) as HTMLElement | null;
-                          const input = row?.querySelector("input") as HTMLInputElement | null;
-                          const pwd = input?.value || "";
-                          void saveProtection(it.routePath, "prefix", pwd);
-                          if (input) input.value = "";
-                        }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="routes-explorer__admin-btn"
-                        disabled={busyId === it.routePath || inheritedProtected}
-                        onClick={() => void saveProtection(it.routePath, "exact", "")}
-                        title={
-                          inheritedProtected
-                            ? "Inherited protection must be managed on the parent route."
-                            : "Disable password protection for this route"
-                        }
-                      >
-                        Disable
-                      </button>
-                    </div>
-                    {inheritedProtected ? (
-                      <div className="routes-explorer__admin-note">
-                        This route is protected by a parent rule{" "}
-                        {protectedSource ? (
-                          <>
-                            (
-                            <code className="routes-explorer__admin-note-code">
-                              {protectedSource}
-                            </code>
-                            )
-                          </>
-                        ) : null}
-                        . To change protection, edit that parent route.
-                      </div>
-                    ) : null}
+                    <IconButton
+                      label={`Copy URL ${it.routePath}`}
+                      onClick={() => void copyToClipboard(it.routePath)}
+                      title="Copy URL"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="routes-tree__icon">
+                        <path
+                          d="M8 8h10v12H8z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </IconButton>
+
+                    <IconButton
+                      label={`Copy page id ${it.id}`}
+                      onClick={() => void copyToClipboard(it.id)}
+                      title="Copy page id"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="routes-tree__icon">
+                        <path
+                          d="M4 7.5A3.5 3.5 0 0 1 7.5 4h7A3.5 3.5 0 0 1 18 7.5v9A3.5 3.5 0 0 1 14.5 20h-7A3.5 3.5 0 0 1 4 16.5v-9Z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M8 9h6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M8 13h6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </IconButton>
+
+                    <IconButton
+                      label={adminOpen ? "Close settings" : "Open settings"}
+                      onClick={() => toggleOpenAdmin(it.id)}
+                      className={adminOpen ? "is-active" : ""}
+                      title={adminOpen ? "Close settings" : "Settings"}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="routes-tree__icon">
+                        <path
+                          d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M19.4 15a8.9 8.9 0 0 0 .1-1 8.9 8.9 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8.2 8.2 0 0 0-1.7-1l-.4-2.6H11l-.4 2.6a8.2 8.2 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a8.9 8.9 0 0 0-.1 1 8.9 8.9 0 0 0 .1 1l-2 1.6 2 3.4 2.4-1a8.2 8.2 0 0 0 1.7 1l.4 2.6h4l.4-2.6a8.2 8.2 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6Z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </IconButton>
                   </div>
                 </div>
               </div>
+
+              {adminOpen ? (
+                <div className="routes-tree__panel">
+                  <div className="routes-tree__panel-grid">
+                    <section className="routes-tree__panel-card">
+                      <div className="routes-tree__panel-head">
+                        <div>
+                          <div className="routes-tree__panel-title">URL Override</div>
+                          <div className="routes-tree__panel-sub">
+                            Blank uses auto-generated URL from Notion hierarchy.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="routes-tree__panel-row">
+                        <label className="routes-tree__panel-label">Override URL</label>
+                        <input
+                          className="routes-explorer__admin-input"
+                          key={`ov:${it.id}:${overrideValue}`}
+                          defaultValue={overrideValue}
+                          placeholder="e.g. /my-page"
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            const v = (e.target as HTMLInputElement).value;
+                            void saveOverride(it.id, v);
+                          }}
+                        />
+                      </div>
+
+                      <div className="routes-tree__panel-actions">
+                        <button
+                          type="button"
+                          className="routes-explorer__admin-btn"
+                          disabled={busyId === it.id}
+                          onClick={(e) => {
+                            const root = e.currentTarget.closest(
+                              ".routes-tree__panel-card",
+                            ) as HTMLElement | null;
+                            const input = root?.querySelector("input") as HTMLInputElement | null;
+                            void saveOverride(it.id, input?.value || "");
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="routes-explorer__admin-btn"
+                          disabled={busyId === it.id}
+                          onClick={(e) => {
+                            const root = e.currentTarget.closest(
+                              ".routes-tree__panel-card",
+                            ) as HTMLElement | null;
+                            const input = root?.querySelector("input") as HTMLInputElement | null;
+                            if (input) input.value = "";
+                            void saveOverride(it.id, "");
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </section>
+
+                    <section className="routes-tree__panel-card">
+                      <div className="routes-tree__panel-head">
+                        <div>
+                          <div className="routes-tree__panel-title">Password</div>
+                          <div className="routes-tree__panel-sub">
+                            Protects this route and all children (prefix match).
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="routes-tree__panel-row">
+                        <label className="routes-tree__panel-label">Password</label>
+                        <input
+                          className="routes-explorer__admin-input"
+                          type="password"
+                          disabled={inheritedProtected}
+                          placeholder={
+                            inheritedProtected
+                              ? protectedSource
+                                ? `Inherited from ${protectedSource}`
+                                : "Inherited from parent route"
+                              : effectiveProtected
+                                ? "Set new password (blank = disable)"
+                                : "Set password (blank = disabled)"
+                          }
+                          onKeyDown={(e) => {
+                            if (inheritedProtected) return;
+                            if (e.key !== "Enter") return;
+                            const pwd = (e.target as HTMLInputElement).value;
+                            void saveProtection(it.routePath, "prefix", pwd);
+                            (e.target as HTMLInputElement).value = "";
+                          }}
+                        />
+                      </div>
+
+                      <div className="routes-tree__panel-actions">
+                        <button
+                          type="button"
+                          className="routes-explorer__admin-btn"
+                          disabled={busyId === it.routePath || inheritedProtected}
+                          onClick={(e) => {
+                            if (inheritedProtected) return;
+                            const root = e.currentTarget.closest(
+                              ".routes-tree__panel-card",
+                            ) as HTMLElement | null;
+                            const input = root?.querySelector("input") as HTMLInputElement | null;
+                            const pwd = input?.value || "";
+                            void saveProtection(it.routePath, "prefix", pwd);
+                            if (input) input.value = "";
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="routes-explorer__admin-btn"
+                          disabled={busyId === it.routePath || inheritedProtected}
+                          onClick={() => void saveProtection(it.routePath, "exact", "")}
+                          title={
+                            inheritedProtected
+                              ? "Inherited protection must be managed on the parent route."
+                              : "Disable password protection for this route"
+                          }
+                        >
+                          Disable
+                        </button>
+                      </div>
+
+                      {inheritedProtected ? (
+                        <div className="routes-tree__panel-note">
+                          This route is protected by a parent rule{" "}
+                          {protectedSource ? (
+                            <>
+                              (
+                              <code className="routes-explorer__admin-note-code">
+                                {protectedSource}
+                              </code>
+                              )
+                            </>
+                          ) : null}
+                          . To change protection, edit that parent route.
+                        </div>
+                      ) : null}
+                    </section>
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
