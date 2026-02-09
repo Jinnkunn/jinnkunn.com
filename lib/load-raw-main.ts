@@ -109,7 +109,10 @@ function rewriteRawHtml(html: string): string {
       )
       // Ensure a consistent visual gap between author line and venue/link line.
       // This is rendered via `white-space: pre-wrap` in Super/Notion markup.
-      .replace(/<\/span>\r?\n(<em><span class="highlighted-color)/g, "</span>\n\n$1");
+      // Case A: newline sits after the closing span.
+      .replace(/<\/span>\r?\n(<em><span class="highlighted-color)/g, "</span>\n\n$1")
+      // Case B: newline sits *inside* the span just before </span>.
+      .replace(/\n<\/span>(\s*<em><span class="highlighted-color)/g, "\n\n</span>$1");
   }
 
   return out
