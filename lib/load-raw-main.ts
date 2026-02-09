@@ -97,6 +97,12 @@ function rewriteRawHtml(html: string): string {
   // which render as stray colored pills or extra blank lines in the expanded details.
   if (out.includes("page__publications")) {
     out = out
+      // Remove empty highlighted background spans (often created by Notion around newlines),
+      // which otherwise render as stray colored "chips" (e.g. a blank pink block before `conference`).
+      .replace(
+        /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">(?:(?:\s|&nbsp;|<br\s*\/?>)*|<strong>(?:\s|&nbsp;|<br\s*\/?>)*<\/strong>)*<\/span>/gi,
+        "",
+      )
       // Remove empty colored chips, e.g. <span class="highlighted-background bg-red"><strong>\n</strong></span>
       .replace(
         /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">\s*<strong>[\s\r\n]*<\/strong>\s*<\/span>/gi,
@@ -128,6 +134,13 @@ function rewriteRawHtml(html: string): string {
         /\n<\/span>((?:[ \t]*<em>[ \t]*<\/em>[ \t]*)*[ \t]*<em><span class="highlighted-color)/g,
         "\n</span>\n$1",
       );
+
+    // Final clamp: ensure the "authors line" and the following "tag/venue line" have
+    // exactly one blank line between them (2 consecutive newlines), not 0 and not 2+.
+    out = out.replace(
+      /<\/span>\r?\n{3,}((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
+      "</span>\n\n$1",
+    );
   }
 
   return out
