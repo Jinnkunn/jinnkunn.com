@@ -90,7 +90,29 @@ function rewriteRawHtml(html: string): string {
     .replaceAll("href=/blog/list/", "href=/blog/")
     .replaceAll("href=/list/", "href=/blog/");
 
-  return blogCanon
+  let out = blogCanon;
+
+  // Publications hygiene:
+  // Notion sometimes emits empty "highlighted" spans (only whitespace/newlines),
+  // which render as stray colored pills or extra blank lines in the expanded details.
+  if (out.includes("page__publications")) {
+    out = out
+      // Remove empty colored chips, e.g. <span class="highlighted-background bg-red"><strong>\n</strong></span>
+      .replace(
+        /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">\s*<strong>[\s\r\n]*<\/strong>\s*<\/span>/gi,
+        "",
+      )
+      // Remove empty color spans that only carry whitespace/newlines (causes blank lines under pre-wrap).
+      .replace(
+        /<span class="highlighted-color color-(?:gray|default|red|purple|orange|yellow)">[\s\r\n]*<\/span>/gi,
+        "",
+      )
+      // Ensure a consistent visual gap between author line and venue/link line.
+      // This is rendered via `white-space: pre-wrap` in Super/Notion markup.
+      .replace(/<\/span>\r?\n(<em><span class="highlighted-color)/g, "</span>\n\n$1");
+  }
+
+  return out
     .replaceAll("https://jinkunchen.com", "")
     .replaceAll("http://jinkunchen.com", "");
 }
