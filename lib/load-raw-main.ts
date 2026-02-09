@@ -113,10 +113,21 @@ function rewriteRawHtml(html: string): string {
       // This is rendered via `white-space: pre-wrap` in Super/Notion markup.
       //
       // Case A: newline sits after the closing span.
-      .replace(/<\/span>\r?\n((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g, "</span>\n\n$1")
+      // Only apply when the newline is *not* already inside the span content.
+      // Otherwise we risk producing two blank lines (3 consecutive newlines).
+      .replace(
+        /(?<![\r\n])<\/span>\r?\n((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
+        "</span>\n\n$1",
+      )
       // Case B: newline sits *inside* the span just before </span>.
       // Prefer inserting the extra blank line *between* elements to match other entries.
-      .replace(/\n<\/span>((?:\s*<em>\s*<\/em>\s*)*\s*<em><span class="highlighted-color)/g, "\n</span>\n\n$1");
+      // Note: there's already one `\n` *before* `</span>` in this case. Inserting `\n\n`
+      // after `</span>` would yield 3 consecutive newlines (2 blank lines). We only need
+      // one extra newline here to create a single blank line.
+      .replace(
+        /\n<\/span>((?:[ \t]*<em>[ \t]*<\/em>[ \t]*)*[ \t]*<em><span class="highlighted-color)/g,
+        "\n</span>\n$1",
+      );
   }
 
   return out
