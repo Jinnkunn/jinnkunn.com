@@ -44,7 +44,8 @@
 /* Content links: restore the Super-like "ink rise" highlight (hover fills from bottom).
  * Some overrides later in the stack can accidentally shift the highlight; this pins it.
  */
-:where(.super-root) a[class="notion-link link"] {
+/* Use class selectors (not exact class="...") because Notion can add extra classes. */
+:where(.super-root) :where(.notion-text, .notion-quote, .notion-callout, .notion-list, .notion-table) a.notion-link.link {
   /* Keep icons out of the highlight by reserving space in padding (set per-icon link elsewhere). */
   --link-icon-space: 0px;
   padding-left: calc(var(--link-icon-space) + 0.08em);
@@ -68,13 +69,13 @@
     text-decoration-color 180ms ease !important;
 }
 
-:where(.super-root) a[class="notion-link link"]:hover {
-  /* Slightly taller than 1em so it can cover the full line box across fonts. */
-  background-size: 100% 1.65em !important;
+:where(.super-root) :where(.notion-text, .notion-quote, .notion-callout, .notion-list, .notion-table) a.notion-link.link:hover {
+  /* Fill the full line box (and multi-line wraps) reliably. */
+  background-size: 100% 100% !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :where(.super-root) a[class="notion-link link"] {
+  :where(.super-root) :where(.notion-text, .notion-quote, .notion-callout, .notion-list, .notion-table) a.notion-link.link {
     transition: none !important;
   }
 }

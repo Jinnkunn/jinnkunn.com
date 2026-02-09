@@ -107,12 +107,16 @@ function rewriteRawHtml(html: string): string {
         /<span class="highlighted-color color-(?:gray|default|red|purple|orange|yellow)">[\s\r\n]*<\/span>/gi,
         "",
       )
+      // After stripping empty spans, Notion can leave behind empty <em></em> wrappers.
+      .replace(/<em>\s*<\/em>/gi, "")
       // Ensure a consistent visual gap between author line and venue/link line.
       // This is rendered via `white-space: pre-wrap` in Super/Notion markup.
+      //
       // Case A: newline sits after the closing span.
-      .replace(/<\/span>\r?\n(<em><span class="highlighted-color)/g, "</span>\n\n$1")
+      .replace(/<\/span>\r?\n((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g, "</span>\n\n$1")
       // Case B: newline sits *inside* the span just before </span>.
-      .replace(/\n<\/span>(\s*<em><span class="highlighted-color)/g, "\n\n</span>$1");
+      // Prefer inserting the extra blank line *between* elements to match other entries.
+      .replace(/\n<\/span>((?:\s*<em>\s*<\/em>\s*)*\s*<em><span class="highlighted-color)/g, "\n</span>\n\n$1");
   }
 
   return out
