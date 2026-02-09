@@ -390,188 +390,201 @@ export default function RouteExplorer({
           </div>
         </div>
 
-        {visible.map((it) => (
-          <div
-            key={it.id}
-            className="routes-explorer__row"
-            role="row"
-            data-nav={it.navGroup ? "1" : "0"}
-            data-overridden={it.overridden ? "1" : "0"}
-          >
-            <div className="routes-explorer__cell routes-explorer__cell--title" role="cell">
-              <div
-                className="routes-explorer__tree"
-                style={{ paddingLeft: Math.min(56, it.depth * 16) }}
-              >
-                {it.hasChildren ? (
+        {visible.map((it) => {
+          const p = normalizeRoutePath(it.routePath);
+          const directProtected = Boolean(cfg.protectedByPath[p]);
+          const effectiveProtected = isEffectivelyProtected(it.routePath);
+          const inheritedProtected = effectiveProtected && !directProtected;
+          const protectedState = directProtected
+            ? "direct"
+            : inheritedProtected
+              ? "inherited"
+              : "0";
+
+          return (
+            <div
+              key={it.id}
+              className="routes-explorer__row"
+              role="row"
+              data-nav={it.navGroup ? "1" : "0"}
+              data-overridden={it.overridden ? "1" : "0"}
+              data-protected={protectedState}
+            >
+              <div className="routes-explorer__cell routes-explorer__cell--title" role="cell">
+                <div
+                  className="routes-explorer__tree"
+                  style={{ paddingLeft: Math.min(56, it.depth * 16) }}
+                >
+                  {it.hasChildren ? (
+                    <button
+                      type="button"
+                      className="routes-explorer__expander"
+                      data-open={collapsed[it.id] ? "false" : "true"}
+                      aria-label={collapsed[it.id] ? "Expand" : "Collapse"}
+                      onClick={() => toggleCollapsed(it.id)}
+                      title={collapsed[it.id] ? "Expand" : "Collapse"}
+                    >
+                      <svg
+                        className="routes-explorer__chev"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <span style={{ width: 22, height: 22, flex: "0 0 auto" }} />
+                  )}
+
+                  <div className="routes-explorer__title-main">{it.title || "Untitled"}</div>
+                </div>
+                <div className="routes-explorer__id">
+                  {it.id}{" "}
                   <button
                     type="button"
-                    className="routes-explorer__expander"
-                    data-open={collapsed[it.id] ? "false" : "true"}
-                    aria-label={collapsed[it.id] ? "Expand" : "Collapse"}
-                    onClick={() => toggleCollapsed(it.id)}
-                    title={collapsed[it.id] ? "Expand" : "Collapse"}
+                    className="routes-explorer__copy"
+                    onClick={() => copyToClipboard(it.id)}
+                    aria-label={`Copy page id ${it.id}`}
                   >
-                    <svg
-                      className="routes-explorer__chev"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="m6 9 6 6 6-6" />
-                    </svg>
+                    Copy
                   </button>
-                ) : (
-                  <span style={{ width: 22, height: 22, flex: "0 0 auto" }} />
-                )}
-
-                <div className="routes-explorer__title-main">{it.title || "Untitled"}</div>
+                </div>
               </div>
-              <div className="routes-explorer__id">
-                {it.id}{" "}
+              <div className="routes-explorer__cell routes-explorer__cell--route" role="cell">
+                <code className="routes-explorer__code">{it.routePath}</code>
                 <button
                   type="button"
                   className="routes-explorer__copy"
-                  onClick={() => copyToClipboard(it.id)}
-                  aria-label={`Copy page id ${it.id}`}
+                  onClick={() => copyToClipboard(it.routePath)}
+                  aria-label={`Copy ${it.routePath}`}
                 >
                   Copy
                 </button>
               </div>
-            </div>
-            <div className="routes-explorer__cell routes-explorer__cell--route" role="cell">
-              <code className="routes-explorer__code">{it.routePath}</code>
-              <button
-                type="button"
-                className="routes-explorer__copy"
-                onClick={() => copyToClipboard(it.routePath)}
-                aria-label={`Copy ${it.routePath}`}
-              >
-                Copy
-              </button>
-            </div>
-            <div className="routes-explorer__cell routes-explorer__cell--kind" role="cell">
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <span
-                    className={cn(
-                      "routes-explorer__pill",
-                      it.navGroup ? "routes-explorer__pill--nav" : "",
-                    )}
-                  >
-                    {it.navGroup ? `nav:${it.navGroup}` : it.kind}
-                  </span>
-                  {it.overridden ? (
-                    <span className="routes-explorer__pill routes-explorer__pill--override">
-                      overridden
+              <div className="routes-explorer__cell routes-explorer__cell--kind" role="cell">
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <span
+                      className={cn(
+                        "routes-explorer__pill",
+                        it.navGroup ? "routes-explorer__pill--nav" : "",
+                      )}
+                    >
+                      {it.navGroup ? `nav:${it.navGroup}` : it.kind}
                     </span>
-                  ) : null}
-                  {isEffectivelyProtected(it.routePath) ? (
-                    <span className="routes-explorer__pill">protected</span>
-                  ) : null}
-                </div>
-
-                <div className="routes-explorer__admin">
-                  <div className="routes-explorer__admin-row">
-                    <label className="routes-explorer__admin-label">
-                      Override URL
-                    </label>
-                    <input
-                      className="routes-explorer__admin-input"
-                      key={`ov:${it.id}:${cfg.overrides[it.id] || ""}`}
-                      defaultValue={cfg.overrides[it.id] || ""}
-                      placeholder="e.g. /my-page (blank = auto)"
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter") return;
-                        const v = (e.target as HTMLInputElement).value;
-                        void saveOverride(it.id, v);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="routes-explorer__admin-btn"
-                      disabled={busyId === it.id}
-                      onClick={(e) => {
-                        const input = (e.currentTarget.parentElement?.querySelector(
-                          "input",
-                        ) || null) as HTMLInputElement | null;
-                        void saveOverride(it.id, input?.value || "");
-                      }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="routes-explorer__admin-btn"
-                      disabled={busyId === it.id}
-                      onClick={(e) => {
-                        const input = (e.currentTarget.parentElement?.querySelector(
-                          "input",
-                        ) || null) as HTMLInputElement | null;
-                        if (input) input.value = "";
-                        void saveOverride(it.id, "");
-                      }}
-                    >
-                      Clear
-                    </button>
+                    {it.overridden ? (
+                      <span className="routes-explorer__pill routes-explorer__pill--override">
+                        overridden
+                      </span>
+                    ) : null}
+                    {directProtected ? (
+                      <span className="routes-explorer__pill routes-explorer__pill--protected">
+                        protected
+                      </span>
+                    ) : inheritedProtected ? (
+                      <span
+                        className="routes-explorer__pill routes-explorer__pill--protected routes-explorer__pill--protected-inherited"
+                        title="Inherited from a protected parent route"
+                      >
+                        protected
+                      </span>
+                    ) : null}
                   </div>
 
-                  <div className="routes-explorer__admin-row">
-                    <label className="routes-explorer__admin-label">
-                      Password
-                    </label>
-                    <input
-                      className="routes-explorer__admin-input"
-                      type="password"
-                      placeholder={
-                        isEffectivelyProtected(it.routePath)
-                          ? "Set new password (blank = disable)"
-                          : "Set password (blank = disabled)"
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter") return;
-                        const row = (e.target as HTMLInputElement).closest(
-                          ".routes-explorer__admin-row",
-                        ) as HTMLElement | null;
-                        const pwd = (e.target as HTMLInputElement).value;
-                        void saveProtection(it.routePath, "prefix", pwd);
-                        (e.target as HTMLInputElement).value = "";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="routes-explorer__admin-btn"
-                      disabled={busyId === it.routePath}
-                      onClick={(e) => {
-                        const row = e.currentTarget.closest(
-                          ".routes-explorer__admin-row",
-                        ) as HTMLElement | null;
-                        const input = row?.querySelector("input") as HTMLInputElement | null;
-                        const pwd = input?.value || "";
-                        void saveProtection(it.routePath, "prefix", pwd);
-                        if (input) input.value = "";
-                      }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="routes-explorer__admin-btn"
-                      disabled={busyId === it.routePath}
-                      onClick={() => void saveProtection(it.routePath, "exact", "")}
-                    >
-                      Disable
-                    </button>
+                  <div className="routes-explorer__admin">
+                    <div className="routes-explorer__admin-row">
+                      <label className="routes-explorer__admin-label">Override URL</label>
+                      <input
+                        className="routes-explorer__admin-input"
+                        key={`ov:${it.id}:${cfg.overrides[it.id] || ""}`}
+                        defaultValue={cfg.overrides[it.id] || ""}
+                        placeholder="e.g. /my-page (blank = auto)"
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          const v = (e.target as HTMLInputElement).value;
+                          void saveOverride(it.id, v);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="routes-explorer__admin-btn"
+                        disabled={busyId === it.id}
+                        onClick={(e) => {
+                          const input = (e.currentTarget.parentElement?.querySelector("input") ||
+                            null) as HTMLInputElement | null;
+                          void saveOverride(it.id, input?.value || "");
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="routes-explorer__admin-btn"
+                        disabled={busyId === it.id}
+                        onClick={(e) => {
+                          const input = (e.currentTarget.parentElement?.querySelector("input") ||
+                            null) as HTMLInputElement | null;
+                          if (input) input.value = "";
+                          void saveOverride(it.id, "");
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="routes-explorer__admin-row">
+                      <label className="routes-explorer__admin-label">Password</label>
+                      <input
+                        className="routes-explorer__admin-input"
+                        type="password"
+                        placeholder={
+                          effectiveProtected
+                            ? "Set new password (blank = disable)"
+                            : "Set password (blank = disabled)"
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          const pwd = (e.target as HTMLInputElement).value;
+                          void saveProtection(it.routePath, "prefix", pwd);
+                          (e.target as HTMLInputElement).value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="routes-explorer__admin-btn"
+                        disabled={busyId === it.routePath}
+                        onClick={(e) => {
+                          const row = e.currentTarget.closest(
+                            ".routes-explorer__admin-row",
+                          ) as HTMLElement | null;
+                          const input = row?.querySelector("input") as HTMLInputElement | null;
+                          const pwd = input?.value || "";
+                          void saveProtection(it.routePath, "prefix", pwd);
+                          if (input) input.value = "";
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="routes-explorer__admin-btn"
+                        disabled={busyId === it.routePath}
+                        onClick={() => void saveProtection(it.routePath, "exact", "")}
+                      >
+                        Disable
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
