@@ -1,6 +1,12 @@
 import NextAuth from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 
+// NextAuth v4 is strict about server configuration in production.
+// On Vercel, `NEXTAUTH_URL` is often not set explicitly; fall back to `VERCEL_URL`.
+if (!process.env.NEXTAUTH_URL?.trim() && process.env.VERCEL_URL?.trim()) {
+  process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_URL.trim()}`;
+}
+
 function parseAllowedUsers(): Set<string> {
   const raw = (process.env.SITE_ADMIN_GITHUB_USERS || "").trim();
   const items = raw
@@ -14,6 +20,7 @@ function parseAllowedUsers(): Set<string> {
 const allowed = parseAllowedUsers();
 
 const handler = NextAuth({
+  secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   providers: [
     GitHubProvider({
@@ -50,4 +57,3 @@ const handler = NextAuth({
 });
 
 export { handler as GET, handler as POST };
-
