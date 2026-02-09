@@ -372,7 +372,9 @@ function initTocScrollSpy(root: ParentNode) {
       }
 
       // If we haven't reached the first heading yet, keep the first item active.
-      if (!best) s.setActive(s.targets[0] ?? null);
+      // If we haven't reached the first heading yet, keep TOC neutral
+      // (avoid making the first item look "special" before the reader scrolls).
+      if (!best) s.setActive(null);
       else s.setActive(best.id);
     }
   };

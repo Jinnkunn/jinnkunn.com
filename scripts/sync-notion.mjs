@@ -1175,6 +1175,62 @@ async function renderBlock(b, ctx) {
     return `<ul id="${blockIdAttr}" class="notion-table-of-contents color-gray">${items}</ul>`;
   }
 
+  if (b.type === "table") {
+    const t = b.table ?? {};
+    const hasColumnHeader = Boolean(t.has_column_header);
+    const hasRowHeader = Boolean(t.has_row_header);
+    const rows = Array.isArray(b.__children) ? b.__children : [];
+
+    let width = 0;
+    const declared = Number(t.table_width ?? 0);
+    if (Number.isFinite(declared) && declared > 0) width = declared;
+
+    for (const r of rows) {
+      const cells = r?.table_row?.cells;
+      if (!Array.isArray(cells)) continue;
+      width = Math.max(width, cells.length);
+    }
+
+    // Notion tables should always have at least 1 column.
+    width = Math.max(1, width || 0);
+
+    const rowHtml = rows
+      .filter((r) => r?.type === "table_row" || r?.table_row)
+      .map((r, rowIdx) => {
+        const cells = Array.isArray(r?.table_row?.cells) ? r.table_row.cells : [];
+        const tds: string[] = [];
+
+        for (let col = 0; col < width; col++) {
+          const cell = cells[col];
+          const rich = Array.isArray(cell) ? cell : [];
+          const content = rich.length ? renderRichText(rich, ctx) : "";
+          const inner = content
+            ? `<div class="notion-table__cell notion-semantic-string">${content}</div>`
+            : `<div class="notion-table__cell notion-semantic-string"><div class="notion-table__empty-cell"></div></div>`;
+
+          const isHeader =
+            (hasColumnHeader && rowIdx === 0) || (hasRowHeader && col === 0);
+          const tag = isHeader ? "th" : "td";
+          tds.push(`<${tag}>${inner}</${tag}>`);
+        }
+
+        return `<tr>${tds.join("")}</tr>`;
+      })
+      .join("");
+
+    const tableClasses = [
+      "notion-table",
+      hasColumnHeader ? "col-header" : "",
+      hasRowHeader ? "row-header" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return `<div id="${blockIdAttr}" class="notion-table__wrapper"><table class="${escapeHtml(
+      tableClasses,
+    )}">${rowHtml}</table></div>`;
+  }
+
   if (b.type === "image") {
     const img = b.image ?? {};
     const src =
@@ -1662,6 +1718,23 @@ async function main() {
     path.join(OUT_DIR, "protected-routes.json"),
     JSON.stringify(protectedRoutes, null, 2) + "\n",
   );
+
+  // Emit a small, human/debug-friendly sync metadata file so /site-admin can
+  // verify that deploys are actually picking up the latest Notion state.
+  const homeRouteNode = allPages.find((p) => p?.routePath === "/") || null;
+  const syncMeta = {
+    syncedAt: new Date().toISOString(),
+    notionVersion: NOTION_VERSION,
+    adminPageId,
+    rootPageId,
+    homePageId: homeRouteNode?.id || "",
+    homeTitle: homeRouteNode?.title || "",
+    pages: allPages.length,
+    routes: routeToPageId.size,
+    routeOverrides: routeOverrides.size,
+    protectedRules: protectedRoutes.length,
+  };
+  writeFile(path.join(OUT_DIR, "sync-meta.json"), JSON.stringify(syncMeta, null, 2) + "\n");
 
   // Sync pages.
   console.log(`[sync:notion] Pages: ${allPages.length}`);

@@ -51,9 +51,13 @@ function normalizeRoutePath(p: string): string {
   return out || "/";
 }
 
-function buildTreeOrder(
+function buildTree(
   items: RouteManifestItem[],
-): Array<RouteManifestItem & { depth: number; hasChildren: boolean }> {
+): {
+  ordered: Array<RouteManifestItem & { depth: number; hasChildren: boolean }>;
+  parentById: Map<string, string>; // id -> effective parent id
+  childrenById: Map<string, string[]>; // id -> child ids
+} {
   const byId = new Map<string, RouteManifestItem>();
   for (const it of items) byId.set(it.id, it);
 
@@ -63,16 +67,16 @@ function buildTreeOrder(
   const byRoute = new Map<string, RouteManifestItem>();
   for (const it of items) byRoute.set(it.routePath, it);
 
-  const effectiveParentId = new Map<string, string>(); // id -> parentId
+  const parentById = new Map<string, string>(); // id -> effective parentId
   for (const it of items) {
     const pid = it.parentId || "";
     if (pid && byId.has(pid)) {
-      effectiveParentId.set(it.id, pid);
+      parentById.set(it.id, pid);
       continue;
     }
     const p = normalizeRoutePath(it.routePath);
     if (p === "/") {
-      effectiveParentId.set(it.id, "");
+      parentById.set(it.id, "");
       continue;
     }
     const segs = p.split("/").filter(Boolean);
@@ -85,42 +89,59 @@ function buildTreeOrder(
         break;
       }
     }
-    effectiveParentId.set(it.id, parent?.id || "");
+    parentById.set(it.id, parent?.id || "");
   }
 
-  const kids = new Map<string, RouteManifestItem[]>();
+  const kids = new Map<string, string[]>(); // parentId -> childIds
   for (const it of items) {
-    const pid = effectiveParentId.get(it.id) || "";
+    const pid = parentById.get(it.id) || "";
     const arr = kids.get(pid) || [];
-    arr.push(it);
+    arr.push(it.id);
     kids.set(pid, arr);
   }
 
-  const sortChildren = (arr: RouteManifestItem[]) => {
-    // URL sort is predictable and matches the Super-like "path list" mental model.
-    arr.sort((a, b) => a.routePath.localeCompare(b.routePath));
-    return arr;
+  const sortChildIds = (parentId: string, childIds: string[]) => {
+    childIds.sort((a, b) => {
+      const aa = byId.get(a);
+      const bb = byId.get(b);
+      return String(aa?.routePath || "").localeCompare(String(bb?.routePath || ""));
+    });
+    kids.set(parentId, childIds);
+    return childIds;
   };
 
-  const roots = items.filter((it) => !(effectiveParentId.get(it.id) || ""));
-  sortChildren(roots);
+  // Deterministic roots: use effective parent mapping, then sort by route path.
+  const roots = items
+    .filter((it) => !(parentById.get(it.id) || ""))
+    .slice()
+    .sort((a, b) => a.routePath.localeCompare(b.routePath));
 
-  const out: Array<RouteManifestItem & { depth: number; hasChildren: boolean }> = [];
+  // Deterministic children ordering.
+  for (const [pid, childIds] of kids.entries()) sortChildIds(pid, childIds);
+
+  const ordered: Array<RouteManifestItem & { depth: number; hasChildren: boolean }> = [];
   const seen = new Set<string>();
 
   const dfs = (node: RouteManifestItem, depth: number) => {
     if (!node?.id || seen.has(node.id)) return;
     seen.add(node.id);
-    out.push({ ...node, depth, hasChildren: (kids.get(node.id) || []).length > 0 });
-    const children = kids.get(node.id) || [];
-    sortChildren(children);
-    for (const c of children) dfs(c, depth + 1);
+    ordered.push({
+      ...node,
+      depth,
+      hasChildren: (kids.get(node.id) || []).length > 0,
+    });
+    const childIds = kids.get(node.id) || [];
+    for (const cid of childIds) {
+      const c = byId.get(cid);
+      if (c) dfs(c, depth + 1);
+    }
   };
 
   for (const r of roots) dfs(r, 0);
   // Include any remaining nodes (defensive: broken parent pointers).
   for (const it of items) if (!seen.has(it.id)) dfs(it, 0);
-  return out;
+
+  return { ordered, parentById, childrenById: kids };
 }
 
 export default function RouteExplorer({
@@ -165,7 +186,8 @@ export default function RouteExplorer({
     };
   }, []);
 
-  const ordered = useMemo(() => buildTreeOrder(items), [items]);
+  const tree = useMemo(() => buildTree(items), [items]);
+  const ordered = tree.ordered;
 
   // Default: only show root + one level (Super-like). Deeper folders start collapsed.
   useEffect(() => {
@@ -192,48 +214,65 @@ export default function RouteExplorer({
     return out;
   }, [ordered, q, filter]);
 
+  const descendantsOf = useMemo(() => {
+    const memo = new Map<string, string[]>();
+    const kids = tree.childrenById;
+
+    const walk = (id: string): string[] => {
+      if (memo.has(id)) return memo.get(id)!;
+      const out: string[] = [];
+      const childIds = kids.get(id) || [];
+      for (const cid of childIds) {
+        out.push(cid);
+        out.push(...walk(cid));
+      }
+      memo.set(id, out);
+      return out;
+    };
+
+    return walk;
+  }, [tree.childrenById]);
+
   const visible = useMemo(() => {
     // When searching, don't hide nodes via collapse (users need to see matches).
     const query = normalizeQuery(q);
     if (query) return filtered;
 
-    const collapsedSet = new Set<string>(
+    const collapsedSet = new Set(
       Object.entries(collapsed)
         .filter(([, v]) => v)
-        .map(([k]) => k)
+        .map(([k]) => k),
     );
-    const byId = new Map<string, RouteManifestItem>();
-    for (const it of items) byId.set(it.id, it);
 
-    const collapsedPrefixes: Array<string> = [];
-    for (const it of items) {
-      if (!collapsedSet.has(it.id)) continue;
-      const p = normalizeRoutePath(it.routePath);
-      if (p) collapsedPrefixes.push(p);
-    }
-
-    const isHidden = (node: RouteManifestItem) => {
-      // Prefix fallback: even if parent pointers are missing, hide descendants of collapsed route paths.
-      const rp = normalizeRoutePath(node.routePath);
-      for (const cp of collapsedPrefixes) {
-        if (cp === "/") continue;
-        if (rp !== cp && (rp === cp || rp.startsWith(`${cp}/`))) return true;
-      }
-
-      let pid = node.parentId || "";
-      while (pid) {
+    const isHiddenByCollapsedAncestor = (id: string): boolean => {
+      let pid = tree.parentById.get(id) || "";
+      let guard = 0;
+      while (pid && guard++ < 200) {
         if (collapsedSet.has(pid)) return true;
-        const p = byId.get(pid);
-        pid = p?.parentId || "";
+        pid = tree.parentById.get(pid) || "";
       }
       return false;
     };
 
-    return filtered.filter((it) => !isHidden(it));
-  }, [filtered, collapsed, q, items]);
+    return filtered.filter((it) => !isHiddenByCollapsedAncestor(it.id));
+  }, [filtered, collapsed, q, tree.parentById]);
 
   const toggleCollapsed = (id: string) => {
-    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+    setCollapsed((prev) => {
+      const next = { ...prev };
+      const currentlyCollapsed = Boolean(prev[id]);
+      if (currentlyCollapsed) {
+        // Expand: only expand this node (leave descendants collapsed).
+        delete next[id];
+        return next;
+      }
+
+      // Collapse: collapse this node AND its subtree so re-expanding doesn't
+      // unexpectedly show deep levels (Super-like).
+      next[id] = true;
+      for (const d of descendantsOf(id)) next[d] = true;
+      return next;
+    });
   };
 
   const collapseAll = () => {

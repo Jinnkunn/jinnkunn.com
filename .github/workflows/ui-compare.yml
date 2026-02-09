@@ -1,0 +1,44 @@
+name: UI Compare (Orig vs Clone)
+
+on:
+  workflow_dispatch:
+    inputs:
+      orig_origin:
+        description: "Original site origin"
+        required: false
+        default: "https://jinkunchen.com"
+      clone_origin:
+        description: "Clone site origin"
+        required: false
+        default: "https://jinnkunn-com.vercel.app"
+
+jobs:
+  ui-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Capture Compare Snapshots
+        env:
+          ORIG_ORIGIN: ${{ inputs.orig_origin }}
+          CLONE_ORIGIN: ${{ inputs.clone_origin }}
+        run: npm run snapshot:compare
+
+      - name: Upload Compare Screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-compare
+          path: output/playwright/compare/**
+          if-no-files-found: error
+

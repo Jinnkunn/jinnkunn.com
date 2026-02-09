@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import SiteAdminDeployClient from "@/components/site-admin-deploy-client";
+import SiteAdminStatusClient from "@/components/site-admin-status-client";
 
 export const metadata: Metadata = {
   title: "Site Admin",
@@ -23,6 +24,8 @@ export default async function SiteAdminHome() {
 
       <article id="block-site-admin" className="notion-root max-width has-footer">
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <SiteAdminStatusClient />
+
           <section>
             <h2 className="notion-heading notion-semantic-string">Deploy</h2>
             <p className="notion-text notion-text__content notion-semantic-string">

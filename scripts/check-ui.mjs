@@ -36,6 +36,12 @@ async function main() {
   await run("npm", ["run", "audit:notion"]);
   await run("npm", ["run", "smoke:ui"]);
   await run("npm", ["run", "snapshot:ui"]);
+
+  const doCompare =
+    process.env.CHECK_COMPARE === "1" || process.env.CHECK_COMPARE === "true";
+  if (doCompare) {
+    await run("npm", ["run", "snapshot:compare"]);
+  }
 }
 
 main().catch((err) => {

@@ -1,0 +1,44 @@
+name: UI Smoke
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Keep raw snapshots up to date (no Notion token needed).
+      - name: Sync Raw (Hydrated)
+        run: npm run sync:raw
+
+      - name: Audit Notion/Super Classes
+        run: npm run audit:notion
+
+      - name: UI Smoke Checks
+        run: npm run smoke:ui
+
+      - name: Upload Smoke Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke
+          path: |
+            output/ui-smoke/**
+            output/notion-block-audit/latest.*
+          if-no-files-found: ignore
+
