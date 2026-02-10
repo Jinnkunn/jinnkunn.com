@@ -9,6 +9,7 @@
     "vercel-build": "node scripts/prebuild.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test",
     "sync:raw": "node scripts/sync-raw-hydrated.mjs",
     "sync:notion": "node scripts/sync-notion.mjs",
     "provision:admin": "node scripts/provision-site-admin.mjs",
