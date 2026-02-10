@@ -172,6 +172,6 @@ Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-
 ## GitHub Actions
 
 - `CI`: basic `npm ci` + `npm run build` (works without Notion secrets).
-- `UI Smoke`: sync raw HTML from the live site + run E2E smoke checks.
+- `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

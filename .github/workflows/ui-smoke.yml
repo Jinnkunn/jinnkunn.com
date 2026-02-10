@@ -1,9 +1,10 @@
 name: UI Smoke
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
+  # This job is intentionally NOT a required PR gate:
+  # it runs a real browser + syncs from the live origin, which is slower and
+  # can be flaky due to upstream changes/network. Run it manually when needed.
+  workflow_dispatch:
 
 jobs:
   ui-smoke:
