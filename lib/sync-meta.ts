@@ -1,6 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
 import { cache } from "react";
+
+import { findContentFile, readJsonFile } from "@/lib/server/content-files";
 
 export type SyncMeta = {
   syncedAt: string;
@@ -14,30 +14,6 @@ export type SyncMeta = {
   routeOverrides?: number;
   protectedRules?: number;
 };
-
-function readJsonFile(filePath: string): unknown | null {
-  try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function findSyncMetaFile(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "content", "generated", "sync-meta.json"),
-    path.join(process.cwd(), "content", "sync-meta.json"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.statSync(p).isFile()) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
 
 function asString(x: unknown): string | undefined {
   return typeof x === "string" && x.trim() ? x : undefined;
@@ -68,8 +44,7 @@ function normalizeSyncMeta(input: unknown): SyncMeta | null {
 }
 
 export const getSyncMeta = cache((): SyncMeta | null => {
-  const file = findSyncMetaFile();
+  const file = findContentFile("sync-meta.json");
   if (!file) return null;
   return normalizeSyncMeta(readJsonFile(file));
 });
-

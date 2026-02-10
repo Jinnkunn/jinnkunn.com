@@ -1,6 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
 import { cache } from "react";
+
+import { findContentFile, readJsonFile } from "@/lib/server/content-files";
 
 export type RouteManifestItem = {
   id: string;
@@ -13,32 +13,8 @@ export type RouteManifestItem = {
   overridden: boolean;
 };
 
-function readJsonFile(filePath: string): unknown | null {
-  try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function findManifestFile(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "content", "generated", "routes-manifest.json"),
-    path.join(process.cwd(), "content", "routes-manifest.json"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.statSync(p).isFile()) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
 export const getRoutesManifest = cache((): RouteManifestItem[] => {
-  const file = findManifestFile();
+  const file = findContentFile("routes-manifest.json");
   if (!file) return [];
   const parsed = readJsonFile(file);
   if (!Array.isArray(parsed)) return [];
@@ -59,4 +35,3 @@ export const getRoutesManifest = cache((): RouteManifestItem[] => {
     })
     .filter((x): x is RouteManifestItem => Boolean(x?.id && x?.routePath));
 });
-

@@ -1,6 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
 import { cache } from "react";
+
+import { findContentFile, readJsonFile } from "@/lib/server/content-files";
 
 export type NavItem = {
   href: string;
@@ -101,32 +101,8 @@ function normalizeConfig(input: unknown): SiteConfig {
   return cfg;
 }
 
-function readJsonFile(filePath: string): unknown | null {
-  try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function findConfigFile(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "content", "generated", "site-config.json"),
-    path.join(process.cwd(), "content", "site-config.json"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.statSync(p).isFile()) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
 export const getSiteConfig = cache((): SiteConfig => {
-  const file = findConfigFile();
+  const file = findContentFile("site-config.json");
   if (!file) return DEFAULT_CONFIG;
   const parsed = readJsonFile(file);
   return normalizeConfig(parsed);

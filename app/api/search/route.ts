@@ -1,9 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
 
 import { NextResponse } from "next/server";
 
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
+import { findContentFile } from "@/lib/server/content-files";
 
 export const runtime = "nodejs";
 
@@ -50,38 +50,8 @@ function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
 
-function findSearchIndexFile(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "content", "generated", "search-index.json"),
-    path.join(process.cwd(), "content", "search-index.json"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.statSync(p).isFile()) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
-function findManifestFile(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "content", "generated", "routes-manifest.json"),
-    path.join(process.cwd(), "content", "routes-manifest.json"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.statSync(p).isFile()) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
 function readSearchIndex(): SearchIndexItem[] {
-  const file = findSearchIndexFile();
+  const file = findContentFile("search-index.json");
   if (!file) return [];
 
   const st = fs.statSync(file);
@@ -111,7 +81,7 @@ function readSearchIndex(): SearchIndexItem[] {
 }
 
 function readManifest(): ManifestItem[] {
-  const file = findManifestFile();
+  const file = findContentFile("routes-manifest.json");
   if (!file) return [];
 
   const st = fs.statSync(file);
