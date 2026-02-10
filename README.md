@@ -4,13 +4,13 @@
 npm run dev
 ```
 
-## Notion-Backed Site (Super-Like)
+## Content-Backed Site (Super-Like)
 
-This repo can compile a Notion page tree into a static Next.js site.
+This repo can compile a page tree (via the configured content source) into a static Next.js site.
 
-### 1) Create Notion "Site Admin" Page
+### 1) Create "Site Admin" Page
 
-- Create a Notion page (e.g. `Site Admin`).
+- Create a page (e.g. `Site Admin`).
 - Under it, create child pages (these become site pages, recursive).
 - Add a **Code** block (language: `json`) containing site config (legacy/advanced). Example:
 
@@ -96,6 +96,14 @@ Required env:
 In Notion, create a button or link pointing to:
 
 `https://<your-site-domain>/api/deploy?token=<DEPLOY_TOKEN>`
+
+## Site Admin Status
+
+The admin UI includes a quick sanity-check page:
+
+- `/site-admin/status`
+
+It shows key build info, content sync metadata, search index stats, and a best-effort freshness indicator.
 
 ## Legacy Content Sync (Clone Mode)
 
