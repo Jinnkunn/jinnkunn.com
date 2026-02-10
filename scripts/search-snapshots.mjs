@@ -47,8 +47,13 @@ function urlFor(origin, p) {
 
 async function openSearch(page) {
   // Click the navbar search trigger (more stable than relying on "/" shortcut).
-  await page.click("#search-trigger", { timeout: 5000 });
-  await page.waitForSelector("#notion-search-input", { timeout: 5000 });
+  try {
+    await page.locator("#search-trigger").click({ timeout: 3500, force: true });
+  } catch {
+    // Some viewports hide the search button inside a menu; fallback to the global shortcut.
+    await page.keyboard.press("/");
+  }
+  await page.waitForSelector("#notion-search-input", { timeout: 7000 });
   await page.waitForTimeout(250);
 }
 
