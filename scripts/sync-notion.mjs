@@ -27,13 +27,12 @@ import {
 import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
 import { escapeHtml } from "../lib/shared/text-utils.mjs";
 import {
-  findChildDatabases,
   findFirstJsonCodeBlock,
   getDatabaseInfo,
   getDatabaseParentPageId,
   hydrateBlocks,
   listBlockChildrenCached,
-} from "./notion-sync/notion-tree.mjs";
+} from "../lib/notion/tree.mjs";
 import { ensureDir, readJsonFile, rmDir, writeFile, writeJsonAtomic } from "./notion-sync/fs-utils.mjs";
 import {
   loadConfigFromAdminDatabases,
@@ -1302,8 +1301,8 @@ async function main() {
   }
 
   const dbCfg = await loadConfigFromAdminDatabases(adminPageId);
-  const configJson = dbCfg ? null : await findFirstJsonCodeBlock(adminPageId);
-  const parsed = configJson ? JSON.parse(configJson) : {};
+  const configBlock = dbCfg ? null : await findFirstJsonCodeBlock(adminPageId);
+  const parsed = configBlock?.json ? JSON.parse(configBlock.json) : {};
   const cfg = deepMerge(DEFAULT_CONFIG, dbCfg || parsed);
 
   const rootPageId = compactId(cfg?.content?.rootPageId) || adminPageId;

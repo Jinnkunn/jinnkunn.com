@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
-import { compactId, slugify } from "@/lib/shared/route-utils.mjs";
+import { compactId } from "@/lib/shared/route-utils.mjs";
+import { findChildDatabases, findDbByTitle } from "@/lib/notion/discovery.mjs";
 import {
   getPropCheckbox,
   getPropNumber,
   getPropString,
-  listBlockChildren,
   notionRequest,
   queryDatabase,
 } from "@/lib/notion/api.mjs";
@@ -30,30 +30,6 @@ async function requireAdmin(req: NextRequest) {
 
 function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
-}
-
-
-async function findChildDatabases(blockId: string, maxDepth = 6): Promise<Array<{ id: string; title: string }>> {
-  const out: Array<{ id: string; title: string }> = [];
-  const blocks = await listBlockChildren(blockId);
-
-  for (const b of blocks) {
-    if (b?.type === "child_database") {
-      out.push({ id: compactId(b.id), title: String(b?.child_database?.title || "") });
-    }
-  }
-
-  if (maxDepth <= 0) return out;
-  for (const b of blocks) {
-    if (!b?.has_children) continue;
-    out.push(...(await findChildDatabases(compactId(b.id), maxDepth - 1)));
-  }
-  return out;
-}
-
-function findDbByTitle(dbs: Array<{ id: string; title: string }>, title: string) {
-  const want = slugify(title);
-  return dbs.find((d) => slugify(d.title) === want) || null;
 }
 
 async function ensureSiteSettingsDbSchema(databaseId: string) {

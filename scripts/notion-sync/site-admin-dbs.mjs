@@ -1,7 +1,7 @@
 import { DEFAULT_SITE_CONFIG } from "../../lib/shared/default-site-config.mjs";
 import { getPropCheckbox, getPropNumber, getPropString, queryDatabase } from "../../lib/notion/api.mjs";
-import { compactId, normalizeRoutePath, slugify } from "../../lib/shared/route-utils.mjs";
-import { findChildDatabases } from "./notion-tree.mjs";
+import { compactId, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
+import { findChildDatabases, findDbByTitle } from "../../lib/notion/discovery.mjs";
 import { sha256Hex } from "./crypto-utils.mjs";
 
 const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
@@ -25,15 +25,6 @@ export function parseGithubUserList(raw) {
     out.push(it);
   }
   return out;
-}
-
-/**
- * @param {Array<{id: string, title: string}>} databases
- * @param {string} title
- */
-function findDbByTitle(databases, title) {
-  const want = slugify(title);
-  return databases.find((d) => slugify(d.title) === want) || null;
 }
 
 /**

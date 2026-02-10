@@ -16,6 +16,7 @@
 import { notionRequest, listBlockChildren } from "../lib/notion/api.mjs";
 import { compactId } from "../lib/shared/route-utils.mjs";
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
+import { findFirstJsonCodeBlock } from "../lib/notion/tree.mjs";
 
 const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
 
@@ -74,32 +75,6 @@ async function getDatabase(databaseId) {
 
 async function archiveBlock(blockId) {
   await updateBlock(blockId, { archived: true });
-}
-
-async function findFirstJsonCodeBlock(blockId, maxDepth = 4) {
-  const blocks = await listBlockChildren(blockId);
-  for (const b of blocks) {
-    if (b?.type !== "code") continue;
-    const rt = b?.code?.rich_text ?? [];
-    const text = rt.map((x) => x?.plain_text ?? "").join("");
-    const t = text.trim();
-    if (!t.startsWith("{")) continue;
-    try {
-      JSON.parse(t);
-      return { blockId: compactId(b.id), json: t };
-    } catch {
-      // keep looking
-    }
-  }
-
-  if (maxDepth <= 0) return null;
-  for (const b of blocks) {
-    if (!b?.has_children) continue;
-    const found = await findFirstJsonCodeBlock(b.id, maxDepth - 1);
-    if (found) return found;
-  }
-
-  return null;
 }
 
 function findTextBlock(blocks, { type, includes }) {
