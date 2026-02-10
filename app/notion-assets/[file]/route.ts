@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { dashify32 } from "@/lib/shared/route-utils.mjs";
+import { notionRequest } from "@/lib/notion/api.mjs";
 
 type NotionBlock = {
   type?: string;
@@ -50,17 +51,10 @@ export async function GET(
   const dashed = dashify32(m[1]!);
   if (!dashed) return new NextResponse("Not found", { status: 404 });
 
-  const res = await fetch(`https://api.notion.com/v1/blocks/${dashed}`, {
-    headers: {
-      Authorization: `Bearer ${notionToken}`,
-      "Notion-Version": "2022-06-28",
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) return new NextResponse("Not found", { status: 404 });
-
-  const block = (await res.json().catch(() => null)) as NotionBlock | null;
+  const block = (await notionRequest(`blocks/${dashed}`, {
+    token: notionToken,
+    maxRetries: 2,
+  }).catch(() => null)) as NotionBlock | null;
   if (!block) return new NextResponse("Not found", { status: 404 });
 
   const url = pickAssetUrl(block);

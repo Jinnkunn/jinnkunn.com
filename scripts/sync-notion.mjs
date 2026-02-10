@@ -21,7 +21,14 @@ import crypto from "node:crypto";
 import katex from "katex";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
-import { listBlockChildren, notionRequest, queryDatabase } from "../lib/notion/api.mjs";
+import {
+  getPropCheckbox,
+  getPropNumber,
+  getPropString,
+  listBlockChildren,
+  notionRequest,
+  queryDatabase,
+} from "../lib/notion/api.mjs";
 import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
 import { escapeHtml } from "../lib/shared/text-utils.mjs";
 
@@ -249,47 +256,6 @@ async function findChildDatabases(blockId, maxDepth = 4) {
   }
 
   return out;
-}
-
-function propPlainTextFromRichText(prop) {
-  const rt = prop?.rich_text ?? [];
-  if (!Array.isArray(rt)) return "";
-  return rt.map((x) => x?.plain_text ?? "").join("");
-}
-
-function propPlainTextFromTitle(prop) {
-  const rt = prop?.title ?? [];
-  if (!Array.isArray(rt)) return "";
-  return rt.map((x) => x?.plain_text ?? "").join("");
-}
-
-function getProperty(page, name) {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  return props[name];
-}
-
-function getPropString(page, name) {
-  const p = getProperty(page, name);
-  if (!p || typeof p !== "object") return "";
-  if (p.type === "title") return propPlainTextFromTitle(p).trim();
-  if (p.type === "rich_text") return propPlainTextFromRichText(p).trim();
-  if (p.type === "select") return (p.select?.name ?? "").trim();
-  if (p.type === "url") return (p.url ?? "").trim();
-  return "";
-}
-
-function getPropNumber(page, name) {
-  const p = getProperty(page, name);
-  if (!p || typeof p !== "object") return null;
-  if (p.type !== "number") return null;
-  return typeof p.number === "number" ? p.number : null;
-}
-
-function getPropCheckbox(page, name) {
-  const p = getProperty(page, name);
-  if (!p || typeof p !== "object") return null;
-  if (p.type !== "checkbox") return null;
-  return typeof p.checkbox === "boolean" ? p.checkbox : null;
 }
 
 function findDbByTitle(databases, title) {
