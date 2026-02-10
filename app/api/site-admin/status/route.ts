@@ -60,6 +60,10 @@ function dashify32(id32: string): string {
   return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
 }
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
+}
+
 async function fetchNotionPageMeta(
   pageId32: string,
 ): Promise<{ id: string; lastEdited: string; title: string } | null> {
@@ -77,19 +81,23 @@ async function fetchNotionPageMeta(
   });
   if (!res.ok) return null;
 
-  const data = (await res.json().catch(() => null)) as any;
-  if (!data) return null;
+  const data = (await res.json().catch(() => null)) as unknown;
+  if (!isRecord(data)) return null;
 
-  const lastEdited = String(data?.last_edited_time || "").trim();
+  const lastEdited = String(data.last_edited_time || "").trim();
 
   let title = "";
-  const props = data?.properties && typeof data.properties === "object" ? data.properties : null;
+  const props = isRecord(data.properties) ? data.properties : null;
   if (props) {
-    for (const v of Object.values(props)) {
-      if (!v || typeof v !== "object") continue;
-      if ((v as any).type !== "title") continue;
-      const rt = Array.isArray((v as any).title) ? (v as any).title : [];
-      title = rt.map((x: any) => x?.plain_text ?? "").join("").trim();
+    for (const v0 of Object.values(props)) {
+      if (!isRecord(v0)) continue;
+      if (String(v0.type || "") !== "title") continue;
+      const rt0 = v0.title;
+      const rt = Array.isArray(rt0) ? rt0 : [];
+      title = rt
+        .map((x) => (isRecord(x) ? String(x.plain_text || "") : ""))
+        .join("")
+        .trim();
       break;
     }
   }

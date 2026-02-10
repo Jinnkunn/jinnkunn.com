@@ -213,10 +213,6 @@ function isIgnoredPath(routePath: string): boolean {
   return false;
 }
 
-function buildSnippet(text: string, ql: string): string {
-  return buildSnippetByTerms(text, [ql]);
-}
-
 function tokenizeQuery(q: string): string[] {
   return String(q || "")
     .trim()

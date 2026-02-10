@@ -60,6 +60,10 @@ type StatusPayload = {
 
 type StatusResult = StatusPayload | { ok: false; error: string };
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
+}
+
 function fmtWhen(ms?: number): string {
   if (!ms || !Number.isFinite(ms)) return "—";
   try {
@@ -92,7 +96,11 @@ export default function SiteAdminStatusClient() {
     try {
       const r = await fetch("/api/site-admin/status", { cache: "no-store" });
       const data = (await r.json().catch(() => null)) as StatusResult | null;
-      if (!r.ok || !data) throw new Error((data as any)?.error || `HTTP ${r.status}`);
+      if (!r.ok || !data) {
+        const err =
+          data && isRecord(data) && typeof data.error === "string" ? data.error : `HTTP ${r.status}`;
+        throw new Error(err);
+      }
       setRes(data);
     } catch (e) {
       setRes({ ok: false, error: e instanceof Error ? e.message : "Request failed" });

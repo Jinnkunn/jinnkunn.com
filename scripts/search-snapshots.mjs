@@ -88,17 +88,6 @@ async function toggleScope(page) {
   return true;
 }
 
-function safeName(s) {
-  return String(s || "")
-    .trim()
-    .replaceAll("/", "__")
-    .replaceAll(" ", "_")
-    .replaceAll(":", "")
-    .replaceAll(".", "")
-    .replaceAll("?", "")
-    .replaceAll("#", "");
-}
-
 async function main() {
   const origin = normalizeOrigin(process.env.CLONE_ORIGIN || "https://jinnkunn-com.vercel.app");
   const runDir = path.join(OUT_DIR, nowStamp());
