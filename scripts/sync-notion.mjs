@@ -20,6 +20,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import katex from "katex";
 
+import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
 import { listBlockChildren, notionRequest, queryDatabase } from "../lib/notion/api.mjs";
 import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
 
@@ -41,44 +42,7 @@ const CACHE_FORCE = ["1", "true", "yes"].includes(
   String(process.env.NOTION_SYNC_FORCE || "").trim().toLowerCase(),
 );
 
-const DEFAULT_CONFIG = {
-  siteName: "Jinkun Chen.",
-  lang: "en",
-  seo: {
-    title: "Jinkun Chen",
-    description:
-      "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
-    favicon: "/assets/favicon.png",
-  },
-  integrations: {
-    googleAnalyticsId: "",
-  },
-  security: {
-    // Comma-separated GitHub logins (no @), stored in Notion settings and compiled into site-config.json.
-    // Used for GitHub-protected content pages (not /site-admin, which uses SITE_ADMIN_GITHUB_USERS env).
-    contentGithubUsers: [],
-  },
-  nav: {
-    top: [
-      { href: "/", label: "Home" },
-      { href: "/news", label: "News" },
-      { href: "/publications", label: "Publications" },
-      { href: "/works", label: "Works" },
-    ],
-    more: [
-      { href: "/blog", label: "Blog" },
-      { href: "/teaching", label: "Teaching" },
-      { href: "/bio", label: "BIO" },
-      { href: "/notice", label: "Notice" },
-    ],
-  },
-  content: {
-    rootPageId: null, // defaults to NOTION_SITE_ADMIN_PAGE_ID
-    homePageId: null, // defaults to first child page titled "Home"/"Index" (or the first child page)
-    // Optional: map Notion page id -> route path (e.g. { "<pageId>": "/chen" }).
-    routeOverrides: null,
-  },
-};
+const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
 
 function parseGithubUserList(raw) {
   const items = String(raw || "")

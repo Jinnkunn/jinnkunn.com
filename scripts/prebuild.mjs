@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
+
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -37,34 +39,7 @@ function ensureGeneratedStubs() {
   writeIfMissing("routes-manifest.json", []);
   writeIfMissing("search-index.json", []);
   writeIfMissing("protected-routes.json", []);
-  writeIfMissing("site-config.json", {
-    siteName: "Jinkun Chen.",
-    lang: "en",
-    seo: {
-      title: "Jinkun Chen",
-      description:
-        "Jinkun Chen (he/him/his) - Ph.D. student studying Computer Science at Dalhousie University.",
-      favicon: "/assets/favicon.png",
-    },
-    integrations: {},
-    security: {
-      contentGithubUsers: [],
-    },
-    nav: {
-      top: [
-        { href: "/", label: "Home" },
-        { href: "/news", label: "News" },
-        { href: "/publications", label: "Publications" },
-        { href: "/works", label: "Works" },
-      ],
-      more: [
-        { href: "/blog", label: "Blog" },
-        { href: "/teaching", label: "Teaching" },
-        { href: "/bio", label: "BIO" },
-        { href: "/notice", label: "Notice" },
-      ],
-    },
-  });
+  writeIfMissing("site-config.json", DEFAULT_SITE_CONFIG);
 }
 
 async function main() {

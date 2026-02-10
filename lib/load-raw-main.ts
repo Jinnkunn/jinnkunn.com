@@ -1,43 +1,7 @@
-import fs from "node:fs";
+import "server-only";
+
 import { readFile } from "node:fs/promises";
-import path from "node:path";
-
-function normalizeRoutePath(routePath: string): string {
-  let p = (routePath ?? "").trim();
-  // Drop any leading/trailing slashes so `path.join(root, p + ".html")` can't ignore root.
-  p = p.replace(/^\/+/, "").replace(/\/+$/, "");
-  if (!p) return "index";
-  return p;
-}
-
-function resolveRawHtmlFileInRoot(root: string, routePath: string): string {
-  const rel = normalizeRoutePath(routePath);
-
-  // Normalize and ensure the resolved path stays within `content/raw`.
-  const file = path.normalize(path.join(root, `${rel}.html`));
-  const rootNorm = path.normalize(root + path.sep);
-  if (!file.startsWith(rootNorm)) {
-    throw new Error(`Invalid route path: ${routePath}`);
-  }
-  return file;
-}
-
-function resolveRawHtmlFile(routePath: string): string {
-  const legacyRoot = path.join(process.cwd(), "content", "raw");
-  const generatedRoot = path.join(process.cwd(), "content", "generated", "raw");
-
-  const candidates = [
-    resolveRawHtmlFileInRoot(generatedRoot, routePath),
-    resolveRawHtmlFileInRoot(legacyRoot, routePath),
-  ];
-
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-
-  // Default to legacy path so the error message points at the well-known folder.
-  return candidates[candidates.length - 1];
-}
+import { resolveRawHtmlFile } from "./server/content-files";
 
 function rewriteRawHtml(html: string): string {
   // Use local copies for a few key assets so the clone is self-contained.

@@ -15,43 +15,14 @@
 
 import { notionRequest, listBlockChildren } from "../lib/notion/api.mjs";
 import { compactId } from "../lib/shared/route-utils.mjs";
+import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
 
-const DEFAULT_CONFIG = {
-  siteName: "Jinkun Chen.",
-  lang: "en",
-  seo: {
-    title: "Jinkun Chen",
-    description:
-      "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
-    favicon: "/assets/favicon.png",
-  },
-  integrations: {
-    googleAnalyticsId: "",
-  },
-  security: {
-    // Comma-separated GitHub logins (no @). Used for GitHub-protected content pages.
-    contentGithubUsers: "",
-  },
-  nav: {
-    top: [
-      { href: "/", label: "Home" },
-      { href: "/news", label: "News" },
-      { href: "/publications", label: "Publications" },
-      { href: "/works", label: "Works" },
-    ],
-    more: [
-      { href: "/blog", label: "Blog" },
-      { href: "/teaching", label: "Teaching" },
-      { href: "/bio", label: "BIO" },
-      { href: "/notice", label: "Notice" },
-    ],
-  },
-  content: {
-    rootPageId: null,
-    homePageId: null,
-    routeOverrides: null,
-  },
-};
+const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
+
+function githubUserListAsString(listOrString) {
+  if (Array.isArray(listOrString)) return listOrString.join(", ");
+  return String(listOrString || "").trim();
+}
 
 function isObject(x) {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
@@ -447,7 +418,9 @@ async function main() {
         "Google Analytics ID": {
           rich_text: richText(cfg.integrations?.googleAnalyticsId || ""),
         },
-        "Content GitHub Users": { rich_text: richText(cfg.security?.contentGithubUsers || "") },
+        "Content GitHub Users": {
+          rich_text: richText(githubUserListAsString(cfg.security?.contentGithubUsers)),
+        },
         "Root Page ID": { rich_text: richText(cfg.content?.rootPageId) },
         "Home Page ID": { rich_text: richText(cfg.content?.homePageId) },
       },

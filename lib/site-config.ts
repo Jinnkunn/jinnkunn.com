@@ -1,6 +1,7 @@
 import { cache } from "react";
 
 import { findContentFile, readJsonFile } from "@/lib/server/content-files";
+import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config.mjs";
 
 export type NavItem = {
   href: string;
@@ -18,37 +19,21 @@ export type SiteConfig = {
   integrations?: {
     googleAnalyticsId?: string; // GA4 measurement ID (e.g. "G-XXXXXXX")
   };
+  security?: {
+    contentGithubUsers?: string[];
+  };
   nav: {
     top: NavItem[];
     more: NavItem[];
   };
+  content?: {
+    rootPageId?: string | null;
+    homePageId?: string | null;
+    routeOverrides?: Record<string, string> | null;
+  };
 };
 
-const DEFAULT_CONFIG: SiteConfig = {
-  siteName: "Jinkun Chen.",
-  lang: "en",
-  seo: {
-    title: "Jinkun Chen",
-    description:
-      "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
-    favicon: "/assets/favicon.png",
-  },
-  integrations: {},
-  nav: {
-    top: [
-      { href: "/", label: "Home" },
-      { href: "/news", label: "News" },
-      { href: "/publications", label: "Publications" },
-      { href: "/works", label: "Works" },
-    ],
-    more: [
-      { href: "/blog", label: "Blog" },
-      { href: "/teaching", label: "Teaching" },
-      { href: "/bio", label: "BIO" },
-      { href: "/notice", label: "Notice" },
-    ],
-  },
-};
+const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG as unknown as SiteConfig;
 
 function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);

@@ -92,6 +92,42 @@ export function getRawHtmlRoots(): string[] {
   ];
 }
 
+function normalizeRawHtmlRoutePath(routePath: string): string {
+  let p = String(routePath ?? "").trim();
+  // Drop any leading/trailing slashes so `path.join(root, p + ".html")` can't ignore root.
+  p = p.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!p) return "index";
+  return p;
+}
+
+function resolveRawHtmlFileInRoot(root: string, routePath: string): string {
+  const rel = normalizeRawHtmlRoutePath(routePath);
+
+  // Normalize and ensure the resolved path stays within `content/**/raw`.
+  const file = path.normalize(path.join(root, `${rel}.html`));
+  const rootNorm = path.normalize(root + path.sep);
+  if (!file.startsWith(rootNorm)) {
+    throw new Error(`Invalid route path: ${routePath}`);
+  }
+  return file;
+}
+
+export function resolveRawHtmlFile(routePath: string): string {
+  const roots = getRawHtmlRoots();
+  const candidates = roots.map((r) => resolveRawHtmlFileInRoot(r, routePath));
+
+  for (const c of candidates) {
+    try {
+      if (fs.statSync(c).isFile()) return c;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Default to legacy path so the error message points at the well-known folder.
+  return candidates[candidates.length - 1];
+}
+
 export function getGeneratedContentDir(): string {
   return path.join(process.cwd(), "content", "generated");
 }

@@ -3,29 +3,10 @@ import SiteNavBehavior from "@/components/site-nav-behavior";
 import SiteSearchBehavior from "@/components/site-search-behavior";
 import { getSiteConfig } from "@/lib/site-config";
 
-type MenuItem = {
-  href: string;
-  label: string;
-};
-
-const defaultTopItems: MenuItem[] = [
-  { href: "/", label: "Home" },
-  { href: "/news", label: "News" },
-  { href: "/publications", label: "Publications" },
-  { href: "/works", label: "Works" },
-];
-
-const defaultMoreItems: MenuItem[] = [
-  { href: "/blog", label: "Blog" },
-  { href: "/teaching", label: "Teaching" },
-  { href: "/bio", label: "BIO" },
-  { href: "/notice", label: "Notice" },
-];
-
 export default function SiteNav() {
   const cfg = getSiteConfig();
-  const topItems: MenuItem[] = cfg.nav.top?.length ? cfg.nav.top : defaultTopItems;
-  const moreItems: MenuItem[] = cfg.nav.more?.length ? cfg.nav.more : defaultMoreItems;
+  const topItems = cfg.nav.top;
+  const moreItems = cfg.nav.more;
 
   return (
     <nav
