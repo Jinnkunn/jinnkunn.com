@@ -13,6 +13,12 @@ type SearchItem = {
   breadcrumb?: string;
 };
 
+type SearchMeta = {
+  total: number;
+  filteredTotal: number;
+  counts: { all: number; pages: number; blog: number; databases: number };
+};
+
 function escapeAndHighlight(raw: string, terms: string[]): string {
   const s = String(raw || "");
   if (!s) return "";
@@ -151,10 +157,18 @@ function ensureSearch(): {
         </div>
         <div class="notion-search__filters" role="group" aria-label="Search filters">
           <div class="notion-search__filter-pills" role="tablist" aria-label="Type filter">
-            <button id="notion-search-filter-all" class="notion-search__pill is-active" type="button" role="tab" aria-selected="true" data-type="all">All</button>
-            <button id="notion-search-filter-pages" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="pages">Pages</button>
-            <button id="notion-search-filter-blog" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="blog">Blog</button>
-            <button id="notion-search-filter-databases" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="databases">Databases</button>
+            <button id="notion-search-filter-all" class="notion-search__pill is-active" type="button" role="tab" aria-selected="true" data-type="all">
+              <span class="notion-search__pill-label">All</span><span class="notion-search__pill-count" aria-hidden="true"></span>
+            </button>
+            <button id="notion-search-filter-pages" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="pages">
+              <span class="notion-search__pill-label">Pages</span><span class="notion-search__pill-count" aria-hidden="true"></span>
+            </button>
+            <button id="notion-search-filter-blog" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="blog">
+              <span class="notion-search__pill-label">Blog</span><span class="notion-search__pill-count" aria-hidden="true"></span>
+            </button>
+            <button id="notion-search-filter-databases" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="databases">
+              <span class="notion-search__pill-label">Databases</span><span class="notion-search__pill-count" aria-hidden="true"></span>
+            </button>
           </div>
           <button id="notion-search-scope" class="notion-search__pill notion-search__pill--scope" type="button" aria-pressed="false" title="Search only in the current section">This section</button>
         </div>
@@ -286,18 +300,38 @@ async function fetchResults(
   q: string,
   opts: { type: string; scope: string },
   signal: AbortSignal,
-): Promise<SearchItem[]> {
+): Promise<{ items: SearchItem[]; meta: SearchMeta | null }> {
   const url = new URL("/api/search", window.location.origin);
   url.searchParams.set("q", q);
   if (opts.type && opts.type !== "all") url.searchParams.set("type", opts.type);
   if (opts.scope) url.searchParams.set("scope", opts.scope);
   const res = await fetch(url, { signal, headers: { "cache-control": "no-store" } });
-  if (!res.ok) return [];
+  if (!res.ok) return { items: [], meta: null };
   const data = (await res.json().catch(() => null)) as unknown;
-  if (!data || typeof data !== "object") return [];
-  const items = (data as { items?: unknown }).items;
-  if (!Array.isArray(items)) return [];
-  return items
+  if (!data || typeof data !== "object") return { items: [], meta: null };
+  const items0 = (data as { items?: unknown }).items;
+  const meta0 = (data as { meta?: unknown }).meta;
+
+  const meta: SearchMeta | null = (() => {
+    if (!meta0 || typeof meta0 !== "object") return null;
+    const m = meta0 as Record<string, unknown>;
+    const counts0 = m.counts;
+    const counts =
+      counts0 && typeof counts0 === "object"
+        ? (counts0 as Record<string, unknown>)
+        : null;
+    const all = Number(counts?.all ?? NaN);
+    const pages = Number(counts?.pages ?? NaN);
+    const blog = Number(counts?.blog ?? NaN);
+    const databases = Number(counts?.databases ?? NaN);
+    const total = Number(m.total ?? NaN);
+    const filteredTotal = Number(m.filteredTotal ?? NaN);
+    if (![all, pages, blog, databases, total, filteredTotal].every((n) => Number.isFinite(n))) return null;
+    return { total, filteredTotal, counts: { all, pages, blog, databases } };
+  })();
+
+  const items = Array.isArray(items0) ? items0 : [];
+  const out = items
     .map((x) => {
       if (!x || typeof x !== "object") return null;
       const o = x as Record<string, unknown>;
@@ -311,6 +345,7 @@ async function fetchResults(
       return it;
     })
     .filter((x): x is SearchItem => Boolean(x && x.routePath));
+  return { items: out, meta };
 }
 
 export default function SiteSearchBehavior() {
@@ -344,6 +379,7 @@ export default function SiteSearchBehavior() {
     let scopeEnabled = false;
     let scopePrefix = "";
     let scopeLabel = "";
+    let lastMeta: SearchMeta | null = null;
 
     const computeScope = (): { prefix: string; label: string } => {
       const p = String(window.location.pathname || "/");
@@ -377,6 +413,31 @@ export default function SiteSearchBehavior() {
         scopeBtn.setAttribute("aria-pressed", "false");
         scopeBtn.classList.remove("is-active");
       }
+    };
+
+    const applyMetaCounts = (meta: SearchMeta | null) => {
+      lastMeta = meta;
+      const counts = meta?.counts || null;
+
+      const setCount = (btn: HTMLButtonElement, n: number, { neverDisable }: { neverDisable?: boolean } = {}) => {
+        const el = btn.querySelector<HTMLElement>(".notion-search__pill-count");
+        if (el) el.textContent = Number.isFinite(n) ? String(n) : "";
+        if (neverDisable) {
+          btn.classList.remove("is-disabled");
+          btn.disabled = false;
+          return;
+        }
+        const isActive = btn.classList.contains("is-active");
+        // If we don't have meta yet, allow switching tabs before the first query.
+        const disabled = !counts ? false : (!isActive && (!Number.isFinite(n) || n <= 0));
+        btn.classList.toggle("is-disabled", disabled);
+        btn.disabled = disabled;
+      };
+
+      setCount(filterAll, counts ? counts.all : NaN, { neverDisable: true });
+      setCount(filterPages, counts ? counts.pages : NaN);
+      setCount(filterBlog, counts ? counts.blog : NaN);
+      setCount(filterDatabases, counts ? counts.databases : NaN);
     };
 
     const setClearState = () => {
@@ -435,6 +496,7 @@ export default function SiteSearchBehavior() {
         scopePrefix = s.prefix;
         scopeLabel = s.label;
         setFilterPillState();
+        applyMetaCounts(null);
         setClearState();
         renderEmpty(list);
         activeIndex = -1;
@@ -446,6 +508,7 @@ export default function SiteSearchBehavior() {
         if (debounceTimer) window.clearTimeout(debounceTimer);
         debounceTimer = null;
         activeIndex = -1;
+        applyMetaCounts(null);
         if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
         lastFocus = null;
       }
@@ -518,6 +581,7 @@ export default function SiteSearchBehavior() {
       if (!query) {
         aborter?.abort();
         aborter = null;
+        applyMetaCounts(null);
         renderEmpty(list);
         activeIndex = -1;
         renderFooterHint("idle");
@@ -530,12 +594,13 @@ export default function SiteSearchBehavior() {
       activeIndex = -1;
 
       void (async () => {
-        const items = await fetchResults(
+        const { items, meta } = await fetchResults(
           query,
           { type: filterType, scope: scopeEnabled ? scopePrefix : "" },
           aborter!.signal,
-        ).catch(() => []);
+        ).catch(() => ({ items: [], meta: null }));
         if (aborter?.signal.aborted) return;
+        applyMetaCounts(meta);
         renderResults(list, items, query);
         if (items.length) setActive(0);
         renderFooterHint("results");

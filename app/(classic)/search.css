@@ -91,6 +91,9 @@
   color: rgba(55, 53, 47, 0.78);
   border-radius: 999px;
   padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: inherit;
   font-size: 13px;
   line-height: 1;
@@ -99,10 +102,27 @@
     transform 140ms ease;
 }
 
+.notion-search__pill-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.notion-search__pill.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .notion-search__pill:hover {
   background: rgba(55, 53, 47, 0.04);
   color: rgba(55, 53, 47, 0.88);
   transform: translateY(-1px);
+}
+
+.notion-search__pill.is-disabled:hover {
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(55, 53, 47, 0.78);
+  transform: none;
 }
 
 .notion-search__pill.is-active {
@@ -310,4 +330,3 @@
 .notion-search__result-footer-dot {
   opacity: 0.55;
 }
-

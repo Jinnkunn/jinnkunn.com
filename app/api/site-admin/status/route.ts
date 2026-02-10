@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -39,6 +40,16 @@ function pickCommitSha(): string {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
+}
+
+function safeJsonArrayLength(filePath: string): number | null {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.length : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchNotionPageMeta(
@@ -94,6 +105,8 @@ export async function GET(req: NextRequest) {
     routesJson: safeStat(path.join(generatedDir, "routes.json")),
     notionSyncCache: safeDir(getNotionSyncCacheDir()),
   };
+  const searchIndexItems =
+    files.searchIndex.exists ? safeJsonArrayLength(path.join(generatedDir, "search-index.json")) : null;
 
   const commitSha = pickCommitSha();
 
@@ -145,6 +158,7 @@ export async function GET(req: NextRequest) {
         more: site.nav.more.length,
       },
       routesDiscovered: manifest.length,
+      searchIndexItems,
       syncMeta,
     },
     notion,

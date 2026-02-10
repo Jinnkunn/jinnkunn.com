@@ -26,6 +26,8 @@ type SearchIndexItem = {
   text: string;
 };
 
+type TypeKey = "pages" | "blog" | "databases";
+
 type CachedManifest = {
   mtimeMs: number;
   items: ManifestItem[];
@@ -174,7 +176,39 @@ function isIgnoredPath(routePath: string): boolean {
   if (p.startsWith("/api/")) return true;
   if (p === "/auth") return true;
   if (p.startsWith("/site-admin/")) return true; // keep admin out of normal search
+  // Hide internal blog database helpers (they are implementation details).
+  if (p === "/blog/list" || p === "/list") return true;
   return false;
+}
+
+function classifyType(kind: string, routePath: string): TypeKey {
+  const p = canonicalizePublicRoute(routePath);
+  const k = String(kind || "").toLowerCase();
+  if (k === "database") return "databases";
+  if (p === "/blog" || p.startsWith("/blog/")) {
+    // Treat the backing DB helpers as "databases" even if exported as pages.
+    const raw = normalizePath(routePath);
+    if (
+      raw === "/blog/list" ||
+      raw.startsWith("/blog/list/") ||
+      raw === "/list" ||
+      raw.startsWith("/list/")
+    ) {
+      return "databases";
+    }
+    return "blog";
+  }
+  return "pages";
+}
+
+function matchTypeKey(type: string, key: TypeKey): boolean {
+  const t = String(type || "all")
+    .trim()
+    .toLowerCase();
+  if (t === "database" || t === "databases") return key === "databases";
+  if (t === "blog") return key === "blog";
+  if (t === "page" || t === "pages") return key === "pages";
+  return true;
 }
 
 function bestPos(hay: string, terms: string[]): number {
@@ -248,7 +282,12 @@ function buildSnippetByTerms(text: string, terms: string[]): string {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = normalizeQuery(url.searchParams.get("q") || "");
-  if (!q) return json({ items: [] });
+  if (!q) {
+    return json({
+      items: [],
+      meta: { total: 0, filteredTotal: 0, counts: { all: 0, pages: 0, blog: 0, databases: 0 } },
+    });
+  }
 
   const type = String(url.searchParams.get("type") || "all")
     .trim()
@@ -274,54 +313,19 @@ export async function GET(req: Request) {
     return p === scope || p.startsWith(`${scope}/`);
   };
 
-  const matchType = (kind: string, routePath: string): boolean => {
-    const p = canonicalizePublicRoute(routePath);
-    const k = String(kind || "").toLowerCase();
-    if (type === "database" || type === "databases") return k === "database";
-    if (type === "blog") {
-      // Treat the backing Notion database routes (/blog/list, /list) as databases, not "blog pages".
-      if (k === "database") return false;
-      const raw = normalizePath(routePath);
-      if (
-        raw === "/blog/list" ||
-        raw.startsWith("/blog/list/") ||
-        raw === "/list" ||
-        raw.startsWith("/list/")
-      ) {
-        return false;
-      }
-      return p === "/blog" || p.startsWith("/blog/");
-    }
-    if (type === "page" || type === "pages") {
-      if (k !== "page") return false;
-      // Exclude internal blog database helpers (some exports label them as pages).
-      const raw = normalizePath(routePath);
-      if (
-        raw === "/blog/list" ||
-        raw.startsWith("/blog/list/") ||
-        raw === "/list" ||
-        raw.startsWith("/list/")
-      ) {
-        return false;
-      }
-      return true;
-    }
-    return true; // all
-  };
-
   // Prefer the richer, content-based index if present; otherwise fall back.
   if (index.length) {
-    const matches = index
+    const allMatches = index
       .filter((it) => {
         const canon = canonicalizePublicRoute(it.routePath);
         if (!inScope(canon)) return false;
-        if (!matchType(it.kind, canon)) return false;
         const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(it.text)}`;
         if (terms.length <= 1) return hay.includes(ql);
         return terms.every((t) => hay.includes(t));
       })
       .map((it) => {
         const canon = canonicalizePublicRoute(it.routePath);
+        const typeKey = classifyType(it.kind, canon);
         const titlePos = bestPos(safeLower(it.title), terms);
         const routePos = bestPos(safeLower(canon), terms);
         const textPos = bestPos(safeLower(it.text), terms);
@@ -336,6 +340,7 @@ export async function GET(req: Request) {
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const textLenPenalty = Math.min(900, Math.floor(String(it.text || "").length / 140));
+        const navBoost = byRoute.get(normalizePath(it.routePath))?.navGroup ? 180 : 0;
         // Rank: title > route > content. Earlier match positions are better.
         const score =
           (titlePos === -1 ? 5000 : titlePos) +
@@ -349,12 +354,23 @@ export async function GET(req: Request) {
           (routeHasPhrase ? 400 : 0) -
           // All-terms matches should beat single-term matches.
           (titleHasAllTerms ? 900 : 0) -
-          (textHasAllTerms ? 300 : 0);
-        return { it, score, canon };
+          (textHasAllTerms ? 300 : 0) -
+          navBoost;
+        return { it, score, canon, typeKey };
       })
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 20)
-      .map(({ it, canon }) => ({
+      .sort(
+        (a, b) =>
+          a.score - b.score ||
+          String(a.it.title || "").localeCompare(String(b.it.title || "")) ||
+          a.canon.localeCompare(b.canon),
+      );
+
+    const counts = { all: allMatches.length, pages: 0, blog: 0, databases: 0 };
+    for (const m of allMatches) counts[m.typeKey] += 1;
+
+    const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
+
+    const items = filtered.slice(0, 20).map(({ it, canon }) => ({
         title: it.routePath === "/" ? "Home" : it.title || "Untitled",
         routePath: canon,
         kind: it.kind || "page",
@@ -362,16 +378,22 @@ export async function GET(req: Request) {
         breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
       }));
 
-    return json({ items: matches });
+    return json({
+      items,
+      meta: {
+        total: allMatches.length,
+        filteredTotal: filtered.length,
+        counts,
+      },
+    });
   }
 
   const all = manifest;
 
-  const matches = all
+  const allMatches = all
     .filter((it) => {
       const canon = canonicalizePublicRoute(it.routePath);
       if (!inScope(canon)) return false;
-      if (!matchType(it.kind, canon)) return false;
       const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(it.id)}`;
       if (terms.length <= 1) return hay.includes(ql);
       return terms.every((t) => hay.includes(t));
@@ -379,22 +401,32 @@ export async function GET(req: Request) {
     .map((it) => {
       // Rank: title matches first, then route matches, then shorter routes.
       const canon = canonicalizePublicRoute(it.routePath);
+      const typeKey = classifyType(it.kind, canon);
       const titlePos = bestPos(safeLower(it.title), terms);
       const routePos = bestPos(safeLower(canon), terms);
       const score =
         (titlePos === -1 ? 50 : titlePos) +
         (routePos === -1 ? 80 : routePos + 10) +
         Math.min(200, canon.length / 8);
-      return { it, score };
+      return { it, score, typeKey };
     })
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 20)
-    .map(({ it }) => ({
-      title: it.routePath === "/" ? "Home" : it.title || "Untitled",
-      routePath: canonicalizePublicRoute(it.routePath),
-      kind: it.kind || "page",
-      breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (it.routePath === "/" ? "Home" : ""),
-    }));
+    .sort(
+      (a, b) =>
+        a.score - b.score ||
+        String(a.it.title || "").localeCompare(String(b.it.title || "")) ||
+        canonicalizePublicRoute(a.it.routePath).localeCompare(canonicalizePublicRoute(b.it.routePath)),
+    );
 
-  return json({ items: matches });
+  const counts = { all: allMatches.length, pages: 0, blog: 0, databases: 0 };
+  for (const m of allMatches) counts[m.typeKey] += 1;
+  const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
+
+  const items = filtered.slice(0, 20).map(({ it }) => ({
+    title: it.routePath === "/" ? "Home" : it.title || "Untitled",
+    routePath: canonicalizePublicRoute(it.routePath),
+    kind: it.kind || "page",
+    breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (it.routePath === "/" ? "Home" : ""),
+  }));
+
+  return json({ items, meta: { total: allMatches.length, filteredTotal: filtered.length, counts } });
 }

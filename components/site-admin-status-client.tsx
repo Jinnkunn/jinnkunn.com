@@ -30,6 +30,7 @@ type StatusPayload = {
     siteName: string;
     nav: { top: number; more: number };
     routesDiscovered: number;
+    searchIndexItems: number | null;
     syncMeta: null | {
       syncedAt: string;
       notionVersion?: string;
@@ -141,7 +142,7 @@ export default function SiteAdminStatusClient() {
     const adminEdited = isoMs(payload.notion.adminPage?.lastEdited);
     const rootEdited = isoMs(payload.notion.rootPage?.lastEdited);
 
-    // If Notion shows edits after the last sync, the deploy is likely stale.
+    // If the source shows edits after the last sync, the deploy is likely stale.
     // Add a small tolerance to avoid flapping due to clock precision.
     const toleranceMs = 30_000;
     const adminStale = Number.isFinite(adminEdited) && adminEdited > synced + toleranceMs;
@@ -225,7 +226,7 @@ export default function SiteAdminStatusClient() {
             <div className="site-admin-card__title">Content + Sync</div>
             <dl className="site-admin-kv">
               <div className="site-admin-kv__row">
-                <dt>NOTION_TOKEN</dt>
+                <dt>Source Token</dt>
                 <dd>
                   <Badge ok={payload.env.hasNotionToken}>
                     {payload.env.hasNotionToken ? "configured" : "missing"}
@@ -233,7 +234,7 @@ export default function SiteAdminStatusClient() {
                 </dd>
               </div>
               <div className="site-admin-kv__row">
-                <dt>Admin Page ID</dt>
+                <dt>Admin Page</dt>
                 <dd>
                   <Badge ok={payload.env.hasNotionAdminPageId}>
                     {payload.env.hasNotionAdminPageId ? "configured" : "missing"}
@@ -286,6 +287,16 @@ export default function SiteAdminStatusClient() {
               <div className="site-admin-kv__row">
                 <dt>Routes</dt>
                 <dd>{payload.content.routesDiscovered}</dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Search Index</dt>
+                <dd>
+                  {typeof payload.content.searchIndexItems === "number" ? (
+                    <span>{payload.content.searchIndexItems} items</span>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </dd>
               </div>
               <div className="site-admin-kv__row">
                 <dt>Overrides</dt>

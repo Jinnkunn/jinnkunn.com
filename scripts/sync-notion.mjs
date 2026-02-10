@@ -930,8 +930,10 @@ function buildSearchTextFromLines(lines) {
   // Keep the index deterministic + small:
   // - de-dupe identical lines (common with headings/years in Notion exports)
   // - cap number of lines and total characters
-  const maxLines = 900;
-  const maxChars = 24_000;
+  // NOTE: This is intentionally conservative: it keeps search "good enough"
+  // while ensuring `search-index.json` stays small and fast to parse on Vercel.
+  const maxLines = 320;
+  const maxChars = 8_000;
 
   let total = 0;
   for (const s0 of arr) {
@@ -1829,6 +1831,7 @@ async function main() {
     routes: routeToPageId.size,
     routeOverrides: routeOverrides.size,
     protectedRules: protectedRoutes.length,
+    searchIndexMaxChars: 8000,
   };
   writeFile(path.join(OUT_DIR, "sync-meta.json"), JSON.stringify(syncMeta, null, 2) + "\n");
 
@@ -1842,6 +1845,7 @@ async function main() {
   const ctx = { routeByPageId, dbById, nodeById, homeTitle, homePageId: homeRoutePageId };
 
   const searchIndex = [];
+  const SEARCH_MAX_CHARS = 8_000;
   for (const p of allPages) {
     const mainHtml = await (p.kind === "database"
       ? (async () => {
@@ -1850,12 +1854,14 @@ async function main() {
             .map((x) => String(x.title || "").trim())
             .filter(Boolean)
             .join("\n");
+          const dbTextRaw = `${p.title}\n${childTitles}`.trim();
+          const dbText = dbTextRaw.length > SEARCH_MAX_CHARS ? dbTextRaw.slice(0, SEARCH_MAX_CHARS).trim() : dbTextRaw;
           searchIndex.push({
             id: p.id,
             title: p.title,
             kind: p.kind,
             routePath: p.routePath,
-            text: `${p.title}\n${childTitles}`.trim(),
+            text: dbText,
           });
           return renderDatabaseMain(p, cfg, ctx);
         })()
@@ -1921,7 +1927,8 @@ async function main() {
 
   writeFile(
     path.join(OUT_DIR, "search-index.json"),
-    JSON.stringify(searchIndex, null, 2) + "\n",
+    // Keep it compact; this file is parsed on demand by /api/search.
+    JSON.stringify(searchIndex) + "\n",
   );
 
   // Small debug artifact: route map.
