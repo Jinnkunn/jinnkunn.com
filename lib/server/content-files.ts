@@ -92,6 +92,14 @@ export function getRawHtmlRoots(): string[] {
   ];
 }
 
+export function getGeneratedContentDir(): string {
+  return path.join(process.cwd(), "content", "generated");
+}
+
+export function getNotionSyncCacheDir(): string {
+  return path.join(process.cwd(), ".next", "cache", "notion-sync");
+}
+
 /**
  * Return deduped raw-html "rel paths" (without ".html") across generated + legacy roots.
  * Example values: "index", "bio", "blog/list/<slug>".
@@ -118,4 +126,3 @@ export function listRawHtmlRelPaths(): string[] {
   out.sort((a, b) => a.localeCompare(b));
   return out;
 }
-

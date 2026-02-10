@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -6,6 +5,8 @@ import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-
 import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { notionRequest } from "@/lib/notion/api.mjs";
 import { getRoutesManifest } from "@/lib/routes-manifest";
+import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
+import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import { dashify32 } from "@/lib/shared/route-utils.mjs";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
@@ -27,15 +28,6 @@ async function requireAdmin(req: NextRequest) {
   return { ok: true as const };
 }
 
-function safeStat(filePath: string): { exists: boolean; mtimeMs?: number; size?: number } {
-  try {
-    const st = fs.statSync(filePath);
-    return { exists: st.isFile(), mtimeMs: st.mtimeMs, size: st.size };
-  } catch {
-    return { exists: false };
-  }
-}
-
 function pickCommitSha(): string {
   return (
     process.env.VERCEL_GIT_COMMIT_SHA ||
@@ -43,17 +35,6 @@ function pickCommitSha(): string {
     process.env.CF_PAGES_COMMIT_SHA ||
     ""
   ).trim();
-}
-
-function safeDir(filePath: string): { exists: boolean; mtimeMs?: number; size?: number; count?: number } {
-  try {
-    const st = fs.statSync(filePath);
-    if (!st.isDirectory()) return { exists: false };
-    const items = fs.readdirSync(filePath);
-    return { exists: true, mtimeMs: st.mtimeMs, size: st.size, count: items.length };
-  } catch {
-    return { exists: false };
-  }
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -102,8 +83,7 @@ export async function GET(req: NextRequest) {
   const site = getSiteConfig();
   const manifest = getRoutesManifest();
 
-  const root = process.cwd();
-  const generatedDir = path.join(root, "content", "generated");
+  const generatedDir = getGeneratedContentDir();
 
   const files = {
     siteConfig: safeStat(path.join(generatedDir, "site-config.json")),
@@ -112,7 +92,7 @@ export async function GET(req: NextRequest) {
     syncMeta: safeStat(path.join(generatedDir, "sync-meta.json")),
     searchIndex: safeStat(path.join(generatedDir, "search-index.json")),
     routesJson: safeStat(path.join(generatedDir, "routes.json")),
-    notionSyncCache: safeDir(path.join(root, ".next", "cache", "notion-sync")),
+    notionSyncCache: safeDir(getNotionSyncCacheDir()),
   };
 
   const commitSha = pickCommitSha();
