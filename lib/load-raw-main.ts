@@ -159,6 +159,21 @@ function rewriteRawHtml(html: string): string {
       /<\/span>\r?\n{3,}((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
       "</span>\n\n$1",
     );
+
+    // Publications: the toggle *summary* line can contain multiple labels
+    // (conference / journal / arXiv.org). The layout normalization above injects
+    // `<br><br>` between adjacent `<em>` blocks, which is correct for expanded
+    // details, but wrong for summary labels (it stacks pills).
+    // Collapse those breaks back to inline spacing within summaries only.
+    out = out.replace(
+      /(<div class="notion-toggle__summary">[\s\S]*?<span class="notion-semantic-string">)([\s\S]*?)(<\/span><\/div><div class="notion-toggle__content">)/gi,
+      (_m, pre, inner, post) => {
+        const fixed = String(inner)
+          .replace(/<\/em>(?:\s*<br\s*\/?>\s*){1,2}<em>/gi, "</em> <em>")
+          .replace(/<\/em>\s{2,}<em>/g, "</em> <em>");
+        return `${pre}${fixed}${post}`;
+      },
+    );
   }
 
   return out
