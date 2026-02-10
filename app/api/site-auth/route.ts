@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getProtectedRoutes } from "@/lib/protected-routes";
+import { getFormString, readFormBody } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -41,10 +42,11 @@ function redirectToAuth(
 }
 
 export async function POST(req: Request) {
-  const form = await req.formData().catch(() => null);
-  const next = normalizeNextPath(form?.get("next"));
-  const rid = String(form?.get("rid") ?? "").trim();
-  const password = String(form?.get("password") ?? "");
+  const form = await readFormBody(req);
+  const f = form ?? new FormData();
+  const next = normalizeNextPath(getFormString(f, "next", { maxLen: 2048 }));
+  const rid = getFormString(f, "rid", { maxLen: 128 });
+  const password = getFormString(f, "password", { trim: false, maxLen: 2048 });
 
   const routes = getProtectedRoutes() as ProtectedRoute[];
   const route = routes.find((r) => r.id === rid);

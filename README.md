@@ -121,6 +121,16 @@ npm run snapshot:ui
 
 Outputs go to `output/ui-snapshots/<timestamp>/`.
 
+## Script Syntax Check (.mjs)
+
+To prevent Vercel/GitHub CI failures caused by accidentally adding TypeScript syntax to `.mjs` files:
+
+```bash
+npm run check:scripts
+```
+
+This is also run in GitHub Actions `CI`.
+
 ## Search Regression Snapshots (Production)
 
 ```bash

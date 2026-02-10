@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
+import { canonicalizePublicRoute, normalizePathname } from "@/lib/routes/strategy.mjs";
 import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { scoreSearchResult } from "@/lib/search/rank.mjs";
 import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group.mjs";
 import { tokenizeQuery } from "@/lib/shared/text-utils";
+import { jsonNoStore } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -37,14 +38,8 @@ function readManifest(): ManifestItem[] {
 }
 
 function normalizeQuery(q: string): string {
-  return q.trim().replace(/\s+/g, " ");
-}
-
-function normalizePath(p: string): string {
-  const s = String(p || "").trim();
-  if (!s) return "/";
-  if (s === "/") return "/";
-  return s.endsWith("/") ? s.slice(0, -1) : s;
+  // Keep queries stable and bounded to avoid expensive scans.
+  return q.trim().replace(/\s+/g, " ").slice(0, 200);
 }
 
 function buildGroupCounts(labels: string[]): Array<{ label: string; count: number }> {
@@ -63,7 +58,7 @@ function buildBreadcrumb(
   byRoute: Map<string, ManifestItem>,
   byId: Map<string, ManifestItem>,
 ): string {
-  const startRoute = normalizePath(routePath);
+  const startRoute = normalizePathname(routePath);
   const start = byRoute.get(startRoute) || null;
   if (!start) return "";
 
@@ -77,7 +72,7 @@ function buildBreadcrumb(
     if (!id || seen.has(id)) break;
     seen.add(id);
 
-    const rp = normalizePath(String(cur.routePath || "/"));
+    const rp = normalizePathname(String(cur.routePath || "/"));
     const title = rp === "/" ? "Home" : String(cur.title || "").trim() || "Untitled";
 
     // Hide internal list helpers in breadcrumbs:
@@ -103,7 +98,7 @@ function buildBreadcrumb(
 }
 
 function isIgnoredPath(routePath: string): boolean {
-  const p = routePath || "/";
+  const p = normalizePathname(routePath || "/");
   if (p.startsWith("/_next")) return true;
   if (p.startsWith("/api/")) return true;
   if (p === "/auth") return true;
@@ -119,7 +114,7 @@ function classifyType(kind: string, routePath: string): TypeKey {
   if (k === "database") return "databases";
   if (p === "/blog" || p.startsWith("/blog/")) {
     // Treat the backing DB helpers as "databases" even if exported as pages.
-    const raw = normalizePath(routePath);
+    const raw = normalizePathname(routePath);
     if (
       raw === "/blog/list" ||
       raw.startsWith("/blog/list/") ||
@@ -152,6 +147,19 @@ function bestPos(hay: string, terms: string[]): number {
     if (best === -1 || i < best) best = i;
   }
   return best;
+}
+
+function dedupeByCanonicalRoute<T extends { canon: string; score: number }>(arr: T[]): T[] {
+  // Keep the best (lowest score) match per canonical public routePath.
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const it of arr) {
+    const k = String(it.canon || "").trim() || "/";
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(it);
+  }
+  return out;
 }
 
 function buildSnippetByTerms(text: string, terms: string[]): string {
@@ -228,14 +236,18 @@ export async function GET(req: Request) {
     });
   }
 
-  const type = String(url.searchParams.get("type") || "all")
-    .trim()
-    .toLowerCase();
-  const offset = Math.max(0, Number.parseInt(String(url.searchParams.get("offset") || "0"), 10) || 0);
+  const type = String(url.searchParams.get("type") || "all").trim().toLowerCase();
+  if (!["all", "page", "pages", "blog", "database", "databases"].includes(type)) {
+    return jsonNoStore({ error: "Invalid type" }, { status: 400 });
+  }
+
+  const offsetRaw = Number.parseInt(String(url.searchParams.get("offset") || "0"), 10);
+  const offset = Math.max(0, Math.min(10_000, Number.isFinite(offsetRaw) ? offsetRaw : 0));
+
   const limitRaw = Number.parseInt(String(url.searchParams.get("limit") || "20"), 10);
   const limit = Math.max(1, Math.min(50, Number.isFinite(limitRaw) ? limitRaw : 20));
   const scopeRaw = String(url.searchParams.get("scope") || "").trim();
-  const scope = scopeRaw && scopeRaw.startsWith("/") ? normalizePath(scopeRaw) : "";
+  const scope = scopeRaw && scopeRaw.startsWith("/") ? normalizePathname(scopeRaw) : "";
 
   const ql = q.toLowerCase();
   const terms = tokenizeQuery(q);
@@ -244,7 +256,7 @@ export async function GET(req: Request) {
   const byRoute = new Map<string, ManifestItem>();
   const byId = new Map<string, ManifestItem>();
   for (const it of manifest) {
-    byRoute.set(normalizePath(it.routePath), it);
+    byRoute.set(normalizePathname(it.routePath), it);
     const id = String(it.id || "").replace(/-/g, "").toLowerCase();
     if (id) byId.set(id, it);
   }
@@ -257,7 +269,7 @@ export async function GET(req: Request) {
 
   // Prefer the richer, content-based index if present; otherwise fall back.
   if (index.length) {
-    const allMatches = index
+    const allMatches0 = index
       .filter((it) => {
         const canon = canonicalizePublicRoute(it.routePath);
         if (!inScope(canon)) return false;
@@ -276,10 +288,13 @@ export async function GET(req: Request) {
         const textPos = bestPos(safeLower(it.text), terms);
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
-        const navBoost = byRoute.get(normalizePath(it.routePath))?.navGroup ? 180 : 0;
+        const navBoost = byRoute.get(normalizePathname(it.routePath))?.navGroup ? 180 : 0;
         const headings = Array.isArray((it as { headings?: unknown }).headings)
           ? String(((it as { headings?: string[] }).headings || []).join("\n") || "")
           : "";
+        const exactTitle = safeLower(it.title).trim() === safeLower(q).trim();
+        const exactRoute = safeLower(canon).trim() === safeLower(q).trim();
+        const exactBoost = exactTitle ? 1800 : exactRoute ? 900 : 0;
         const score =
           scoreSearchResult({
             title: it.title,
@@ -287,7 +302,7 @@ export async function GET(req: Request) {
             text: `${headings}\n${it.text || ""}`.trim(),
             query: q,
             navBoost,
-          }) + homePenalty;
+          }) + homePenalty - exactBoost;
         return { it, score, canon, typeKey };
       })
       .sort(
@@ -296,6 +311,8 @@ export async function GET(req: Request) {
           String(a.it.title || "").localeCompare(String(b.it.title || "")) ||
           a.canon.localeCompare(b.canon),
       );
+
+    const allMatches = dedupeByCanonicalRoute(allMatches0);
 
     const counts = { all: allMatches.length, pages: 0, blog: 0, databases: 0 };
     for (const m of allMatches) counts[m.typeKey] += 1;
@@ -308,7 +325,17 @@ export async function GET(req: Request) {
       title: it.routePath === "/" ? "Home" : it.title || "Untitled",
       routePath: canon,
       kind: it.kind || "page",
-      snippet: buildSnippetByTerms(it.text || "", terms),
+      snippet: (() => {
+        const headingsArr = Array.isArray((it as { headings?: unknown }).headings)
+          ? ((it as { headings?: string[] }).headings || []).map((s) => String(s || "")).filter(Boolean)
+          : [];
+        const headings = headingsArr.join("\n");
+        const body = String(it.text || "");
+        // Prefer body snippets when the query matches body content; otherwise fall back to headings.
+        const bodyPos = bestPos(safeLower(body), terms);
+        const src = bodyPos >= 0 ? body : `${headings}\n${body}`.trim();
+        return buildSnippetByTerms(src, terms);
+      })(),
       breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
     }));
 

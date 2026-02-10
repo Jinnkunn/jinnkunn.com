@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import { NextResponse } from "next/server";
 
 import { listBlockChildren, notionRequest, queryDatabase } from "@/lib/notion/api.mjs";
 import { compactId } from "@/lib/shared/route-utils.mjs";
+import { jsonNoStore } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -29,15 +29,9 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 
 function json(
   body: unknown,
-  init?: { status?: number; headers?: Record<string, string> },
+  init?: { status?: number },
 ) {
-  return NextResponse.json(body, {
-    status: init?.status,
-    headers: {
-      "cache-control": "no-store",
-      ...(init?.headers ?? {}),
-    },
-  });
+  return jsonNoStore(body, { status: init?.status ?? 200 });
 }
 
 function richText(content: string) {

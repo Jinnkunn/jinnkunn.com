@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
 import { findChildDatabases, findDbByTitle } from "@/lib/notion/discovery.mjs";
+import { getEnum, getString, jsonNoStore, readJsonBody } from "@/lib/server/validate";
 import {
   getPropCheckbox,
   getPropString,
@@ -290,21 +291,17 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return auth.res;
 
-  let body: any = null;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ ok: false, error: "Invalid JSON" }, { status: 400 });
-  }
+  const body = await readJsonBody(req);
+  if (!body) return jsonNoStore({ ok: false, error: "Invalid JSON" }, { status: 400 });
 
   try {
     const { adminPageId, overridesDbId, protectedDbId } = await getAdminDbIds();
 
-    const kind = String(body?.kind || "");
+    const kind = getEnum(body, "kind", ["override", "protected"] as const, "");
     if (kind === "override") {
       if (!overridesDbId) return json({ ok: false, error: "Missing Route Overrides DB" }, { status: 500 });
-      const pageId = compactId(String(body?.pageId || ""));
-      const routePath = String(body?.routePath || "").trim();
+      const pageId = compactId(getString(body, "pageId"));
+      const routePath = getString(body, "routePath", { maxLen: 300 });
       if (!pageId) return json({ ok: false, error: "Missing pageId" }, { status: 400 });
 
       if (!routePath) {
@@ -323,15 +320,13 @@ export async function POST(req: NextRequest) {
 
     if (kind === "protected") {
       if (!protectedDbId) return json({ ok: false, error: "Missing Protected Routes DB" }, { status: 500 });
-      const pageId = compactId(String(body?.pageId || ""));
-      const path = String(body?.path || "").trim();
+      const pageId = compactId(getString(body, "pageId"));
+      const path = getString(body, "path", { maxLen: 300 });
       // Product decision: protecting a page must protect its subtree (Super-like),
       // so we always store prefix rules.
       const mode: "prefix" = "prefix";
-      const password = String(body?.password || "").trim();
-      const authKindRaw = String(body?.auth || "password").trim().toLowerCase();
-      const authKind: "public" | "password" | "github" =
-        authKindRaw === "public" ? "public" : authKindRaw === "github" ? "github" : "password";
+      const password = getString(body, "password", { maxLen: 160 });
+      const authKind = getEnum(body, "auth", ["public", "password", "github"] as const, "password");
       if (!pageId) return json({ ok: false, error: "Missing pageId" }, { status: 400 });
       if (!path) return json({ ok: false, error: "Missing path" }, { status: 400 });
 

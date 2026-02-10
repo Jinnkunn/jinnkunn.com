@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 import { compactId } from "@/lib/shared/route-utils.mjs";
 import { findChildDatabases, findDbByTitle } from "@/lib/notion/discovery.mjs";
+import { getBoolean, getEnum, getNumber, getString, isObject as isObj, jsonNoStore, readJsonBody } from "@/lib/server/validate";
 import {
   getPropCheckbox,
   getPropNumber,
@@ -38,7 +39,7 @@ async function ensureSiteSettingsDbSchema(databaseId: string) {
 
   const db = (await notionRequest(`databases/${id}`)) as unknown;
   const props =
-    isObject(db) && isObject(db.properties) ? (db.properties as Record<string, unknown>) : {};
+    isObj(db) && isObj(db.properties) ? (db.properties as Record<string, unknown>) : {};
   const need: Record<string, unknown> = {};
 
   // Add missing properties lazily so /site-admin can run even if the admin DBs
@@ -207,36 +208,62 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return auth.res;
 
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") return json({ ok: false, error: "Bad request" }, { status: 400 });
+  const body = await readJsonBody(req);
+  if (!body) return jsonNoStore({ ok: false, error: "Bad request" }, { status: 400 });
 
   try {
-    const kind = String((body as any).kind || "").trim();
+    const kind = getEnum(body, "kind", ["settings", "nav-update", "nav-create"] as const, "");
 
     if (kind === "settings") {
-      const rowId = compactId(String((body as any).rowId || ""));
+      const rowId = compactId(getString(body, "rowId"));
       if (!rowId) return json({ ok: false, error: "Missing rowId" }, { status: 400 });
-      const patch = (body as any).patch || {};
-      await updateSiteSettings(rowId, patch);
+      const patch0 = (body as any).patch;
+      const patch = isObj(patch0) ? patch0 : {};
+      const outPatch: Partial<Omit<SiteSettings, "rowId">> = {};
+      if (patch.siteName !== undefined) outPatch.siteName = getString(patch, "siteName", { maxLen: 240 });
+      if (patch.lang !== undefined) outPatch.lang = getString(patch, "lang", { maxLen: 24 }) || "en";
+      if (patch.seoTitle !== undefined) outPatch.seoTitle = getString(patch, "seoTitle", { maxLen: 300 });
+      if (patch.seoDescription !== undefined)
+        outPatch.seoDescription = getString(patch, "seoDescription", { maxLen: 800 });
+      if (patch.favicon !== undefined) outPatch.favicon = getString(patch, "favicon", { maxLen: 500 });
+      if (patch.googleAnalyticsId !== undefined)
+        outPatch.googleAnalyticsId = getString(patch, "googleAnalyticsId", { maxLen: 64 });
+      if (patch.contentGithubUsers !== undefined)
+        outPatch.contentGithubUsers = getString(patch, "contentGithubUsers", { maxLen: 800 });
+      if (patch.rootPageId !== undefined) outPatch.rootPageId = getString(patch, "rootPageId", { maxLen: 64 });
+      if (patch.homePageId !== undefined) outPatch.homePageId = getString(patch, "homePageId", { maxLen: 64 });
+      await updateSiteSettings(rowId, outPatch);
       return json({ ok: true });
     }
 
     if (kind === "nav-update") {
-      const rowId = compactId(String((body as any).rowId || ""));
+      const rowId = compactId(getString(body, "rowId"));
       if (!rowId) return json({ ok: false, error: "Missing rowId" }, { status: 400 });
-      const patch = (body as any).patch || {};
-      await updateNavRow(rowId, patch);
+      const patch0 = (body as any).patch;
+      const patch = isObj(patch0) ? patch0 : {};
+      const outPatch: Partial<Omit<NavItemRow, "rowId">> = {};
+      if (patch.label !== undefined) outPatch.label = getString(patch, "label", { maxLen: 120 });
+      if (patch.href !== undefined) outPatch.href = getString(patch, "href", { maxLen: 300 });
+      if (patch.group !== undefined)
+        outPatch.group = getEnum(patch, "group", ["top", "more"] as const, "more");
+      if (patch.order !== undefined) outPatch.order = getNumber(patch, "order") ?? 0;
+      if (patch.enabled !== undefined) {
+        const b = getBoolean(patch, "enabled");
+        if (b !== null) outPatch.enabled = b;
+      }
+      await updateNavRow(rowId, outPatch);
       return json({ ok: true });
     }
 
     if (kind === "nav-create") {
-      const input = (body as any).input || {};
+      const input0 = (body as any).input;
+      const input = isObj(input0) ? input0 : {};
       const created = await createNavRow({
-        label: String(input.label || "").trim(),
-        href: String(input.href || "").trim(),
-        group: (String(input.group || "more").trim().toLowerCase() === "top" ? "top" : "more") as "top" | "more",
-        order: Number.isFinite(Number(input.order)) ? Number(input.order) : 0,
-        enabled: Boolean(input.enabled ?? true),
+        label: getString(input, "label", { maxLen: 120 }),
+        href: getString(input, "href", { maxLen: 300 }),
+        group: getEnum(input, "group", ["top", "more"] as const, "more"),
+        order: getNumber(input, "order") ?? 0,
+        enabled: getBoolean(input, "enabled") ?? true,
       });
       return json({ ok: true, created });
     }

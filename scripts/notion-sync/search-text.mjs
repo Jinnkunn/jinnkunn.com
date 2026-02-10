@@ -151,8 +151,8 @@ export function buildSearchIndexFieldsFromBlocks(blocks) {
   const headings = [];
   const seen = new Set();
   let headingChars = 0;
-  const maxHeadingChars = 800;
-  const maxHeadings = 24;
+  const maxHeadingChars = 520;
+  const maxHeadings = 18;
   for (const s0 of headingsLines) {
     const s = String(s0 || "").replace(/\s+/g, " ").trim();
     if (!s) continue;
@@ -173,6 +173,6 @@ export function buildSearchIndexFieldsFromBlocks(blocks) {
   });
 
   // Slightly smaller cap than the generic builder since we also ship headings.
-  const text = buildSearchTextFromLines(bodyLines).slice(0, 3000).trim();
+  const text = buildSearchTextFromLines(bodyLines).slice(0, 2200).trim();
   return { headings, text };
 }

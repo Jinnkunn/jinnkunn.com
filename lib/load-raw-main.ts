@@ -95,6 +95,14 @@ function rewriteRawHtml(html: string): string {
         "\n</span>\n$1",
       );
 
+    // Publications: keep label + ":" together so it doesn't wrap to the next line.
+    // Notion exports the colon as `<strong>: </strong>` *after* the <em> wrapper.
+    // We pull it into the same <em> so wrapping can't split `conference` and `:`.
+    out = out.replace(
+      /<em>([\s\S]*?<code class="code">[\s\S]*?)<\/em><strong>:\s*<\/strong>/gi,
+      `<em>$1<span class="pub-tag-colon">: </span></em>`,
+    );
+
     // Publications: enforce the original layout inside expanded details:
     // Authors line
     // (blank line)
@@ -130,6 +138,7 @@ function rewriteRawHtml(html: string): string {
       (_m, pre, inner, post) => {
         const fixed = String(inner)
           .replace(/<\/em>(?:\s*<br\s*\/?>\s*){1,2}<em>/gi, "</em> <em>")
+          .replace(/<br\s*\/?>/gi, " ")
           .replace(/<\/em>\s{2,}<em>/g, "</em> <em>");
         return `${pre}${fixed}${post}`;
       },

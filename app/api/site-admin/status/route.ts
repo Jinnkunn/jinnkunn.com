@@ -1,5 +1,5 @@
 import path from "node:path";
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
@@ -8,18 +8,14 @@ import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSearchIndex } from "@/lib/search-index";
 import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
+import { jsonNoStore } from "@/lib/server/validate";
 import { dashify32 } from "@/lib/shared/route-utils.mjs";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
 
 export const runtime = "nodejs";
 
-function json(body: unknown, init?: { status?: number }) {
-  return NextResponse.json(body, {
-    status: init?.status ?? 200,
-    headers: { "cache-control": "no-store" },
-  });
-}
+const json = jsonNoStore;
 
 async function requireAdmin(req: NextRequest) {
   const ok = await isSiteAdminAuthorized(req);
@@ -40,6 +36,20 @@ function pickCommitSha(): string {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
+}
+
+function parseIsoMs(iso: string): number {
+  const t = Date.parse(String(iso || "").trim());
+  return Number.isFinite(t) ? t : NaN;
+}
+
+function maxFinite(nums: number[]): number {
+  let best = NaN;
+  for (const n of nums) {
+    if (!Number.isFinite(n)) continue;
+    if (!Number.isFinite(best) || n > best) best = n;
+  }
+  return best;
 }
 
 async function fetchNotionPageMeta(
@@ -118,6 +128,27 @@ export async function GET(req: NextRequest) {
     // ignore
   }
 
+  const generatedLatestMs = maxFinite([
+    files.siteConfig.mtimeMs ?? NaN,
+    files.routesManifest.mtimeMs ?? NaN,
+    files.protectedRoutes.mtimeMs ?? NaN,
+    files.syncMeta.mtimeMs ?? NaN,
+    files.searchIndex.mtimeMs ?? NaN,
+    files.routesJson.mtimeMs ?? NaN,
+  ]);
+
+  const syncedAtMs = syncMeta?.syncedAt ? parseIsoMs(syncMeta.syncedAt) : NaN;
+  const notionLatestEditedMs = maxFinite([
+    notion.adminPage?.lastEdited ? parseIsoMs(notion.adminPage.lastEdited) : NaN,
+    notion.rootPage?.lastEdited ? parseIsoMs(notion.rootPage.lastEdited) : NaN,
+  ]);
+
+  const effectiveSyncMs = Number.isFinite(syncedAtMs) ? syncedAtMs : generatedLatestMs;
+  const stale =
+    Number.isFinite(notionLatestEditedMs) && Number.isFinite(effectiveSyncMs)
+      ? notionLatestEditedMs > effectiveSyncMs + 3_000
+      : null;
+
   return json({
     ok: true,
     env: {
@@ -151,6 +182,12 @@ export async function GET(req: NextRequest) {
       syncMeta,
     },
     notion,
+    freshness: {
+      stale,
+      syncMs: Number.isFinite(effectiveSyncMs) ? effectiveSyncMs : null,
+      notionEditedMs: Number.isFinite(notionLatestEditedMs) ? notionLatestEditedMs : null,
+      generatedLatestMs: Number.isFinite(generatedLatestMs) ? generatedLatestMs : null,
+    },
     files,
   });
 }

@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test",
+    "check:scripts": "node scripts/check-scripts.mjs",
     "sync:raw": "node scripts/sync-raw-hydrated.mjs",
     "sync:notion": "node scripts/sync-notion.mjs",
     "provision:admin": "node scripts/provision-site-admin.mjs",

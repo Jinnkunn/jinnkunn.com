@@ -24,6 +24,10 @@ type ProtectedRoute = {
   token: string;
 };
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
+}
+
 const pageIdToRoute: Record<string, string> = (() => {
   const out: Record<string, string> = {};
   try {
@@ -111,7 +115,8 @@ export async function proxy(req: NextRequest) {
   const rules = (protectedRoutes || []) as ProtectedRoute[];
   if (!Array.isArray(rules) || rules.length === 0) return NextResponse.next();
 
-  const match = pickProtectedRule(pathname, rules as any, routes as any, parentByPageId);
+  const routesMap: Record<string, unknown> = isRecord(routes) ? (routes as Record<string, unknown>) : {};
+  const match = pickProtectedRule(pathname, rules, routesMap, parentByPageId);
   if (!match) return NextResponse.next();
 
   const authKind = (match.auth || "password") as "password" | "github";

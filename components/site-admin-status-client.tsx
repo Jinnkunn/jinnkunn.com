@@ -57,6 +57,12 @@ type StatusPayload = {
     adminPage: null | { id: string; lastEdited: string; title: string };
     rootPage: null | { id: string; lastEdited: string; title: string };
   };
+  freshness?: {
+    stale: boolean | null;
+    syncMs: number | null;
+    notionEditedMs: number | null;
+    generatedLatestMs: number | null;
+  };
 };
 
 type StatusResult = StatusPayload | { ok: false; error: string };
@@ -150,6 +156,18 @@ export default function SiteAdminStatusClient() {
   }, [payload?.build?.vercelUrl]);
 
   const stale = useMemo(() => {
+    const f = payload?.freshness;
+    if (f && typeof f.stale === "boolean") {
+      const ok = !f.stale;
+      const syncMs = typeof f.syncMs === "number" ? f.syncMs : NaN;
+      const editedMs = typeof f.notionEditedMs === "number" ? f.notionEditedMs : NaN;
+      const reason =
+        !ok && Number.isFinite(syncMs) && Number.isFinite(editedMs)
+          ? `Edited +${fmtDelta(editedMs - syncMs)}`
+          : "";
+      return { ok, reason, synced: syncMs, adminEdited: NaN, rootEdited: NaN };
+    }
+
     if (!payload?.content?.syncMeta?.syncedAt) return { ok: true, reason: "" };
     const synced = isoMs(payload.content.syncMeta.syncedAt);
     if (!Number.isFinite(synced)) return { ok: true, reason: "" };

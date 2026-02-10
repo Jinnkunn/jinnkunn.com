@@ -3,251 +3,11 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
-import { renderSearchResultsHtml, type SearchItem } from "@/lib/client/site-search-render";
 import { createFocusTrap, isTypingContext, lockBodyScroll, setClassicInert } from "@/lib/client/dom-utils";
-
-type SearchMeta = {
-  total: number;
-  filteredTotal: number;
-  counts: { all: number; pages: number; blog: number; databases: number };
-  groups?: Array<{ label: string; count: number }>;
-  offset: number;
-  limit: number;
-  hasMore: boolean;
-};
-
-function ensureSearch(): {
-  root: HTMLElement;
-  wrapper: HTMLElement;
-  box: HTMLElement;
-  input: HTMLInputElement;
-  clearBtn: HTMLButtonElement;
-  closeBtn: HTMLButtonElement;
-  filterAll: HTMLButtonElement;
-  filterPages: HTMLButtonElement;
-  filterBlog: HTMLButtonElement;
-  filterDatabases: HTMLButtonElement;
-  scopeBtn: HTMLButtonElement;
-  list: HTMLElement;
-  footer: HTMLElement;
-} {
-  const existing = document.getElementById("notion-search");
-  if (existing) {
-    const wrapper = existing.querySelector<HTMLElement>(".notion-search__wrapper");
-    const box = existing.querySelector<HTMLElement>(".notion-search__box");
-    const input = existing.querySelector<HTMLInputElement>("#notion-search-input");
-    const clearBtn = existing.querySelector<HTMLButtonElement>("#notion-search-clear");
-    const closeBtn = existing.querySelector<HTMLButtonElement>("#notion-search-close");
-    const filterAll = existing.querySelector<HTMLButtonElement>("#notion-search-filter-all");
-    const filterPages = existing.querySelector<HTMLButtonElement>("#notion-search-filter-pages");
-    const filterBlog = existing.querySelector<HTMLButtonElement>("#notion-search-filter-blog");
-    const filterDatabases = existing.querySelector<HTMLButtonElement>("#notion-search-filter-databases");
-    const scopeBtn = existing.querySelector<HTMLButtonElement>("#notion-search-scope");
-    const list = existing.querySelector<HTMLElement>("#notion-search-results");
-    const footer = existing.querySelector<HTMLElement>("#notion-search-footer");
-    if (
-      wrapper &&
-      box &&
-      input &&
-      clearBtn &&
-      closeBtn &&
-      filterAll &&
-      filterPages &&
-      filterBlog &&
-      filterDatabases &&
-      scopeBtn &&
-      list &&
-      footer
-    ) {
-      return {
-        root: existing,
-        wrapper,
-        box,
-        input,
-        clearBtn,
-        closeBtn,
-        filterAll,
-        filterPages,
-        filterBlog,
-        filterDatabases,
-        scopeBtn,
-        list,
-        footer,
-      };
-    }
-  }
-
-  const root = document.createElement("div");
-  root.id = "notion-search";
-  root.className = "notion-search close";
-
-  root.innerHTML = `
-    <div class="notion-search__wrapper" role="dialog" aria-modal="true" aria-label="Search">
-      <div class="notion-search__box" role="document">
-        <div class="notion-search__input">
-          <div class="notion-search__icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.3-4.3"></path>
-            </svg>
-          </div>
-          <input id="notion-search-input" type="search" placeholder="Search..." autocomplete="off" spellcheck="false" />
-          <button id="notion-search-clear" class="notion-search__clear" type="button" aria-label="Clear query" title="Clear">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-              <path d="M20 6H9l-5 6 5 6h11V6z"></path>
-              <path d="m12 10 4 4"></path>
-              <path d="m16 10-4 4"></path>
-            </svg>
-          </button>
-          <button id="notion-search-close" class="notion-search__close" type="button" aria-label="Close search" title="Close">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-              <path d="M18 6 6 18"></path>
-              <path d="m6 6 12 12"></path>
-            </svg>
-          </button>
-        </div>
-        <div class="notion-search__filters" role="group" aria-label="Search filters">
-          <div class="notion-search__filter-pills" role="tablist" aria-label="Type filter">
-            <button id="notion-search-filter-all" class="notion-search__pill is-active" type="button" role="tab" aria-selected="true" data-type="all">
-              <span class="notion-search__pill-label">All</span><span class="notion-search__pill-count" aria-hidden="true"></span>
-            </button>
-            <button id="notion-search-filter-pages" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="pages">
-              <span class="notion-search__pill-label">Pages</span><span class="notion-search__pill-count" aria-hidden="true"></span>
-            </button>
-            <button id="notion-search-filter-blog" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="blog">
-              <span class="notion-search__pill-label">Blog</span><span class="notion-search__pill-count" aria-hidden="true"></span>
-            </button>
-            <button id="notion-search-filter-databases" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="databases">
-              <span class="notion-search__pill-label">Databases</span><span class="notion-search__pill-count" aria-hidden="true"></span>
-            </button>
-          </div>
-          <button id="notion-search-scope" class="notion-search__pill notion-search__pill--scope" type="button" aria-pressed="false" title="Search only in the current section">This section</button>
-        </div>
-        <div id="notion-search-results" class="notion-search__result-list" role="listbox" aria-label="Search results"></div>
-        <div id="notion-search-footer" class="notion-search__result-footer"></div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(root);
-
-  const wrapper = root.querySelector<HTMLElement>(".notion-search__wrapper")!;
-  const box = root.querySelector<HTMLElement>(".notion-search__box")!;
-  const input = root.querySelector<HTMLInputElement>("#notion-search-input")!;
-  const clearBtn = root.querySelector<HTMLButtonElement>("#notion-search-clear")!;
-  const closeBtn = root.querySelector<HTMLButtonElement>("#notion-search-close")!;
-  const filterAll = root.querySelector<HTMLButtonElement>("#notion-search-filter-all")!;
-  const filterPages = root.querySelector<HTMLButtonElement>("#notion-search-filter-pages")!;
-  const filterBlog = root.querySelector<HTMLButtonElement>("#notion-search-filter-blog")!;
-  const filterDatabases = root.querySelector<HTMLButtonElement>("#notion-search-filter-databases")!;
-  const scopeBtn = root.querySelector<HTMLButtonElement>("#notion-search-scope")!;
-  const list = root.querySelector<HTMLElement>("#notion-search-results")!;
-  const footer = root.querySelector<HTMLElement>("#notion-search-footer")!;
-  return {
-    root,
-    wrapper,
-    box,
-    input,
-    clearBtn,
-    closeBtn,
-    filterAll,
-    filterPages,
-    filterBlog,
-    filterDatabases,
-    scopeBtn,
-    list,
-    footer,
-  };
-}
-
-function renderEmpty(list: HTMLElement) {
-  list.innerHTML = `<div class="notion-search__empty-state">No results</div>`;
-}
-
-function renderLoader(list: HTMLElement) {
-  list.innerHTML = `<div class="notion-search__result-loader">Searching...</div>`;
-}
-
-function renderResults(
-  list: HTMLElement,
-  items: SearchItem[],
-  query: string,
-  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number; groupCounts?: Record<string, number> },
-) {
-  if (!items.length) return renderEmpty(list);
-  list.innerHTML = renderSearchResultsHtml(items, query, opts);
-}
-
-async function fetchResults(
-  q: string,
-  opts: { type: string; scope: string; offset: number; limit: number },
-  signal: AbortSignal,
-): Promise<{ items: SearchItem[]; meta: SearchMeta | null }> {
-  const url = new URL("/api/search", window.location.origin);
-  url.searchParams.set("q", q);
-  if (opts.type && opts.type !== "all") url.searchParams.set("type", opts.type);
-  if (opts.scope) url.searchParams.set("scope", opts.scope);
-  if (opts.offset > 0) url.searchParams.set("offset", String(opts.offset));
-  if (opts.limit && opts.limit !== 20) url.searchParams.set("limit", String(opts.limit));
-  const res = await fetch(url, { signal, headers: { "cache-control": "no-store" } });
-  if (!res.ok) return { items: [], meta: null };
-  const data = (await res.json().catch(() => null)) as unknown;
-  if (!data || typeof data !== "object") return { items: [], meta: null };
-  const items0 = (data as { items?: unknown }).items;
-  const meta0 = (data as { meta?: unknown }).meta;
-
-  const meta: SearchMeta | null = (() => {
-    if (!meta0 || typeof meta0 !== "object") return null;
-    const m = meta0 as Record<string, unknown>;
-    const counts0 = m.counts;
-    const counts =
-      counts0 && typeof counts0 === "object"
-        ? (counts0 as Record<string, unknown>)
-        : null;
-    const all = Number(counts?.all ?? NaN);
-    const pages = Number(counts?.pages ?? NaN);
-    const blog = Number(counts?.blog ?? NaN);
-    const databases = Number(counts?.databases ?? NaN);
-    const total = Number(m.total ?? NaN);
-    const filteredTotal = Number(m.filteredTotal ?? NaN);
-    const offset = Number(m.offset ?? NaN);
-    const limit = Number(m.limit ?? NaN);
-    const hasMore = Boolean(m.hasMore);
-    if (![all, pages, blog, databases, total, filteredTotal, offset, limit].every((n) => Number.isFinite(n)))
-      return null;
-    const groups0 = m.groups;
-    const groups = Array.isArray(groups0)
-      ? groups0
-          .map((g) => {
-            if (!g || typeof g !== "object") return null;
-            const gg = g as Record<string, unknown>;
-            const label = String(gg.label || "").trim();
-            const count = Number(gg.count ?? NaN);
-            if (!label || !Number.isFinite(count)) return null;
-            return { label, count };
-          })
-          .filter((x): x is { label: string; count: number } => Boolean(x))
-      : undefined;
-    return { total, filteredTotal, counts: { all, pages, blog, databases }, groups, offset, limit, hasMore };
-  })();
-
-  const items = Array.isArray(items0) ? items0 : [];
-  const out = items
-    .map((x) => {
-      if (!x || typeof x !== "object") return null;
-      const o = x as Record<string, unknown>;
-      const it: SearchItem = {
-        title: String(o.title || ""),
-        routePath: String(o.routePath || ""),
-        kind: String(o.kind || "page"),
-        snippet: String(o.snippet || ""),
-        breadcrumb: String(o.breadcrumb || ""),
-      };
-      return it;
-    })
-    .filter((x): x is SearchItem => Boolean(x && x.routePath));
-  return { items: out, meta };
-}
+import { fetchSearchResults } from "@/lib/client/search/api";
+import { ensureSearch, renderEmpty, renderLoader, renderResults } from "@/lib/client/search/overlay";
+import type { SearchMeta, SearchType } from "@/lib/client/search/types";
+import type { SearchItem } from "@/lib/client/site-search-render";
 
 export default function SiteSearchBehavior() {
   const pathname = usePathname();
@@ -278,7 +38,7 @@ export default function SiteSearchBehavior() {
     let debounceTimer: number | null = null;
     let activeIndex = -1;
     let unlockScroll: null | (() => void) = null;
-    let filterType: "all" | "pages" | "blog" | "databases" = "all";
+    let filterType: SearchType = "all";
     let scopeEnabled = false;
     let scopePrefix = "";
     let scopeLabel = "";
@@ -288,6 +48,33 @@ export default function SiteSearchBehavior() {
     const collapsedGroups = new Set<string>();
     const pageLimit = 20;
     const trap = createFocusTrap(box, { fallback: input });
+
+    const STORAGE_KEY = "notion-search-state:v1";
+    const loadState = (): { filterType: SearchType; scopeEnabled: boolean } => {
+      try {
+        const raw = window.sessionStorage.getItem(STORAGE_KEY) || "";
+        if (!raw) return { filterType: "all", scopeEnabled: false };
+        const j = JSON.parse(raw) as Record<string, unknown>;
+        const ft = String(j.filterType || "all") as SearchType;
+        const scope = Boolean(j.scopeEnabled);
+        const filterType =
+          (["all", "pages", "blog", "databases"].includes(ft) ? ft : "all") as SearchType;
+        return { filterType, scopeEnabled: scope };
+      } catch {
+        return { filterType: "all", scopeEnabled: false };
+      }
+    };
+
+    const saveState = () => {
+      try {
+        window.sessionStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ filterType, scopeEnabled }),
+        );
+      } catch {
+        // ignore
+      }
+    };
 
     const groupCountsFromMeta = (meta: SearchMeta | null): Record<string, number> | undefined => {
       const arr = meta?.groups;
@@ -413,11 +200,14 @@ export default function SiteSearchBehavior() {
 
         lastFocus = document.activeElement as HTMLElement | null;
         input.value = "";
-        filterType = "all";
-        scopeEnabled = false;
+        const remembered = loadState();
+        filterType = remembered.filterType || "all";
+        scopeEnabled = Boolean(remembered.scopeEnabled);
         const s = computeScope();
         scopePrefix = s.prefix;
         scopeLabel = s.label;
+        // If there's no usable scope in this section, disable remembered scope.
+        if (!scopePrefix) scopeEnabled = false;
         setFilterPillState();
         applyMetaCounts(null);
         setClearState();
@@ -448,6 +238,7 @@ export default function SiteSearchBehavior() {
     // Expose an imperative close hook so other effects (e.g., route change)
     // can close the modal while properly releasing scroll/inert state.
     (root as unknown as { __closeSearch?: () => void }).__closeSearch = close;
+    (root as unknown as { __emptySwitchType?: SearchType }).__emptySwitchType = undefined;
 
     const onTriggerClick = (e: MouseEvent) => {
       e.preventDefault();
@@ -533,7 +324,7 @@ export default function SiteSearchBehavior() {
       activeIndex = -1;
 
       void (async () => {
-        const { items, meta } = await fetchResults(
+        const { items, meta } = await fetchSearchResults(
           query,
           { type: filterType, scope: scopeEnabled ? scopePrefix : "", offset: 0, limit: pageLimit },
           aborter!.signal,
@@ -541,6 +332,58 @@ export default function SiteSearchBehavior() {
         if (aborter?.signal.aborted) return;
         applyMetaCounts(meta);
         currentItems = items;
+        if (!currentItems.length) {
+          const actions: Array<{ id: string; label: string; hint?: string }> = [];
+          const counts = meta?.counts || null;
+
+          if (filterType !== "all" && counts && Number(counts.all) > 0) {
+            // Suggest the best matching type tab.
+            const candidates: Array<[SearchType, number]> = [
+              ["pages", Number(counts.pages) || 0],
+              ["blog", Number(counts.blog) || 0],
+              ["databases", Number(counts.databases) || 0],
+            ];
+            candidates.sort((a, b) => b[1] - a[1]);
+            const best = candidates.find(([, n]) => n > 0) || null;
+            if (best) {
+              const [t, n] = best;
+              const label =
+                t === "pages" ? "Show Pages" : t === "blog" ? "Show Blog" : "Show Databases";
+              actions.push({
+                id: "notion-search-empty-switch-type",
+                label,
+                hint: `(${n})`,
+              });
+              (root as unknown as { __emptySwitchType?: SearchType }).__emptySwitchType = t;
+            } else {
+              actions.push({
+                id: "notion-search-empty-switch-all",
+                label: "Show all types",
+              });
+            }
+          }
+
+          if (scopeEnabled && scopePrefix) {
+            // Diagnose: if there are results outside the scope, offer a one-click expand.
+            const outOfScope = await fetchSearchResults(
+              query,
+              { type: filterType, scope: "", offset: 0, limit: 1 },
+              aborter!.signal,
+            ).catch(() => ({ items: [], meta: null }));
+            if (!aborter?.signal.aborted && Number(outOfScope.meta?.total || 0) > 0) {
+              actions.push({
+                id: "notion-search-empty-disable-scope",
+                label: "Search all sections",
+              });
+            }
+          }
+
+          renderEmpty(list, { actions });
+          renderFooterHint("results");
+          activeIndex = -1;
+          return;
+        }
+
         const showMore = Boolean(meta?.hasMore);
         const remaining = meta ? Math.max(0, meta.filteredTotal - currentItems.length) : 0;
         renderResults(list, currentItems, query, {
@@ -549,7 +392,7 @@ export default function SiteSearchBehavior() {
           remaining,
           groupCounts: groupCountsFromMeta(meta),
         });
-        if (currentItems.length) setActive(0);
+        setActive(0);
         renderFooterHint("results");
       })();
     };
@@ -597,6 +440,7 @@ export default function SiteSearchBehavior() {
       const next = String(btn.getAttribute("data-type") || "all") as typeof filterType;
       if (!open) return;
       filterType = (["all", "pages", "blog", "databases"].includes(next) ? next : "all") as typeof filterType;
+      saveState();
       setFilterPillState();
       runSearch(input.value);
     };
@@ -606,6 +450,7 @@ export default function SiteSearchBehavior() {
       if (!open) return;
       if (!scopePrefix) return;
       scopeEnabled = !scopeEnabled;
+      saveState();
       setFilterPillState();
       runSearch(input.value);
     };
@@ -619,6 +464,36 @@ export default function SiteSearchBehavior() {
     const onResultsClick = (e: MouseEvent) => {
       const t = e.target instanceof Element ? e.target : null;
       if (!t) return;
+
+      const emptyAction = t.closest<HTMLButtonElement>("button.notion-search__empty-action");
+      if (emptyAction) {
+        e.preventDefault();
+        const id = emptyAction.id;
+        if (id === "notion-search-empty-disable-scope") {
+          scopeEnabled = false;
+          saveState();
+          setFilterPillState();
+          runSearch(input.value);
+          return;
+        }
+        if (id === "notion-search-empty-switch-all") {
+          filterType = "all";
+          saveState();
+          setFilterPillState();
+          runSearch(input.value);
+          return;
+        }
+        if (id === "notion-search-empty-switch-type") {
+          const targetType = (root as unknown as { __emptySwitchType?: SearchType }).__emptySwitchType;
+          if (targetType && ["pages", "blog", "databases"].includes(targetType)) {
+            filterType = targetType;
+            saveState();
+            setFilterPillState();
+            runSearch(input.value);
+            return;
+          }
+        }
+      }
 
       const groupBtn = t.closest<HTMLButtonElement>("button.notion-search__group");
       if (groupBtn) {
@@ -653,7 +528,7 @@ export default function SiteSearchBehavior() {
         moreBtn.textContent = "Loading...";
 
         void (async () => {
-          const { items: nextItems, meta } = await fetchResults(
+          const { items: nextItems, meta } = await fetchSearchResults(
             currentQuery,
             { type: filterType, scope: scopeEnabled ? scopePrefix : "", offset: currentItems.length, limit: pageLimit },
             aborter!.signal,
@@ -686,6 +561,7 @@ export default function SiteSearchBehavior() {
     return () => {
       close();
       (root as unknown as { __closeSearch?: () => void }).__closeSearch = undefined;
+      (root as unknown as { __emptySwitchType?: SearchType }).__emptySwitchType = undefined;
       trigger.removeEventListener("click", onTriggerClick);
       wrapper.removeEventListener("click", onWrapperClick);
       document.removeEventListener("keydown", onKeyDown, true);

@@ -1,14 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
+import { jsonNoStore } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
-function json(body: unknown, init?: { status?: number }) {
-  return NextResponse.json(body, {
-    status: init?.status ?? 200,
-    headers: { "cache-control": "no-store" },
-  });
-}
+const json = jsonNoStore;
 
 async function requireAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; res: NextResponse }> {
   const allow = parseAllowedAdminUsers();

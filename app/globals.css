@@ -387,8 +387,9 @@ html {
 
 /* Keep navbar logo + breadcrumbs perfectly aligned by sharing the same horizontal padding. */
 .super-navbar .super-navbar__content {
-  padding-left: 8px !important;
-  padding-right: 8px !important;
+  /* Match breadcrumbs padding so the left edges align on both desktop and mobile. */
+  padding-left: 16px !important;
+  padding-right: 16px !important;
 }
 
 @media (max-width: 546px) {
@@ -524,6 +525,12 @@ html {
 /* Keep the tag inline with its trailing ":"; line breaks are injected via <br> in `rewriteRawHtml`. */
 .page__publications .notion-toggle__content .notion-quote em:has(.code) {
   display: inline;
+}
+
+/* Publications: keep `conference:` together (avoid line breaks between tag and colon). */
+.page__publications .pub-tag-colon {
+  font-style: normal;
+  font-weight: 700;
 }
 
 /* Publications: tag pills (conference / arXiv.org / journal) should be compact. */
