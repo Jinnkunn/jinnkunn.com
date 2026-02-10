@@ -20,7 +20,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import katex from "katex";
 
-const NOTION_API = "https://api.notion.com/v1";
+import { listBlockChildren, notionRequest, queryDatabase } from "../lib/notion/api.mjs";
+import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
+
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
 
 const ROOT = process.cwd();
@@ -141,15 +143,6 @@ function rmDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-function compactId(idOrUrl) {
-  const s = String(idOrUrl || "").trim();
-  const m =
-    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
-    s.match(/[0-9a-f]{32}/i);
-  if (!m) return "";
-  return m[0].replace(/-/g, "").toLowerCase();
-}
-
 function escapeHtml(s) {
   return String(s)
     .replaceAll("&", "&amp;")
@@ -172,25 +165,6 @@ function deepMerge(base, patch) {
     else out[k] = v;
   }
   return out;
-}
-
-function slugify(input) {
-  const s = String(input || "")
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "");
-  return s;
-}
-
-function normalizeRoutePath(p) {
-  const raw = String(p || "").trim();
-  if (!raw) return "";
-  let out = raw.startsWith("/") ? raw : `/${raw}`;
-  out = out.replace(/\/+$/g, "");
-  return out || "/";
 }
 
 function normalizeHref(href) {
@@ -222,79 +196,6 @@ function renderKatex(expression, { displayMode }) {
   }
 }
 
-async function sleep(ms) {
-  await new Promise((r) => setTimeout(r, ms));
-}
-
-async function notionRequest(pathname, { method = "GET", body, searchParams } = {}) {
-  const token = process.env.NOTION_TOKEN?.trim() ?? "";
-  if (!token) throw new Error("Missing NOTION_TOKEN");
-
-  const url = new URL(`${NOTION_API}/${pathname}`);
-  if (searchParams) {
-    for (const [k, v] of Object.entries(searchParams)) {
-      if (v === undefined || v === null || v === "") continue;
-      url.searchParams.set(k, String(v));
-    }
-  }
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Notion-Version": NOTION_VERSION,
-  };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-
-  let lastErr = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await res.text();
-    let json = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      // ignore
-    }
-
-    if (res.ok) return json;
-
-    // Retry rate-limit / transient 5xx.
-    if (res.status === 429 || res.status >= 500) {
-      lastErr = new Error(
-        `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 200)}`,
-      );
-      await sleep(250 * Math.pow(2, attempt));
-      continue;
-    }
-
-    throw new Error(
-      `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 400)}`,
-    );
-  }
-
-  throw lastErr ?? new Error(`Notion API request failed for ${pathname}`);
-}
-
-async function listBlockChildren(blockId) {
-  const out = [];
-  let cursor = undefined;
-  // Notion max is 100.
-  for (;;) {
-    const data = await notionRequest(`blocks/${blockId}/children`, {
-      searchParams: { page_size: 100, start_cursor: cursor },
-    });
-    const results = Array.isArray(data?.results) ? data.results : [];
-    out.push(...results);
-    if (!data?.has_more) break;
-    cursor = data?.next_cursor;
-    if (!cursor) break;
-  }
-  return out;
-}
-
 // Cache to avoid re-fetching children when we need to traverse deep block trees.
 // Keyed by compact block ID.
 const __blockChildrenCache = new Map();
@@ -305,28 +206,6 @@ async function listBlockChildrenCached(blockId) {
   const kids = await listBlockChildren(key);
   __blockChildrenCache.set(key, kids);
   return kids;
-}
-
-async function queryDatabase(databaseId, { filter, sorts } = {}) {
-  const out = [];
-  let cursor = undefined;
-  for (;;) {
-    const data = await notionRequest(`databases/${databaseId}/query`, {
-      method: "POST",
-      body: {
-        page_size: 100,
-        start_cursor: cursor,
-        filter,
-        sorts,
-      },
-    });
-    const results = Array.isArray(data?.results) ? data.results : [];
-    out.push(...results);
-    if (!data?.has_more) break;
-    cursor = data?.next_cursor;
-    if (!cursor) break;
-  }
-  return out;
 }
 
 // Cache database -> canonical parent page id so we can ignore linked database views.

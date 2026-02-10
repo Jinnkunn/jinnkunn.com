@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 
-function dashify32(id32: string): string {
-  const s = id32.replace(/-/g, "").toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(s)) return "";
-  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
-}
+import { dashify32 } from "@/lib/shared/route-utils.mjs";
 
 type NotionBlock = {
   type?: string;

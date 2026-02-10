@@ -4,7 +4,9 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
+import { notionRequest } from "@/lib/notion/api.mjs";
 import { getRoutesManifest } from "@/lib/routes-manifest";
+import { dashify32 } from "@/lib/shared/route-utils.mjs";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
 
@@ -54,12 +56,6 @@ function safeDir(filePath: string): { exists: boolean; mtimeMs?: number; size?: 
   }
 }
 
-function dashify32(id32: string): string {
-  const s = String(id32 || "").replace(/-/g, "").toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(s)) return "";
-  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
-}
-
 function isRecord(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
@@ -71,17 +67,7 @@ async function fetchNotionPageMeta(
   if (!token) return null;
   const dashed = dashify32(pageId32);
   if (!dashed) return null;
-
-  const res = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Notion-Version": process.env.NOTION_VERSION || "2022-06-28",
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-
-  const data = (await res.json().catch(() => null)) as unknown;
+  const data = (await notionRequest(`pages/${dashed}`, { maxRetries: 2 }).catch(() => null)) as unknown;
   if (!isRecord(data)) return null;
 
   const lastEdited = String(data.last_edited_time || "").trim();

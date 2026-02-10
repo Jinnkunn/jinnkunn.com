@@ -1,6 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
+import { compactId, slugify } from "@/lib/shared/route-utils.mjs";
+import {
+  getPropCheckbox,
+  getPropNumber,
+  getPropString,
+  listBlockChildren,
+  notionRequest,
+  queryDatabase,
+} from "@/lib/notion/api.mjs";
 
 export const runtime = "nodejs";
 
@@ -19,94 +28,10 @@ async function requireAdmin(req: NextRequest) {
   return { ok: true as const };
 }
 
-function compactId(idOrUrl: string): string {
-  const s = String(idOrUrl || "").trim();
-  const m =
-    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
-    s.match(/[0-9a-f]{32}/i);
-  if (!m) return "";
-  return m[0].replace(/-/g, "").toLowerCase();
-}
-
-function slugify(input: string): string {
-  return String(input || "")
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "");
-}
-
 function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
 
-const NOTION_API = "https://api.notion.com/v1";
-const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
-
-async function sleep(ms: number) {
-  await new Promise((r) => setTimeout(r, ms));
-}
-
-async function notionRequest(
-  pathname: string,
-  opts: { method?: string; body?: unknown; searchParams?: Record<string, string> } = {},
-) {
-  const token = (process.env.NOTION_TOKEN || "").trim();
-  if (!token) throw new Error("Missing NOTION_TOKEN");
-
-  const url = new URL(`${NOTION_API}/${pathname}`);
-  if (opts.searchParams) {
-    for (const [k, v] of Object.entries(opts.searchParams)) url.searchParams.set(k, v);
-  }
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Notion-Version": NOTION_VERSION,
-  };
-  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-
-  let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, {
-      method: opts.method || "GET",
-      headers,
-      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-    });
-    const text = await res.text();
-    let json: unknown = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      // ignore
-    }
-    if (res.ok) return json;
-    if (res.status === 429 || res.status >= 500) {
-      lastErr = new Error(`Upstream API error ${res.status}: ${text.slice(0, 200)}`);
-      await sleep(250 * Math.pow(2, attempt));
-      continue;
-    }
-    throw new Error(`Upstream API error ${res.status}: ${text.slice(0, 400)}`);
-  }
-  throw lastErr ?? new Error("Upstream API request failed");
-}
-
-async function listBlockChildren(blockId: string): Promise<any[]> {
-  const out: any[] = [];
-  let cursor: string | undefined = undefined;
-  for (;;) {
-    const data: any = await notionRequest(`blocks/${blockId}/children`, {
-      searchParams: cursor ? { start_cursor: cursor, page_size: "100" } : { page_size: "100" },
-    });
-    const results = Array.isArray(data?.results) ? data.results : [];
-    out.push(...results);
-    if (!data?.has_more) break;
-    cursor = data?.next_cursor;
-    if (!cursor) break;
-  }
-  return out;
-}
 
 async function findChildDatabases(blockId: string, maxDepth = 6): Promise<Array<{ id: string; title: string }>> {
   const out: Array<{ id: string; title: string }> = [];
@@ -149,48 +74,6 @@ async function ensureSiteSettingsDbSchema(databaseId: string) {
   await notionRequest(`databases/${id}`, { method: "PATCH", body: { properties: need } });
 }
 
-async function queryDatabase(databaseId: string) {
-  const out: any[] = [];
-  let cursor: string | undefined = undefined;
-  for (;;) {
-    const data: any = await notionRequest(`databases/${databaseId}/query`, {
-      method: "POST",
-      body: { page_size: 100, start_cursor: cursor },
-    });
-    const results = Array.isArray(data?.results) ? data.results : [];
-    out.push(...results);
-    if (!data?.has_more) break;
-    cursor = data?.next_cursor;
-    if (!cursor) break;
-  }
-  return out;
-}
-
-function getPropString(page: any, name: string): string {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  const p = props[name];
-  if (!p || typeof p !== "object") return "";
-  if (p.type === "title") return (p.title ?? []).map((x: any) => x?.plain_text ?? "").join("").trim();
-  if (p.type === "rich_text") return (p.rich_text ?? []).map((x: any) => x?.plain_text ?? "").join("").trim();
-  if (p.type === "select") return String(p.select?.name ?? "").trim();
-  return "";
-}
-
-function getPropNumber(page: any, name: string): number | null {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  const p = props[name];
-  if (!p || typeof p !== "object") return null;
-  if (p.type !== "number") return null;
-  return typeof p.number === "number" ? p.number : null;
-}
-
-function getPropCheckbox(page: any, name: string): boolean | null {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  const p = props[name];
-  if (!p || typeof p !== "object") return null;
-  if (p.type !== "checkbox") return null;
-  return typeof p.checkbox === "boolean" ? p.checkbox : null;
-}
 
 function richText(content: string) {
   const c = String(content ?? "").trim();

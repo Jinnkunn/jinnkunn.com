@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
 
 function normalizeQuery(q: string): string {
   return String(q || "").trim().toLowerCase();
@@ -175,23 +176,6 @@ function RouteKindIcon({
       <path d="M14 3v4a2 2 0 0 0 2 2h4" />
     </svg>
   );
-}
-
-function normalizeRoutePath(p: string): string {
-  const raw = String(p || "").trim();
-  if (!raw) return "";
-  let out = raw.startsWith("/") ? raw : `/${raw}`;
-  out = out.replace(/\/+$/g, "");
-  return out || "/";
-}
-
-function compactId(idOrUrl: string): string {
-  const s = String(idOrUrl || "").trim();
-  const m =
-    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
-    s.match(/[0-9a-f]{32}/i);
-  if (!m) return "";
-  return m[0].replace(/-/g, "").toLowerCase();
 }
 
 function buildTree(

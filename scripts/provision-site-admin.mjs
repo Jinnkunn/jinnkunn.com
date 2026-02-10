@@ -13,8 +13,8 @@
  * - NOTION_VERSION (default: 2022-06-28)
  */
 
-const NOTION_API = "https://api.notion.com/v1";
-const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
+import { notionRequest, listBlockChildren } from "../lib/notion/api.mjs";
+import { compactId } from "../lib/shared/route-utils.mjs";
 
 const DEFAULT_CONFIG = {
   siteName: "Jinkun Chen.",
@@ -53,15 +53,6 @@ const DEFAULT_CONFIG = {
   },
 };
 
-function compactId(idOrUrl) {
-  const s = String(idOrUrl || "").trim();
-  const m =
-    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
-    s.match(/[0-9a-f]{32}/i);
-  if (!m) return "";
-  return m[0].replace(/-/g, "").toLowerCase();
-}
-
 function isObject(x) {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
@@ -88,60 +79,6 @@ function richTextLink(label, url) {
   const u = String(url ?? "").trim();
   if (!l || !u) return richText(l);
   return [{ type: "text", text: { content: l, link: { url: u } } }];
-}
-
-async function notionRequest(pathname, { method = "GET", body, searchParams } = {}) {
-  const token = process.env.NOTION_TOKEN?.trim() ?? "";
-  if (!token) throw new Error("Missing NOTION_TOKEN");
-
-  const url = new URL(`${NOTION_API}/${pathname}`);
-  if (searchParams) {
-    for (const [k, v] of Object.entries(searchParams)) {
-      if (v === undefined || v === null || v === "") continue;
-      url.searchParams.set(k, String(v));
-    }
-  }
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Notion-Version": NOTION_VERSION,
-  };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    // ignore
-  }
-  if (!res.ok) {
-    throw new Error(
-      `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 400)}`,
-    );
-  }
-  return json;
-}
-
-async function listBlockChildren(blockId) {
-  const out = [];
-  let cursor = undefined;
-  for (;;) {
-    const data = await notionRequest(`blocks/${blockId}/children`, {
-      searchParams: { page_size: 100, start_cursor: cursor },
-    });
-    const results = Array.isArray(data?.results) ? data.results : [];
-    out.push(...results);
-    if (!data?.has_more) break;
-    cursor = data?.next_cursor;
-    if (!cursor) break;
-  }
-  return out;
 }
 
 async function appendBlocks(parentBlockId, children) {

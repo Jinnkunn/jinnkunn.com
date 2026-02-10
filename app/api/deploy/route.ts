@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
+import { notionRequest } from "@/lib/notion/api.mjs";
+import { compactId } from "@/lib/shared/route-utils.mjs";
 
-const NOTION_API = "https://api.notion.com/v1";
+export const runtime = "nodejs";
 
 type NotionListResponse<T> = {
   results?: T[];
@@ -29,15 +30,6 @@ function json(
   });
 }
 
-function compactNotionId(idOrUrl: string): string {
-  const s = String(idOrUrl || "").trim();
-  const m =
-    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
-    s.match(/[0-9a-f]{32}/i);
-  if (!m) return "";
-  return m[0].replace(/-/g, "").toLowerCase();
-}
-
 function richText(content: string) {
   const c = String(content ?? "").trim();
   if (!c) return [];
@@ -54,55 +46,6 @@ function sanitizeUrlForLogs(u: string): string {
   }
 }
 
-async function notionRequest(
-  pathname: string,
-  {
-    method = "GET",
-    body,
-    searchParams,
-  }: {
-    method?: string;
-    body?: unknown;
-    searchParams?: Record<string, string | number | undefined>;
-  } = {},
-): Promise<unknown> {
-  const token = process.env.NOTION_TOKEN?.trim() ?? "";
-  const notionVersion = process.env.NOTION_VERSION?.trim() ?? "2022-06-28";
-  if (!token) throw new Error("Missing NOTION_TOKEN");
-
-  const url = new URL(`${NOTION_API}/${pathname}`);
-  if (searchParams) {
-    for (const [k, v] of Object.entries(searchParams)) {
-      if (v === undefined) continue;
-      url.searchParams.set(k, String(v));
-    }
-  }
-
-  const res = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Notion-Version": notionVersion,
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-
-  const text = await res.text().catch(() => "");
-  let json: unknown = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    // ignore
-  }
-  if (!res.ok) {
-    throw new Error(
-      `Upstream API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
-    );
-  }
-  return json;
-}
-
 async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
   let cursor: string | undefined = undefined;
   for (let page = 0; page < 6; page++) {
@@ -114,7 +57,7 @@ async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
     for (const b of results) {
       if (b?.type !== "child_database") continue;
       const title = String(b?.child_database?.title ?? "").trim().toLowerCase();
-      if (title === "deploy logs") return compactNotionId(b.id);
+      if (title === "deploy logs") return compactId(b.id);
     }
 
     if (!data?.has_more) break;
@@ -131,7 +74,7 @@ async function logDeployToNotion(opts: {
   message: string;
   triggeredAtIso: string;
 }) {
-  const adminPageId = compactNotionId(
+  const adminPageId = compactId(
     process.env.NOTION_SITE_ADMIN_PAGE_ID?.trim() ?? "",
   );
   if (!adminPageId) return;
