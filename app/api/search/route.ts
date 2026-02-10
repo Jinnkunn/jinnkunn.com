@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
 import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
+import { scoreSearchResult } from "@/lib/search/rank.mjs";
 import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group.mjs";
 import { tokenizeQuery } from "@/lib/shared/text-utils";
 
@@ -270,33 +271,17 @@ export async function GET(req: Request) {
         const titlePos = bestPos(safeLower(it.title), terms);
         const routePos = bestPos(safeLower(canon), terms);
         const textPos = bestPos(safeLower(it.text), terms);
-        const titleHay = safeLower(it.title);
-        const routeHay = safeLower(canon);
-        const textHay = safeLower(it.text);
-        const titleHasPhrase = ql.length >= 3 && titleHay.includes(ql);
-        const routeHasPhrase = ql.length >= 3 && routeHay.includes(ql);
-        const textHasPhrase = ql.length >= 3 && textHay.includes(ql);
-        const titleHasAllTerms = terms.length > 1 && terms.every((t) => titleHay.includes(t));
-        const textHasAllTerms = terms.length > 1 && terms.every((t) => textHay.includes(t));
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
-        const textLenPenalty = Math.min(900, Math.floor(String(it.text || "").length / 140));
         const navBoost = byRoute.get(normalizePath(it.routePath))?.navGroup ? 180 : 0;
-        // Rank: title > route > content. Earlier match positions are better.
         const score =
-          (titlePos === -1 ? 5000 : titlePos) +
-          (routePos === -1 ? 8000 : routePos + 50) +
-          (textPos === -1 ? 12000 : textPos + 200) +
-          homePenalty +
-          textLenPenalty -
-          // Phrase matches are strong signals.
-          (titleHasPhrase ? 2200 : 0) -
-          (textHasPhrase ? 700 : 0) -
-          (routeHasPhrase ? 400 : 0) -
-          // All-terms matches should beat single-term matches.
-          (titleHasAllTerms ? 900 : 0) -
-          (textHasAllTerms ? 300 : 0) -
-          navBoost;
+          scoreSearchResult({
+            title: it.title,
+            route: canon,
+            text: it.text || "",
+            query: q,
+            navBoost,
+          }) + homePenalty;
         return { it, score, canon, typeKey };
       })
       .sort(

@@ -155,6 +155,33 @@ export default function SiteAdminStatusClient() {
     return { ok, reason: parts.join("; ") };
   }, [payload]);
 
+  const generated = useMemo(() => {
+    const syncedIso = payload?.content?.syncMeta?.syncedAt || "";
+    const synced = isoMs(syncedIso);
+    const files = payload?.files;
+    if (!files) return { ok: true, mtimeMs: NaN, reason: "" };
+
+    const mtimes = [
+      files.siteConfig?.mtimeMs,
+      files.routesManifest?.mtimeMs,
+      files.protectedRoutes?.mtimeMs,
+      files.syncMeta?.mtimeMs,
+      files.searchIndex?.mtimeMs,
+      files.routesJson?.mtimeMs,
+    ].filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+
+    const maxMtime = mtimes.length ? Math.max(...mtimes) : NaN;
+    if (!Number.isFinite(maxMtime)) return { ok: true, mtimeMs: NaN, reason: "" };
+
+    // If sync meta exists, generated files should be written around the same time.
+    const toleranceMs = 2 * 60_000;
+    if (!Number.isFinite(synced)) return { ok: true, mtimeMs: maxMtime, reason: "" };
+
+    const ok = Math.abs(maxMtime - synced) <= toleranceMs;
+    const reason = ok ? "" : "Generated files timestamp differs from Sync Meta";
+    return { ok, mtimeMs: maxMtime, reason };
+  }, [payload]);
+
   return (
     <section className="site-admin-status">
       <div className="site-admin-status__head">
@@ -258,6 +285,22 @@ export default function SiteAdminStatusClient() {
                   {!stale.ok && stale.reason ? (
                     <span className="site-admin-status__hint"> {stale.reason}</span>
                   ) : null}
+                </dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Generated</dt>
+                <dd>
+                  {Number.isFinite(generated.mtimeMs) ? (
+                    <>
+                      <code className="code">{fmtWhen(generated.mtimeMs)}</code>{" "}
+                      <Badge ok={generated.ok}>{generated.ok ? "ok" : "mismatch"}</Badge>
+                      {!generated.ok && generated.reason ? (
+                        <span className="site-admin-status__hint"> {generated.reason}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span>—</span>
+                  )}
                 </dd>
               </div>
               <div className="site-admin-kv__row">
