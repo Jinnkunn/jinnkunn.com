@@ -40,6 +40,17 @@ import {
   loadIncludedPagesFromAdminDatabases,
   loadProtectedRoutesFromAdminDatabases,
 } from "./notion-sync/site-admin-dbs.mjs";
+import {
+  assignRoutes,
+  canonicalizePublicHref,
+  flattenPages,
+  pickHomePageId,
+  routePathToHtmlRel,
+} from "./notion-sync/route-model.mjs";
+import {
+  buildSearchTextFromLines,
+  extractPlainTextFromBlocks,
+} from "./notion-sync/search-text.mjs";
 
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
 
@@ -369,60 +380,6 @@ async function buildPageTree(
   return out;
 }
 
-function pickHomePageId(nodes, cfg) {
-  const configured = compactId(cfg?.content?.homePageId);
-  if (configured) return configured;
-  const pageNodes = nodes.filter((n) => n.kind !== "database");
-  const byTitle = pageNodes.find((n) => {
-    const s = slugify(n.title);
-    return s === "home" || s === "index";
-  });
-  if (byTitle) return byTitle.id;
-  return pageNodes[0]?.id ?? "";
-}
-
-function assignRoutes(nodes, { homePageId, routeOverrides }, parentSegments = []) {
-  const used = new Set();
-
-  for (const n of nodes) {
-    const desired = slugify(n.title) || `page-${n.id.slice(0, 8)}`;
-
-    if (parentSegments.length === 0 && n.id === homePageId) {
-      n.routeSegments = [];
-      n.routePath = "/";
-    } else if (routeOverrides && routeOverrides.has(n.id)) {
-      const routePath = normalizeRoutePath(routeOverrides.get(n.id));
-      n.routePath = routePath;
-      n.routeSegments =
-        routePath === "/" ? [] : routePath.split("/").filter(Boolean);
-    } else {
-      let seg = desired;
-      if (used.has(seg)) seg = `${seg}-${n.id.slice(0, 6)}`;
-      used.add(seg);
-      n.routeSegments = [...parentSegments, seg];
-      n.routePath = `/${n.routeSegments.join("/")}`;
-    }
-
-    const nextParentSegments = n.routePath === "/" ? [] : n.routeSegments;
-    assignRoutes(n.children, { homePageId, routeOverrides }, nextParentSegments);
-  }
-}
-
-function flattenPages(nodes) {
-  const out = [];
-  const walk = (n) => {
-    out.push(n);
-    for (const c of n.children) walk(c);
-  };
-  for (const n of nodes) walk(n);
-  return out;
-}
-
-function routePathToHtmlRel(routePath) {
-  if (routePath === "/") return "index.html";
-  return routePath.replace(/^\/+/, "") + ".html";
-}
-
 function pickCalloutBgClass(color) {
   const c = String(color || "default").replace(/_background$/, "");
   if (c === "default") return "bg-gray-light";
@@ -500,86 +457,6 @@ function embedSpinnerSvg() {
 
 function richTextPlain(richText) {
   return (richText || []).map((x) => x?.plain_text ?? "").join("");
-}
-
-function extractPlainTextFromBlocks(blocks, out = []) {
-  const arr = Array.isArray(blocks) ? blocks : [];
-
-  const push = (s) => {
-    const t = String(s || "").replace(/\s+/g, " ").trim();
-    if (t) out.push(t);
-  };
-
-  for (const b of arr) {
-    if (!b || !b.type) continue;
-    const t = b.type;
-    const data = b[t];
-
-    // Common Notion pattern: most text blocks have `rich_text`.
-    if (data && Array.isArray(data.rich_text)) push(richTextPlain(data.rich_text));
-
-    // Headings use `rich_text` too, but keep explicit for clarity.
-    if (t === "heading_1") push(richTextPlain(b.heading_1?.rich_text));
-    if (t === "heading_2") push(richTextPlain(b.heading_2?.rich_text));
-    if (t === "heading_3") push(richTextPlain(b.heading_3?.rich_text));
-
-    // Code blocks.
-    if (t === "code") push(richTextPlain(b.code?.rich_text));
-
-    // Callouts include both icon and rich text; icon isn't searchable.
-    if (t === "callout") push(richTextPlain(b.callout?.rich_text));
-
-    // Bookmark/caption text can be useful.
-    if (t === "bookmark") {
-      push(richTextPlain(b.bookmark?.caption));
-      push(String(b.bookmark?.url || ""));
-    }
-
-    // Table rows have cells; keep as plain text.
-    if (t === "table_row") {
-      const cells = Array.isArray(b.table_row?.cells) ? b.table_row.cells : [];
-      for (const cell of cells) push(richTextPlain(cell));
-    }
-
-    // Recurse into hydrated children (toggles, lists, columns, etc.).
-    if (Array.isArray(b.__children) && b.__children.length) {
-      extractPlainTextFromBlocks(b.__children, out);
-    }
-  }
-
-  return out;
-}
-
-function buildSearchTextFromLines(lines) {
-  const arr = Array.isArray(lines) ? lines : [];
-  const out = [];
-  const seen = new Set();
-
-  // Keep the index deterministic + small:
-  // - de-dupe identical lines (common with headings/years in Notion exports)
-  // - cap number of lines and total characters
-  // NOTE: This is intentionally conservative: it keeps search "good enough"
-  // while ensuring `search-index.json` stays small and fast to parse on Vercel.
-  const maxLines = 320;
-  const maxChars = 8_000;
-
-  let total = 0;
-  for (const s0 of arr) {
-    const s = String(s0 || "").replace(/\s+/g, " ").trim();
-    if (!s) continue;
-    const key = s.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    out.push(s);
-    total += s.length + 1;
-    if (out.length >= maxLines) break;
-    if (total >= maxChars) break;
-  }
-
-  let joined = out.join("\n").trim();
-  if (joined.length > maxChars) joined = joined.slice(0, maxChars).trim();
-  return joined;
 }
 
 function renderRichText(richText, ctx) {
@@ -1227,24 +1104,6 @@ function renderCollectionListItem(item, { listKey }) {
   )}" class="notion-link notion-collection-list__item-anchor"></a><div class="notion-property notion-property__title notion-semantic-string"><div class="notion-property__title__icon-wrapper">${pageIconSvg()}</div>${escapeHtml(
     item.title,
   )}</div><div class="notion-collection-list__item-content">${dateHtml}</div></div>`;
-}
-
-function canonicalizePublicHref(href) {
-  const p = String(href || "");
-  if (!p.startsWith("/")) return p;
-
-  // Canonicalize blog collection paths to avoid redirect hops:
-  // - /blog/list/<slug> -> /blog/<slug>
-  // - /list/<slug> -> /blog/<slug>
-  if (p === "/blog/list" || p.startsWith("/blog/list/")) {
-    const rest = p.replace(/^\/blog\/list\/?/, "");
-    return rest ? `/blog/${rest}` : "/blog";
-  }
-  if (p === "/list" || p.startsWith("/list/")) {
-    const rest = p.replace(/^\/list\/?/, "");
-    return rest ? `/blog/${rest}` : "/blog";
-  }
-  return p;
 }
 
 function renderDatabaseMain(db, cfg, ctx) {
