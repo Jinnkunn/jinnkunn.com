@@ -1,8 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy.mjs";
+import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -87,22 +88,20 @@ async function tryReadLocalBlogRss(): Promise<string | null> {
 }
 
 export async function getBlogPostSlugs(): Promise<string[]> {
-  const dirs = [
-    path.join(process.cwd(), "content", "generated", "raw", "blog", "list"),
-    path.join(process.cwd(), "content", "raw", "blog", "list"),
-  ];
-
   const out = new Set<string>();
-  for (const dir of dirs) {
-    try {
-      const files = await readdir(dir);
-      for (const f of files) {
-        if (!f.endsWith(".html")) continue;
-        const slug = f.slice(0, -".html".length);
-        if (slug) out.add(slug);
-      }
-    } catch {
-      // dir doesn't exist; skip
+
+  // Preferred source structure is `blog/list/<slug>`; some workspaces may also expose `list/<slug>`.
+  const rels = listRawHtmlRelPaths();
+  for (const rel of rels) {
+    if (rel.startsWith("blog/list/")) {
+      const slug = rel.slice("blog/list/".length);
+      if (slug && !slug.includes("/")) out.add(slug);
+      continue;
+    }
+    if (rel.startsWith("list/")) {
+      const slug = rel.slice("list/".length);
+      if (slug && !slug.includes("/")) out.add(slug);
+      continue;
     }
   }
 
@@ -134,7 +133,12 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
         // Source of truth stays under `blog/list/` (Notion structure); route is prettier.
         main = await loadRawMainHtml(src.replace(/^\/+/, ""));
       } catch {
-        continue;
+        // Some workspaces may store the backing DB under `/list/<slug>`.
+        try {
+          main = await loadRawMainHtml(`list/${slug}`);
+        } catch {
+          continue;
+        }
       }
       const meta = parseBlogMetaFromMain(main);
       items.push({
