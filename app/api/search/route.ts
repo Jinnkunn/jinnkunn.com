@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { NextResponse } from "next/server";
 
+import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
+
 export const runtime = "nodejs";
 
 type ManifestItem = {
@@ -149,15 +151,6 @@ function normalizePath(p: string): string {
   if (!s) return "/";
   if (s === "/") return "/";
   return s.endsWith("/") ? s.slice(0, -1) : s;
-}
-
-function canonicalizePublicRoute(routePath: string): string {
-  const p = normalizePath(routePath);
-  if (p === "/blog/list") return "/blog";
-  if (p.startsWith("/blog/list/")) return p.replace(/^\/blog\/list\//, "/blog/");
-  if (p === "/list") return "/blog";
-  if (p.startsWith("/list/")) return p.replace(/^\/list\//, "/blog/");
-  return p;
 }
 
 function buildBreadcrumb(

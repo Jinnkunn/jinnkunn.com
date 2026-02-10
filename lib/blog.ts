@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadRawMainHtml } from "@/lib/load-raw-main";
+import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy.mjs";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -125,12 +126,13 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
   for (const pathname of paths) {
     // Canonical blog post route: /blog/<slug>
     if (pathname.startsWith("/blog/") && !pathname.startsWith("/blog/list/")) {
+      const src = blogSourceRouteForPublicPath(pathname);
       const slug = pathname.split("/").filter(Boolean)[1] || "";
-      if (!slug) continue;
+      if (!slug || !src) continue;
       let main: string;
       try {
         // Source of truth stays under `blog/list/` (Notion structure); route is prettier.
-        main = await loadRawMainHtml(`blog/list/${slug}`);
+        main = await loadRawMainHtml(src.replace(/^\/+/, ""));
       } catch {
         continue;
       }

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
+
 export const runtime = "nodejs";
 
 function getOriginFromRequest(req: Request): string {
@@ -27,6 +29,8 @@ function escapeXml(s: string): string {
 }
 
 function normalizeRoutePath(routePath: string): string {
+  // Keep it local to sitemap generation: avoid importing helpers that might
+  // change semantics for filesystem-derived routes (e.g. "index").
   let p = (routePath ?? "").trim();
   if (!p) return "/";
   if (!p.startsWith("/")) p = `/${p}`;
@@ -85,20 +89,12 @@ function collectRoutesFromRawRoots(): string[] {
   }
 
   // Canonicalize: blog posts live at /blog/<slug>, but source files may be under
-  // /blog/list/<slug> or /list/<slug> depending on Notion structure.
+  // /blog/list/<slug> or /list/<slug>.
   const canon = new Set<string>();
   for (const r of out) {
-    if (r === "/blog/list") continue;
-    if (r === "/list") continue;
-    if (r.startsWith("/blog/list/")) {
-      canon.add(normalizeRoutePath(`/blog/${r.replace(/^\/blog\/list\//, "")}`));
-      continue;
-    }
-    if (r.startsWith("/list/")) {
-      canon.add(normalizeRoutePath(`/blog/${r.replace(/^\/list\//, "")}`));
-      continue;
-    }
-    canon.add(r);
+    const c = canonicalizePublicRoute(r);
+    if (c === "/blog/list" || c === "/list") continue;
+    canon.add(normalizeRoutePath(c));
   }
 
   // Include canonical /blog even if source content lives under /blog/list.
