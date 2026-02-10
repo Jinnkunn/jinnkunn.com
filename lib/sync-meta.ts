@@ -1,6 +1,4 @@
-import { cache } from "react";
-
-import { findContentFile, readJsonFile } from "@/lib/server/content-files";
+import { readContentJson } from "@/lib/server/content-json";
 
 export type SyncMeta = {
   syncedAt: string;
@@ -43,8 +41,8 @@ function normalizeSyncMeta(input: unknown): SyncMeta | null {
   };
 }
 
-export const getSyncMeta = cache((): SyncMeta | null => {
-  const file = findContentFile("sync-meta.json");
-  if (!file) return null;
-  return normalizeSyncMeta(readJsonFile(file));
-});
+export function getSyncMeta(): SyncMeta | null {
+  const parsed = readContentJson("sync-meta.json");
+  if (!parsed) return null;
+  return normalizeSyncMeta(parsed);
+}

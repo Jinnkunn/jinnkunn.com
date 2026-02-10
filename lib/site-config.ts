@@ -1,6 +1,4 @@
-import { cache } from "react";
-
-import { findContentFile, readJsonFile } from "@/lib/server/content-files";
+import { readContentJson } from "@/lib/server/content-json";
 import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config.mjs";
 
 export type NavItem = {
@@ -86,9 +84,8 @@ function normalizeConfig(input: unknown): SiteConfig {
   return cfg;
 }
 
-export const getSiteConfig = cache((): SiteConfig => {
-  const file = findContentFile("site-config.json");
-  if (!file) return DEFAULT_CONFIG;
-  const parsed = readJsonFile(file);
+export function getSiteConfig(): SiteConfig {
+  const parsed = readContentJson("site-config.json");
+  if (!parsed) return DEFAULT_CONFIG;
   return normalizeConfig(parsed);
-});
+}

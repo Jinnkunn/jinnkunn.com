@@ -1,8 +1,6 @@
 import "server-only";
 
-import fs from "node:fs";
-
-import { findContentFile, readJsonFile } from "@/lib/server/content-files";
+import { readContentJsonWithStat } from "@/lib/server/content-json";
 
 export type ProtectedRoute = {
   id: string;
@@ -13,8 +11,6 @@ export type ProtectedRoute = {
   mode: "exact" | "prefix";
   token: string;
 };
-
-let __cache: { file: string; mtimeMs: number; routes: ProtectedRoute[] } | null = null;
 
 function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
@@ -37,22 +33,11 @@ function normalizeRoute(x: unknown): ProtectedRoute | null {
 }
 
 export function getProtectedRoutes(): ProtectedRoute[] {
-  const file = findContentFile("protected-routes.json");
-  if (!file) return [];
+  const data = readContentJsonWithStat("protected-routes.json");
+  if (!data) return [];
 
-  try {
-    const st = fs.statSync(file);
-    if (__cache && __cache.file === file && __cache.mtimeMs === st.mtimeMs) return __cache.routes;
-
-    const parsed = readJsonFile(file);
-    const routes = Array.isArray(parsed)
-      ? parsed.map(normalizeRoute).filter((x): x is ProtectedRoute => Boolean(x))
-      : [];
-
-    __cache = { file, mtimeMs: st.mtimeMs, routes };
-    return routes;
-  } catch {
-    return [];
-  }
+  const parsed = data.parsed;
+  return Array.isArray(parsed)
+    ? parsed.map(normalizeRoute).filter((x): x is ProtectedRoute => Boolean(x))
+    : [];
 }
-

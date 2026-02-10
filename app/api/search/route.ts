@@ -1,40 +1,17 @@
-import fs from "node:fs";
-
 import { NextResponse } from "next/server";
 
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
-import { findContentFile } from "@/lib/server/content-files";
+import { getSearchIndex } from "@/lib/search-index";
+import { getRoutesManifest } from "@/lib/routes-manifest";
 import { tokenizeQuery } from "@/lib/shared/text-utils";
 
 export const runtime = "nodejs";
 
-type ManifestItem = {
-  id: string;
-  title: string;
-  kind: string;
-  routePath: string;
-  navGroup?: string;
-  overridden?: boolean;
-  parentId?: string;
-};
-
-type SearchIndexItem = {
-  id: string;
-  title: string;
-  kind: string;
-  routePath: string;
-  text: string;
-};
+type ManifestItem = ReturnType<typeof getRoutesManifest>[number];
 
 type TypeKey = "pages" | "blog" | "databases";
 
-type CachedManifest = {
-  mtimeMs: number;
-  items: ManifestItem[];
-};
-
-let __cache: CachedManifest | null = null;
-let __searchIndexCache: { mtimeMs: number; items: SearchIndexItem[] } | null = null;
+type SearchIndexItem = ReturnType<typeof getSearchIndex>[number];
 
 function json(body: unknown, init?: { status?: number }) {
   return NextResponse.json(body, {
@@ -49,70 +26,12 @@ function safeLower(s: unknown): string {
   return String(s ?? "").toLowerCase();
 }
 
-function isObject(x: unknown): x is Record<string, unknown> {
-  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
-}
-
 function readSearchIndex(): SearchIndexItem[] {
-  const file = findContentFile("search-index.json");
-  if (!file) return [];
-
-  const st = fs.statSync(file);
-  if (__searchIndexCache && __searchIndexCache.mtimeMs === st.mtimeMs) return __searchIndexCache.items;
-
-  const raw = fs.readFileSync(file, "utf8");
-  const parsed = JSON.parse(raw) as unknown;
-  const items: SearchIndexItem[] = Array.isArray(parsed)
-    ? parsed
-        .map((x): SearchIndexItem | null => {
-          if (!isObject(x)) return null;
-          const it: SearchIndexItem = {
-            id: String(x.id || ""),
-            title: String(x.title || ""),
-            kind: String(x.kind || ""),
-            routePath: String(x.routePath || ""),
-            text: String(x.text || ""),
-          };
-          if (!it.routePath) return null;
-          return it;
-        })
-        .filter((x): x is SearchIndexItem => Boolean(x))
-    : [];
-
-  __searchIndexCache = { mtimeMs: st.mtimeMs, items };
-  return items;
+  return getSearchIndex();
 }
 
 function readManifest(): ManifestItem[] {
-  const file = findContentFile("routes-manifest.json");
-  if (!file) return [];
-
-  const st = fs.statSync(file);
-  if (__cache && __cache.mtimeMs === st.mtimeMs) return __cache.items;
-
-  const raw = fs.readFileSync(file, "utf8");
-  const parsed = JSON.parse(raw) as unknown;
-  const items: ManifestItem[] = Array.isArray(parsed)
-    ? parsed
-        .map((x): ManifestItem | null => {
-          if (!isObject(x)) return null;
-          const it: ManifestItem = {
-            id: String(x.id || ""),
-            title: String(x.title || ""),
-            kind: String(x.kind || ""),
-            routePath: String(x.routePath || ""),
-            navGroup: String(x.navGroup || ""),
-            overridden: Boolean(x.overridden),
-            parentId: String(x.parentId || ""),
-          };
-          if (!it.routePath) return null;
-          return it;
-        })
-        .filter((x): x is ManifestItem => Boolean(x))
-    : [];
-
-  __cache = { mtimeMs: st.mtimeMs, items };
-  return items;
+  return getRoutesManifest();
 }
 
 function normalizeQuery(q: string): string {

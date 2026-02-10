@@ -1,6 +1,4 @@
-import { cache } from "react";
-
-import { findContentFile, readJsonFile } from "@/lib/server/content-files";
+import { readContentJson } from "@/lib/server/content-json";
 
 export type RouteManifestItem = {
   id: string;
@@ -13,10 +11,8 @@ export type RouteManifestItem = {
   overridden: boolean;
 };
 
-export const getRoutesManifest = cache((): RouteManifestItem[] => {
-  const file = findContentFile("routes-manifest.json");
-  if (!file) return [];
-  const parsed = readJsonFile(file);
+export function getRoutesManifest(): RouteManifestItem[] {
+  const parsed = readContentJson("routes-manifest.json");
   if (!Array.isArray(parsed)) return [];
   return parsed
     .map((x) => {
@@ -34,4 +30,4 @@ export const getRoutesManifest = cache((): RouteManifestItem[] => {
       } satisfies RouteManifestItem;
     })
     .filter((x): x is RouteManifestItem => Boolean(x?.id && x?.routePath));
-});
+}
