@@ -44,12 +44,6 @@ export function readJsonFile(filePath: string): unknown | null {
   }
 }
 
-export function readContentJson(relPath: string): unknown | null {
-  const file = findContentFile(relPath);
-  if (!file) return null;
-  return readJsonFile(file);
-}
-
 function listHtmlFilesRecSync(rootDir: string): string[] {
   const out: string[] = [];
   const stack: string[] = [rootDir];

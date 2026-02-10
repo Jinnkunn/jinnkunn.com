@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -6,6 +5,7 @@ import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-
 import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { notionRequest } from "@/lib/notion/api.mjs";
 import { getRoutesManifest } from "@/lib/routes-manifest";
+import { getSearchIndex } from "@/lib/search-index";
 import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import { dashify32 } from "@/lib/shared/route-utils.mjs";
@@ -40,16 +40,6 @@ function pickCommitSha(): string {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
-}
-
-function safeJsonArrayLength(filePath: string): number | null {
-  try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.length : null;
-  } catch {
-    return null;
-  }
 }
 
 async function fetchNotionPageMeta(
@@ -105,8 +95,7 @@ export async function GET(req: NextRequest) {
     routesJson: safeStat(path.join(generatedDir, "routes.json")),
     notionSyncCache: safeDir(getNotionSyncCacheDir()),
   };
-  const searchIndexItems =
-    files.searchIndex.exists ? safeJsonArrayLength(path.join(generatedDir, "search-index.json")) : null;
+  const searchIndexItems = files.searchIndex.exists ? getSearchIndex().length : null;
 
   const commitSha = pickCommitSha();
 
