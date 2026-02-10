@@ -8,6 +8,7 @@ import NotionBlockBehavior from "@/components/notion-block-behavior";
 // Next.js v16 no longer reliably applies `head.tsx` link tags in route groups,
 // so we import a tiny CSS shim that @imports the public Super/Notion styles.
 import "./classic.css";
+import "./search.css";
 
 export default function ClassicLayout({
   children,
