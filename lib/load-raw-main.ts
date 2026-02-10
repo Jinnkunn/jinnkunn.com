@@ -2,6 +2,7 @@ import "server-only";
 
 import { readFile } from "node:fs/promises";
 import { resolveRawHtmlFile } from "./server/content-files";
+import { canonicalizeBlogHrefsInHtml } from "@/lib/routes/html-rewrite.mjs";
 
 function rewriteRawHtml(html: string): string {
   // Use local copies for a few key assets so the clone is self-contained.
@@ -47,12 +48,7 @@ function rewriteRawHtml(html: string): string {
   // Canonicalize blog URLs:
   // - Notion structure often nests posts under `/blog/list/<slug>` or `/list/<slug>`
   // - Public routes should always be `/blog/<slug>` (matches original site UX)
-  const blogCanon = breadcrumbFixed
-    .replaceAll('href="/blog/list/', 'href="/blog/')
-    .replaceAll('href="/list/', 'href="/blog/')
-    // A few Notion exports include absolute URLs without quoting.
-    .replaceAll("href=/blog/list/", "href=/blog/")
-    .replaceAll("href=/list/", "href=/blog/");
+  const blogCanon = canonicalizeBlogHrefsInHtml(breadcrumbFixed);
 
   let out = blogCanon;
 
