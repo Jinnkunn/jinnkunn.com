@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
 import { findContentFile } from "@/lib/server/content-files";
+import { tokenizeQuery } from "@/lib/shared/text-utils";
 
 export const runtime = "nodejs";
 
@@ -174,16 +175,6 @@ function isIgnoredPath(routePath: string): boolean {
   if (p === "/auth") return true;
   if (p.startsWith("/site-admin/")) return true; // keep admin out of normal search
   return false;
-}
-
-function tokenizeQuery(q: string): string[] {
-  return String(q || "")
-    .trim()
-    .toLowerCase()
-    .split(/\s+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 6);
 }
 
 function bestPos(hay: string, terms: string[]): number {

@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+import { escapeHtml, tokenizeQuery } from "@/lib/shared/text-utils";
+
 type SearchItem = {
   title: string;
   routePath: string;
@@ -10,25 +12,6 @@ type SearchItem = {
   snippet?: string;
   breadcrumb?: string;
 };
-
-function escapeHtml(s: string): string {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#x27;");
-}
-
-function tokenizeQuery(q: string): string[] {
-  return String(q || "")
-    .trim()
-    .toLowerCase()
-    .split(/\s+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-}
 
 function escapeAndHighlight(raw: string, terms: string[]): string {
   const s = String(raw || "");

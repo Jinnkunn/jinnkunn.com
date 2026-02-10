@@ -1,19 +1,11 @@
 import RawHtml from "@/components/raw-html";
 import { getBlogPostSlugs, parseBlogMetaFromMain } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
+import { escapeHtml } from "@/lib/shared/text-utils";
 import type { Metadata } from "next";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
-
-function escapeHtml(s: string): string {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#x27;");
-}
 
 function extractTitleFromMainHtml(mainHtml: string): string {
   const m = String(mainHtml || "").match(

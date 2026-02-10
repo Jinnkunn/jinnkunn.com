@@ -23,6 +23,7 @@ import katex from "katex";
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
 import { listBlockChildren, notionRequest, queryDatabase } from "../lib/notion/api.mjs";
 import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
+import { escapeHtml } from "../lib/shared/text-utils.mjs";
 
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
 
@@ -105,15 +106,6 @@ function writeFile(filePath, contents) {
 
 function rmDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#x27;");
 }
 
 function isObject(x) {

@@ -2,6 +2,7 @@ import RawHtml from "@/components/raw-html";
 import { getBlogIndex } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { getRoutesManifest } from "@/lib/routes-manifest";
+import { escapeHtml } from "@/lib/shared/text-utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
@@ -26,15 +27,6 @@ async function loadNotionBlogMain(): Promise<string> {
     }
     throw new Error("Missing blog.html");
   }
-}
-
-function escapeHtml(s: string): string {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#x27;");
 }
 
 function findBalancedDivEnd(html: string, startIdx: number): number | null {
