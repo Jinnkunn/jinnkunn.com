@@ -3,67 +3,13 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
-import { escapeHtml, tokenizeQuery } from "@/lib/shared/text-utils";
-
-type SearchItem = {
-  title: string;
-  routePath: string;
-  kind: string;
-  snippet?: string;
-  breadcrumb?: string;
-};
+import { renderSearchResultsHtml, type SearchItem } from "@/lib/client/site-search-render";
 
 type SearchMeta = {
   total: number;
   filteredTotal: number;
   counts: { all: number; pages: number; blog: number; databases: number };
 };
-
-function escapeAndHighlight(raw: string, terms: string[]): string {
-  const s = String(raw || "");
-  if (!s) return "";
-  if (!terms.length) return escapeHtml(s);
-
-  const hay = s.toLowerCase();
-  type Range = { start: number; end: number };
-  const ranges: Range[] = [];
-
-  for (const t of terms) {
-    if (!t) continue;
-    let from = 0;
-    for (;;) {
-      const i = hay.indexOf(t, from);
-      if (i < 0) break;
-      ranges.push({ start: i, end: i + t.length });
-      from = i + Math.max(1, t.length);
-      if (ranges.length > 60) break;
-    }
-    if (ranges.length > 60) break;
-  }
-
-  if (!ranges.length) return escapeHtml(s);
-
-  ranges.sort((a, b) => a.start - b.start || a.end - b.end);
-  const merged: Range[] = [];
-  for (const r of ranges) {
-    const last = merged[merged.length - 1];
-    if (!last || r.start > last.end) {
-      merged.push({ start: r.start, end: r.end });
-      continue;
-    }
-    last.end = Math.max(last.end, r.end);
-  }
-
-  let out = "";
-  let cur = 0;
-  for (const r of merged) {
-    if (r.start > cur) out += escapeHtml(s.slice(cur, r.start));
-    out += `<span class="notion-search__hl">${escapeHtml(s.slice(r.start, r.end))}</span>`;
-    cur = r.end;
-  }
-  if (cur < s.length) out += escapeHtml(s.slice(cur));
-  return out;
-}
 
 function ensureSearch(): {
   root: HTMLElement;
@@ -219,81 +165,7 @@ function renderLoader(list: HTMLElement) {
 
 function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
   if (!items.length) return renderEmpty(list);
-  const terms = tokenizeQuery(query);
-
-  const groupLabelFor = (it: SearchItem): string => {
-    const crumb = String(it.breadcrumb || "").trim();
-    if (crumb) {
-      const parts = crumb.split(" / ").map((s) => s.trim()).filter(Boolean);
-      if (parts.length >= 2) return parts[1]!;
-      if (parts.length === 1) return parts[0]!;
-    }
-    const rp = String(it.routePath || "/");
-    if (rp === "/") return "Home";
-    const seg = rp.split("/").filter(Boolean)[0] || "";
-    if (!seg) return "Home";
-    return seg.charAt(0).toUpperCase() + seg.slice(1);
-  };
-
-  const groups = new Map<string, SearchItem[]>();
-  for (const it of items) {
-    const g = groupLabelFor(it);
-    const arr = groups.get(g) || [];
-    arr.push(it);
-    groups.set(g, arr);
-  }
-
-  const groupOrder: string[] = [];
-  for (const it of items) {
-    const g = groupLabelFor(it);
-    if (!groupOrder.includes(g)) groupOrder.push(g);
-  }
-
-  const renderItem = (it: SearchItem, { last }: { last: boolean }) => {
-    const titleHtml = escapeAndHighlight(it.title || "Untitled", terms);
-    const route = escapeHtml(it.routePath || "/");
-    const kind = escapeHtml(it.kind || "page");
-    const snippetHtml = escapeAndHighlight(it.snippet || "", terms);
-    const crumbRaw = String(it.breadcrumb || "").trim();
-    const crumbHtml = crumbRaw ? escapeHtml(crumbRaw) : "";
-
-    return `
-      <div class="notion-search__result-item-wrapper${last ? " last" : ""}">
-        <a class="notion-search__result-item ${kind}" href="${route}" role="option" aria-selected="false">
-          <div class="notion-search__result-item-content">
-            <div class="notion-search__result-item-title">
-              <span class="notion-semantic-string">${titleHtml}</span>
-            </div>
-            ${
-              snippetHtml
-                ? `<div class="notion-search__result-item-text">${snippetHtml}</div><div class="notion-search__result-item-meta">${crumbHtml || route}</div>`
-                : `<div class="notion-search__result-item-text">${crumbHtml || route}</div>`
-            }
-          </div>
-          <div class="notion-search__result-item-enter-icon" aria-hidden="true">↵</div>
-        </a>
-      </div>
-    `.trim();
-  };
-
-  const total = items.length;
-  const out: string[] = [];
-  let i = 0;
-  for (const g of groupOrder) {
-    const arr = groups.get(g) || [];
-    if (!arr.length) continue;
-    out.push(
-      `<div class="notion-search__group"><div class="notion-search__group-title">${escapeHtml(
-        g,
-      )}</div><div class="notion-search__group-count">${arr.length}</div></div>`,
-    );
-    for (const it of arr) {
-      i += 1;
-      out.push(renderItem(it, { last: i === total }));
-    }
-  }
-
-  list.innerHTML = out.join("");
+  list.innerHTML = renderSearchResultsHtml(items, query);
 }
 
 async function fetchResults(
