@@ -9,6 +9,8 @@ import NotionBlockBehavior from "@/components/notion-block-behavior";
 // so we import a tiny CSS shim that @imports the public Super/Notion styles.
 import "./classic.css";
 import "./search.css";
+import "./toc.css";
+import "./lightbox.css";
 
 export default function ClassicLayout({
   children,
