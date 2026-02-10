@@ -84,8 +84,12 @@ async function setType(page, type) {
     blog: "#notion-search-filter-blog",
     databases: "#notion-search-filter-databases",
   }[type];
-  await page.click(id, { timeout: 3000 });
+  const btn = page.locator(id);
+  const disabled = await btn.evaluate((el) => Boolean(el.disabled)).catch(() => true);
+  if (disabled) return false;
+  await btn.click({ timeout: 3000 });
   await page.waitForTimeout(350);
+  return true;
 }
 
 async function toggleScope(page) {
@@ -130,12 +134,18 @@ async function main() {
       await openSearch(page);
       await setQuery(page, "drift");
       await page.screenshot({ path: path.join(runDir, `search-home__drift-all-${vp.name}.png`) });
-      await setType(page, "blog");
-      await page.screenshot({ path: path.join(runDir, `search-home__drift-blog-${vp.name}.png`) });
-      await setType(page, "pages");
-      await page.screenshot({ path: path.join(runDir, `search-home__drift-pages-${vp.name}.png`) });
-      await setType(page, "databases");
-      await page.screenshot({ path: path.join(runDir, `search-home__drift-databases-${vp.name}.png`) });
+      const blogOk = await setType(page, "blog");
+      await page.screenshot({
+        path: path.join(runDir, `search-home__drift-blog${blogOk ? "" : "-disabled"}-${vp.name}.png`),
+      });
+      const pagesOk = await setType(page, "pages");
+      await page.screenshot({
+        path: path.join(runDir, `search-home__drift-pages${pagesOk ? "" : "-disabled"}-${vp.name}.png`),
+      });
+      const dbOk = await setType(page, "databases");
+      await page.screenshot({
+        path: path.join(runDir, `search-home__drift-databases${dbOk ? "" : "-disabled"}-${vp.name}.png`),
+      });
 
       // Scenario C: Works page, verify scope pill label.
       await page.goto(urlFor(origin, "/works"), { waitUntil: "domcontentloaded" });

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 import { renderSearchResultsHtml, type SearchItem } from "@/lib/client/site-search-render";
+import { createFocusTrap, isTypingContext, lockBodyScroll, setClassicInert } from "@/lib/client/dom-utils";
 
 type SearchMeta = {
   total: number;
@@ -244,6 +245,7 @@ export default function SiteSearchBehavior() {
     const {
       root,
       wrapper,
+      box,
       input,
       clearBtn,
       closeBtn,
@@ -261,6 +263,7 @@ export default function SiteSearchBehavior() {
     let aborter: AbortController | null = null;
     let debounceTimer: number | null = null;
     let activeIndex = -1;
+    let unlockScroll: null | (() => void) = null;
     let filterType: "all" | "pages" | "blog" | "databases" = "all";
     let scopeEnabled = false;
     let scopePrefix = "";
@@ -270,6 +273,7 @@ export default function SiteSearchBehavior() {
     let currentItems: SearchItem[] = [];
     const collapsedGroups = new Set<string>();
     const pageLimit = 20;
+    const trap = createFocusTrap(box, { fallback: input });
 
     const computeScope = (): { prefix: string; label: string } => {
       const p = String(window.location.pathname || "/");
@@ -382,6 +386,9 @@ export default function SiteSearchBehavior() {
       root.setAttribute("data-open", open ? "true" : "false");
       trigger.setAttribute("aria-expanded", open ? "true" : "false");
       if (open) {
+        setClassicInert(true);
+        if (!unlockScroll) unlockScroll = lockBodyScroll();
+
         lastFocus = document.activeElement as HTMLElement | null;
         input.value = "";
         filterType = "all";
@@ -403,6 +410,11 @@ export default function SiteSearchBehavior() {
         debounceTimer = null;
         activeIndex = -1;
         applyMetaCounts(null);
+        setClassicInert(false);
+        if (unlockScroll) {
+          unlockScroll();
+          unlockScroll = null;
+        }
         if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
         lastFocus = null;
       }
@@ -410,6 +422,10 @@ export default function SiteSearchBehavior() {
 
     const close = () => setOpen(false);
     const openSearch = () => setOpen(true);
+
+    // Expose an imperative close hook so other effects (e.g., route change)
+    // can close the modal while properly releasing scroll/inert state.
+    (root as unknown as { __closeSearch?: () => void }).__closeSearch = close;
 
     const onTriggerClick = (e: MouseEvent) => {
       e.preventDefault();
@@ -423,12 +439,9 @@ export default function SiteSearchBehavior() {
       close();
     };
 
-    const isTypingContext = (t: EventTarget | null) => {
-      const el = t instanceof Element ? t : null;
-      if (!el) return false;
-      if (el.closest("[contenteditable='true']")) return true;
-      const tag = el.tagName?.toLowerCase?.() || "";
-      return tag === "input" || tag === "textarea" || tag === "select";
+    const onFocusIn = (e: FocusEvent) => {
+      if (!open) return;
+      trap.onFocusIn(e);
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -440,6 +453,11 @@ export default function SiteSearchBehavior() {
           e.preventDefault();
           openSearch();
         }
+        return;
+      }
+
+      if (e.key === "Tab") {
+        trap.onKeyDown(e);
         return;
       }
 
@@ -539,6 +557,7 @@ export default function SiteSearchBehavior() {
     trigger.addEventListener("click", onTriggerClick);
     wrapper.addEventListener("click", onWrapperClick);
     document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("focusin", onFocusIn, true);
     input.addEventListener("input", onInput);
     clearBtn.addEventListener("click", onClear);
     closeBtn.addEventListener("click", onClose);
@@ -628,9 +647,12 @@ export default function SiteSearchBehavior() {
     if (open) close();
 
     return () => {
+      close();
+      (root as unknown as { __closeSearch?: () => void }).__closeSearch = undefined;
       trigger.removeEventListener("click", onTriggerClick);
       wrapper.removeEventListener("click", onWrapperClick);
       document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("focusin", onFocusIn, true);
       input.removeEventListener("input", onInput);
       clearBtn.removeEventListener("click", onClear);
       closeBtn.removeEventListener("click", onClose);
@@ -642,6 +664,8 @@ export default function SiteSearchBehavior() {
       list.removeEventListener("click", onResultsClick);
       aborter?.abort();
       aborter = null;
+      setClassicInert(false);
+      if (unlockScroll) unlockScroll();
     };
   }, []);
 
@@ -649,12 +673,9 @@ export default function SiteSearchBehavior() {
     // On route change, close the search if it's open (best-effort).
     const root = document.getElementById("notion-search");
     if (!root) return;
-    if (root.classList.contains("open")) {
-      root.classList.remove("open");
-      root.classList.add("close");
-      const trigger = document.getElementById("search-trigger") as HTMLButtonElement | null;
-      trigger?.setAttribute("aria-expanded", "false");
-    }
+    if (!root.classList.contains("open")) return;
+    const fn = (root as unknown as { __closeSearch?: () => void }).__closeSearch;
+    if (typeof fn === "function") fn();
   }, [pathname]);
 
   return null;

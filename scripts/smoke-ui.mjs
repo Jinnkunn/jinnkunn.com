@@ -120,6 +120,39 @@ async function main() {
         record("desktop:more-hover-dropdown", false, { error: String(e) });
       }
 
+      // Search modal basics: open, scope pill, results, clear, close
+      try {
+        await page.goto(`${baseURL}/blog`, { waitUntil: "networkidle" });
+        await page.click("#search-trigger");
+        await page.waitForSelector("#notion-search.open", { timeout: 4000 });
+
+        const scopeVisible = await page.isVisible("#notion-search-scope:not(.is-hidden)");
+        record("desktop:search-scope-pill-visible", scopeVisible);
+
+        await page.fill("#notion-search-input", "drift");
+        await page.waitForTimeout(250);
+        const hasResults = (await page.locator(".notion-search__result-item").count()) > 0;
+        record("desktop:search-has-results", hasResults);
+
+        // Clear query should empty input + show empty state.
+        await page.click("#notion-search-clear");
+        await page.waitForTimeout(120);
+        const cleared = (await page.inputValue("#notion-search-input")).trim() === "";
+        record("desktop:search-clear-button", cleared);
+
+        // Close modal.
+        await page.click("#notion-search-close");
+        await page.waitForTimeout(220);
+        const closed = !(await page.isVisible("#notion-search.open"));
+        record("desktop:search-close-button", closed);
+      } catch (e) {
+        record("desktop:search-modal", false, { error: String(e) });
+        await page.screenshot({
+          path: path.join(outDir, "fail-desktop-search.png"),
+          fullPage: true,
+        });
+      }
+
       await context.close();
     }
 

@@ -142,6 +142,22 @@ async function main() {
 
         const file = path.join(runDir, `${safeNameFromPath(p)}-${vp.name}.png`);
         await page.screenshot({ path: file, fullPage: true });
+
+        // Search overlay snapshot (helps catch regressions in focus/filters/styling).
+        if (p === "/blog") {
+          try {
+            await page.click("#search-trigger");
+            await page.waitForSelector("#notion-search.open", { timeout: 4000 });
+            await page.fill("#notion-search-input", "drift");
+            await page.waitForTimeout(250);
+            const f2 = path.join(runDir, `blog__search-${vp.name}.png`);
+            await page.screenshot({ path: f2, fullPage: false });
+            await page.keyboard.press("Escape");
+            await page.waitForTimeout(150);
+          } catch {
+            // ignore
+          }
+        }
       }
     }
 
