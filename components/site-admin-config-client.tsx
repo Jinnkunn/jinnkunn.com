@@ -298,7 +298,7 @@ export default function SiteAdminConfigClient() {
                       className="site-admin-form__btn"
                       disabled={busy || !dirty}
                       onClick={() => saveNavRow(it)}
-                      title={dirty ? "Save changes to Notion" : "No changes"}
+                      title={dirty ? "Save changes" : "No changes"}
                     >
                       Save
                     </button>
@@ -334,7 +334,7 @@ export default function SiteAdminConfigClient() {
       <section>
         <h2 className="notion-heading notion-semantic-string">Config</h2>
         <p className="notion-text notion-text__content notion-semantic-string">
-          Edits here write to Notion databases under your Site Admin page. Changes take effect after you click Deploy.
+          Edits here write to your site settings. Changes take effect after you click Deploy.
         </p>
       </section>
 
@@ -428,7 +428,7 @@ export default function SiteAdminConfigClient() {
                 onChange={(e) =>
                   setDraftSettings((prev) => (prev ? { ...prev, rootPageId: e.target.value } : prev))
                 }
-                placeholder="Notion page id"
+                placeholder="Page ID"
               />
             </div>
 
@@ -440,7 +440,7 @@ export default function SiteAdminConfigClient() {
                 onChange={(e) =>
                   setDraftSettings((prev) => (prev ? { ...prev, homePageId: e.target.value } : prev))
                 }
-                placeholder="Notion page id"
+                placeholder="Page ID"
               />
             </div>
 

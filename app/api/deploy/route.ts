@@ -97,7 +97,7 @@ async function notionRequest(
   }
   if (!res.ok) {
     throw new Error(
-      `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
+      `Upstream API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
     );
   }
   return json;
@@ -192,7 +192,7 @@ export async function GET(req: Request) {
   const triggeredAtIso = new Date().toISOString();
   const out = await triggerDeploy();
   if (!out.ok) {
-    // Best-effort logging (don't fail deploy trigger because Notion logging failed).
+    // Best-effort logging (don't fail deploy trigger because upstream logging failed).
     try {
       await logDeployToNotion({
         reqUrl: req.url,

@@ -7,7 +7,7 @@ export default function NotFound() {
         <div className="page-404__code">404</div>
         <h1 className="page-404__title">Page not found</h1>
         <p className="page-404__desc">
-          The link may be outdated, or the page may have moved in Notion.
+          The link may be outdated, or the page may have moved.
         </p>
 
         <div className="page-404__actions">
@@ -28,4 +28,3 @@ export default function NotFound() {
     </main>
   );
 }
-

@@ -162,7 +162,7 @@ export default function SiteAdminStatusClient() {
             Status
           </h2>
           <p className="notion-text notion-text__content notion-semantic-string" style={{ marginTop: 6 }}>
-            Quick sanity-check that Notion sync ran and this deploy is using the expected config.
+            Quick sanity-check that content sync ran and this deploy is using the expected config.
           </p>
         </div>
 
@@ -222,7 +222,7 @@ export default function SiteAdminStatusClient() {
           </div>
 
           <div className="site-admin-card">
-            <div className="site-admin-card__title">Notion + Sync</div>
+            <div className="site-admin-card__title">Content + Sync</div>
             <dl className="site-admin-kv">
               <div className="site-admin-kv__row">
                 <dt>NOTION_TOKEN</dt>
@@ -260,7 +260,7 @@ export default function SiteAdminStatusClient() {
                 </dd>
               </div>
               <div className="site-admin-kv__row">
-                <dt>Notion Admin Edited</dt>
+                <dt>Admin Edited</dt>
                 <dd>
                   {payload.notion.adminPage?.lastEdited ? (
                     <code className="code">{fmtIso(payload.notion.adminPage.lastEdited)}</code>
@@ -270,7 +270,7 @@ export default function SiteAdminStatusClient() {
                 </dd>
               </div>
               <div className="site-admin-kv__row">
-                <dt>Notion Root Edited</dt>
+                <dt>Root Edited</dt>
                 <dd>
                   {payload.notion.rootPage?.lastEdited ? (
                     <code className="code">{fmtIso(payload.notion.rootPage.lastEdited)}</code>
@@ -355,7 +355,7 @@ export default function SiteAdminStatusClient() {
               ))}
 
               <div className="site-admin-kv__row">
-                <dt>Notion sync cache</dt>
+                <dt>Sync cache</dt>
                 <dd>
                   <Badge ok={payload.files.notionSyncCache.exists}>
                     {payload.files.notionSyncCache.exists ? "present" : "missing"}

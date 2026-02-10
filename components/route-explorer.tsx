@@ -613,7 +613,7 @@ export default function RouteExplorer({
         <div className="routes-explorer__title">
           <h1 className="routes-explorer__h1">Routes</h1>
           <p className="routes-explorer__sub">
-            Auto-generated from Notion on deploy. Edit overrides/protection here, then Deploy.
+            Auto-generated from your content source on deploy. Edit overrides/protection here, then Deploy.
           </p>
         </div>
 
@@ -929,7 +929,7 @@ export default function RouteExplorer({
                         <div>
                           <div className="routes-tree__panel-title">URL Override</div>
                           <div className="routes-tree__panel-sub">
-                            Blank uses auto-generated URL from Notion hierarchy.
+                            Blank uses auto-generated URL from the page hierarchy.
                           </div>
                         </div>
                       </div>
@@ -987,7 +987,7 @@ export default function RouteExplorer({
                         <div>
                           <div className="routes-tree__panel-title">Access</div>
                           <div className="routes-tree__panel-sub">
-                            Protects this page and all children, based on Notion page hierarchy.
+                            Protects this page and all children, based on the page hierarchy.
                           </div>
                         </div>
                       </div>

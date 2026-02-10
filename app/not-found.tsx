@@ -2,16 +2,30 @@ import Link from "next/link";
 
 export default function NotFound() {
   return (
-    <main style={{ padding: "40px 20px", maxWidth: 720, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 10, letterSpacing: -0.2 }}>
-        404
-      </h1>
-      <p style={{ marginBottom: 18 }}>
-        This page could not be found. Try going back to the homepage.
-      </p>
-      <Link href="/" className="notion-link link">
-        Home
-      </Link>
+    <main className="page-404 super-content">
+      <div className="page-404__inner">
+        <div className="page-404__code">404</div>
+        <h1 className="page-404__title">Page not found</h1>
+        <p className="page-404__desc">
+          The link may be outdated, or the page may have moved.
+        </p>
+
+        <div className="page-404__actions">
+          <Link href="/" className="page-404__btn page-404__btn--primary">
+            Home
+          </Link>
+          <Link
+            href="/publications"
+            className="page-404__btn page-404__btn--ghost"
+          >
+            Publications
+          </Link>
+          <Link href="/blog" className="page-404__btn page-404__btn--ghost">
+            Blog
+          </Link>
+        </div>
+      </div>
     </main>
   );
 }
+

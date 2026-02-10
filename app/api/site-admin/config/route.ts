@@ -83,13 +83,13 @@ async function notionRequest(
     }
     if (res.ok) return json;
     if (res.status === 429 || res.status >= 500) {
-      lastErr = new Error(`Notion API error ${res.status}: ${text.slice(0, 200)}`);
+      lastErr = new Error(`Upstream API error ${res.status}: ${text.slice(0, 200)}`);
       await sleep(250 * Math.pow(2, attempt));
       continue;
     }
-    throw new Error(`Notion API error ${res.status}: ${text.slice(0, 400)}`);
+    throw new Error(`Upstream API error ${res.status}: ${text.slice(0, 400)}`);
   }
-  throw lastErr ?? new Error("Notion API request failed");
+  throw lastErr ?? new Error("Upstream API request failed");
 }
 
 async function listBlockChildren(blockId: string): Promise<any[]> {

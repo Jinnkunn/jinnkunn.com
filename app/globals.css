@@ -246,20 +246,54 @@ html {
 /* Classic 404 page (keep v1 simple but intentional). */
 .page-404 {
   padding: 84px 20px 96px 20px;
+  position: relative;
+  overflow: hidden;
 }
 
 .page-404__inner {
   max-width: 720px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.page-404::before {
+  content: "";
+  position: absolute;
+  inset: -120px -120px auto -120px;
+  height: 520px;
+  background:
+    radial-gradient(
+      44% 52% at 26% 42%,
+      rgba(255, 214, 102, 0.22) 0%,
+      rgba(255, 214, 102, 0.06) 55%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    radial-gradient(
+      36% 44% at 62% 18%,
+      rgba(55, 53, 47, 0.08) 0%,
+      rgba(55, 53, 47, 0.04) 45%,
+      rgba(255, 255, 255, 0) 70%
+    );
+  pointer-events: none;
+  filter: saturate(0.96);
 }
 
 .page-404__code {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(55, 53, 47, 0.55);
-  margin-bottom: 14px;
+  color: rgba(55, 53, 47, 0.62);
+  margin-bottom: 16px;
+  padding: 8px 10px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(10px);
 }
 
 .page-404__title {
@@ -292,7 +326,8 @@ html {
   text-decoration: none;
   font-weight: 650;
   border: 1px solid rgba(55, 53, 47, 0.18);
-  transition: transform 140ms ease, background 140ms ease;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+  cursor: pointer;
 }
 
 .page-404__btn--primary {
@@ -308,6 +343,7 @@ html {
 
 .page-404__btn:hover {
   transform: translateY(-1px);
+  border-color: rgba(55, 53, 47, 0.28);
 }
 
 @media (max-width: 546px) {

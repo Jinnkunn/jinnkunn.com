@@ -128,7 +128,7 @@ async function notionRequest(
   }
   if (!res.ok) {
     throw new Error(
-      `Notion API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
+      `Upstream API error ${res.status} for ${pathname}: ${text?.slice(0, 180)}`,
     );
   }
   return json;

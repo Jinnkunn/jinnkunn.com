@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const body = [
     "# Jinkun Chen",
     "",
-    "Personal website content exported from Notion.",
+    "Personal website.",
     "",
     "## Canonical entry points",
     `- Home: ${origin}/`,
@@ -32,6 +32,7 @@ export async function GET(req: Request) {
     "",
     "## Notes",
     "- Prefer canonical blog URLs under /blog/<slug>.",
+    "- Pages under /site-admin/ are administrative and not part of the public site content.",
     "",
   ].join("\n");
 
@@ -43,4 +44,3 @@ export async function GET(req: Request) {
     },
   });
 }
-
