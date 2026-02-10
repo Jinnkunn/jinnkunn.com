@@ -54,6 +54,49 @@ function safeDir(filePath: string): { exists: boolean; mtimeMs?: number; size?: 
   }
 }
 
+function dashify32(id32: string): string {
+  const s = String(id32 || "").replace(/-/g, "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(s)) return "";
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
+}
+
+async function fetchNotionPageMeta(
+  pageId32: string,
+): Promise<{ id: string; lastEdited: string; title: string } | null> {
+  const token = (process.env.NOTION_TOKEN || "").trim();
+  if (!token) return null;
+  const dashed = dashify32(pageId32);
+  if (!dashed) return null;
+
+  const res = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Notion-Version": process.env.NOTION_VERSION || "2022-06-28",
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+
+  const data = (await res.json().catch(() => null)) as any;
+  if (!data) return null;
+
+  const lastEdited = String(data?.last_edited_time || "").trim();
+
+  let title = "";
+  const props = data?.properties && typeof data.properties === "object" ? data.properties : null;
+  if (props) {
+    for (const v of Object.values(props)) {
+      if (!v || typeof v !== "object") continue;
+      if ((v as any).type !== "title") continue;
+      const rt = Array.isArray((v as any).title) ? (v as any).title : [];
+      title = rt.map((x: any) => x?.plain_text ?? "").join("").trim();
+      break;
+    }
+  }
+
+  return { id: pageId32, lastEdited, title: title || "Untitled" };
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return auth.res;
@@ -79,6 +122,25 @@ export async function GET(req: NextRequest) {
   };
 
   const commitSha = pickCommitSha();
+
+  const notion = {
+    adminPage: null as null | { id: string; lastEdited: string; title: string },
+    rootPage: null as null | { id: string; lastEdited: string; title: string },
+  };
+
+  // Best-effort: show Notion edit timestamps so admins can tell if the deploy is stale.
+  try {
+    const adminId = String(process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim();
+    if (adminId) notion.adminPage = await fetchNotionPageMeta(adminId);
+  } catch {
+    // ignore
+  }
+  try {
+    const rootId = String(syncMeta?.rootPageId || "").trim();
+    if (rootId) notion.rootPage = await fetchNotionPageMeta(rootId);
+  } catch {
+    // ignore
+  }
 
   return json({
     ok: true,
@@ -111,6 +173,7 @@ export async function GET(req: NextRequest) {
       routesDiscovered: manifest.length,
       syncMeta,
     },
+    notion,
     files,
   });
 }

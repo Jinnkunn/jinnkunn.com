@@ -340,7 +340,7 @@ export default function SiteSearchBehavior() {
 
       if (scopePrefix && scopeLabel) {
         scopeBtn.classList.remove("is-hidden");
-        scopeBtn.textContent = scopeEnabled ? `In ${scopeLabel}` : "This section";
+        scopeBtn.textContent = scopeEnabled ? `In ${scopeLabel}` : `This section: ${scopeLabel}`;
         scopeBtn.setAttribute("aria-pressed", scopeEnabled ? "true" : "false");
         scopeBtn.classList.toggle("is-active", scopeEnabled);
       } else {

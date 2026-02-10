@@ -52,6 +52,10 @@ type StatusPayload = {
     routesJson: Stat;
     notionSyncCache: Stat & { count?: number };
   };
+  notion: {
+    adminPage: null | { id: string; lastEdited: string; title: string };
+    rootPage: null | { id: string; lastEdited: string; title: string };
+  };
 };
 
 type StatusResult = StatusPayload | { ok: false; error: string };
@@ -63,6 +67,12 @@ function fmtWhen(ms?: number): string {
   } catch {
     return "—";
   }
+}
+
+function fmtIso(iso?: string | null): string {
+  const s = String(iso || "").trim();
+  if (!s) return "—";
+  return s.replace("T", " ").replace("Z", " UTC");
 }
 
 function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
@@ -193,7 +203,27 @@ export default function SiteAdminStatusClient() {
                 <dt>Sync Meta</dt>
                 <dd>
                   {payload.content.syncMeta?.syncedAt ? (
-                    <code className="code">{payload.content.syncMeta.syncedAt}</code>
+                    <code className="code">{fmtIso(payload.content.syncMeta.syncedAt)}</code>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Notion Admin Edited</dt>
+                <dd>
+                  {payload.notion.adminPage?.lastEdited ? (
+                    <code className="code">{fmtIso(payload.notion.adminPage.lastEdited)}</code>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Notion Root Edited</dt>
+                <dd>
+                  {payload.notion.rootPage?.lastEdited ? (
+                    <code className="code">{fmtIso(payload.notion.rootPage.lastEdited)}</code>
                   ) : (
                     <span>—</span>
                   )}

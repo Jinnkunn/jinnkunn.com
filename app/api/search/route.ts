@@ -244,7 +244,14 @@ function buildSnippetByTerms(text: string, terms: string[]): string {
   if (!raw) return "";
   const hay = safeLower(raw);
   const idx = bestPos(hay, terms);
-  if (idx < 0) return "";
+  if (idx < 0) {
+    // If the query matched the title/route but not the content, still show a
+    // stable excerpt so results don't look "empty".
+    const maxLen = 190;
+    let snippet = raw.slice(0, maxLen).trim();
+    if (raw.length > snippet.length) snippet = `${snippet} …`;
+    return snippet;
+  }
 
   // Prefer sentence boundaries for a more readable excerpt.
   const maxLen = 190;

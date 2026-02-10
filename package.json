@@ -13,6 +13,7 @@
     "sync:notion": "node scripts/sync-notion.mjs",
     "provision:admin": "node scripts/provision-site-admin.mjs",
     "snapshot:ui": "node scripts/ui-snapshots.mjs",
+    "snapshot:search": "node scripts/search-snapshots.mjs",
     "snapshot:compare": "node scripts/ui-compare-snapshots.mjs",
     "audit:notion": "node scripts/audit-notion-blocks.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
