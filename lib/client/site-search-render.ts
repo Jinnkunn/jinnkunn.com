@@ -1,4 +1,5 @@
 import { escapeHtml, tokenizeQuery } from "@/lib/shared/text-utils";
+import { groupLabelForRoutePath } from "@/lib/shared/search-group.mjs";
 
 export type SearchItem = {
   title: string;
@@ -56,21 +57,17 @@ function escapeAndHighlight(raw: string, terms: string[]): string {
 }
 
 function groupLabelFor(it: SearchItem): string {
-  const p = String(it.routePath || "/").trim() || "/";
-  if (p === "/") return "Home";
-  if (p === "/blog" || p.startsWith("/blog/")) return "Blog";
-  const seg = p.split("/").filter(Boolean)[0] || "";
-  if (!seg) return "Home";
-  return seg.charAt(0).toUpperCase() + seg.slice(1);
+  return groupLabelForRoutePath(it.routePath);
 }
 
 export function renderSearchResultsHtml(
   items: SearchItem[],
   query: string,
-  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number },
+  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number; groupCounts?: Record<string, number> },
 ): string {
   const terms = tokenizeQuery(query);
   const collapsed = opts?.collapsedGroups || new Set<string>();
+  const groupCounts = opts?.groupCounts || null;
 
   const groups = new Map<string, SearchItem[]>();
   const groupOrder: string[] = [];
@@ -123,7 +120,7 @@ export function renderSearchResultsHtml(
       )}" aria-expanded="${isCollapsed ? "false" : "true"}">` +
         `<span class="notion-search__group-caret" aria-hidden="true">▾</span>` +
         `<span class="notion-search__group-title">${escapeHtml(g)}</span>` +
-        `<span class="notion-search__group-count" aria-hidden="true">${arr.length}</span>` +
+        `<span class="notion-search__group-count" aria-hidden="true">${Number.isFinite(Number(groupCounts?.[g])) ? Number(groupCounts?.[g]) : arr.length}</span>` +
       `</button>`,
     );
     out.push(

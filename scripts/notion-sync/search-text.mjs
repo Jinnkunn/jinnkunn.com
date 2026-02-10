@@ -66,13 +66,17 @@ export function buildSearchTextFromLines(lines) {
   const out = [];
   const seen = new Set();
 
-  const maxLines = 320;
-  const maxChars = 8_000;
+  // Keep the index small: we only need enough text to produce decent snippets.
+  // Bigger sites can otherwise balloon `search-index.json` and slow cold-start parsing.
+  const maxLines = 220;
+  const maxChars = 4_500;
 
   let total = 0;
   for (const s0 of arr) {
     const s = String(s0 || "").replace(/\s+/g, " ").trim();
     if (!s) continue;
+    // Skip very short fragments that add noise but little search value.
+    if (s.length < 2) continue;
     const key = s.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -87,4 +91,3 @@ export function buildSearchTextFromLines(lines) {
   if (joined.length > maxChars) joined = joined.slice(0, maxChars).trim();
   return joined;
 }
-

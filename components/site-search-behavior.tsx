@@ -10,6 +10,7 @@ type SearchMeta = {
   total: number;
   filteredTotal: number;
   counts: { all: number; pages: number; blog: number; databases: number };
+  groups?: Array<{ label: string; count: number }>;
   offset: number;
   limit: number;
   hasMore: boolean;
@@ -171,7 +172,7 @@ function renderResults(
   list: HTMLElement,
   items: SearchItem[],
   query: string,
-  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number },
+  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number; groupCounts?: Record<string, number> },
 ) {
   if (!items.length) return renderEmpty(list);
   list.innerHTML = renderSearchResultsHtml(items, query, opts);
@@ -214,7 +215,20 @@ async function fetchResults(
     const hasMore = Boolean(m.hasMore);
     if (![all, pages, blog, databases, total, filteredTotal, offset, limit].every((n) => Number.isFinite(n)))
       return null;
-    return { total, filteredTotal, counts: { all, pages, blog, databases }, offset, limit, hasMore };
+    const groups0 = m.groups;
+    const groups = Array.isArray(groups0)
+      ? groups0
+          .map((g) => {
+            if (!g || typeof g !== "object") return null;
+            const gg = g as Record<string, unknown>;
+            const label = String(gg.label || "").trim();
+            const count = Number(gg.count ?? NaN);
+            if (!label || !Number.isFinite(count)) return null;
+            return { label, count };
+          })
+          .filter((x): x is { label: string; count: number } => Boolean(x))
+      : undefined;
+    return { total, filteredTotal, counts: { all, pages, blog, databases }, groups, offset, limit, hasMore };
   })();
 
   const items = Array.isArray(items0) ? items0 : [];
@@ -275,6 +289,19 @@ export default function SiteSearchBehavior() {
     const pageLimit = 20;
     const trap = createFocusTrap(box, { fallback: input });
 
+    const groupCountsFromMeta = (meta: SearchMeta | null): Record<string, number> | undefined => {
+      const arr = meta?.groups;
+      if (!arr || !Array.isArray(arr) || !arr.length) return undefined;
+      const out: Record<string, number> = {};
+      for (const g of arr) {
+        if (!g?.label) continue;
+        const n = Number(g.count);
+        if (!Number.isFinite(n)) continue;
+        out[g.label] = n;
+      }
+      return out;
+    };
+
     const computeScope = (): { prefix: string; label: string } => {
       const p = String(window.location.pathname || "/");
       if (!p || p === "/" || p.startsWith("/site-admin")) return { prefix: "", label: "" };
@@ -316,16 +343,11 @@ export default function SiteSearchBehavior() {
       const setCount = (btn: HTMLButtonElement, n: number, { neverDisable }: { neverDisable?: boolean } = {}) => {
         const el = btn.querySelector<HTMLElement>(".notion-search__pill-count");
         if (el) el.textContent = Number.isFinite(n) ? String(n) : "";
-        if (neverDisable) {
-          btn.classList.remove("is-disabled");
-          btn.disabled = false;
-          return;
-        }
-        const isActive = btn.classList.contains("is-active");
-        // If we don't have meta yet, allow switching tabs before the first query.
-        const disabled = !counts ? false : (!isActive && (!Number.isFinite(n) || n <= 0));
-        btn.classList.toggle("is-disabled", disabled);
-        btn.disabled = disabled;
+        // Keep tabs always clickable (even if count=0) so users can verify "no results".
+        // This also avoids UI getting stuck when counts are briefly unknown.
+        btn.classList.remove("is-disabled");
+        btn.disabled = false;
+        return neverDisable ? undefined : undefined;
       };
 
       setCount(filterAll, counts ? counts.all : NaN, { neverDisable: true });
@@ -521,7 +543,12 @@ export default function SiteSearchBehavior() {
         currentItems = items;
         const showMore = Boolean(meta?.hasMore);
         const remaining = meta ? Math.max(0, meta.filteredTotal - currentItems.length) : 0;
-        renderResults(list, currentItems, query, { collapsedGroups, showMore, remaining });
+        renderResults(list, currentItems, query, {
+          collapsedGroups,
+          showMore,
+          remaining,
+          groupCounts: groupCountsFromMeta(meta),
+        });
         if (currentItems.length) setActive(0);
         renderFooterHint("results");
       })();
@@ -603,7 +630,12 @@ export default function SiteSearchBehavior() {
 
         const showMore = Boolean(lastMeta?.hasMore);
         const remaining = lastMeta ? Math.max(0, lastMeta.filteredTotal - currentItems.length) : 0;
-        renderResults(list, currentItems, currentQuery, { collapsedGroups, showMore, remaining });
+        renderResults(list, currentItems, currentQuery, {
+          collapsedGroups,
+          showMore,
+          remaining,
+          groupCounts: groupCountsFromMeta(lastMeta),
+        });
         activeIndex = -1;
         return;
       }
@@ -634,7 +666,12 @@ export default function SiteSearchBehavior() {
           }
           const showMore2 = Boolean(meta?.hasMore);
           const remaining2 = meta ? Math.max(0, meta.filteredTotal - currentItems.length) : 0;
-          renderResults(list, currentItems, currentQuery, { collapsedGroups, showMore: showMore2, remaining: remaining2 });
+          renderResults(list, currentItems, currentQuery, {
+            collapsedGroups,
+            showMore: showMore2,
+            remaining: remaining2,
+            groupCounts: groupCountsFromMeta(meta),
+          });
         })();
 
         return;

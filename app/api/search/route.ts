@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
 import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
+import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group.mjs";
 import { tokenizeQuery } from "@/lib/shared/text-utils";
 
 export const runtime = "nodejs";
@@ -43,6 +44,17 @@ function normalizePath(p: string): string {
   if (!s) return "/";
   if (s === "/") return "/";
   return s.endsWith("/") ? s.slice(0, -1) : s;
+}
+
+function buildGroupCounts(labels: string[]): Array<{ label: string; count: number }> {
+  const counts: Record<string, number> = {};
+  for (const l0 of labels) {
+    const l = String(l0 || "").trim();
+    if (!l) continue;
+    counts[l] = (counts[l] || 0) + 1;
+  }
+  const ordered = sortGroupLabels(Object.keys(counts));
+  return ordered.map((label) => ({ label, count: counts[label] || 0 }));
 }
 
 function buildBreadcrumb(
@@ -298,6 +310,7 @@ export async function GET(req: Request) {
     for (const m of allMatches) counts[m.typeKey] += 1;
 
     const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
+    const groups = buildGroupCounts(filtered.map((m) => groupLabelForRoutePath(m.canon)));
     const hasMore = offset + limit < filtered.length;
 
     const items = filtered.slice(offset, offset + limit).map(({ it, canon }) => ({
@@ -314,6 +327,7 @@ export async function GET(req: Request) {
         total: allMatches.length,
         filteredTotal: filtered.length,
         counts,
+        groups,
         offset,
         limit,
         hasMore,
@@ -353,6 +367,9 @@ export async function GET(req: Request) {
   const counts = { all: allMatches.length, pages: 0, blog: 0, databases: 0 };
   for (const m of allMatches) counts[m.typeKey] += 1;
   const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
+  const groups = buildGroupCounts(
+    filtered.map((m) => groupLabelForRoutePath(canonicalizePublicRoute(m.it.routePath))),
+  );
   const hasMore = offset + limit < filtered.length;
 
   const items = filtered.slice(offset, offset + limit).map(({ it }) => ({
@@ -364,6 +381,6 @@ export async function GET(req: Request) {
 
   return json({
     items,
-    meta: { total: allMatches.length, filteredTotal: filtered.length, counts, offset, limit, hasMore },
+    meta: { total: allMatches.length, filteredTotal: filtered.length, counts, groups, offset, limit, hasMore },
   });
 }

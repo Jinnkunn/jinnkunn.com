@@ -51,10 +51,9 @@ test("search-text: caps output size to keep index small", () => {
   const lines = Array.from({ length: 500 }, (_, i) => `line ${i}`);
   const joined = buildSearchTextFromLines(lines);
 
-  // line cap (<= 320)
-  assert.ok(joined.split("\n").length <= 320);
+  // line cap (<= 220)
+  assert.ok(joined.split("\n").length <= 220);
 
-  // char cap (<= 8000)
-  assert.ok(joined.length <= 8000);
+  // char cap (<= 4500)
+  assert.ok(joined.length <= 4500);
 });
-
