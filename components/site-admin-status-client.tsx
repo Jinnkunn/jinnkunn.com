@@ -93,6 +93,21 @@ function isoMs(iso?: string | null): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
+function fmtDelta(ms: number): string {
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const sec = Math.floor(abs / 1000);
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  if (day > 0) return `${sign}${day}d ${hr % 24}h`;
+  if (hr > 0) return `${sign}${hr}h ${min % 60}m`;
+  if (min > 0) return `${sign}${min}m`;
+  return `${sign}${sec}s`;
+}
+
 function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <span className={ok ? "site-admin-badge site-admin-badge--ok" : "site-admin-badge site-admin-badge--bad"}>
@@ -150,9 +165,9 @@ export default function SiteAdminStatusClient() {
     const ok = !(adminStale || rootStale);
 
     const parts: string[] = [];
-    if (adminStale) parts.push("Admin page edited after sync");
-    if (rootStale) parts.push("Root page edited after sync");
-    return { ok, reason: parts.join("; ") };
+    if (adminStale) parts.push(`Admin edited +${fmtDelta(adminEdited - synced)}`);
+    if (rootStale) parts.push(`Root edited +${fmtDelta(rootEdited - synced)}`);
+    return { ok, reason: parts.join("; "), synced, adminEdited, rootEdited };
   }, [payload]);
 
   const generated = useMemo(() => {
@@ -160,6 +175,19 @@ export default function SiteAdminStatusClient() {
     const synced = isoMs(syncedIso);
     const files = payload?.files;
     if (!files) return { ok: true, mtimeMs: NaN, reason: "" };
+
+    const required: Array<[string, Stat]> = [
+      ["site-config.json", files.siteConfig],
+      ["routes-manifest.json", files.routesManifest],
+      ["protected-routes.json", files.protectedRoutes],
+      ["sync-meta.json", files.syncMeta],
+      ["search-index.json", files.searchIndex],
+      ["routes.json", files.routesJson],
+    ];
+    const missing = required.filter(([, st]) => !st.exists).map(([name]) => name);
+    if (missing.length) {
+      return { ok: false, mtimeMs: NaN, reason: `Missing: ${missing.join(", ")}` };
+    }
 
     const mtimes = [
       files.siteConfig?.mtimeMs,
@@ -177,9 +205,34 @@ export default function SiteAdminStatusClient() {
     const toleranceMs = 2 * 60_000;
     if (!Number.isFinite(synced)) return { ok: true, mtimeMs: maxMtime, reason: "" };
 
-    const ok = Math.abs(maxMtime - synced) <= toleranceMs;
-    const reason = ok ? "" : "Generated files timestamp differs from Sync Meta";
+    const older = maxMtime < synced - toleranceMs;
+    const newer = maxMtime > synced + toleranceMs;
+    const ok = !(older || newer);
+
+    const reason = older
+      ? `Generated is older than Sync Meta by ${fmtDelta(synced - maxMtime)}`
+      : newer
+        ? `Generated is newer than Sync Meta by ${fmtDelta(maxMtime - synced)}`
+        : "";
     return { ok, mtimeMs: maxMtime, reason };
+  }, [payload]);
+
+  const readiness = useMemo(() => {
+    const parts: string[] = [];
+    const okParts: string[] = [];
+    const env = payload?.env;
+    if (!env) return { ok: true, reason: "" };
+
+    if (!env.hasNextAuthSecret) parts.push("Missing NEXTAUTH_SECRET");
+    else okParts.push("Auth secret");
+
+    if (env.githubAllowlistCount <= 0) parts.push("Empty GitHub allowlist");
+    else okParts.push("GitHub allowlist");
+
+    if (!env.hasDeployHookUrl) parts.push("Missing deploy hook");
+    else okParts.push("Deploy hook");
+
+    return { ok: parts.length === 0, reason: parts.join("; "), okHint: okParts.join(", ") };
   }, [payload]);
 
   return (
@@ -304,6 +357,16 @@ export default function SiteAdminStatusClient() {
                 </dd>
               </div>
               <div className="site-admin-kv__row">
+                <dt>Action</dt>
+                <dd>
+                  {(!stale.ok || !generated.ok) && payload.env.hasDeployHookUrl ? (
+                    <span>Deploy recommended</span>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </dd>
+              </div>
+              <div className="site-admin-kv__row">
                 <dt>Admin Edited</dt>
                 <dd>
                   {payload.notion.adminPage?.lastEdited ? (
@@ -355,6 +418,15 @@ export default function SiteAdminStatusClient() {
           <div className="site-admin-card">
             <div className="site-admin-card__title">Admin Requirements</div>
             <dl className="site-admin-kv">
+              <div className="site-admin-kv__row">
+                <dt>Readiness</dt>
+                <dd>
+                  <Badge ok={readiness.ok}>{readiness.ok ? "ready" : "needs setup"}</Badge>
+                  {!readiness.ok && readiness.reason ? (
+                    <span className="site-admin-status__hint"> {readiness.reason}</span>
+                  ) : null}
+                </dd>
+              </div>
               <div className="site-admin-kv__row">
                 <dt>NEXTAUTH_SECRET</dt>
                 <dd>
