@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
+import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 
 export const runtime = "nodejs";
 
@@ -38,54 +36,12 @@ function normalizeRoutePath(routePath: string): string {
   return p;
 }
 
-function listHtmlFilesRec(rootDir: string): string[] {
-  const out: string[] = [];
-  const stack: string[] = [rootDir];
-
-  while (stack.length) {
-    const dir = stack.pop()!;
-    let ents: fs.Dirent[] = [];
-    try {
-      ents = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const ent of ents) {
-      const abs = path.join(dir, ent.name);
-      if (ent.isDirectory()) {
-        stack.push(abs);
-        continue;
-      }
-      if (ent.isFile() && ent.name.endsWith(".html")) out.push(abs);
-    }
-  }
-
-  // Deterministic output so the sitemap is stable across environments.
-  out.sort((a, b) => a.localeCompare(b));
-  return out;
-}
-
 function collectRoutesFromRawRoots(): string[] {
-  const roots = [
-    path.join(process.cwd(), "content", "generated", "raw"),
-    path.join(process.cwd(), "content", "raw"),
-  ];
-
+  const rels = listRawHtmlRelPaths();
   const out = new Set<string>();
-  for (const root of roots) {
-    try {
-      const files = listHtmlFilesRec(root);
-      for (const abs of files) {
-        const rel = path.relative(root, abs).replace(/\\/g, "/");
-        if (!rel.endsWith(".html")) continue;
-        const noExt = rel.slice(0, -".html".length);
-        const route = noExt === "index" ? "/" : `/${noExt}`;
-        out.add(normalizeRoutePath(route));
-      }
-    } catch {
-      continue;
-    }
+  for (const rel of rels) {
+    const route = rel === "index" ? "/" : `/${rel}`;
+    out.add(normalizeRoutePath(route));
   }
 
   // Canonicalize: blog posts live at /blog/<slug>, but source files may be under
