@@ -45,6 +45,15 @@ function urlFor(origin, p) {
   return `${base}${p}`;
 }
 
+async function launchBrowser() {
+  // Prefer system Chrome when available, but fall back for CI runners.
+  try {
+    return await chromium.launch({ channel: "chrome", headless: true });
+  } catch {
+    return await chromium.launch({ headless: true });
+  }
+}
+
 async function openSearch(page) {
   // Click the navbar search trigger (more stable than relying on "/" shortcut).
   try {
@@ -94,7 +103,7 @@ async function main() {
   ensureDir(runDir);
 
   try {
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await launchBrowser();
     const ctx = await browser.newContext({ userAgent: "jinnkunn.com search-snapshots" });
     const page = await ctx.newPage();
 

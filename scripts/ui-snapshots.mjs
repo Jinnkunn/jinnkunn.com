@@ -85,6 +85,15 @@ function safeNameFromPath(p) {
   return p.replace(/^\/+/, "").replace(/\/+$/, "").replaceAll("/", "__");
 }
 
+async function launchBrowser() {
+  // Prefer system Chrome when available, but fall back for CI runners.
+  try {
+    return await chromium.launch({ channel: "chrome", headless: true });
+  } catch {
+    return await chromium.launch({ headless: true });
+  }
+}
+
 async function main() {
   if (!hasBuild()) {
     await run("npm", ["run", "build"], { cwd: ROOT });
@@ -100,10 +109,7 @@ async function main() {
   try {
     await waitForHttpOk(`${origin}/`, 20_000);
 
-    const browser = await chromium.launch({
-      channel: "chrome",
-      headless: true,
-    });
+    const browser = await launchBrowser();
 
     const ctx = await browser.newContext({
       userAgent: "jinnkunn.com ui-snapshots",

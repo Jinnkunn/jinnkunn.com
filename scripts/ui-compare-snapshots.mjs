@@ -45,11 +45,18 @@ function urlFor(origin, p) {
   return `${base}${p}`;
 }
 
+async function launchBrowser() {
+  // Prefer system Chrome when available (local dev), but fall back to bundled Chromium
+  // (GitHub Actions runners may not expose the "chrome" channel).
+  try {
+    return await chromium.launch({ channel: "chrome", headless: true });
+  } catch {
+    return await chromium.launch({ headless: true });
+  }
+}
+
 async function captureSet({ origin, prefix, viewports, targets, runDir }) {
-  const browser = await chromium.launch({
-    channel: "chrome",
-    headless: true,
-  });
+  const browser = await launchBrowser();
 
   const ctx = await browser.newContext({
     userAgent: "jinnkunn.com ui-compare-snapshots",

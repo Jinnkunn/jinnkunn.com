@@ -46,6 +46,15 @@ function startServer(port) {
   return child;
 }
 
+async function launchBrowser() {
+  // Prefer system Chrome when available, but fall back for CI runners.
+  try {
+    return await chromium.launch({ channel: "chrome", headless: true });
+  } catch {
+    return await chromium.launch({ headless: true });
+  }
+}
+
 async function main() {
   const stamp = isoStampForPath();
   const outDir = path.join(OUT_ROOT, stamp);
@@ -85,7 +94,7 @@ async function main() {
 
     await waitForServer(`${baseURL}/`);
 
-    browser = await chromium.launch({ channel: "chrome", headless: true });
+    browser = await launchBrowser();
 
     // Desktop checks
     {
