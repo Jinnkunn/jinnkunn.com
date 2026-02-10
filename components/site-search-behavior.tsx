@@ -223,34 +223,80 @@ function renderLoader(list: HTMLElement) {
 function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
   if (!items.length) return renderEmpty(list);
   const terms = tokenizeQuery(query);
-  list.innerHTML = items
-    .map((it, idx) => {
-      const last = idx === items.length - 1;
-      const titleHtml = escapeAndHighlight(it.title || "Untitled", terms);
-      const route = escapeHtml(it.routePath || "/");
-      const kind = escapeHtml(it.kind || "page");
-      const snippetHtml = escapeAndHighlight(it.snippet || "", terms);
-      const crumbRaw = String(it.breadcrumb || "").trim();
-      const crumbHtml = crumbRaw ? escapeHtml(crumbRaw) : "";
-      return `
-        <div class="notion-search__result-item-wrapper${last ? " last" : ""}">
-          <a class="notion-search__result-item ${kind}" href="${route}" role="option" aria-selected="false">
-            <div class="notion-search__result-item-content">
-              <div class="notion-search__result-item-title">
-                <span class="notion-semantic-string">${titleHtml}</span>
-              </div>
-              ${
-                snippetHtml
-                  ? `<div class="notion-search__result-item-text">${snippetHtml}</div><div class="notion-search__result-item-meta">${crumbHtml || route}</div>`
-                  : `<div class="notion-search__result-item-text">${crumbHtml || route}</div>`
-              }
+
+  const groupLabelFor = (it: SearchItem): string => {
+    const crumb = String(it.breadcrumb || "").trim();
+    if (crumb) {
+      const parts = crumb.split(" / ").map((s) => s.trim()).filter(Boolean);
+      if (parts.length >= 2) return parts[1]!;
+      if (parts.length === 1) return parts[0]!;
+    }
+    const rp = String(it.routePath || "/");
+    if (rp === "/") return "Home";
+    const seg = rp.split("/").filter(Boolean)[0] || "";
+    if (!seg) return "Home";
+    return seg.charAt(0).toUpperCase() + seg.slice(1);
+  };
+
+  const groups = new Map<string, SearchItem[]>();
+  for (const it of items) {
+    const g = groupLabelFor(it);
+    const arr = groups.get(g) || [];
+    arr.push(it);
+    groups.set(g, arr);
+  }
+
+  const groupOrder: string[] = [];
+  for (const it of items) {
+    const g = groupLabelFor(it);
+    if (!groupOrder.includes(g)) groupOrder.push(g);
+  }
+
+  const renderItem = (it: SearchItem, { last }: { last: boolean }) => {
+    const titleHtml = escapeAndHighlight(it.title || "Untitled", terms);
+    const route = escapeHtml(it.routePath || "/");
+    const kind = escapeHtml(it.kind || "page");
+    const snippetHtml = escapeAndHighlight(it.snippet || "", terms);
+    const crumbRaw = String(it.breadcrumb || "").trim();
+    const crumbHtml = crumbRaw ? escapeHtml(crumbRaw) : "";
+
+    return `
+      <div class="notion-search__result-item-wrapper${last ? " last" : ""}">
+        <a class="notion-search__result-item ${kind}" href="${route}" role="option" aria-selected="false">
+          <div class="notion-search__result-item-content">
+            <div class="notion-search__result-item-title">
+              <span class="notion-semantic-string">${titleHtml}</span>
             </div>
-            <div class="notion-search__result-item-enter-icon" aria-hidden="true">↵</div>
-          </a>
-        </div>
-      `.trim();
-    })
-    .join("");
+            ${
+              snippetHtml
+                ? `<div class="notion-search__result-item-text">${snippetHtml}</div><div class="notion-search__result-item-meta">${crumbHtml || route}</div>`
+                : `<div class="notion-search__result-item-text">${crumbHtml || route}</div>`
+            }
+          </div>
+          <div class="notion-search__result-item-enter-icon" aria-hidden="true">↵</div>
+        </a>
+      </div>
+    `.trim();
+  };
+
+  const total = items.length;
+  const out: string[] = [];
+  let i = 0;
+  for (const g of groupOrder) {
+    const arr = groups.get(g) || [];
+    if (!arr.length) continue;
+    out.push(
+      `<div class="notion-search__group"><div class="notion-search__group-title">${escapeHtml(
+        g,
+      )}</div><div class="notion-search__group-count">${arr.length}</div></div>`,
+    );
+    for (const it of arr) {
+      i += 1;
+      out.push(renderItem(it, { last: i === total }));
+    }
+  }
+
+  list.innerHTML = out.join("");
 }
 
 async function fetchResults(

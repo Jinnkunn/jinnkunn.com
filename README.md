@@ -1,4 +1,4 @@
-## Getting Started
+## Getting Started (Local)
 
 ```bash
 npm run dev
@@ -57,7 +57,21 @@ npm run provision:admin
 
 - Create a Notion internal integration, copy its secret token.
 - Share the `Site Admin` page with that integration.
-- Set env vars (see `.env.example`).
+- Set env vars (see `.env.example` if present, otherwise use the list below).
+
+Required for Notion sync:
+- `NOTION_TOKEN`
+- `NOTION_SITE_ADMIN_PAGE_ID`
+
+Required for `/site-admin` GitHub login:
+- `GITHUB_ID`
+- `GITHUB_SECRET`
+- `NEXTAUTH_SECRET` (or `AUTH_SECRET`)
+- `SITE_ADMIN_GITHUB_USERS` (comma-separated GitHub usernames, e.g. `jinnkunn,@someone`)
+
+Optional:
+- `CONTENT_GITHUB_USERS` (allowlist for viewing protected content)
+- `VERCEL_DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for Notion deploy button)
 
 ### 3) Sync
 
@@ -69,7 +83,7 @@ This generates:
 - `content/generated/site-config.json`
 - `content/generated/raw/<route>.html`
 
-`npm run build` automatically runs Notion sync first when `NOTION_*` env vars are set.
+`npm run build` will run Notion sync automatically via `prebuild` when `NOTION_*` env vars are set.
 
 ## Deploy Button (Notion -> Vercel)
 
@@ -98,6 +112,22 @@ npm run snapshot:ui
 ```
 
 Outputs go to `output/ui-snapshots/<timestamp>/`.
+
+## Search Regression Snapshots (Production)
+
+```bash
+CLONE_ORIGIN="https://your-deployment.vercel.app" npm run snapshot:search
+```
+
+Outputs go to `output/playwright/search/<timestamp>/`.
+
+## Orig vs Clone Compare Screenshots
+
+```bash
+ORIG_ORIGIN="https://jinkunchen.com" CLONE_ORIGIN="https://your-deployment.vercel.app" npm run snapshot:compare
+```
+
+Outputs go to `output/playwright/compare/<timestamp>/`.
 
 ## UI Smoke Checks
 
@@ -139,17 +169,9 @@ npm run audit:notion
 
 Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-audit/latest.*`.
 
-## Learn More
+## GitHub Actions
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `CI`: basic `npm ci` + `npm run build` (works without Notion secrets).
+- `UI Smoke`: sync raw HTML from the live site + run E2E smoke checks.
+- `UI Compare`: manual, captures screenshots from orig vs clone.
+- `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

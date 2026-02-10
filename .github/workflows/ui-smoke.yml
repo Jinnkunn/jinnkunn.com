@@ -26,6 +26,9 @@ jobs:
       - name: Sync Raw (Hydrated)
         run: npm run sync:raw
 
+      - name: Build
+        run: npm run build
+
       - name: Audit Notion/Super Classes
         run: npm run audit:notion
 
@@ -41,4 +44,3 @@ jobs:
             output/ui-smoke/**
             output/notion-block-audit/latest.*
           if-no-files-found: ignore
-

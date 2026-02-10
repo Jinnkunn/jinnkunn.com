@@ -358,6 +358,15 @@ export async function GET(req: Request) {
         const titlePos = bestPos(safeLower(it.title), terms);
         const routePos = bestPos(safeLower(canon), terms);
         const textPos = bestPos(safeLower(it.text), terms);
+        const titleHay = safeLower(it.title);
+        const routeHay = safeLower(canon);
+        const textHay = safeLower(it.text);
+        const titleHasPhrase = ql.length >= 3 && titleHay.includes(ql);
+        const routeHasPhrase = ql.length >= 3 && routeHay.includes(ql);
+        const textHasPhrase = ql.length >= 3 && textHay.includes(ql);
+        const titleHasAllTerms = terms.length > 1 && terms.every((t) => titleHay.includes(t));
+        const textHasAllTerms = terms.length > 1 && terms.every((t) => textHay.includes(t));
+
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const textLenPenalty = Math.min(900, Math.floor(String(it.text || "").length / 140));
         // Rank: title > route > content. Earlier match positions are better.
@@ -366,7 +375,14 @@ export async function GET(req: Request) {
           (routePos === -1 ? 8000 : routePos + 50) +
           (textPos === -1 ? 12000 : textPos + 200) +
           homePenalty +
-          textLenPenalty;
+          textLenPenalty -
+          // Phrase matches are strong signals.
+          (titleHasPhrase ? 2200 : 0) -
+          (textHasPhrase ? 700 : 0) -
+          (routeHasPhrase ? 400 : 0) -
+          // All-terms matches should beat single-term matches.
+          (titleHasAllTerms ? 900 : 0) -
+          (textHasAllTerms ? 300 : 0);
         return { it, score, canon };
       })
       .sort((a, b) => a.score - b.score)

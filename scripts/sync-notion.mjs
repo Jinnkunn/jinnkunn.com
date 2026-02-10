@@ -1087,6 +1087,36 @@ function extractPlainTextFromBlocks(blocks, out = []) {
   return out;
 }
 
+function buildSearchTextFromLines(lines) {
+  const arr = Array.isArray(lines) ? lines : [];
+  const out = [];
+  const seen = new Set();
+
+  // Keep the index deterministic + small:
+  // - de-dupe identical lines (common with headings/years in Notion exports)
+  // - cap number of lines and total characters
+  const maxLines = 900;
+  const maxChars = 24_000;
+
+  let total = 0;
+  for (const s0 of arr) {
+    const s = String(s0 || "").replace(/\s+/g, " ").trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    out.push(s);
+    total += s.length + 1;
+    if (out.length >= maxLines) break;
+    if (total >= maxChars) break;
+  }
+
+  let joined = out.join("\n").trim();
+  if (joined.length > maxChars) joined = joined.slice(0, maxChars).trim();
+  return joined;
+}
+
 function renderRichText(richText, ctx) {
   const items = Array.isArray(richText) ? richText : [];
   return items.map((rt) => renderRichTextItem(rt, ctx)).join("");
@@ -2028,7 +2058,7 @@ async function main() {
           }
 
           const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
-          const text = extractPlainTextFromBlocks(blocks).join("\n");
+          const text = buildSearchTextFromLines(extractPlainTextFromBlocks(blocks));
           searchIndex.push({
             id: p.id,
             title: p.title,

@@ -1033,6 +1033,12 @@ html {
   font-size: 13px;
 }
 
+.site-admin-status__hint {
+  color: rgba(55, 53, 47, 0.55);
+  font-size: 12px;
+  margin-left: 8px;
+}
+
 .site-admin-status__grid {
   margin-top: 14px;
   display: grid;
@@ -1992,6 +1998,25 @@ html {
   max-height: min(58vh, 520px);
   overflow: auto;
   padding: 8px 0;
+}
+
+.notion-search__group {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 22px 6px;
+  color: rgba(55, 53, 47, 0.55);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.notion-search__group-title {
+  font-weight: 600;
+}
+
+.notion-search__group-count {
+  font-variant-numeric: tabular-nums;
 }
 
 .notion-search__result-item-wrapper {

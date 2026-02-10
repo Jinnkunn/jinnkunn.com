@@ -64,6 +64,12 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
 
+function recordErrorMessage(x: unknown): string | null {
+  if (!isRecord(x)) return null;
+  const e = x["error"];
+  return typeof e === "string" && e.trim() ? e : null;
+}
+
 function fmtWhen(ms?: number): string {
   if (!ms || !Number.isFinite(ms)) return "—";
   try {
@@ -77,6 +83,13 @@ function fmtIso(iso?: string | null): string {
   const s = String(iso || "").trim();
   if (!s) return "—";
   return s.replace("T", " ").replace("Z", " UTC");
+}
+
+function isoMs(iso?: string | null): number {
+  const s = String(iso || "").trim();
+  if (!s) return NaN;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : NaN;
 }
 
 function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
@@ -97,8 +110,7 @@ export default function SiteAdminStatusClient() {
       const r = await fetch("/api/site-admin/status", { cache: "no-store" });
       const data = (await r.json().catch(() => null)) as StatusResult | null;
       if (!r.ok || !data) {
-        const err =
-          data && isRecord(data) && typeof data.error === "string" ? data.error : `HTTP ${r.status}`;
+        const err = recordErrorMessage(data) || `HTTP ${r.status}`;
         throw new Error(err);
       }
       setRes(data);
@@ -120,6 +132,27 @@ export default function SiteAdminStatusClient() {
     if (!url) return "";
     return url.startsWith("http") ? url : `https://${url}`;
   }, [payload?.build?.vercelUrl]);
+
+  const stale = useMemo(() => {
+    if (!payload?.content?.syncMeta?.syncedAt) return { ok: true, reason: "" };
+    const synced = isoMs(payload.content.syncMeta.syncedAt);
+    if (!Number.isFinite(synced)) return { ok: true, reason: "" };
+
+    const adminEdited = isoMs(payload.notion.adminPage?.lastEdited);
+    const rootEdited = isoMs(payload.notion.rootPage?.lastEdited);
+
+    // If Notion shows edits after the last sync, the deploy is likely stale.
+    // Add a small tolerance to avoid flapping due to clock precision.
+    const toleranceMs = 30_000;
+    const adminStale = Number.isFinite(adminEdited) && adminEdited > synced + toleranceMs;
+    const rootStale = Number.isFinite(rootEdited) && rootEdited > synced + toleranceMs;
+    const ok = !(adminStale || rootStale);
+
+    const parts: string[] = [];
+    if (adminStale) parts.push("Admin page edited after sync");
+    if (rootStale) parts.push("Root page edited after sync");
+    return { ok, reason: parts.join("; ") };
+  }, [payload]);
 
   return (
     <section className="site-admin-status">
@@ -215,6 +248,15 @@ export default function SiteAdminStatusClient() {
                   ) : (
                     <span>—</span>
                   )}
+                </dd>
+              </div>
+              <div className="site-admin-kv__row">
+                <dt>Freshness</dt>
+                <dd>
+                  <Badge ok={stale.ok}>{stale.ok ? "up-to-date" : "stale"}</Badge>
+                  {!stale.ok && stale.reason ? (
+                    <span className="site-admin-status__hint"> {stale.reason}</span>
+                  ) : null}
                 </dd>
               </div>
               <div className="site-admin-kv__row">

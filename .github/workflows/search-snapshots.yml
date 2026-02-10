@@ -1,0 +1,39 @@
+name: Search Snapshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      clone_origin:
+        description: "Clone site origin"
+        required: false
+        default: "https://jinnkunn-com.vercel.app"
+
+jobs:
+  search-snapshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Capture Search Snapshots
+        env:
+          CLONE_ORIGIN: ${{ inputs.clone_origin }}
+        run: npm run snapshot:search
+
+      - name: Upload Search Screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-snapshots
+          path: output/playwright/search/**
+          if-no-files-found: error
+
