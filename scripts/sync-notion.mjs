@@ -20,6 +20,7 @@ import path from "node:path";
 import katex from "katex";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
+import { deepMerge, isObject } from "../lib/shared/object-utils.mjs";
 import {
   notionRequest,
   queryDatabase,
@@ -75,21 +76,6 @@ function stripTreeForCache(value) {
       return v;
     }),
   );
-}
-
-function isObject(x) {
-  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
-}
-
-function deepMerge(base, patch) {
-  if (!isObject(patch)) return base;
-  const out = { ...base };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) continue;
-    if (isObject(out[k]) && isObject(v)) out[k] = deepMerge(out[k], v);
-    else out[k] = v;
-  }
-  return out;
 }
 
 function normalizeHref(href) {
