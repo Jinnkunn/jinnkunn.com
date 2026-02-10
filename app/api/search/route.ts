@@ -338,7 +338,20 @@ export async function GET(req: Request) {
       }
       return p === "/blog" || p.startsWith("/blog/");
     }
-    if (type === "page" || type === "pages") return k === "page" && !(p === "/blog" || p.startsWith("/blog/"));
+    if (type === "page" || type === "pages") {
+      if (k !== "page") return false;
+      // Exclude internal blog database helpers (some exports label them as pages).
+      const raw = normalizePath(routePath);
+      if (
+        raw === "/blog/list" ||
+        raw.startsWith("/blog/list/") ||
+        raw === "/list" ||
+        raw.startsWith("/list/")
+      ) {
+        return false;
+      }
+      return true;
+    }
     return true; // all
   };
 

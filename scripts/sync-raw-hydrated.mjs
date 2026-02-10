@@ -91,6 +91,9 @@ async function syncFeeds() {
 async function getHydratedMainHtml(page, url) {
   const resp = await page.goto(url, { waitUntil: "domcontentloaded" });
   const status = resp?.status?.() ?? 0;
+  // The upstream site may add/remove pages over time. For raw sync, treat 404/410
+  // as "skip" instead of failing the whole job.
+  if (status === 404 || status === 410) return null;
   if (status && status >= 400) throw new Error(`HTTP ${status} for ${url}`);
 
   await page.waitForSelector("main", { timeout: 30_000 });
@@ -164,6 +167,16 @@ async function getHydratedMainHtml(page, url) {
   return mainHtml;
 }
 
+async function launchChromiumBrowser() {
+  // Prefer system Chrome to avoid downloading browsers on CI, but fall back to
+  // bundled Chromium if the channel isn't available.
+  try {
+    return await chromium.launch({ channel: "chrome", headless: true });
+  } catch {
+    return await chromium.launch({ headless: true });
+  }
+}
+
 async function main() {
   const rss = await syncFeeds();
   const itemRoutes = extractBlogPostSlugsFromRss(rss);
@@ -175,10 +188,7 @@ async function main() {
   console.log(`Sync origin: ${ORIGIN}`);
   console.log(`Routes: ${routes.length}`);
 
-  const browser = await chromium.launch({
-    channel: "chrome",
-    headless: true,
-  });
+  const browser = await launchChromiumBrowser();
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     userAgent: "jinnkunn.com raw sync (hydrated)",
@@ -190,6 +200,10 @@ async function main() {
       const url = `${ORIGIN}${route}`;
       console.log(`Hydrating ${url}`);
       const mainHtml = await getHydratedMainHtml(page, url);
+      if (!mainHtml) {
+        console.warn(`Skipping (HTTP 404/410): ${url}`);
+        continue;
+      }
 
       let outPath;
       if (route.startsWith("/blog/list/")) {
