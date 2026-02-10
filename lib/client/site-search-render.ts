@@ -64,8 +64,13 @@ function groupLabelFor(it: SearchItem): string {
   return seg.charAt(0).toUpperCase() + seg.slice(1);
 }
 
-export function renderSearchResultsHtml(items: SearchItem[], query: string): string {
+export function renderSearchResultsHtml(
+  items: SearchItem[],
+  query: string,
+  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number },
+): string {
   const terms = tokenizeQuery(query);
+  const collapsed = opts?.collapsedGroups || new Set<string>();
 
   const groups = new Map<string, SearchItem[]>();
   const groupOrder: string[] = [];
@@ -111,17 +116,36 @@ export function renderSearchResultsHtml(items: SearchItem[], query: string): str
   for (const g of groupOrder) {
     const arr = groups.get(g) || [];
     if (!arr.length) continue;
+    const isCollapsed = collapsed.has(g);
     out.push(
-      `<div class="notion-search__group"><div class="notion-search__group-title">${escapeHtml(
+      `<button class="notion-search__group" type="button" data-group="${escapeHtml(
         g,
-      )}</div><div class="notion-search__group-count">${arr.length}</div></div>`,
+      )}" aria-expanded="${isCollapsed ? "false" : "true"}">` +
+        `<span class="notion-search__group-caret" aria-hidden="true">▾</span>` +
+        `<span class="notion-search__group-title">${escapeHtml(g)}</span>` +
+        `<span class="notion-search__group-count" aria-hidden="true">${arr.length}</span>` +
+      `</button>`,
+    );
+    out.push(
+      `<div class="notion-search__group-items${isCollapsed ? " is-collapsed" : ""}" data-group-items="${escapeHtml(
+        g,
+      )}">`,
     );
     for (const it of arr) {
       i += 1;
       out.push(renderItem(it, { last: i === total }));
     }
+    out.push(`</div>`);
+  }
+
+  if (opts?.showMore) {
+    const remaining = Math.max(0, Number(opts.remaining || 0));
+    out.push(
+      `<div class="notion-search__more">` +
+        `<button class="notion-search__more-btn" id="notion-search-more" type="button">Show more${remaining ? ` (${remaining})` : ""}</button>` +
+      `</div>`,
+    );
   }
 
   return out.join("");
 }
-

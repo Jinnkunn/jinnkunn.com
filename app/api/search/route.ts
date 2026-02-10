@@ -285,13 +285,23 @@ export async function GET(req: Request) {
   if (!q) {
     return json({
       items: [],
-      meta: { total: 0, filteredTotal: 0, counts: { all: 0, pages: 0, blog: 0, databases: 0 } },
+      meta: {
+        total: 0,
+        filteredTotal: 0,
+        counts: { all: 0, pages: 0, blog: 0, databases: 0 },
+        offset: 0,
+        limit: 20,
+        hasMore: false,
+      },
     });
   }
 
   const type = String(url.searchParams.get("type") || "all")
     .trim()
     .toLowerCase();
+  const offset = Math.max(0, Number.parseInt(String(url.searchParams.get("offset") || "0"), 10) || 0);
+  const limitRaw = Number.parseInt(String(url.searchParams.get("limit") || "20"), 10);
+  const limit = Math.max(1, Math.min(50, Number.isFinite(limitRaw) ? limitRaw : 20));
   const scopeRaw = String(url.searchParams.get("scope") || "").trim();
   const scope = scopeRaw && scopeRaw.startsWith("/") ? normalizePath(scopeRaw) : "";
 
@@ -369,14 +379,15 @@ export async function GET(req: Request) {
     for (const m of allMatches) counts[m.typeKey] += 1;
 
     const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
+    const hasMore = offset + limit < filtered.length;
 
-    const items = filtered.slice(0, 20).map(({ it, canon }) => ({
-        title: it.routePath === "/" ? "Home" : it.title || "Untitled",
-        routePath: canon,
-        kind: it.kind || "page",
-        snippet: buildSnippetByTerms(it.text || "", terms),
-        breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
-      }));
+    const items = filtered.slice(offset, offset + limit).map(({ it, canon }) => ({
+      title: it.routePath === "/" ? "Home" : it.title || "Untitled",
+      routePath: canon,
+      kind: it.kind || "page",
+      snippet: buildSnippetByTerms(it.text || "", terms),
+      breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
+    }));
 
     return json({
       items,
@@ -384,6 +395,9 @@ export async function GET(req: Request) {
         total: allMatches.length,
         filteredTotal: filtered.length,
         counts,
+        offset,
+        limit,
+        hasMore,
       },
     });
   }
@@ -420,13 +434,17 @@ export async function GET(req: Request) {
   const counts = { all: allMatches.length, pages: 0, blog: 0, databases: 0 };
   for (const m of allMatches) counts[m.typeKey] += 1;
   const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
+  const hasMore = offset + limit < filtered.length;
 
-  const items = filtered.slice(0, 20).map(({ it }) => ({
+  const items = filtered.slice(offset, offset + limit).map(({ it }) => ({
     title: it.routePath === "/" ? "Home" : it.title || "Untitled",
     routePath: canonicalizePublicRoute(it.routePath),
     kind: it.kind || "page",
     breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (it.routePath === "/" ? "Home" : ""),
   }));
 
-  return json({ items, meta: { total: allMatches.length, filteredTotal: filtered.length, counts } });
+  return json({
+    items,
+    meta: { total: allMatches.length, filteredTotal: filtered.length, counts, offset, limit, hasMore },
+  });
 }

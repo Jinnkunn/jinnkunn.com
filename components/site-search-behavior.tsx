@@ -9,6 +9,9 @@ type SearchMeta = {
   total: number;
   filteredTotal: number;
   counts: { all: number; pages: number; blog: number; databases: number };
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 };
 
 function ensureSearch(): {
@@ -163,20 +166,27 @@ function renderLoader(list: HTMLElement) {
   list.innerHTML = `<div class="notion-search__result-loader">Searching...</div>`;
 }
 
-function renderResults(list: HTMLElement, items: SearchItem[], query: string) {
+function renderResults(
+  list: HTMLElement,
+  items: SearchItem[],
+  query: string,
+  opts?: { collapsedGroups?: Set<string>; showMore?: boolean; remaining?: number },
+) {
   if (!items.length) return renderEmpty(list);
-  list.innerHTML = renderSearchResultsHtml(items, query);
+  list.innerHTML = renderSearchResultsHtml(items, query, opts);
 }
 
 async function fetchResults(
   q: string,
-  opts: { type: string; scope: string },
+  opts: { type: string; scope: string; offset: number; limit: number },
   signal: AbortSignal,
 ): Promise<{ items: SearchItem[]; meta: SearchMeta | null }> {
   const url = new URL("/api/search", window.location.origin);
   url.searchParams.set("q", q);
   if (opts.type && opts.type !== "all") url.searchParams.set("type", opts.type);
   if (opts.scope) url.searchParams.set("scope", opts.scope);
+  if (opts.offset > 0) url.searchParams.set("offset", String(opts.offset));
+  if (opts.limit && opts.limit !== 20) url.searchParams.set("limit", String(opts.limit));
   const res = await fetch(url, { signal, headers: { "cache-control": "no-store" } });
   if (!res.ok) return { items: [], meta: null };
   const data = (await res.json().catch(() => null)) as unknown;
@@ -198,8 +208,12 @@ async function fetchResults(
     const databases = Number(counts?.databases ?? NaN);
     const total = Number(m.total ?? NaN);
     const filteredTotal = Number(m.filteredTotal ?? NaN);
-    if (![all, pages, blog, databases, total, filteredTotal].every((n) => Number.isFinite(n))) return null;
-    return { total, filteredTotal, counts: { all, pages, blog, databases } };
+    const offset = Number(m.offset ?? NaN);
+    const limit = Number(m.limit ?? NaN);
+    const hasMore = Boolean(m.hasMore);
+    if (![all, pages, blog, databases, total, filteredTotal, offset, limit].every((n) => Number.isFinite(n)))
+      return null;
+    return { total, filteredTotal, counts: { all, pages, blog, databases }, offset, limit, hasMore };
   })();
 
   const items = Array.isArray(items0) ? items0 : [];
@@ -252,6 +266,10 @@ export default function SiteSearchBehavior() {
     let scopePrefix = "";
     let scopeLabel = "";
     let lastMeta: SearchMeta | null = null;
+    let currentQuery = "";
+    let currentItems: SearchItem[] = [];
+    const collapsedGroups = new Set<string>();
+    const pageLimit = 20;
 
     const computeScope = (): { prefix: string; label: string } => {
       const p = String(window.location.pathname || "/");
@@ -320,7 +338,11 @@ export default function SiteSearchBehavior() {
     };
 
     const getResultItems = (): HTMLAnchorElement[] =>
-      Array.from(list.querySelectorAll<HTMLAnchorElement>(".notion-search__result-item"));
+      Array.from(list.querySelectorAll<HTMLAnchorElement>(".notion-search__result-item")).filter((el) => {
+        const parent = el.closest<HTMLElement>(".notion-search__group-items");
+        if (!parent) return true;
+        return !parent.classList.contains("is-collapsed");
+      });
 
     const setActive = (idx: number) => {
       const items = getResultItems();
@@ -450,11 +472,14 @@ export default function SiteSearchBehavior() {
 
     const runSearch = (q: string) => {
       const query = q.trim();
+      currentQuery = query;
       if (!query) {
         aborter?.abort();
         aborter = null;
         applyMetaCounts(null);
         renderEmpty(list);
+        currentItems = [];
+        collapsedGroups.clear();
         activeIndex = -1;
         renderFooterHint("idle");
         return;
@@ -462,19 +487,24 @@ export default function SiteSearchBehavior() {
 
       aborter?.abort();
       aborter = new AbortController();
+      currentItems = [];
+      collapsedGroups.clear();
       renderLoader(list);
       activeIndex = -1;
 
       void (async () => {
         const { items, meta } = await fetchResults(
           query,
-          { type: filterType, scope: scopeEnabled ? scopePrefix : "" },
+          { type: filterType, scope: scopeEnabled ? scopePrefix : "", offset: 0, limit: pageLimit },
           aborter!.signal,
         ).catch(() => ({ items: [], meta: null }));
         if (aborter?.signal.aborted) return;
         applyMetaCounts(meta);
-        renderResults(list, items, query);
-        if (items.length) setActive(0);
+        currentItems = items;
+        const showMore = Boolean(meta?.hasMore);
+        const remaining = meta ? Math.max(0, meta.filteredTotal - currentItems.length) : 0;
+        renderResults(list, currentItems, query, { collapsedGroups, showMore, remaining });
+        if (currentItems.length) setActive(0);
         renderFooterHint("results");
       })();
     };
@@ -540,6 +570,60 @@ export default function SiteSearchBehavior() {
     filterDatabases.addEventListener("click", onFilterClick);
     scopeBtn.addEventListener("click", onScopeClick);
 
+    const onResultsClick = (e: MouseEvent) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (!t) return;
+
+      const groupBtn = t.closest<HTMLButtonElement>("button.notion-search__group");
+      if (groupBtn) {
+        e.preventDefault();
+        const g = String(groupBtn.getAttribute("data-group") || "").trim();
+        if (!g) return;
+        if (collapsedGroups.has(g)) collapsedGroups.delete(g);
+        else collapsedGroups.add(g);
+
+        const showMore = Boolean(lastMeta?.hasMore);
+        const remaining = lastMeta ? Math.max(0, lastMeta.filteredTotal - currentItems.length) : 0;
+        renderResults(list, currentItems, currentQuery, { collapsedGroups, showMore, remaining });
+        activeIndex = -1;
+        return;
+      }
+
+      const moreBtn = t.closest<HTMLButtonElement>("#notion-search-more");
+      if (moreBtn) {
+        e.preventDefault();
+        if (!open) return;
+        if (!currentQuery.trim()) return;
+        if (!lastMeta?.hasMore) return;
+
+        aborter?.abort();
+        aborter = new AbortController();
+        moreBtn.disabled = true;
+        moreBtn.textContent = "Loading...";
+
+        void (async () => {
+          const { items: nextItems, meta } = await fetchResults(
+            currentQuery,
+            { type: filterType, scope: scopeEnabled ? scopePrefix : "", offset: currentItems.length, limit: pageLimit },
+            aborter!.signal,
+          ).catch(() => ({ items: [], meta: null }));
+          if (aborter?.signal.aborted) return;
+          applyMetaCounts(meta);
+          const seen = new Set(currentItems.map((x) => x.routePath));
+          for (const it of nextItems) {
+            if (!seen.has(it.routePath)) currentItems.push(it);
+          }
+          const showMore2 = Boolean(meta?.hasMore);
+          const remaining2 = meta ? Math.max(0, meta.filteredTotal - currentItems.length) : 0;
+          renderResults(list, currentItems, currentQuery, { collapsedGroups, showMore: showMore2, remaining: remaining2 });
+        })();
+
+        return;
+      }
+    };
+
+    list.addEventListener("click", onResultsClick);
+
     // Close on navigation.
     if (open) close();
 
@@ -555,6 +639,7 @@ export default function SiteSearchBehavior() {
       filterBlog.removeEventListener("click", onFilterClick);
       filterDatabases.removeEventListener("click", onFilterClick);
       scopeBtn.removeEventListener("click", onScopeClick);
+      list.removeEventListener("click", onResultsClick);
       aborter?.abort();
       aborter = null;
     };
