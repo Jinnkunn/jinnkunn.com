@@ -1,5 +1,7 @@
 import "server-only";
 
+import { escapeXml, getOriginFromRequest } from "@/lib/server/http";
+
 export type RssItem = {
   title: string;
   link: string;
@@ -7,25 +9,7 @@ export type RssItem = {
   pubDate?: string | null; // RFC2822 preferred
 };
 
-export function getOriginFromRequest(req: Request): string {
-  const url = new URL(req.url);
-  const proto = req.headers.get("x-forwarded-proto") || url.protocol.replace(":", "") || "https";
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    url.host ||
-    "localhost";
-  return `${proto}://${host}`;
-}
-
-export function escapeXml(s: string): string {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
+export { getOriginFromRequest, escapeXml };
 
 export function toRfc2822(dateIso: string | null): string | null {
   if (!dateIso) return null;
@@ -76,4 +60,3 @@ export function rssResponse(xml: string): Response {
     },
   });
 }
-

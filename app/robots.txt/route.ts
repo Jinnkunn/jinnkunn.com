@@ -1,15 +1,5 @@
+import { getOriginFromRequest } from "@/lib/server/http";
 export const runtime = "nodejs";
-
-function getOriginFromRequest(req: Request): string {
-  const url = new URL(req.url);
-  const proto = req.headers.get("x-forwarded-proto") || url.protocol.replace(":", "") || "https";
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    url.host ||
-    "localhost";
-  return `${proto}://${host}`;
-}
 
 export async function GET(req: Request) {
   const origin = getOriginFromRequest(req);
@@ -29,4 +19,3 @@ export async function GET(req: Request) {
     },
   });
 }
-

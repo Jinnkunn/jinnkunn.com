@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
-import protectedRoutes from "@/content/generated/protected-routes.json";
+import { getProtectedRoutes } from "@/lib/protected-routes";
 
 export const runtime = "nodejs";
 
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   const rid = String(form?.get("rid") ?? "").trim();
   const password = String(form?.get("password") ?? "");
 
-  const routes = (protectedRoutes || []) as ProtectedRoute[];
+  const routes = getProtectedRoutes() as ProtectedRoute[];
   const route = routes.find((r) => r.id === rid);
   if (!route) return redirectToAuth(req, { next, rid, error: "1" });
 

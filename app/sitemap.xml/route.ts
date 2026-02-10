@@ -1,30 +1,8 @@
+import { escapeXml, getOriginFromRequest } from "@/lib/server/http";
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 
 export const runtime = "nodejs";
-
-function getOriginFromRequest(req: Request): string {
-  const url = new URL(req.url);
-  const proto =
-    req.headers.get("x-forwarded-proto") ||
-    url.protocol.replace(":", "") ||
-    "https";
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    url.host ||
-    "localhost";
-  return `${proto}://${host}`;
-}
-
-function escapeXml(s: string): string {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
 
 function normalizeRoutePath(routePath: string): string {
   // Keep it local to sitemap generation: avoid importing helpers that might
