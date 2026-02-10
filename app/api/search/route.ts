@@ -261,7 +261,10 @@ export async function GET(req: Request) {
       .filter((it) => {
         const canon = canonicalizePublicRoute(it.routePath);
         if (!inScope(canon)) return false;
-        const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(it.text)}`;
+        const headings = Array.isArray((it as { headings?: unknown }).headings)
+          ? String(((it as { headings?: string[] }).headings || []).join("\n") || "")
+          : "";
+        const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(headings)}\n${safeLower(it.text)}`;
         if (terms.length <= 1) return hay.includes(ql);
         return terms.every((t) => hay.includes(t));
       })
@@ -274,11 +277,14 @@ export async function GET(req: Request) {
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const navBoost = byRoute.get(normalizePath(it.routePath))?.navGroup ? 180 : 0;
+        const headings = Array.isArray((it as { headings?: unknown }).headings)
+          ? String(((it as { headings?: string[] }).headings || []).join("\n") || "")
+          : "";
         const score =
           scoreSearchResult({
             title: it.title,
             route: canon,
-            text: it.text || "",
+            text: `${headings}\n${it.text || ""}`.trim(),
             query: q,
             navBoost,
           }) + homePenalty;

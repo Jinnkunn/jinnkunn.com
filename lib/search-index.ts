@@ -7,6 +7,7 @@ export type SearchIndexItem = {
   title: string;
   kind: string;
   routePath: string;
+  headings?: string[];
   text: string;
 };
 
@@ -33,6 +34,11 @@ export function getSearchIndex(): SearchIndexItem[] {
             title: String(x.title || ""),
             kind: String(x.kind || ""),
             routePath: String(x.routePath || ""),
+            headings: Array.isArray((x as Record<string, unknown>).headings)
+              ? ((x as Record<string, unknown>).headings as unknown[])
+                  .map((s) => String(s || "").trim())
+                  .filter(Boolean)
+              : undefined,
             text: String(x.text || ""),
           };
           if (!it.routePath) return null;
@@ -44,4 +50,3 @@ export function getSearchIndex(): SearchIndexItem[] {
   __cache = { file: data.file, mtimeMs: data.mtimeMs, items };
   return items;
 }
-

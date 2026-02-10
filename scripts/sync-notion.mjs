@@ -48,8 +48,7 @@ import {
   routePathToHtmlRel,
 } from "./notion-sync/route-model.mjs";
 import {
-  buildSearchTextFromLines,
-  extractPlainTextFromBlocks,
+  buildSearchIndexFieldsFromBlocks,
 } from "./notion-sync/search-text.mjs";
 import { renderBreadcrumbs } from "./notion-sync/breadcrumbs.mjs";
 
@@ -1328,6 +1327,7 @@ async function main() {
                 title: p.title,
                 kind: p.kind,
                 routePath: p.routePath,
+                headings: Array.isArray(cached.headings) ? cached.headings : [],
                 text,
               });
               return String(cached.html);
@@ -1335,19 +1335,20 @@ async function main() {
           }
 
           const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
-          const text = buildSearchTextFromLines(extractPlainTextFromBlocks(blocks));
+          const fields = buildSearchIndexFieldsFromBlocks(blocks);
           searchIndex.push({
             id: p.id,
             title: p.title,
             kind: p.kind,
             routePath: p.routePath,
-            text,
+            headings: fields.headings,
+            text: fields.text,
           });
           const html = await renderPageMain(p, blocks, cfg, ctx);
 
           if (CACHE_ENABLED && !CACHE_FORCE && lastEdited) {
             try {
-              writeJsonAtomic(cachePath, { lastEdited, html, text });
+              writeJsonAtomic(cachePath, { lastEdited, html, text: fields.text });
             } catch {
               // ignore cache write failures
             }

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   buildSearchTextFromLines,
+  buildSearchIndexFieldsFromBlocks,
+  extractHeadingTextFromBlocks,
   extractPlainTextFromBlocks,
 } from "../scripts/notion-sync/search-text.mjs";
 
@@ -56,4 +58,28 @@ test("search-text: caps output size to keep index small", () => {
 
   // char cap (<= 4500)
   assert.ok(joined.length <= 4500);
+});
+
+test("search-text: extractHeadingTextFromBlocks() finds headings only", () => {
+  const blocks = [
+    { type: "heading_2", heading_2: { rich_text: [{ plain_text: "H2" }] } },
+    { type: "paragraph", paragraph: { rich_text: [{ plain_text: "P" }] } },
+  ];
+  const lines = extractHeadingTextFromBlocks(blocks);
+  assert.deepEqual(lines, ["H2"]);
+});
+
+test("search-text: buildSearchIndexFieldsFromBlocks() returns headings + slim body", () => {
+  const blocks = [
+    { type: "heading_1", heading_1: { rich_text: [{ plain_text: "Title" }] } },
+    { type: "code", code: { rich_text: [{ plain_text: "const x = 1;" }] } },
+    { type: "table_row", table_row: { cells: [[{ plain_text: "cell1" }]] } },
+    { type: "paragraph", paragraph: { rich_text: [{ plain_text: "Body text" }] } },
+  ];
+  const out = buildSearchIndexFieldsFromBlocks(blocks);
+  assert.deepEqual(out.headings, ["Title"]);
+  assert.match(out.text, /Body text/);
+  // default is to omit code + table noise
+  assert.doesNotMatch(out.text, /const x/);
+  assert.doesNotMatch(out.text, /cell1/);
 });
