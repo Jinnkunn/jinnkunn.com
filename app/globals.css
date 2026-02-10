@@ -1592,7 +1592,8 @@ html {
   /* On mobile, align breadcrumbs with the navbar logo padding (Super-like). */
   .super-root .super-content .super-navbar__breadcrumbs {
     margin-top: 8px;
-    padding-left: calc(8px + 16px);
+    /* Mobile navbar reduces logo padding to 8px in super-nav.css. */
+    padding-left: calc(8px + 8px);
     padding-right: 8px;
   }
 }
