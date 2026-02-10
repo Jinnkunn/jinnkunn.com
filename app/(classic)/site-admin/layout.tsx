@@ -1,3 +1,5 @@
+import "./site-admin.css";
+
 import SiteAdminProviders from "@/components/site-admin-providers";
 
 export default function SiteAdminLayout({
@@ -7,4 +9,3 @@ export default function SiteAdminLayout({
 }) {
   return <SiteAdminProviders>{children}</SiteAdminProviders>;
 }
-
