@@ -3,7 +3,13 @@
 }
 
 *::selection {
-  background: rgba(45, 170, 219, 0.3);
+  background: rgba(216, 191, 131, 0.56);
+  color: #2f2c26;
+}
+
+*::-moz-selection {
+  background: rgba(216, 191, 131, 0.56);
+  color: #2f2c26;
 }
 
 strong {
