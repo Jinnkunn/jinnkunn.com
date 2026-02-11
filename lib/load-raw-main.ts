@@ -34,10 +34,16 @@ function rewriteRawHtml(html: string): string {
       /\sfetchpriority=(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
       ""
     );
+    out = out.replace(/\sonerror=(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "");
+    const fallback = "this.onerror=null;this.src='https://cdn.jinkunchen.com/web_image/web-image.png'";
     if (out.endsWith("/>")) {
-      out = out.slice(0, -2) + ' loading="eager" fetchpriority="high" />';
+      out =
+        out.slice(0, -2) +
+        ` loading="eager" fetchpriority="high" onerror="${fallback}" />`;
     } else if (out.endsWith(">")) {
-      out = out.slice(0, -1) + ' loading="eager" fetchpriority="high">';
+      out =
+        out.slice(0, -1) +
+        ` loading="eager" fetchpriority="high" onerror="${fallback}">`;
     }
     return out;
   });
@@ -76,20 +82,20 @@ function rewriteRawHtml(html: string): string {
   let out = blogCanon;
 
   // Publications hygiene:
-  // Notion sometimes emits empty "highlighted" spans (only whitespace/newlines),
-  // which render as stray colored pills or extra blank lines in the expanded details.
+  // Keep Notion's native line structure (so title/tag wrapping matches source),
+  // and only strip truly empty colored wrappers that render as stray chips.
   if (out.includes("page__publications")) {
     out = out
       // Remove empty highlighted background spans (often created by Notion around newlines),
       // which otherwise render as stray colored "chips" (e.g. a blank pink block before `conference`).
       .replace(
         /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">(?:(?:\s|&nbsp;|<br\s*\/?>)*|<strong>(?:\s|&nbsp;|<br\s*\/?>)*<\/strong>)*<\/span>/gi,
-        "",
+        "\n",
       )
       // Remove empty colored chips, e.g. <span class="highlighted-background bg-red"><strong>\n</strong></span>
       .replace(
         /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">\s*<strong>[\s\r\n]*<\/strong>\s*<\/span>/gi,
-        "",
+        "\n",
       )
       // Remove empty color spans that only carry whitespace/newlines (causes blank lines under pre-wrap).
       .replace(
@@ -98,113 +104,25 @@ function rewriteRawHtml(html: string): string {
       )
       // After stripping empty spans, Notion can leave behind empty <em></em> wrappers.
       .replace(/<em>\s*<\/em>/gi, "")
-      // Ensure a consistent visual gap between author line and venue/link line.
-      // This is rendered via `white-space: pre-wrap` in Super/Notion markup.
-      //
-      // Case A: newline sits after the closing span.
-      // Only apply when the newline is *not* already inside the span content.
-      // Otherwise we risk producing two blank lines (3 consecutive newlines).
+      // Keep inline spacing between adjacent summary labels (conference / journal / arXiv.org).
+      .replace(/<\/em>\s*(?=<em><span class="highlighted-color color-(?:red|purple|orange))/gi, "</em> ")
+      // Keep "tag:" inline in detail lines when Notion inserts an empty highlighted marker before tag.
+      // We preserve the visual blank line with <br><br>, then keep `tag: text` on the same row.
       .replace(
-        /(?<![\r\n])<\/span>\r?\n((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
-        "</span>\n\n$1",
+        /(<span class="highlighted-color color-gray">[^<]*?<\/span>)\s*<em>\s*<span class="highlighted-color color-red">\s*<span class="highlighted-background bg-red">\s*<\/span>\s*<\/span>\s*<\/em>\s*(<em><span class="highlighted-color color-red">[\s\S]*?<code class="code">[\s\S]*?<\/code>[\s\S]*?<\/span><\/span><\/em>\s*<strong>:\s*<\/strong>)/gi,
+        "$1<br><br>$2",
       )
-      // Case B: newline sits *inside* the span just before </span>.
-      // Prefer inserting the extra blank line *between* elements to match other entries.
-      // Note: there's already one `\n` *before* `</span>` in this case. Inserting `\n\n`
-      // after `</span>` would yield 3 consecutive newlines (2 blank lines). We only need
-      // one extra newline here to create a single blank line.
+      // First tag line in publication details should start after one blank line below the author list.
+      // (Matches the original Notion/Super rendering and avoids "tag sticks to author line".)
       .replace(
-        /\n<\/span>((?:[ \t]*<em>[ \t]*<\/em>[ \t]*)*[ \t]*<em><span class="highlighted-color)/g,
-        "\n</span>\n$1",
+        /(<blockquote[^>]*class="notion-quote"[^>]*>\s*<span class="notion-semantic-string">[\s\S]*?)(<em>\s*<span class="highlighted-color color-(?:red|purple|orange)">[\s\S]*?<code class="code">[\s\S]*?<\/code>[\s\S]*?<\/span>\s*<\/span>\s*<\/em>\s*<strong>:\s*<\/strong>)/gi,
+        (_m, pre, firstTagLine) => {
+          if (/<br\s*\/?>\s*<br\s*\/?>\s*$/.test(String(pre))) {
+            return `${pre}${firstTagLine}`;
+          }
+          return `${pre}<br><br>${firstTagLine}`;
+        },
       );
-
-    // Publications: keep label + ":" together so it doesn't wrap to the next line.
-    // Notion exports the colon as `<strong>: </strong>` *after* the <em> wrapper.
-    // We pull it into the same <em> so wrapping can't split `conference` and `:`.
-    out = out.replace(
-      /<em>([\s\S]*?<code class="code">[\s\S]*?)<\/em><strong>:\s*<\/strong>/gi,
-      `<em>$1<span class="pub-tag-colon">: </span></em>`,
-    );
-
-    // Some exports keep the colon outside of <strong> (as a raw text node) after </em>.
-    // Normalize it into `pub-tag-colon` too.
-    out = out.replace(
-      /(<em>[\s\S]*?<code class="code">[\s\S]*?)<\/em>\s*:\s*/gi,
-      `$1<span class="pub-tag-colon">: </span></em>`,
-    );
-
-    // Some exports wrap ":" in its own highlighted span, sometimes separated by newlines.
-    // Example: </em>\n<span ...>:</span> <span ...>Venue</span>
-    out = out.replace(
-      /(<em>[\s\S]*?<code class="code">[\s\S]*?)<\/em>\s*<span[^>]*>\s*:\s*<\/span>\s*/gi,
-      `$1<span class="pub-tag-colon">: </span></em>`,
-    );
-
-    // Some exports keep the colon outside of <strong>, but with a literal newline
-    // between the label and the colon. Since Notion uses `white-space: pre-wrap`,
-    // that newline becomes a hard line break. Collapse it back to a space.
-    out = out.replace(
-      /<\/em>\s*\r?\n\s*(?=(?:<span[^>]*>\s*:|:\s))/gi,
-      "</em> ",
-    );
-
-    // If a <br><br> lands immediately after `tag:`, it incorrectly pushes the
-    // venue text to the next line. Keep it inline.
-    out = out.replace(
-      /(<span class="pub-tag-colon">:\s*<\/span><\/em>)\s*(?:<br\s*\/?>\s*){1,2}(?=<span)/gi,
-      "$1 ",
-    );
-
-    // Publications: enforce the original layout inside expanded details:
-    // Authors line
-    // (blank line)
-    // tag: venue/link line
-    //
-    // Our CSS keeps `white-space: normal`, so we use real <br> tags.
-    //
-    // Important: only do this when the export already contains a *real* separator
-    // (whitespace/newline or <br>) between the two <em> blocks.
-    // Otherwise we can accidentally split inline segments within the same line
-    // (e.g. an empty highlight span followed by the real "conference" span).
-    out = out.replace(
-      /<\/em>(?:\s*<br\s*\/?>\s*|\s+)+<em><span class="highlighted-color/gi,
-      "</em><br><br><em><span class=\"highlighted-color",
-    );
-
-    // Some exports place the tag line immediately after a closing span + newline.
-    // Convert that newline gap into <br><br> so the layout matches the original site.
-    out = out.replace(
-      /<\/span>\r?\n{1,2}((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
-      "</span><br><br>$1",
-    );
-
-    // Final clamp: ensure the "authors line" and the following "tag/venue line" have
-    // exactly one blank line between them (2 consecutive newlines), not 0 and not 2+.
-    out = out.replace(
-      /<\/span>\r?\n{3,}((?:\s*<em>\s*<\/em>\s*)*<em><span class="highlighted-color)/g,
-      "</span>\n\n$1",
-    );
-
-    // Publications: the toggle *summary* line can contain multiple labels
-    // (conference / journal / arXiv.org). The layout normalization above injects
-    // `<br><br>` between adjacent `<em>` blocks, which is correct for expanded
-    // details, but wrong for summary labels (it stacks pills).
-    // Collapse those breaks back to inline spacing within summaries only.
-    out = out.replace(
-      /(<div class="notion-toggle__summary">[\s\S]*?<span class="notion-semantic-string">)([\s\S]*?)(<\/span><\/div><div class="notion-toggle__content">)/gi,
-      (_m, pre, inner, post) => {
-        const fixed = String(inner)
-          // Notion sometimes inserts empty <strong> wrappers that only contain a newline.
-          // They render as hard line breaks under `pre-wrap`, causing labels to "stack".
-          .replace(/<strong>[\s\r\n]*<\/strong>/gi, " ")
-          .replace(/<\/em>(?:\s*<br\s*\/?>\s*){1,2}<em>/gi, "</em> <em>")
-          .replace(/<br\s*\/?>/gi, " ")
-          // Notion exports sometimes include literal newlines between adjacent <em> labels.
-          // We only want a single inline space between labels in the *summary* line.
-          .replace(/<\/em>\s+<em>/g, "</em> <em>");
-        return `${pre}${fixed}${post}`;
-      },
-    );
   }
 
   return out

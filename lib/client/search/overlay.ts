@@ -2,9 +2,9 @@ import { renderSearchResultsHtml, type SearchItem } from "@/lib/client/site-sear
 
 const CLEAR_SVG = `
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-    <path d="M21 4H9L3 12l6 8h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"></path>
-    <path d="m18 9-6 6"></path>
-    <path d="m12 9 6 6"></path>
+    <path d="m7 21 9.2-9.2a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15"></path>
+    <path d="m13 5 6 6"></path>
+    <path d="M22 21H7"></path>
   </svg>
 `;
 
@@ -97,11 +97,7 @@ export function ensureSearch(): {
           </div>
           <input id="notion-search-input" type="text" inputmode="search" placeholder="Search..." autocomplete="off" spellcheck="false" />
           <button id="notion-search-clear" class="notion-search__clear" type="button" aria-label="Clear query" title="Clear">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-              <path d="M21 4H9L3 12l6 8h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"></path>
-              <path d="m18 9-6 6"></path>
-              <path d="m12 9 6 6"></path>
-            </svg>
+            ${CLEAR_SVG}
           </button>
           <button id="notion-search-close" class="notion-search__close" type="button" aria-label="Close search" title="Close">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
