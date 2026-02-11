@@ -10,6 +10,8 @@ function rewriteRawHtml(html: string): string {
     "https://images.spr.so/cdn-cgi/imagedelivery/j42No7y-dcokJuNgXeA0ig/d4473e16-cb09-4f59-8e01-9bed5a936048/web-image/public";
   const remoteProfileOptimized =
     "https://images.spr.so/cdn-cgi/imagedelivery/j42No7y-dcokJuNgXeA0ig/d4473e16-cb09-4f59-8e01-9bed5a936048/web-image/w=1920,quality=90,fit=scale-down";
+  // Newer profile asset host (used by our current content).
+  const remoteProfileCdn = "https://cdn.jinkunchen.com/web_image/web-image.png";
 
   const remoteLogo =
     "https://assets.super.so/e331c927-5859-4092-b1ca-16eddc17b1bb/uploads/logo/712f74e3-00ca-453b-9511-39896485699f.png";
@@ -17,6 +19,7 @@ function rewriteRawHtml(html: string): string {
   const rewritten = html
     .replaceAll(remoteProfilePublic, "/assets/profile.png")
     .replaceAll(remoteProfileOptimized, "/assets/profile.png")
+    .replaceAll(remoteProfileCdn, "/assets/profile.png")
     .replaceAll(remoteLogo, "/assets/logo.png");
 
   // Improve LCP: the profile image is above-the-fold on `/` but is marked as lazy in the raw HTML.
@@ -39,8 +42,28 @@ function rewriteRawHtml(html: string): string {
     return out;
   });
 
+  // Home profile photo should not open the lightbox: strip the wrapper attributes
+  // that our client behavior uses to enable zoom.
+  const noProfileLightbox = lcpTweaked
+    .replace(
+      /\sdata-full-size="https:\/\/cdn\.jinkunchen\.com\/web_image\/web-image\.png"/gi,
+      "",
+    )
+    .replace(
+      /\sdata-lightbox-src="https:\/\/cdn\.jinkunchen\.com\/web_image\/web-image\.png"/gi,
+      "",
+    )
+    .replace(
+      /\sdata-full-size="https:\/\/images\.spr\.so\/cdn-cgi\/imagedelivery\/j42No7y-dcokJuNgXeA0ig\/d4473e16-cb09-4f59-8e01-9bed5a936048\/web-image\/[^"]+"/gi,
+      "",
+    )
+    .replace(
+      /\sdata-lightbox-src="https:\/\/images\.spr\.so\/cdn-cgi\/imagedelivery\/j42No7y-dcokJuNgXeA0ig\/d4473e16-cb09-4f59-8e01-9bed5a936048\/web-image\/[^"]+"/gi,
+      "",
+    );
+
   // Rewrite hard-coded absolute links back to local routes.
-  const breadcrumbFixed = lcpTweaked.replace(
+  const breadcrumbFixed = noProfileLightbox.replace(
     /<div class="super-navbar__breadcrumbs"\s+style="position:absolute">/gi,
     '<div class="super-navbar__breadcrumbs">',
   );
@@ -95,12 +118,27 @@ function rewriteRawHtml(html: string): string {
         "\n</span>\n$1",
       );
 
-    // Publications: keep label + ":" together so it doesn't wrap to the next line.
-    // Notion exports the colon as `<strong>: </strong>` *after* the <em> wrapper.
-    // We pull it into the same <em> so wrapping can't split `conference` and `:`.
+      // Publications: keep label + ":" together so it doesn't wrap to the next line.
+      // Notion exports the colon as `<strong>: </strong>` *after* the <em> wrapper.
+      // We pull it into the same <em> so wrapping can't split `conference` and `:`.
+      out = out.replace(
+        /<em>([\s\S]*?<code class="code">[\s\S]*?)<\/em><strong>:\s*<\/strong>/gi,
+        `<em>$1<span class="pub-tag-colon">: </span></em>`,
+      );
+
+    // Some exports keep the colon outside of <strong>, but with a literal newline
+    // between the label and the colon. Since Notion uses `white-space: pre-wrap`,
+    // that newline becomes a hard line break. Collapse it back to a space.
     out = out.replace(
-      /<em>([\s\S]*?<code class="code">[\s\S]*?)<\/em><strong>:\s*<\/strong>/gi,
-      `<em>$1<span class="pub-tag-colon">: </span></em>`,
+      /<\/em>\s*\r?\n\s*(?=(?:<span[^>]*>\s*:|:\s))/gi,
+      "</em> ",
+    );
+
+    // If a <br><br> lands immediately after `tag:`, it incorrectly pushes the
+    // venue text to the next line. Keep it inline.
+    out = out.replace(
+      /(<span class="pub-tag-colon">:\s*<\/span><\/em>)\s*(?:<br\s*\/?>\s*){1,2}(?=<span)/gi,
+      "$1 ",
     );
 
     // Publications: enforce the original layout inside expanded details:
@@ -142,6 +180,9 @@ function rewriteRawHtml(html: string): string {
       /(<div class="notion-toggle__summary">[\s\S]*?<span class="notion-semantic-string">)([\s\S]*?)(<\/span><\/div><div class="notion-toggle__content">)/gi,
       (_m, pre, inner, post) => {
         const fixed = String(inner)
+          // Notion sometimes inserts empty <strong> wrappers that only contain a newline.
+          // They render as hard line breaks under `pre-wrap`, causing labels to "stack".
+          .replace(/<strong>[\s\r\n]*<\/strong>/gi, " ")
           .replace(/<\/em>(?:\s*<br\s*\/?>\s*){1,2}<em>/gi, "</em> <em>")
           .replace(/<br\s*\/?>/gi, " ")
           // Notion exports sometimes include literal newlines between adjacent <em> labels.

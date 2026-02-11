@@ -386,6 +386,13 @@ html {
   color: var(--color-text-default);
 }
 
+.super-root .super-content .super-navbar__breadcrumbs .notion-breadcrumb {
+  /* Notion default breadcrumb styles assume a sticky navbar; make this inline breadcrumb "float". */
+  background: transparent;
+  height: auto;
+  width: auto;
+}
+
 @media (max-width: 546px) {
   /* On mobile, align breadcrumbs with the navbar logo padding (Super-like). */
   .super-root .super-content .super-navbar__breadcrumbs {

@@ -78,11 +78,9 @@ export function ensureSearch(): {
           <input id="notion-search-input" type="text" inputmode="search" placeholder="Search..." autocomplete="off" spellcheck="false" />
           <button id="notion-search-clear" class="notion-search__clear" type="button" aria-label="Clear query" title="Clear">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-              <path d="M3 6h18"></path>
-              <path d="M8 6V4h8v2"></path>
-              <path d="M6 6l1 16h10l1-16"></path>
-              <path d="M10 11v6"></path>
-              <path d="M14 11v6"></path>
+              <path d="M21 4H9L3 12l6 8h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"></path>
+              <path d="m18 9-6 6"></path>
+              <path d="m12 9 6 6"></path>
             </svg>
           </button>
           <button id="notion-search-close" class="notion-search__close" type="button" aria-label="Close search" title="Close">
