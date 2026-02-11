@@ -80,6 +80,25 @@ export function renderSearchResultsHtml(
     groups.get(g)!.push(it);
   }
 
+  // Stable group ordering:
+  // Prefer the server-provided groupCounts ordering (which is deterministic),
+  // then append any groups that weren't in the counts payload.
+  if (groupCounts && Object.keys(groupCounts).length) {
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    for (const g of Object.keys(groupCounts)) {
+      if (!groups.has(g)) continue;
+      ordered.push(g);
+      seen.add(g);
+    }
+    for (const g of groupOrder) {
+      if (seen.has(g)) continue;
+      ordered.push(g);
+    }
+    groupOrder.length = 0;
+    groupOrder.push(...ordered);
+  }
+
   const renderItem = (it: SearchItem, { last }: { last: boolean }) => {
     const titleHtml = escapeAndHighlight(it.title || "Untitled", terms);
     const route = escapeHtml(it.routePath || "/");

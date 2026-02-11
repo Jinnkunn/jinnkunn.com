@@ -253,6 +253,22 @@ export default function SiteAdminStatusClient() {
     return { ok: parts.length === 0, reason: parts.join("; "), okHint: okParts.join(", ") };
   }, [payload]);
 
+  const banner = useMemo(() => {
+    if (!payload) return null;
+    const parts: string[] = [];
+    if (!stale.ok) parts.push(stale.reason ? `Freshness: ${stale.reason}` : "Freshness: stale");
+    if (!generated.ok) parts.push(generated.reason ? `Generated: ${generated.reason}` : "Generated: mismatch");
+    if (!readiness.ok) parts.push(readiness.reason ? `Admin: ${readiness.reason}` : "Admin: needs setup");
+    if (!parts.length) {
+      return { kind: "ok" as const, title: "Up-to-date", detail: "This deployment looks consistent with the latest content + config." };
+    }
+    return {
+      kind: "warn" as const,
+      title: "Attention Needed",
+      detail: parts.join(" · "),
+    };
+  }, [payload, stale.ok, stale.reason, generated.ok, generated.reason, readiness.ok, readiness.reason]);
+
   return (
     <section className="site-admin-status">
       <div className="site-admin-status__head">
@@ -280,7 +296,27 @@ export default function SiteAdminStatusClient() {
       ) : null}
 
       {payload ? (
-        <div className="site-admin-status__grid">
+        <>
+          {banner ? (
+            <div
+              className={`site-admin-status__banner ${
+                banner.kind === "ok" ? "site-admin-status__banner--ok" : "site-admin-status__banner--warn"
+              }`}
+              role={banner.kind === "ok" ? "status" : "alert"}
+            >
+              <div className="site-admin-status__banner-title">{banner.title}</div>
+              <div className="site-admin-status__banner-detail">{banner.detail}</div>
+              {banner.kind !== "ok" && payload.env.hasDeployHookUrl ? (
+                <div className="site-admin-status__banner-cta">
+                  <a className="site-admin-status__banner-link" href="/site-admin">
+                    Deploy
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="site-admin-status__grid">
           <div className="site-admin-card">
             <div className="site-admin-card__title">Build</div>
             <dl className="site-admin-kv">
@@ -513,7 +549,8 @@ export default function SiteAdminStatusClient() {
               </div>
             </dl>
           </div>
-        </div>
+          </div>
+        </>
       ) : null}
     </section>
   );

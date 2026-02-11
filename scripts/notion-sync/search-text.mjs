@@ -115,7 +115,7 @@ export function buildSearchTextFromLines(lines) {
   // Keep the index small: we only need enough text to produce decent snippets.
   // Bigger sites can otherwise balloon `search-index.json` and slow cold-start parsing.
   const maxLines = 220;
-  const maxChars = 4_500;
+  const maxChars = 3_200;
 
   let total = 0;
   for (const s0 of arr) {
@@ -151,7 +151,7 @@ export function buildSearchIndexFieldsFromBlocks(blocks) {
   const headings = [];
   const seen = new Set();
   let headingChars = 0;
-  const maxHeadingChars = 520;
+  const maxHeadingChars = 420;
   const maxHeadings = 18;
   for (const s0 of headingsLines) {
     const s = String(s0 || "").replace(/\s+/g, " ").trim();
@@ -173,6 +173,6 @@ export function buildSearchIndexFieldsFromBlocks(blocks) {
   });
 
   // Slightly smaller cap than the generic builder since we also ship headings.
-  const text = buildSearchTextFromLines(bodyLines).slice(0, 2200).trim();
+  const text = buildSearchTextFromLines(bodyLines).slice(0, 1600).trim();
   return { headings, text };
 }
