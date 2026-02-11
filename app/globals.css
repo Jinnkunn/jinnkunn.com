@@ -13,6 +13,17 @@
   --scrollbar-width: 0px;
 }
 
+/* Global text selection highlight: warm-neutral to match link accent styling. */
+::selection {
+  background: rgba(216, 191, 131, 0.56);
+  color: #2f2c26;
+}
+
+::-moz-selection {
+  background: rgba(216, 191, 131, 0.56);
+  color: #2f2c26;
+}
+
 /* A11y: keyboard-only skip link (invisible unless focused). */
 .skip-link {
   position: absolute;
