@@ -552,13 +552,21 @@ html {
 .page__publications .highlighted-background.bg-purple,
 .page__publications .highlighted-background.bg-orange {
   display: inline-block;
-  padding: 0.2em 0.54em;
+  padding: 0.14em 0.5em;
   border-radius: 4px;
   margin: 0 0.12em;
-  line-height: 1.25; /* avoid vertical clipping, especially for italic text like "conference" */
+  line-height: 1.18; /* keep the chip compact but avoid clipping */
   vertical-align: baseline;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+
+/* In expanded publication details, add breathing room between stacked label rows. */
+.page__publications .notion-toggle__content .highlighted-background.bg-red,
+.page__publications .notion-toggle__content .highlighted-background.bg-purple,
+.page__publications .notion-toggle__content .highlighted-background.bg-orange {
+  margin-top: 0.05em;
+  margin-bottom: 0.18em;
 }
 
 .page__publications .highlighted-background.bg-red .code,
