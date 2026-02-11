@@ -60,6 +60,12 @@ function isBypassedPath(pathname: string): boolean {
     pathname.startsWith("/notion-assets/") ||
     pathname.startsWith("/cdn-cgi/") ||
     pathname === "/favicon.ico" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/apple-touch-icon-precomposed.png" ||
+    pathname === "/site.webmanifest" ||
+    pathname === "/manifest.json" ||
+    pathname === "/browserconfig.xml" ||
+    pathname === "/safari-pinned-tab.svg" ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml"
   );
@@ -116,6 +122,7 @@ export async function proxy(req: NextRequest) {
   if (!Array.isArray(rules) || rules.length === 0) return NextResponse.next();
 
   const routesMap: Record<string, unknown> = isRecord(routes) ? (routes as Record<string, unknown>) : {};
+
   const match = pickProtectedRule(pathname, rules, routesMap, parentByPageId);
   if (!match) return NextResponse.next();
 

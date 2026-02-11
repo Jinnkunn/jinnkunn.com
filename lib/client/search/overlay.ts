@@ -1,5 +1,20 @@
 import { renderSearchResultsHtml, type SearchItem } from "@/lib/client/site-search-render";
 
+const CLEAR_SVG = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="M21 4H9L3 12l6 8h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"></path>
+    <path d="m18 9-6 6"></path>
+    <path d="m12 9 6 6"></path>
+  </svg>
+`;
+
+const CLOSE_SVG = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="M18 6 6 18"></path>
+    <path d="m6 6 12 12"></path>
+  </svg>
+`;
+
 export function ensureSearch(): {
   root: HTMLElement;
   wrapper: HTMLElement;
@@ -43,6 +58,11 @@ export function ensureSearch(): {
       list &&
       footer
     ) {
+      // Ensure a consistent icon set even if the overlay was created by a previous deploy
+      // and persisted via client-side navigation.
+      clearBtn.innerHTML = CLEAR_SVG;
+      closeBtn.innerHTML = CLOSE_SVG;
+
       return {
         root: existing,
         wrapper,

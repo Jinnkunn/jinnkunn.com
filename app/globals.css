@@ -9,6 +9,8 @@
   --v1-type-body: 16px;
   --v1-type-small: 14px;
   --v1-type-ref: 13px;
+  /* Used to align 100vw breakouts with the navbar (avoids scrollbar-induced drift). */
+  --scrollbar-width: 0px;
 }
 
 /* A11y: keyboard-only skip link (invisible unless focused). */
@@ -383,9 +385,15 @@ html {
    * Breadcrumbs are injected inside the page <main> (which is centered/max-width).
    * Break them out to full viewport width so the left edge aligns with the navbar logo.
    */
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  /*
+   * NOTE: `100vw` includes the scrollbar width in some browsers, while the navbar uses `width: 100%`.
+   * That mismatch causes breadcrumbs to drift by ~0-8px and look "unaligned".
+   * We compensate with `--scrollbar-width` (set client-side) so the breakout aligns exactly.
+   */
+  width: calc(100vw - var(--scrollbar-width));
+  margin-left: calc(50% - 50vw + (var(--scrollbar-width) / 2));
+  margin-right: calc(50% - 50vw + (var(--scrollbar-width) / 2));
+  box-sizing: border-box;
   /* Align with the logo text: navbar content (8px) + logo padding (16px) = 24px. */
   padding-left: 24px;
   padding-right: 24px;
@@ -413,6 +421,18 @@ html {
  * Treat summary content as normal flow so labels remain inline (as in the original).
  */
 .page__publications .notion-toggle__summary .notion-semantic-string {
+  white-space: normal;
+}
+
+.page__publications .notion-toggle__summary .notion-semantic-string em {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+/* Publications: expanded details should behave like normal prose (collapse literal newlines),
+ * but keep explicit <br> breaks. This prevents "double blank lines" and odd label wrapping.
+ */
+.page__publications .notion-toggle__content .notion-quote .notion-semantic-string {
   white-space: normal;
 }
 

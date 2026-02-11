@@ -26,12 +26,17 @@ export default function RootLayout({
 }>) {
   const cfg = getSiteConfig();
   const gaId = cfg.integrations?.googleAnalyticsId?.trim() || "";
+  const enableVercelRuntimeInsights = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   return (
     <html lang={cfg.lang || "en"} dir="ltr" className="theme-light">
       <body>
         <Providers>{children}</Providers>
-        <SpeedInsights />
-        <Analytics />
+        {enableVercelRuntimeInsights ? (
+          <>
+            <SpeedInsights />
+            <Analytics />
+          </>
+        ) : null}
         {gaId ? (
           <>
             <Script
