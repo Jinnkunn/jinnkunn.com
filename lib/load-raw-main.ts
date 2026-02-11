@@ -139,7 +139,9 @@ function rewriteRawHtml(html: string): string {
         const fixed = String(inner)
           .replace(/<\/em>(?:\s*<br\s*\/?>\s*){1,2}<em>/gi, "</em> <em>")
           .replace(/<br\s*\/?>/gi, " ")
-          .replace(/<\/em>\s{2,}<em>/g, "</em> <em>");
+          // Notion exports sometimes include literal newlines between adjacent <em> labels.
+          // We only want a single inline space between labels in the *summary* line.
+          .replace(/<\/em>\s+<em>/g, "</em> <em>");
         return `${pre}${fixed}${post}`;
       },
     );
