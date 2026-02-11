@@ -118,13 +118,27 @@ function rewriteRawHtml(html: string): string {
         "\n</span>\n$1",
       );
 
-      // Publications: keep label + ":" together so it doesn't wrap to the next line.
-      // Notion exports the colon as `<strong>: </strong>` *after* the <em> wrapper.
-      // We pull it into the same <em> so wrapping can't split `conference` and `:`.
-      out = out.replace(
-        /<em>([\s\S]*?<code class="code">[\s\S]*?)<\/em><strong>:\s*<\/strong>/gi,
-        `<em>$1<span class="pub-tag-colon">: </span></em>`,
-      );
+    // Publications: keep label + ":" together so it doesn't wrap to the next line.
+    // Notion exports the colon as `<strong>: </strong>` *after* the <em> wrapper.
+    // We pull it into the same <em> so wrapping can't split `conference` and `:`.
+    out = out.replace(
+      /<em>([\s\S]*?<code class="code">[\s\S]*?)<\/em><strong>:\s*<\/strong>/gi,
+      `<em>$1<span class="pub-tag-colon">: </span></em>`,
+    );
+
+    // Some exports keep the colon outside of <strong> (as a raw text node) after </em>.
+    // Normalize it into `pub-tag-colon` too.
+    out = out.replace(
+      /(<em>[\s\S]*?<code class="code">[\s\S]*?)<\/em>\s*:\s*/gi,
+      `$1<span class="pub-tag-colon">: </span></em>`,
+    );
+
+    // Some exports wrap ":" in its own highlighted span, sometimes separated by newlines.
+    // Example: </em>\n<span ...>:</span> <span ...>Venue</span>
+    out = out.replace(
+      /(<em>[\s\S]*?<code class="code">[\s\S]*?)<\/em>\s*<span[^>]*>\s*:\s*<\/span>\s*/gi,
+      `$1<span class="pub-tag-colon">: </span></em>`,
+    );
 
     // Some exports keep the colon outside of <strong>, but with a literal newline
     // between the label and the colon. Since Notion uses `white-space: pre-wrap`,

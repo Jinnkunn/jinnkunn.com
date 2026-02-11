@@ -379,7 +379,13 @@ html {
   /* Align with the navbar logo (Super-like): left-aligned, not content-centered. */
   margin: 10px 0 0;
   text-align: left;
-  max-width: none;
+  /*
+   * Breadcrumbs are injected inside the page <main> (which is centered/max-width).
+   * Break them out to full viewport width so the left edge aligns with the navbar logo.
+   */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
   /* Align with the logo text: navbar content (8px) + logo padding (16px) = 24px. */
   padding-left: 24px;
   padding-right: 24px;
@@ -400,6 +406,14 @@ html {
     padding-left: 24px;
     padding-right: 24px;
   }
+}
+
+/* Publications: the toggle summary is rendered with `white-space: pre-wrap` in Notion CSS.
+ * That causes newlines between adjacent labels to stack vertically.
+ * Treat summary content as normal flow so labels remain inline (as in the original).
+ */
+.page__publications .notion-toggle__summary .notion-semantic-string {
+  white-space: normal;
 }
 
 .super-root .super-content .super-navbar__breadcrumbs .notion-breadcrumb__divider {
@@ -526,6 +540,7 @@ html {
 /* Keep the tag inline with its trailing ":"; line breaks are injected via <br> in `rewriteRawHtml`. */
 .page__publications .notion-toggle__content .notion-quote em:has(.code) {
   display: inline;
+  white-space: nowrap;
 }
 
 /* Publications: keep `conference:` together (avoid line breaks between tag and colon). */
