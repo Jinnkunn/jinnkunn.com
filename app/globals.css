@@ -378,6 +378,7 @@ html {
   padding: 0;
   /* Align with the navbar logo (Super-like): left-aligned, not content-centered. */
   margin: 10px 0 0;
+  text-align: left;
   max-width: none;
   /* Align with the logo text: navbar content (8px) + logo padding (16px) = 24px. */
   padding-left: 24px;

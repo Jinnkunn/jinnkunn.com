@@ -109,8 +109,13 @@ function rewriteRawHtml(html: string): string {
     // tag: venue/link line
     //
     // Our CSS keeps `white-space: normal`, so we use real <br> tags.
+    //
+    // Important: only do this when the export already contains a *real* separator
+    // (whitespace/newline or <br>) between the two <em> blocks.
+    // Otherwise we can accidentally split inline segments within the same line
+    // (e.g. an empty highlight span followed by the real "conference" span).
     out = out.replace(
-      /<\/em>(?:\s*<br\s*\/?>\s*)*<em><span class="highlighted-color/gi,
+      /<\/em>(?:\s*<br\s*\/?>\s*|\s+)+<em><span class="highlighted-color/gi,
       "</em><br><br><em><span class=\"highlighted-color",
     );
 
