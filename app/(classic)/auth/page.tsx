@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { SpecialStatePage } from "@/components/special-state-page";
 
 export const metadata: Metadata = {
   title: "Protected",
@@ -27,68 +29,45 @@ export default async function AuthPage({
   const error = String(sp.error ?? "").trim();
 
   return (
-    <main id="page-auth" className="super-content page__auth parent-page__index">
-      <div className="notion-header page">
-        <div className="notion-header__cover no-cover no-icon" />
-        <div className="notion-header__content max-width no-cover no-icon">
-          <div className="notion-header__title-wrapper">
-            <h1 className="notion-header__title">Password Required</h1>
-          </div>
-        </div>
-      </div>
+    <SpecialStatePage
+      tone="locked"
+      badge="Protected"
+      title="Password required"
+      description="This page is access-restricted. Enter the password to continue."
+      actions={
+        <>
+          <button type="submit" form="state-auth-form" className="page-404__btn page-404__btn--primary">
+            Unlock
+          </button>
+          <Link href="/" className="page-404__btn page-404__btn--ghost">
+            Home
+          </Link>
+        </>
+      }
+    >
+      {error ? (
+        <p className="page-state__notice page-state__notice--error">
+          Incorrect password. Please try again.
+        </p>
+      ) : null}
 
-      <article id="block-auth" className="notion-root max-width has-footer">
-        {error ? (
-          <p className="notion-text notion-text__content notion-semantic-string">
-            <span className="highlighted-color color-red">
-              Incorrect password. Please try again.
-            </span>
-          </p>
-        ) : null}
-
-        <form method="post" action="/api/site-auth" className="notion-form">
-          <input type="hidden" name="next" value={nextPath} />
-          <input type="hidden" name="rid" value={rid} />
-
-          <div className="notion-text notion-text__content notion-semantic-string">
-            <label htmlFor="password">Password</label>
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              autoFocus
-              autoComplete="current-password"
-              style={{
-                flex: 1,
-                minWidth: 0,
-                height: 40,
-                borderRadius: 10,
-                border: "1px solid var(--color-border-default)",
-                padding: "0 12px",
-                background: "var(--color-card-bg)",
-                color: "var(--color-text-default)",
-              }}
-            />
-            <button
-              type="submit"
-              style={{
-                height: 40,
-                borderRadius: 10,
-                border: "1px solid var(--color-border-default)",
-                padding: "0 14px",
-                background: "var(--color-card-bg)",
-                color: "var(--color-text-default)",
-                cursor: "pointer",
-              }}
-            >
-              Unlock
-            </button>
-          </div>
-        </form>
-      </article>
-    </main>
+      <form id="state-auth-form" method="post" action="/api/site-auth" className="page-state-form">
+        <input type="hidden" name="next" value={nextPath} />
+        <input type="hidden" name="rid" value={rid} />
+        <label htmlFor="password" className="page-state-form__label">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          autoFocus
+          autoComplete="current-password"
+          className="page-state-form__input page-state-form__input--mono"
+          placeholder="Enter password"
+        />
+      </form>
+    </SpecialStatePage>
   );
 }

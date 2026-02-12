@@ -37,29 +37,16 @@ export default function SiteAdminLoginClient({ nextPath }: { nextPath: string })
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+    <div className="page-state-auth">
       {status === "authenticated" ? (
         <>
-          <p className="notion-text notion-text__content notion-semantic-string">
+          <p className="page-state__notice page-state__notice--ok">
             Signed in as <strong>{login || session?.user?.name || "GitHub user"}</strong>.
           </p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="page-state__actions">
             <a
               href={safeNext}
-              className="notion-link"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: 40,
-                padding: "0 14px",
-                borderRadius: 10,
-                border: "1px solid var(--color-border-default)",
-                background: "var(--color-card-bg)",
-                color: "var(--color-text-default)",
-                textDecoration: "none",
-                fontWeight: 600,
-              }}
+              className="page-404__btn page-404__btn--primary"
             >
               Continue
             </a>
@@ -67,15 +54,7 @@ export default function SiteAdminLoginClient({ nextPath }: { nextPath: string })
               type="button"
               onClick={onSignOut}
               disabled={busy}
-              style={{
-                height: 40,
-                padding: "0 14px",
-                borderRadius: 10,
-                border: "1px solid var(--color-border-default)",
-                background: "var(--color-card-bg)",
-                color: "var(--color-text-default)",
-                cursor: busy ? "not-allowed" : "pointer",
-              }}
+              className="page-404__btn page-404__btn--ghost"
             >
               Sign out
             </button>
@@ -86,22 +65,11 @@ export default function SiteAdminLoginClient({ nextPath }: { nextPath: string })
           type="button"
           onClick={onSignIn}
           disabled={busy}
-          style={{
-            height: 40,
-            width: "fit-content",
-            padding: "0 14px",
-            borderRadius: 10,
-            border: "1px solid var(--color-border-default)",
-            background: "var(--color-card-bg)",
-            color: "var(--color-text-default)",
-            cursor: busy ? "not-allowed" : "pointer",
-            fontWeight: 600,
-          }}
+          className="page-404__btn page-404__btn--primary"
         >
-          Continue with GitHub
+          {busy ? "Redirecting..." : "Continue with GitHub"}
         </button>
       )}
     </div>
   );
 }
-

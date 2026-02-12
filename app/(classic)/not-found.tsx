@@ -1,16 +1,14 @@
 import Link from "next/link";
+import { SpecialStatePage } from "@/components/special-state-page";
 
 export default function NotFound() {
   return (
-    <main className="page-404 super-content">
-      <div className="page-404__inner">
-        <div className="page-404__code">404</div>
-        <h1 className="page-404__title">Page not found</h1>
-        <p className="page-404__desc">
-          The link may be outdated, or the page may have moved.
-        </p>
-
-        <div className="page-404__actions">
+    <SpecialStatePage
+      badge="404"
+      title="Page not found"
+      description="The link may be outdated, or the page may have moved."
+      actions={
+        <>
           <Link href="/" className="page-404__btn page-404__btn--primary">
             Home
           </Link>
@@ -23,8 +21,8 @@ export default function NotFound() {
           <Link href="/blog" className="page-404__btn page-404__btn--ghost">
             Blog
           </Link>
-        </div>
-      </div>
-    </main>
+        </>
+      }
+    />
   );
 }
