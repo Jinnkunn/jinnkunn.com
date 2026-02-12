@@ -24,16 +24,14 @@ import { deepMerge, isObject } from "../lib/shared/object-utils.mjs";
 import {
   notionRequest,
   queryDatabase,
-} from "../lib/notion/api.mjs";
-import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
-import { escapeHtml } from "../lib/shared/text-utils.mjs";
-import {
   findFirstJsonCodeBlock,
   getDatabaseInfo,
   getDatabaseParentPageId,
   hydrateBlocks,
   listBlockChildrenCached,
-} from "../lib/notion/tree.mjs";
+} from "../lib/notion/index.mjs";
+import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
+import { escapeHtml } from "../lib/shared/text-utils.mjs";
 import { ensureDir, readJsonFile, rmDir, writeFile, writeJsonAtomic } from "./notion-sync/fs-utils.mjs";
 import {
   loadConfigFromAdminDatabases,

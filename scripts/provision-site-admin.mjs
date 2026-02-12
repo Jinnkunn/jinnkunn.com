@@ -13,10 +13,9 @@
  * - NOTION_VERSION (default: 2022-06-28)
  */
 
-import { notionRequest, listBlockChildren } from "../lib/notion/api.mjs";
+import { notionRequest, listBlockChildren, findFirstJsonCodeBlock } from "../lib/notion/index.mjs";
 import { compactId } from "../lib/shared/route-utils.mjs";
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
-import { findFirstJsonCodeBlock } from "../lib/notion/tree.mjs";
 import { deepMerge, isObject } from "../lib/shared/object-utils.mjs";
 
 const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;

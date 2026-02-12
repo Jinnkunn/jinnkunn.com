@@ -1,12 +1,10 @@
-import { NextResponse } from "next/server";
-
 import { canonicalizePublicRoute, normalizePathname } from "@/lib/routes/strategy.mjs";
 import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { scoreSearchResult } from "@/lib/search/rank.mjs";
 import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group.mjs";
 import { tokenizeQuery } from "@/lib/shared/text-utils";
-import { jsonNoStore } from "@/lib/server/validate";
+import { noStoreErrorOnly, noStoreJson } from "@/lib/server/api-response";
 
 export const runtime = "nodejs";
 
@@ -16,14 +14,7 @@ type TypeKey = "pages" | "blog" | "databases";
 
 type SearchIndexItem = ReturnType<typeof getSearchIndex>[number];
 
-function json(body: unknown, init?: { status?: number }) {
-  return NextResponse.json(body, {
-    status: init?.status ?? 200,
-    headers: {
-      "cache-control": "no-store",
-    },
-  });
-}
+const json = noStoreJson;
 
 function safeLower(s: unknown): string {
   return String(s ?? "").toLowerCase();
@@ -238,7 +229,7 @@ export async function GET(req: Request) {
 
   const type = String(url.searchParams.get("type") || "all").trim().toLowerCase();
   if (!["all", "page", "pages", "blog", "database", "databases"].includes(type)) {
-    return jsonNoStore({ error: "Invalid type" }, { status: 400 });
+    return noStoreErrorOnly("Invalid type", { status: 400 });
   }
 
   const offsetRaw = Number.parseInt(String(url.searchParams.get("offset") || "0"), 10);

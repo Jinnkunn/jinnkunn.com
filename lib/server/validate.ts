@@ -1,7 +1,5 @@
 import "server-only";
 
-import { NextResponse } from "next/server";
-
 export function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
@@ -75,11 +73,4 @@ export function getEnum<T extends string>(
   const v = getString(o, key).toLowerCase();
   for (const a of allowed) if (v === a) return a;
   return fallback;
-}
-
-export function jsonNoStore(body: unknown, init?: { status?: number }) {
-  return NextResponse.json(body, {
-    status: init?.status ?? 200,
-    headers: { "cache-control": "no-store" },
-  });
 }

@@ -1,275 +1,124 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
-import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
-import { compactId } from "@/lib/shared/route-utils.mjs";
-import { findChildDatabases, findDbByTitle } from "@/lib/notion/discovery.mjs";
-import { getBoolean, getEnum, getNumber, getString, isObject as isObj, jsonNoStore, readJsonBody } from "@/lib/server/validate";
+import { apiError, apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-admin-api";
+import { mapNavigationRows, mapSiteSettingsRow } from "@/lib/server/site-admin-mappers";
 import {
-  getPropCheckbox,
-  getPropNumber,
-  getPropString,
-  notionRequest,
-  queryDatabase,
-} from "@/lib/notion/api.mjs";
+  createDatabaseRow,
+  ensureDatabaseProperties,
+  findSiteAdminDatabaseIdByTitle,
+  loadSiteAdminDatabases,
+  patchPageProperties,
+} from "@/lib/server/site-admin-notion";
+import { parseSiteAdminConfigCommand } from "@/lib/server/site-admin-request";
+import { buildNavCreateProperties, buildNavProperties, buildSiteSettingsProperties } from "@/lib/server/site-admin-writers";
+import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import type {
+  SiteAdminConfigGetPayload,
+  SiteAdminConfigPostPayload,
+} from "@/lib/site-admin/api-types";
+import { readJsonBody } from "@/lib/server/validate";
+import { queryDatabase } from "@/lib/notion/api";
 
 export const runtime = "nodejs";
 
-function json(body: unknown, init?: { status?: number }) {
-  return NextResponse.json(body, {
-    status: init?.status ?? 200,
-    headers: { "cache-control": "no-store" },
+async function ensureSiteSettingsDbSchema(databaseId: string) {
+  // Add missing properties lazily so /site-admin can run even if the admin DBs
+  // were provisioned before we introduced new fields.
+  await ensureDatabaseProperties(databaseId, {
+    "Google Analytics ID": { rich_text: {} },
+    "Content GitHub Users": { rich_text: {} },
   });
 }
 
-async function requireAdmin(req: NextRequest) {
-  const ok = await isSiteAdminAuthorized(req);
-  if (!ok) {
-    return { ok: false as const, res: json({ ok: false, error: "Unauthorized" }, { status: 401 }) };
-  }
-  return { ok: true as const };
-}
-
-function isObject(x: unknown): x is Record<string, unknown> {
-  return Boolean(x) && typeof x === "object" && !Array.isArray(x);
-}
-
-async function ensureSiteSettingsDbSchema(databaseId: string) {
-  const id = compactId(databaseId);
-  if (!id) return;
-
-  const db = (await notionRequest(`databases/${id}`)) as unknown;
-  const props =
-    isObj(db) && isObj(db.properties) ? (db.properties as Record<string, unknown>) : {};
-  const need: Record<string, unknown> = {};
-
-  // Add missing properties lazily so /site-admin can run even if the admin DBs
-  // were provisioned before we introduced new fields.
-  if (!props["Google Analytics ID"]) need["Google Analytics ID"] = { rich_text: {} };
-  if (!props["Content GitHub Users"]) need["Content GitHub Users"] = { rich_text: {} };
-
-  if (Object.keys(need).length === 0) return;
-  await notionRequest(`databases/${id}`, { method: "PATCH", body: { properties: need } });
-}
-
-
-function richText(content: string) {
-  const c = String(content ?? "").trim();
-  return c ? [{ type: "text", text: { content: c } }] : [];
-}
-
-type SiteSettings = {
-  rowId: string;
-  siteName: string;
-  lang: string;
-  seoTitle: string;
-  seoDescription: string;
-  favicon: string;
-  googleAnalyticsId: string;
-  contentGithubUsers: string;
-  rootPageId: string;
-  homePageId: string;
-};
-
-type NavItemRow = {
-  rowId: string;
-  label: string;
-  href: string;
-  group: "top" | "more";
-  order: number;
-  enabled: boolean;
-};
 
 async function loadConfigFromNotion(): Promise<{ settings: SiteSettings | null; nav: NavItemRow[] }> {
-  const adminPageIdRaw = (process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim();
-  const adminPageId = compactId(adminPageIdRaw);
-  if (!adminPageId) throw new Error("Missing NOTION_SITE_ADMIN_PAGE_ID");
-
-  const dbs = await findChildDatabases(adminPageId);
-  const settingsDb = findDbByTitle(dbs, "Site Settings");
-  const navDb = findDbByTitle(dbs, "Navigation");
+  const { databases } = await loadSiteAdminDatabases();
+  const settingsDbId = findSiteAdminDatabaseIdByTitle(databases, "Site Settings");
+  const navDbId = findSiteAdminDatabaseIdByTitle(databases, "Navigation");
 
   let settings: SiteSettings | null = null;
-  if (settingsDb?.id) {
-    await ensureSiteSettingsDbSchema(settingsDb.id);
-    const rows = await queryDatabase(settingsDb.id);
-    const row = rows[0] ?? null;
-    if (row?.id) {
-      settings = {
-        rowId: compactId(row.id),
-        siteName: getPropString(row, "Site Name"),
-        lang: getPropString(row, "Lang") || "en",
-        seoTitle: getPropString(row, "SEO Title"),
-        seoDescription: getPropString(row, "SEO Description"),
-        favicon: getPropString(row, "Favicon"),
-        googleAnalyticsId: getPropString(row, "Google Analytics ID"),
-        contentGithubUsers: getPropString(row, "Content GitHub Users"),
-        rootPageId: getPropString(row, "Root Page ID"),
-        homePageId: getPropString(row, "Home Page ID"),
-      };
-    }
+  if (settingsDbId) {
+    await ensureSiteSettingsDbSchema(settingsDbId);
+    const rows = await queryDatabase(settingsDbId);
+    settings = mapSiteSettingsRow(rows[0] ?? null);
   }
 
   const nav: NavItemRow[] = [];
-  if (navDb?.id) {
-    const rows = await queryDatabase(navDb.id);
-    for (const row of rows) {
-      if (!row?.id) continue;
-      const groupRaw = (getPropString(row, "Group") || "more").toLowerCase();
-      const group = (groupRaw === "top" ? "top" : "more") as "top" | "more";
-      nav.push({
-        rowId: compactId(row.id),
-        label: getPropString(row, "Label") || getPropString(row, "Name"),
-        href: getPropString(row, "Href"),
-        group,
-        order: getPropNumber(row, "Order") ?? 0,
-        enabled: (getPropCheckbox(row, "Enabled") ?? true) === true,
-      });
-    }
-    nav.sort((a, b) => {
-      if (a.group !== b.group) return a.group === "top" ? -1 : 1;
-      if ((a.order || 0) !== (b.order || 0)) return (a.order || 0) - (b.order || 0);
-      return a.label.localeCompare(b.label);
-    });
+  if (navDbId) {
+    const rows = await queryDatabase(navDbId);
+    nav.push(...mapNavigationRows(rows));
   }
 
   return { settings, nav };
 }
 
 async function updateSiteSettings(rowId: string, patch: Partial<Omit<SiteSettings, "rowId">>) {
-  const properties: Record<string, unknown> = {};
-  if (patch.siteName !== undefined) properties["Site Name"] = { rich_text: richText(patch.siteName) };
-  if (patch.lang !== undefined) properties["Lang"] = { select: { name: patch.lang || "en" } };
-  if (patch.seoTitle !== undefined) properties["SEO Title"] = { rich_text: richText(patch.seoTitle) };
-  if (patch.seoDescription !== undefined)
-    properties["SEO Description"] = { rich_text: richText(patch.seoDescription) };
-  if (patch.favicon !== undefined) properties["Favicon"] = { rich_text: richText(patch.favicon) };
-  if (patch.googleAnalyticsId !== undefined)
-    properties["Google Analytics ID"] = { rich_text: richText(patch.googleAnalyticsId) };
-  if (patch.contentGithubUsers !== undefined)
-    properties["Content GitHub Users"] = { rich_text: richText(patch.contentGithubUsers) };
-  if (patch.rootPageId !== undefined) properties["Root Page ID"] = { rich_text: richText(patch.rootPageId) };
-  if (patch.homePageId !== undefined) properties["Home Page ID"] = { rich_text: richText(patch.homePageId) };
-
-  await notionRequest(`pages/${compactId(rowId)}`, { method: "PATCH", body: { properties } });
+  const properties = buildSiteSettingsProperties(patch);
+  await patchPageProperties(rowId, properties);
 }
 
 async function getNavDbId(): Promise<string> {
-  const adminPageIdRaw = (process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim();
-  const adminPageId = compactId(adminPageIdRaw);
-  if (!adminPageId) throw new Error("Missing NOTION_SITE_ADMIN_PAGE_ID");
-  const dbs = await findChildDatabases(adminPageId);
-  const navDb = findDbByTitle(dbs, "Navigation");
-  if (!navDb?.id) throw new Error("Missing Navigation database under Site Admin page");
-  return navDb.id;
+  const { databases } = await loadSiteAdminDatabases();
+  const navDbId = findSiteAdminDatabaseIdByTitle(databases, "Navigation");
+  if (!navDbId) throw new Error("Missing Navigation database under Site Admin page");
+  return navDbId;
 }
 
 async function updateNavRow(rowId: string, patch: Partial<Omit<NavItemRow, "rowId">>) {
-  const properties: Record<string, unknown> = {};
-  if (patch.label !== undefined) properties["Label"] = { title: richText(patch.label) };
-  if (patch.href !== undefined) properties["Href"] = { rich_text: richText(patch.href) };
-  if (patch.group !== undefined)
-    properties["Group"] = { select: { name: patch.group === "top" ? "top" : "more" } };
-  if (patch.order !== undefined) properties["Order"] = { number: Number.isFinite(patch.order) ? patch.order : 0 };
-  if (patch.enabled !== undefined) properties["Enabled"] = { checkbox: Boolean(patch.enabled) };
-  await notionRequest(`pages/${compactId(rowId)}`, { method: "PATCH", body: { properties } });
+  const properties = buildNavProperties(patch);
+  await patchPageProperties(rowId, properties);
 }
 
 async function createNavRow(input: Omit<NavItemRow, "rowId">) {
   const navDbId = await getNavDbId();
-  const created: any = await notionRequest("pages", {
-    method: "POST",
-    body: {
-      parent: { database_id: navDbId },
-      properties: {
-        Label: { title: richText(input.label) },
-        Href: { rich_text: richText(input.href) },
-        Group: { select: { name: input.group === "top" ? "top" : "more" } },
-        Order: { number: Number.isFinite(input.order) ? input.order : 0 },
-        Enabled: { checkbox: Boolean(input.enabled) },
-      },
-    },
-  });
-  return { rowId: compactId(created?.id || ""), ...input };
+  const createdId = await createDatabaseRow(navDbId, buildNavCreateProperties(input));
+  const created: NavItemRow = { rowId: createdId, ...input };
+  return created;
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin(req);
+  const auth = await requireSiteAdmin(req);
   if (!auth.ok) return auth.res;
 
   try {
     const data = await loadConfigFromNotion();
-    return json({ ok: true, ...data });
-  } catch (e: any) {
-    return json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+    const payload: Omit<SiteAdminConfigGetPayload, "ok"> = data;
+    return apiOk(payload);
+  } catch (e: unknown) {
+    return apiErrorFromUnknown(e);
   }
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin(req);
+  const auth = await requireSiteAdmin(req);
   if (!auth.ok) return auth.res;
 
   const body = await readJsonBody(req);
-  if (!body) return jsonNoStore({ ok: false, error: "Bad request" }, { status: 400 });
+  if (!body) return apiError("Bad request", { status: 400 });
 
   try {
-    const kind = getEnum(body, "kind", ["settings", "nav-update", "nav-create"] as const, "");
+    const parsed = parseSiteAdminConfigCommand(body);
+    if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
+    const command = parsed.value;
 
-    if (kind === "settings") {
-      const rowId = compactId(getString(body, "rowId"));
-      if (!rowId) return json({ ok: false, error: "Missing rowId" }, { status: 400 });
-      const patch0 = (body as any).patch;
-      const patch = isObj(patch0) ? patch0 : {};
-      const outPatch: Partial<Omit<SiteSettings, "rowId">> = {};
-      if (patch.siteName !== undefined) outPatch.siteName = getString(patch, "siteName", { maxLen: 240 });
-      if (patch.lang !== undefined) outPatch.lang = getString(patch, "lang", { maxLen: 24 }) || "en";
-      if (patch.seoTitle !== undefined) outPatch.seoTitle = getString(patch, "seoTitle", { maxLen: 300 });
-      if (patch.seoDescription !== undefined)
-        outPatch.seoDescription = getString(patch, "seoDescription", { maxLen: 800 });
-      if (patch.favicon !== undefined) outPatch.favicon = getString(patch, "favicon", { maxLen: 500 });
-      if (patch.googleAnalyticsId !== undefined)
-        outPatch.googleAnalyticsId = getString(patch, "googleAnalyticsId", { maxLen: 64 });
-      if (patch.contentGithubUsers !== undefined)
-        outPatch.contentGithubUsers = getString(patch, "contentGithubUsers", { maxLen: 800 });
-      if (patch.rootPageId !== undefined) outPatch.rootPageId = getString(patch, "rootPageId", { maxLen: 64 });
-      if (patch.homePageId !== undefined) outPatch.homePageId = getString(patch, "homePageId", { maxLen: 64 });
-      await updateSiteSettings(rowId, outPatch);
-      return json({ ok: true });
+    if (command.kind === "settings") {
+      await updateSiteSettings(command.rowId, command.patch);
+      return apiOk();
     }
 
-    if (kind === "nav-update") {
-      const rowId = compactId(getString(body, "rowId"));
-      if (!rowId) return json({ ok: false, error: "Missing rowId" }, { status: 400 });
-      const patch0 = (body as any).patch;
-      const patch = isObj(patch0) ? patch0 : {};
-      const outPatch: Partial<Omit<NavItemRow, "rowId">> = {};
-      if (patch.label !== undefined) outPatch.label = getString(patch, "label", { maxLen: 120 });
-      if (patch.href !== undefined) outPatch.href = getString(patch, "href", { maxLen: 300 });
-      if (patch.group !== undefined)
-        outPatch.group = getEnum(patch, "group", ["top", "more"] as const, "more");
-      if (patch.order !== undefined) outPatch.order = getNumber(patch, "order") ?? 0;
-      if (patch.enabled !== undefined) {
-        const b = getBoolean(patch, "enabled");
-        if (b !== null) outPatch.enabled = b;
-      }
-      await updateNavRow(rowId, outPatch);
-      return json({ ok: true });
+    if (command.kind === "nav-update") {
+      await updateNavRow(command.rowId, command.patch);
+      return apiOk();
     }
 
-    if (kind === "nav-create") {
-      const input0 = (body as any).input;
-      const input = isObj(input0) ? input0 : {};
-      const created = await createNavRow({
-        label: getString(input, "label", { maxLen: 120 }),
-        href: getString(input, "href", { maxLen: 300 }),
-        group: getEnum(input, "group", ["top", "more"] as const, "more"),
-        order: getNumber(input, "order") ?? 0,
-        enabled: getBoolean(input, "enabled") ?? true,
-      });
-      return json({ ok: true, created });
+    if (command.kind === "nav-create") {
+      const created = await createNavRow(command.input);
+      const payload: Omit<SiteAdminConfigPostPayload, "ok"> = { created };
+      return apiOk(payload);
     }
 
-    return json({ ok: false, error: "Unknown kind" }, { status: 400 });
-  } catch (e: any) {
-    return json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+    return apiError("Unknown kind", { status: 400 });
+  } catch (e: unknown) {
+    return apiErrorFromUnknown(e);
   }
 }

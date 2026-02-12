@@ -1,24 +1,9 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
-import { jsonNoStore } from "@/lib/server/validate";
+import type { NextRequest } from "next/server";
+
+import { apiError, apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-admin-api";
+import type { SiteAdminDeployPayload } from "@/lib/site-admin/api-types";
 
 export const runtime = "nodejs";
-
-const json = jsonNoStore;
-
-async function requireAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; res: NextResponse }> {
-  const allow = parseAllowedAdminUsers();
-  if (!allow.size) return { ok: false, res: json({ ok: false, error: "Admin allowlist not configured" }, { status: 500 }) };
-
-  const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "";
-  if (!secret) return { ok: false, res: json({ ok: false, error: "Missing NEXTAUTH_SECRET" }, { status: 500 }) };
-
-  const ok = await isSiteAdminAuthorized(req);
-  if (!ok) {
-    return { ok: false, res: json({ ok: false, error: "Unauthorized" }, { status: 401 }) };
-  }
-  return { ok: true };
-}
 
 async function triggerDeploy(): Promise<{ ok: boolean; status: number; text: string }> {
   const hookUrl = process.env.VERCEL_DEPLOY_HOOK_URL?.trim() ?? "";
@@ -30,18 +15,26 @@ async function triggerDeploy(): Promise<{ ok: boolean; status: number; text: str
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin(req);
+  const auth = await requireSiteAdmin(req, {
+    requireAllowlist: true,
+    requireAuthSecret: true,
+  });
   if (!auth.ok) return auth.res;
 
-  const triggeredAtIso = new Date().toISOString();
-  const out = await triggerDeploy();
+  try {
+    const triggeredAtIso = new Date().toISOString();
+    const out = await triggerDeploy();
 
-  if (!out.ok) {
-    return json(
-      { ok: false, error: `Failed to trigger deploy (status ${out.status})` },
-      { status: 502 },
-    );
+    if (!out.ok) {
+      return apiError(`Failed to trigger deploy (status ${out.status})`, { status: 502 });
+    }
+
+    const payload: Omit<SiteAdminDeployPayload, "ok"> = {
+      triggeredAt: triggeredAtIso,
+      status: out.status,
+    };
+    return apiOk(payload);
+  } catch (e: unknown) {
+    return apiErrorFromUnknown(e);
   }
-
-  return json({ ok: true, triggeredAt: triggeredAtIso, status: out.status });
 }

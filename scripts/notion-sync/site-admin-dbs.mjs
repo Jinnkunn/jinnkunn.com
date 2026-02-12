@@ -1,10 +1,48 @@
 import { DEFAULT_SITE_CONFIG } from "../../lib/shared/default-site-config.mjs";
-import { getPropCheckbox, getPropNumber, getPropString, queryDatabase } from "../../lib/notion/api.mjs";
+import {
+  getPropCheckbox,
+  getPropNumber,
+  getPropString,
+  queryDatabase,
+  findChildDatabases,
+  findDbByTitle,
+} from "../../lib/notion/index.mjs";
 import { compactId, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
-import { findChildDatabases, findDbByTitle } from "../../lib/notion/discovery.mjs";
 import { sha256Hex } from "./crypto-utils.mjs";
 
 const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
+
+/**
+ * @typedef {{label: string, href: string, order: number}} NavItem
+ */
+
+/**
+ * @typedef {{top: NavItem[], more: NavItem[]}} NavConfig
+ */
+
+/**
+ * @typedef {{
+ *   siteName?: string,
+ *   lang?: string,
+ *   seo?: {title?: string, description?: string, favicon?: string},
+ *   integrations?: {googleAnalyticsId?: string},
+ *   security?: {contentGithubUsers?: string[]},
+ *   content?: {rootPageId?: string, homePageId?: string, routeOverrides?: Record<string, string>},
+ *   nav?: NavConfig
+ * }} SiteConfigRecord
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   auth: "password"|"github",
+ *   key: "pageId"|"path",
+ *   pageId: string,
+ *   path: string,
+ *   mode: "exact"|"prefix",
+ *   token: string
+ * }} ProtectedRouteConfig
+ */
 
 /**
  * @param {string} raw
@@ -42,7 +80,7 @@ function normalizeHref(href) {
 /**
  * Loads Site Settings / Navigation / Route Overrides from the provisioned Site Admin databases.
  * @param {string} adminPageId
- * @returns {Promise<any|null>}
+ * @returns {Promise<SiteConfigRecord|null>}
  */
 export async function loadConfigFromAdminDatabases(adminPageId) {
   // These databases are provisioned by `scripts/provision-site-admin.mjs`.
@@ -53,6 +91,7 @@ export async function loadConfigFromAdminDatabases(adminPageId) {
 
   if (!settingsDb && !navDb && !overridesDb) return null;
 
+  /** @type {SiteConfigRecord} */
   const cfg = structuredClone(DEFAULT_CONFIG);
 
   // 1) Site Settings (single-row)
@@ -91,7 +130,9 @@ export async function loadConfigFromAdminDatabases(adminPageId) {
   // 2) Navigation items
   if (navDb) {
     const rows = await queryDatabase(navDb.id);
+    /** @type {NavItem[]} */
     const top = [];
+    /** @type {NavItem[]} */
     const more = [];
     for (const row of rows) {
       const enabled = getPropCheckbox(row, "Enabled");
@@ -101,6 +142,7 @@ export async function loadConfigFromAdminDatabases(adminPageId) {
       const label = getPropString(row, "Label") || getPropString(row, "Name");
       const order = getPropNumber(row, "Order") ?? 0;
       if (!href || !label) continue;
+      /** @type {NavItem} */
       const item = { label, href, order };
       if (group === "top") top.push(item);
       else more.push(item);
@@ -113,6 +155,7 @@ export async function loadConfigFromAdminDatabases(adminPageId) {
   // 3) Route overrides
   if (overridesDb) {
     const rows = await queryDatabase(overridesDb.id);
+    /** @type {Record<string, string>} */
     const overrides = {};
     for (const row of rows) {
       const enabled = getPropCheckbox(row, "Enabled");
@@ -167,7 +210,7 @@ export async function loadIncludedPagesFromAdminDatabases(adminPageId) {
  * Protected routes are configured in a database so admins can set "password" or "github" auth.
  * @param {string} adminPageId
  * @param {{ routeToPageId?: Map<string, string> }} [opts]
- * @returns {Promise<any[]>}
+ * @returns {Promise<ProtectedRouteConfig[]>}
  */
 export async function loadProtectedRoutesFromAdminDatabases(adminPageId, opts = {}) {
   const { routeToPageId } = opts;
@@ -176,6 +219,7 @@ export async function loadProtectedRoutesFromAdminDatabases(adminPageId, opts = 
   if (!protectedDb) return [];
 
   const rows = await queryDatabase(protectedDb.id);
+  /** @type {ProtectedRouteConfig[]} */
   const out = [];
 
   for (const row of rows) {

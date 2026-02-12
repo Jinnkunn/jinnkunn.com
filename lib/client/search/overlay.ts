@@ -15,7 +15,7 @@ const CLOSE_SVG = `
   </svg>
 `;
 
-export function ensureSearch(): {
+export type SearchOverlayElements = {
   root: HTMLElement;
   wrapper: HTMLElement;
   box: HTMLElement;
@@ -29,7 +29,9 @@ export function ensureSearch(): {
   scopeBtn: HTMLButtonElement;
   list: HTMLElement;
   footer: HTMLElement;
-} {
+};
+
+export function ensureSearch(): SearchOverlayElements {
   const existing = document.getElementById("notion-search");
   if (existing) {
     const wrapper = existing.querySelector<HTMLElement>(".notion-search__wrapper");

@@ -1,5 +1,5 @@
-import type { RouteManifestItem } from "@/lib/routes-manifest";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import type { RouteManifestItem } from "../routes-manifest";
+import { compactId, normalizeRoutePath } from "../shared/route-utils.mjs";
 
 export type RouteTreeItem = RouteManifestItem & {
   depth: number;
@@ -194,13 +194,21 @@ export function computeVisibleRoutes({
 }
 
 export function parseAdminRoutesPayload(
-  payload: any,
+  payload: unknown,
   items: RouteManifestItem[],
 ): AdminConfig {
+  const raw = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const overridesInput = Array.isArray(raw.overrides) ? raw.overrides : [];
+  const protectedInput = Array.isArray(raw.protectedRoutes) ? raw.protectedRoutes : [];
+
   const overrides: Record<string, string> = {};
-  for (const it of payload?.overrides || []) {
-    if (!it?.pageId || !it?.routePath) continue;
-    overrides[String(it.pageId)] = String(it.routePath);
+  for (const it0 of overridesInput) {
+    if (!it0 || typeof it0 !== "object") continue;
+    const it = it0 as Record<string, unknown>;
+    const pageId = String(it.pageId || "").trim();
+    const routePath = String(it.routePath || "").trim();
+    if (!pageId || !routePath) continue;
+    overrides[pageId] = routePath;
   }
 
   const pathToPageId = new Map<string, string>();
@@ -208,12 +216,17 @@ export function parseAdminRoutesPayload(
 
   const protectedByPageId: AdminConfig["protectedByPageId"] = {};
   const protectedByPath: AdminConfig["protectedByPath"] = {};
-  for (const it of payload?.protectedRoutes || []) {
-    if (!it?.path || !it?.mode) continue;
-    const p = normalizeRoutePath(String(it.path));
+  for (const it0 of protectedInput) {
+    if (!it0 || typeof it0 !== "object") continue;
+    const it = it0 as Record<string, unknown>;
+    const rawPath = String(it.path || "").trim();
+    const rawMode = String(it.mode || "").trim();
+    if (!rawPath || !rawMode) continue;
+
+    const p = normalizeRoutePath(rawPath);
     if (!p) continue;
-    const mode: "exact" | "prefix" = it.mode === "prefix" ? "prefix" : "exact";
-    const auth: "password" | "github" = it.auth === "github" ? "github" : "password";
+    const mode: "exact" | "prefix" = rawMode === "prefix" ? "prefix" : "exact";
+    const auth: "password" | "github" = String(it.auth || "") === "github" ? "github" : "password";
     const pid = compactId(String(it.pageId || ""));
     if (pid) {
       protectedByPageId[pid] = { auth, mode, path: p };
@@ -310,4 +323,3 @@ export function createEffectiveAccessFinder({
     return null;
   };
 }
-

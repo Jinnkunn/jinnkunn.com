@@ -10,7 +10,7 @@ export function ensureDir(p) {
 
 /**
  * @param {string} filePath
- * @returns {any|null}
+ * @returns {unknown|null}
  */
 export function readJsonFile(filePath) {
   try {
@@ -51,4 +51,3 @@ export function rmDir(dir) {
     // ignore
   }
 }
-

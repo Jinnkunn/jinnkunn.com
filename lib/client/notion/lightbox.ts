@@ -92,7 +92,7 @@ export function createLightboxController() {
     close();
   };
 
-  closeBtn.addEventListener("click", onCloseClick as any);
+  closeBtn.addEventListener("click", onCloseClick);
   lightboxEl.addEventListener("click", onBackdropClick);
 
   return {
@@ -102,9 +102,8 @@ export function createLightboxController() {
     close,
     cleanup: () => {
       lightboxEl.removeEventListener("click", onBackdropClick);
-      closeBtn.removeEventListener("click", onCloseClick as any);
+      closeBtn.removeEventListener("click", onCloseClick);
       close();
     },
   };
 }
-

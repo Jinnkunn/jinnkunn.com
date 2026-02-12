@@ -2,11 +2,20 @@ function richTextPlain(richText) {
   return (richText || []).map((x) => x?.plain_text ?? "").join("");
 }
 
+/** @typedef {import("../../lib/notion/types").NotionBlock} NotionBlock */
+
+/**
+ * @typedef {object} ExtractTextOptions
+ * @property {boolean} [includeHeadings]
+ * @property {boolean} [includeCode]
+ * @property {boolean} [includeTableRows]
+ */
+
 /**
  * Extract conservative plain-text from hydrated blocks for a lightweight search index.
- * @param {any[]} blocks
+ * @param {NotionBlock[]} blocks
  * @param {string[]} out
- * @param {{includeHeadings?: boolean, includeCode?: boolean, includeTableRows?: boolean}} opts
+ * @param {ExtractTextOptions} opts
  * @returns {string[]}
  */
 export function extractPlainTextFromBlocks(blocks, out = [], opts = {}) {
@@ -76,7 +85,7 @@ export function extractPlainTextFromBlocks(blocks, out = [], opts = {}) {
 
 /**
  * Extract heading-only text for better matching with less index bloat.
- * @param {any[]} blocks
+ * @param {NotionBlock[]} blocks
  * @param {string[]} out
  * @returns {string[]}
  */
@@ -143,7 +152,7 @@ export function buildSearchTextFromLines(lines) {
  * - `headings`: helps matching section titles without needing full body text.
  * - `text`: body-ish text used for snippets (excludes headings, tables, and code by default).
  *
- * @param {any[]} blocks
+ * @param {NotionBlock[]} blocks
  * @returns {{headings: string[], text: string}}
  */
 export function buildSearchIndexFieldsFromBlocks(blocks) {

@@ -1,50 +1,24 @@
 import crypto from "node:crypto";
 
-import { listBlockChildren, notionRequest, queryDatabase } from "@/lib/notion/api.mjs";
-import { compactId } from "@/lib/shared/route-utils.mjs";
-import { jsonNoStore } from "@/lib/server/validate";
+import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
+import {
+  createDatabaseRow,
+  findFirstRowByFilter,
+  getSiteAdminDatabaseIdByTitle,
+  notionRowId,
+  patchPageProperties,
+  type NotionRow,
+} from "@/lib/server/site-admin-notion";
+import {
+  buildDeployLogCreateProperties,
+  buildDeployLogUpdateProperties,
+} from "@/lib/server/site-admin-writers";
 
 export const runtime = "nodejs";
-
-type NotionListResponse<T> = {
-  results?: T[];
-  has_more?: boolean;
-  next_cursor?: string | null;
-};
-
-type NotionChildDatabaseBlock = {
-  id: string;
-  type?: string;
-  child_database?: { title?: string };
-};
-
-type NotionPage = {
-  id?: string;
-} & Record<string, unknown>;
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   return v as Record<string, unknown>;
-}
-
-function json(
-  body: unknown,
-  init?: { status?: number },
-) {
-  return jsonNoStore(body, { status: init?.status ?? 200 });
-}
-
-function richText(content: string) {
-  const c = String(content ?? "").trim();
-  if (!c) return [];
-  return [{ type: "text", text: { content: c } }];
-}
-
-function safeUrl(u: string): string {
-  const s = String(u || "").trim();
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  return `https://${s.replace(/^\/+/, "")}`;
 }
 
 function normalizeSignature(sig: string): string {
@@ -71,33 +45,6 @@ function verifyVercelSignature(opts: { rawBody: string; secret: string; got: str
   return timingSafeEqualHex(got, expected);
 }
 
-async function findDeployLogsDbId(adminPageId: string): Promise<string | null> {
-  const blocks = (await listBlockChildren(adminPageId)) as NotionChildDatabaseBlock[];
-  for (const b of blocks) {
-    if (b?.type !== "child_database") continue;
-    const title = String(b?.child_database?.title ?? "").trim().toLowerCase();
-    if (title === "deploy logs") return compactId(b.id);
-  }
-  return null;
-}
-
-async function updatePageProperties(pageId: string, properties: Record<string, unknown>) {
-  await notionRequest(`pages/${pageId}`, {
-    method: "PATCH",
-    body: { properties },
-  });
-}
-
-async function createDbRow(databaseId: string, properties: Record<string, unknown>) {
-  return notionRequest("pages", {
-    method: "POST",
-    body: {
-      parent: { database_id: databaseId },
-      properties,
-    },
-  });
-}
-
 function mapEventToResult(eventType: string) {
   switch (eventType) {
     case "deployment.created":
@@ -117,27 +64,24 @@ function mapEventToResult(eventType: string) {
 async function findRowByDeploymentId(dbId: string, deploymentId: string) {
   const did = String(deploymentId || "").trim();
   if (!did) return null;
-  const rows = (await queryDatabase(dbId, {
-    filter: {
-      property: "Deployment ID",
-      rich_text: { equals: did },
-    },
-  })) as NotionPage[];
-  return rows[0] ?? null;
+  return findFirstRowByFilter(dbId, {
+    property: "Deployment ID",
+    rich_text: { equals: did },
+  });
 }
 
 async function findRecentTriggeredRow(dbId: string, { withinMs }: { withinMs: number }) {
   const afterIso = new Date(Date.now() - withinMs).toISOString();
-  const rows = (await queryDatabase(dbId, {
-    filter: {
+  return findFirstRowByFilter(
+    dbId,
+    {
       and: [
         { property: "Result", select: { equals: "Triggered" } },
         { property: "Triggered At", date: { on_or_after: afterIso } },
       ],
     },
-    sorts: [{ property: "Triggered At", direction: "descending" }],
-  })) as NotionPage[];
-  return rows[0] ?? null;
+    [{ property: "Triggered At", direction: "descending" }],
+  );
 }
 
 async function upsertDeployLogFromEvent(opts: {
@@ -152,117 +96,120 @@ async function upsertDeployLogFromEvent(opts: {
   const result = mapEventToResult(opts.eventType);
   const deploymentId = String(opts.deploymentId || "").trim();
 
-  let row = deploymentId ? await findRowByDeploymentId(opts.dbId, deploymentId) : null;
+  let row: NotionRow | null = deploymentId
+    ? await findRowByDeploymentId(opts.dbId, deploymentId)
+    : null;
   if (!row && opts.eventType === "deployment.created") {
     row = await findRecentTriggeredRow(opts.dbId, { withinMs: 10 * 60 * 1000 });
   }
 
-  const properties: Record<string, unknown> = {
-    Result: { select: { name: result } },
-    "Last Event": { rich_text: richText(opts.eventType) },
-  };
-  if (deploymentId) properties["Deployment ID"] = { rich_text: richText(deploymentId) };
-  if (opts.deploymentUrl) properties.Deployment = { url: safeUrl(opts.deploymentUrl) };
-  if (opts.dashboardUrl) properties.Dashboard = { url: safeUrl(opts.dashboardUrl) };
-  if (opts.target) properties.Target = { select: { name: opts.target } };
+  const properties = buildDeployLogUpdateProperties({
+    result,
+    lastEvent: opts.eventType,
+    deploymentId,
+    deploymentUrl: opts.deploymentUrl,
+    dashboardUrl: opts.dashboardUrl,
+    target: opts.target,
+  });
 
   if (row?.id) {
-    await updatePageProperties(compactId(row.id), properties);
+    await patchPageProperties(notionRowId(row), properties);
     return;
   }
 
-  const name = `Deploy @ ${opts.eventCreatedAtIso.replace("T", " ").replace("Z", " UTC")}`;
-  await createDbRow(opts.dbId, {
-    Name: { title: richText(name) },
-    "Triggered At": { date: { start: opts.eventCreatedAtIso } },
-    ...properties,
-  });
+  await createDatabaseRow(
+    opts.dbId,
+    buildDeployLogCreateProperties({
+      triggeredAtIso: opts.eventCreatedAtIso,
+      result,
+      lastEvent: opts.eventType,
+      deploymentId,
+      deploymentUrl: opts.deploymentUrl,
+      dashboardUrl: opts.dashboardUrl,
+      target: opts.target,
+    }),
+  );
 }
 
 export async function POST(req: Request) {
   const secret = process.env.VERCEL_WEBHOOK_SECRET?.trim() ?? "";
   if (!secret) {
-    return json(
-      { ok: false, error: "Server misconfigured: missing VERCEL_WEBHOOK_SECRET" },
-      { status: 500 },
-    );
+    return noStoreFail("Server misconfigured: missing VERCEL_WEBHOOK_SECRET", { status: 500 });
   }
 
   const sig = req.headers.get("x-vercel-signature") ?? "";
   const rawBody = await req.text();
   if (!verifyVercelSignature({ rawBody, secret, got: sig })) {
-    return json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return noStoreFail("Unauthorized", { status: 401 });
   }
 
   let evt: unknown = null;
   try {
     evt = rawBody ? JSON.parse(rawBody) : null;
   } catch {
-    return json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+    return noStoreFail("Invalid JSON body", { status: 400 });
   }
 
-  const evtObj = asRecord(evt) ?? {};
-  const eventType = String(evtObj.type ?? "").trim();
-  const payloadObj = asRecord(evtObj.payload) ?? {};
-  const deploymentObj = asRecord(payloadObj.deployment) ?? {};
-  const linksObj = asRecord(payloadObj.links) ?? {};
-  if (!eventType) return json({ ok: true, skipped: true });
-
-  const createdAtMs = Number(evtObj.createdAt ?? Date.now());
-  const eventCreatedAtIso = new Date(
-    Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
-  ).toISOString();
-
-  const deploymentId = String(deploymentObj.id ?? payloadObj.id ?? "").trim();
-  const deploymentUrl = String(deploymentObj.url ?? payloadObj.url ?? "").trim();
-  const dashboardUrl = String(linksObj.deployment ?? "").trim();
-  const target = String(deploymentObj.target ?? "").trim();
-
-  const adminPageId = compactId(
-    process.env.NOTION_SITE_ADMIN_PAGE_ID?.trim() ?? "",
-  );
-  if (!adminPageId) {
-    return json(
-      { ok: false, error: "Server misconfigured: missing NOTION_SITE_ADMIN_PAGE_ID" },
-      { status: 500 },
-    );
-  }
-
-  const dbId = await findDeployLogsDbId(adminPageId);
-  if (!dbId) return json({ ok: true, skipped: true, reason: "No Deploy Logs DB" });
-
-  // Best-effort: if the DB doesn't have the extra columns, we still want to
-  // update `Result` when possible. If it fails, don't retry storm the webhook.
   try {
-    await upsertDeployLogFromEvent({
-      dbId,
-      eventType,
-      eventCreatedAtIso,
-      deploymentId,
-      deploymentUrl,
-      dashboardUrl,
-      target,
-    });
-  } catch {
-    try {
-      // Minimal fallback update: keep only Result.
-      const row =
-        (eventType === "deployment.created"
-          ? await findRecentTriggeredRow(dbId, { withinMs: 10 * 60 * 1000 })
-          : null) ?? null;
-      if (row?.id) {
-        await updatePageProperties(compactId(row.id), {
-          Result: { select: { name: mapEventToResult(eventType) } },
-        });
-      }
-    } catch {
-      // ignore
-    }
-  }
+    const evtObj = asRecord(evt) ?? {};
+    const eventType = String(evtObj.type ?? "").trim();
+    const payloadObj = asRecord(evtObj.payload) ?? {};
+    const deploymentObj = asRecord(payloadObj.deployment) ?? {};
+    const linksObj = asRecord(payloadObj.links) ?? {};
+    if (!eventType) return noStoreOk({ skipped: true });
 
-  return json({ ok: true });
+    const createdAtMs = Number(evtObj.createdAt ?? Date.now());
+    const eventCreatedAtIso = new Date(
+      Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
+    ).toISOString();
+
+    const deploymentId = String(deploymentObj.id ?? payloadObj.id ?? "").trim();
+    const deploymentUrl = String(deploymentObj.url ?? payloadObj.url ?? "").trim();
+    const dashboardUrl = String(linksObj.deployment ?? "").trim();
+    const target = String(deploymentObj.target ?? "").trim();
+
+    if (!(process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim()) {
+      return noStoreFail("Server misconfigured: missing NOTION_SITE_ADMIN_PAGE_ID", { status: 500 });
+    }
+
+    const dbId = await getSiteAdminDatabaseIdByTitle("Deploy Logs");
+    if (!dbId) return noStoreOk({ skipped: true, reason: "No Deploy Logs DB" });
+
+    // Best-effort: if the DB doesn't have the extra columns, we still want to
+    // update `Result` when possible. If it fails, don't retry storm the webhook.
+    try {
+      await upsertDeployLogFromEvent({
+        dbId,
+        eventType,
+        eventCreatedAtIso,
+        deploymentId,
+        deploymentUrl,
+        dashboardUrl,
+        target,
+      });
+    } catch {
+      try {
+        // Minimal fallback update: keep only Result.
+        const row =
+          (eventType === "deployment.created"
+            ? await findRecentTriggeredRow(dbId, { withinMs: 10 * 60 * 1000 })
+            : null) ?? null;
+        if (row?.id) {
+          await patchPageProperties(notionRowId(row), {
+            Result: { select: { name: mapEventToResult(eventType) } },
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return noStoreOk();
+  } catch (e: unknown) {
+    return noStoreFailFromUnknown(e, { status: 500 });
+  }
 }
 
 export async function GET() {
-  return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+  return noStoreFail("Method Not Allowed", { status: 405 });
 }

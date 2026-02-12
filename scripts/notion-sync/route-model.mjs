@@ -2,8 +2,28 @@ import { compactId, normalizeRoutePath, slugify } from "../../lib/shared/route-u
 import { canonicalizePublicRoute } from "../../lib/routes/strategy.mjs";
 
 /**
- * @param {Array<{id:string, kind?:string}>} nodes
- * @param {any} cfg
+ * @typedef {object} RouteNode
+ * @property {string} id
+ * @property {"page"|"database"|string} [kind]
+ * @property {string} [title]
+ * @property {RouteNode[]} [children]
+ * @property {string} [routePath]
+ * @property {string[]} [routeSegments]
+ */
+
+/**
+ * @typedef {object} SiteContentConfig
+ * @property {string} [homePageId]
+ */
+
+/**
+ * @typedef {object} SiteConfigLike
+ * @property {SiteContentConfig} [content]
+ */
+
+/**
+ * @param {RouteNode[]} nodes
+ * @param {SiteConfigLike | null | undefined} cfg
  * @returns {string}
  */
 export function pickHomePageId(nodes, cfg) {
@@ -21,7 +41,7 @@ export function pickHomePageId(nodes, cfg) {
 /**
  * Mutates node.routeSegments + node.routePath based on title + overrides + hierarchy.
  *
- * @param {Array<any>} nodes
+ * @param {RouteNode[]} nodes
  * @param {{homePageId:string, routeOverrides?: Map<string,string>}} opts
  * @param {string[]} parentSegments
  */
@@ -52,10 +72,11 @@ export function assignRoutes(nodes, { homePageId, routeOverrides }, parentSegmen
 }
 
 /**
- * @param {Array<any>} nodes
- * @returns {Array<any>}
+ * @param {RouteNode[]} nodes
+ * @returns {RouteNode[]}
  */
 export function flattenPages(nodes) {
+  /** @type {RouteNode[]} */
   const out = [];
   const walk = (n) => {
     out.push(n);
@@ -85,4 +106,3 @@ export function canonicalizePublicHref(href) {
   if (!p.startsWith("/")) return p;
   return canonicalizePublicRoute(p);
 }
-

@@ -48,7 +48,10 @@ export default function RawHtml({ html }: { html: string }) {
   const inner = m[2] ?? "";
   const attrs = parseAttrs(attrText);
 
-  const props: Record<string, unknown> = {
+  const props: React.HTMLAttributes<HTMLElement> &
+    Record<string, unknown> & {
+      dangerouslySetInnerHTML: { __html: string };
+    } = {
     dangerouslySetInnerHTML: { __html: inner },
   };
 
@@ -62,6 +65,5 @@ export default function RawHtml({ html }: { html: string }) {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return <main {...(props as any)} />;
+  return <main {...props} />;
 }

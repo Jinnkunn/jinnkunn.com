@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { dashify32 } from "@/lib/shared/route-utils.mjs";
-import { notionRequest } from "@/lib/notion/api.mjs";
+import { notionRequest } from "@/lib/notion/api";
 
 type NotionBlock = {
   type?: string;
@@ -22,10 +22,15 @@ type NotionBlock = {
   };
 };
 
+type NotionAssetPayload = {
+  type?: "file" | "external";
+  file?: { url?: string };
+  external?: { url?: string };
+};
+
 function pickAssetUrl(block: NotionBlock): string {
   const t = String(block?.type || "");
-  const any = block as any;
-  const obj = any?.[t];
+  const obj = (block as Record<string, unknown>)?.[t] as NotionAssetPayload | undefined;
   if (!obj || typeof obj !== "object") return "";
   const kind = String(obj.type || "");
   if (kind === "external") return String(obj.external?.url || "");

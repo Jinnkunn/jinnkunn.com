@@ -1,12 +1,20 @@
 import { escapeHtml } from "../../lib/shared/text-utils.mjs";
 
 /**
+ * @typedef {object} BreadcrumbNode
+ * @property {string} id
+ * @property {string} routePath
+ * @property {string} [title]
+ * @property {string} [parentId]
+ */
+
+/**
  * Render a Super-like breadcrumbs row using the discovered page hierarchy.
  * Product requirement: homepage is always labeled "Home".
  *
- * @param {any} node
- * @param {any} _cfg
- * @param {{homePageId?: string, nodeById?: Map<string, any>}} ctx
+ * @param {BreadcrumbNode | null | undefined} node
+ * @param {unknown} _cfg
+ * @param {{homePageId?: string, nodeById?: Map<string, BreadcrumbNode>}} ctx
  * @returns {string}
  */
 export function renderBreadcrumbs(node, _cfg, ctx) {
@@ -56,4 +64,3 @@ export function renderBreadcrumbs(node, _cfg, ctx) {
   const joined = items.join('<span class="notion-breadcrumb__divider">/</span>');
   return `<div class="super-navbar__breadcrumbs"><div class="notion-breadcrumb">${joined}</div></div>`;
 }
-
