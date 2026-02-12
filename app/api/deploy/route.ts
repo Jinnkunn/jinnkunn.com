@@ -1,4 +1,4 @@
-import { compactId } from "@/lib/shared/route-utils.mjs";
+import { compactId } from "@/lib/shared/route-utils";
 import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
 import { createDatabaseRow, getSiteAdminDatabaseIdByTitle } from "@/lib/server/site-admin-notion";
 import { buildDeployLogCreateProperties } from "@/lib/server/site-admin-writers";

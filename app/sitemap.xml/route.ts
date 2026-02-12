@@ -1,6 +1,6 @@
 import { escapeXml, getOriginFromRequest } from "@/lib/server/http";
 import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
-import { normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import { normalizeRoutePath } from "@/lib/shared/route-utils";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 
 export const runtime = "nodejs";

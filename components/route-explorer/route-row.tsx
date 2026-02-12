@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { useMemo } from "react";
 
 import type { RouteTreeItem, EffectiveAccess, AdminConfig } from "@/lib/site-admin/route-explorer-model";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRowAdminPanel } from "./route-row-admin-panel";
 import { RouteRowTop } from "./route-row-top";

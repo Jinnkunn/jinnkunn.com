@@ -1,6 +1,6 @@
 import "server-only";
 
-import { compactId } from "@/lib/shared/route-utils.mjs";
+import { compactId } from "@/lib/shared/route-utils";
 import { findChildDatabases, findDbByTitle } from "@/lib/notion/discovery";
 import { notionRequest, queryDatabase } from "@/lib/notion/api";
 import { isObject } from "@/lib/server/validate";

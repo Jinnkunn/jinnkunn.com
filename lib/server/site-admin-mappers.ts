@@ -1,6 +1,6 @@
 import "server-only";
 
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getPropCheckbox, getPropNumber, getPropString } from "@/lib/notion/api";
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
 import type {

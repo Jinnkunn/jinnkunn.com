@@ -1,6 +1,6 @@
 import "server-only";
 
-import { compactId } from "@/lib/shared/route-utils.mjs";
+import { compactId } from "@/lib/shared/route-utils";
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
 import {
   getBoolean,

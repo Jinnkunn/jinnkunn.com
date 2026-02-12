@@ -1,7 +1,7 @@
 "use client";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRow } from "./route-explorer/route-row";
 import { useRouteExplorerData } from "./route-explorer/use-route-explorer-data";

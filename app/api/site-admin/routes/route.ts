@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { apiError, apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-admin-api";
 import {
   mapProtectedRouteRows,

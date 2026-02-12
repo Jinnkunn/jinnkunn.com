@@ -11,7 +11,7 @@ import { apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-
 import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
-import { dashify32 } from "@/lib/shared/route-utils.mjs";
+import { dashify32 } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
 

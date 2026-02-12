@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { dashify32 } from "@/lib/shared/route-utils.mjs";
+import { dashify32 } from "@/lib/shared/route-utils";
 import { notionRequest } from "@/lib/notion/api";
 
 type NotionBlock = {

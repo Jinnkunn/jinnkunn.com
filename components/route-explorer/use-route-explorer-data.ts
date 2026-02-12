@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import {
   type AdminConfig,
   buildDescendantsGetter,
