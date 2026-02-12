@@ -2,6 +2,18 @@ import type { ApiGet, ApiPost, NavItemRow, SiteSettings } from "./types";
 import { asApiAck, isRecord } from "@/lib/client/api-guards";
 export { isApiOk, readApiErrorMessage } from "@/lib/client/api-guards";
 
+export function errorFromUnknown(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+export function isApiGetOk(v: ApiGet): v is Extract<ApiGet, { ok: true }> {
+  return v.ok;
+}
+
+export function isApiPostOk(v: ApiPost): v is Extract<ApiPost, { ok: true }> {
+  return v.ok;
+}
+
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
