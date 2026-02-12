@@ -261,10 +261,12 @@ html {
  */
 .page-state,
 .page-404 {
-  padding: 84px 20px 96px 20px;
+  padding: clamp(20px, 5vh, 44px) 20px;
   position: relative;
   overflow: hidden;
-  min-height: calc(100vh - 88px);
+  box-sizing: border-box;
+  min-height: calc(100vh - var(--navbar-height, 72px));
+  height: calc(100vh - var(--navbar-height, 72px));
   display: grid;
   align-items: center;
 }
@@ -288,6 +290,9 @@ html {
     0 18px 56px rgba(26, 22, 16, 0.08),
     0 2px 0 rgba(255, 255, 255, 0.5) inset;
   backdrop-filter: blur(8px);
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .page-state::before,
@@ -509,8 +514,9 @@ html {
 @media (max-width: 546px) {
   .page-state,
   .page-404 {
-    padding: 54px 14px 72px;
-    min-height: calc(100vh - 66px);
+    padding: clamp(14px, 3vh, 22px) 14px;
+    min-height: calc(100vh - var(--navbar-height, 64px));
+    height: calc(100vh - var(--navbar-height, 64px));
   }
   .page-state__panel,
   .page-404__inner {
@@ -527,6 +533,22 @@ html {
   .page-404__btn {
     width: 100%;
     justify-content: center;
+  }
+}
+
+@supports (height: 100dvh) {
+  .page-state,
+  .page-404 {
+    min-height: calc(100dvh - var(--navbar-height, 72px));
+    height: calc(100dvh - var(--navbar-height, 72px));
+  }
+
+  @media (max-width: 546px) {
+    .page-state,
+    .page-404 {
+      min-height: calc(100dvh - var(--navbar-height, 64px));
+      height: calc(100dvh - var(--navbar-height, 64px));
+    }
   }
 }
 
