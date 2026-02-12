@@ -1,5 +1,5 @@
 import { escapeXml, getOriginFromRequest } from "@/lib/server/http";
-import { canonicalizePublicRoute } from "@/lib/routes/strategy.mjs";
+import { canonicalizePublicRoute } from "@/lib/routes/strategy";
 import { normalizeRoutePath } from "@/lib/shared/route-utils";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 

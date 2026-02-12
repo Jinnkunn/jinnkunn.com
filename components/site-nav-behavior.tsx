@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 import { createFocusTrap, lockBodyScroll, setClassicInert } from "@/lib/client/dom-utils";
-import { normalizePathname } from "@/lib/routes/strategy.mjs";
+import { normalizePathname } from "@/lib/routes/strategy";
 
 function setActiveLinks(root: HTMLElement) {
   const current = normalizePathname(window.location.pathname);

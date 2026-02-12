@@ -1,4 +1,4 @@
-import { canonicalizePublicRoute, normalizePathname } from "@/lib/routes/strategy.mjs";
+import { canonicalizePublicRoute, normalizePathname } from "@/lib/routes/strategy";
 import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { scoreSearchResult } from "@/lib/search/rank.mjs";

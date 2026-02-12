@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadRawMainHtml } from "@/lib/load-raw-main";
-import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy.mjs";
+import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 
 export type BlogPostIndexItem = {

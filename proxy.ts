@@ -11,7 +11,7 @@ import {
   normalizePathname,
   pickProtectedRule,
   resolveNotionIdPathRedirect,
-} from "@/lib/routes/strategy.mjs";
+} from "@/lib/routes/strategy";
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 
 type ProtectedRoute = {
