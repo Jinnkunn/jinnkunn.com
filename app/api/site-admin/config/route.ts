@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { apiError, apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-admin-api";
+import { apiError, apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
 import { mapNavigationRows, mapSiteSettingsRow } from "@/lib/server/site-admin-mappers";
 import {
   createDatabaseRow,
@@ -77,26 +77,17 @@ async function createNavRow(input: Omit<NavItemRow, "rowId">) {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireSiteAdmin(req);
-  if (!auth.ok) return auth.res;
-
-  try {
+  return withSiteAdmin(req, async () => {
     const data = await loadConfigFromNotion();
     const payload: Omit<SiteAdminConfigGetPayload, "ok"> = data;
     return apiOk(payload);
-  } catch (e: unknown) {
-    return apiErrorFromUnknown(e);
-  }
+  });
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireSiteAdmin(req);
-  if (!auth.ok) return auth.res;
-
-  const body = await readJsonBody(req);
-  if (!body) return apiError("Bad request", { status: 400 });
-
-  try {
+  return withSiteAdmin(req, async () => {
+    const body = await readJsonBody(req);
+    if (!body) return apiError("Bad request", { status: 400 });
     const parsed = parseSiteAdminConfigCommand(body);
     if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
     const command = parsed.value;
@@ -118,7 +109,5 @@ export async function POST(req: NextRequest) {
     }
 
     return apiError("Unknown kind", { status: 400 });
-  } catch (e: unknown) {
-    return apiErrorFromUnknown(e);
-  }
+  });
 }

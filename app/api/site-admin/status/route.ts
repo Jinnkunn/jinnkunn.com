@@ -7,7 +7,7 @@ import { notionRequest } from "@/lib/notion/api";
 import { asRecordArray, isRecord, readTrimmedString } from "@/lib/notion/coerce";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSearchIndex } from "@/lib/search-index";
-import { apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-admin-api";
+import { apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
 import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
@@ -76,10 +76,7 @@ async function fetchNotionPageMeta(pageId32: string): Promise<NotionPageMeta | n
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireSiteAdmin(req);
-  if (!auth.ok) return auth.res;
-
-  try {
+  return withSiteAdmin(req, async () => {
     const allow = parseAllowedAdminUsers();
     const allowContent = parseAllowedContentUsers();
 
@@ -184,7 +181,5 @@ export async function GET(req: NextRequest) {
     };
 
     return apiOk(payload);
-  } catch (e: unknown) {
-    return apiErrorFromUnknown(e);
-  }
+  });
 }

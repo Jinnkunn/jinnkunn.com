@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
-import { apiError, apiErrorFromUnknown, apiOk, requireSiteAdmin } from "@/lib/server/site-admin-api";
+import { apiError, apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
 import {
   mapProtectedRouteRows,
   mapRouteOverrideRows,
@@ -188,10 +188,7 @@ async function getAdminDbIds(): Promise<AdminDbIds> {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireSiteAdmin(req);
-  if (!auth.ok) return auth.res;
-
-  try {
+  return withSiteAdmin(req, async () => {
     const { adminPageId, overridesDbId, protectedDbId } = await getAdminDbIds();
     const overridesRows = overridesDbId ? await queryDatabase(overridesDbId) : [];
     const protectedRows = protectedDbId ? await queryDatabase(protectedDbId) : [];
@@ -206,19 +203,13 @@ export async function GET(req: NextRequest) {
     };
 
     return apiOk(payload);
-  } catch (e: unknown) {
-    return apiErrorFromUnknown(e);
-  }
+  });
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireSiteAdmin(req);
-  if (!auth.ok) return auth.res;
-
-  const body = await readJsonBody(req);
-  if (!body) return apiError("Invalid JSON", { status: 400 });
-
-  try {
+  return withSiteAdmin(req, async () => {
+    const body = await readJsonBody(req);
+    if (!body) return apiError("Invalid JSON", { status: 400 });
     const { overridesDbId, protectedDbId } = await getAdminDbIds();
     const parsed = parseSiteAdminRoutesCommand(body);
     if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
@@ -278,7 +269,5 @@ export async function POST(req: NextRequest) {
     }
 
     return apiError("Unsupported kind", { status: 400 });
-  } catch (e: unknown) {
-    return apiErrorFromUnknown(e);
-  }
+  });
 }

@@ -10,6 +10,8 @@ type RequireSiteAdminOptions = {
   requireAuthSecret?: boolean;
 };
 
+type SiteAdminHandler = () => Promise<Response>;
+
 export type RequireSiteAdminResult =
   | { ok: true }
   | { ok: false; res: ReturnType<typeof apiError> };
@@ -55,4 +57,18 @@ export async function requireSiteAdmin(
     return { ok: false, res: apiError("Unauthorized", { status: 401 }) };
   }
   return { ok: true };
+}
+
+export async function withSiteAdmin(
+  req: NextRequest,
+  run: SiteAdminHandler,
+  opts?: RequireSiteAdminOptions,
+): Promise<Response> {
+  const auth = await requireSiteAdmin(req, opts);
+  if (!auth.ok) return auth.res;
+  try {
+    return await run();
+  } catch (e: unknown) {
+    return apiErrorFromUnknown(e);
+  }
 }
