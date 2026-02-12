@@ -20,6 +20,12 @@ function safeLower(s: unknown): string {
   return String(s ?? "").toLowerCase();
 }
 
+function readHeadings(item: SearchIndexItem): string[] {
+  const raw = (item as SearchIndexItem & { headings?: unknown }).headings;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((value) => String(value || "")).filter(Boolean);
+}
+
 function readSearchIndex(): SearchIndexItem[] {
   return getSearchIndex();
 }
@@ -264,9 +270,7 @@ export async function GET(req: Request) {
       .filter((it) => {
         const canon = canonicalizePublicRoute(it.routePath);
         if (!inScope(canon)) return false;
-        const headings = Array.isArray((it as { headings?: unknown }).headings)
-          ? String(((it as { headings?: string[] }).headings || []).join("\n") || "")
-          : "";
+        const headings = readHeadings(it).join("\n");
         const hay = `${safeLower(it.title)}\n${safeLower(canon)}\n${safeLower(headings)}\n${safeLower(it.text)}`;
         if (terms.length <= 1) return hay.includes(ql);
         return terms.every((t) => hay.includes(t));
@@ -280,9 +284,7 @@ export async function GET(req: Request) {
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const navBoost = byRoute.get(normalizePathname(it.routePath))?.navGroup ? 180 : 0;
-        const headings = Array.isArray((it as { headings?: unknown }).headings)
-          ? String(((it as { headings?: string[] }).headings || []).join("\n") || "")
-          : "";
+        const headings = readHeadings(it).join("\n");
         const exactTitle = safeLower(it.title).trim() === safeLower(q).trim();
         const exactRoute = safeLower(canon).trim() === safeLower(q).trim();
         const exactBoost = exactTitle ? 1800 : exactRoute ? 900 : 0;
@@ -317,9 +319,7 @@ export async function GET(req: Request) {
       routePath: canon,
       kind: it.kind || "page",
       snippet: (() => {
-        const headingsArr = Array.isArray((it as { headings?: unknown }).headings)
-          ? ((it as { headings?: string[] }).headings || []).map((s) => String(s || "")).filter(Boolean)
-          : [];
+        const headingsArr = readHeadings(it);
         const headings = headingsArr.join("\n");
         const body = String(it.text || "");
         // Prefer body snippets when the query matches body content; otherwise fall back to headings.
