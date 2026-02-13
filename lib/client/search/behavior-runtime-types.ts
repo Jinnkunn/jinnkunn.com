@@ -1,5 +1,5 @@
 import type { SearchMeta, SearchType } from "@/lib/client/search/types";
-import type { SearchItem } from "@/lib/client/site-search-render";
+import type { SearchItem } from "@/lib/shared/search-contract";
 
 export type SearchRootElement = HTMLElement & {
   __closeSearch?: () => void;

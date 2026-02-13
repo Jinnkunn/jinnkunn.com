@@ -1,13 +1,6 @@
 import { escapeHtml, tokenizeQuery } from "@/lib/shared/text-utils";
+import type { SearchItem } from "@/lib/shared/search-contract";
 import { groupLabelForRoutePath } from "@/lib/shared/search-group.mjs";
-
-export type SearchItem = {
-  title: string;
-  routePath: string;
-  kind: string;
-  snippet?: string;
-  breadcrumb?: string;
-};
 
 type Range = { start: number; end: number };
 

@@ -3,6 +3,13 @@ import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { scoreSearchResult } from "@/lib/search/rank.mjs";
 import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group.mjs";
+import {
+  emptySearchResponse,
+  normalizeSearchKind,
+  type SearchItem,
+  type SearchMeta,
+  type SearchResponse,
+} from "@/lib/shared/search-contract";
 import { tokenizeQuery } from "@/lib/shared/text-utils";
 import { noStoreErrorOnly, noStoreJson } from "@/lib/server/api-response";
 
@@ -135,6 +142,12 @@ function matchTypeKey(type: string, key: TypeKey): boolean {
   return true;
 }
 
+function kindForTypeKey(typeKey: TypeKey): SearchItem["kind"] {
+  if (typeKey === "blog") return "blog";
+  if (typeKey === "databases") return "database";
+  return "page";
+}
+
 function bestPos(hay: string, terms: string[]): number {
   let best = -1;
   for (const t of terms) {
@@ -220,17 +233,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = normalizeQuery(url.searchParams.get("q") || "");
   if (!q) {
-    return json({
-      items: [],
-      meta: {
-        total: 0,
-        filteredTotal: 0,
-        counts: { all: 0, pages: 0, blog: 0, databases: 0 },
-        offset: 0,
-        limit: 20,
-        hasMore: false,
-      },
-    });
+    return json(emptySearchResponse({ limit: 20 }) satisfies SearchResponse);
   }
 
   const type = String(url.searchParams.get("type") || "all").trim().toLowerCase();
@@ -314,10 +317,10 @@ export async function GET(req: Request) {
     const groups = buildGroupCounts(filtered.map((m) => groupLabelForRoutePath(m.canon)));
     const hasMore = offset + limit < filtered.length;
 
-    const items = filtered.slice(offset, offset + limit).map(({ it, canon }) => ({
+    const items: SearchItem[] = filtered.slice(offset, offset + limit).map(({ it, canon, typeKey }) => ({
       title: it.routePath === "/" ? "Home" : it.title || "Untitled",
       routePath: canon,
-      kind: it.kind || "page",
+      kind: normalizeSearchKind(kindForTypeKey(typeKey)),
       snippet: (() => {
         const headingsArr = readHeadings(it);
         const headings = headingsArr.join("\n");
@@ -330,18 +333,20 @@ export async function GET(req: Request) {
       breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
     }));
 
+    const meta: SearchMeta = {
+      total: allMatches.length,
+      filteredTotal: filtered.length,
+      counts,
+      groups,
+      offset,
+      limit,
+      hasMore,
+    };
+
     return json({
       items,
-      meta: {
-        total: allMatches.length,
-        filteredTotal: filtered.length,
-        counts,
-        groups,
-        offset,
-        limit,
-        hasMore,
-      },
-    });
+      meta,
+    } satisfies SearchResponse);
   }
 
   const all = manifest;
@@ -381,15 +386,25 @@ export async function GET(req: Request) {
   );
   const hasMore = offset + limit < filtered.length;
 
-  const items = filtered.slice(offset, offset + limit).map(({ it }) => ({
+  const items: SearchItem[] = filtered.slice(offset, offset + limit).map(({ it, typeKey }) => ({
     title: it.routePath === "/" ? "Home" : it.title || "Untitled",
     routePath: canonicalizePublicRoute(it.routePath),
-    kind: it.kind || "page",
+    kind: normalizeSearchKind(kindForTypeKey(typeKey)),
     breadcrumb: buildBreadcrumb(it.routePath, byRoute, byId) || (it.routePath === "/" ? "Home" : ""),
   }));
 
+  const meta: SearchMeta = {
+    total: allMatches.length,
+    filteredTotal: filtered.length,
+    counts,
+    groups,
+    offset,
+    limit,
+    hasMore,
+  };
+
   return json({
     items,
-    meta: { total: allMatches.length, filteredTotal: filtered.length, counts, groups, offset, limit, hasMore },
-  });
+    meta,
+  } satisfies SearchResponse);
 }

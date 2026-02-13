@@ -1,4 +1,5 @@
-import { renderSearchResultsHtml, type SearchItem } from "@/lib/client/site-search-render";
+import { renderSearchResultsHtml } from "@/lib/client/site-search-render";
+import type { SearchItem } from "@/lib/shared/search-contract";
 
 const CLEAR_SVG = `
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
