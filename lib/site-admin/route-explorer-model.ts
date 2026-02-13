@@ -1,6 +1,19 @@
 import type { RouteManifestItem } from "../routes-manifest";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.mjs";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function asRecordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord);
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export type RouteTreeItem = RouteManifestItem & {
   depth: number;
   hasChildren: boolean;
@@ -197,16 +210,14 @@ export function parseAdminRoutesPayload(
   payload: unknown,
   items: RouteManifestItem[],
 ): AdminConfig {
-  const raw = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
-  const overridesInput = Array.isArray(raw.overrides) ? raw.overrides : [];
-  const protectedInput = Array.isArray(raw.protectedRoutes) ? raw.protectedRoutes : [];
+  const raw = isRecord(payload) ? payload : {};
+  const overridesInput = asRecordArray(raw.overrides);
+  const protectedInput = asRecordArray(raw.protectedRoutes);
 
   const overrides: Record<string, string> = {};
-  for (const it0 of overridesInput) {
-    if (!it0 || typeof it0 !== "object") continue;
-    const it = it0 as Record<string, unknown>;
-    const pageId = String(it.pageId || "").trim();
-    const routePath = String(it.routePath || "").trim();
+  for (const it of overridesInput) {
+    const pageId = readTrimmedString(it.pageId);
+    const routePath = readTrimmedString(it.routePath);
     if (!pageId || !routePath) continue;
     overrides[pageId] = routePath;
   }
@@ -216,18 +227,16 @@ export function parseAdminRoutesPayload(
 
   const protectedByPageId: AdminConfig["protectedByPageId"] = {};
   const protectedByPath: AdminConfig["protectedByPath"] = {};
-  for (const it0 of protectedInput) {
-    if (!it0 || typeof it0 !== "object") continue;
-    const it = it0 as Record<string, unknown>;
-    const rawPath = String(it.path || "").trim();
-    const rawMode = String(it.mode || "").trim();
+  for (const it of protectedInput) {
+    const rawPath = readTrimmedString(it.path);
+    const rawMode = readTrimmedString(it.mode);
     if (!rawPath || !rawMode) continue;
 
     const p = normalizeRoutePath(rawPath);
     if (!p) continue;
     const mode: "exact" | "prefix" = rawMode === "prefix" ? "prefix" : "exact";
-    const auth: "password" | "github" = String(it.auth || "") === "github" ? "github" : "password";
-    const pid = compactId(String(it.pageId || ""));
+    const auth: "password" | "github" = readTrimmedString(it.auth) === "github" ? "github" : "password";
+    const pid = compactId(readTrimmedString(it.pageId));
     if (pid) {
       protectedByPageId[pid] = { auth, mode, path: p };
       continue;
