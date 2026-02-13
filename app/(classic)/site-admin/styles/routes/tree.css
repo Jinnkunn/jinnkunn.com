@@ -1,0 +1,241 @@
+/* Super-like tree list for /site-admin/routes */
+.routes-tree {
+  margin-top: 14px;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.routes-tree__row {
+  border-top: 1px solid rgba(55, 53, 47, 0.08);
+}
+
+.routes-tree__row:first-child {
+  border-top: 0;
+}
+
+.routes-tree__row-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.routes-tree__row-top:hover {
+  background: rgba(55, 53, 47, 0.03);
+}
+
+.routes-tree__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding-left: var(--indent, 0px);
+}
+
+.routes-tree__kind-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: rgba(55, 53, 47, 0.62);
+}
+
+.routes-tree__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.routes-tree__pathline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.routes-tree__path {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: rgba(55, 53, 47, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.routes-tree__home {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.58);
+  white-space: nowrap;
+}
+
+.routes-tree__subline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.routes-tree__title {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.76);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.routes-tree__dot {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.4);
+  flex: 0 0 auto;
+}
+
+.routes-tree__id {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.55);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.routes-tree__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.routes-tree__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.routes-tree__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routes-tree__icon-btn {
+  appearance: none;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(55, 53, 47, 0.86);
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+  flex: 0 0 auto;
+}
+
+.routes-tree__icon-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(55, 53, 47, 0.04);
+}
+
+.routes-tree__icon-btn.is-active {
+  background: rgba(55, 53, 47, 0.08);
+  border-color: rgba(55, 53, 47, 0.22);
+}
+
+.routes-tree__icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.routes-tree__icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.routes-tree__panel {
+  border-top: 1px solid rgba(55, 53, 47, 0.08);
+  background: rgba(55, 53, 47, 0.02);
+  padding: 14px;
+}
+
+.routes-tree__panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.routes-tree__panel-card {
+  border: 1px solid rgba(55, 53, 47, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 12px;
+}
+
+.routes-tree__panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.routes-tree__panel-title {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(55, 53, 47, 0.58);
+  font-weight: 750;
+}
+
+.routes-tree__panel-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.64);
+  line-height: 1.35;
+}
+
+.routes-tree__panel-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.routes-tree__panel-label {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.72);
+  white-space: nowrap;
+}
+
+.routes-tree__panel-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.routes-tree__panel-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.66);
+  line-height: 1.4;
+}

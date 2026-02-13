@@ -1,0 +1,51 @@
+@media (max-width: 820px) {
+  .routes-explorer {
+    padding: 26px 16px 56px 16px;
+  }
+
+  .routes-explorer__h1 {
+    font-size: 30px;
+  }
+
+  .routes-explorer__sub {
+    font-size: 13px;
+  }
+
+  .routes-explorer__input {
+    width: min(360px, 82vw);
+  }
+
+  .routes-tree__row-top {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .routes-tree__right {
+    justify-content: flex-start;
+  }
+
+  .routes-tree__panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .routes-explorer__row {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .routes-explorer__row--head {
+    display: none;
+  }
+
+  .routes-explorer__cell--route {
+    padding-top: 0;
+  }
+
+  .routes-explorer__admin-row {
+    grid-template-columns: 1fr;
+  }
+
+  .routes-explorer__admin-select {
+    width: 100%;
+  }
+}

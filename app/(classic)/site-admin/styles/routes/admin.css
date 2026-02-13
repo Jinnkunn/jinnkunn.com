@@ -1,0 +1,77 @@
+/* Shared admin controls (override/access forms) */
+.routes-explorer__admin {
+  border-top: 1px solid rgba(55, 53, 47, 0.08);
+  padding: 12px 14px 14px 14px;
+  background: rgba(55, 53, 47, 0.02);
+}
+
+.routes-explorer__admin-note {
+  font-size: 12px;
+  margin-top: 8px;
+  color: rgba(55, 53, 47, 0.66);
+  line-height: 1.35;
+}
+
+.routes-explorer__admin-note-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.routes-explorer__admin-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.routes-explorer__admin-label {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.72);
+  white-space: nowrap;
+}
+
+.routes-explorer__admin-input,
+.routes-explorer__admin-select {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.routes-explorer__admin-select {
+  cursor: pointer;
+  width: 160px;
+}
+
+.routes-explorer__admin-btn {
+  appearance: none;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  height: 38px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  color: rgba(55, 53, 47, 0.86);
+  white-space: nowrap;
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.routes-explorer__admin-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(55, 53, 47, 0.04);
+}
+
+.routes-explorer__admin-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}

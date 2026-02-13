@@ -1,0 +1,118 @@
+/* Route explorer shell/layout controls */
+.routes-explorer {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 36px 20px 72px 20px;
+}
+
+.routes-explorer__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.routes-explorer__h1 {
+  margin: 0;
+  font-size: 36px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.routes-explorer__sub {
+  margin: 8px 0 0 0;
+  color: rgba(55, 53, 47, 0.7);
+  font-size: 14px;
+}
+
+.routes-explorer__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.routes-explorer__search {
+  display: inline-flex;
+  align-items: center;
+}
+
+.routes-explorer__input {
+  width: min(420px, 70vw);
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  outline: none;
+}
+
+.routes-explorer__input:focus-visible {
+  outline: 3px solid rgba(46, 170, 220, 0.35);
+  outline-offset: 2px;
+}
+
+.routes-explorer__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.routes-explorer__filter-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(55, 53, 47, 0.78);
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.routes-explorer__filter-btn.is-active {
+  background: rgba(55, 53, 47, 0.08);
+  color: rgba(55, 53, 47, 0.92);
+  font-weight: 650;
+}
+
+.routes-explorer__error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(235, 87, 87, 0.25);
+  background: rgba(235, 87, 87, 0.06);
+  color: rgba(140, 32, 32, 0.95);
+  font-size: 13px;
+}
+
+.routes-explorer__meta {
+  margin-top: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: rgba(55, 53, 47, 0.7);
+}
+
+.routes-explorer__count {
+  font-weight: 750;
+  color: rgba(55, 53, 47, 0.92);
+}
+
+.routes-explorer__table {
+  margin-top: 14px;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 16px;
+  /* Admin tables can overflow horizontally (many controls). Allow scrolling instead of clipping. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(255, 255, 255, 0.9);
+}
