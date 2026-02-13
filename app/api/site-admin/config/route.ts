@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { apiError, apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
+import { apiExhaustive, apiOk, fromParsedCommand, withSiteAdmin } from "@/lib/server/site-admin-api";
 import { mapNavigationRows, mapSiteSettingsRow } from "@/lib/server/site-admin-mappers";
 import {
   createDatabaseRow,
@@ -88,26 +88,26 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return withSiteAdmin(req, async () => {
-    const parsed = await parseSiteAdminJsonCommand(req, parseSiteAdminConfigCommand);
-    if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
-    const command = parsed.value;
+    const parsedCommand = fromParsedCommand(
+      await parseSiteAdminJsonCommand(req, parseSiteAdminConfigCommand),
+    );
+    if (!parsedCommand.ok) return parsedCommand.res;
+    const command = parsedCommand.value;
 
-    if (command.kind === "settings") {
-      await updateSiteSettings(command.rowId, command.patch);
-      return apiOk();
+    switch (command.kind) {
+      case "settings":
+        await updateSiteSettings(command.rowId, command.patch);
+        return apiOk();
+      case "nav-update":
+        await updateNavRow(command.rowId, command.patch);
+        return apiOk();
+      case "nav-create": {
+        const created = await createNavRow(command.input);
+        const payload: Omit<SiteAdminConfigPostPayload, "ok"> = { created };
+        return apiOk(payload);
+      }
+      default:
+        return apiExhaustive(command, "Unknown kind");
     }
-
-    if (command.kind === "nav-update") {
-      await updateNavRow(command.rowId, command.patch);
-      return apiOk();
-    }
-
-    if (command.kind === "nav-create") {
-      const created = await createNavRow(command.input);
-      const payload: Omit<SiteAdminConfigPostPayload, "ok"> = { created };
-      return apiOk(payload);
-    }
-
-    return apiError("Unknown kind", { status: 400 });
   });
 }

@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
+import type { ParseResult } from "@/lib/server/site-admin-request";
 
 type RequireSiteAdminOptions = {
   requireAllowlist?: boolean;
@@ -11,6 +12,10 @@ type RequireSiteAdminOptions = {
 };
 
 type SiteAdminHandler = () => Promise<Response>;
+type ApiErrorResponse = ReturnType<typeof apiError>;
+type SiteAdminGuardResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; res: ApiErrorResponse };
 
 export type RequireSiteAdminResult =
   | { ok: true }
@@ -71,4 +76,25 @@ export async function withSiteAdmin(
   } catch (e: unknown) {
     return apiErrorFromUnknown(e);
   }
+}
+
+export function fromParsedCommand<T>(parsed: ParseResult<T>): SiteAdminGuardResult<T> {
+  if (!parsed.ok) {
+    return { ok: false, res: apiError(parsed.error, { status: parsed.status }) };
+  }
+  return { ok: true, value: parsed.value };
+}
+
+export function requireNonEmptyString(
+  value: string,
+  error: string,
+  status = 400,
+): SiteAdminGuardResult<string> {
+  const out = String(value || "").trim();
+  if (!out) return { ok: false, res: apiError(error, { status }) };
+  return { ok: true, value: out };
+}
+
+export function apiExhaustive(_value: never, message = "Unsupported request"): Response {
+  return apiError(message, { status: 400 });
 }

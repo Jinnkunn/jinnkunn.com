@@ -1,7 +1,13 @@
 import type { NextRequest } from "next/server";
 
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
-import { apiError, apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
+import {
+  apiExhaustive,
+  apiOk,
+  fromParsedCommand,
+  requireNonEmptyString,
+  withSiteAdmin,
+} from "@/lib/server/site-admin-api";
 import {
   mapProtectedRouteRows,
   mapRouteOverrideRows,
@@ -211,20 +217,28 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   return withSiteAdmin(req, async () => {
     const { overridesDbId, protectedDbId } = await getAdminDbIds();
-    const parsed = await parseSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand);
-    if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
-    const command = parsed.value;
+    const parsedCommand = fromParsedCommand(
+      await parseSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand),
+    );
+    if (!parsedCommand.ok) return parsedCommand.res;
+    const command = parsedCommand.value;
 
     if (command.kind === "override") {
-      if (!overridesDbId) return apiError("Missing Route Overrides DB", { status: 500 });
+      const validOverridesDbId = requireNonEmptyString(
+        overridesDbId,
+        "Missing Route Overrides DB",
+        500,
+      );
+      if (!validOverridesDbId.ok) return validOverridesDbId.res;
+      const dbId = validOverridesDbId.value;
 
       if (!command.routePath) {
-        await disableOverride({ overridesDbId, pageId: command.pageId });
+        await disableOverride({ overridesDbId: dbId, pageId: command.pageId });
         return apiOk();
       }
 
       const out = await upsertOverride({
-        overridesDbId,
+        overridesDbId: dbId,
         pageId: command.pageId,
         routePath: command.routePath,
       });
@@ -232,7 +246,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (command.kind === "protected") {
-      if (!protectedDbId) return apiError("Missing Protected Routes DB", { status: 500 });
+      const validProtectedDbId = requireNonEmptyString(
+        protectedDbId,
+        "Missing Protected Routes DB",
+        500,
+      );
+      if (!validProtectedDbId.ok) return validProtectedDbId.res;
+      const dbId = validProtectedDbId.value;
       // Product decision: protecting a page must protect its subtree (Super-like),
       // so we always store prefix rules.
       const mode = "prefix" as const;
@@ -240,7 +260,7 @@ export async function POST(req: NextRequest) {
       // Public = disable any protection rule for this page.
       if (command.authKind === "public") {
         await disableProtected({
-          protectedDbId,
+          protectedDbId: dbId,
           pageId: command.pageId,
           path: command.path,
         });
@@ -250,7 +270,7 @@ export async function POST(req: NextRequest) {
       // Disable password protection if password is blank.
       if (command.authKind === "password" && !command.password) {
         await disableProtected({
-          protectedDbId,
+          protectedDbId: dbId,
           pageId: command.pageId,
           path: command.path,
         });
@@ -258,7 +278,7 @@ export async function POST(req: NextRequest) {
       }
 
       const out = await upsertProtected({
-        protectedDbId,
+        protectedDbId: dbId,
         pageId: command.pageId,
         path: command.path,
         mode,
@@ -268,6 +288,6 @@ export async function POST(req: NextRequest) {
       return apiOk({ protected: out });
     }
 
-    return apiError("Unsupported kind", { status: 400 });
+    return apiExhaustive(command, "Unsupported kind");
   });
 }
