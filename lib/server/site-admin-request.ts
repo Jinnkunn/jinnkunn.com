@@ -8,6 +8,7 @@ import {
   getNumber,
   getString,
   isObject,
+  readJsonBody,
 } from "@/lib/server/validate";
 
 export type ParseResult<T> =
@@ -35,6 +36,23 @@ export type SiteAdminRoutesCommand =
 
 function bad(error: string, status = 400): ParseResult<never> {
   return { ok: false, error, status };
+}
+
+type ParseJsonCommandOptions = {
+  invalidJsonError?: string;
+  invalidJsonStatus?: number;
+};
+
+export async function parseSiteAdminJsonCommand<T>(
+  req: Request,
+  parseBody: (body: Record<string, unknown>) => ParseResult<T>,
+  opts?: ParseJsonCommandOptions,
+): Promise<ParseResult<T>> {
+  const body = await readJsonBody(req);
+  if (!body) {
+    return bad(opts?.invalidJsonError || "Invalid JSON", opts?.invalidJsonStatus ?? 400);
+  }
+  return parseBody(body);
 }
 
 export function parseSiteAdminConfigCommand(

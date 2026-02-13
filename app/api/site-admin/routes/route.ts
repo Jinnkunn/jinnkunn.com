@@ -13,7 +13,10 @@ import {
   loadSiteAdminDatabases,
   upsertDatabaseRowByRichTextLookups,
 } from "@/lib/server/site-admin-notion";
-import { parseSiteAdminRoutesCommand } from "@/lib/server/site-admin-request";
+import {
+  parseSiteAdminJsonCommand,
+  parseSiteAdminRoutesCommand,
+} from "@/lib/server/site-admin-request";
 import {
   buildEnabledOnlyProperties,
   buildProtectedRouteProperties,
@@ -24,7 +27,6 @@ import type {
   SiteAdminRouteOverride,
   SiteAdminRoutesGetPayload,
 } from "@/lib/site-admin/api-types";
-import { readJsonBody } from "@/lib/server/validate";
 import {
   queryDatabase,
 } from "@/lib/notion/api";
@@ -208,10 +210,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return withSiteAdmin(req, async () => {
-    const body = await readJsonBody(req);
-    if (!body) return apiError("Invalid JSON", { status: 400 });
     const { overridesDbId, protectedDbId } = await getAdminDbIds();
-    const parsed = parseSiteAdminRoutesCommand(body);
+    const parsed = await parseSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand);
     if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
     const command = parsed.value;
 

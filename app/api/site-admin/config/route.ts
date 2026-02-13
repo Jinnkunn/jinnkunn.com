@@ -9,14 +9,16 @@ import {
   loadSiteAdminDatabases,
   patchPageProperties,
 } from "@/lib/server/site-admin-notion";
-import { parseSiteAdminConfigCommand } from "@/lib/server/site-admin-request";
+import {
+  parseSiteAdminConfigCommand,
+  parseSiteAdminJsonCommand,
+} from "@/lib/server/site-admin-request";
 import { buildNavCreateProperties, buildNavProperties, buildSiteSettingsProperties } from "@/lib/server/site-admin-writers";
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
 import type {
   SiteAdminConfigGetPayload,
   SiteAdminConfigPostPayload,
 } from "@/lib/site-admin/api-types";
-import { readJsonBody } from "@/lib/server/validate";
 import { queryDatabase } from "@/lib/notion/api";
 
 export const runtime = "nodejs";
@@ -86,9 +88,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return withSiteAdmin(req, async () => {
-    const body = await readJsonBody(req);
-    if (!body) return apiError("Bad request", { status: 400 });
-    const parsed = parseSiteAdminConfigCommand(body);
+    const parsed = await parseSiteAdminJsonCommand(req, parseSiteAdminConfigCommand);
     if (!parsed.ok) return apiError(parsed.error, { status: parsed.status });
     const command = parsed.value;
 
