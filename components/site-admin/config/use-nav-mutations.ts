@@ -4,8 +4,9 @@ import type { Dispatch, SetStateAction } from "react";
 import { useState } from "react";
 
 import type { NavItemRow } from "./types";
-import { asApiPost, errorFromUnknown, isApiPostOk } from "./utils";
+import { errorFromUnknown } from "./utils";
 import { requestJsonOrThrow } from "@/lib/client/request-json";
+import { isSiteAdminConfigPostOk, parseSiteAdminConfigPost } from "@/lib/site-admin/config-contract";
 
 type UseSiteAdminNavMutationsArgs = {
   setBusy: (value: boolean) => void;
@@ -50,8 +51,8 @@ export function useSiteAdminNavMutations({ setBusy, setErr, setNav }: UseSiteAdm
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ kind: "nav-update", rowId: row.rowId, patch }),
         },
-        asApiPost,
-        { isOk: isApiPostOk },
+        parseSiteAdminConfigPost,
+        { isOk: isSiteAdminConfigPostOk },
       );
 
       setNav((prev) => prev.map((it) => (it.rowId === row.rowId ? { ...it, ...patch } : it)));
@@ -83,8 +84,8 @@ export function useSiteAdminNavMutations({ setBusy, setErr, setNav }: UseSiteAdm
             },
           }),
         },
-        asApiPost,
-        { isOk: isApiPostOk },
+        parseSiteAdminConfigPost,
+        { isOk: isSiteAdminConfigPostOk },
       );
       const created = data.created || null;
       if (created?.rowId) {

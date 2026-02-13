@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { NavItemRow, SiteSettings } from "@/components/site-admin/config/types";
-import { asApiGet, errorFromUnknown, isApiGetOk } from "@/components/site-admin/config/utils";
+import { errorFromUnknown } from "@/components/site-admin/config/utils";
 import { useSiteAdminNavMutations } from "@/components/site-admin/config/use-nav-mutations";
 import { useSiteAdminSettingsMutation } from "@/components/site-admin/config/use-settings-mutation";
 import { requestJsonOrThrow } from "@/lib/client/request-json";
+import { isSiteAdminConfigGetOk, parseSiteAdminConfigGet } from "@/lib/site-admin/config-contract";
 
 export function useSiteAdminConfigData() {
   const [busy, setBusy] = useState(false);
@@ -33,8 +34,8 @@ export function useSiteAdminConfigData() {
         const data = await requestJsonOrThrow(
           "/api/site-admin/config",
           { cache: "no-store" },
-          asApiGet,
-          { isOk: isApiGetOk },
+          parseSiteAdminConfigGet,
+          { isOk: isSiteAdminConfigGetOk },
         );
         if (!cancelled) {
           setDraftSettings(data.settings ? { ...data.settings } : null);

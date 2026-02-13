@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 
-import type { BannerState } from "@/components/site-admin/status/use-status-data";
 import type { StatusPayload } from "@/components/site-admin/status/types";
+import type { BannerState } from "@/lib/site-admin/status-model";
 
 type SiteAdminStatusBannerProps = {
   payload: StatusPayload;
