@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { RouteTreeItem } from "@/lib/site-admin/route-explorer-model";
 
 export function RouteRowAdminPanel({
   it,
-  panelKey,
   overrideValue,
   selectedAccess,
   inheritedProtected,
@@ -18,7 +17,6 @@ export function RouteRowAdminPanel({
   onSaveAccess,
 }: {
   it: RouteTreeItem;
-  panelKey: string;
   overrideValue: string;
   selectedAccess: "public" | "password" | "github";
   inheritedProtected: boolean;
@@ -36,14 +34,6 @@ export function RouteRowAdminPanel({
 }) {
   const [overrideInput, setOverrideInput] = useState(overrideValue);
   const [passwordInput, setPasswordInput] = useState("");
-
-  useEffect(() => {
-    setOverrideInput(overrideValue);
-  }, [panelKey, overrideValue]);
-
-  useEffect(() => {
-    if (selectedAccess !== "password" || inheritedProtected) setPasswordInput("");
-  }, [selectedAccess, inheritedProtected]);
 
   const saveAccess = () => {
     onSaveAccess({
@@ -72,7 +62,6 @@ export function RouteRowAdminPanel({
             <label className="routes-tree__panel-label">Override URL</label>
             <input
               className="routes-explorer__admin-input"
-              key={panelKey}
               value={overrideInput}
               placeholder="e.g. /my-page"
               onChange={(e) => setOverrideInput(e.target.value)}
@@ -127,6 +116,7 @@ export function RouteRowAdminPanel({
                 const nextAccess: "public" | "password" | "github" =
                   raw === "password" ? "password" : raw === "github" ? "github" : "public";
                 onSetAccessChoice(it.id, nextAccess);
+                if (nextAccess !== "password" || inheritedProtected) setPasswordInput("");
               }}
             >
               <option value="public">public</option>
@@ -154,7 +144,7 @@ export function RouteRowAdminPanel({
                       ? "No password for GitHub"
                       : "Public"
               }
-              value={passwordInput}
+              value={inheritedProtected || selectedAccess !== "password" ? "" : passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyDown={(e) => {
                 if (inheritedProtected) return;

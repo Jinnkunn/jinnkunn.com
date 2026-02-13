@@ -95,8 +95,8 @@ export function RouteRow({
 
       {adminOpen ? (
         <RouteRowAdminPanel
+          key={panelKey}
           it={it}
-          panelKey={panelKey}
           overrideValue={overrideValue}
           selectedAccess={selectedAccess}
           inheritedProtected={inheritedProtected}
