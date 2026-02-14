@@ -3,6 +3,7 @@ import { escapeHtml } from "../../lib/shared/text-utils.mjs";
 import { canonicalizePublicHref } from "./route-model.mjs";
 import { renderBreadcrumbs } from "./breadcrumbs.mjs";
 import { renderPagePropertiesFromPageObject } from "./page-properties.mjs";
+import { renderKatexFromCtx, renderRichText, richTextPlain } from "./render-rich-text.mjs";
 
 function pickCalloutBgClass(color) {
   const c = String(color || "default").replace(/_background$/, "");
@@ -17,109 +18,6 @@ function pageIconSvg() {
 
 function embedSpinnerSvg() {
   return `<svg class="super-loader__spinner" viewBox="0 0 24 24"><defs><linearGradient x1="28.1542969%" y1="63.7402344%" x2="74.6289062%" y2="17.7832031%" id="linearGradient-1"><stop stop-color="rgba(164, 164, 164, 1)" offset="0%"></stop><stop stop-color="rgba(164, 164, 164, 0)" stop-opacity="0" offset="100%"></stop></linearGradient></defs><g id="Page-1" stroke="none" stroke-width="1" fill="none"><g transform="translate(-236.000000, -286.000000)"><g transform="translate(238.000000, 286.000000)"><circle id="Oval-2" stroke="url(#linearGradient-1)" stroke-width="4" cx="10" cy="12" r="10"></circle><path d="M10,2 C4.4771525,2 0,6.4771525 0,12" id="Oval-2" stroke="rgba(164, 164, 164, 1)" stroke-width="4"></path><rect id="Rectangle-1" fill="rgba(164, 164, 164, 1)" x="8" y="0" width="4" height="4" rx="8"></rect></g></g></g></g></svg>`;
-}
-
-export function richTextPlain(richText) {
-  return (richText || []).map((x) => x?.plain_text ?? "").join("");
-}
-
-export function renderRichText(richText, ctx) {
-  const items = Array.isArray(richText) ? richText : [];
-  return items.map((rt) => renderRichTextItem(rt, ctx)).join("");
-}
-
-function rewriteHref(rawHref, ctx) {
-  const href = String(rawHref ?? "").trim();
-  if (!href) return "";
-
-  const routeByPageId = ctx?.routeByPageId;
-
-  let url;
-  let isAbsolute = false;
-  try {
-    url = new URL(href);
-    isAbsolute = true;
-  } catch {
-    try {
-      url = new URL(href, "https://local.invalid");
-    } catch {
-      return href;
-    }
-  }
-
-  const host = String(url.host || "").toLowerCase();
-
-  const compact = compactId(href);
-  if (compact && routeByPageId?.has?.(compact)) {
-    const mapped = routeByPageId.get(compact);
-    if (mapped) return mapped;
-  }
-
-  const isProdDomain =
-    host === "jinkunchen.com" ||
-    host === "www.jinkunchen.com" ||
-    host === "jinnkunn.com" ||
-    host === "www.jinnkunn.com";
-  if (isAbsolute && isProdDomain) {
-    return `${url.pathname || "/"}${url.search || ""}${url.hash || ""}`;
-  }
-
-  return href;
-}
-
-function renderKatexFromCtx(expr, opts, ctx) {
-  if (ctx && typeof ctx.renderKatex === "function") return ctx.renderKatex(expr, opts);
-  return escapeHtml(expr);
-}
-
-function renderRichTextItem(rt, ctx) {
-  const annotations = rt?.annotations ?? {};
-  const color = String(annotations.color || "default");
-  const href = rewriteHref(
-    rt?.href ||
-      rt?.text?.link?.url ||
-      (rt?.type === "mention" && rt?.mention?.type === "page"
-        ? ctx.routeByPageId.get(compactId(rt?.mention?.page?.id)) || ""
-        : ""),
-    ctx,
-  );
-
-  let inner = "";
-  if (rt?.type === "equation") {
-    const expr = rt?.equation?.expression ?? rt?.plain_text ?? "";
-    inner = `<span class="notion-equation notion-equation__inline">${renderKatexFromCtx(
-      expr,
-      { displayMode: false },
-      ctx,
-    )}</span>`;
-  } else {
-    inner = escapeHtml(rt?.plain_text ?? "");
-  }
-
-  if (href) {
-    const external = /^https?:\/\//i.test(href);
-    const attrs = external ? ` target="_blank" rel="noopener noreferrer"` : "";
-    inner = `<a href="${escapeHtml(href)}" class="notion-link link"${attrs}>${inner}</a>`;
-  }
-
-  if (annotations.underline) inner = `<u>${inner}</u>`;
-  if (annotations.strikethrough) inner = `<s>${inner}</s>`;
-  if (annotations.bold) inner = `<strong>${inner}</strong>`;
-  if (annotations.code) inner = `<code class="code">${inner}</code>`;
-
-  if (color.endsWith("_background")) {
-    const bg = color.replace(/_background$/, "");
-    const bgSafe = escapeHtml(bg);
-    inner = `<span class="highlighted-background bg-${bgSafe}">${inner}</span>`;
-    if (bg !== "yellow") {
-      inner = `<span class="highlighted-color color-${bgSafe}">${inner}</span>`;
-    }
-  } else if (color !== "default") {
-    inner = `<span class="highlighted-color color-${escapeHtml(color)}">${inner}</span>`;
-  }
-
-  if (annotations.italic) inner = `<em>${inner}</em>`;
-  return inner;
 }
 
 export function collectHeadings(blocks, out = []) {
