@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.ts";
+import { deepMerge, isObject } from "../lib/shared/object-utils.ts";
 import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.ts";
 import { groupLabelForRoutePath, sortGroupLabels } from "../lib/shared/search-group.ts";
 import { escapeHtml, tokenizeQuery } from "../lib/shared/text-utils.ts";
@@ -33,6 +34,27 @@ test("shared-ts-facades: route/text utilities keep expected transformations", ()
 
   assert.equal(escapeHtml('<a href="/x">x</a>'), "&lt;a href=&quot;/x&quot;&gt;x&lt;/a&gt;");
   assert.deepEqual(tokenizeQuery("  one   two  three "), ["one", "two", "three"]);
+});
+
+test("shared-ts-facades: object utilities validate and merge deeply", () => {
+  assert.equal(isObject({ a: 1 }), true);
+  assert.equal(isObject(null), false);
+  assert.equal(isObject(["a"]), false);
+
+  const base = {
+    seo: { title: "A", description: "B" },
+    nav: { top: [{ href: "/", label: "Home" }] },
+  };
+  const patch = {
+    seo: { title: "Updated" },
+    nav: { more: [{ href: "/blog", label: "Blog" }] },
+  };
+  const out = deepMerge(base, patch);
+
+  assert.equal(out.seo.title, "Updated");
+  assert.equal(out.seo.description, "B");
+  assert.deepEqual(out.nav.top, [{ href: "/", label: "Home" }]);
+  assert.deepEqual(out.nav.more, [{ href: "/blog", label: "Blog" }]);
 });
 
 test("shared-ts-facades: rank function prefers title match over content-only match", () => {
