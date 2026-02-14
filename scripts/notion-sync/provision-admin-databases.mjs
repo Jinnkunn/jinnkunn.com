@@ -11,6 +11,9 @@ import {
   updateDatabase,
 } from "./provision-utils.mjs";
 
+/** @typedef {import("../../lib/notion/types.ts").NotionBlock} NotionBlock */
+/** @typedef {import("../../lib/shared/default-site-config.ts").DefaultSiteConfig} DefaultSiteConfig */
+
 function githubUserListAsString(listOrString) {
   if (Array.isArray(listOrString)) return listOrString.join(", ");
   return String(listOrString || "").trim();
@@ -18,7 +21,7 @@ function githubUserListAsString(listOrString) {
 
 /**
  * Ensure the Site Settings inline DB exists and has the latest schema.
- * @param {{ adminPageId: string, blocks: any[], cfg: any }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[], cfg: DefaultSiteConfig }} input
  */
 export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
   const hasSettingsDb = Boolean(findChildDatabaseBlock(blocks, "Site Settings"));
@@ -111,7 +114,7 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
 
 /**
  * Ensure Deploy Logs DB exists and carries the latest schema + explanatory copy.
- * @param {{ adminPageId: string, blocks: any[] }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[] }} input
  */
 export async function ensureDeployLogsDatabase({ adminPageId, blocks }) {
   const hasDeployLogsDb = Boolean(findChildDatabaseBlock(blocks, "Deploy Logs"));

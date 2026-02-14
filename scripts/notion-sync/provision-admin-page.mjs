@@ -10,10 +10,12 @@ import {
   updateBlock,
 } from "./provision-utils.mjs";
 
+/** @typedef {import("../../lib/notion/types.ts").NotionBlock} NotionBlock */
+
 /**
  * Normalize the top explanatory copy and migrate legacy JSON config heading/code
  * into a collapsed "Advanced config" toggle at the bottom.
- * @param {{ adminPageId: string, blocks: any[] }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[] }} input
  */
 export async function syncAdminPageIntroAndFallback({ adminPageId, blocks }) {
   // Cleanup: remove older helper copy that is now redundant with the Settings DB.
@@ -120,7 +122,7 @@ export async function syncAdminPageIntroAndFallback({ adminPageId, blocks }) {
 
 /**
  * Ensure the Deploy section exists and points to the latest DEPLOY_TOKEN URL.
- * @param {{ adminPageId: string, blocks: any[] }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[] }} input
  */
 export async function ensureDeploySection({ adminPageId, blocks }) {
   const deployHeading = findHeadingBlock(blocks, { level: 2, includes: "Deploy" });

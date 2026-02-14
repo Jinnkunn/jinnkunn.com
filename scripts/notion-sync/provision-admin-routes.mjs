@@ -6,8 +6,11 @@ import {
   richText,
 } from "./provision-utils.mjs";
 
+/** @typedef {import("../../lib/notion/types.ts").NotionBlock} NotionBlock */
+/** @typedef {import("../../lib/shared/default-site-config.ts").DefaultSiteConfig} DefaultSiteConfig */
+
 /**
- * @param {{ adminPageId: string, blocks: any[], cfg: any }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[], cfg: DefaultSiteConfig }} input
  */
 export async function ensureNavigationDatabase({ adminPageId, blocks, cfg }) {
   if (findChildDatabaseBlock(blocks, "Navigation")) return;
@@ -71,7 +74,7 @@ export async function ensureNavigationDatabase({ adminPageId, blocks, cfg }) {
 }
 
 /**
- * @param {{ adminPageId: string, blocks: any[], cfg: any }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[], cfg: DefaultSiteConfig }} input
  */
 export async function ensureRouteOverridesDatabase({ adminPageId, blocks, cfg }) {
   if (findChildDatabaseBlock(blocks, "Route Overrides")) return;
@@ -124,7 +127,7 @@ export async function ensureRouteOverridesDatabase({ adminPageId, blocks, cfg })
 }
 
 /**
- * @param {{ adminPageId: string, blocks: any[] }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[] }} input
  */
 export async function ensureIncludedPagesDatabase({ adminPageId, blocks }) {
   if (findChildDatabaseBlock(blocks, "Included Pages")) return;
@@ -174,7 +177,7 @@ export async function ensureIncludedPagesDatabase({ adminPageId, blocks }) {
 }
 
 /**
- * @param {{ adminPageId: string, blocks: any[] }} input
+ * @param {{ adminPageId: string, blocks: NotionBlock[] }} input
  */
 export async function ensureProtectedRoutesDatabase({ adminPageId, blocks }) {
   if (findChildDatabaseBlock(blocks, "Protected Routes")) return;
