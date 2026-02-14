@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { StatusPayload, StatusResult } from "@/components/site-admin/status/types";
+import type { StatusResult } from "@/components/site-admin/status/types";
 import { requestJsonOrThrow } from "@/lib/client/request-json";
 import { isSiteAdminStatusOk, parseSiteAdminStatusResult } from "@/lib/site-admin/status-contract";
 import {
@@ -40,7 +40,7 @@ export function useSiteAdminStatusData() {
     void load();
   }, [load]);
 
-  const payload = res && "ok" in res && res.ok ? (res as StatusPayload) : null;
+  const payload = res && isSiteAdminStatusOk(res) ? res : null;
   const derived = useMemo(() => deriveSiteAdminStatus(payload), [payload]);
 
   return {
@@ -55,4 +55,3 @@ export function useSiteAdminStatusData() {
     load,
   };
 }
-
