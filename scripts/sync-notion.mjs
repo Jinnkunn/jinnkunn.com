@@ -22,7 +22,6 @@ import katex from "katex";
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
 import { deepMerge, isObject } from "../lib/shared/object-utils.mjs";
 import {
-  notionRequest,
   queryDatabase,
   findFirstJsonCodeBlock,
   getDatabaseInfo,
@@ -47,7 +46,14 @@ import {
 import {
   buildSearchIndexFieldsFromBlocks,
 } from "./notion-sync/search-text.mjs";
-import { renderDatabaseMain, renderPageMain, richTextPlain } from "./notion-sync/render-page.mjs";
+import { renderDatabaseMain, renderPageMain } from "./notion-sync/render-page.mjs";
+import {
+  getPageInfo,
+  getPageTitle,
+  getTitleFromPageObject,
+  normalizeHref,
+} from "./notion-sync/page-meta.mjs";
+import { extractFirstDateProperty } from "./notion-sync/date-utils.mjs";
 
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
 
@@ -86,17 +92,6 @@ function stripTreeForCache(value) {
   );
 }
 
-function normalizeHref(href) {
-  const raw = String(href || "").trim();
-  if (!raw) return "";
-
-  // Keep absolute/external links intact.
-  if (/^(https?:\/\/|mailto:|tel:|#)/i.test(raw)) return raw;
-
-  // Treat everything else as an internal route.
-  return normalizeRoutePath(raw);
-}
-
 function renderKatex(expression, { displayMode }) {
   const expr = String(expression ?? "").trim();
   if (!expr) return "";
@@ -109,72 +104,6 @@ function renderKatex(expression, { displayMode }) {
   } catch {
     return escapeHtml(expr);
   }
-}
-
-async function getPageInfo(pageId) {
-  const pid = compactId(pageId);
-  if (!pid) return { id: "", title: "Untitled", lastEdited: "" };
-  const data = await notionRequest(`pages/${pid}`);
-  const lastEdited = String(data?.last_edited_time || "").trim();
-  const props = data?.properties && typeof data.properties === "object" ? data.properties : {};
-  for (const v of Object.values(props)) {
-    if (v && typeof v === "object" && v.type === "title") {
-      const title = richTextPlain(v.title ?? []) || "Untitled";
-      return { id: pid, title, lastEdited };
-    }
-  }
-  return { id: pid, title: "Untitled", lastEdited };
-}
-
-async function getPageTitle(pageId) {
-  const info = await getPageInfo(pageId);
-  return info.title || "Untitled";
-}
-
-function getTitleFromPageObject(page) {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  for (const v of Object.values(props)) {
-    if (v && typeof v === "object" && v.type === "title") {
-      const t = richTextPlain(v.title ?? []).trim();
-      if (t) return t;
-    }
-  }
-  return "Untitled";
-}
-
-function toDateIso(start) {
-  const s = String(start || "").trim();
-  if (!s) return null;
-  // Prefer YYYY-MM-DD if the value is ISO datetime.
-  const m = s.match(/^\d{4}-\d{2}-\d{2}/);
-  return m ? m[0] : null;
-}
-
-function formatDateLong(start) {
-  const iso = toDateIso(start);
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return new Date(t).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-function extractFirstDateProperty(page) {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  for (const [name, v] of Object.entries(props)) {
-    if (!v || typeof v !== "object") continue;
-    if (v.type !== "date") continue;
-    const start = v.date?.start;
-    const iso = toDateIso(start);
-    const text = formatDateLong(start);
-    if (!iso || !text) continue;
-    return { name, id: String(v.id || ""), iso, text };
-  }
-  return null;
 }
 
 async function buildPageTree(
@@ -304,7 +233,7 @@ async function buildPageTree(
       const items = rows
         .filter((p) => !p?.archived && !p?.in_trash)
         .map((p) => {
-          const date = extractFirstDateProperty(p);
+          const date = extractFirstDateProperty(p, { timeZone: "UTC" });
           return {
             kind: "page",
             id: compactId(p.id),

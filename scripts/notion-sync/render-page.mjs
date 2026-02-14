@@ -2,6 +2,7 @@ import { compactId, slugify } from "../../lib/shared/route-utils.mjs";
 import { escapeHtml } from "../../lib/shared/text-utils.mjs";
 import { canonicalizePublicHref } from "./route-model.mjs";
 import { renderBreadcrumbs } from "./breadcrumbs.mjs";
+import { extractFirstDateProperty } from "./date-utils.mjs";
 
 function pickCalloutBgClass(color) {
   const c = String(color || "default").replace(/_background$/, "");
@@ -22,36 +23,6 @@ function calendarIconSvg16() {
 function personIconSvg16() {
   // Matches the icon used in Super's page properties ("Person").
   return `<svg viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M10.9536 7.90088C12.217 7.90088 13.2559 6.79468 13.2559 5.38525C13.2559 4.01514 12.2114 2.92017 10.9536 2.92017C9.70142 2.92017 8.65137 4.02637 8.65698 5.39087C8.6626 6.79468 9.69019 7.90088 10.9536 7.90088ZM4.4231 8.03003C5.52368 8.03003 6.42212 7.05859 6.42212 5.83447C6.42212 4.63843 5.51245 3.68945 4.4231 3.68945C3.33374 3.68945 2.41846 4.64966 2.41846 5.84009C2.42407 7.05859 3.32251 8.03003 4.4231 8.03003ZM1.37964 13.168H5.49561C4.87231 12.292 5.43384 10.6074 6.78711 9.51807C6.18628 9.14746 5.37769 8.87231 4.4231 8.87231C1.95239 8.87231 0.262207 10.6917 0.262207 12.1628C0.262207 12.7974 0.548584 13.168 1.37964 13.168ZM7.50024 13.168H14.407C15.4009 13.168 15.7322 12.8423 15.7322 12.2864C15.7322 10.8489 13.8679 8.88354 10.9536 8.88354C8.04492 8.88354 6.17505 10.8489 6.17505 12.2864C6.17505 12.8423 6.50635 13.168 7.50024 13.168Z"></path></svg>`;
-}
-
-function toDateIso(start) {
-  const s = String(start || "").trim();
-  if (!s) return null;
-  const m = s.match(/^\d{4}-\d{2}-\d{2}/);
-  return m ? m[0] : null;
-}
-
-function formatDateLong(start) {
-  const iso = toDateIso(start);
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  const d = new Date(t);
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-}
-
-function extractFirstDateProperty(page) {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  for (const [name, v] of Object.entries(props)) {
-    if (!v || typeof v !== "object") continue;
-    if (v.type !== "date") continue;
-    const start = v.date?.start;
-    if (!start) continue;
-    const text = formatDateLong(start);
-    if (!text) continue;
-    return { name, id: String(v.id || ""), text, start };
-  }
-  return null;
 }
 
 function extractFirstPeopleProperty(page) {
@@ -645,4 +616,3 @@ export function renderDatabaseMain(db, cfg, ctx) {
     db.id,
   )}"><div class="notion-collection-list">${items}</div></article></main>`;
 }
-
