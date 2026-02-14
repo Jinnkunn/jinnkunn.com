@@ -34,6 +34,58 @@ export function noStoreFail(
   return noStoreJson(body, { status: init?.status ?? 400 });
 }
 
+export function noStoreBadRequest(
+  error = "Bad Request",
+  init?: NoStoreInit & { extras?: Record<string, unknown> },
+) {
+  return noStoreFail(error, {
+    status: init?.status ?? 400,
+    extras: init?.extras,
+  });
+}
+
+export function noStoreUnauthorized(
+  error = "Unauthorized",
+  init?: NoStoreInit & { extras?: Record<string, unknown> },
+) {
+  return noStoreFail(error, {
+    status: init?.status ?? 401,
+    extras: init?.extras,
+  });
+}
+
+export function noStoreMethodNotAllowed(
+  allow?: string[] | string,
+  error = "Method Not Allowed",
+) {
+  const allowList = Array.isArray(allow) ? allow : allow ? [allow] : [];
+  const headers: Record<string, string> = { "cache-control": "no-store" };
+  if (allowList.length) headers.allow = allowList.join(", ");
+  return NextResponse.json(
+    {
+      ok: false,
+      error,
+    },
+    {
+      status: 405,
+      headers,
+    },
+  );
+}
+
+export function noStoreMisconfigured(
+  missing: string | string[],
+  init?: Omit<NoStoreInit, "status"> & { status?: number },
+) {
+  const keys = Array.isArray(missing) ? missing : [missing];
+  const cleaned = keys.map((k) => String(k || "").trim()).filter(Boolean);
+  const suffix = cleaned.join(", ");
+  const message = suffix
+    ? `Server misconfigured: missing ${suffix}`
+    : "Server misconfigured";
+  return noStoreFail(message, { status: init?.status ?? 500 });
+}
+
 export function noStoreErrorOnly(
   error: string,
   init?: NoStoreInit & { extras?: Record<string, unknown> },

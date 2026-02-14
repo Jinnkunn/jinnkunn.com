@@ -1,6 +1,13 @@
 import crypto from "node:crypto";
 
-import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
+import {
+  noStoreBadRequest,
+  noStoreFailFromUnknown,
+  noStoreMethodNotAllowed,
+  noStoreMisconfigured,
+  noStoreOk,
+  noStoreUnauthorized,
+} from "@/lib/server/api-response";
 import {
   createDatabaseRow,
   findFirstRowByFilter,
@@ -134,20 +141,20 @@ async function upsertDeployLogFromEvent(opts: {
 export async function POST(req: Request) {
   const secret = process.env.VERCEL_WEBHOOK_SECRET?.trim() ?? "";
   if (!secret) {
-    return noStoreFail("Server misconfigured: missing VERCEL_WEBHOOK_SECRET", { status: 500 });
+    return noStoreMisconfigured("VERCEL_WEBHOOK_SECRET");
   }
 
   const sig = req.headers.get("x-vercel-signature") ?? "";
   const rawBody = await req.text();
   if (!verifyVercelSignature({ rawBody, secret, got: sig })) {
-    return noStoreFail("Unauthorized", { status: 401 });
+    return noStoreUnauthorized();
   }
 
   let evt: unknown = null;
   try {
     evt = rawBody ? JSON.parse(rawBody) : null;
   } catch {
-    return noStoreFail("Invalid JSON body", { status: 400 });
+    return noStoreBadRequest("Invalid JSON body");
   }
 
   try {
@@ -169,7 +176,7 @@ export async function POST(req: Request) {
     const target = String(deploymentObj.target ?? "").trim();
 
     if (!(process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim()) {
-      return noStoreFail("Server misconfigured: missing NOTION_SITE_ADMIN_PAGE_ID", { status: 500 });
+      return noStoreMisconfigured("NOTION_SITE_ADMIN_PAGE_ID");
     }
 
     const dbId = await getSiteAdminDatabaseIdByTitle("Deploy Logs");
@@ -211,5 +218,5 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  return noStoreFail("Method Not Allowed", { status: 405 });
+  return noStoreMethodNotAllowed(["POST"]);
 }

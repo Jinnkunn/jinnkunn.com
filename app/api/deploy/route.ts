@@ -1,5 +1,11 @@
 import { compactId } from "@/lib/shared/route-utils";
-import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
+import {
+  noStoreFail,
+  noStoreFailFromUnknown,
+  noStoreMisconfigured,
+  noStoreOk,
+  noStoreUnauthorized,
+} from "@/lib/server/api-response";
 import { triggerDeployHook } from "@/lib/server/deploy-hook";
 import { createDatabaseRow, getSiteAdminDatabaseIdByTitle } from "@/lib/server/site-admin-notion";
 import { buildDeployLogCreateProperties } from "@/lib/server/site-admin-writers";
@@ -42,10 +48,10 @@ function isAuthorized(req: Request): boolean {
 
 export async function GET(req: Request) {
   if (!process.env.DEPLOY_TOKEN?.trim()) {
-    return noStoreFail("Server misconfigured: missing DEPLOY_TOKEN", { status: 500 });
+    return noStoreMisconfigured("DEPLOY_TOKEN");
   }
   if (!isAuthorized(req)) {
-    return noStoreFail("Unauthorized", { status: 401 });
+    return noStoreUnauthorized();
   }
 
   try {
