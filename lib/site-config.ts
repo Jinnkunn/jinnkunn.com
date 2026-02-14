@@ -1,5 +1,7 @@
 import { readContentJson } from "@/lib/server/content-json";
 import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config";
+import { normalizeGithubUserList } from "@/lib/shared/github-users";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 
 export type NavItem = {
   href: string;
@@ -41,6 +43,27 @@ function asString(x: unknown): string | undefined {
   return typeof x === "string" && x.trim() ? x : undefined;
 }
 
+function asNullableString(x: unknown): string | null | undefined {
+  if (x === null) return null;
+  return asString(x);
+}
+
+function asRouteOverrides(x: unknown): Record<string, string> | null | undefined {
+  if (x === null) return null;
+  if (!isObject(x)) return undefined;
+
+  const out: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(x)) {
+    const pageId = compactId(rawKey) || String(rawKey || "").trim();
+    if (!pageId) continue;
+    const routePath = normalizeRoutePath(String(rawValue || ""));
+    if (!routePath) continue;
+    out[pageId] = routePath;
+  }
+
+  return out;
+}
+
 function asNavItems(x: unknown): NavItem[] | undefined {
   if (!Array.isArray(x)) return undefined;
   const out: NavItem[] = [];
@@ -76,9 +99,25 @@ function normalizeConfig(input: unknown): SiteConfig {
       cfg.integrations.googleAnalyticsId;
   }
 
+  if (isObject(input.security)) {
+    cfg.security = cfg.security ?? { contentGithubUsers: [] };
+    cfg.security.contentGithubUsers = normalizeGithubUserList(input.security.contentGithubUsers);
+  }
+
   if (isObject(input.nav)) {
     cfg.nav.top = asNavItems(input.nav.top) ?? cfg.nav.top;
     cfg.nav.more = asNavItems(input.nav.more) ?? cfg.nav.more;
+  }
+
+  if (isObject(input.content)) {
+    cfg.content = cfg.content ?? {
+      rootPageId: null,
+      homePageId: null,
+      routeOverrides: null,
+    };
+    cfg.content.rootPageId = asNullableString(input.content.rootPageId) ?? cfg.content.rootPageId;
+    cfg.content.homePageId = asNullableString(input.content.homePageId) ?? cfg.content.homePageId;
+    cfg.content.routeOverrides = asRouteOverrides(input.content.routeOverrides) ?? cfg.content.routeOverrides;
   }
 
   return cfg;

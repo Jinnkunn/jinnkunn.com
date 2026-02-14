@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.ts";
+import { normalizeGithubUserList, parseGithubUserCsv } from "../lib/shared/github-users.ts";
 import { deepMerge, isObject } from "../lib/shared/object-utils.ts";
 import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.ts";
 import { groupLabelForRoutePath, sortGroupLabels } from "../lib/shared/search-group.ts";
@@ -34,6 +35,13 @@ test("shared-ts-facades: route/text utilities keep expected transformations", ()
 
   assert.equal(escapeHtml('<a href="/x">x</a>'), "&lt;a href=&quot;/x&quot;&gt;x&lt;/a&gt;");
   assert.deepEqual(tokenizeQuery("  one   two  three "), ["one", "two", "three"]);
+});
+
+test("shared-ts-facades: github-user helpers normalize + dedupe consistently", () => {
+  assert.deepEqual(normalizeGithubUserList(["@Jinkunn", " jinkunn ", "", null, "@Jinkunn"]), [
+    "jinkunn",
+  ]);
+  assert.deepEqual(parseGithubUserCsv(" @A, b ,, @a "), ["a", "b", "a"]);
 });
 
 test("shared-ts-facades: object utilities validate and merge deeply", () => {
