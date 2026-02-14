@@ -1,8 +1,6 @@
-import { createFocusTrap, lockBodyScroll, setClassicInert } from "@/lib/client/dom-utils";
+import { createFocusTrap, setClassicInert } from "@/lib/client/dom-utils";
 import {
-  computeScopeFromPathname,
   getVisibleResultItems,
-  loadSearchState,
   renderFooterHint,
   saveSearchState,
   setActiveResult,
@@ -12,6 +10,7 @@ import {
 import { ensureSearch, renderEmpty } from "@/lib/client/search/overlay";
 
 import { handleSearchFocusIn, handleSearchKeyDown } from "./behavior-runtime-keyboard";
+import { createSearchOpenStateController } from "./behavior-runtime-open-state";
 import { handleSearchResultsClick, runSearchQuery } from "./behavior-runtime-query";
 import {
   parseSearchType,
@@ -126,53 +125,17 @@ export function setupSearchBehavior(): (() => void) | undefined {
 
   const runSearch = (q: string) => runSearchQuery(queryDeps, q);
 
-  const setOpen = (next: boolean) => {
-    state.open = next;
-    root.classList.toggle("open", state.open);
-    root.classList.toggle("close", !state.open);
-    root.setAttribute("data-open", state.open ? "true" : "false");
-    trigger.setAttribute("aria-expanded", state.open ? "true" : "false");
-
-    if (state.open) {
-      setClassicInert(true);
-      if (!state.unlockScroll) state.unlockScroll = lockBodyScroll();
-
-      state.lastFocus = document.activeElement as HTMLElement | null;
-      input.value = "";
-      const remembered = loadSearchState();
-      state.filterType = remembered.filterType || "all";
-      state.scopeEnabled = Boolean(remembered.scopeEnabled);
-      const s = computeScopeFromPathname(window.location.pathname);
-      state.scopePrefix = s.prefix;
-      state.scopeLabel = s.label;
-      if (!state.scopePrefix) state.scopeEnabled = false;
-      syncPillState();
-      applyMetaCounts(null);
-      syncClearState();
-      renderEmpty(list);
-      state.activeIndex = -1;
-      setFooterHint("idle");
-      window.setTimeout(() => input.focus(), 0);
-      return;
-    }
-
-    state.aborter?.abort();
-    state.aborter = null;
-    if (state.debounceTimer) window.clearTimeout(state.debounceTimer);
-    state.debounceTimer = null;
-    state.activeIndex = -1;
-    applyMetaCounts(null);
-    setClassicInert(false);
-    if (state.unlockScroll) {
-      state.unlockScroll();
-      state.unlockScroll = null;
-    }
-    if (state.lastFocus && document.contains(state.lastFocus)) state.lastFocus.focus();
-    state.lastFocus = null;
-  };
-
-  const close = () => setOpen(false);
-  const openSearch = () => setOpen(true);
+  const { setOpen, close, openSearch } = createSearchOpenStateController({
+    state,
+    root,
+    trigger,
+    input,
+    list,
+    applyMetaCounts,
+    syncPillState,
+    syncClearState,
+    setFooterHint,
+  });
 
   rootEl.__closeSearch = close;
   rootEl.__emptySwitchType = undefined;
