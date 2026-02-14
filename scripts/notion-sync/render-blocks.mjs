@@ -1,5 +1,10 @@
 import { compactId } from "../../lib/shared/route-utils.mjs";
-import { renderRichText, richTextPlain } from "./render-rich-text.mjs";
+import { richTextPlain } from "./render-rich-text.mjs";
+import {
+  renderGroupedListAtIndex,
+  renderListItemBlock,
+  renderUnknownChildrenBlock,
+} from "./renderers/block-list.mjs";
 import {
   renderCalloutBlock,
   renderCodeBlock,
@@ -38,24 +43,15 @@ export async function renderBlocks(blocks, ctx) {
     const b = arr[i];
     if (!b || !b.type) continue;
 
-    if (b.type === "bulleted_list_item" || b.type === "numbered_list_item") {
-      const type = b.type;
-      const items = [];
-      let j = i;
-      while (j < arr.length && arr[j]?.type === type) {
-        items.push(arr[j]);
-        j++;
-      }
-      i = j - 1;
-      if (type === "bulleted_list_item") {
-        html += `<ul class="notion-bulleted-list">`;
-        for (const it of items) html += await renderBlock(it, ctx);
-        html += `</ul>`;
-      } else {
-        html += `<ol type="1" class="notion-numbered-list">`;
-        for (const it of items) html += await renderBlock(it, ctx);
-        html += `</ol>`;
-      }
+    const groupedList = await renderGroupedListAtIndex({
+      arr,
+      startIndex: i,
+      ctx,
+      renderBlock,
+    });
+    if (groupedList) {
+      html += groupedList.html;
+      i = groupedList.nextIndex;
       continue;
     }
 
@@ -120,17 +116,11 @@ async function renderBlock(b, ctx) {
   }
 
   if (b.type === "bulleted_list_item") {
-    const kids = Array.isArray(b.__children) ? b.__children : [];
-    const inner = renderRichText(b.bulleted_list_item?.rich_text ?? [], ctx);
-    const nested = kids.length ? await renderBlocks(kids, ctx) : "";
-    return `<li id="${blockIdAttr}" class="notion-list-item notion-semantic-string">${inner}${nested}</li>`;
+    return renderListItemBlock({ b, blockIdAttr, ctx, renderBlocks });
   }
 
   if (b.type === "numbered_list_item") {
-    const kids = Array.isArray(b.__children) ? b.__children : [];
-    const inner = renderRichText(b.numbered_list_item?.rich_text ?? [], ctx);
-    const nested = kids.length ? await renderBlocks(kids, ctx) : "";
-    return `<li id="${blockIdAttr}" class="notion-list-item notion-semantic-string">${inner}${nested}</li>`;
+    return renderListItemBlock({ b, blockIdAttr, ctx, renderBlocks });
   }
 
   if (b.type === "child_database") {
@@ -143,10 +133,13 @@ async function renderBlock(b, ctx) {
 
   const kids = Array.isArray(b.__children) ? b.__children : [];
   if (kids.length) {
-    const tableLike = renderTableLikeChildrenBlock({ kids, blockIdAttr, ctx });
-    if (tableLike) return tableLike;
-
-    return `<div id="${blockIdAttr}" class="notion-unsupported">${await renderBlocks(kids, ctx)}</div>`;
+    return renderUnknownChildrenBlock({
+      kids,
+      blockIdAttr,
+      ctx,
+      renderBlocks,
+      renderTableLikeChildrenBlock,
+    });
   }
 
   return "";
