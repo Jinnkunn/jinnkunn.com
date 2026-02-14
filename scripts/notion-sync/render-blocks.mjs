@@ -24,6 +24,30 @@ import {
 } from "./renderers/block-structure.mjs";
 import { renderTableBlock, renderTableLikeChildrenBlock } from "./renderers/block-table.mjs";
 
+const BLOCK_RENDERERS = Object.freeze({
+  paragraph: ({ b, blockIdAttr, ctx }) => renderParagraphBlock({ b, blockIdAttr, ctx }),
+  heading_1: ({ b, id, blockIdAttr, ctx }) => renderHeadingBlock({ b, id, blockIdAttr, ctx, renderBlocks }),
+  heading_2: ({ b, id, blockIdAttr, ctx }) => renderHeadingBlock({ b, id, blockIdAttr, ctx, renderBlocks }),
+  heading_3: ({ b, id, blockIdAttr, ctx }) => renderHeadingBlock({ b, id, blockIdAttr, ctx, renderBlocks }),
+  toggle: ({ b, blockIdAttr, ctx }) => renderToggleBlock({ b, blockIdAttr, ctx, renderBlocks }),
+  quote: ({ b, blockIdAttr, ctx }) => renderQuoteBlock({ b, blockIdAttr, ctx }),
+  divider: ({ blockIdAttr }) => renderDividerBlock({ blockIdAttr }),
+  equation: ({ b, blockIdAttr, ctx }) => renderEquationBlock({ b, blockIdAttr, ctx }),
+  embed: ({ b, blockIdAttr, ctx }) => renderEmbedBlock({ b, blockIdAttr, ctx }),
+  table_of_contents: ({ blockIdAttr, ctx }) => renderTableOfContentsBlock({ blockIdAttr, ctx }),
+  table: ({ b, blockIdAttr, ctx }) => renderTableBlock({ b, blockIdAttr, ctx }),
+  image: ({ b, id, blockIdAttr, ctx }) => renderImageBlock({ b, blockIdAttr, id, ctx }),
+  code: ({ b, blockIdAttr, ctx }) => renderCodeBlock({ b, blockIdAttr, ctx }),
+  callout: ({ b, blockIdAttr, ctx }) => renderCalloutBlock({ b, blockIdAttr, ctx, renderBlocks }),
+  column_list: ({ b, blockIdAttr, ctx }) => renderColumnListBlock({ b, blockIdAttr, ctx, renderBlocks }),
+  bulleted_list_item: ({ b, blockIdAttr, ctx }) => renderListItemBlock({ b, blockIdAttr, ctx, renderBlocks }),
+  numbered_list_item: ({ b, blockIdAttr, ctx }) => renderListItemBlock({ b, blockIdAttr, ctx, renderBlocks }),
+  child_database: ({ b, blockIdAttr, ctx }) => renderChildDatabaseBlock({ b, blockIdAttr, ctx }),
+  child_page: ({ b, ctx }) => renderChildPageBlock({ b, ctx }),
+});
+
+export const BLOCK_RENDERER_TYPES = Object.freeze(Object.keys(BLOCK_RENDERERS));
+
 export function collectHeadings(blocks, out = []) {
   for (const b of blocks) {
     const id = compactId(b.id);
@@ -64,71 +88,9 @@ export async function renderBlocks(blocks, ctx) {
 async function renderBlock(b, ctx) {
   const id = compactId(b.id);
   const blockIdAttr = `block-${id}`;
-
-  if (b.type === "paragraph") {
-    return renderParagraphBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "heading_1" || b.type === "heading_2" || b.type === "heading_3") {
-    return renderHeadingBlock({ b, id, blockIdAttr, ctx, renderBlocks });
-  }
-
-  if (b.type === "toggle") {
-    return renderToggleBlock({ b, blockIdAttr, ctx, renderBlocks });
-  }
-
-  if (b.type === "quote") {
-    return renderQuoteBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "divider") return renderDividerBlock({ blockIdAttr });
-
-  if (b.type === "equation") {
-    return renderEquationBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "embed") {
-    return renderEmbedBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "table_of_contents") {
-    return renderTableOfContentsBlock({ blockIdAttr, ctx });
-  }
-
-  if (b.type === "table") {
-    return renderTableBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "image") {
-    return renderImageBlock({ b, blockIdAttr, id, ctx });
-  }
-
-  if (b.type === "code") {
-    return renderCodeBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "callout") {
-    return renderCalloutBlock({ b, blockIdAttr, ctx, renderBlocks });
-  }
-
-  if (b.type === "column_list") {
-    return renderColumnListBlock({ b, blockIdAttr, ctx, renderBlocks });
-  }
-
-  if (b.type === "bulleted_list_item") {
-    return renderListItemBlock({ b, blockIdAttr, ctx, renderBlocks });
-  }
-
-  if (b.type === "numbered_list_item") {
-    return renderListItemBlock({ b, blockIdAttr, ctx, renderBlocks });
-  }
-
-  if (b.type === "child_database") {
-    return renderChildDatabaseBlock({ b, blockIdAttr, ctx });
-  }
-
-  if (b.type === "child_page") {
-    return renderChildPageBlock({ b, ctx });
+  const render = BLOCK_RENDERERS[b.type];
+  if (render) {
+    return await render({ b, id, blockIdAttr, ctx });
   }
 
   const kids = Array.isArray(b.__children) ? b.__children : [];
