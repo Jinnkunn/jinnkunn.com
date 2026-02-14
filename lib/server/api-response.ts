@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 type NoStoreInit = { status?: number };
+type NoStoreErrorInit = NoStoreInit & { fallback?: string; extras?: Record<string, unknown> };
 
 export function noStoreJson<T>(
   body: T,
@@ -99,7 +100,7 @@ export function noStoreErrorOnly(
 
 export function noStoreFailFromUnknown(
   e: unknown,
-  init?: NoStoreInit & { fallback?: string; extras?: Record<string, unknown> },
+  init?: NoStoreErrorInit,
 ) {
   const message =
     e instanceof Error
@@ -111,4 +112,15 @@ export function noStoreFailFromUnknown(
     status: init?.status ?? 500,
     extras: init?.extras,
   });
+}
+
+export async function withNoStoreApi(
+  run: () => Promise<Response> | Response,
+  init?: NoStoreErrorInit,
+): Promise<Response> {
+  try {
+    return await run();
+  } catch (e: unknown) {
+    return noStoreFailFromUnknown(e, init);
+  }
 }

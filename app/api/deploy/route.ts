@@ -1,10 +1,10 @@
 import { compactId } from "@/lib/shared/route-utils";
 import {
   noStoreFail,
-  noStoreFailFromUnknown,
   noStoreMisconfigured,
   noStoreOk,
   noStoreUnauthorized,
+  withNoStoreApi,
 } from "@/lib/server/api-response";
 import { triggerDeployHook } from "@/lib/server/deploy-hook";
 import { createDatabaseRow, getSiteAdminDatabaseIdByTitle } from "@/lib/server/site-admin-notion";
@@ -47,14 +47,14 @@ function isAuthorized(req: Request): boolean {
 }
 
 export async function GET(req: Request) {
-  if (!process.env.DEPLOY_TOKEN?.trim()) {
-    return noStoreMisconfigured("DEPLOY_TOKEN");
-  }
-  if (!isAuthorized(req)) {
-    return noStoreUnauthorized();
-  }
+  return withNoStoreApi(async () => {
+    if (!process.env.DEPLOY_TOKEN?.trim()) {
+      return noStoreMisconfigured("DEPLOY_TOKEN");
+    }
+    if (!isAuthorized(req)) {
+      return noStoreUnauthorized();
+    }
 
-  try {
     const triggeredAtIso = new Date().toISOString();
     const out = await triggerDeployHook();
     if (!out.ok) {
@@ -86,9 +86,7 @@ export async function GET(req: Request) {
     }
 
     return noStoreOk({ triggeredAt: triggeredAtIso, status: out.status });
-  } catch (e: unknown) {
-    return noStoreFailFromUnknown(e, { status: 500 });
-  }
+  }, { status: 500, fallback: "Unexpected deploy API error" });
 }
 
 export async function POST(req: Request) {

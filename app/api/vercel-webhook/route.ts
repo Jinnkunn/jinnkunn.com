@@ -2,11 +2,11 @@ import crypto from "node:crypto";
 
 import {
   noStoreBadRequest,
-  noStoreFailFromUnknown,
   noStoreMethodNotAllowed,
   noStoreMisconfigured,
   noStoreOk,
   noStoreUnauthorized,
+  withNoStoreApi,
 } from "@/lib/server/api-response";
 import {
   createDatabaseRow,
@@ -135,25 +135,25 @@ async function upsertDeployLogFromEvent(opts: {
 }
 
 export async function POST(req: Request) {
-  const secret = process.env.VERCEL_WEBHOOK_SECRET?.trim() ?? "";
-  if (!secret) {
-    return noStoreMisconfigured("VERCEL_WEBHOOK_SECRET");
-  }
+  return withNoStoreApi(async () => {
+    const secret = process.env.VERCEL_WEBHOOK_SECRET?.trim() ?? "";
+    if (!secret) {
+      return noStoreMisconfigured("VERCEL_WEBHOOK_SECRET");
+    }
 
-  const sig = req.headers.get("x-vercel-signature") ?? "";
-  const rawBody = await req.text();
-  if (!verifyVercelSignature({ rawBody, secret, got: sig })) {
-    return noStoreUnauthorized();
-  }
+    const sig = req.headers.get("x-vercel-signature") ?? "";
+    const rawBody = await req.text();
+    if (!verifyVercelSignature({ rawBody, secret, got: sig })) {
+      return noStoreUnauthorized();
+    }
 
-  let evt: unknown = null;
-  try {
-    evt = rawBody ? JSON.parse(rawBody) : null;
-  } catch {
-    return noStoreBadRequest("Invalid JSON body");
-  }
+    let evt: unknown = null;
+    try {
+      evt = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      return noStoreBadRequest("Invalid JSON body");
+    }
 
-  try {
     const evtObj = isObject(evt) ? evt : {};
     const eventType = String(evtObj.type ?? "").trim();
     const payloadObj = isObject(evtObj.payload) ? evtObj.payload : {};
@@ -208,9 +208,7 @@ export async function POST(req: Request) {
     }
 
     return noStoreOk();
-  } catch (e: unknown) {
-    return noStoreFailFromUnknown(e, { status: 500 });
-  }
+  }, { status: 500, fallback: "Unexpected webhook handler error" });
 }
 
 export async function GET() {
