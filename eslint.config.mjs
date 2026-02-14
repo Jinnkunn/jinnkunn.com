@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party vendored scripts; not maintained in this repo.
+    "public/cdn-cgi/**",
   ]),
 ]);
 

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export default function SiteFooter() {
@@ -6,21 +7,17 @@ export default function SiteFooter() {
       <div className="super-footer__content">
         <Link href="/" className="notion-link super-footer__logo">
           <div className="super-footer__logo-image">
-            <span style={{ display: "contents" }}>
-              <img
-                alt="Logo"
-                loading="lazy"
-                width={180}
-                height={48}
-                decoding="async"
-                style={{
-                  color: "transparent",
-                  objectFit: "contain",
-                  objectPosition: "left",
-                }}
-                src="/assets/logo.png"
-              />
-            </span>
+            <Image
+              alt="Logo"
+              src="/assets/logo.png"
+              width={180}
+              height={48}
+              loading="lazy"
+              style={{
+                objectFit: "contain",
+                objectPosition: "left",
+              }}
+            />
           </div>
         </Link>
 
@@ -101,4 +98,3 @@ export default function SiteFooter() {
     </footer>
   );
 }
-
