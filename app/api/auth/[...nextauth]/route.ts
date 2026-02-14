@@ -1,6 +1,8 @@
 import NextAuth from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 
+import { normalizeGithubUser, parseGithubUserCsv } from "@/lib/shared/github-users";
+
 // NextAuth v4 is strict about server configuration in production.
 // On Vercel, `NEXTAUTH_URL` is often not set explicitly; fall back to `VERCEL_URL`.
 if (!process.env.NEXTAUTH_URL?.trim() && process.env.VERCEL_URL?.trim()) {
@@ -8,13 +10,8 @@ if (!process.env.NEXTAUTH_URL?.trim() && process.env.VERCEL_URL?.trim()) {
 }
 
 function parseAllowedUsers(): Set<string> {
-  const raw = (process.env.SITE_ADMIN_GITHUB_USERS || "").trim();
-  const items = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => s.replace(/^@/, "").toLowerCase());
-  return new Set(items);
+  const raw = process.env.SITE_ADMIN_GITHUB_USERS || "";
+  return new Set(parseGithubUserCsv(raw));
 }
 
 const allowed = parseAllowedUsers();
@@ -32,17 +29,11 @@ const handler = NextAuth({
     async signIn({ profile }) {
       // Safety default: if allowlist is empty, deny sign-in to /site-admin.
       if (!allowed.size) return false;
-      const login = String((profile as { login?: unknown } | undefined)?.login ?? "")
-        .trim()
-        .replace(/^@/, "")
-        .toLowerCase();
+      const login = normalizeGithubUser((profile as { login?: unknown } | undefined)?.login ?? "");
       return Boolean(login) && allowed.has(login);
     },
     async jwt({ token, profile }) {
-      const login = String((profile as { login?: unknown } | undefined)?.login ?? "")
-        .trim()
-        .replace(/^@/, "")
-        .toLowerCase();
+      const login = normalizeGithubUser((profile as { login?: unknown } | undefined)?.login ?? "");
       if (login) (token as Record<string, unknown>).login = login;
       return token;
     },

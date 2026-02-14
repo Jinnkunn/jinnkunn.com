@@ -2,7 +2,11 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 import siteConfig from "@/content/generated/site-config.json";
-import { normalizeGithubUserList, parseGithubUserCsv } from "@/lib/shared/github-users";
+import {
+  normalizeGithubUser,
+  normalizeGithubUserList,
+  parseGithubUserCsv,
+} from "@/lib/shared/github-users";
 import { isSiteAdminAuthorized } from "@/lib/site-admin-auth";
 
 function isObject(x: unknown): x is Record<string, unknown> {
@@ -39,10 +43,7 @@ export async function isContentGithubAuthorized(req: NextRequest): Promise<boole
   if (!secret) return false;
 
   const token = await getToken({ req, secret }).catch(() => null);
-  const login = String((token as { login?: unknown } | null)?.login ?? "")
-    .trim()
-    .replace(/^@/, "")
-    .toLowerCase();
+  const login = normalizeGithubUser((token as { login?: unknown } | null)?.login ?? "");
   if (!login) return false;
 
   return allow.has(login);
