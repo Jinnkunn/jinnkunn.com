@@ -1,18 +1,6 @@
 import type { RouteManifestItem } from "../routes-manifest";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function asRecordArray(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord);
-}
-
-function readTrimmedString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
+import { asRecordArray, isRecord, readTrimmedString } from "../notion/coerce.ts";
 
 export type RouteTreeItem = RouteManifestItem & {
   depth: number;
