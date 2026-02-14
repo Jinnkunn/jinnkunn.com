@@ -7,13 +7,13 @@ import {
   setClearButtonState,
   setFilterPillState,
 } from "@/lib/client/search/behavior-helpers";
-import { ensureSearch, renderEmpty } from "@/lib/client/search/overlay";
+import { ensureSearch } from "@/lib/client/search/overlay";
 
+import { createSearchActionHandlers } from "./behavior-runtime-actions";
 import { handleSearchFocusIn, handleSearchKeyDown } from "./behavior-runtime-keyboard";
 import { createSearchOpenStateController } from "./behavior-runtime-open-state";
-import { handleSearchResultsClick, runSearchQuery } from "./behavior-runtime-query";
+import { runSearchQuery } from "./behavior-runtime-query";
 import {
-  parseSearchType,
   type SearchRootElement,
   type SearchRuntimeState,
 } from "./behavior-runtime-types";
@@ -140,18 +140,6 @@ export function setupSearchBehavior(): (() => void) | undefined {
   rootEl.__closeSearch = close;
   rootEl.__emptySwitchType = undefined;
 
-  const onTriggerClick = (e: MouseEvent) => {
-    e.preventDefault();
-    setOpen(!state.open);
-  };
-
-  const onWrapperClick = (e: MouseEvent) => {
-    const t = e.target instanceof Element ? e.target : null;
-    if (!t) return;
-    if (t.closest(".notion-search__box")) return;
-    close();
-  };
-
   const onFocusIn = (e: FocusEvent) => {
     handleSearchFocusIn(
       { state, trap, openSearch, close, setActive, getResultItems },
@@ -166,58 +154,28 @@ export function setupSearchBehavior(): (() => void) | undefined {
     );
   };
 
-  const onInput = () => {
-    if (!state.open) return;
-    syncClearState();
-    if (state.debounceTimer) window.clearTimeout(state.debounceTimer);
-    state.debounceTimer = window.setTimeout(() => runSearch(input.value), 140);
-  };
-
-  const onClear = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!state.open) return;
-    if (!input.value.trim()) return;
-    input.value = "";
-    input.focus();
-    syncClearState();
-    renderEmpty(list);
-    state.activeIndex = -1;
-    setFooterHint("idle");
-  };
-
-  const onClose = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!state.open) return;
-    close();
-  };
-
-  const onFilterClick = (e: MouseEvent) => {
-    const t = e.target instanceof Element ? e.target : null;
-    if (!t) return;
-    const btn = t.closest("button[data-type]") as HTMLButtonElement | null;
-    if (!btn) return;
-    if (!state.open) return;
-    state.filterType = parseSearchType(btn.getAttribute("data-type"));
-    persistState();
-    syncPillState();
-    runSearch(input.value);
-  };
-
-  const onScopeClick = (e: MouseEvent) => {
-    e.preventDefault();
-    if (!state.open) return;
-    if (!state.scopePrefix) return;
-    state.scopeEnabled = !state.scopeEnabled;
-    persistState();
-    syncPillState();
-    runSearch(input.value);
-  };
-
-  const onResultsClick = (e: MouseEvent) => {
-    handleSearchResultsClick(queryDeps, e);
-  };
+  const {
+    onTriggerClick,
+    onWrapperClick,
+    onInput,
+    onClear,
+    onClose,
+    onFilterClick,
+    onScopeClick,
+    onResultsClick,
+  } = createSearchActionHandlers({
+    state,
+    input,
+    list,
+    setOpen,
+    close,
+    syncClearState,
+    setFooterHint,
+    persistState,
+    syncPillState,
+    runSearch,
+    queryDeps,
+  });
 
   trigger.addEventListener("click", onTriggerClick);
   wrapper.addEventListener("click", onWrapperClick);
