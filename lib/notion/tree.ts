@@ -5,13 +5,15 @@ import {
   parseNotionJsonCodeBlock,
 } from "./adapters";
 import {
+  listBlockChildrenCached as listBlockChildrenCachedRaw,
   findChildDatabases as findChildDatabasesRaw,
-  findFirstJsonCodeBlock as findFirstJsonCodeBlockRaw,
+} from "./block-children-cache.mjs";
+import { findFirstJsonCodeBlock as findFirstJsonCodeBlockRaw } from "./code-block-search.mjs";
+import {
   getDatabaseInfo as getDatabaseInfoRaw,
   getDatabaseParentPageId as getDatabaseParentPageIdRaw,
-  hydrateBlocks as hydrateBlocksRaw,
-  listBlockChildrenCached as listBlockChildrenCachedRaw,
-} from "./tree.mjs";
+} from "./database-meta.mjs";
+import { hydrateBlocks as hydrateBlocksRaw } from "./block-hydration.mjs";
 import { readTrimmedString } from "./coerce";
 import type {
   NotionBlock,
