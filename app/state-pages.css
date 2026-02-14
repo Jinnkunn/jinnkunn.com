@@ -1,0 +1,334 @@
+/* Special state pages (404 / error / auth / admin login).
+ * Keep the same minimal tone as the main site, but with stronger structure.
+ */
+.page-state,
+.page-404 {
+  padding: clamp(20px, 5vh, 44px) 20px;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  min-height: calc(100vh - var(--navbar-height, 72px));
+  height: calc(100vh - var(--navbar-height, 72px));
+  display: grid;
+  align-items: center;
+}
+
+.page-state__panel,
+.page-404__inner {
+  max-width: 740px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 20px;
+  padding: 32px 30px 28px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.82) 0%,
+      rgba(255, 255, 255, 0.76) 100%
+    );
+  box-shadow:
+    0 18px 56px rgba(26, 22, 16, 0.08),
+    0 2px 0 rgba(255, 255, 255, 0.5) inset;
+  backdrop-filter: blur(8px);
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.page-state::before,
+.page-404::before {
+  content: "";
+  position: absolute;
+  inset: -120px -120px auto -120px;
+  height: 640px;
+  background:
+    radial-gradient(
+      44% 52% at 16% 44%,
+      rgba(216, 203, 180, 0.32) 0%,
+      rgba(216, 203, 180, 0.11) 45%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    radial-gradient(
+      36% 44% at 76% 14%,
+      rgba(55, 53, 47, 0.13) 0%,
+      rgba(55, 53, 47, 0.05) 44%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    repeating-linear-gradient(
+      -13deg,
+      rgba(55, 53, 47, 0.035) 0 1px,
+      rgba(255, 255, 255, 0) 1px 24px
+    );
+  pointer-events: none;
+  filter: saturate(0.95);
+}
+
+.page-state--danger::before {
+  background:
+    radial-gradient(
+      40% 50% at 18% 40%,
+      rgba(201, 88, 88, 0.22) 0%,
+      rgba(201, 88, 88, 0.08) 42%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    radial-gradient(
+      34% 40% at 82% 12%,
+      rgba(55, 53, 47, 0.14) 0%,
+      rgba(55, 53, 47, 0.05) 46%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    repeating-linear-gradient(
+      -13deg,
+      rgba(55, 53, 47, 0.035) 0 1px,
+      rgba(255, 255, 255, 0) 1px 24px
+    );
+}
+
+.page-state--locked::before {
+  background:
+    radial-gradient(
+      40% 50% at 14% 40%,
+      rgba(110, 128, 145, 0.22) 0%,
+      rgba(110, 128, 145, 0.08) 42%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    radial-gradient(
+      36% 44% at 82% 14%,
+      rgba(55, 53, 47, 0.14) 0%,
+      rgba(55, 53, 47, 0.05) 44%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    repeating-linear-gradient(
+      -13deg,
+      rgba(55, 53, 47, 0.035) 0 1px,
+      rgba(255, 255, 255, 0) 1px 24px
+    );
+}
+
+.page-state__badge,
+.page-404__code {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(55, 53, 47, 0.62);
+  margin-bottom: 14px;
+  padding: 7px 10px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.page-state__title,
+.page-404__title {
+  margin: 0 0 10px 0;
+  font-size: clamp(34px, 5.4vw, 46px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+}
+
+.page-state__desc,
+.page-404__desc {
+  margin: 0 0 22px 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: rgba(55, 53, 47, 0.72);
+}
+
+.page-state__body {
+  margin: 0 0 18px;
+}
+
+.page-state__notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(55, 53, 47, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(55, 53, 47, 0.82);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.page-state__notice--error {
+  border-color: rgba(201, 88, 88, 0.35);
+  background: rgba(201, 88, 88, 0.12);
+  color: rgba(124, 41, 41, 0.94);
+}
+
+.page-state__notice--ok {
+  border-color: rgba(88, 126, 88, 0.34);
+  background: rgba(88, 126, 88, 0.12);
+  color: rgba(38, 76, 46, 0.94);
+}
+
+.page-state__actions,
+.page-404__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-state-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.page-state-form__label {
+  font-size: 14px;
+  font-weight: 650;
+  color: rgba(55, 53, 47, 0.8);
+}
+
+.page-state-form__input {
+  width: 100%;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--color-text-default);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.page-state-form__input--mono {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+.page-state-form__input:focus-visible {
+  outline: none;
+  border-color: rgba(55, 53, 47, 0.34);
+  box-shadow: 0 0 0 3px rgba(55, 53, 47, 0.09);
+  background: #fff;
+}
+
+.page-state-auth {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.page-404__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 650;
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+  cursor: pointer;
+}
+
+.page-404__btn--primary {
+  background: rgba(55, 53, 47, 0.92);
+  color: #fff;
+  border-color: rgba(55, 53, 47, 0.92);
+}
+
+.page-404__btn--ghost {
+  background: rgba(255, 255, 255, 0.86);
+  color: rgba(55, 53, 47, 0.9);
+}
+
+.page-404__btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(55, 53, 47, 0.28);
+}
+
+.page-404__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 546px) {
+  .page-state,
+  .page-404 {
+    padding: clamp(14px, 3vh, 22px) 14px;
+    min-height: calc(100vh - var(--navbar-height, 64px));
+    height: calc(100vh - var(--navbar-height, 64px));
+  }
+  .page-state__panel,
+  .page-404__inner {
+    padding: 22px 18px 20px;
+  }
+  .page-state__title,
+  .page-404__title {
+    font-size: 34px;
+  }
+  .page-state__desc,
+  .page-404__desc {
+    font-size: 15px;
+  }
+  .page-404__btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@supports (height: 100dvh) {
+  .page-state,
+  .page-404 {
+    min-height: calc(100dvh - var(--navbar-height, 72px));
+    height: calc(100dvh - var(--navbar-height, 72px));
+  }
+
+  @media (max-width: 546px) {
+    .page-state,
+    .page-404 {
+      min-height: calc(100dvh - var(--navbar-height, 64px));
+      height: calc(100dvh - var(--navbar-height, 64px));
+    }
+  }
+}
+
+/* Single-screen state pages:
+ * - Keep the viewport fixed.
+ * - Hide global footer while a state page is active.
+ * - Allow scrolling only inside the state panel when content is long.
+ */
+@supports selector(body:has(.page-state)) {
+  body:has(.page-state),
+  body:has(.page-404) {
+    overflow: hidden;
+  }
+
+  .super-root:has(#main-content .page-state),
+  .super-root:has(#main-content .page-404) {
+    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .super-root:has(#main-content .page-state) #main-content,
+  .super-root:has(#main-content .page-404) #main-content {
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .super-root:has(#main-content .page-state) .super-footer,
+  .super-root:has(#main-content .page-404) .super-footer {
+    display: none;
+  }
+}
+
+@supports (height: 100dvh) and selector(body:has(.page-state)) {
+  .super-root:has(#main-content .page-state),
+  .super-root:has(#main-content .page-404) {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+}

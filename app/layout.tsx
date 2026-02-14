@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
 import Providers from "@/components/providers";
 import "./globals.css";
+import "./state-pages.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const cfg = getSiteConfig();
