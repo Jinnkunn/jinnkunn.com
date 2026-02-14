@@ -8,7 +8,10 @@ import {
   richTextPlain as richTextPlainRaw,
 } from "./api.mjs";
 import {
-  asRecordArray,
+  parseNotionBlockArray,
+  parseNotionPageLikeArray,
+} from "./adapters";
+import {
   readBoolean,
   readNumber,
   readTrimmedString,
@@ -18,7 +21,6 @@ import type {
   NotionPageLike,
   NotionRequestOptions,
   NotionRichTextItem,
-  NotionProperty,
 } from "./types";
 
 export type {
@@ -39,7 +41,7 @@ export async function notionRequest<T = unknown>(
 
 export async function listBlockChildren(blockId: string): Promise<NotionBlock[]> {
   const out = await listBlockChildrenRaw(blockId);
-  return asRecordArray(out) as NotionBlock[];
+  return parseNotionBlockArray(out);
 }
 
 export async function queryDatabase(
@@ -47,7 +49,7 @@ export async function queryDatabase(
   opts?: { filter?: unknown; sorts?: unknown },
 ): Promise<NotionPageLike[]> {
   const out = await queryDatabaseRaw(databaseId, opts);
-  return asRecordArray(out) as NotionPageLike[];
+  return parseNotionPageLikeArray(out);
 }
 
 export function richTextPlain(rt: NotionRichTextItem[] | undefined | null): string {
