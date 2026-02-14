@@ -1,7 +1,7 @@
 import {
-  findChildDatabases as findChildDatabasesRaw,
   findDbByTitle as findDbByTitleRaw,
 } from "./discovery.mjs";
+import { findChildDatabases as findChildDatabasesRaw } from "./block-children-cache.mjs";
 import { parseNotionDatabaseRef } from "./adapters";
 import type { NotionDatabaseRef } from "./types";
 
