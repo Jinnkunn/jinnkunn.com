@@ -69,60 +69,13 @@
 
 /* Navigation runtime styles moved to: app/(classic)/navigation.css */
 
-/* Page enter: subtle fade/slide for content only (v1-consistent). */
-@media (prefers-reduced-motion: no-preference) {
-  #main-content > main {
-    animation: page-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-}
-
-@keyframes page-enter {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Touch feedback: Notion list rows have hover on desktop; add :active for mobile. */
-.notion-collection-list__item:active {
-  background-color: var(--color-ui-hover-bg);
-}
-
-/* Blog post template extras (keep v1 clean, but add functional TOC + prev/next). */
-.blog-post-meta {
-  margin-top: 10px;
-  font-size: var(--v1-type-small);
-  line-height: 1.4;
-  color: var(--color-text-gray);
-}
-
-.blog-post-layout {
-  display: block;
-}
-
-.blog-post-content {
-  min-width: 0;
-}
+/* Runtime polish styles moved to: app/(classic)/runtime-polish.css */
 
 /* State page styles moved to: app/state-pages.css */
 
 /* Site Admin styles moved to: app/(classic)/site-admin/site-admin.css */
 
-@media (prefers-reduced-motion: reduce) {
-  /* Keep any hover-driven effects subtle for users that prefer reduced motion. */
-  a[class="notion-link link"] {
-    transition: none !important;
-  }
-}
-
-/* Embeds: hide the loading overlay once the iframe has loaded (client behavior). */
-.notion-embed[data-loaded="true"] .notion-embed__loader {
-  display: none !important;
-}
+/* Reduced-motion link and embed loader styles moved to: app/(classic)/runtime-polish.css */
 
 /* Breadcrumb + home hero overrides moved to: app/(classic)/page-overrides.css */
 
