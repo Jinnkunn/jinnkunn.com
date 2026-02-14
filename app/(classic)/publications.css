@@ -1,0 +1,96 @@
+/* Publications-specific visual refinements (route-scoped to classic pages). */
+
+/* Publications: add the subtle gray "row" affordance on hover/open (as in the original Super site). */
+.page__publications .notion-toggle__summary {
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-inline-start: -12px; /* keep text aligned while enlarging the hover target */
+  margin-inline-end: -12px;
+  /* Background is handled by ::before to avoid "double" layers. */
+  background: transparent !important;
+}
+
+/* Publications: the inline "conference"/labels are Notion inline code; tighten to match the original chips. */
+.page__publications .notion-toggle__summary .notion-semantic-string .code,
+.page__publications .notion-toggle__content .notion-semantic-string .code {
+  border-radius: 3px;
+  padding: 0.16em 0.34em;
+}
+
+/* Publications: Super-like grey hover/selected state for each entry title. */
+.page__publications .notion-toggle > .notion-toggle__summary {
+  transition:
+    background-color 160ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.page__publications .notion-toggle.open > .notion-toggle__summary,
+.page__publications .notion-toggle > .notion-toggle__summary:hover,
+.page__publications .notion-toggle > .notion-toggle__summary:focus-visible {
+  background: rgba(55, 53, 47, 0.06) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page__publications .notion-toggle > .notion-toggle__summary {
+    transition: background-color 120ms linear;
+  }
+}
+
+/* Publications: details typography should match body size (avoid oversized quote/tags). */
+.page__publications .notion-toggle__content {
+  font-size: var(--v1-type-body);
+  /* Match the original Super site: 16px with 24px line-height. */
+  line-height: 1.5;
+}
+
+.page__publications .notion-toggle__content .notion-quote {
+  font-size: inherit;
+}
+
+.page__publications .notion-toggle__content .notion-quote > * {
+  font-size: inherit;
+}
+
+/* Keep the tag inline with its trailing ":" when line wrapping occurs in dense layouts. */
+.page__publications .notion-toggle__content .notion-quote em:has(.code) {
+  white-space: nowrap;
+}
+
+/* Publications: keep `conference:` together (avoid line breaks between tag and colon). */
+.page__publications .pub-tag-colon {
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* Publications: tag pills (conference / arXiv.org / journal) should be compact. */
+.page__publications .highlighted-background.bg-red,
+.page__publications .highlighted-background.bg-purple,
+.page__publications .highlighted-background.bg-orange {
+  display: inline-block;
+  padding: 0.14em 0.5em;
+  border-radius: 4px;
+  margin: 0 0.12em;
+  line-height: 1.18; /* keep the chip compact but avoid clipping */
+  vertical-align: baseline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* In expanded publication details, add breathing room between stacked label rows. */
+.page__publications .notion-toggle__content .highlighted-background.bg-red,
+.page__publications .notion-toggle__content .highlighted-background.bg-purple,
+.page__publications .notion-toggle__content .highlighted-background.bg-orange {
+  margin-top: 0.05em;
+  margin-bottom: 0.18em;
+}
+
+.page__publications .highlighted-background.bg-red .code,
+.page__publications .highlighted-background.bg-purple .code,
+.page__publications .highlighted-background.bg-orange .code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.92em;
+  font-family: var(--secondary-font);
+  font-style: italic;
+}

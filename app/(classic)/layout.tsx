@@ -12,6 +12,7 @@ import "./classic.css";
 import "./search.css";
 import "./toc.css";
 import "./lightbox.css";
+import "./publications.css";
 
 export default function ClassicLayout({
   children,
