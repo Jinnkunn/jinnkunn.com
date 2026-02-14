@@ -2,7 +2,7 @@ import { compactId, slugify } from "../../lib/shared/route-utils.mjs";
 import { escapeHtml } from "../../lib/shared/text-utils.mjs";
 import { canonicalizePublicHref } from "./route-model.mjs";
 import { renderBreadcrumbs } from "./breadcrumbs.mjs";
-import { extractFirstDateProperty } from "./date-utils.mjs";
+import { renderPagePropertiesFromPageObject } from "./page-properties.mjs";
 
 function pickCalloutBgClass(color) {
   const c = String(color || "default").replace(/_background$/, "");
@@ -13,65 +13,6 @@ function pickCalloutBgClass(color) {
 function pageIconSvg() {
   // Matches the common "page" icon used by Super.
   return `<svg class="notion-icon notion-icon__page" viewBox="0 0 16 16" width="18" height="18" style="width: 18px; height: 18px; font-size: 18px; fill: var(--color-text-default-light);"><path d="M4.35645 15.4678H11.6367C13.0996 15.4678 13.8584 14.6953 13.8584 13.2256V7.02539C13.8584 6.0752 13.7354 5.6377 13.1406 5.03613L9.55176 1.38574C8.97754 0.804688 8.50586 0.667969 7.65137 0.667969H4.35645C2.89355 0.667969 2.13477 1.44043 2.13477 2.91016V13.2256C2.13477 14.7021 2.89355 15.4678 4.35645 15.4678ZM4.46582 14.1279C3.80273 14.1279 3.47461 13.7793 3.47461 13.1436V2.99219C3.47461 2.36328 3.80273 2.00781 4.46582 2.00781H7.37793V5.75391C7.37793 6.73145 7.86328 7.20312 8.83398 7.20312H12.5186V13.1436C12.5186 13.7793 12.1836 14.1279 11.5205 14.1279H4.46582ZM8.95703 6.02734C8.67676 6.02734 8.56055 5.9043 8.56055 5.62402V2.19238L12.334 6.02734H8.95703ZM10.4336 9.00098H5.42969C5.16992 9.00098 4.98535 9.19238 4.98535 9.43164C4.98535 9.67773 5.16992 9.86914 5.42969 9.86914H10.4336C10.6797 9.86914 10.8643 9.67773 10.8643 9.43164C10.8643 9.19238 10.6797 9.00098 10.4336 9.00098ZM10.4336 11.2979H5.42969C5.16992 11.2979 4.98535 11.4893 4.98535 11.7354C4.98535 11.9746 5.16992 12.1592 5.42969 12.1592H10.4336C10.6797 12.1592 10.8643 11.9746 10.8643 11.7354C10.8643 11.4893 10.6797 11.2979 10.4336 11.2979Z"></path></svg>`;
-}
-
-function calendarIconSvg16() {
-  // Matches the icon used in Super's page properties ("Date").
-  return `<svg viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M3.29688 14.4561H12.7031C14.1797 14.4561 14.9453 13.6904 14.9453 12.2344V3.91504C14.9453 2.45215 14.1797 1.69336 12.7031 1.69336H3.29688C1.82031 1.69336 1.05469 2.45215 1.05469 3.91504V12.2344C1.05469 13.6973 1.82031 14.4561 3.29688 14.4561ZM3.27637 13.1162C2.70898 13.1162 2.39453 12.8154 2.39453 12.2207V5.9043C2.39453 5.30273 2.70898 5.00879 3.27637 5.00879H12.71C13.2842 5.00879 13.6055 5.30273 13.6055 5.9043V12.2207C13.6055 12.8154 13.2842 13.1162 12.71 13.1162H3.27637Z"></path></svg>`;
-}
-
-function personIconSvg16() {
-  // Matches the icon used in Super's page properties ("Person").
-  return `<svg viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M10.9536 7.90088C12.217 7.90088 13.2559 6.79468 13.2559 5.38525C13.2559 4.01514 12.2114 2.92017 10.9536 2.92017C9.70142 2.92017 8.65137 4.02637 8.65698 5.39087C8.6626 6.79468 9.69019 7.90088 10.9536 7.90088ZM4.4231 8.03003C5.52368 8.03003 6.42212 7.05859 6.42212 5.83447C6.42212 4.63843 5.51245 3.68945 4.4231 3.68945C3.33374 3.68945 2.41846 4.64966 2.41846 5.84009C2.42407 7.05859 3.32251 8.03003 4.4231 8.03003ZM1.37964 13.168H5.49561C4.87231 12.292 5.43384 10.6074 6.78711 9.51807C6.18628 9.14746 5.37769 8.87231 4.4231 8.87231C1.95239 8.87231 0.262207 10.6917 0.262207 12.1628C0.262207 12.7974 0.548584 13.168 1.37964 13.168ZM7.50024 13.168H14.407C15.4009 13.168 15.7322 12.8423 15.7322 12.2864C15.7322 10.8489 13.8679 8.88354 10.9536 8.88354C8.04492 8.88354 6.17505 10.8489 6.17505 12.2864C6.17505 12.8423 6.50635 13.168 7.50024 13.168Z"></path></svg>`;
-}
-
-function extractFirstPeopleProperty(page) {
-  const props = page?.properties && typeof page.properties === "object" ? page.properties : {};
-  for (const [name, v] of Object.entries(props)) {
-    if (!v || typeof v !== "object") continue;
-    if (v.type !== "people") continue;
-    const people = Array.isArray(v.people) ? v.people : [];
-    const names = people.map((p) => String(p?.name || "").trim()).filter(Boolean);
-    if (!names.length) continue;
-    return { name, id: String(v.id || ""), names };
-  }
-  return null;
-}
-
-export function renderPagePropertiesFromPageObject(pageObj) {
-  const date = extractFirstDateProperty(pageObj);
-  const people = extractFirstPeopleProperty(pageObj);
-
-  const props = [];
-
-  if (date) {
-    const propId = date.id ? String(date.id).replace(/[^a-z0-9]/gi, "") : "";
-    const dateClass = propId ? ` property-${escapeHtml(propId)}` : "";
-    props.push(
-      `<div class="notion-page__property"><div class="notion-page__property-name-wrapper"><div class="notion-page__property-icon-wrapper">${calendarIconSvg16()}</div><div class="notion-page__property-name"><span>${escapeHtml(
-        date.name,
-      )}</span></div></div><div class="notion-property notion-property__date${dateClass} notion-semantic-string"><span class="date">${escapeHtml(
-        date.text,
-      )}</span></div></div>`,
-    );
-  }
-
-  if (people) {
-    const propId = people.id ? String(people.id).replace(/[^a-z0-9]/gi, "") : "";
-    const personClass = propId ? ` property-${escapeHtml(propId)}` : "";
-    const primary = people.names[0] || "Person";
-    const avatarLetter = escapeHtml(primary.trim().slice(0, 1).toUpperCase() || "P");
-    props.push(
-      `<div class="notion-page__property"><div class="notion-page__property-name-wrapper"><div class="notion-page__property-icon-wrapper">${personIconSvg16()}</div><div class="notion-page__property-name"><span>${escapeHtml(
-        people.name,
-      )}</span></div></div><div class="notion-property notion-property__person${personClass} notion-semantic-string no-wrap"><span class="individual-with-image"><div class="individual-letter-avatar">${avatarLetter}</div><span>${escapeHtml(
-        primary,
-      )}</span></span></div></div>`,
-    );
-  }
-
-  if (!props.length) return "";
-  return `<div class="notion-page__properties">${props.join("")}<div id="block-root-divider" class="notion-divider"></div></div>`;
 }
 
 function embedSpinnerSvg() {
