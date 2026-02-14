@@ -1,5 +1,6 @@
 import { compactId } from "@/lib/shared/route-utils";
 import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
+import { triggerDeployHook } from "@/lib/server/deploy-hook";
 import { createDatabaseRow, getSiteAdminDatabaseIdByTitle } from "@/lib/server/site-admin-notion";
 import { buildDeployLogCreateProperties } from "@/lib/server/site-admin-writers";
 
@@ -31,17 +32,6 @@ async function logDeployToNotion(opts: {
   );
 }
 
-async function triggerDeploy(): Promise<{ ok: boolean; status: number; text: string }> {
-  const hookUrl = process.env.VERCEL_DEPLOY_HOOK_URL?.trim() ?? "";
-  if (!hookUrl) {
-    return { ok: false, status: 500, text: "Missing VERCEL_DEPLOY_HOOK_URL" };
-  }
-
-  const res = await fetch(hookUrl, { method: "POST" });
-  const text = await res.text().catch(() => "");
-  return { ok: res.ok, status: res.status, text };
-}
-
 function isAuthorized(req: Request): boolean {
   const expected = process.env.DEPLOY_TOKEN?.trim() ?? "";
   if (!expected) return false;
@@ -60,7 +50,7 @@ export async function GET(req: Request) {
 
   try {
     const triggeredAtIso = new Date().toISOString();
-    const out = await triggerDeploy();
+    const out = await triggerDeployHook();
     if (!out.ok) {
       // Best-effort logging (don't fail deploy trigger because upstream logging failed).
       try {
