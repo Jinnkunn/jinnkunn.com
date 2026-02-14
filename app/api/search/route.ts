@@ -8,7 +8,6 @@ import { noStoreErrorOnly, noStoreJson } from "@/lib/server/api-response";
 
 export const runtime = "nodejs";
 
-const json = noStoreJson;
 const SEARCH_TYPES: SearchTypeParam[] = ["all", "page", "pages", "blog", "database", "databases"];
 
 function isSearchTypeParam(value: string): value is SearchTypeParam {
@@ -19,7 +18,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = normalizeQuery(url.searchParams.get("q") || "");
   if (!q) {
-    return json(emptySearchResponse({ limit: 20 }) satisfies SearchResponse);
+    return noStoreJson(emptySearchResponse({ limit: 20 }) satisfies SearchResponse);
   }
 
   const type = String(url.searchParams.get("type") || "all").trim().toLowerCase();
@@ -43,5 +42,5 @@ export async function GET(req: Request) {
     index: getSearchIndex().filter((it) => !isIgnoredPath(it.routePath)),
     manifest: getRoutesManifest().filter((it) => !isIgnoredPath(it.routePath)),
   });
-  return json(response satisfies SearchResponse);
+  return noStoreJson(response satisfies SearchResponse);
 }
