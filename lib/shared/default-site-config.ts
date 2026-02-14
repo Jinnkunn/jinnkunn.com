@@ -1,3 +1,5 @@
+import { DEFAULT_SITE_CONFIG as DEFAULT_SITE_CONFIG_RAW } from "./default-site-config.mjs";
+
 export type DefaultNavItem = {
   href: string;
   label: string;
@@ -28,5 +30,4 @@ export type DefaultSiteConfig = {
   };
 };
 
-export const DEFAULT_SITE_CONFIG: DefaultSiteConfig;
-
+export const DEFAULT_SITE_CONFIG = DEFAULT_SITE_CONFIG_RAW as DefaultSiteConfig;

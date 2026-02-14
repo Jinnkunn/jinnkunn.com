@@ -1,6 +1,6 @@
 import { escapeHtml, tokenizeQuery } from "@/lib/shared/text-utils";
 import type { SearchItem } from "@/lib/shared/search-contract";
-import { groupLabelForRoutePath } from "@/lib/shared/search-group.mjs";
+import { groupLabelForRoutePath } from "@/lib/shared/search-group";
 
 type Range = { start: number; end: number };
 

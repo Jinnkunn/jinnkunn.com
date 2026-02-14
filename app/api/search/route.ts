@@ -1,8 +1,8 @@
 import { canonicalizePublicRoute, normalizePathname } from "@/lib/routes/strategy";
 import { getSearchIndex } from "@/lib/search-index";
 import { getRoutesManifest } from "@/lib/routes-manifest";
-import { scoreSearchResult } from "@/lib/search/rank.mjs";
-import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group.mjs";
+import { scoreSearchResult } from "@/lib/search/rank";
+import { groupLabelForRoutePath, sortGroupLabels } from "@/lib/shared/search-group";
 import {
   emptySearchResponse,
   normalizeSearchKind,
@@ -283,7 +283,6 @@ export async function GET(req: Request) {
         const typeKey = classifyType(it.kind, canon);
         const titlePos = bestPos(safeLower(it.title), terms);
         const routePos = bestPos(safeLower(canon), terms);
-        const textPos = bestPos(safeLower(it.text), terms);
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const navBoost = byRoute.get(normalizePathname(it.routePath))?.navGroup ? 180 : 0;

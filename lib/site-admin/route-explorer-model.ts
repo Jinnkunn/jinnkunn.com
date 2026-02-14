@@ -1,5 +1,5 @@
 import type { RouteManifestItem } from "../routes-manifest";
-import { compactId, normalizeRoutePath } from "../shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

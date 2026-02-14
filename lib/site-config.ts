@@ -1,5 +1,5 @@
 import { readContentJson } from "@/lib/server/content-json";
-import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config.mjs";
+import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config";
 
 export type NavItem = {
   href: string;
@@ -31,7 +31,7 @@ export type SiteConfig = {
   };
 };
 
-const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG as unknown as SiteConfig;
+const DEFAULT_CONFIG: SiteConfig = DEFAULT_SITE_CONFIG;
 
 function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
