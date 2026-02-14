@@ -2,11 +2,10 @@ import {
   getPropCheckbox as getPropCheckboxRaw,
   getPropNumber as getPropNumberRaw,
   getPropString as getPropStringRaw,
-  listBlockChildren as listBlockChildrenRaw,
-  notionRequest as notionRequestRaw,
-  queryDatabase as queryDatabaseRaw,
   richTextPlain as richTextPlainRaw,
-} from "./api.mjs";
+} from "./properties.mjs";
+import { listBlockChildren as listBlockChildrenRaw, queryDatabase as queryDatabaseRaw } from "./paginated.mjs";
+import { notionRequest as notionRequestRaw } from "./request.mjs";
 import {
   parseNotionBlockArray,
   parseNotionPageLikeArray,
