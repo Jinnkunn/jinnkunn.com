@@ -9,6 +9,7 @@ import {
 } from "../../lib/notion/index.mjs";
 import { compactId, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
 import { sha256Hex } from "./crypto-utils.mjs";
+import { normalizeHref } from "./page-meta.mjs";
 
 const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
 
@@ -63,18 +64,6 @@ export function parseGithubUserList(raw) {
     out.push(it);
   }
   return out;
-}
-
-/**
- * Keep external links intact; normalize internal hrefs.
- * @param {string} href
- * @returns {string}
- */
-function normalizeHref(href) {
-  const raw = String(href || "").trim();
-  if (!raw) return "";
-  if (/^(https?:\/\/|mailto:|tel:|#)/i.test(raw)) return raw;
-  return normalizeRoutePath(raw);
 }
 
 /**
