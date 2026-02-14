@@ -20,13 +20,9 @@ import {
   buildDeployLogCreateProperties,
   buildDeployLogUpdateProperties,
 } from "@/lib/server/site-admin-writers";
+import { isObject } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
-
-function asRecord(v: unknown): Record<string, unknown> | null {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
-  return v as Record<string, unknown>;
-}
 
 function normalizeSignature(sig: string): string {
   const s = String(sig || "").trim();
@@ -158,11 +154,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const evtObj = asRecord(evt) ?? {};
+    const evtObj = isObject(evt) ? evt : {};
     const eventType = String(evtObj.type ?? "").trim();
-    const payloadObj = asRecord(evtObj.payload) ?? {};
-    const deploymentObj = asRecord(payloadObj.deployment) ?? {};
-    const linksObj = asRecord(payloadObj.links) ?? {};
+    const payloadObj = isObject(evtObj.payload) ? evtObj.payload : {};
+    const deploymentObj = isObject(payloadObj.deployment) ? payloadObj.deployment : {};
+    const linksObj = isObject(payloadObj.links) ? payloadObj.links : {};
     if (!eventType) return noStoreOk({ skipped: true });
 
     const createdAtMs = Number(evtObj.createdAt ?? Date.now());
