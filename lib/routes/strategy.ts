@@ -9,16 +9,7 @@ import {
   pickProtectedRule as pickProtectedRuleRaw,
   resolveNotionIdPathRedirect as resolveNotionIdPathRedirectRaw,
 } from "./strategy.mjs";
-
-export type ProtectedRoute = {
-  id: string;
-  auth?: "password" | "github";
-  key?: "pageId" | "path";
-  pageId?: string;
-  path: string;
-  mode: "exact" | "prefix";
-  token: string;
-};
+import type { ProtectedRoute } from "@/lib/shared/protected-route";
 
 function isProtectedRoute(value: unknown): value is ProtectedRoute {
   if (!value || typeof value !== "object") return false;

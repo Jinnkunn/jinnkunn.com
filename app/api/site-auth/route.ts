@@ -2,19 +2,10 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getProtectedRoutes } from "@/lib/protected-routes";
+import type { ProtectedRoute } from "@/lib/shared/protected-route";
 import { getFormString, readFormBody } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
-
-type ProtectedRoute = {
-  id: string;
-  auth?: "password" | "github";
-  key?: "pageId" | "path";
-  pageId?: string;
-  path: string;
-  mode: "exact" | "prefix";
-  token: string;
-};
 
 function sha256Hex(input: string): string {
   return crypto.createHash("sha256").update(input, "utf8").digest("hex");
@@ -48,7 +39,7 @@ export async function POST(req: Request) {
   const rid = getFormString(f, "rid", { maxLen: 128 });
   const password = getFormString(f, "password", { trim: false, maxLen: 2048 });
 
-  const routes = getProtectedRoutes() as ProtectedRoute[];
+  const routes: ProtectedRoute[] = getProtectedRoutes();
   const route = routes.find((r) => r.id === rid);
   if (!route) return redirectToAuth(req, { next, rid, error: "1" });
 

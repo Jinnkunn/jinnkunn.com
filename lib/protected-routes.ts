@@ -1,16 +1,7 @@
 import "server-only";
 
 import { readContentJsonWithStat } from "@/lib/server/content-json";
-
-export type ProtectedRoute = {
-  id: string;
-  auth?: "password" | "github";
-  key?: "pageId" | "path";
-  pageId?: string;
-  path: string;
-  mode: "exact" | "prefix";
-  token: string;
-};
+import type { ProtectedRoute } from "@/lib/shared/protected-route";
 
 function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
