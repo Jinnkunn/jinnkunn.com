@@ -15,6 +15,7 @@ import "./lightbox.css";
 import "./publications.css";
 import "./page-overrides.css";
 import "./notion-blocks.css";
+import "./navigation.css";
 
 export default function ClassicLayout({
   children,

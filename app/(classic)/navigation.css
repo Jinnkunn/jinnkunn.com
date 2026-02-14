@@ -1,0 +1,151 @@
+/* Classic navigation runtime polish (mobile menu, tap targets, reduced motion). */
+
+.super-navbar button.super-navbar__button,
+.super-navbar button.super-navbar__list {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+/* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
+#mobile-menu[hidden] {
+  display: none;
+}
+
+/* Mobile menu backdrop: when the menu is full-screen on small devices, this
+ * captures taps on empty space to close, without blocking taps on menu items.
+ */
+.super-navbar__menu-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: default;
+  z-index: 0;
+}
+
+.super-navbar__menu-surface {
+  position: relative;
+  z-index: 1;
+}
+
+/* Mobile menu layout polish (v1): items first, close action after the list. */
+@media (max-width: 546px) {
+  .super-navbar__menu-surface {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .super-navigation-menu__items-wrapper {
+    flex: 1;
+    overflow: auto;
+    padding: 10px 16px 6px 16px;
+  }
+
+  .super-navigation-menu__items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .super-navbar__menu-footer {
+    display: flex;
+    justify-content: center;
+    padding: 10px 16px 16px 16px;
+  }
+}
+
+.super-navbar__menu .super-navbar__menu-close {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--color-text-default);
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(15, 15, 15, 0.08);
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.super-navbar__menu .super-navbar__menu-close:hover {
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 28px rgba(15, 15, 15, 0.12);
+}
+
+.super-navbar__menu .super-navbar__menu-close:active {
+  transform: translateY(1px);
+}
+
+/* Mobile usability: increase tap targets without changing visual layout. */
+@media (max-width: 546px) {
+  .super-navbar__logo,
+  .super-navbar__button,
+  .super-navbar__list {
+    position: relative;
+  }
+
+  .super-navbar__logo::before,
+  .super-navbar__button::before,
+  .super-navbar__list::before {
+    content: "";
+    position: absolute;
+    /* Expand hit area while keeping the visible layout identical. */
+    inset: -10px;
+  }
+}
+
+/* Better mobile viewport sizing on iOS/modern browsers (prevents 100vh issues). */
+@supports (height: 100dvh) {
+  @media (max-width: 546px) {
+    .super-navbar__menu-wrapper {
+      height: calc(100dvh - var(--navbar-height) + 1px);
+    }
+  }
+}
+
+/* iOS/Android: prevent background scroll chaining when the menu is open. */
+@media (max-width: 546px) {
+  .super-navbar__menu-wrapper {
+    overscroll-behavior: contain;
+  }
+}
+
+/* Respect reduced motion preferences for menu animations. */
+@media (prefers-reduced-motion: reduce) {
+  .super-navbar__viewport[data-state="open"],
+  .super-navbar__viewport[data-state="closed"],
+  .super-navbar__list-dropdown {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .super-navbar__menu-wrapper.enter,
+  .super-navbar__menu-wrapper.enter-active,
+  .super-navbar__menu-wrapper.enter-done,
+  .super-navbar__menu-wrapper.exit,
+  .super-navbar__menu-wrapper.exit-active {
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .super-navbar__menu-backdrop {
+    transition: none !important;
+  }
+}
+
+/* Anchor jumps (TOC, deep links): keep targets visible under the sticky navbar. */
+html {
+  scroll-padding-top: calc(var(--navbar-height) + 24px);
+}
