@@ -2,7 +2,7 @@ import "server-only";
 
 import { readFile } from "node:fs/promises";
 import { resolveRawHtmlFile } from "./server/content-files";
-import { canonicalizeBlogHrefsInHtml } from "@/lib/routes/html-rewrite.mjs";
+import { canonicalizeBlogHrefsInHtml } from "@/lib/routes/html-rewrite";
 
 function rewriteRawHtml(html: string): string {
   // Use local copies for a few key assets so the clone is self-contained.
