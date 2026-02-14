@@ -50,7 +50,7 @@ export function useSiteAdminConfigData() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resetNavEditorState]);
 
   const navByGroup = useMemo(() => {
     const top = nav.filter((x) => x.group === "top");

@@ -16,7 +16,7 @@
 import { notionRequest, listBlockChildren, findFirstJsonCodeBlock } from "../lib/notion/index.mjs";
 import { compactId } from "../lib/shared/route-utils.mjs";
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
-import { deepMerge, isObject } from "../lib/shared/object-utils.mjs";
+import { deepMerge } from "../lib/shared/object-utils.mjs";
 
 const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
 

@@ -30,7 +30,7 @@ import {
   hydrateBlocks,
   listBlockChildrenCached,
 } from "../lib/notion/index.mjs";
-import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.mjs";
+import { compactId, normalizeRoutePath } from "../lib/shared/route-utils.mjs";
 import { escapeHtml } from "../lib/shared/text-utils.mjs";
 import { ensureDir, readJsonFile, rmDir, writeFile, writeJsonAtomic } from "./notion-sync/fs-utils.mjs";
 import {
@@ -40,7 +40,6 @@ import {
 } from "./notion-sync/site-admin-dbs.mjs";
 import {
   assignRoutes,
-  canonicalizePublicHref,
   flattenPages,
   pickHomePageId,
   routePathToHtmlRel,
