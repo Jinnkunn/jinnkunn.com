@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.ts";
+import { compactId, normalizeRoutePath, slugify } from "../lib/shared/route-utils.ts";
 import { groupLabelForRoutePath, sortGroupLabels } from "../lib/shared/search-group.ts";
+import { escapeHtml, tokenizeQuery } from "../lib/shared/text-utils.ts";
 import { scoreSearchResult } from "../lib/search/rank.ts";
 
 test("shared-ts-facades: default site config exposes expected required keys", () => {
@@ -22,6 +24,15 @@ test("shared-ts-facades: search group labels match route shape", () => {
     "News",
     "Works",
   ]);
+});
+
+test("shared-ts-facades: route/text utilities keep expected transformations", () => {
+  assert.equal(slugify("  Hello, World!  "), "hello-world");
+  assert.equal(normalizeRoutePath("blog/post-a/"), "/blog/post-a");
+  assert.equal(compactId("https://notion.so/page/12345678-1234-1234-1234-1234567890ab"), "123456781234123412341234567890ab");
+
+  assert.equal(escapeHtml('<a href="/x">x</a>'), "&lt;a href=&quot;/x&quot;&gt;x&lt;/a&gt;");
+  assert.deepEqual(tokenizeQuery("  one   two  three "), ["one", "two", "three"]);
 });
 
 test("shared-ts-facades: rank function prefers title match over content-only match", () => {
