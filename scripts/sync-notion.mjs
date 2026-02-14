@@ -22,12 +22,10 @@ import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
 import { deepMerge, isObject } from "../lib/shared/object-utils.mjs";
 import {
   findFirstJsonCodeBlock,
-  hydrateBlocks,
-  listBlockChildrenCached,
 } from "../lib/notion/index.mjs";
 import { compactId, normalizeRoutePath } from "../lib/shared/route-utils.mjs";
 import { escapeHtml } from "../lib/shared/text-utils.mjs";
-import { ensureDir, readJsonFile, rmDir, writeFile, writeJsonAtomic } from "./notion-sync/fs-utils.mjs";
+import { ensureDir, rmDir, writeFile } from "./notion-sync/fs-utils.mjs";
 import {
   loadConfigFromAdminDatabases,
   loadIncludedPagesFromAdminDatabases,
@@ -37,19 +35,14 @@ import {
   assignRoutes,
   flattenPages,
   pickHomePageId,
-  routePathToHtmlRel,
 } from "./notion-sync/route-model.mjs";
+import { renderPagesAndBuildSearchIndex } from "./notion-sync/page-render-sync.mjs";
 import {
-  buildSearchIndexFieldsFromBlocks,
-} from "./notion-sync/search-text.mjs";
-import { renderDatabaseMain, renderPageMain } from "./notion-sync/render-page.mjs";
-import {
-  getPageInfo,
   getPageTitle,
-  normalizeHref,
 } from "./notion-sync/page-meta.mjs";
 import { createPageTreeBuilder } from "./notion-sync/page-tree.mjs";
 import { createAssetDownloader } from "./notion-sync/asset-cache.mjs";
+import { writeSyncArtifacts } from "./notion-sync/sync-artifacts.mjs";
 
 const NOTION_VERSION = process.env.NOTION_VERSION || "2022-06-28";
 
@@ -82,12 +75,6 @@ const downloadAsset = createAssetDownloader({
   outPublicAssetsDir: OUT_PUBLIC_ASSETS_DIR,
   force: ASSET_FORCE,
 });
-
-function cacheFile(kind, id) {
-  const safeKind = String(kind || "misc").replace(/[^a-z0-9_-]/gi, "_");
-  const safeId = String(id || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-  return path.join(CACHE_DIR, safeKind, `${safeId}.json`);
-}
 
 function renderKatex(expression, { displayMode }) {
   const expr = String(expression ?? "").trim();
@@ -306,123 +293,25 @@ async function main() {
     renderKatex,
   };
 
-  const searchIndex = [];
-  const SEARCH_MAX_CHARS = 8_000;
-  for (const p of allPages) {
-    const mainHtml = await (p.kind === "database"
-      ? (async () => {
-          const childTitles = (p.children || [])
-            .filter((x) => x && x.kind !== "database")
-            .map((x) => String(x.title || "").trim())
-            .filter(Boolean)
-            .join("\n");
-          const dbTextRaw = `${p.title}\n${childTitles}`.trim();
-          const dbText = dbTextRaw.length > SEARCH_MAX_CHARS ? dbTextRaw.slice(0, SEARCH_MAX_CHARS).trim() : dbTextRaw;
-          searchIndex.push({
-            id: p.id,
-            title: p.title,
-            kind: p.kind,
-            routePath: p.routePath,
-            text: dbText,
-          });
-          return renderDatabaseMain(p, cfg, ctx);
-        })()
-      : (async () => {
-          let lastEdited = "";
-          try {
-            if (p.__page?.last_edited_time) lastEdited = String(p.__page.last_edited_time || "").trim();
-          } catch {
-            // ignore
-          }
-          if (!lastEdited) {
-            // Fetch page metadata (cheap) so we can validate the build cache.
-            try {
-              lastEdited = (await getPageInfo(p.id)).lastEdited || "";
-            } catch {
-              // ignore
-            }
-          }
-
-          const cachePath = cacheFile("page-render", p.id);
-          if (CACHE_ENABLED && !CACHE_FORCE && lastEdited) {
-            const cached = readJsonFile(cachePath);
-            const cachedEdited = cached?.lastEdited ? String(cached.lastEdited) : "";
-            if (cached && cachedEdited === lastEdited && typeof cached.html === "string") {
-              const text = String(cached.text || "").trim();
-              searchIndex.push({
-                id: p.id,
-                title: p.title,
-                kind: p.kind,
-                routePath: p.routePath,
-                headings: Array.isArray(cached.headings) ? cached.headings : [],
-                text,
-              });
-              return String(cached.html);
-            }
-          }
-
-          const blocks = await hydrateBlocks(await listBlockChildrenCached(p.id));
-          const fields = buildSearchIndexFieldsFromBlocks(blocks);
-          searchIndex.push({
-            id: p.id,
-            title: p.title,
-            kind: p.kind,
-            routePath: p.routePath,
-            headings: fields.headings,
-            text: fields.text,
-          });
-          const html = await renderPageMain(p, blocks, cfg, ctx);
-
-          if (CACHE_ENABLED && !CACHE_FORCE && lastEdited) {
-            try {
-              writeJsonAtomic(cachePath, { lastEdited, html, text: fields.text, headings: fields.headings });
-            } catch {
-              // ignore cache write failures
-            }
-          }
-
-          return html;
-        })());
-    const rel = routePathToHtmlRel(p.routePath);
-    const outPath = path.join(OUT_RAW_DIR, rel);
-    writeFile(outPath, mainHtml + "\n");
-    console.log(`[sync:notion] Wrote ${rel}`);
-  }
-
-  writeFile(
-    path.join(OUT_DIR, "search-index.json"),
-    // Keep it compact; this file is parsed on demand by /api/search.
-    JSON.stringify(searchIndex) + "\n",
-  );
-
-  // Small debug artifact: route map.
-  const routes = Object.fromEntries(allPages.map((p) => [p.routePath, p.id]));
-  writeFile(path.join(OUT_DIR, "routes.json"), JSON.stringify(routes, null, 2) + "\n");
-
-  // Route explorer manifest (used by /__routes).
-  const navHrefToGroup = new Map();
-  for (const it of cfg?.nav?.top || []) navHrefToGroup.set(normalizeHref(it.href), "top");
-  for (const it of cfg?.nav?.more || []) navHrefToGroup.set(normalizeHref(it.href), "more");
-
-  const routeManifest = allPages.map((p) => {
-    const navGroup = navHrefToGroup.get(p.routePath) || "";
-    const overridden = routeOverrides.has(p.id);
-    return {
-      id: p.id,
-      title: p.title,
-      kind: p.kind,
-      routePath: p.routePath,
-      parentId: p.parentId,
-      parentRoutePath: p.parentRoutePath || "/",
-      navGroup,
-      overridden,
-    };
+  const searchIndex = await renderPagesAndBuildSearchIndex({
+    allPages,
+    cfg,
+    ctx,
+    outRawDir: OUT_RAW_DIR,
+    cacheDir: CACHE_DIR,
+    cacheEnabled: CACHE_ENABLED,
+    cacheForce: CACHE_FORCE,
+    searchMaxChars: 8_000,
+    log: console.log,
   });
 
-  writeFile(
-    path.join(OUT_DIR, "routes-manifest.json"),
-    JSON.stringify(routeManifest, null, 2) + "\n",
-  );
+  writeSyncArtifacts({
+    outDir: OUT_DIR,
+    allPages,
+    cfg,
+    routeOverrides,
+    searchIndex,
+  });
 
   console.log("[sync:notion] Done.");
 }
