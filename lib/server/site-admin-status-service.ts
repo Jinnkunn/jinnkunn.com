@@ -18,6 +18,7 @@ import { getSyncMeta } from "@/lib/sync-meta";
 import type { NotionPageMeta } from "@/lib/notion/types";
 
 export type SiteAdminStatusResponsePayload = Omit<SiteAdminStatusPayload, "ok">;
+const REPRODUCIBLE_BUILD_EPOCH_MAX_MS = Date.UTC(2019, 0, 1);
 
 function pickCommitSha(): string {
   return (
@@ -57,6 +58,20 @@ async function fetchNotionPageMeta(pageId32: string): Promise<NotionPageMeta | n
   };
 }
 
+function normalizeGeneratedFileMtime(
+  stat: SiteAdminStatusPayload["files"]["siteConfig"],
+  syncedAtMs: number,
+): SiteAdminStatusPayload["files"]["siteConfig"] {
+  if (!stat.exists || !Number.isFinite(syncedAtMs)) return stat;
+  const mtimeMs = Number.isFinite(stat.mtimeMs ?? NaN) ? (stat.mtimeMs as number) : NaN;
+  // In some production builds, file mtimes are deterministic (e.g., 2018 epoch).
+  // Treat those as non-informative and use sync time for status UI/comparison.
+  if (!Number.isFinite(mtimeMs) || mtimeMs < REPRODUCIBLE_BUILD_EPOCH_MAX_MS) {
+    return { ...stat, mtimeMs: syncedAtMs };
+  }
+  return stat;
+}
+
 export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResponsePayload> {
   const allow = parseAllowedAdminUsers();
   const allowContent = parseAllowedContentUsers();
@@ -66,7 +81,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
   const manifest = getRoutesManifest();
   const generatedDir = getGeneratedContentDir();
 
-  const files = {
+  const baseFiles = {
     siteConfig: safeStat(path.join(generatedDir, "site-config.json")),
     routesManifest: safeStat(path.join(generatedDir, "routes-manifest.json")),
     protectedRoutes: safeStat(path.join(generatedDir, "protected-routes.json")),
@@ -74,6 +89,17 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     searchIndex: safeStat(path.join(generatedDir, "search-index.json")),
     routesJson: safeStat(path.join(generatedDir, "routes.json")),
     notionSyncCache: safeDir(getNotionSyncCacheDir()),
+  };
+  const syncedAtMs = syncMeta?.syncedAt ? parseIsoMs(syncMeta.syncedAt) : NaN;
+
+  const files = {
+    ...baseFiles,
+    siteConfig: normalizeGeneratedFileMtime(baseFiles.siteConfig, syncedAtMs),
+    routesManifest: normalizeGeneratedFileMtime(baseFiles.routesManifest, syncedAtMs),
+    protectedRoutes: normalizeGeneratedFileMtime(baseFiles.protectedRoutes, syncedAtMs),
+    syncMeta: normalizeGeneratedFileMtime(baseFiles.syncMeta, syncedAtMs),
+    searchIndex: normalizeGeneratedFileMtime(baseFiles.searchIndex, syncedAtMs),
+    routesJson: normalizeGeneratedFileMtime(baseFiles.routesJson, syncedAtMs),
   };
   const searchIndexItems = files.searchIndex.exists ? getSearchIndex().length : null;
 
@@ -107,7 +133,6 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     files.routesJson.mtimeMs ?? NaN,
   ]);
 
-  const syncedAtMs = syncMeta?.syncedAt ? parseIsoMs(syncMeta.syncedAt) : NaN;
   const notionLatestEditedMs = maxFinite([
     notion.adminPage?.lastEdited ? parseIsoMs(notion.adminPage.lastEdited) : NaN,
     notion.rootPage?.lastEdited ? parseIsoMs(notion.rootPage.lastEdited) : NaN,
