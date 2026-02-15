@@ -6,6 +6,7 @@ import { SiteAdminBuildCard } from "@/components/site-admin/status/build-card";
 import { SiteAdminContentSyncCard } from "@/components/site-admin/status/content-sync-card";
 import { SiteAdminRequirementsCard } from "@/components/site-admin/status/admin-requirements-card";
 import { SiteAdminGeneratedFilesCard } from "@/components/site-admin/status/generated-files-card";
+import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
 import type {
   BannerState,
   GeneratedState,
@@ -20,6 +21,9 @@ type SiteAdminStatusViewProps = {
   stale: StatusFreshness;
   generated: GeneratedState;
   readiness: ReadinessState;
+  deployBusy: boolean;
+  deployRes: SiteAdminDeployResult | null;
+  onDeploy: () => void;
 };
 
 export function SiteAdminStatusView({
@@ -29,10 +33,21 @@ export function SiteAdminStatusView({
   stale,
   generated,
   readiness,
+  deployBusy,
+  deployRes,
+  onDeploy,
 }: SiteAdminStatusViewProps) {
   return (
     <>
-      {banner ? <SiteAdminStatusBanner payload={payload} banner={banner} /> : null}
+      {banner ? (
+        <SiteAdminStatusBanner
+          payload={payload}
+          banner={banner}
+          deployBusy={deployBusy}
+          deployRes={deployRes}
+          onDeploy={onDeploy}
+        />
+      ) : null}
       <div className="site-admin-status__grid">
         <SiteAdminBuildCard payload={payload} vercelLink={vercelLink} />
         <SiteAdminContentSyncCard payload={payload} stale={stale} generated={generated} />

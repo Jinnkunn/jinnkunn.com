@@ -4,8 +4,20 @@ import { useSiteAdminStatusData } from "@/components/site-admin/status/use-statu
 import { SiteAdminStatusView } from "@/components/site-admin/status/view";
 
 export default function SiteAdminStatusClient() {
-  const { busy, res, payload, vercelLink, stale, generated, readiness, banner, load } =
-    useSiteAdminStatusData();
+  const {
+    busy,
+    res,
+    payload,
+    vercelLink,
+    stale,
+    generated,
+    readiness,
+    banner,
+    load,
+    deployBusy,
+    deployRes,
+    deploy,
+  } = useSiteAdminStatusData();
 
   return (
     <section className="site-admin-status">
@@ -41,6 +53,9 @@ export default function SiteAdminStatusClient() {
           stale={stale}
           generated={generated}
           readiness={readiness}
+          deployBusy={deployBusy}
+          deployRes={deployRes}
+          onDeploy={deploy}
         />
       ) : null}
     </section>

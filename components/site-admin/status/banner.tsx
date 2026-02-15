@@ -1,16 +1,24 @@
 "use client";
 
-import Link from "next/link";
-
 import type { StatusPayload } from "@/components/site-admin/status/types";
+import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
 import type { BannerState } from "@/lib/site-admin/status-model";
 
 type SiteAdminStatusBannerProps = {
   payload: StatusPayload;
   banner: BannerState;
+  deployBusy: boolean;
+  deployRes: SiteAdminDeployResult | null;
+  onDeploy: () => void;
 };
 
-export function SiteAdminStatusBanner({ payload, banner }: SiteAdminStatusBannerProps) {
+export function SiteAdminStatusBanner({
+  payload,
+  banner,
+  deployBusy,
+  deployRes,
+  onDeploy,
+}: SiteAdminStatusBannerProps) {
   return (
     <div
       className={`site-admin-status__banner ${
@@ -22,9 +30,25 @@ export function SiteAdminStatusBanner({ payload, banner }: SiteAdminStatusBanner
       <div className="site-admin-status__banner-detail">{banner.detail}</div>
       {banner.kind !== "ok" && payload.env.hasDeployHookUrl ? (
         <div className="site-admin-status__banner-cta">
-          <Link className="site-admin-status__banner-link" href="/site-admin">
-            Deploy
-          </Link>
+          <button
+            type="button"
+            className="site-admin-status__banner-button"
+            onClick={onDeploy}
+            disabled={deployBusy}
+          >
+            {deployBusy ? "Deploying..." : "Deploy"}
+          </button>
+          {deployRes ? (
+            <span
+              className={`site-admin-status__banner-feedback ${
+                deployRes.ok
+                  ? "site-admin-status__banner-feedback--ok"
+                  : "site-admin-status__banner-feedback--error"
+              }`}
+            >
+              {deployRes.ok ? `Triggered at ${deployRes.triggeredAt}` : deployRes.error}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>

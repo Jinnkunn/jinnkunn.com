@@ -94,7 +94,8 @@
   gap: 8px;
 }
 
-.site-admin-status__banner-link {
+.site-admin-status__banner-button {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -106,13 +107,36 @@
   color: rgba(55, 53, 47, 0.9);
   font-size: 12px;
   font-weight: 700;
-  text-decoration: none;
+  font-family: inherit;
   transition: transform 140ms ease, background 140ms ease;
+  cursor: pointer;
 }
 
-.site-admin-status__banner-link:hover {
+.site-admin-status__banner-button:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.96);
+}
+
+.site-admin-status__banner-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.site-admin-status__banner-feedback {
+  font-size: 12px;
+  max-width: min(56vw, 440px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-admin-status__banner-feedback--ok {
+  color: rgba(21, 118, 66, 0.95);
+}
+
+.site-admin-status__banner-feedback--error {
+  color: rgba(140, 32, 32, 0.95);
 }
 
 .site-admin-status__hint {
@@ -206,4 +230,3 @@
   border-color: rgba(235, 87, 87, 0.22);
   color: rgba(140, 32, 32, 0.95);
 }
-

@@ -2,23 +2,7 @@
 
 import { useState } from "react";
 import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
-import { asApiAck, isRecord } from "@/lib/client/api-guards";
-import { requestJsonOrThrow } from "@/lib/client/request-json";
-
-type DeployOk = Extract<SiteAdminDeployResult, { ok: true }>;
-
-function isDeployOk(v: SiteAdminDeployResult): v is DeployOk {
-  return v.ok;
-}
-
-function asDeployResult(x: unknown): SiteAdminDeployResult | null {
-  const ack = asApiAck(x);
-  if (!ack) return null;
-  if (!ack.ok) return ack;
-  if (!isRecord(x)) return null;
-  if (typeof x.triggeredAt !== "string" || typeof x.status !== "number") return null;
-  return { ok: true, triggeredAt: x.triggeredAt, status: x.status };
-}
+import { triggerSiteAdminDeploy } from "@/lib/client/site-admin-deploy";
 
 export default function SiteAdminDeployClient() {
   const [busy, setBusy] = useState(false);
@@ -27,22 +11,9 @@ export default function SiteAdminDeployClient() {
   const onDeploy = async () => {
     setBusy(true);
     setRes(null);
-    try {
-      const data = await requestJsonOrThrow(
-        "/api/site-admin/deploy",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-        },
-        asDeployResult,
-        { isOk: isDeployOk },
-      );
-      setRes(data);
-    } catch (e) {
-      setRes({ ok: false, error: e instanceof Error ? e.message : "Request failed" });
-    } finally {
-      setBusy(false);
-    }
+    const data = await triggerSiteAdminDeploy();
+    setRes(data);
+    setBusy(false);
   };
 
   return (
