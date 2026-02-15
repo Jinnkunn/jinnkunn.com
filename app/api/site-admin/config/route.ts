@@ -1,13 +1,19 @@
 import type { NextRequest } from "next/server";
 
-import { apiExhaustive, apiOk, fromParsedCommand, withSiteAdmin } from "@/lib/server/site-admin-api";
+import {
+  apiExhaustive,
+  apiOk,
+  apiPayloadOk,
+  readSiteAdminJsonCommand,
+  withSiteAdmin,
+} from "@/lib/server/site-admin-api";
 import {
   createSiteNavRow,
   loadSiteAdminConfigData,
   updateSiteNavRow,
   updateSiteSettingsRow,
 } from "@/lib/server/site-admin-config-service";
-import { parseSiteAdminConfigCommand, parseSiteAdminJsonCommand } from "@/lib/server/site-admin-request";
+import { parseSiteAdminConfigCommand } from "@/lib/server/site-admin-request";
 import type {
   SiteAdminConfigGetPayload,
   SiteAdminConfigPostPayload,
@@ -18,16 +24,13 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   return withSiteAdmin(req, async () => {
     const data = await loadSiteAdminConfigData();
-    const payload: Omit<SiteAdminConfigGetPayload, "ok"> = data;
-    return apiOk(payload);
+    return apiPayloadOk<SiteAdminConfigGetPayload>(data);
   });
 }
 
 export async function POST(req: NextRequest) {
   return withSiteAdmin(req, async () => {
-    const parsedCommand = fromParsedCommand(
-      await parseSiteAdminJsonCommand(req, parseSiteAdminConfigCommand),
-    );
+    const parsedCommand = await readSiteAdminJsonCommand(req, parseSiteAdminConfigCommand);
     if (!parsedCommand.ok) return parsedCommand.res;
     const command = parsedCommand.value;
 
@@ -40,8 +43,7 @@ export async function POST(req: NextRequest) {
         return apiOk();
       case "nav-create": {
         const created = await createSiteNavRow(command.input);
-        const payload: Omit<SiteAdminConfigPostPayload, "ok"> = { created };
-        return apiOk(payload);
+        return apiPayloadOk<SiteAdminConfigPostPayload>({ created });
       }
       default:
         return apiExhaustive(command, "Unknown kind");

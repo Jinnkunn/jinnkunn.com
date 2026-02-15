@@ -1,6 +1,11 @@
 import "server-only";
 
 import { compactId } from "@/lib/shared/route-utils";
+import {
+  parseSiteAdminRoutesCommand,
+  type SiteAdminRoutesCommand,
+} from "@/lib/site-admin/routes-command";
+import type { ParseResult } from "@/lib/site-admin/request-types";
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
 import {
   getBoolean,
@@ -11,10 +16,6 @@ import {
   readJsonBody,
 } from "@/lib/server/validate";
 
-export type ParseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: string; status: number };
-
 export type SiteAdminSettingsPatch = Partial<Omit<SiteSettings, "rowId">>;
 export type SiteAdminNavPatch = Partial<Omit<NavItemRow, "rowId">>;
 export type SiteAdminNavCreateInput = Omit<NavItemRow, "rowId">;
@@ -23,16 +24,6 @@ export type SiteAdminConfigCommand =
   | { kind: "settings"; rowId: string; patch: SiteAdminSettingsPatch }
   | { kind: "nav-update"; rowId: string; patch: SiteAdminNavPatch }
   | { kind: "nav-create"; input: SiteAdminNavCreateInput };
-
-export type SiteAdminRoutesCommand =
-  | { kind: "override"; pageId: string; routePath: string }
-  | {
-      kind: "protected";
-      pageId: string;
-      path: string;
-      authKind: "public" | "password" | "github";
-      password: string;
-    };
 
 function bad(error: string, status = 400): ParseResult<never> {
   return { ok: false, error, status };
@@ -147,35 +138,5 @@ export function parseSiteAdminConfigCommand(
   };
 }
 
-export function parseSiteAdminRoutesCommand(
-  body: Record<string, unknown>,
-): ParseResult<SiteAdminRoutesCommand> {
-  const kind = getEnum(body, "kind", ["override", "protected"] as const, "");
-  if (!kind) return bad("Unsupported kind", 400);
-
-  if (kind === "override") {
-    const pageId = compactId(getString(body, "pageId"));
-    if (!pageId) return bad("Missing pageId", 400);
-    const routePath = getString(body, "routePath", { maxLen: 300 });
-    return { ok: true, value: { kind, pageId, routePath } };
-  }
-
-  const pageId = compactId(getString(body, "pageId"));
-  if (!pageId) return bad("Missing pageId", 400);
-
-  const path = getString(body, "path", { maxLen: 300 });
-  if (!path) return bad("Missing path", 400);
-
-  const authKind = getEnum(
-    body,
-    "auth",
-    ["public", "password", "github"] as const,
-    "password",
-  );
-  const password = getString(body, "password", { maxLen: 160 });
-  if (authKind === "github" && password) {
-    return bad("GitHub auth does not use a password", 400);
-  }
-
-  return { ok: true, value: { kind, pageId, path, authKind, password } };
-}
+export { parseSiteAdminRoutesCommand };
+export type { SiteAdminRoutesCommand };

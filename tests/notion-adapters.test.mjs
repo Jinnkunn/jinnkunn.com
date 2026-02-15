@@ -6,7 +6,9 @@ import {
   parseNotionDatabaseInfo,
   parseNotionDatabaseRef,
   parseNotionJsonCodeBlock,
+  parseNotionPageMeta,
   parseNotionPageLikeArray,
+  parseNotionTitleFromProperties,
 } from "../lib/notion/adapters.ts";
 
 test("notion-adapters: array adapters keep only object entries", () => {
@@ -52,4 +54,55 @@ test("notion-adapters: parseNotionJsonCodeBlock validates required fields", () =
     blockId: "b1",
     json: "{}",
   });
+});
+
+test("notion-adapters: parseNotionTitleFromProperties reads title property text", () => {
+  assert.equal(parseNotionTitleFromProperties(null), "");
+  assert.equal(
+    parseNotionTitleFromProperties({
+      Name: {
+        type: "title",
+        title: [{ plain_text: "  My " }, { plain_text: "Page  " }],
+      },
+    }),
+    "MyPage",
+  );
+});
+
+test("notion-adapters: parseNotionPageMeta extracts id/title/lastEdited with fallback", () => {
+  assert.equal(parseNotionPageMeta(null), null);
+  assert.deepEqual(
+    parseNotionPageMeta(
+      {
+        id: " 123 ",
+        last_edited_time: "2026-02-15T00:00:00.000Z",
+        properties: {
+          Name: {
+            type: "title",
+            title: [{ plain_text: "  Site Admin " }],
+          },
+        },
+      },
+      { fallbackTitle: "Untitled" },
+    ),
+    {
+      id: "123",
+      title: "Site Admin",
+      lastEdited: "2026-02-15T00:00:00.000Z",
+    },
+  );
+
+  assert.deepEqual(
+    parseNotionPageMeta(
+      {
+        properties: {},
+      },
+      { fallbackId: " page123 ", fallbackTitle: "Untitled" },
+    ),
+    {
+      id: "page123",
+      title: "Untitled",
+      lastEdited: "",
+    },
+  );
 });

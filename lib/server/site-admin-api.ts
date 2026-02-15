@@ -3,8 +3,9 @@ import "server-only";
 import type { NextRequest } from "next/server";
 
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
+import type { ParseResult } from "@/lib/site-admin/request-types";
+import { parseSiteAdminJsonCommand } from "@/lib/server/site-admin-request";
 import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
-import type { ParseResult } from "@/lib/server/site-admin-request";
 
 type RequireSiteAdminOptions = {
   requireAllowlist?: boolean;
@@ -13,9 +14,10 @@ type RequireSiteAdminOptions = {
 
 type SiteAdminHandler = () => Promise<Response>;
 type ApiErrorResponse = ReturnType<typeof apiError>;
-type SiteAdminGuardResult<T> =
+export type SiteAdminGuardResult<T> =
   | { ok: true; value: T }
   | { ok: false; res: ApiErrorResponse };
+export type SiteAdminOkPayload<T extends { ok: boolean }> = Omit<T, "ok">;
 
 export type RequireSiteAdminResult =
   | { ok: true }
@@ -26,6 +28,13 @@ export function apiOk<T extends Record<string, unknown> = Record<string, never>>
   init?: { status?: number },
 ) {
   return noStoreOk(payload, init);
+}
+
+export function apiPayloadOk<T extends { ok: boolean }>(
+  payload: SiteAdminOkPayload<T>,
+  init?: { status?: number },
+) {
+  return apiOk(payload as Record<string, unknown>, init);
 }
 
 export function apiError(error: string, init?: { status?: number }) {
@@ -83,6 +92,15 @@ export function fromParsedCommand<T>(parsed: ParseResult<T>): SiteAdminGuardResu
     return { ok: false, res: apiError(parsed.error, { status: parsed.status }) };
   }
   return { ok: true, value: parsed.value };
+}
+
+export async function readSiteAdminJsonCommand<T>(
+  req: Request,
+  parseBody: (body: Record<string, unknown>) => ParseResult<T>,
+  opts?: { invalidJsonError?: string; invalidJsonStatus?: number },
+): Promise<SiteAdminGuardResult<T>> {
+  const parsed = await parseSiteAdminJsonCommand(req, parseBody, opts);
+  return fromParsedCommand(parsed);
 }
 
 export function requireNonEmptyString(

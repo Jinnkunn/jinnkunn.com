@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { apiError, apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
+import { apiError, apiPayloadOk, withSiteAdmin } from "@/lib/server/site-admin-api";
 import { triggerDeployHook } from "@/lib/server/deploy-hook";
 import type { SiteAdminDeployPayload } from "@/lib/site-admin/api-types";
 
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
         triggeredAt: triggeredAtIso,
         status: out.status,
       };
-      return apiOk(payload);
+      return apiPayloadOk<SiteAdminDeployPayload>(payload);
     },
     {
       requireAllowlist: true,

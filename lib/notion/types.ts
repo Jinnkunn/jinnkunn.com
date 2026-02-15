@@ -23,6 +23,7 @@ export type NotionProperty =
 export type NotionPageLike = {
   properties?: Record<string, NotionProperty>;
   id?: string;
+  last_edited_time?: string;
   [key: string]: unknown;
 };
 
@@ -39,3 +40,4 @@ export type NotionBlock = {
 export type NotionDatabaseRef = { id: string; title: string };
 export type NotionDatabaseInfo = { id: string; title: string; lastEdited: string };
 export type NotionJsonCodeBlock = { blockId: string; json: string };
+export type NotionPageMeta = { id: string; title: string; lastEdited: string };

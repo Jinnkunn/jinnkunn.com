@@ -3,7 +3,8 @@ import "server-only";
 import path from "node:path";
 
 import { notionRequest } from "@/lib/notion/api";
-import { asRecordArray, isRecord, readTrimmedString } from "@/lib/notion/coerce";
+import { parseNotionPageMeta } from "@/lib/notion/adapters";
+import { readTrimmedString } from "@/lib/notion/coerce";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSearchIndex } from "@/lib/search-index";
 import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
@@ -14,12 +15,7 @@ import { parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import { dashify32 } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
-
-type NotionPageMeta = {
-  id: string;
-  lastEdited: string;
-  title: string;
-};
+import type { NotionPageMeta } from "@/lib/notion/types";
 
 export type SiteAdminStatusResponsePayload = Omit<SiteAdminStatusPayload, "ok">;
 
@@ -46,31 +42,19 @@ function maxFinite(nums: number[]): number {
   return best;
 }
 
-function extractPageTitleFromNotionProperties(properties: unknown): string {
-  if (!isRecord(properties)) return "";
-  for (const prop of Object.values(properties)) {
-    if (!isRecord(prop)) continue;
-    if (readTrimmedString(prop.type) !== "title") continue;
-    const title = asRecordArray(prop.title)
-      .map((x) => readTrimmedString(x.plain_text))
-      .join("")
-      .trim();
-    if (title) return title;
-  }
-  return "";
-}
-
 async function fetchNotionPageMeta(pageId32: string): Promise<NotionPageMeta | null> {
   const token = (process.env.NOTION_TOKEN || "").trim();
   if (!token) return null;
   const dashed = dashify32(pageId32);
   if (!dashed) return null;
   const data = await notionRequest<unknown>(`pages/${dashed}`, { maxRetries: 2 }).catch(() => null);
-  if (!isRecord(data)) return null;
-
-  const lastEdited = readTrimmedString(data.last_edited_time);
-  const title = extractPageTitleFromNotionProperties(data.properties);
-  return { id: pageId32, lastEdited, title: title || "Untitled" };
+  const parsed = parseNotionPageMeta(data, { fallbackId: pageId32, fallbackTitle: "Untitled" });
+  if (!parsed) return null;
+  return {
+    id: readTrimmedString(pageId32) || parsed.id,
+    title: parsed.title,
+    lastEdited: parsed.lastEdited,
+  };
 }
 
 export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResponsePayload> {

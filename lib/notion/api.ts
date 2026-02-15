@@ -9,18 +9,18 @@ import { notionRequest as notionRequestRaw } from "./request.mjs";
 import {
   parseNotionBlockArray,
   parseNotionPageLikeArray,
-} from "./adapters";
+} from "./adapters.ts";
 import {
   readBoolean,
   readNumber,
   readTrimmedString,
-} from "./coerce";
+} from "./coerce.ts";
 import type {
   NotionBlock,
   NotionPageLike,
   NotionRequestOptions,
   NotionRichTextItem,
-} from "./types";
+} from "./types.ts";
 
 export type {
   NotionBlock,
@@ -28,7 +28,7 @@ export type {
   NotionRequestOptions,
   NotionRichTextItem,
   NotionProperty,
-} from "./types";
+} from "./types.ts";
 
 export async function notionRequest<T = unknown>(
   pathname: string,

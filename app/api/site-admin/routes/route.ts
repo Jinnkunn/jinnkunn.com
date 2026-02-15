@@ -3,7 +3,8 @@ import type { NextRequest } from "next/server";
 import {
   apiExhaustive,
   apiOk,
-  fromParsedCommand,
+  apiPayloadOk,
+  readSiteAdminJsonCommand,
   requireNonEmptyString,
   withSiteAdmin,
 } from "@/lib/server/site-admin-api";
@@ -16,7 +17,6 @@ import {
   upsertProtected,
 } from "@/lib/server/site-admin-routes-service";
 import {
-  parseSiteAdminJsonCommand,
   parseSiteAdminRoutesCommand,
 } from "@/lib/server/site-admin-request";
 import type {
@@ -39,16 +39,14 @@ export async function GET(req: NextRequest) {
       protectedRoutes,
     };
 
-    return apiOk(payload);
+    return apiPayloadOk<SiteAdminRoutesGetPayload>(payload);
   });
 }
 
 export async function POST(req: NextRequest) {
   return withSiteAdmin(req, async () => {
     const { overridesDbId, protectedDbId } = await getAdminDbIds();
-    const parsedCommand = fromParsedCommand(
-      await parseSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand),
-    );
+    const parsedCommand = await readSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand);
     if (!parsedCommand.ok) return parsedCommand.res;
     const command = parsedCommand.value;
 
