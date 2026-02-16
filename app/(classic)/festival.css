@@ -1,19 +1,19 @@
 /* Seasonal fixed ornament (desktop: lantern+poetry + koi, mobile: lantern only). */
 .festival-overlay {
-  --festival-left-width: 330px;
-  --festival-lantern-width: 330px;
-  --festival-lantern-block-size: 330px;
-  --festival-lantern-block-top: 140px;
-  --festival-poetry-width: 74px;
-  --festival-poetry-gap: 28px;
+  --festival-left-width: 252px;
+  --festival-lantern-width: 252px;
+  --festival-lantern-block-size: 252px;
+  --festival-lantern-block-top: 112px;
+  --festival-poetry-width: 56px;
+  --festival-poetry-gap: 18px;
 
-  --festival-koi-area-width: 430px;
-  --festival-koi-area-height: 500px;
-  --festival-koi-block-size: 330px;
-  --festival-koi-block-bottom: 140px;
-  --festival-koi-width: 320px;
-  --festival-koi-right: 30px;
-  --festival-koi-bottom: 4px;
+  --festival-koi-area-width: 400px;
+  --festival-koi-area-height: 470px;
+  --festival-koi-block-size: 316px;
+  --festival-koi-block-bottom: 114px;
+  --festival-koi-width: 308px;
+  --festival-koi-right: 18px;
+  --festival-koi-bottom: -76px;
 
   position: fixed;
   inset: 0;
@@ -88,52 +88,61 @@
 
 @media (max-width: 1520px) {
   .festival-overlay {
-    --festival-left-width: 300px;
-    --festival-lantern-width: 300px;
-    --festival-lantern-block-size: 300px;
-    --festival-lantern-block-top: 128px;
-    --festival-poetry-width: 68px;
-    --festival-poetry-gap: 22px;
+    --festival-left-width: 232px;
+    --festival-lantern-width: 232px;
+    --festival-lantern-block-size: 232px;
+    --festival-lantern-block-top: 104px;
+    --festival-poetry-width: 52px;
+    --festival-poetry-gap: 14px;
 
-    --festival-koi-area-width: 390px;
-    --festival-koi-area-height: 456px;
-    --festival-koi-block-size: 300px;
-    --festival-koi-block-bottom: 122px;
+    --festival-koi-area-width: 364px;
+    --festival-koi-area-height: 432px;
+    --festival-koi-block-size: 292px;
+    --festival-koi-block-bottom: 104px;
     --festival-koi-width: 286px;
-    --festival-koi-right: 20px;
-    --festival-koi-bottom: -2px;
+    --festival-koi-right: 14px;
+    --festival-koi-bottom: -74px;
   }
 }
 
 @media (max-width: 1360px) {
   .festival-overlay {
-    --festival-left-width: 270px;
-    --festival-lantern-width: 270px;
-    --festival-lantern-block-size: 270px;
-    --festival-lantern-block-top: 120px;
-    --festival-poetry-width: 60px;
-    --festival-poetry-gap: 18px;
+    --festival-left-width: 208px;
+    --festival-lantern-width: 208px;
+    --festival-lantern-block-size: 208px;
+    --festival-lantern-block-top: 100px;
+    --festival-poetry-width: 46px;
+    --festival-poetry-gap: 12px;
 
-    --festival-koi-area-width: 334px;
-    --festival-koi-area-height: 410px;
-    --festival-koi-block-size: 260px;
-    --festival-koi-block-bottom: 106px;
-    --festival-koi-width: 248px;
+    --festival-koi-area-width: 330px;
+    --festival-koi-area-height: 396px;
+    --festival-koi-block-size: 264px;
+    --festival-koi-block-bottom: 96px;
+    --festival-koi-width: 260px;
     --festival-koi-right: 12px;
-    --festival-koi-bottom: -8px;
+    --festival-koi-bottom: -70px;
   }
 }
 
 @media (max-width: 1200px) {
   .festival-overlay {
-    --festival-left-width: 238px;
-    --festival-lantern-width: 238px;
-    --festival-lantern-block-size: 238px;
-    --festival-lantern-block-top: 112px;
-    --festival-poetry-width: 52px;
-    --festival-poetry-gap: 14px;
+    --festival-left-width: 188px;
+    --festival-lantern-width: 188px;
+    --festival-lantern-block-size: 188px;
+    --festival-lantern-block-top: 92px;
+    --festival-poetry-width: 42px;
+    --festival-poetry-gap: 10px;
+    --festival-koi-area-width: 286px;
+    --festival-koi-area-height: 344px;
+    --festival-koi-block-size: 224px;
+    --festival-koi-block-bottom: 80px;
+    --festival-koi-width: 220px;
+    --festival-koi-right: 10px;
+    --festival-koi-bottom: -56px;
   }
+}
 
+@media (max-width: 1080px) {
   .festival-overlay__right {
     display: none;
   }
