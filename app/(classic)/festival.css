@@ -8,17 +8,15 @@
   --festival-poetry-width: 44px;
   --festival-poetry-gap: 10px;
 
-  --festival-koi-area-width: 370px;
-  --festival-koi-area-height: 430px;
-  --festival-koi-block-size: 290px;
-  --festival-koi-block-bottom: 104px;
-  --festival-koi-width: 284px;
-  --festival-koi-right: 12px;
-  --festival-koi-bottom: -78px;
+  --festival-koi-area-width: 360px;
+  --festival-koi-area-height: 360px;
+  --festival-koi-width: 320px;
+  --festival-koi-x: 56%;
+  --festival-koi-y: 72%;
+  --festival-koi-opacity: 0.18;
 
   position: fixed;
   inset: 0;
-  z-index: 2;
   pointer-events: none;
   user-select: none;
 }
@@ -31,6 +29,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  z-index: 2;
 }
 
 .festival-overlay__lantern-block {
@@ -41,6 +40,7 @@
   height: var(--festival-lantern-block-size);
   background: #dfd9bf;
   opacity: 0.92;
+  display: none;
 }
 
 .festival-overlay__lantern {
@@ -61,27 +61,20 @@
 }
 
 .festival-overlay__right {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+  position: fixed;
+  left: var(--festival-koi-x);
+  top: var(--festival-koi-y);
   width: var(--festival-koi-area-width);
   height: var(--festival-koi-area-height);
-}
-
-.festival-overlay__koi-block {
-  position: absolute;
-  right: 0;
-  bottom: var(--festival-koi-block-bottom);
-  width: var(--festival-koi-block-size);
-  height: var(--festival-koi-block-size);
-  background: #943b24;
-  opacity: 0.98;
+  transform: translate(-50%, -50%);
+  opacity: var(--festival-koi-opacity);
+  z-index: -1;
 }
 
 .festival-overlay__koi {
   position: absolute;
-  right: var(--festival-koi-right);
-  bottom: var(--festival-koi-bottom);
+  right: 0;
+  bottom: 0;
   width: var(--festival-koi-width);
   height: auto;
   display: block;
@@ -97,13 +90,12 @@
     --festival-poetry-width: 42px;
     --festival-poetry-gap: 8px;
 
-    --festival-koi-area-width: 344px;
-    --festival-koi-area-height: 406px;
-    --festival-koi-block-size: 272px;
-    --festival-koi-block-bottom: 96px;
-    --festival-koi-width: 266px;
-    --festival-koi-right: 10px;
-    --festival-koi-bottom: -74px;
+    --festival-koi-area-width: 334px;
+    --festival-koi-area-height: 334px;
+    --festival-koi-width: 300px;
+    --festival-koi-x: 57%;
+    --festival-koi-y: 73%;
+    --festival-koi-opacity: 0.17;
   }
 }
 
@@ -117,13 +109,12 @@
     --festival-poetry-width: 38px;
     --festival-poetry-gap: 8px;
 
-    --festival-koi-area-width: 322px;
-    --festival-koi-area-height: 378px;
-    --festival-koi-block-size: 248px;
-    --festival-koi-block-bottom: 90px;
-    --festival-koi-width: 242px;
-    --festival-koi-right: 10px;
-    --festival-koi-bottom: -68px;
+    --festival-koi-area-width: 308px;
+    --festival-koi-area-height: 308px;
+    --festival-koi-width: 278px;
+    --festival-koi-x: 57%;
+    --festival-koi-y: 74%;
+    --festival-koi-opacity: 0.16;
   }
 }
 
@@ -137,12 +128,11 @@
     --festival-poetry-width: 34px;
     --festival-poetry-gap: 6px;
     --festival-koi-area-width: 286px;
-    --festival-koi-area-height: 336px;
-    --festival-koi-block-size: 220px;
-    --festival-koi-block-bottom: 82px;
-    --festival-koi-width: 214px;
-    --festival-koi-right: 8px;
-    --festival-koi-bottom: -62px;
+    --festival-koi-area-height: 286px;
+    --festival-koi-width: 256px;
+    --festival-koi-x: 58%;
+    --festival-koi-y: 75%;
+    --festival-koi-opacity: 0.15;
   }
 }
 
@@ -187,5 +177,56 @@
 @media print {
   .festival-overlay {
     display: none !important;
+  }
+}
+
+/* Seasonal footer banner (above existing logo groups). */
+.super-footer__festival {
+  grid-area: festival;
+  justify-self: center;
+  width: min(100%, 560px);
+  margin: 0 0 22px;
+}
+
+.super-footer__festival-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.super-footer.stack .super-footer__content {
+  grid-template-areas:
+    "festival festival festival"
+    "logo logo logo"
+    "icons icons icons"
+    "links links links"
+    "divider divider divider"
+    "footnote footnote footnote";
+}
+
+.static-renderer.mobile .super-footer.stack .super-footer__content {
+  grid-template-areas:
+    "links"
+    "divider"
+    "festival"
+    "logo"
+    "icons"
+    "footnote";
+}
+
+@media (max-width: 768px) {
+  .super-footer.stack .super-footer__content {
+    grid-template-areas:
+      "links"
+      "divider"
+      "festival"
+      "logo"
+      "icons"
+      "footnote";
+  }
+
+  .super-footer__festival {
+    width: min(100%, 340px);
+    margin-bottom: 18px;
   }
 }

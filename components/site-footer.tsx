@@ -1,10 +1,24 @@
 import Image from "next/image";
 import Link from "next/link";
 
+const FESTIVAL_FOOTER_SRC =
+  "https://cdn.jinkunchen.com/web_image/year_of_horse/footer.png";
+
 export default function SiteFooter() {
   return (
     <footer className="super-footer stack no-links no-footnote">
       <div className="super-footer__content">
+        <div className="super-footer__festival" aria-hidden="true">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="super-footer__festival-image"
+            src={FESTIVAL_FOOTER_SRC}
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+
         <Link href="/" className="notion-link super-footer__logo">
           <div className="super-footer__logo-image">
             <Image

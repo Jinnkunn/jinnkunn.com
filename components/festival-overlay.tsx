@@ -29,7 +29,6 @@ export default function FestivalOverlay() {
       </section>
 
       <section className="festival-overlay__right">
-        <div className="festival-overlay__koi-block" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="festival-overlay__koi"
