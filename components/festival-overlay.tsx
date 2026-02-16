@@ -9,7 +9,6 @@ export default function FestivalOverlay() {
   return (
     <aside className="festival-overlay" aria-hidden="true">
       <section className="festival-overlay__left">
-        <div className="festival-overlay__lantern-block" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="festival-overlay__lantern"

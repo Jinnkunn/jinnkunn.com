@@ -5,6 +5,7 @@ import SiteNav from "@/components/site-nav";
 import NotionBlockBehavior from "@/components/notion-block-behavior";
 import ViewportCssVars from "@/components/viewport-css-vars";
 import FestivalOverlay from "@/components/festival-overlay";
+import FireworksClickEffect from "@/components/fireworks-click-effect";
 
 // Route-scoped global CSS for the classic (1:1) version.
 // Next.js v16 no longer reliably applies `head.tsx` link tags in route groups,
@@ -19,6 +20,7 @@ import "./notion-blocks.css";
 import "./navigation.css";
 import "./runtime-polish.css";
 import "./festival.css";
+import "./fireworks.css";
 
 export default function ClassicLayout({
   children,
@@ -33,6 +35,7 @@ export default function ClassicLayout({
         </a>
         <SiteNav />
         <FestivalOverlay />
+        <FireworksClickEffect />
         {/* Align a few CSS breakouts (breadcrumbs) with the navbar even when scrollbars are present. */}
         <ViewportCssVars />
         {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
