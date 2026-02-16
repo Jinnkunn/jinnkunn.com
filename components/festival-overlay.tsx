@@ -3,7 +3,7 @@ const FESTIVAL_LANTERN_SRC =
 const FESTIVAL_POETRY_SRC =
   "https://cdn.jinkunchen.com/web_image/year_of_horse/poetry.png";
 const FESTIVAL_KOI_SRC =
-  "https://cdn.jinkunchen.com/web_image/year_of_horse/koi.png";
+  "https://cdn.jinkunchen.com/web_image/year_of_horse/koi2_golden.png";
 
 export default function FestivalOverlay() {
   return (

@@ -11,8 +11,8 @@
   --festival-koi-area-width: 360px;
   --festival-koi-area-height: 360px;
   --festival-koi-width: 320px;
-  --festival-koi-x: 56%;
-  --festival-koi-y: 72%;
+  --festival-koi-x: 50%;
+  --festival-koi-y: 50%;
   --festival-koi-opacity: 0.18;
 
   position: fixed;
@@ -93,8 +93,6 @@
     --festival-koi-area-width: 334px;
     --festival-koi-area-height: 334px;
     --festival-koi-width: 300px;
-    --festival-koi-x: 57%;
-    --festival-koi-y: 73%;
     --festival-koi-opacity: 0.17;
   }
 }
@@ -112,8 +110,6 @@
     --festival-koi-area-width: 308px;
     --festival-koi-area-height: 308px;
     --festival-koi-width: 278px;
-    --festival-koi-x: 57%;
-    --festival-koi-y: 74%;
     --festival-koi-opacity: 0.16;
   }
 }
@@ -130,8 +126,6 @@
     --festival-koi-area-width: 286px;
     --festival-koi-area-height: 286px;
     --festival-koi-width: 256px;
-    --festival-koi-x: 58%;
-    --festival-koi-y: 75%;
     --festival-koi-opacity: 0.15;
   }
 }
