@@ -10,12 +10,16 @@
   touch-action: manipulation;
 }
 
+:root {
+  --mobile-menu-bg: #f5f2eb;
+}
+
 /* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
 #mobile-menu[hidden] {
   display: none !important;
 }
 
-/* Hard-override mobile drawer behavior to guarantee full-screen overlay. */
+/* Hard-override mobile drawer behavior to guarantee a full-screen overlay. */
 @media (max-width: 546px) {
   #mobile-menu,
   #mobile-menu.super-navbar__menu-wrapper {
@@ -25,38 +29,50 @@
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    width: 100vw !important;
-    min-width: 100vw !important;
-    height: 100svh !important;
-    min-height: 100svh !important;
+    width: 100dvw !important;
+    min-width: 100dvw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
     max-height: none !important;
-    z-index: 5000 !important;
+    z-index: 6000 !important;
     display: none !important;
     justify-content: flex-end !important;
     align-items: stretch !important;
     overflow: hidden !important;
     pointer-events: auto !important;
     transform: none !important;
-    touch-action: none !important;
-    overscroll-behavior: contain !important;
-    background: rgba(245, 242, 235, 0.36) !important;
+    touch-action: auto !important;
+    overscroll-behavior: none !important;
+    background: var(--mobile-menu-bg, #f5f2eb) !important;
   }
 
-  #mobile-menu .super-navbar__menu {
-    position: relative !important;
-    top: 0 !important;
-    right: 0 !important;
-    left: 0 !important;
+  #mobile-menu[data-state="open"],
+  #mobile-menu[data-state="open"].super-navbar__menu-wrapper {
+    display: flex !important;
+  }
+
+  #mobile-menu .super-navbar__menu,
+  .super-navbar__menu-wrapper .super-navbar__menu {
+    position: fixed !important;
+    inset: 0 !important;
     width: 100% !important;
     min-width: 100% !important;
+    max-width: 100% !important;
     height: 100% !important;
+    min-height: 100% !important;
     max-height: none !important;
     border-radius: 0 !important;
     margin: 0 !important;
-    background: var(--navbar-menu-background-color) !important;
+    top: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: var(--mobile-menu-bg, #f5f2eb) !important;
   }
 
-  #mobile-menu .super-navbar__menu-backdrop {
+  #mobile-menu .super-navbar__menu-backdrop,
+  .super-navbar__menu-wrapper .super-navbar__menu-backdrop {
     position: fixed !important;
     inset: 0 !important;
     border: 0 !important;
@@ -64,54 +80,43 @@
     margin: 0 !important;
     z-index: 1 !important;
     background: transparent !important;
+    pointer-events: auto !important;
   }
 
-  #mobile-menu .super-navbar__menu-surface {
-    position: relative !important;
+  #mobile-menu .super-navbar__menu-surface,
+  .super-navbar__menu-wrapper .super-navbar__menu-surface {
+    position: fixed !important;
+    inset: 0 !important;
     z-index: 2 !important;
-    height: 100% !important;
-    background: var(--navbar-menu-background-color) !important;
     width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    background: var(--mobile-menu-bg, #f5f2eb) !important;
     isolation: isolate !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  #mobile-menu .super-navigation-menu__items-wrapper {
-    flex: 1 !important;
+  #mobile-menu .super-navigation-menu__items-wrapper,
+  .super-navbar__menu-wrapper .super-navigation-menu__items-wrapper {
+    flex: 1 1 auto !important;
     min-height: 0 !important;
     overflow: auto !important;
     padding: 10px 16px 6px 16px !important;
+    overscroll-behavior: contain !important;
   }
 
-  #mobile-menu .super-navigation-menu__items {
+  #mobile-menu .super-navigation-menu__items,
+  .super-navbar__menu-wrapper .super-navigation-menu__items {
     display: flex !important;
     flex-direction: column !important;
     gap: 6px !important;
   }
 
-  #mobile-menu .super-navbar__menu-close {
+  #mobile-menu .super-navbar__menu-close,
+  .super-navbar__menu-wrapper .super-navbar__menu-close {
     pointer-events: auto !important;
-  }
-
-  #mobile-menu[data-state="open"],
-  #mobile-menu[data-state="open"].super-navbar__menu-wrapper {
-    display: flex !important;
-  }
-}
-
-@media (max-width: 546px) {
-  #mobile-menu {
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    min-width: 100vw !important;
-    height: 100svh !important;
-    min-height: 100svh !important;
-  }
-
-  #mobile-menu .super-navbar__menu {
-    top: 0 !important;
-    right: 0 !important;
-    left: 0 !important;
   }
 
   #mobile-menu.enter,
@@ -126,6 +131,19 @@
 
   #mobile-menu.enter {
     opacity: 0 !important;
+  }
+
+  html.mobile-menu-open,
+  html.mobile-menu-open body {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+  }
+
+  html.mobile-menu-open .super-content-wrapper,
+  html.mobile-menu-open .festival-overlay,
+  html.mobile-menu-open footer.super-footer {
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
 }
 

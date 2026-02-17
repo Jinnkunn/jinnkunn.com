@@ -9,6 +9,7 @@ type ScrollLockState = {
     right: string;
     width: string;
     overflow: string;
+    htmlOverflow: string;
     paddingRight: string;
   };
 };
@@ -33,6 +34,7 @@ export function lockBodyScroll(): () => void {
         right: body.style.right,
         width: body.style.width,
         overflow: body.style.overflow,
+        htmlOverflow: documentElement.style.overflow,
         paddingRight: body.style.paddingRight,
       },
     };
@@ -43,6 +45,7 @@ export function lockBodyScroll(): () => void {
     body.style.right = "0";
     body.style.width = "100%";
     body.style.overflow = "hidden";
+    documentElement.style.overflow = "hidden";
     if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
   }
 
@@ -61,6 +64,7 @@ export function lockBodyScroll(): () => void {
     body.style.right = state.prev.right;
     body.style.width = state.prev.width;
     body.style.overflow = state.prev.overflow;
+    document.documentElement.style.overflow = state.prev.htmlOverflow;
     body.style.paddingRight = state.prev.paddingRight;
     window.scrollTo(0, state.scrollY);
   };

@@ -49,6 +49,12 @@ export function setupSiteNavMenuBehavior({
     mobileCloseTimer = null;
   };
 
+  const setMobilePageState = (open: boolean) => {
+    const root = document.documentElement;
+    root.classList.toggle("mobile-menu-open", open);
+    root.dataset.mobileMenuOpen = open ? "1" : "0";
+  };
+
   const setMobileOpen = (open: boolean, opts: { restoreFocus?: boolean } = {}) => {
     if (mobileOpen === open) return;
     mobileOpen = open;
@@ -74,15 +80,17 @@ export function setupSiteNavMenuBehavior({
       mobileMenu.style.height = "100svh";
       mobileMenu.style.minHeight = "100svh";
       mobileMenu.style.maxHeight = "none";
+      mobileMenu.style.boxSizing = "border-box";
       mobileMenu.style.zIndex = "5000";
       mobileMenu.style.display = "flex";
       mobileMenu.style.alignItems = "stretch";
       mobileMenu.style.justifyContent = "flex-end";
       mobileMenu.style.overflow = "hidden";
       mobileMenu.style.pointerEvents = "auto";
-      mobileMenu.style.touchAction = "none";
-      mobileMenu.style.background = "rgba(245, 242, 235, 0.36)";
+      mobileMenu.style.touchAction = "auto";
+      mobileMenu.style.background = "var(--mobile-menu-bg, #f5f2eb)";
       setClassicInert(true);
+      setMobilePageState(true);
 
       mobileMenu.classList.remove("exit", "exit-active");
       mobileMenu.classList.add("enter");
@@ -100,6 +108,7 @@ export function setupSiteNavMenuBehavior({
       mobileMenu.setAttribute("inert", "");
       mobileMenu.setAttribute("data-state", "closed");
       setClassicInert(false);
+      setMobilePageState(false);
       if (prefersReducedMotion) {
         mobileMenu.hidden = true;
         mobileMenu.style.display = "none";
@@ -392,6 +401,7 @@ export function setupSiteNavMenuBehavior({
     mobileClose.removeEventListener("click", onCloseBtnClick);
     window.removeEventListener("popstate", onPopState);
     if (unlockScroll) unlockScroll();
+    setMobilePageState(false);
     setClassicInert(false);
   };
 }
