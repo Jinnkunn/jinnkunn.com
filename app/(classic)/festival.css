@@ -7,12 +7,13 @@
   width: 100%;
   display: flex;
   justify-content: center;
-  margin: clamp(4px, 0.9vw, 10px) auto clamp(6px, 1vw, 12px);
+  margin: 0 auto;
+  padding: clamp(2px, 0.45vw, 4px) 0;
 }
 
 .super-cny-banner__image {
   display: block;
-  width: min(100%, 410px);
+  width: min(100%, 360px);
   height: auto;
 }
 
@@ -305,11 +306,12 @@
 
 @media (max-width: 768px) {
   .super-cny-banner {
-    margin: 4px auto 6px;
+    margin: 0 auto;
+    padding: 2px 0;
   }
 
   .super-cny-banner__image {
-    width: min(82vw, 320px);
+    width: min(78vw, 290px);
   }
 
   .super-footer.stack .super-footer__content {
