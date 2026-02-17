@@ -215,7 +215,11 @@
     --festival-koi-area-width: 222px;
     --festival-koi-area-height: 222px;
     --festival-koi-width: 196px;
-    --festival-koi-opacity: 0.2;
+    --festival-koi-opacity: 0.26;
+  }
+
+  .festival-overlay__koi {
+    filter: saturate(1.22) contrast(1.12);
   }
 }
 
@@ -240,7 +244,7 @@
     --festival-koi-area-width: 200px;
     --festival-koi-area-height: 200px;
     --festival-koi-width: 176px;
-    --festival-koi-opacity: 0.19;
+    --festival-koi-opacity: 0.24;
   }
 }
 
