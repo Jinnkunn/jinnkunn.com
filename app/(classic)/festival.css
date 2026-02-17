@@ -1,4 +1,8 @@
 /* Seasonal fixed ornaments (desktop: lantern+poetry + koi watermark, mobile: lantern only). */
+.super-root {
+  position: relative;
+}
+
 .festival-overlay {
   --festival-left-inset: clamp(56px, 3.6vw, 78px);
   --festival-left-width: 172px;
@@ -13,9 +17,9 @@
   --festival-koi-y: 50%;
   --festival-koi-opacity: 0.12;
 
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 35;
   pointer-events: none;
   user-select: none;
 }
