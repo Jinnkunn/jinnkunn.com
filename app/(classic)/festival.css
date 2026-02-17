@@ -15,7 +15,7 @@
   --festival-koi-width: 268px;
   --festival-koi-x: 50%;
   --festival-koi-y: 50%;
-  --festival-koi-opacity: 0.12;
+  --festival-koi-opacity: 0.2;
 
   position: absolute;
   inset: 0;
@@ -56,7 +56,7 @@
 }
 
 .festival-overlay__right {
-  position: absolute;
+  position: fixed;
   left: var(--festival-koi-x);
   top: var(--festival-koi-y);
   width: var(--festival-koi-area-width);
@@ -87,7 +87,7 @@
     --festival-koi-area-width: 284px;
     --festival-koi-area-height: 284px;
     --festival-koi-width: 260px;
-    --festival-koi-opacity: 0.115;
+    --festival-koi-opacity: 0.19;
   }
 }
 
@@ -100,7 +100,7 @@
     --festival-koi-area-width: 268px;
     --festival-koi-area-height: 268px;
     --festival-koi-width: 246px;
-    --festival-koi-opacity: 0.13;
+    --festival-koi-opacity: 0.19;
   }
 }
 
@@ -114,7 +114,7 @@
     --festival-koi-area-width: 236px;
     --festival-koi-area-height: 236px;
     --festival-koi-width: 210px;
-    --festival-koi-opacity: 0.12;
+    --festival-koi-opacity: 0.18;
   }
 
   .festival-overlay__left {
@@ -129,7 +129,7 @@
     --festival-koi-area-width: 214px;
     --festival-koi-area-height: 214px;
     --festival-koi-width: 196px;
-    --festival-koi-opacity: 0.11;
+    --festival-koi-opacity: 0.17;
   }
 
   .festival-overlay__left {
@@ -160,7 +160,7 @@
     --festival-koi-width: 176px;
     --festival-koi-x: 50%;
     --festival-koi-y: 50%;
-    --festival-koi-opacity: 0.1;
+    --festival-koi-opacity: 0.16;
   }
 
   .festival-overlay__poetry {
@@ -213,7 +213,7 @@
     --festival-koi-area-width: 178px;
     --festival-koi-area-height: 178px;
     --festival-koi-width: 152px;
-    --festival-koi-opacity: 0.08;
+    --festival-koi-opacity: 0.14;
   }
 }
 
@@ -238,7 +238,7 @@
     --festival-koi-area-width: 156px;
     --festival-koi-area-height: 156px;
     --festival-koi-width: 136px;
-    --festival-koi-opacity: 0.075;
+    --festival-koi-opacity: 0.13;
   }
 }
 
