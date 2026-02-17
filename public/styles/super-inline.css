@@ -997,6 +997,11 @@ html.theme-light {
   background-color: transparent;
 }
 
+/* Notion "default background" should render as no highlight. */
+.notion-semantic-string .highlighted-background.bg-default {
+  background-color: transparent !important;
+}
+
 /* Super custom CSS parity: "ink rise" highlight on Notion content links. */
 	a.notion-link.link {
 	  position: relative;

@@ -92,8 +92,12 @@ function renderRichTextItem(rt, ctx) {
   if (color.endsWith("_background")) {
     const bg = color.replace(/_background$/, "");
     const bgSafe = escapeHtml(bg);
-    inner = `<span class="highlighted-background bg-${bgSafe}">${inner}</span>`;
-    if (bg !== "yellow") {
+    // Notion "default_background" is visually no-op; emitting bg-default creates
+    // unwanted white chips over content, so skip wrappers for that case.
+    if (bg !== "default") {
+      inner = `<span class="highlighted-background bg-${bgSafe}">${inner}</span>`;
+    }
+    if (bg !== "yellow" && bg !== "default") {
       inner = `<span class="highlighted-color color-${bgSafe}">${inner}</span>`;
     }
   } else if (color !== "default") {
