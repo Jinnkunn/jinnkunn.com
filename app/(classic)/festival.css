@@ -15,7 +15,7 @@
   --festival-koi-width: 268px;
   --festival-koi-x: 50%;
   --festival-koi-y: 50%;
-  --festival-koi-opacity: 0.2;
+  --festival-koi-opacity: 0.28;
 
   position: absolute;
   inset: 0;
@@ -73,6 +73,7 @@
   height: auto;
   display: block;
   transform: translate(-50%, -50%);
+  filter: saturate(1.12) contrast(1.06);
 }
 
 @media (max-width: 1700px) {
@@ -87,7 +88,7 @@
     --festival-koi-area-width: 284px;
     --festival-koi-area-height: 284px;
     --festival-koi-width: 260px;
-    --festival-koi-opacity: 0.19;
+    --festival-koi-opacity: 0.26;
   }
 }
 
@@ -100,7 +101,7 @@
     --festival-koi-area-width: 268px;
     --festival-koi-area-height: 268px;
     --festival-koi-width: 246px;
-    --festival-koi-opacity: 0.19;
+    --festival-koi-opacity: 0.25;
   }
 }
 
@@ -114,7 +115,7 @@
     --festival-koi-area-width: 236px;
     --festival-koi-area-height: 236px;
     --festival-koi-width: 210px;
-    --festival-koi-opacity: 0.18;
+    --festival-koi-opacity: 0.24;
   }
 
   .festival-overlay__left {
@@ -129,7 +130,7 @@
     --festival-koi-area-width: 214px;
     --festival-koi-area-height: 214px;
     --festival-koi-width: 196px;
-    --festival-koi-opacity: 0.17;
+    --festival-koi-opacity: 0.23;
   }
 
   .festival-overlay__left {
@@ -160,7 +161,7 @@
     --festival-koi-width: 176px;
     --festival-koi-x: 50%;
     --festival-koi-y: 50%;
-    --festival-koi-opacity: 0.16;
+    --festival-koi-opacity: 0.22;
   }
 
   .festival-overlay__poetry {
@@ -213,7 +214,7 @@
     --festival-koi-area-width: 178px;
     --festival-koi-area-height: 178px;
     --festival-koi-width: 152px;
-    --festival-koi-opacity: 0.14;
+    --festival-koi-opacity: 0.2;
   }
 }
 
@@ -238,7 +239,7 @@
     --festival-koi-area-width: 156px;
     --festival-koi-area-height: 156px;
     --festival-koi-width: 136px;
-    --festival-koi-opacity: 0.13;
+    --festival-koi-opacity: 0.19;
   }
 }
 
