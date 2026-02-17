@@ -38,24 +38,39 @@
 /* Mobile menu layout polish (v1): items first, close action after the list. */
 @media (max-width: 546px) {
   .super-navbar__menu-wrapper {
-    height: 100vh;
+    position: fixed;
+    inset: 0;
     top: 0;
-    z-index: 80;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100dvh;
+    min-height: 100vh;
+    z-index: 2000;
+    overscroll-behavior: contain;
   }
 
   .super-navbar__menu {
     height: 100%;
     max-height: none;
-    top: var(--navbar-height);
+    top: 0;
     right: 0;
+    left: 0;
     min-width: 100%;
     width: 100%;
+    border-radius: 0;
   }
 
   .super-navbar__menu-surface {
     display: flex;
     flex-direction: column;
     height: 100%;
+  }
+
+  .super-navbar__menu-wrapper.enter-active,
+  .super-navbar__menu-wrapper.enter-done,
+  .super-navbar__menu-wrapper.exit-active {
+    z-index: 2000;
   }
 
   .super-navigation-menu__items-wrapper {
@@ -74,6 +89,10 @@
     display: flex;
     justify-content: center;
     padding: 10px 16px 16px 16px;
+  }
+
+  .super-navbar__menu-wrapper.enter {
+    transform: translateY(0);
   }
 }
 
