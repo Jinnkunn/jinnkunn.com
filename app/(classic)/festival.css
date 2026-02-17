@@ -3,6 +3,19 @@
   position: relative;
 }
 
+.super-cny-banner {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: clamp(10px, 1.8vw, 18px) auto clamp(8px, 1.2vw, 14px);
+}
+
+.super-cny-banner__image {
+  display: block;
+  width: min(100%, 540px);
+  height: auto;
+}
+
 .festival-overlay {
   --festival-left-inset: clamp(56px, 3.6vw, 78px);
   --festival-left-width: 172px;
@@ -291,6 +304,14 @@
 }
 
 @media (max-width: 768px) {
+  .super-cny-banner {
+    margin: 10px auto 8px;
+  }
+
+  .super-cny-banner__image {
+    width: min(92vw, 420px);
+  }
+
   .super-footer.stack .super-footer__content {
     grid-template-areas:
       "links"
