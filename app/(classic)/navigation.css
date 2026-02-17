@@ -12,7 +12,121 @@
 
 /* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
 #mobile-menu[hidden] {
-  display: none;
+  display: none !important;
+}
+
+/* Hard-override mobile drawer behavior to guarantee full-screen overlay. */
+@media (max-width: 546px) {
+  #mobile-menu,
+  #mobile-menu.super-navbar__menu-wrapper {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    height: 100svh !important;
+    min-height: 100svh !important;
+    max-height: none !important;
+    z-index: 5000 !important;
+    display: none !important;
+    justify-content: flex-end !important;
+    align-items: stretch !important;
+    overflow: hidden !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    touch-action: none !important;
+    overscroll-behavior: contain !important;
+    background: rgba(245, 242, 235, 0.36) !important;
+  }
+
+  #mobile-menu .super-navbar__menu {
+    position: relative !important;
+    top: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    background: var(--navbar-menu-background-color) !important;
+  }
+
+  #mobile-menu .super-navbar__menu-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 1 !important;
+    background: transparent !important;
+  }
+
+  #mobile-menu .super-navbar__menu-surface {
+    position: relative !important;
+    z-index: 2 !important;
+    height: 100% !important;
+    background: var(--navbar-menu-background-color) !important;
+    width: 100% !important;
+    isolation: isolate !important;
+  }
+
+  #mobile-menu .super-navigation-menu__items-wrapper {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+    padding: 10px 16px 6px 16px !important;
+  }
+
+  #mobile-menu .super-navigation-menu__items {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  #mobile-menu .super-navbar__menu-close {
+    pointer-events: auto !important;
+  }
+
+  #mobile-menu[data-state="open"],
+  #mobile-menu[data-state="open"].super-navbar__menu-wrapper {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 546px) {
+  #mobile-menu {
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    height: 100svh !important;
+    min-height: 100svh !important;
+  }
+
+  #mobile-menu .super-navbar__menu {
+    top: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+  }
+
+  #mobile-menu.enter,
+  #mobile-menu.enter-active,
+  #mobile-menu.enter-done,
+  #mobile-menu.exit,
+  #mobile-menu.exit-active {
+    transform: none !important;
+    opacity: 1 !important;
+    transition: opacity 170ms ease-out !important;
+  }
+
+  #mobile-menu.enter {
+    opacity: 0 !important;
+  }
 }
 
 /* Mobile menu backdrop: when the menu is full-screen on small devices, this
@@ -26,31 +140,37 @@
   margin: 0;
   background: transparent;
   cursor: pointer;
-  z-index: 0;
+  z-index: 1;
+  pointer-events: auto;
 }
 
 .super-navbar__menu-surface {
   position: relative;
   z-index: 1;
   background: var(--navbar-menu-background-color);
+  isolation: isolate;
 }
 
 /* Mobile menu layout polish (v1): items first, close action after the list. */
 @media (max-width: 546px) {
   .super-navbar__menu-wrapper {
     position: fixed;
-    inset: 0;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
     height: 100dvh;
     min-height: 100vh;
-    z-index: 2000;
+    min-width: 100vw;
+    width: 100%;
+    z-index: 3200;
+    background: rgba(245, 242, 235, 0.36);
     overscroll-behavior: contain;
+    display: block;
   }
 
   .super-navbar__menu {
+    position: absolute;
     height: 100%;
     max-height: none;
     top: 0;
@@ -70,7 +190,15 @@
   .super-navbar__menu-wrapper.enter-active,
   .super-navbar__menu-wrapper.enter-done,
   .super-navbar__menu-wrapper.exit-active {
-    z-index: 2000;
+    z-index: 3200;
+  }
+
+  .super-navbar__menu-wrapper.exit,
+  .super-navbar__menu-wrapper.enter,
+  .super-navbar__menu-wrapper.enter-active,
+  .super-navbar__menu-wrapper.enter-done,
+  .super-navbar__menu-wrapper.exit-active {
+    transform: none !important;
   }
 
   .super-navigation-menu__items-wrapper {
@@ -92,7 +220,22 @@
   }
 
   .super-navbar__menu-wrapper.enter {
-    transform: translateY(0);
+    opacity: 0;
+  }
+
+  .super-navbar__menu-wrapper.enter-active,
+  .super-navbar__menu-wrapper.enter-done {
+    opacity: 1;
+    transition: opacity 170ms ease-out;
+  }
+
+  .super-navbar__menu-wrapper.exit {
+    opacity: 1;
+  }
+
+  .super-navbar__menu-wrapper.exit-active {
+    opacity: 0;
+    transition: opacity 170ms ease-out;
   }
 }
 

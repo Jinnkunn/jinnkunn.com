@@ -63,6 +63,25 @@ export function setupSiteNavMenuBehavior({
       mobileMenu.hidden = false;
       mobileMenu.removeAttribute("inert");
       mobileMenu.setAttribute("data-state", "open");
+      mobileMenu.style.position = "fixed";
+      mobileMenu.style.inset = "0";
+      mobileMenu.style.top = "0";
+      mobileMenu.style.left = "0";
+      mobileMenu.style.right = "0";
+      mobileMenu.style.bottom = "0";
+      mobileMenu.style.width = "100vw";
+      mobileMenu.style.minWidth = "100vw";
+      mobileMenu.style.height = "100svh";
+      mobileMenu.style.minHeight = "100svh";
+      mobileMenu.style.maxHeight = "none";
+      mobileMenu.style.zIndex = "5000";
+      mobileMenu.style.display = "flex";
+      mobileMenu.style.alignItems = "stretch";
+      mobileMenu.style.justifyContent = "flex-end";
+      mobileMenu.style.overflow = "hidden";
+      mobileMenu.style.pointerEvents = "auto";
+      mobileMenu.style.touchAction = "none";
+      mobileMenu.style.background = "rgba(245, 242, 235, 0.36)";
       setClassicInert(true);
 
       mobileMenu.classList.remove("exit", "exit-active");
@@ -83,6 +102,7 @@ export function setupSiteNavMenuBehavior({
       setClassicInert(false);
       if (prefersReducedMotion) {
         mobileMenu.hidden = true;
+        mobileMenu.style.display = "none";
         mobileMenu.classList.remove("enter", "enter-active", "enter-done");
         mobileMenu.classList.remove("exit", "exit-active");
       } else {
@@ -93,6 +113,7 @@ export function setupSiteNavMenuBehavior({
         });
         mobileCloseTimer = window.setTimeout(() => {
           mobileMenu.hidden = true;
+          mobileMenu.style.display = "none";
           mobileMenu.classList.remove("exit", "exit-active");
         }, 280);
       }
