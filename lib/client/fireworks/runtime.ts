@@ -1,7 +1,14 @@
 import { isTypingContext } from "@/lib/client/dom-utils";
 
 const FIREWORK_LAYER_ID = "firework-layer";
-const MIN_TRIGGER_INTERVAL_MS = 90;
+const MIN_TRIGGER_INTERVAL_MS = 105;
+
+function isSafeFireworkTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  const safeSelector =
+    "a, button, input, textarea, select, option, label, summary, details, form, .notion-search, #notion-search";
+  return target.closest(safeSelector) !== null;
+}
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -56,17 +63,18 @@ function spawnBurst(clientX: number, clientY: number, particleCount: number) {
 
 function spawnFirework(clientX: number, clientY: number) {
   const isMobile = window.matchMedia("(max-width: 768px)").matches;
-  const primaryCount = isMobile ? 14 : 20;
-  const secondaryCount = isMobile ? 10 : 16;
+  const primaryCount = isMobile ? 12 : 18;
+  const secondaryCount = isMobile ? 8 : 14;
+  const delayMs = isMobile ? 70 : 96;
 
   spawnBurst(clientX, clientY, primaryCount);
   window.setTimeout(() => {
     spawnBurst(
       clientX + randomBetween(-26, 26),
-      clientY + randomBetween(-20, 20),
+      clientY + randomBetween(-18, 18),
       secondaryCount,
     );
-  }, 85);
+  }, delayMs);
 }
 
 export function setupClickFireworks() {
@@ -80,6 +88,7 @@ export function setupClickFireworks() {
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0 || !event.isPrimary) return;
     if (event.defaultPrevented) return;
+    if (isSafeFireworkTarget(event.target)) return;
     if (isTypingContext(event.target)) return;
 
     const now = performance.now();
