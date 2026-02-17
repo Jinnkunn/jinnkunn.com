@@ -17,6 +17,15 @@
   height: auto;
 }
 
+/* Notion keeps a large spacer for `no-cover` headers (140px).
+ * When seasonal banner is present, shrink that spacer so the visual gap
+ * from menu -> banner matches banner -> H1 much more closely.
+ */
+.notion-header:has(.super-cny-banner) .notion-header__cover.no-cover {
+  height: 8px;
+  max-height: 8px;
+}
+
 .festival-overlay {
   --festival-left-inset: clamp(56px, 3.6vw, 78px);
   --festival-left-width: 172px;
@@ -155,7 +164,9 @@
   }
 
   .festival-overlay__poetry {
-    display: none;
+    display: block;
+    width: 22px;
+    margin-top: 10px;
   }
 }
 
@@ -187,6 +198,11 @@
 }
 
 @media (max-width: 768px) {
+  .notion-header:has(.super-cny-banner) .notion-header__cover.no-cover {
+    height: 6px;
+    max-height: 6px;
+  }
+
   .festival-overlay__left {
     left: auto;
     right: 14px;
