@@ -19,7 +19,6 @@
 
   position: absolute;
   inset: 0;
-  z-index: 35;
   pointer-events: none;
   user-select: none;
 }
@@ -40,6 +39,7 @@
   flex-direction: column;
   align-items: center;
   opacity: 0.89;
+  z-index: 4;
 }
 
 .festival-overlay__lantern {
@@ -63,6 +63,7 @@
   height: var(--festival-koi-area-height);
   transform: translate(-50%, -50%);
   opacity: var(--festival-koi-opacity);
+  z-index: 1;
 }
 
 .festival-overlay__koi {
@@ -211,9 +212,9 @@
   }
 
   .festival-overlay {
-    --festival-koi-area-width: 178px;
-    --festival-koi-area-height: 178px;
-    --festival-koi-width: 152px;
+    --festival-koi-area-width: 222px;
+    --festival-koi-area-height: 222px;
+    --festival-koi-width: 196px;
     --festival-koi-opacity: 0.2;
   }
 }
@@ -236,9 +237,9 @@
   }
 
   .festival-overlay {
-    --festival-koi-area-width: 156px;
-    --festival-koi-area-height: 156px;
-    --festival-koi-width: 136px;
+    --festival-koi-area-width: 200px;
+    --festival-koi-area-height: 200px;
+    --festival-koi-width: 176px;
     --festival-koi-opacity: 0.19;
   }
 }
