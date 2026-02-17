@@ -11,7 +11,7 @@
 }
 
 :root {
-  --mobile-menu-bg: #f5f2eb;
+  --mobile-menu-bg: #ffffff;
 }
 
 /* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
@@ -43,7 +43,7 @@
     transform: none !important;
     touch-action: auto !important;
     overscroll-behavior: none !important;
-    background: var(--mobile-menu-bg, #f5f2eb) !important;
+    background: var(--mobile-menu-bg, #ffffff) !important;
   }
 
   #mobile-menu[data-state="open"],
@@ -68,7 +68,7 @@
     left: 0 !important;
     display: flex !important;
     flex-direction: column !important;
-    background: var(--mobile-menu-bg, #f5f2eb) !important;
+    background: var(--mobile-menu-bg, #ffffff) !important;
   }
 
   #mobile-menu .super-navbar__menu-backdrop,
@@ -92,7 +92,7 @@
     max-width: 100% !important;
     height: 100% !important;
     min-height: 100% !important;
-    background: var(--mobile-menu-bg, #f5f2eb) !important;
+    background: var(--mobile-menu-bg, #ffffff) !important;
     isolation: isolate !important;
     display: flex !important;
     flex-direction: column !important;
@@ -182,7 +182,7 @@
     min-width: 100vw;
     width: 100%;
     z-index: 6000;
-    background: var(--mobile-menu-bg, #f5f2eb);
+    background: var(--mobile-menu-bg, #ffffff);
     overscroll-behavior: contain;
     display: block;
   }
@@ -197,7 +197,7 @@
     min-width: 100%;
     width: 100%;
     border-radius: 0;
-    background: var(--mobile-menu-bg, #f5f2eb);
+    background: var(--mobile-menu-bg, #ffffff);
   }
 
   .super-navbar__menu-surface {
