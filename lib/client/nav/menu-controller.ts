@@ -49,10 +49,49 @@ export function setupSiteNavMenuBehavior({
     mobileCloseTimer = null;
   };
 
+  const setElementVisibilityState = (el: HTMLElement, hidden: boolean) => {
+    const keyVis = "mobileMenuPrevVisibility";
+    const keyPtr = "mobileMenuPrevPointerEvents";
+    const keyAria = "mobileMenuPrevAriaHidden";
+
+    if (hidden) {
+      if (!(keyVis in el.dataset)) el.dataset[keyVis] = el.style.visibility || "__EMPTY__";
+      if (!(keyPtr in el.dataset)) el.dataset[keyPtr] = el.style.pointerEvents || "__EMPTY__";
+      if (!(keyAria in el.dataset)) el.dataset[keyAria] = el.getAttribute("aria-hidden") ?? "__NULL__";
+      el.style.setProperty("visibility", "hidden", "important");
+      el.style.setProperty("pointer-events", "none", "important");
+      el.setAttribute("aria-hidden", "true");
+      return;
+    }
+
+    const prevVis = el.dataset[keyVis];
+    const prevPtr = el.dataset[keyPtr];
+    const prevAria = el.dataset[keyAria];
+    if (prevVis === "__EMPTY__" || prevVis == null) el.style.removeProperty("visibility");
+    else el.style.setProperty("visibility", prevVis);
+    if (prevPtr === "__EMPTY__" || prevPtr == null) el.style.removeProperty("pointer-events");
+    else el.style.setProperty("pointer-events", prevPtr);
+    if (prevAria === "__NULL__" || prevAria == null) el.removeAttribute("aria-hidden");
+    else el.setAttribute("aria-hidden", prevAria);
+    delete el.dataset[keyVis];
+    delete el.dataset[keyPtr];
+    delete el.dataset[keyAria];
+  };
+
+  const setMobileLayerIsolation = (open: boolean) => {
+    const targets = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".super-content-wrapper, .festival-overlay, footer.super-footer, #firework-layer",
+      ),
+    );
+    for (const target of targets) setElementVisibilityState(target, open);
+  };
+
   const setMobilePageState = (open: boolean) => {
     const root = document.documentElement;
     root.classList.toggle("mobile-menu-open", open);
     root.dataset.mobileMenuOpen = open ? "1" : "0";
+    setMobileLayerIsolation(open);
   };
 
   const setMobileOpen = (open: boolean, opts: { restoreFocus?: boolean } = {}) => {
@@ -81,7 +120,7 @@ export function setupSiteNavMenuBehavior({
       mobileMenu.style.minHeight = "100svh";
       mobileMenu.style.maxHeight = "none";
       mobileMenu.style.boxSizing = "border-box";
-      mobileMenu.style.zIndex = "5000";
+      mobileMenu.style.zIndex = "6000";
       mobileMenu.style.display = "flex";
       mobileMenu.style.alignItems = "stretch";
       mobileMenu.style.justifyContent = "flex-end";
