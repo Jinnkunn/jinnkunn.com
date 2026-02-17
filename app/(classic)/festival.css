@@ -12,7 +12,7 @@
 
 .super-cny-banner__image {
   display: block;
-  width: min(100%, 540px);
+  width: min(100%, 460px);
   height: auto;
 }
 
@@ -309,7 +309,7 @@
   }
 
   .super-cny-banner__image {
-    width: min(92vw, 420px);
+    width: min(88vw, 360px);
   }
 
   .super-footer.stack .super-footer__content {
