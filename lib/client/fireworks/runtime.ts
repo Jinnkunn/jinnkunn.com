@@ -1,5 +1,7 @@
+import { isTypingContext } from "@/lib/client/dom-utils";
+
 const FIREWORK_LAYER_ID = "firework-layer";
-const MIN_TRIGGER_INTERVAL_MS = 80;
+const MIN_TRIGGER_INTERVAL_MS = 90;
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -10,19 +12,19 @@ function createParticle(index: number, total: number) {
   particle.className = "firework-layer__particle";
 
   const baseAngle = (index / total) * Math.PI * 2;
-  const angle = baseAngle + randomBetween(-0.22, 0.22);
-  const distance = randomBetween(56, 132);
+  const angle = baseAngle + randomBetween(-0.2, 0.2);
+  const distance = randomBetween(72, 178);
   const dx = Math.cos(angle) * distance;
   const dy = Math.sin(angle) * distance;
 
   particle.style.setProperty("--fw-dx", `${dx.toFixed(2)}px`);
   particle.style.setProperty("--fw-dy", `${dy.toFixed(2)}px`);
-  particle.style.setProperty("--fw-size", `${Math.round(randomBetween(34, 62))}px`);
-  particle.style.setProperty("--fw-duration", `${Math.round(randomBetween(760, 1080))}ms`);
-  particle.style.setProperty("--fw-opacity", randomBetween(0.22, 0.42).toFixed(2));
-  particle.style.setProperty("--fw-scale", randomBetween(0.16, 0.34).toFixed(2));
-  particle.style.setProperty("--fw-rot", `${Math.round(randomBetween(-22, 22))}deg`);
-  particle.style.setProperty("--fw-spin", `${Math.round(randomBetween(38, 116))}deg`);
+  particle.style.setProperty("--fw-size", `${Math.round(randomBetween(62, 118))}px`);
+  particle.style.setProperty("--fw-duration", `${Math.round(randomBetween(980, 1420))}ms`);
+  particle.style.setProperty("--fw-opacity", randomBetween(0.55, 0.98).toFixed(2));
+  particle.style.setProperty("--fw-scale", randomBetween(0.18, 0.44).toFixed(2));
+  particle.style.setProperty("--fw-rot", `${Math.round(randomBetween(-30, 30))}deg`);
+  particle.style.setProperty("--fw-spin", `${Math.round(randomBetween(70, 220))}deg`);
 
   return particle;
 }
@@ -30,16 +32,13 @@ function createParticle(index: number, total: number) {
 function createFlash() {
   const flash = document.createElement("span");
   flash.className = "firework-layer__flash";
-  flash.style.setProperty("--fw-flash-size", `${Math.round(randomBetween(34, 64))}px`);
+  flash.style.setProperty("--fw-flash-size", `${Math.round(randomBetween(68, 112))}px`);
   return flash;
 }
 
-function spawnFirework(clientX: number, clientY: number) {
+function spawnBurst(clientX: number, clientY: number, particleCount: number) {
   const layer = document.getElementById(FIREWORK_LAYER_ID);
   if (!layer) return;
-
-  const isMobile = window.matchMedia("(max-width: 768px)").matches;
-  const particleCount = isMobile ? 7 : 11;
 
   const burst = document.createElement("span");
   burst.className = "firework-layer__burst";
@@ -55,6 +54,21 @@ function spawnFirework(clientX: number, clientY: number) {
   window.setTimeout(() => burst.remove(), 1300);
 }
 
+function spawnFirework(clientX: number, clientY: number) {
+  const isMobile = window.matchMedia("(max-width: 768px)").matches;
+  const primaryCount = isMobile ? 14 : 20;
+  const secondaryCount = isMobile ? 10 : 16;
+
+  spawnBurst(clientX, clientY, primaryCount);
+  window.setTimeout(() => {
+    spawnBurst(
+      clientX + randomBetween(-26, 26),
+      clientY + randomBetween(-20, 20),
+      secondaryCount,
+    );
+  }, 85);
+}
+
 export function setupClickFireworks() {
   if (typeof window === "undefined") return () => undefined;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -63,10 +77,10 @@ export function setupClickFireworks() {
 
   let lastTriggerAt = 0;
 
-  const onClick = (event: MouseEvent) => {
-    // Only primary button clicks for pointer devices.
-    if (event.button !== 0) return;
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || !event.isPrimary) return;
     if (event.defaultPrevented) return;
+    if (isTypingContext(event.target)) return;
 
     const now = performance.now();
     if (now - lastTriggerAt < MIN_TRIGGER_INTERVAL_MS) return;
@@ -75,9 +89,9 @@ export function setupClickFireworks() {
     spawnFirework(event.clientX, event.clientY);
   };
 
-  document.addEventListener("click", onClick, true);
+  document.addEventListener("pointerdown", onPointerDown, true);
 
   return () => {
-    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("pointerdown", onPointerDown, true);
   };
 }

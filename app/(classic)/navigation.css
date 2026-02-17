@@ -19,23 +19,39 @@
  * captures taps on empty space to close, without blocking taps on menu items.
  */
 .super-navbar__menu-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   border: 0;
   padding: 0;
   margin: 0;
   background: transparent;
-  cursor: default;
+  cursor: pointer;
   z-index: 0;
 }
 
 .super-navbar__menu-surface {
   position: relative;
   z-index: 1;
+  background: var(--navbar-menu-background-color);
 }
 
 /* Mobile menu layout polish (v1): items first, close action after the list. */
 @media (max-width: 546px) {
+  .super-navbar__menu-wrapper {
+    height: 100vh;
+    top: 0;
+    z-index: 80;
+  }
+
+  .super-navbar__menu {
+    height: 100%;
+    max-height: none;
+    top: var(--navbar-height);
+    right: 0;
+    min-width: 100%;
+    width: 100%;
+  }
+
   .super-navbar__menu-surface {
     display: flex;
     flex-direction: column;
@@ -109,7 +125,7 @@
 @supports (height: 100dvh) {
   @media (max-width: 546px) {
     .super-navbar__menu-wrapper {
-      height: calc(100dvh - var(--navbar-height) + 1px);
+      height: 100dvh;
     }
   }
 }
