@@ -8,7 +8,7 @@
   display: flex;
   justify-content: center;
   margin: 0 auto;
-  padding: clamp(2px, 0.45vw, 4px) 0;
+  padding: clamp(5px, 0.9vw, 9px) 0;
 }
 
 .super-cny-banner__image {
@@ -323,7 +323,7 @@
 @media (max-width: 768px) {
   .super-cny-banner {
     margin: 0 auto;
-    padding: 2px 0;
+    padding: 5px 0;
   }
 
   .super-cny-banner__image {
