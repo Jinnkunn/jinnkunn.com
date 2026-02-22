@@ -1,41 +1,11 @@
 import { escapeXml, getOriginFromRequest } from "@/lib/server/http";
-import { canonicalizePublicRoute } from "@/lib/routes/strategy";
-import { normalizeRoutePath } from "@/lib/shared/route-utils";
-import { listRawHtmlRelPaths } from "@/lib/server/content-files";
+import { getHierarchicalSitemapRoutePaths } from "@/lib/server/sitemap-routes";
 
 export const runtime = "nodejs";
 
-function collectRoutesFromRawRoots(): string[] {
-  const rels = listRawHtmlRelPaths();
-  const out = new Set<string>();
-  for (const rel of rels) {
-    const route = rel === "index" ? "/" : `/${rel}`;
-    out.add(normalizeRoutePath(route) || "/");
-  }
-
-  // Canonicalize: blog posts live at /blog/<slug>, but source files may be under
-  // /blog/list/<slug> or /list/<slug>.
-  const canon = new Set<string>();
-  for (const r of out) {
-    const c = canonicalizePublicRoute(r);
-    if (c === "/blog/list" || c === "/list") continue;
-    canon.add(normalizeRoutePath(c) || "/");
-  }
-
-  // Include canonical /blog even if source content lives under /blog/list.
-  canon.add("/blog");
-
-  // Keep sitemap clean: exclude internal-only endpoints.
-  const excluded = ["/auth"];
-
-  return Array.from(canon)
-    .filter((r) => !excluded.includes(r))
-    .sort((a, b) => a.localeCompare(b));
-}
-
 export async function GET(req: Request) {
   const origin = getOriginFromRequest(req);
-  const routes = collectRoutesFromRawRoots();
+  const routes = getHierarchicalSitemapRoutePaths();
 
   const urls = routes
     .map((routePath) => {
