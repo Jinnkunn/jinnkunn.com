@@ -140,7 +140,6 @@
   }
 
   html.mobile-menu-open .super-content-wrapper,
-  html.mobile-menu-open .festival-overlay,
   html.mobile-menu-open footer.super-footer {
     visibility: hidden !important;
     pointer-events: none !important;

@@ -81,7 +81,7 @@ export function setupSiteNavMenuBehavior({
   const setMobileLayerIsolation = (open: boolean) => {
     const targets = Array.from(
       document.querySelectorAll<HTMLElement>(
-        ".super-content-wrapper, footer.super-footer",
+        ".super-content-wrapper, .festival-overlay, footer.super-footer, #firework-layer",
       ),
     );
     for (const target of targets) setElementVisibilityState(target, open);

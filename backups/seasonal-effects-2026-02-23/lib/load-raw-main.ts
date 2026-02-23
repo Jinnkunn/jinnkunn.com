@@ -5,6 +5,13 @@ import { resolveRawHtmlFile } from "./server/content-files";
 import { canonicalizeBlogHrefsInHtml } from "@/lib/routes/html-rewrite";
 
 function rewriteRawHtml(html: string): string {
+  const happyCnyImage =
+    "https://cdn.jinkunchen.com/web_image/year_of_horse/happy_chinese_new_year.png";
+  const happyCnyBannerHtml =
+    `<div class="super-cny-banner">` +
+    `<img class="super-cny-banner__image" src="${happyCnyImage}" alt="Happy Chinese New Year" loading="lazy" decoding="async">` +
+    `</div>`;
+
   // Use local copies for a few key assets so the clone is self-contained.
   const remoteProfilePublic =
     "https://images.spr.so/cdn-cgi/imagedelivery/j42No7y-dcokJuNgXeA0ig/d4473e16-cb09-4f59-8e01-9bed5a936048/web-image/public";
@@ -80,6 +87,15 @@ function rewriteRawHtml(html: string): string {
   const blogCanon = canonicalizeBlogHrefsInHtml(breadcrumbFixed);
 
   let out = blogCanon;
+
+  // Add an explicit "Happy Chinese New Year" visual cue directly above each
+  // page title (h1): below the top menu, above the first-level heading.
+  if (!out.includes("super-cny-banner")) {
+    out = out.replace(
+      /(<div class="notion-header__title-wrapper">)(\s*<h1\b)/i,
+      `$1${happyCnyBannerHtml}$2`,
+    );
+  }
 
   // Publications hygiene:
   // Keep Notion's native line structure (so title/tag wrapping matches source),
