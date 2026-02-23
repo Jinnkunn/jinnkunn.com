@@ -2,6 +2,7 @@ import { readContentJson } from "@/lib/server/content-json";
 import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config";
 import { normalizeGithubUserList } from "@/lib/shared/github-users";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
+import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
 
 export type NavItem = {
   href: string;
@@ -30,6 +31,7 @@ export type SiteConfig = {
     rootPageId?: string | null;
     homePageId?: string | null;
     routeOverrides?: Record<string, string> | null;
+    sitemapExcludes?: string[];
   };
 };
 
@@ -62,6 +64,11 @@ function asRouteOverrides(x: unknown): Record<string, string> | null | undefined
   }
 
   return out;
+}
+
+function asSitemapExcludes(x: unknown): string[] | undefined {
+  const out = parseSitemapExcludeEntries(x);
+  return out.length ? out : undefined;
 }
 
 function asNavItems(x: unknown): NavItem[] | undefined {
@@ -114,10 +121,12 @@ function normalizeConfig(input: unknown): SiteConfig {
       rootPageId: null,
       homePageId: null,
       routeOverrides: null,
+      sitemapExcludes: [],
     };
     cfg.content.rootPageId = asNullableString(input.content.rootPageId) ?? cfg.content.rootPageId;
     cfg.content.homePageId = asNullableString(input.content.homePageId) ?? cfg.content.homePageId;
     cfg.content.routeOverrides = asRouteOverrides(input.content.routeOverrides) ?? cfg.content.routeOverrides;
+    cfg.content.sitemapExcludes = asSitemapExcludes(input.content.sitemapExcludes) ?? cfg.content.sitemapExcludes;
   }
 
   return cfg;

@@ -10,12 +10,34 @@ import {
   buildRouteTree,
   computeVisibleRoutes,
   createEffectiveAccessFinder,
+  createOverrideConflictFinder,
   filterOrderedRoutes,
   getDefaultCollapsed,
   normalizeSearchQuery,
 } from "@/lib/site-admin/route-explorer-model";
 
 import { fetchAdminConfig, postAccess, postOverride } from "./api";
+
+const COLLAPSED_STORAGE_KEY = "site-admin.routes.collapsed.v2";
+
+function parseStoredCollapsed(
+  raw: string,
+  validIds: Set<string>,
+): Record<string, boolean> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const out: Record<string, boolean> = {};
+    for (const [id, v] of Object.entries(parsed)) {
+      if (!validIds.has(id)) continue;
+      if (!v) continue;
+      out[id] = true;
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
 
 export function useRouteExplorerData(items: RouteManifestItem[]) {
   const [q, setQ] = useState("");
@@ -32,6 +54,10 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   const [accessChoice, setAccessChoice] = useState<Record<string, "public" | "password" | "github">>(
     {},
   );
+  const [batchAccess, setBatchAccess] = useState<"public" | "password" | "github">("public");
+  const [batchPassword, setBatchPassword] = useState("");
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [collapsedReady, setCollapsedReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,10 +79,38 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   const ordered = tree.ordered;
 
   // Default: only show root + one level (Super-like). Deeper folders start collapsed.
+  // Persist collapse preference per browser to keep admin navigation stable.
   useEffect(() => {
-    if (Object.keys(collapsed).length > 0) return;
-    setCollapsed(getDefaultCollapsed(ordered));
-  }, [ordered, collapsed]);
+    if (collapsedReady) return;
+    const fallback = getDefaultCollapsed(ordered);
+    if (typeof window === "undefined") {
+      setCollapsed(fallback);
+      setCollapsedReady(true);
+      return;
+    }
+    const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    if (!raw) {
+      setCollapsed(fallback);
+      setCollapsedReady(true);
+      return;
+    }
+    const parsed = parseStoredCollapsed(
+      raw,
+      new Set(ordered.map((it) => it.id)),
+    );
+    setCollapsed(parsed ?? fallback);
+    setCollapsedReady(true);
+  }, [ordered, collapsedReady]);
+
+  useEffect(() => {
+    if (!collapsedReady) return;
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(collapsed));
+    } catch {
+      // ignore browser storage errors
+    }
+  }, [collapsedReady, collapsed]);
 
   const filtered = useMemo(() => {
     return filterOrderedRoutes(ordered, q, filter);
@@ -124,18 +178,20 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     }
   };
 
-  const saveAccess = async ({
+  const applyAccess = async ({
     pageId,
     path,
     access,
     password,
+    trackBusy,
   }: {
     pageId: string;
     path: string;
     access: "public" | "password" | "github";
     password?: string;
-  }) => {
-    setBusyId(pageId);
+    trackBusy: boolean;
+  }): Promise<boolean> => {
+    if (trackBusy) setBusyId(pageId);
     setErr("");
     try {
       await postAccess({ pageId, path, access, password });
@@ -162,16 +218,60 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
         if (p) delete next.protectedByPath[p];
         return next;
       });
+      return true;
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
-      setBusyId("");
+      if (trackBusy) setBusyId("");
     }
+  };
+
+  const saveAccess = async ({
+    pageId,
+    path,
+    access,
+    password,
+  }: {
+    pageId: string;
+    path: string;
+    access: "public" | "password" | "github";
+    password?: string;
+  }) => {
+    await applyAccess({ pageId, path, access, password, trackBusy: true });
+  };
+
+  const applyBatchAccess = async () => {
+    if (batchBusy) return;
+    if (!filtered.length) return;
+    setBatchBusy(true);
+    setErr("");
+    const auth = batchAccess;
+    const password = auth === "password" ? batchPassword : "";
+    let success = 0;
+    for (const it of filtered) {
+      const ok = await applyAccess({
+        pageId: it.id,
+        path: it.routePath,
+        access: auth,
+        password,
+        trackBusy: false,
+      });
+      if (ok) success += 1;
+    }
+    if (success !== filtered.length) {
+      setErr(`Batch applied to ${success}/${filtered.length} routes.`);
+    }
+    setBatchBusy(false);
   };
 
   const findEffectiveAccess = useMemo(() => {
     return createEffectiveAccessFinder({ cfg, tree, items });
   }, [cfg, tree, items]);
+
+  const findOverrideConflict = useMemo(() => {
+    return createOverrideConflictFinder({ items, overrides: cfg.overrides });
+  }, [items, cfg.overrides]);
 
   return {
     q,
@@ -185,9 +285,16 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     openAdmin,
     accessChoice,
     setAccessChoice,
+    batchAccess,
+    setBatchAccess,
+    batchPassword,
+    setBatchPassword,
+    batchBusy,
+    applyBatchAccess,
     filtered,
     visible,
     findEffectiveAccess,
+    findOverrideConflict,
     toggleCollapsed,
     toggleOpenAdmin,
     collapseAll,

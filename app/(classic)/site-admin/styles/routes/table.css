@@ -193,3 +193,9 @@
   border-color: rgba(46, 170, 220, 0.22);
   color: rgba(18, 90, 120, 0.95);
 }
+
+.routes-explorer__pill--error {
+  background: rgba(235, 87, 87, 0.12);
+  border-color: rgba(235, 87, 87, 0.28);
+  color: rgba(140, 32, 32, 0.95);
+}

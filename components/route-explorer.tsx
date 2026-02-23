@@ -24,9 +24,16 @@ export default function RouteExplorer({
     openAdmin,
     accessChoice,
     setAccessChoice,
+    batchAccess,
+    setBatchAccess,
+    batchPassword,
+    setBatchPassword,
+    batchBusy,
+    applyBatchAccess,
     filtered,
     visible,
     findEffectiveAccess,
+    findOverrideConflict,
     toggleCollapsed,
     toggleOpenAdmin,
     collapseAll,
@@ -104,6 +111,41 @@ export default function RouteExplorer({
               Collapse
             </button>
           </div>
+
+          <div className="routes-explorer__batch" role="group" aria-label="Batch access">
+            <select
+              className="routes-explorer__admin-select"
+              value={batchAccess}
+              onChange={(e) => {
+                const raw = String(e.target.value || "");
+                const next: "public" | "password" | "github" =
+                  raw === "password" ? "password" : raw === "github" ? "github" : "public";
+                setBatchAccess(next);
+              }}
+            >
+              <option value="public">Batch: public</option>
+              <option value="password">Batch: password</option>
+              <option value="github">Batch: github</option>
+            </select>
+            {batchAccess === "password" ? (
+              <input
+                className="routes-explorer__admin-input"
+                type="password"
+                value={batchPassword}
+                placeholder="Password"
+                onChange={(e) => setBatchPassword(e.target.value)}
+              />
+            ) : null}
+            <button
+              type="button"
+              className="routes-explorer__admin-btn"
+              disabled={batchBusy || filtered.length === 0 || (batchAccess === "password" && !batchPassword)}
+              onClick={() => void applyBatchAccess()}
+              title="Apply to current filtered routes"
+            >
+              {batchBusy ? "Applying..." : `Apply (${filtered.length})`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -124,6 +166,7 @@ export default function RouteExplorer({
           const overrideValue = cfg.overrides[it.id] || "";
           const overridePending =
             Boolean(overrideValue) && normalizeRoutePath(overrideValue) !== normalizeRoutePath(it.routePath);
+          const overrideConflict = overrideValue ? findOverrideConflict(it.id, overrideValue) : null;
           return (
             <RouteRow
               key={it.id}
@@ -138,6 +181,8 @@ export default function RouteExplorer({
               directProtected={directProtected}
               overrideValue={overrideValue}
               overridePending={overridePending}
+              overrideConflict={overrideConflict}
+              getOverrideConflict={(candidatePath) => findOverrideConflict(it.id, candidatePath)}
               onToggleCollapsed={toggleCollapsed}
               onToggleAdmin={toggleOpenAdmin}
               onSetAccessChoice={(id, v) =>

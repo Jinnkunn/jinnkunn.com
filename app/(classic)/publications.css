@@ -57,9 +57,17 @@
 }
 
 /* Publications: keep `conference:` together (avoid line breaks between tag and colon). */
+.page__publications .pub-tag-prefix {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.06em;
+  white-space: nowrap;
+}
+
 .page__publications .pub-tag-colon {
   font-style: normal;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 /* Publications: tag pills (conference / arXiv.org / journal) should be compact. */

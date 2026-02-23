@@ -1,8 +1,17 @@
 import "server-only";
 
+import { getProtectedRoutes } from "@/lib/protected-routes";
 import { getRoutesManifest, type RouteManifestItem } from "@/lib/routes-manifest";
-import { canonicalizePublicRoute } from "@/lib/routes/strategy";
-import { normalizeRoutePath } from "@/lib/shared/route-utils";
+import {
+  buildParentByPageIdMap,
+  canonicalizePublicRoute,
+  lookupPageIdForPath,
+  pickProtectedRule,
+} from "@/lib/routes/strategy";
+import { getSiteConfig } from "@/lib/site-config";
+import type { ProtectedRoute } from "@/lib/shared/protected-route";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
+import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 
 export type SitemapRoute = {
@@ -16,6 +25,14 @@ type SitemapNode = {
   routePath: string;
   title: string;
   parentRoutePath: string;
+};
+
+type SitemapExclusionContext = {
+  routesMap: Record<string, unknown>;
+  parentByPageId: Record<string, string>;
+  protectedRules: ProtectedRoute[];
+  manualPathPrefixes: string[];
+  manualPageIds: Set<string>;
 };
 
 const EXCLUDED_EXACT = new Set<string>(["/auth", "/site-admin", "/blog/list", "/list"]);
@@ -103,33 +120,121 @@ function compareRoutePath(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-function collectCanonicalRoutes(): Set<string> {
+function buildRoutesMap(items: RouteManifestItem[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const it of items) {
+    const p = normalizeRoutePath(it.routePath);
+    if (!p) continue;
+    out[p] = String(it.id || "");
+  }
+  return out;
+}
+
+function normalizeManualExcludePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of paths) {
+    const p = canonicalizeRoutePath(raw);
+    if (!p || seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  // Prefix checks should prefer longer matches first.
+  out.sort((a, b) => b.length - a.length);
+  return out;
+}
+
+function createSitemapExclusionContext(items: RouteManifestItem[]): SitemapExclusionContext {
+  const cfg = getSiteConfig();
+  const rawManual = parseSitemapExcludeEntries(cfg.content?.sitemapExcludes || []);
+  const manualPathPrefixes: string[] = [];
+  const manualPageIds = new Set<string>();
+
+  for (const entry of rawManual) {
+    const id = compactId(entry);
+    if (id) {
+      manualPageIds.add(id);
+      continue;
+    }
+    manualPathPrefixes.push(entry);
+  }
+
+  return {
+    routesMap: buildRoutesMap(items),
+    parentByPageId: buildParentByPageIdMap(items),
+    protectedRules: getProtectedRoutes(),
+    manualPathPrefixes: normalizeManualExcludePaths(manualPathPrefixes),
+    manualPageIds,
+  };
+}
+
+function isPageDescendantOfAny(
+  pageId: string,
+  ancestors: Set<string>,
+  parentByPageId: Record<string, string>,
+): boolean {
+  let cur = compactId(pageId);
+  let guard = 0;
+  while (cur && guard++ < 300) {
+    if (ancestors.has(cur)) return true;
+    cur = compactId(parentByPageId[cur] || "");
+  }
+  return false;
+}
+
+function isManuallyExcluded(routePath: string, ctx: SitemapExclusionContext): boolean {
+  for (const prefix of ctx.manualPathPrefixes) {
+    if (routePath === prefix || routePath.startsWith(`${prefix}/`)) return true;
+  }
+
+  if (!ctx.manualPageIds.size) return false;
+  const pageId = lookupPageIdForPath(routePath, ctx.routesMap);
+  if (!pageId) return false;
+  return isPageDescendantOfAny(pageId, ctx.manualPageIds, ctx.parentByPageId);
+}
+
+function isProtectedExcluded(routePath: string, ctx: SitemapExclusionContext): boolean {
+  if (!ctx.protectedRules.length) return false;
+  return Boolean(pickProtectedRule(routePath, ctx.protectedRules, ctx.routesMap, ctx.parentByPageId));
+}
+
+function isExcludedFromSitemap(routePath: string, ctx: SitemapExclusionContext): boolean {
+  if (isProtectedExcluded(routePath, ctx)) return true;
+  if (isManuallyExcluded(routePath, ctx)) return true;
+  return false;
+}
+
+function collectCanonicalRoutes(ctx: SitemapExclusionContext): Set<string> {
   const out = new Set<string>();
+  const tryAdd = (rawRoute: string) => {
+    const canonical = canonicalizeRoutePath(rawRoute);
+    if (!canonical) return;
+    if (!isPublicSitemapRoute(canonical)) return;
+    if (isExcludedFromSitemap(canonical, ctx)) return;
+    out.add(canonical);
+  };
+
   for (const rel of listRawHtmlRelPaths()) {
     const routePath = routePathFromRawRelPath(rel);
-    const canonical = canonicalizeRoutePath(routePath);
-    if (!canonical) continue;
-    if (!isPublicSitemapRoute(canonical)) continue;
-    out.add(canonical);
+    tryAdd(routePath);
   }
 
   for (const extraRoute of EXTRA_ROUTES) {
-    const canonical = canonicalizeRoutePath(extraRoute);
-    if (!canonical) continue;
-    if (!isPublicSitemapRoute(canonical)) continue;
-    out.add(canonical);
+    tryAdd(extraRoute);
   }
 
   // Canonical /blog should always be present.
-  out.add("/blog");
+  tryAdd("/blog");
   // A hierarchy without root is hard to understand for humans.
-  out.add("/");
+  tryAdd("/");
   return out;
 }
 
 function collectSitemapNodes(): Map<string, SitemapNode> {
-  const routes = collectCanonicalRoutes();
-  const manifestByRoute = pickManifestByCanonicalRoute(getRoutesManifest());
+  const manifest = getRoutesManifest();
+  const exclusionCtx = createSitemapExclusionContext(manifest);
+  const routes = collectCanonicalRoutes(exclusionCtx);
+  const manifestByRoute = pickManifestByCanonicalRoute(manifest);
   const nodes = new Map<string, SitemapNode>();
 
   const sortedRoutes = Array.from(routes).sort(compareRoutePath);

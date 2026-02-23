@@ -1,6 +1,6 @@
 import { escapeHtml, tokenizeQuery } from "@/lib/shared/text-utils";
 import type { SearchItem } from "@/lib/shared/search-contract";
-import { groupLabelForRoutePath } from "@/lib/shared/search-group";
+import { groupLabelForSearchResult } from "@/lib/shared/search-group";
 
 type Range = { start: number; end: number };
 
@@ -50,7 +50,7 @@ function escapeAndHighlight(raw: string, terms: string[]): string {
 }
 
 function groupLabelFor(it: SearchItem): string {
-  return groupLabelForRoutePath(it.routePath);
+  return groupLabelForSearchResult(it.kind, it.routePath);
 }
 
 export function renderSearchResultsHtml(

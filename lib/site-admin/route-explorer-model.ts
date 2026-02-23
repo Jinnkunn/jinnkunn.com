@@ -6,6 +6,11 @@ export type {
   RouteTreeItem,
 } from "./route-explorer-types.ts";
 
+export type {
+  OverrideConflict,
+  OverrideConflictTarget,
+} from "./route-explorer-overrides.ts";
+
 export {
   buildRouteTree,
   buildDescendantsGetter,
@@ -22,3 +27,7 @@ export {
   parseAdminRoutesPayload,
   createEffectiveAccessFinder,
 } from "./route-explorer-access.ts";
+
+export {
+  createOverrideConflictFinder,
+} from "./route-explorer-overrides.ts";

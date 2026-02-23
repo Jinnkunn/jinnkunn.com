@@ -14,6 +14,7 @@ export function buildSiteSettingsProperties(
   if (patch.favicon !== undefined) properties["Favicon"] = { rich_text: notionRichText(patch.favicon) };
   if (patch.googleAnalyticsId !== undefined) properties["Google Analytics ID"] = { rich_text: notionRichText(patch.googleAnalyticsId) };
   if (patch.contentGithubUsers !== undefined) properties["Content GitHub Users"] = { rich_text: notionRichText(patch.contentGithubUsers) };
+  if (patch.sitemapExcludes !== undefined) properties["Sitemap Excludes"] = { rich_text: notionRichText(patch.sitemapExcludes) };
   if (patch.rootPageId !== undefined) properties["Root Page ID"] = { rich_text: notionRichText(patch.rootPageId) };
   if (patch.homePageId !== undefined) properties["Home Page ID"] = { rich_text: notionRichText(patch.homePageId) };
   return properties;

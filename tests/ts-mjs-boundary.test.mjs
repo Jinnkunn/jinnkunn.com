@@ -16,6 +16,7 @@ const ALLOWED_FACADE_FILES = new Set([
   "lib/shared/search-group.ts",
   "lib/shared/text-utils.ts",
   "lib/shared/default-site-config.ts",
+  "lib/shared/sitemap-excludes.ts",
   "lib/shared/route-utils.ts",
   "lib/shared/object-utils.ts",
   "lib/search/rank.ts",

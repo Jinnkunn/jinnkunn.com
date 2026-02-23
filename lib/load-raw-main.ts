@@ -3,6 +3,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { resolveRawHtmlFile } from "./server/content-files";
 import { canonicalizeBlogHrefsInHtml } from "@/lib/routes/html-rewrite";
+import { rewritePublicationsHtml } from "@/lib/publications/rewrite";
 
 function rewriteRawHtml(html: string): string {
   // Use local copies for a few key assets so the clone is self-contained.
@@ -79,51 +80,7 @@ function rewriteRawHtml(html: string): string {
   // - Public routes should always be `/blog/<slug>` (matches original site UX)
   const blogCanon = canonicalizeBlogHrefsInHtml(breadcrumbFixed);
 
-  let out = blogCanon;
-
-  // Publications hygiene:
-  // Keep Notion's native line structure (so title/tag wrapping matches source),
-  // and only strip truly empty colored wrappers that render as stray chips.
-  if (out.includes("page__publications")) {
-    out = out
-      // Remove empty highlighted background spans (often created by Notion around newlines),
-      // which otherwise render as stray colored "chips" (e.g. a blank pink block before `conference`).
-      .replace(
-        /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">(?:(?:\s|&nbsp;|<br\s*\/?>)*|<strong>(?:\s|&nbsp;|<br\s*\/?>)*<\/strong>)*<\/span>/gi,
-        "\n",
-      )
-      // Remove empty colored chips, e.g. <span class="highlighted-background bg-red"><strong>\n</strong></span>
-      .replace(
-        /<span class="highlighted-background bg-(?:red|purple|orange|yellow|default)">\s*<strong>[\s\r\n]*<\/strong>\s*<\/span>/gi,
-        "\n",
-      )
-      // Remove empty color spans that only carry whitespace/newlines (causes blank lines under pre-wrap).
-      .replace(
-        /<span class="highlighted-color color-(?:gray|default|red|purple|orange|yellow)">[\s\r\n]*<\/span>/gi,
-        "",
-      )
-      // After stripping empty spans, Notion can leave behind empty <em></em> wrappers.
-      .replace(/<em>\s*<\/em>/gi, "")
-      // Keep inline spacing between adjacent summary labels (conference / journal / arXiv.org).
-      .replace(/<\/em>\s*(?=<em><span class="highlighted-color color-(?:red|purple|orange))/gi, "</em> ")
-      // Keep "tag:" inline in detail lines when Notion inserts an empty highlighted marker before tag.
-      // We preserve the visual blank line with <br><br>, then keep `tag: text` on the same row.
-      .replace(
-        /(<span class="highlighted-color color-gray">[^<]*?<\/span>)\s*<em>\s*<span class="highlighted-color color-red">\s*<span class="highlighted-background bg-red">\s*<\/span>\s*<\/span>\s*<\/em>\s*(<em><span class="highlighted-color color-red">[\s\S]*?<code class="code">[\s\S]*?<\/code>[\s\S]*?<\/span><\/span><\/em>\s*<strong>:\s*<\/strong>)/gi,
-        "$1<br><br>$2",
-      )
-      // First tag line in publication details should start after one blank line below the author list.
-      // (Matches the original Notion/Super rendering and avoids "tag sticks to author line".)
-      .replace(
-        /(<blockquote[^>]*class="notion-quote"[^>]*>\s*<span class="notion-semantic-string">[\s\S]*?)(<em>\s*<span class="highlighted-color color-(?:red|purple|orange)">[\s\S]*?<code class="code">[\s\S]*?<\/code>[\s\S]*?<\/span>\s*<\/span>\s*<\/em>\s*<strong>:\s*<\/strong>)/gi,
-        (_m, pre, firstTagLine) => {
-          if (/<br\s*\/?>\s*<br\s*\/?>\s*$/.test(String(pre))) {
-            return `${pre}${firstTagLine}`;
-          }
-          return `${pre}<br><br>${firstTagLine}`;
-        },
-      );
-  }
+  const out = rewritePublicationsHtml(blogCanon);
 
   return out
     .replaceAll("https://jinkunchen.com", "")

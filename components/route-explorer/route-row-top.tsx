@@ -1,6 +1,10 @@
 "use client";
 
-import type { RouteTreeItem, EffectiveAccess } from "@/lib/site-admin/route-explorer-model";
+import type {
+  RouteTreeItem,
+  EffectiveAccess,
+  OverrideConflict,
+} from "@/lib/site-admin/route-explorer-model";
 
 import { RouteKindIcon } from "./icons";
 import { RouteRowActions } from "./route-row-actions";
@@ -12,6 +16,7 @@ export function RouteRowTop({
   isHome,
   adminOpen,
   overridePending,
+  overrideConflict,
   directProtected,
   inheritedProtected,
   effectiveAccess,
@@ -23,6 +28,7 @@ export function RouteRowTop({
   isHome: boolean;
   adminOpen: boolean;
   overridePending: boolean;
+  overrideConflict: OverrideConflict | null;
   directProtected: boolean;
   inheritedProtected: boolean;
   effectiveAccess: EffectiveAccess | null;
@@ -86,6 +92,7 @@ export function RouteRowTop({
           kind={it.kind}
           overridden={it.overridden}
           overridePending={overridePending}
+          overrideConflict={overrideConflict}
           directProtected={directProtected}
           inheritedProtected={inheritedProtected}
           effectiveAccess={effectiveAccess}

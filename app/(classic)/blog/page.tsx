@@ -1,17 +1,25 @@
 import RawHtml from "@/components/raw-html";
 import { getBlogIndex } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
+import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { escapeHtml } from "@/lib/shared/text-utils";
+import { getSiteConfig } from "@/lib/site-config";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-static";
 
-export const metadata: Metadata = {
-  title: "Blog",
-  description: "Jinkun's Blog",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const cfg = getSiteConfig();
+  return buildPageMetadata({
+    cfg,
+    title: "Blog",
+    description: "Jinkun's Blog",
+    pathname: "/blog",
+    type: "website",
+  });
+}
 
 async function loadNotionBlogMain(): Promise<string> {
   // Prefer canonical /blog.

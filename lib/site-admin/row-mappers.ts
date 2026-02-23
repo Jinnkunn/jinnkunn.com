@@ -23,6 +23,7 @@ export function mapSiteSettingsRow(row: NotionPageLike | null | undefined): Site
     favicon: getPropString(row, "Favicon"),
     googleAnalyticsId: getPropString(row, "Google Analytics ID"),
     contentGithubUsers: getPropString(row, "Content GitHub Users"),
+    sitemapExcludes: getPropString(row, "Sitemap Excludes"),
     rootPageId: getPropString(row, "Root Page ID"),
     homePageId: getPropString(row, "Home Page ID"),
   };

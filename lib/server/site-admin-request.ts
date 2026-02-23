@@ -85,6 +85,9 @@ export function parseSiteAdminConfigCommand(
     if (patch.contentGithubUsers !== undefined) {
       outPatch.contentGithubUsers = getString(patch, "contentGithubUsers", { maxLen: 800 });
     }
+    if (patch.sitemapExcludes !== undefined) {
+      outPatch.sitemapExcludes = getString(patch, "sitemapExcludes", { maxLen: 3000 });
+    }
     if (patch.rootPageId !== undefined) {
       outPatch.rootPageId = getString(patch, "rootPageId", { maxLen: 64 });
     }

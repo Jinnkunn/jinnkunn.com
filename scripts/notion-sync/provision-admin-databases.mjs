@@ -19,6 +19,11 @@ function githubUserListAsString(listOrString) {
   return String(listOrString || "").trim();
 }
 
+function sitemapExcludesAsString(listOrString) {
+  if (Array.isArray(listOrString)) return listOrString.join("\n");
+  return String(listOrString || "").trim();
+}
+
 /**
  * Ensure the Site Settings inline DB exists and has the latest schema.
  * @param {{ adminPageId: string, blocks: NotionBlock[], cfg: DefaultSiteConfig }} input
@@ -63,6 +68,7 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
         Favicon: { rich_text: {} },
         "Google Analytics ID": { rich_text: {} },
         "Content GitHub Users": { rich_text: {} },
+        "Sitemap Excludes": { rich_text: {} },
         "Root Page ID": { rich_text: {} },
         "Home Page ID": { rich_text: {} },
       },
@@ -82,6 +88,9 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
         },
         "Content GitHub Users": {
           rich_text: richText(githubUserListAsString(cfg.security?.contentGithubUsers)),
+        },
+        "Sitemap Excludes": {
+          rich_text: richText(sitemapExcludesAsString(cfg.content?.sitemapExcludes)),
         },
         "Root Page ID": { rich_text: richText(cfg.content?.rootPageId) },
         "Home Page ID": { rich_text: richText(cfg.content?.homePageId) },
@@ -107,6 +116,13 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
     await updateDatabase(dbId, {
       properties: {
         "Content GitHub Users": { rich_text: {} },
+      },
+    });
+  }
+  if (!props["Sitemap Excludes"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Excludes": { rich_text: {} },
       },
     });
   }

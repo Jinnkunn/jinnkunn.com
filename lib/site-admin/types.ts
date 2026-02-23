@@ -7,6 +7,7 @@ export type SiteSettings = {
   favicon: string;
   googleAnalyticsId: string;
   contentGithubUsers: string;
+  sitemapExcludes: string;
   rootPageId: string;
   homePageId: string;
 };

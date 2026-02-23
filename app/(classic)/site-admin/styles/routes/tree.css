@@ -239,3 +239,7 @@
   color: rgba(55, 53, 47, 0.66);
   line-height: 1.4;
 }
+
+.routes-tree__panel-note--warn {
+  color: rgba(140, 32, 32, 0.95);
+}

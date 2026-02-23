@@ -1,5 +1,5 @@
 import { canonicalizePublicRoute, normalizePathname } from "../routes/strategy.ts";
-import { sortGroupLabels } from "../shared/search-group.ts";
+import { groupLabelForSearchResult, sortGroupLabels } from "../shared/search-group.ts";
 import { normalizeSearchKind, type SearchItem } from "../shared/search-contract.ts";
 import { tokenizeQuery } from "../shared/text-utils.ts";
 
@@ -137,6 +137,10 @@ export function kindForTypeKey(typeKey: TypeKey): SearchItem["kind"] {
   if (typeKey === "blog") return "blog";
   if (typeKey === "databases") return "database";
   return "page";
+}
+
+export function groupLabelForTypeAndRoute(typeKey: TypeKey, routePath: string): string {
+  return groupLabelForSearchResult(kindForTypeKey(typeKey), routePath);
 }
 
 export function normalizeKindForTypeKey(typeKey: TypeKey): SearchItem["kind"] {

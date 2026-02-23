@@ -39,6 +39,7 @@ test("site-admin-row-mappers: mapSiteSettingsRow maps fields + defaults", () => 
       Favicon: rich("/favicon.ico"),
       "Google Analytics ID": rich("G-XXXX"),
       "Content GitHub Users": rich("alice,bob"),
+      "Sitemap Excludes": rich("/private\n/bio"),
       "Root Page ID": rich("root1"),
       "Home Page ID": rich("home1"),
     },
@@ -54,6 +55,7 @@ test("site-admin-row-mappers: mapSiteSettingsRow maps fields + defaults", () => 
     favicon: "/favicon.ico",
     googleAnalyticsId: "G-XXXX",
     contentGithubUsers: "alice,bob",
+    sitemapExcludes: "/private\n/bio",
     rootPageId: "root1",
     homePageId: "home1",
   });

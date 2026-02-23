@@ -29,6 +29,7 @@ export function useSiteAdminSettingsMutation({
         favicon: draftSettings.favicon,
         googleAnalyticsId: draftSettings.googleAnalyticsId,
         contentGithubUsers: draftSettings.contentGithubUsers,
+        sitemapExcludes: draftSettings.sitemapExcludes,
         rootPageId: draftSettings.rootPageId,
         homePageId: draftSettings.homePageId,
       };

@@ -1,6 +1,5 @@
 import { canonicalizePublicRoute, normalizePathname } from "../routes/strategy.ts";
 import { scoreSearchResult } from "./rank.ts";
-import { groupLabelForRoutePath } from "../shared/search-group.ts";
 import type { SearchItem, SearchMeta, SearchResponse } from "../shared/search-contract.ts";
 import {
   bestPos,
@@ -9,6 +8,7 @@ import {
   buildSnippetByTerms,
   classifyType,
   dedupeByCanonicalRoute,
+  groupLabelForTypeAndRoute,
   matchTypeKey,
   normalizeKindForTypeKey,
   readHeadings,
@@ -53,7 +53,7 @@ function buildMeta(
     total: allMatches.length,
     filteredTotal: filtered.length,
     counts: countByType(allMatches),
-    groups: buildGroupCounts(filtered.map((m) => groupLabelForRoutePath(m.canon))),
+    groups: buildGroupCounts(filtered.map((m) => groupLabelForTypeAndRoute(m.typeKey, m.canon))),
     offset,
     limit,
     hasMore: offset + limit < filtered.length,
@@ -92,10 +92,16 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
         const typeKey = classifyType(item.kind, canon);
         const titlePos = bestPos(safeLower(item.title), terms);
         const routePos = bestPos(safeLower(canon), terms);
+        const headingsArr = readHeadings(item);
+        const headingsText = headingsArr.join("\n");
+        const headingsHay = safeLower(headingsText);
+        const headingPos = bestPos(headingsHay, terms);
+        const bodyText = String(item.text || "");
+        const bodyHay = safeLower(bodyText);
+        const bodyPos = bestPos(bodyHay, terms);
 
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const navBoost = byRoute.get(normalizePathname(item.routePath))?.navGroup ? 180 : 0;
-        const headings = readHeadings(item).join("\n");
         const exactTitle = safeLower(item.title).trim() === safeLower(q).trim();
         const exactRoute = safeLower(canon).trim() === safeLower(q).trim();
         const exactBoost = exactTitle ? 1800 : exactRoute ? 900 : 0;
@@ -103,15 +109,22 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
           scoreSearchResult({
             title: item.title,
             route: canon,
-            text: `${headings}\n${item.text || ""}`.trim(),
+            text: `${headingsText}\n${bodyText}`.trim(),
             query: q,
             navBoost,
-          }) + homePenalty - exactBoost;
-        return { item, score, canon, typeKey };
+          }) +
+          homePenalty -
+          exactBoost -
+          // Headings are stronger signals than body text for navigational queries.
+          (headingPos >= 0 ? Math.max(120, 340 - headingPos) : 0) -
+          (headingPos >= 0 && bodyPos === -1 ? 120 : 0);
+        return { item, score, canon, typeKey, headingsArr, headingPos, bodyPos };
       })
       .sort(
         (a, b) =>
           a.score - b.score ||
+          (a.headingPos === -1 ? 1 : 0) - (b.headingPos === -1 ? 1 : 0) ||
+          (a.bodyPos === -1 ? 1 : 0) - (b.bodyPos === -1 ? 1 : 0) ||
           String(a.item.title || "").localeCompare(String(b.item.title || "")) ||
           a.canon.localeCompare(b.canon),
       );
@@ -119,16 +132,22 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
     const allMatches = dedupeByCanonicalRoute(allMatches0);
     const filtered = allMatches.filter((m) => matchTypeKey(type, m.typeKey));
 
-    const items: SearchItem[] = filtered.slice(offset, offset + limit).map(({ item, canon, typeKey }) => ({
+    const items: SearchItem[] = filtered
+      .slice(offset, offset + limit)
+      .map(({ item, canon, typeKey, headingsArr, bodyPos }) => ({
       title: item.routePath === "/" ? "Home" : item.title || "Untitled",
       routePath: canon,
       kind: normalizeKindForTypeKey(typeKey),
       snippet: (() => {
-        const headingsArr = readHeadings(item);
         const headings = headingsArr.join("\n");
         const body = String(item.text || "");
-        const bodyPos = bestPos(safeLower(body), terms);
-        const src = bodyPos >= 0 ? body : `${headings}\n${body}`.trim();
+        const matchedHeading = headingsArr.find((h) => bestPos(safeLower(h), terms) >= 0) || "";
+        const src =
+          bodyPos >= 0
+            ? body
+            : matchedHeading
+              ? `${matchedHeading}\n${body}`.trim()
+              : `${headings}\n${body}`.trim();
         return buildSnippetByTerms(src, terms);
       })(),
       breadcrumb: buildBreadcrumb(item.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),

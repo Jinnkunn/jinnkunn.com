@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 
-import type { RouteTreeItem } from "@/lib/site-admin/route-explorer-model";
+import type { OverrideConflict, RouteTreeItem } from "@/lib/site-admin/route-explorer-model";
+import { normalizeRoutePath } from "@/lib/shared/route-utils";
 
 export function RouteRowAdminPanel({
   it,
@@ -12,6 +13,7 @@ export function RouteRowAdminPanel({
   effectiveProtected,
   protectedSource,
   busy,
+  getOverrideConflict,
   onSetAccessChoice,
   onSaveOverride,
   onSaveAccess,
@@ -23,6 +25,7 @@ export function RouteRowAdminPanel({
   effectiveProtected: boolean;
   protectedSource: string;
   busy: boolean;
+  getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
   onSetAccessChoice: (id: string, v: "public" | "password" | "github") => void;
   onSaveOverride: (id: string, v: string) => void;
   onSaveAccess: (input: {
@@ -34,6 +37,10 @@ export function RouteRowAdminPanel({
 }) {
   const [overrideInput, setOverrideInput] = useState(overrideValue);
   const [passwordInput, setPasswordInput] = useState("");
+  const normalizedOverrideInput = normalizeRoutePath(overrideInput);
+  const overrideConflict = normalizedOverrideInput
+    ? getOverrideConflict(normalizedOverrideInput)
+    : null;
 
   const saveAccess = () => {
     onSaveAccess({
@@ -76,7 +83,8 @@ export function RouteRowAdminPanel({
             <button
               type="button"
               className="routes-explorer__admin-btn"
-              disabled={busy}
+              disabled={busy || Boolean(overrideConflict)}
+              title={overrideConflict ? `Conflicts with ${overrideConflict.path}` : "Save override"}
               onClick={() => onSaveOverride(it.id, overrideInput)}
             >
               Save
@@ -93,6 +101,18 @@ export function RouteRowAdminPanel({
               Clear
             </button>
           </div>
+
+          {overrideConflict ? (
+            <div className="routes-tree__panel-note routes-tree__panel-note--warn">
+              URL conflict on <code className="routes-explorer__admin-note-code">{overrideConflict.path}</code>.{" "}
+              Already used by{" "}
+              {overrideConflict.others
+                .slice(0, 3)
+                .map((x) => x.title || x.id)
+                .join(", ")}
+              {overrideConflict.count > 3 ? ` and ${overrideConflict.count - 3} more` : ""}.
+            </div>
+          ) : null}
         </section>
 
         <section className="routes-tree__panel-card">

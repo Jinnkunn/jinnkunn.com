@@ -5,6 +5,7 @@ import {
   buildRouteTree,
   computeVisibleRoutes,
   createEffectiveAccessFinder,
+  createOverrideConflictFinder,
   getDefaultCollapsed,
   parseAdminRoutesPayload,
 } from "../lib/site-admin/route-explorer-model.ts";
@@ -165,4 +166,21 @@ test("route-explorer-model: parseAdminRoutesPayload maps legacy path rules", () 
     auth: "password",
     mode: "exact",
   });
+});
+
+test("route-explorer-model: createOverrideConflictFinder detects duplicate effective routes", () => {
+  const { items, ids } = fixtureItems();
+  const findConflict = createOverrideConflictFinder({
+    items,
+    overrides: {
+      [ids.termId]: "/teaching",
+    },
+  });
+
+  const conflict = findConflict(ids.termId, "/teaching");
+  assert.equal(conflict?.path, "/teaching");
+  assert.equal(conflict?.count, 1);
+  assert.equal(conflict?.others[0]?.id, ids.teachingId);
+
+  assert.equal(findConflict(ids.termId, "/teaching/archive/2024-25-fall"), null);
 });

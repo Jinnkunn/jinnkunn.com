@@ -27,6 +27,7 @@ export type DefaultSiteConfig = {
     rootPageId: string | null;
     homePageId: string | null;
     routeOverrides: Record<string, string> | null;
+    sitemapExcludes: string[];
   };
 };
 

@@ -103,6 +103,16 @@ export function SiteAdminSettingsForm({
       </div>
 
       <div className="site-admin-form__row">
+        <label className="site-admin-form__label">Sitemap Excludes</label>
+        <textarea
+          className="site-admin-form__textarea site-admin-form__textarea--mono"
+          value={asString(draftSettings.sitemapExcludes)}
+          onChange={(e) => updateField("sitemapExcludes", e.target.value)}
+          placeholder={"/private\n/teaching/archive\n21040d70fdf580019476fa3c2ec769f2"}
+        />
+      </div>
+
+      <div className="site-admin-form__row">
         <label className="site-admin-form__label">Root Page ID</label>
         <input
           className="site-admin-form__input site-admin-form__input--mono"

@@ -30,7 +30,7 @@ const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
  *   seo?: {title?: string, description?: string, favicon?: string},
  *   integrations?: {googleAnalyticsId?: string},
  *   security?: {contentGithubUsers?: string[]},
- *   content?: {rootPageId?: string, homePageId?: string, routeOverrides?: Record<string, string>},
+ *   content?: {rootPageId?: string, homePageId?: string, routeOverrides?: Record<string, string>, sitemapExcludes?: string[]},
  *   nav?: NavConfig
  * }} SiteConfigRecord
  */

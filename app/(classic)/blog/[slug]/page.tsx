@@ -1,21 +1,14 @@
 import RawHtml from "@/components/raw-html";
 import { getBlogPostSlugs, parseBlogMetaFromMain } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
+import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
+import { buildPageMetadata } from "@/lib/seo/metadata";
 import { escapeHtml } from "@/lib/shared/text-utils";
+import { getSiteConfig } from "@/lib/site-config";
 import type { Metadata } from "next";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
-
-function extractTitleFromMainHtml(mainHtml: string): string {
-  const m = String(mainHtml || "").match(
-    /<h1\b[^>]*class="notion-header__title"[^>]*>([\s\S]*?)<\/h1>/i,
-  );
-  if (!m) return "Blog";
-  // Title is plain text in our generated HTML (already escaped), but keep it safe.
-  const raw = m[1].replace(/<[^>]+>/g, "").trim();
-  return raw || "Blog";
-}
 
 function buildBreadcrumbsHtml({ title, slug }: { title: string; slug: string }): string {
   const safeTitle = escapeHtml(title);
@@ -30,7 +23,7 @@ function rewriteBlogPostMainHtml(input: string, { slug }: { slug: string }): str
   //   Home / Blog / <post title>
   // This avoids depending on the Notion hierarchy (which may include an
   // intermediate "List" database) and matches the original site's UX.
-  const title = extractTitleFromMainHtml(out);
+  const title = extractTitleFromMain(out, "Blog");
   const breadcrumbs = buildBreadcrumbsHtml({ title, slug });
   out = out.replace(
     /<div class="super-navbar__breadcrumbs"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i,
@@ -50,13 +43,30 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
+  const cfg = getSiteConfig();
   const { slug } = await params;
+  const pathname = `/blog/${slug}`;
   try {
     const main = await loadRawMainHtml(`blog/list/${slug}`);
     const meta = parseBlogMetaFromMain(main);
-    return { title: `${meta.title} | Blog` };
+    const description = extractDescriptionFromMain(main) ?? cfg.seo.description;
+    return buildPageMetadata({
+      cfg,
+      title: `${meta.title} | Blog`,
+      description,
+      pathname,
+      type: "article",
+      publishedTime: meta.dateIso || undefined,
+      modifiedTime: meta.dateIso || undefined,
+    });
   } catch {
-    return { title: "Blog" };
+    return buildPageMetadata({
+      cfg,
+      title: "Blog",
+      description: cfg.seo.description,
+      pathname,
+      type: "article",
+    });
   }
 }
 

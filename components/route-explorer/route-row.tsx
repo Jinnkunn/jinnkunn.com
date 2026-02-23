@@ -3,7 +3,12 @@
 import type { CSSProperties } from "react";
 import { useMemo } from "react";
 
-import type { RouteTreeItem, EffectiveAccess, AdminConfig } from "@/lib/site-admin/route-explorer-model";
+import type {
+  RouteTreeItem,
+  EffectiveAccess,
+  AdminConfig,
+  OverrideConflict,
+} from "@/lib/site-admin/route-explorer-model";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRowAdminPanel } from "./route-row-admin-panel";
@@ -21,6 +26,8 @@ export function RouteRow({
   directProtected,
   overrideValue,
   overridePending,
+  overrideConflict,
+  getOverrideConflict,
   onToggleCollapsed,
   onToggleAdmin,
   onSetAccessChoice,
@@ -38,6 +45,8 @@ export function RouteRow({
   directProtected: boolean;
   overrideValue: string;
   overridePending: boolean;
+  overrideConflict: OverrideConflict | null;
+  getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
   onToggleCollapsed: (id: string) => void;
   onToggleAdmin: (id: string) => void;
   onSetAccessChoice: (id: string, v: "public" | "password" | "github") => void;
@@ -86,6 +95,7 @@ export function RouteRow({
         isHome={isHome}
         adminOpen={adminOpen}
         overridePending={overridePending}
+        overrideConflict={overrideConflict}
         directProtected={directProtected}
         inheritedProtected={inheritedProtected}
         effectiveAccess={effectiveAccess}
@@ -103,6 +113,7 @@ export function RouteRow({
           effectiveProtected={effectiveProtected}
           protectedSource={protectedSource}
           busy={busy}
+          getOverrideConflict={getOverrideConflict}
           onSetAccessChoice={onSetAccessChoice}
           onSaveOverride={onSaveOverride}
           onSaveAccess={onSaveAccess}

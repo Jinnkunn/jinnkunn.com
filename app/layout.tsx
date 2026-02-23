@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { getSiteConfig } from "@/lib/site-config";
+import { buildRootMetadata } from "@/lib/seo/metadata";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
 import Providers from "@/components/providers";
@@ -8,16 +9,7 @@ import "./globals.css";
 import "./state-pages.css";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const cfg = getSiteConfig();
-  const baseTitle = cfg.seo.title || cfg.siteName;
-  return {
-    title: {
-      default: baseTitle,
-      template: `%s | ${baseTitle}`,
-    },
-    description: cfg.seo.description,
-    icons: cfg.seo.favicon ? [{ rel: "icon", url: cfg.seo.favicon }] : undefined,
-  };
+  return buildRootMetadata(getSiteConfig());
 }
 
 export default function RootLayout({

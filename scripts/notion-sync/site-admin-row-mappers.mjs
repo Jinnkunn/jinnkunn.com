@@ -1,5 +1,6 @@
 import { getPropCheckbox, getPropNumber, getPropString } from "../../lib/notion/index.mjs";
 import { compactId, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
+import { parseSitemapExcludeEntries } from "../../lib/shared/sitemap-excludes.mjs";
 import { sha256Hex } from "./crypto-utils.mjs";
 import { normalizeHref } from "./page-meta.mjs";
 
@@ -37,6 +38,7 @@ export function applySiteSettingsRow(cfg, row) {
   const favicon = getPropString(row, "Favicon");
   const gaId = getPropString(row, "Google Analytics ID");
   const contentGithubUsers = getPropString(row, "Content GitHub Users");
+  const sitemapExcludesRaw = getPropString(row, "Sitemap Excludes");
   const rootPageId = getPropString(row, "Root Page ID");
   const homePageId = getPropString(row, "Home Page ID");
 
@@ -52,6 +54,10 @@ export function applySiteSettingsRow(cfg, row) {
   if (contentGithubUsers) {
     cfg.security = cfg.security || { contentGithubUsers: [] };
     cfg.security.contentGithubUsers = parseGithubUserList(contentGithubUsers);
+  }
+  if (sitemapExcludesRaw) {
+    cfg.content = cfg.content || {};
+    cfg.content.sitemapExcludes = parseSitemapExcludeEntries(sitemapExcludesRaw);
   }
   if (rootPageId) cfg.content.rootPageId = rootPageId;
   if (homePageId) cfg.content.homePageId = homePageId;

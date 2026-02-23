@@ -27,6 +27,7 @@ async function ensureSiteSettingsDbSchema(databaseId: string) {
   await ensureDatabaseProperties(databaseId, {
     "Google Analytics ID": { rich_text: {} },
     "Content GitHub Users": { rich_text: {} },
+    "Sitemap Excludes": { rich_text: {} },
   });
 }
 
