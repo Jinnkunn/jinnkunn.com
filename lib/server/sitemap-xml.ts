@@ -4,24 +4,17 @@ import { escapeXml } from "@/lib/server/http";
 
 type UrlsetEntry = {
   routePath: string;
-  lastmod?: string | null;
 };
 
 type IndexEntry = {
   path: string;
-  lastmod?: string | null;
 };
-
-function toLastmodTag(lastmod: string | null | undefined): string {
-  if (!lastmod) return "";
-  return `\n    <lastmod>${escapeXml(lastmod)}</lastmod>`;
-}
 
 export function renderSitemapUrlsetXml(origin: string, entries: UrlsetEntry[]): string {
   const urls = entries
     .map((entry) => {
       const loc = `${origin}${entry.routePath}`;
-      return `  <url>\n    <loc>${escapeXml(loc)}</loc>${toLastmodTag(entry.lastmod)}\n  </url>`;
+      return `  <url>\n    <loc>${escapeXml(loc)}</loc>\n  </url>`;
     })
     .join("\n");
 
@@ -37,7 +30,7 @@ export function renderSitemapIndexXml(origin: string, entries: IndexEntry[]): st
   const maps = entries
     .map((entry) => {
       const loc = `${origin}${entry.path}`;
-      return `  <sitemap>\n    <loc>${escapeXml(loc)}</loc>${toLastmodTag(entry.lastmod)}\n  </sitemap>`;
+      return `  <sitemap>\n    <loc>${escapeXml(loc)}</loc>\n  </sitemap>`;
     })
     .join("\n");
 

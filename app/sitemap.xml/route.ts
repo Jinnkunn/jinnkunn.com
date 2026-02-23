@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const docs = getSitemapSectionDocs();
   const xml = renderSitemapIndexXml(
     origin,
-    docs.map((doc) => ({ path: doc.path, lastmod: doc.lastmod })),
+    docs.map((doc) => ({ path: doc.path })),
   );
   return sitemapXmlResponse(xml);
 }
