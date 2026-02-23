@@ -9,10 +9,11 @@ import {
   pickProtectedRule,
 } from "@/lib/routes/strategy";
 import { getSiteConfig } from "@/lib/site-config";
+import { getSyncMeta } from "@/lib/sync-meta";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
-import { listRawHtmlRelPaths } from "@/lib/server/content-files";
+import { listRawHtmlFiles } from "@/lib/server/content-files";
 
 export type SitemapRoute = {
   routePath: string;
@@ -21,10 +22,39 @@ export type SitemapRoute = {
   depth: number;
 };
 
+export const SITEMAP_SECTION_ORDER = ["pages", "blog", "publications", "teaching"] as const;
+export type SitemapSection = (typeof SITEMAP_SECTION_ORDER)[number];
+
+export const SITEMAP_SECTION_PATHS: Record<SitemapSection, string> = {
+  pages: "/sitemap-pages.xml",
+  blog: "/sitemap-blog.xml",
+  publications: "/sitemap-publications.xml",
+  teaching: "/sitemap-teaching.xml",
+};
+
+export type SitemapUrl = {
+  routePath: string;
+  section: SitemapSection;
+  lastmod: string | null;
+};
+
+export type SitemapSectionDoc = {
+  section: SitemapSection;
+  path: string;
+  urls: SitemapUrl[];
+  lastmod: string | null;
+};
+
 type SitemapNode = {
   routePath: string;
   title: string;
   parentRoutePath: string;
+};
+
+type SitemapSnapshot = {
+  nodes: Map<string, SitemapNode>;
+  routeMtimeMs: Map<string, number>;
+  fallbackLastmod: string | null;
 };
 
 type SitemapExclusionContext = {
@@ -68,6 +98,13 @@ function displayTitleFromRoute(routePath: string): string {
   const seg = routePath.split("/").filter(Boolean).at(-1) || "";
   const decoded = decodeURIComponent(seg);
   return decoded.replace(/[-_]+/g, " ").trim() || decoded || "Untitled";
+}
+
+function sectionForRoutePath(routePath: string): SitemapSection {
+  if (routePath === "/blog" || routePath.startsWith("/blog/")) return "blog";
+  if (routePath === "/publications" || routePath.startsWith("/publications/")) return "publications";
+  if (routePath === "/teaching" || routePath.startsWith("/teaching/")) return "teaching";
+  return "pages";
 }
 
 function candidateScore(item: RouteManifestItem, canonicalRoute: string): number {
@@ -118,6 +155,41 @@ function compareRoutePath(a: string, b: string): number {
   if (a === "/" && b !== "/") return -1;
   if (b === "/" && a !== "/") return 1;
   return a.localeCompare(b);
+}
+
+function normalizeIsoTimestamp(value: string): string | null {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+function resolveFallbackLastmod(): string | null {
+  const syncedAt = getSyncMeta()?.syncedAt;
+  if (!syncedAt) return null;
+  return normalizeIsoTimestamp(syncedAt);
+}
+
+function resolveLastmod(mtimeMs: number | undefined, fallbackLastmod: string | null): string | null {
+  if (typeof mtimeMs === "number" && Number.isFinite(mtimeMs) && mtimeMs > 0) {
+    return new Date(mtimeMs).toISOString();
+  }
+  return fallbackLastmod;
+}
+
+function latestLastmod(values: Array<string | null>): string | null {
+  let latest: string | null = null;
+  let latestMs = -1;
+  for (const value of values) {
+    if (!value) continue;
+    const normalized = normalizeIsoTimestamp(value);
+    if (!normalized) continue;
+    const ms = Date.parse(normalized);
+    if (ms > latestMs) {
+      latestMs = ms;
+      latest = normalized;
+    }
+  }
+  return latest;
 }
 
 function buildRoutesMap(items: RouteManifestItem[]): Record<string, unknown> {
@@ -204,19 +276,24 @@ function isExcludedFromSitemap(routePath: string, ctx: SitemapExclusionContext):
   return false;
 }
 
-function collectCanonicalRoutes(ctx: SitemapExclusionContext): Set<string> {
-  const out = new Set<string>();
-  const tryAdd = (rawRoute: string) => {
+function collectCanonicalRoutes(ctx: SitemapExclusionContext): Map<string, number> {
+  const out = new Map<string, number>();
+  const tryAdd = (rawRoute: string, mtimeMs = 0) => {
     const canonical = canonicalizeRoutePath(rawRoute);
     if (!canonical) return;
     if (!isPublicSitemapRoute(canonical)) return;
     if (isExcludedFromSitemap(canonical, ctx)) return;
-    out.add(canonical);
+    const prev = out.get(canonical);
+    if (typeof prev === "number") {
+      out.set(canonical, Math.max(prev, mtimeMs));
+      return;
+    }
+    out.set(canonical, mtimeMs);
   };
 
-  for (const rel of listRawHtmlRelPaths()) {
-    const routePath = routePathFromRawRelPath(rel);
-    tryAdd(routePath);
+  for (const file of listRawHtmlFiles()) {
+    const routePath = routePathFromRawRelPath(file.relPath);
+    tryAdd(routePath, file.mtimeMs);
   }
 
   for (const extraRoute of EXTRA_ROUTES) {
@@ -230,10 +307,11 @@ function collectCanonicalRoutes(ctx: SitemapExclusionContext): Set<string> {
   return out;
 }
 
-function collectSitemapNodes(): Map<string, SitemapNode> {
+function collectSitemapSnapshot(): SitemapSnapshot {
   const manifest = getRoutesManifest();
   const exclusionCtx = createSitemapExclusionContext(manifest);
-  const routes = collectCanonicalRoutes(exclusionCtx);
+  const routeMtimeMs = collectCanonicalRoutes(exclusionCtx);
+  const routes = new Set(routeMtimeMs.keys());
   const manifestByRoute = pickManifestByCanonicalRoute(manifest);
   const nodes = new Map<string, SitemapNode>();
 
@@ -250,11 +328,14 @@ function collectSitemapNodes(): Map<string, SitemapNode> {
     );
     nodes.set(routePath, { routePath, title, parentRoutePath });
   }
-  return nodes;
+  return {
+    nodes,
+    routeMtimeMs,
+    fallbackLastmod: resolveFallbackLastmod(),
+  };
 }
 
-export function getHierarchicalSitemapRoutes(): SitemapRoute[] {
-  const nodes = collectSitemapNodes();
+function buildOrderedSitemapRoutes(nodes: Map<string, SitemapNode>): SitemapRoute[] {
   const childrenByParent = new Map<string, string[]>();
 
   for (const node of nodes.values()) {
@@ -295,6 +376,41 @@ export function getHierarchicalSitemapRoutes(): SitemapRoute[] {
   return ordered;
 }
 
+export function getHierarchicalSitemapRoutes(): SitemapRoute[] {
+  return buildOrderedSitemapRoutes(collectSitemapSnapshot().nodes);
+}
+
 export function getHierarchicalSitemapRoutePaths(): string[] {
   return getHierarchicalSitemapRoutes().map((row) => row.routePath);
+}
+
+export function getSitemapUrls(): SitemapUrl[] {
+  const snapshot = collectSitemapSnapshot();
+  const ordered = buildOrderedSitemapRoutes(snapshot.nodes);
+  return ordered.map((row) => ({
+    routePath: row.routePath,
+    section: sectionForRoutePath(row.routePath),
+    lastmod: resolveLastmod(snapshot.routeMtimeMs.get(row.routePath), snapshot.fallbackLastmod),
+  }));
+}
+
+export function getSitemapSectionUrls(section: SitemapSection): SitemapUrl[] {
+  return getSitemapUrls().filter((row) => row.section === section);
+}
+
+export function getSitemapSectionDocs(): SitemapSectionDoc[] {
+  const all = getSitemapUrls();
+  const bySection = new Map<SitemapSection, SitemapUrl[]>();
+  for (const section of SITEMAP_SECTION_ORDER) bySection.set(section, []);
+  for (const row of all) bySection.get(row.section)?.push(row);
+
+  return SITEMAP_SECTION_ORDER.map((section) => {
+    const urls = bySection.get(section) || [];
+    return {
+      section,
+      path: SITEMAP_SECTION_PATHS[section],
+      urls,
+      lastmod: latestLastmod(urls.map((u) => u.lastmod)),
+    };
+  });
 }

@@ -71,6 +71,12 @@ function listHtmlFilesRecSync(rootDir: string): string[] {
   return out;
 }
 
+export type RawHtmlFileInfo = {
+  relPath: string;
+  filePath: string;
+  mtimeMs: number;
+};
+
 function isDirSync(dir: string): boolean {
   try {
     return fs.statSync(dir).isDirectory();
@@ -135,9 +141,17 @@ export function getNotionSyncCacheDir(): string {
  * Example values: "index", "bio", "blog/list/<slug>".
  */
 export function listRawHtmlRelPaths(): string[] {
+  return listRawHtmlFiles().map((item) => item.relPath);
+}
+
+/**
+ * Return deduped raw-html files (rel path + file path + mtimeMs) across
+ * generated + legacy roots.
+ */
+export function listRawHtmlFiles(): RawHtmlFileInfo[] {
   const roots = getRawHtmlRoots();
   const seen = new Set<string>();
-  const out: string[] = [];
+  const out: RawHtmlFileInfo[] = [];
 
   for (const root of roots) {
     if (!isDirSync(root)) continue;
@@ -148,11 +162,21 @@ export function listRawHtmlRelPaths(): string[] {
       const noExt = rel.slice(0, -".html".length);
       if (!noExt || seen.has(noExt)) continue;
       seen.add(noExt);
-      out.push(noExt);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(abs).mtimeMs;
+      } catch {
+        // ignore
+      }
+      out.push({
+        relPath: noExt,
+        filePath: abs,
+        mtimeMs,
+      });
     }
   }
 
   // Deterministic output.
-  out.sort((a, b) => a.localeCompare(b));
+  out.sort((a, b) => a.relPath.localeCompare(b.relPath));
   return out;
 }
