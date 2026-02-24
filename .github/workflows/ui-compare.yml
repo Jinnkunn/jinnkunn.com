@@ -11,11 +11,21 @@ on:
         description: "Clone site origin"
         required: false
         default: "https://jinnkunn-com.vercel.app"
+      max_diff_percent:
+        description: "Fail threshold (% mismatched pixels)"
+        required: false
+        default: "8"
+      fail_on_diff:
+        description: "Fail workflow when threshold exceeded (1/0)"
+        required: false
+        default: "1"
 
 jobs:
   ui-compare:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      FLAGS_SECRET: "KAxoGnNkSfOW8cmVqZ1bV29G1uMp4WXNCEvDWxcWID4"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +43,8 @@ jobs:
         env:
           ORIG_ORIGIN: ${{ inputs.orig_origin }}
           CLONE_ORIGIN: ${{ inputs.clone_origin }}
+          SNAPSHOT_COMPARE_MAX_DIFF_PERCENT: ${{ inputs.max_diff_percent }}
+          SNAPSHOT_COMPARE_FAIL_ON_DIFF: ${{ inputs.fail_on_diff }}
         run: npm run snapshot:compare
 
       - name: Upload Compare Screenshots
@@ -41,4 +53,3 @@ jobs:
           name: ui-compare
           path: output/playwright/compare/**
           if-no-files-found: error
-

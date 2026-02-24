@@ -1,22 +1,32 @@
-import {
-  compactId as compactIdRaw,
-  dashify32 as dashify32Raw,
-  normalizeRoutePath as normalizeRoutePathRaw,
-  slugify as slugifyRaw,
-} from "./route-utils.mjs";
+export function compactId(idOrUrl: string): string {
+  const s = String(idOrUrl || "").trim();
+  const m =
+    s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) ||
+    s.match(/[0-9a-f]{32}/i);
+  if (!m) return "";
+  return m[0].replace(/-/g, "").toLowerCase();
+}
 
-export const compactId = compactIdRaw as (
-  idOrUrl: string,
-) => string;
+export function slugify(input: string): string {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+}
 
-export const slugify = slugifyRaw as (
-  input: string,
-) => string;
+export function normalizeRoutePath(p: string): string {
+  const raw = String(p || "").trim();
+  if (!raw) return "";
+  let out = raw.startsWith("/") ? raw : `/${raw}`;
+  out = out.replace(/\/+$/g, "");
+  return out || "/";
+}
 
-export const normalizeRoutePath = normalizeRoutePathRaw as (
-  p: string,
-) => string;
-
-export const dashify32 = dashify32Raw as (
-  id32: string,
-) => string;
+export function dashify32(id32: string): string {
+  const s = String(id32 || "").replace(/-/g, "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(s)) return "";
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
+}

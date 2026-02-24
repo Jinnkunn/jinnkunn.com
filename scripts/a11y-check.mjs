@@ -127,6 +127,7 @@ async function fetchText(url) {
 }
 
 async function discoverSitemapPaths(baseURL, priorityPaths, maxPages) {
+  const fullSite = envFlag("A11Y_FULL_SITE");
   const origin = new URL(baseURL).origin;
   const indexXml = await fetchText(`${baseURL}/sitemap.xml`);
   const sectionLocs = parseLocTags(indexXml);
@@ -150,12 +151,15 @@ async function discoverSitemapPaths(baseURL, priorityPaths, maxPages) {
   }
 
   const discoveredList = Array.from(discovered.values()).sort((a, b) => a.localeCompare(b));
-  const targetPaths = pickAuditPaths(discoveredList, maxPages, priorityPaths);
+  const targetPaths = fullSite
+    ? discoveredList
+    : pickAuditPaths(discoveredList, maxPages, priorityPaths);
   if (targetPaths.length === 0) {
     throw new Error("A11y path selection is empty after sitemap discovery.");
   }
 
   return {
+    fullSite,
     sectionDocs: sectionLocs,
     discoveredPaths: discoveredList,
     targetPaths,
@@ -240,6 +244,8 @@ async function runPageA11y(page, url) {
 async function main() {
   const skipBuild = envFlag("A11Y_SKIP_BUILD");
   const failAll = envFlag("A11Y_FAIL_ALL");
+  const fullSiteMode = envFlag("A11Y_FULL_SITE");
+  const failAllEffective = failAll || fullSiteMode;
   const portRaw = Number.parseInt(String(process.env.A11Y_PORT || "3012"), 10);
   const port = Number.isFinite(portRaw) && portRaw > 0 ? portRaw : 3012;
   const baseURL = `http://localhost:${port}`;
@@ -259,10 +265,11 @@ async function main() {
     generatedAt: new Date().toISOString(),
     baseURL,
     skipBuild,
+    fullSite: fullSiteMode,
     maxPages,
     priorityPaths,
     source: explicitPaths.length > 0 ? "env" : "sitemap",
-    failMode: failAll ? "all" : "core",
+    failMode: failAllEffective ? "all" : "core",
     discoveredCount: 0,
     discoveredPaths: [],
     targetPaths: [],
@@ -284,6 +291,7 @@ async function main() {
     let targetPaths = explicitPaths;
     if (targetPaths.length === 0) {
       const discovered = await discoverSitemapPaths(baseURL, priorityPaths, maxPages);
+      report.fullSite = discovered.fullSite;
       report.discoveredCount = discovered.discoveredPaths.length;
       report.discoveredPaths = discovered.discoveredPaths;
       report.targetPaths = discovered.targetPaths;
@@ -297,6 +305,9 @@ async function main() {
     console.log(
       `[a11y] Source=${report.source}; failMode=${report.failMode}; discovered=${report.discoveredCount}; auditing=${targetPaths.length}; max=${maxPages}`,
     );
+    if (report.fullSite) {
+      console.log("[a11y] full-site mode enabled (all sitemap routes are blocking).");
+    }
 
     const enforcedPaths = new Set(priorityPaths.map((p) => normalizePathname(p)).filter(Boolean));
 
@@ -309,7 +320,7 @@ async function main() {
       const violations = rawViolations.map((v) => compactViolation(v, pathname));
       const high = violations.filter((v) => FAILING_IMPACTS.has(v.impact));
       const isEnforced = enforcedPaths.has(pathname);
-      const blocking = failAll ? high.length : isEnforced ? high.length : 0;
+      const blocking = failAllEffective ? high.length : isEnforced ? high.length : 0;
 
       report.pages.push({
         path: pathname,

@@ -180,3 +180,34 @@ test("search-api-service: heading match outranks body-only match", () => {
 
   assert.equal(out.items[0]?.routePath, "/a");
 });
+
+test("search-api-service: includeSnippets=false strips snippet payload", () => {
+  const manifest = [
+    manifestRow({ id: "home", title: "Home", routePath: "/" }),
+    manifestRow({ id: "blog", title: "Blog", routePath: "/blog", parentId: "home" }),
+    manifestRow({ id: "post", title: "Post A", routePath: "/blog/post-a", parentId: "blog" }),
+  ];
+  const index = [
+    {
+      routePath: "/blog/post-a",
+      title: "Post A",
+      kind: "page",
+      text: "reasoning drift appears in body text",
+      headings: ["Post A"],
+    },
+  ];
+
+  const out = buildSearchResponse({
+    q: "reasoning drift",
+    type: "all",
+    offset: 0,
+    limit: 20,
+    scope: "",
+    includeSnippets: false,
+    index,
+    manifest,
+  });
+
+  assert.equal(out.items.length, 1);
+  assert.equal(Object.hasOwn(out.items[0], "snippet"), false);
+});

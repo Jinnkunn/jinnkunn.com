@@ -8,7 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      FLAGS_SECRET: "KAxoGnNkSfOW8cmVqZ1bV29G1uMp4WXNCEvDWxcWID4"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,9 +46,19 @@ jobs:
       - name: Accessibility (Axe)
         env:
           A11Y_SKIP_BUILD: "1"
-          A11Y_MAX_PAGES: "12"
+          A11Y_FULL_SITE: "1"
           A11Y_FAIL_ALL: "1"
         run: npm run check:a11y
+
+      - name: Performance Budget
+        env:
+          PERF_SKIP_BUILD: "1"
+          PERF_STRICT: "1"
+          PERF_PATHS: "/,/blog,/publications"
+          PERF_BUDGET_LCP_MS: "4500"
+          PERF_BUDGET_CLS: "0.12"
+          PERF_BUDGET_INP_MS: "300"
+        run: npm run check:perf
 
       - name: Upload UI Smoke Artifacts
         if: failure()
@@ -62,4 +74,12 @@ jobs:
         with:
           name: ci-a11y-artifacts
           path: output/a11y/**
+          if-no-files-found: ignore
+
+      - name: Upload Performance Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-perf-artifacts
+          path: output/perf/**
           if-no-files-found: ignore

@@ -1,57 +1,86 @@
-import {
-  blogSourceRouteForPublicPath as blogSourceRouteForPublicPathRaw,
-  buildParentByPageIdMap as buildParentByPageIdMapRaw,
-  canonicalizePublicRoute as canonicalizePublicRouteRaw,
-  findProtectedByPageHierarchy as findProtectedByPageHierarchyRaw,
-  findProtectedMatch as findProtectedMatchRaw,
-  lookupPageIdForPath as lookupPageIdForPathRaw,
-  normalizePathname as normalizePathnameRaw,
-  pickProtectedRule as pickProtectedRuleRaw,
-  resolveNotionIdPathRedirect as resolveNotionIdPathRedirectRaw,
-} from "./strategy.mjs";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
-
-function isProtectedRoute(value: unknown): value is ProtectedRoute {
-  if (!value || typeof value !== "object") return false;
-  const row = value as Record<string, unknown>;
-  return (
-    typeof row.id === "string" &&
-    typeof row.path === "string" &&
-    typeof row.mode === "string" &&
-    typeof row.token === "string"
-  );
-}
-
-function parseProtectedRoute(value: unknown): ProtectedRoute | null {
-  return isProtectedRoute(value) ? value : null;
-}
+import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 
 export function normalizePathname(pathname: string): string {
-  return normalizePathnameRaw(pathname);
+  const p = String(pathname || "").trim();
+  if (!p) return "/";
+  if (p === "/") return "/";
+  return p.endsWith("/") ? p.slice(0, -1) : p;
 }
 
 export function canonicalizePublicRoute(routePath: string): string {
-  return canonicalizePublicRouteRaw(routePath);
+  const p = normalizePathname(routePath);
+  if (p === "/blog/list") return "/blog";
+  if (p.startsWith("/blog/list/")) return p.replace(/^\/blog\/list\//, "/blog/");
+  if (p === "/list") return "/blog";
+  if (p.startsWith("/list/")) return p.replace(/^\/list\//, "/blog/");
+  return p;
 }
 
 export function resolveNotionIdPathRedirect(
   pathname: string,
   pageIdToRoute: Record<string, string>,
 ): string {
-  return resolveNotionIdPathRedirectRaw(pathname, pageIdToRoute);
+  const p = normalizePathname(pathname);
+  const m = p.match(/^\/([0-9a-f]{32})$/i);
+  if (!m) return "";
+  const id = m[1].toLowerCase();
+  const target = pageIdToRoute?.[id] || "";
+  if (!target) return "";
+  const canon = normalizeRoutePath(target);
+  if (!canon || canon === p) return "";
+  return canon;
 }
 
 export function lookupPageIdForPath(pathname: string, routesMap: Record<string, unknown>): string {
-  return lookupPageIdForPathRaw(pathname, routesMap);
+  const p = canonicalizePublicRoute(normalizePathname(pathname));
+
+  const direct = routesMap?.[p];
+  if (typeof direct === "string" && direct) return compactId(direct);
+
+  const m = p.match(/^\/blog\/([^/]+)$/);
+  if (m) {
+    const alt = `/blog/list/${m[1]}`;
+    const hit = routesMap?.[alt];
+    if (typeof hit === "string" && hit) return compactId(hit);
+  }
+
+  return "";
 }
 
 export function buildParentByPageIdMap(routesManifest: unknown): Record<string, string> {
-  return buildParentByPageIdMapRaw(routesManifest);
+  const out: Record<string, string> = {};
+  const items = Array.isArray(routesManifest) ? routesManifest : [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = compactId(typeof row.id === "string" ? row.id : "");
+    if (!id) continue;
+    const parentId = compactId(typeof row.parentId === "string" ? row.parentId : "");
+    out[id] = parentId || "";
+  }
+  return out;
 }
 
 export function findProtectedMatch(pathname: string, rules: ProtectedRoute[]): ProtectedRoute | null {
-  const out = findProtectedMatchRaw(pathname, rules);
-  return parseProtectedRoute(out);
+  const p = normalizePathname(pathname);
+
+  for (const rule of rules) {
+    if (rule.mode !== "exact") continue;
+    const rp = normalizePathname(rule.path);
+    if (rp === p || p.startsWith(`${rp}/`)) return rule;
+  }
+
+  let best: ProtectedRoute | null = null;
+  for (const rule of rules) {
+    if (rule.mode !== "prefix") continue;
+    const rp = normalizePathname(rule.path);
+    if (rp === "/") continue;
+    if (p === rp || p.startsWith(`${rp}/`)) {
+      if (!best || rp.length > normalizePathname(best.path).length) best = rule;
+    }
+  }
+  return best;
 }
 
 export function findProtectedByPageHierarchy(
@@ -59,8 +88,22 @@ export function findProtectedByPageHierarchy(
   rules: ProtectedRoute[],
   parentByPageId: Record<string, string>,
 ): ProtectedRoute | null {
-  const out = findProtectedByPageHierarchyRaw(pageId32, rules, parentByPageId);
-  return parseProtectedRoute(out);
+  const byId: Record<string, ProtectedRoute> = {};
+  for (const rule of rules) {
+    if ((rule.key || "") !== "pageId") continue;
+    const pid = compactId(rule.pageId || rule.id || "");
+    if (!pid) continue;
+    if (!byId[pid] || (byId[pid].auth || "password") !== "password") byId[pid] = rule;
+  }
+
+  let cur = compactId(pageId32);
+  let guard = 0;
+  while (cur && guard++ < 200) {
+    const hit = byId[cur];
+    if (hit) return hit;
+    cur = parentByPageId?.[cur] || "";
+  }
+  return null;
 }
 
 export function pickProtectedRule(
@@ -69,10 +112,14 @@ export function pickProtectedRule(
   routesMap: Record<string, unknown>,
   parentByPageId: Record<string, string>,
 ): ProtectedRoute | null {
-  const out = pickProtectedRuleRaw(pathname, rules, routesMap, parentByPageId);
-  return parseProtectedRoute(out);
+  const pageId = lookupPageIdForPath(pathname, routesMap);
+  const byPage = pageId ? findProtectedByPageHierarchy(pageId, rules, parentByPageId) : null;
+  return byPage || findProtectedMatch(pathname, rules);
 }
 
 export function blogSourceRouteForPublicPath(pathname: string): string {
-  return blogSourceRouteForPublicPathRaw(pathname);
+  const p = canonicalizePublicRoute(normalizePathname(pathname));
+  const m = p.match(/^\/blog\/([^/]+)$/);
+  if (!m) return "";
+  return `/blog/list/${m[1]}`;
 }

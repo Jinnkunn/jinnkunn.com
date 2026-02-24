@@ -161,6 +161,9 @@ export function deriveReadinessState(payload: SiteAdminStatusPayload | null): Re
   if (!env.hasDeployHookUrl) parts.push("Missing deploy hook");
   else okParts.push("Deploy hook");
 
+  if (!env.hasFlagsSecret) parts.push("Missing FLAGS_SECRET");
+  else okParts.push("Flags secret");
+
   return { ok: parts.length === 0, reason: parts.join("; "), okHint: okParts.join(", ") };
 }
 

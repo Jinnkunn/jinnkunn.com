@@ -126,6 +126,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
     notionVersion: toStringValue(value.env.notionVersion),
     hasDeployHookUrl: toBooleanValue(value.env.hasDeployHookUrl),
     hasNextAuthSecret: toBooleanValue(value.env.hasNextAuthSecret),
+    hasFlagsSecret: toBooleanValue(value.env.hasFlagsSecret),
     githubAllowlistCount: toNumberValue(value.env.githubAllowlistCount),
     contentGithubAllowlistCount: toNumberValue(value.env.contentGithubAllowlistCount),
   };
@@ -135,6 +136,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
     env.hasNotionAdminPageId === null ||
     env.hasDeployHookUrl === null ||
     env.hasNextAuthSecret === null ||
+    env.hasFlagsSecret === null ||
     env.githubAllowlistCount === null ||
     env.contentGithubAllowlistCount === null
   ) {
@@ -198,6 +200,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
       notionVersion: env.notionVersion,
       hasDeployHookUrl: env.hasDeployHookUrl,
       hasNextAuthSecret: env.hasNextAuthSecret,
+      hasFlagsSecret: env.hasFlagsSecret,
       githubAllowlistCount: env.githubAllowlistCount,
       contentGithubAllowlistCount: env.contentGithubAllowlistCount,
     },

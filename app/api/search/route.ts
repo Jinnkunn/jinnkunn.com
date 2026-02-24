@@ -5,6 +5,7 @@ import { isIgnoredPath, normalizeQuery } from "@/lib/search/api-model";
 import { buildSearchResponse, type SearchTypeParam } from "@/lib/search/api-service";
 import { emptySearchResponse, type SearchResponse } from "@/lib/shared/search-contract";
 import { noStoreErrorOnly, noStoreJson, withNoStoreApi } from "@/lib/server/api-response";
+import { searchRichSnippetsFlag } from "@/lib/flags";
 
 export const runtime = "nodejs";
 
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
     const limit = Math.max(1, Math.min(50, Number.isFinite(limitRaw) ? limitRaw : 20));
     const scopeRaw = String(url.searchParams.get("scope") || "").trim();
     const scope = scopeRaw && scopeRaw.startsWith("/") ? normalizePathname(scopeRaw) : "";
+    const includeSnippets = await searchRichSnippetsFlag();
     const response = buildSearchResponse({
       q,
       type,
@@ -42,6 +44,7 @@ export async function GET(req: Request) {
       scope,
       index: getSearchIndex().filter((it) => !isIgnoredPath(it.routePath)),
       manifest: getRoutesManifest().filter((it) => !isIgnoredPath(it.routePath)),
+      includeSnippets,
     });
     return noStoreJson(response satisfies SearchResponse);
   }, { status: 500, fallback: "Search failed" });

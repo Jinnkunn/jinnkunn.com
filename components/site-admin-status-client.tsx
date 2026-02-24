@@ -3,7 +3,13 @@
 import { useSiteAdminStatusData } from "@/components/site-admin/status/use-status-data";
 import { SiteAdminStatusView } from "@/components/site-admin/status/view";
 
-export default function SiteAdminStatusClient() {
+type SiteAdminStatusClientProps = {
+  showBanner?: boolean;
+};
+
+export default function SiteAdminStatusClient({
+  showBanner = true,
+}: SiteAdminStatusClientProps) {
   const {
     busy,
     res,
@@ -48,7 +54,7 @@ export default function SiteAdminStatusClient() {
       {payload ? (
         <SiteAdminStatusView
           payload={payload}
-          banner={banner}
+          banner={showBanner ? banner : null}
           vercelLink={vercelLink}
           stale={stale}
           generated={generated}

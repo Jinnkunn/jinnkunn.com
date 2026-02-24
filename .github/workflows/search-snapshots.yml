@@ -12,6 +12,8 @@ jobs:
   search-snapshots:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      FLAGS_SECRET: "KAxoGnNkSfOW8cmVqZ1bV29G1uMp4WXNCEvDWxcWID4"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,4 +38,3 @@ jobs:
           name: search-snapshots
           path: output/playwright/search/**
           if-no-files-found: error
-

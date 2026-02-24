@@ -1,25 +1,18 @@
-import {
-  findDbByTitle as findDbByTitleRaw,
-} from "./discovery.mjs";
-import { findChildDatabases as findChildDatabasesRaw } from "./block-children-cache.mjs";
-import { parseNotionDatabaseRef } from "./adapters";
-import type { NotionDatabaseRef } from "./types";
+import { slugify } from "../shared/route-utils.ts";
+import { findChildDatabases as findChildDatabasesRaw } from "./block-children-cache.ts";
+import type { NotionDatabaseRef } from "./types.ts";
 
 export async function findChildDatabases(
   blockId: string,
   maxDepth?: number,
 ): Promise<NotionDatabaseRef[]> {
-  const out = await findChildDatabasesRaw(blockId, maxDepth);
-  if (!Array.isArray(out)) return [];
-  return out
-    .map(parseNotionDatabaseRef)
-    .filter((it): it is NotionDatabaseRef => Boolean(it));
+  return await findChildDatabasesRaw(blockId, maxDepth);
 }
 
 export function findDbByTitle(
   dbs: NotionDatabaseRef[],
   title: string,
 ): NotionDatabaseRef | null {
-  const out = findDbByTitleRaw(dbs, title);
-  return parseNotionDatabaseRef(out);
+  const want = slugify(title);
+  return dbs.find((d) => slugify(d.title) === want) || null;
 }

@@ -31,6 +31,7 @@ export type SiteAdminStatusPayload = {
     notionVersion: string;
     hasDeployHookUrl: boolean;
     hasNextAuthSecret: boolean;
+    hasFlagsSecret: boolean;
     githubAllowlistCount: number;
     contentGithubAllowlistCount: number;
   };

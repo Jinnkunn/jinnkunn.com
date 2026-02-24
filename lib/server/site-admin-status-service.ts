@@ -154,6 +154,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       notionVersion: process.env.NOTION_VERSION || "2022-06-28",
       hasDeployHookUrl: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL?.trim()),
       hasNextAuthSecret: Boolean((process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim()),
+      hasFlagsSecret: Boolean((process.env.FLAGS_SECRET || "").trim()),
       githubAllowlistCount: allow.size,
       contentGithubAllowlistCount: allowContent.size,
     },

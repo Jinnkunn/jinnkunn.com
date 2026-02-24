@@ -1,12 +1,4 @@
 import {
-  getPropCheckbox as getPropCheckboxRaw,
-  getPropNumber as getPropNumberRaw,
-  getPropString as getPropStringRaw,
-  richTextPlain as richTextPlainRaw,
-} from "./properties.mjs";
-import { listBlockChildren as listBlockChildrenRaw, queryDatabase as queryDatabaseRaw } from "./paginated.mjs";
-import { notionRequest as notionRequestRaw } from "./request.mjs";
-import {
   parseNotionBlockArray,
   parseNotionPageLikeArray,
 } from "./adapters.ts";
@@ -21,6 +13,17 @@ import type {
   NotionRequestOptions,
   NotionRichTextItem,
 } from "./types.ts";
+import {
+  getPropCheckbox as getPropCheckboxSafe,
+  getPropNumber as getPropNumberSafe,
+  getPropString as getPropStringSafe,
+  richTextPlain as richTextPlainSafe,
+} from "./properties.ts";
+import {
+  listBlockChildren as listBlockChildrenSafe,
+  queryDatabase as queryDatabaseSafe,
+} from "./paginated.ts";
+import { notionRequest as notionRequestSafe } from "./request.ts";
 
 export type {
   NotionBlock,
@@ -34,12 +37,12 @@ export async function notionRequest<T = unknown>(
   pathname: string,
   opts?: NotionRequestOptions,
 ): Promise<T> {
-  const out = await notionRequestRaw(pathname, opts);
+  const out = await notionRequestSafe(pathname, opts);
   return out as T;
 }
 
 export async function listBlockChildren(blockId: string): Promise<NotionBlock[]> {
-  const out = await listBlockChildrenRaw(blockId);
+  const out = await listBlockChildrenSafe(blockId);
   return parseNotionBlockArray(out);
 }
 
@@ -47,12 +50,12 @@ export async function queryDatabase(
   databaseId: string,
   opts?: { filter?: unknown; sorts?: unknown },
 ): Promise<NotionPageLike[]> {
-  const out = await queryDatabaseRaw(databaseId, opts);
+  const out = await queryDatabaseSafe(databaseId, opts);
   return parseNotionPageLikeArray(out);
 }
 
 export function richTextPlain(rt: NotionRichTextItem[] | undefined | null): string {
-  const out = richTextPlainRaw(rt);
+  const out = richTextPlainSafe(rt);
   return readTrimmedString(out);
 }
 
@@ -60,7 +63,7 @@ export function getPropString(
   page: NotionPageLike | null | undefined,
   name: string,
 ): string {
-  const out = getPropStringRaw(page, name);
+  const out = getPropStringSafe(page, name);
   return readTrimmedString(out);
 }
 
@@ -68,7 +71,7 @@ export function getPropNumber(
   page: NotionPageLike | null | undefined,
   name: string,
 ): number | null {
-  const out = getPropNumberRaw(page, name);
+  const out = getPropNumberSafe(page, name);
   return readNumber(out);
 }
 
@@ -76,6 +79,6 @@ export function getPropCheckbox(
   page: NotionPageLike | null | undefined,
   name: string,
 ): boolean | null {
-  const out = getPropCheckboxRaw(page, name);
+  const out = getPropCheckboxSafe(page, name);
   return readBoolean(out);
 }

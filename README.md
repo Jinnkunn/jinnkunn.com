@@ -69,6 +69,9 @@ Required for `/site-admin` GitHub login:
 - `NEXTAUTH_SECRET` (or `AUTH_SECRET`)
 - `SITE_ADMIN_GITHUB_USERS` (comma-separated GitHub usernames, e.g. `jinnkunn,@someone`)
 
+Required for Vercel Flags SDK:
+- `FLAGS_SECRET` (32-byte base64url secret, e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`)
+
 Optional:
 - `CONTENT_GITHUB_USERS` (allowlist for viewing protected content)
 - `VERCEL_DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for signed deploy API / Site Admin deploy)
@@ -160,7 +163,16 @@ Outputs go to `output/playwright/search/<timestamp>/`.
 ORIG_ORIGIN="https://jinkunchen.com" CLONE_ORIGIN="https://your-deployment.vercel.app" npm run snapshot:compare
 ```
 
-Outputs go to `output/playwright/compare/<timestamp>/`.
+Outputs go to `output/playwright/compare/<timestamp>/` and include:
+- `orig__*.png` / `clone__*.png`
+- `diff__*.png` (pixel diff image)
+- `summary.json` (per-page diff percent + gate result)
+
+Diff gate env vars:
+
+```bash
+SNAPSHOT_COMPARE_MAX_DIFF_PERCENT=8 SNAPSHOT_COMPARE_FAIL_ON_DIFF=1 npm run snapshot:compare
+```
 
 ## UI Smoke Checks
 
@@ -182,7 +194,7 @@ SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui
 
 Run automated accessibility checks (WCAG 2A/2AA).
 
-By default, the checker:
+Default behavior:
 
 - discovers routes from `sitemap.xml` + section sitemaps,
 - keeps priority routes (`/`, `/blog`, `/publications`),
@@ -208,9 +220,30 @@ A11Y_PATHS="/,/blog,/publications,/works" npm run check:a11y
 
 # fail on all audited pages (default only blocks on priority/core pages)
 A11Y_FAIL_ALL=1 npm run check:a11y
+
+# full-site mode (audit all sitemap URLs; all are blocking)
+A11Y_FULL_SITE=1 A11Y_FAIL_ALL=1 npm run check:a11y
 ```
 
 Outputs go to `output/a11y/<timestamp>/report.json` and `output/a11y/latest.json`.
+
+## Performance Budget Checks (LCP / CLS / INP)
+
+Run lab performance budget checks for core pages:
+
+```bash
+npm run check:perf
+```
+
+Common overrides:
+
+```bash
+PERF_PATHS="/,/blog,/publications,/works" npm run check:perf
+PERF_BUDGET_LCP_MS=4500 PERF_BUDGET_CLS=0.12 PERF_BUDGET_INP_MS=300 npm run check:perf
+PERF_SKIP_BUILD=1 npm run check:perf
+```
+
+Outputs go to `output/perf/<timestamp>/report.json` and `output/perf/latest.json`.
 
 CI currently runs with `A11Y_FAIL_ALL=1` (the sampled audited pages are blocking).
 
@@ -246,7 +279,7 @@ Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-
 
 ## GitHub Actions
 
-- `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **axe a11y checks**.
+- `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **full-site axe a11y checks** + **performance budgets**.
 - `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

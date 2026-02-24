@@ -3,6 +3,7 @@ import Link from "next/link";
 import SiteAdminDeployClient from "@/components/site-admin-deploy-client";
 import SiteAdminStatusClient from "@/components/site-admin-status-client";
 import SiteAdminBreadcrumbs from "@/components/site-admin-breadcrumbs";
+import { siteAdminStatusBannerFlag } from "@/lib/flags";
 
 export const metadata: Metadata = {
   title: "Site Admin",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function SiteAdminHome() {
+  const showStatusBanner = await siteAdminStatusBannerFlag();
   return (
     <main id="page-site-admin" className="super-content page__site-admin parent-page__index">
       <SiteAdminBreadcrumbs
@@ -31,7 +33,7 @@ export default async function SiteAdminHome() {
 
       <article id="block-site-admin" className="notion-root max-width has-footer">
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <SiteAdminStatusClient />
+          <SiteAdminStatusClient showBanner={showStatusBanner} />
 
           <section>
             <h2 className="notion-heading notion-semantic-string">Deploy</h2>

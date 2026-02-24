@@ -22,6 +22,7 @@ function makeValidPayload(overrides = {}) {
       notionVersion: "2022-06-28",
       hasDeployHookUrl: true,
       hasNextAuthSecret: true,
+      hasFlagsSecret: true,
       githubAllowlistCount: 2,
       contentGithubAllowlistCount: 3,
     },

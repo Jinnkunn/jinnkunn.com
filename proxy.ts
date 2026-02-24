@@ -58,6 +58,7 @@ function isBypassedPath(pathname: string): boolean {
     pathname.startsWith("/fonts/") ||
     pathname.startsWith("/web_image/") ||
     pathname.startsWith("/notion-assets/") ||
+    pathname.startsWith("/.well-known/") ||
     pathname.startsWith("/cdn-cgi/") ||
     pathname === "/favicon.ico" ||
     pathname === "/apple-touch-icon.png" ||

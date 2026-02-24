@@ -29,6 +29,7 @@ type SearchRunInput = {
   scope: string;
   index: SearchIndexItem[];
   manifest: SearchManifestItem[];
+  includeSnippets?: boolean;
 };
 
 function inScope(routePath: string, scope: string): boolean {
@@ -72,7 +73,7 @@ function buildMaps(manifest: SearchManifestItem[]) {
 }
 
 export function buildSearchResponse(input: SearchRunInput): SearchResponse {
-  const { q, type, offset, limit, scope, index, manifest } = input;
+  const { q, type, offset, limit, scope, index, manifest, includeSnippets = true } = input;
   const ql = q.toLowerCase();
   const terms = tokenizeSearchQuery(q);
   const { byRoute, byId } = buildMaps(manifest);
@@ -134,24 +135,29 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
 
     const items: SearchItem[] = filtered
       .slice(offset, offset + limit)
-      .map(({ item, canon, typeKey, headingsArr, bodyPos }) => ({
-      title: item.routePath === "/" ? "Home" : item.title || "Untitled",
-      routePath: canon,
-      kind: normalizeKindForTypeKey(typeKey),
-      snippet: (() => {
-        const headings = headingsArr.join("\n");
-        const body = String(item.text || "");
-        const matchedHeading = headingsArr.find((h) => bestPos(safeLower(h), terms) >= 0) || "";
-        const src =
-          bodyPos >= 0
-            ? body
-            : matchedHeading
-              ? `${matchedHeading}\n${body}`.trim()
-              : `${headings}\n${body}`.trim();
-        return buildSnippetByTerms(src, terms);
-      })(),
-      breadcrumb: buildBreadcrumb(item.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
-    }));
+      .map(({ item, canon, typeKey, headingsArr, bodyPos }) => {
+        const snippet = (() => {
+          if (!includeSnippets) return "";
+          const headings = headingsArr.join("\n");
+          const body = String(item.text || "");
+          const matchedHeading = headingsArr.find((h) => bestPos(safeLower(h), terms) >= 0) || "";
+          const src =
+            bodyPos >= 0
+              ? body
+              : matchedHeading
+                ? `${matchedHeading}\n${body}`.trim()
+                : `${headings}\n${body}`.trim();
+          return buildSnippetByTerms(src, terms);
+        })();
+
+        return {
+          title: item.routePath === "/" ? "Home" : item.title || "Untitled",
+          routePath: canon,
+          kind: normalizeKindForTypeKey(typeKey),
+          ...(snippet ? { snippet } : {}),
+          breadcrumb: buildBreadcrumb(item.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
+        };
+      });
 
     return {
       items,

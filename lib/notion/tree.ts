@@ -1,26 +1,22 @@
 import {
   parseNotionBlockArray,
-  parseNotionDatabaseInfo,
-  parseNotionDatabaseRef,
-  parseNotionJsonCodeBlock,
-} from "./adapters";
+} from "./adapters.ts";
 import {
-  listBlockChildrenCached as listBlockChildrenCachedRaw,
   findChildDatabases as findChildDatabasesRaw,
-} from "./block-children-cache.mjs";
-import { findFirstJsonCodeBlock as findFirstJsonCodeBlockRaw } from "./code-block-search.mjs";
+  listBlockChildrenCached as listBlockChildrenCachedRaw,
+} from "./block-children-cache.ts";
+import { findFirstJsonCodeBlock as findFirstJsonCodeBlockRaw } from "./code-block-search.ts";
 import {
   getDatabaseInfo as getDatabaseInfoRaw,
   getDatabaseParentPageId as getDatabaseParentPageIdRaw,
-} from "./database-meta.mjs";
-import { hydrateBlocks as hydrateBlocksRaw } from "./block-hydration.mjs";
-import { readTrimmedString } from "./coerce";
+} from "./database-meta.ts";
+import { hydrateBlocks as hydrateBlocksRaw } from "./block-hydration.ts";
 import type {
   NotionBlock,
   NotionDatabaseInfo,
   NotionDatabaseRef,
   NotionJsonCodeBlock,
-} from "./types";
+} from "./types.ts";
 
 export type {
   NotionDatabaseInfo,
@@ -34,13 +30,11 @@ export async function listBlockChildrenCached(blockId: string): Promise<NotionBl
 }
 
 export async function getDatabaseParentPageId(databaseId: string): Promise<string> {
-  const out = await getDatabaseParentPageIdRaw(databaseId);
-  return readTrimmedString(out);
+  return await getDatabaseParentPageIdRaw(databaseId);
 }
 
 export async function getDatabaseInfo(databaseId: string): Promise<NotionDatabaseInfo> {
-  const out = await getDatabaseInfoRaw(databaseId);
-  return parseNotionDatabaseInfo(out);
+  return await getDatabaseInfoRaw(databaseId);
 }
 
 export async function hydrateBlocks(blocks: NotionBlock[]): Promise<NotionBlock[]> {
@@ -52,17 +46,12 @@ export async function findFirstJsonCodeBlock(
   blockId: string,
   maxDepth?: number,
 ): Promise<NotionJsonCodeBlock | null> {
-  const out = await findFirstJsonCodeBlockRaw(blockId, maxDepth);
-  return parseNotionJsonCodeBlock(out);
+  return await findFirstJsonCodeBlockRaw(blockId, maxDepth);
 }
 
 export async function findChildDatabases(
   blockId: string,
   maxDepth?: number,
 ): Promise<NotionDatabaseRef[]> {
-  const out = await findChildDatabasesRaw(blockId, maxDepth);
-  if (!Array.isArray(out)) return [];
-  return out
-    .map(parseNotionDatabaseRef)
-    .filter((it): it is NotionDatabaseRef => Boolean(it));
+  return await findChildDatabasesRaw(blockId, maxDepth);
 }
