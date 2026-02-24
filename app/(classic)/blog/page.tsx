@@ -4,7 +4,6 @@ import { getBlogIndex } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogIndexStructuredData } from "@/lib/seo/structured-data";
-import { getRoutesManifest } from "@/lib/routes-manifest";
 import { escapeHtml } from "@/lib/shared/text-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import type { Metadata } from "next";
@@ -24,19 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 async function loadNotionBlogMain(): Promise<string> {
-  // Prefer canonical /blog.
-  try {
-    return await loadRawMainHtml("blog");
-  } catch {
-    // Fallback: find the Notion page titled "Blog" and use its route.
-    const items = getRoutesManifest();
-    const cand = items.find((it) => it.kind === "page" && it.title.trim().toLowerCase() === "blog");
-    if (cand?.routePath) {
-      const route = cand.routePath.replace(/^\/+/, "");
-      return await loadRawMainHtml(route || "index");
-    }
-    throw new Error("Missing blog.html");
-  }
+  return loadRawMainHtml("blog");
 }
 
 function findBalancedDivEnd(html: string, startIdx: number): number | null {
