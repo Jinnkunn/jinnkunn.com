@@ -1,3 +1,5 @@
+import type { SitemapAutoExcludeConfig } from "./sitemap-policy.ts";
+
 export type DefaultNavItem = {
   href: string;
   label: string;
@@ -10,6 +12,7 @@ export type DefaultSiteConfig = {
     title: string;
     description: string;
     favicon: string;
+    ogImage: string;
   };
   integrations: {
     googleAnalyticsId: string;
@@ -26,6 +29,7 @@ export type DefaultSiteConfig = {
     homePageId: string | null;
     routeOverrides: Record<string, string> | null;
     sitemapExcludes: string[];
+    sitemapAutoExclude: SitemapAutoExcludeConfig;
   };
 };
 
@@ -37,6 +41,7 @@ export const DEFAULT_SITE_CONFIG: DefaultSiteConfig = {
     description:
       "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
     favicon: "/assets/favicon.png",
+    ogImage: "/assets/profile.png",
   },
   integrations: {
     googleAnalyticsId: "",
@@ -63,5 +68,12 @@ export const DEFAULT_SITE_CONFIG: DefaultSiteConfig = {
     homePageId: null,
     routeOverrides: null,
     sitemapExcludes: [],
+    sitemapAutoExclude: {
+      enabled: true,
+      excludeSections: [],
+      maxDepthBySection: {
+        teaching: 5,
+      },
+    },
   },
 };

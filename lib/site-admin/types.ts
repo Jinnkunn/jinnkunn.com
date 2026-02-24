@@ -5,6 +5,7 @@ export type SiteSettings = {
   seoTitle: string;
   seoDescription: string;
   favicon: string;
+  ogImage: string;
   googleAnalyticsId: string;
   contentGithubUsers: string;
   sitemapExcludes: string;

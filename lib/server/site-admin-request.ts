@@ -79,6 +79,9 @@ export function parseSiteAdminConfigCommand(
     if (patch.favicon !== undefined) {
       outPatch.favicon = getString(patch, "favicon", { maxLen: 500 });
     }
+    if (patch.ogImage !== undefined) {
+      outPatch.ogImage = getString(patch, "ogImage", { maxLen: 1000 });
+    }
     if (patch.googleAnalyticsId !== undefined) {
       outPatch.googleAnalyticsId = getString(patch, "googleAnalyticsId", { maxLen: 64 });
     }

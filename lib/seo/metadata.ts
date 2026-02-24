@@ -65,6 +65,19 @@ function localeFromLang(lang: string): string {
   return `${v}_US`;
 }
 
+function normalizeImagePath(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
+function defaultSocialImage(cfg: SiteConfig): string {
+  const configured = normalizeImagePath(cfg.seo.ogImage || "");
+  if (configured) return configured;
+  return "/assets/profile.png";
+}
+
 type BuildPageMetadataInput = {
   cfg: SiteConfig;
   title: string;
@@ -82,6 +95,8 @@ export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
   const canonical = canonicalPath(input.pathname);
   const siteName = cfg.siteName || cfg.seo.title || title;
   const ogType = input.type === "article" ? "article" : "website";
+  const socialImage = defaultSocialImage(cfg);
+  const openGraphImages = [{ url: socialImage }];
 
   const openGraphBase = {
     type: ogType,
@@ -90,7 +105,8 @@ export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
     description,
     locale: localeFromLang(cfg.lang || "en"),
     url: canonical,
-  } as const;
+    images: openGraphImages,
+  };
 
   return {
     metadataBase: getMetadataBase(),
@@ -109,6 +125,7 @@ export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
       card: "summary_large_image",
       title,
       description,
+      images: [socialImage],
     },
     icons: cfg.seo.favicon ? [{ rel: "icon", url: cfg.seo.favicon }] : undefined,
   };
@@ -117,6 +134,7 @@ export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
 export function buildRootMetadata(cfg: SiteConfig): Metadata {
   const baseTitle = cfg.seo.title || cfg.siteName;
   const description = cfg.seo.description;
+  const socialImage = defaultSocialImage(cfg);
 
   return {
     metadataBase: getMetadataBase(),
@@ -133,11 +151,13 @@ export function buildRootMetadata(cfg: SiteConfig): Metadata {
       description,
       locale: localeFromLang(cfg.lang || "en"),
       url: "/",
+      images: [{ url: socialImage }],
     },
     twitter: {
       card: "summary_large_image",
       title: baseTitle,
       description,
+      images: [socialImage],
     },
     icons: cfg.seo.favicon ? [{ rel: "icon", url: cfg.seo.favicon }] : undefined,
   };

@@ -12,6 +12,7 @@ export function buildSiteSettingsProperties(
   if (patch.seoTitle !== undefined) properties["SEO Title"] = { rich_text: notionRichText(patch.seoTitle) };
   if (patch.seoDescription !== undefined) properties["SEO Description"] = { rich_text: notionRichText(patch.seoDescription) };
   if (patch.favicon !== undefined) properties["Favicon"] = { rich_text: notionRichText(patch.favicon) };
+  if (patch.ogImage !== undefined) properties["OG Image"] = { rich_text: notionRichText(patch.ogImage) };
   if (patch.googleAnalyticsId !== undefined) properties["Google Analytics ID"] = { rich_text: notionRichText(patch.googleAnalyticsId) };
   if (patch.contentGithubUsers !== undefined) properties["Content GitHub Users"] = { rich_text: notionRichText(patch.contentGithubUsers) };
   if (patch.sitemapExcludes !== undefined) properties["Sitemap Excludes"] = { rich_text: notionRichText(patch.sitemapExcludes) };

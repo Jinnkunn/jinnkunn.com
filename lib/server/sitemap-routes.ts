@@ -9,6 +9,14 @@ import {
   pickProtectedRule,
 } from "@/lib/routes/strategy";
 import { getSiteConfig } from "@/lib/site-config";
+import {
+  SITEMAP_SECTIONS,
+  normalizeSitemapAutoExclude,
+  sectionForRoutePath,
+  shouldAutoExcludeFromSitemap,
+  type SitemapAutoExcludeConfig,
+  type SitemapSection,
+} from "@/lib/shared/sitemap-policy";
 import { getSyncMeta } from "@/lib/sync-meta";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
@@ -22,8 +30,7 @@ export type SitemapRoute = {
   depth: number;
 };
 
-export const SITEMAP_SECTION_ORDER = ["pages", "blog", "publications", "teaching"] as const;
-export type SitemapSection = (typeof SITEMAP_SECTION_ORDER)[number];
+export const SITEMAP_SECTION_ORDER = SITEMAP_SECTIONS;
 
 export const SITEMAP_SECTION_PATHS: Record<SitemapSection, string> = {
   pages: "/sitemap-pages.xml",
@@ -63,6 +70,7 @@ type SitemapExclusionContext = {
   protectedRules: ProtectedRoute[];
   manualPathPrefixes: string[];
   manualPageIds: Set<string>;
+  autoExclude: SitemapAutoExcludeConfig;
 };
 
 const EXCLUDED_EXACT = new Set<string>(["/auth", "/site-admin", "/blog/list", "/list"]);
@@ -98,13 +106,6 @@ function displayTitleFromRoute(routePath: string): string {
   const seg = routePath.split("/").filter(Boolean).at(-1) || "";
   const decoded = decodeURIComponent(seg);
   return decoded.replace(/[-_]+/g, " ").trim() || decoded || "Untitled";
-}
-
-function sectionForRoutePath(routePath: string): SitemapSection {
-  if (routePath === "/blog" || routePath.startsWith("/blog/")) return "blog";
-  if (routePath === "/publications" || routePath.startsWith("/publications/")) return "publications";
-  if (routePath === "/teaching" || routePath.startsWith("/teaching/")) return "teaching";
-  return "pages";
 }
 
 function candidateScore(item: RouteManifestItem, canonicalRoute: string): number {
@@ -237,6 +238,7 @@ function createSitemapExclusionContext(items: RouteManifestItem[]): SitemapExclu
     protectedRules: getProtectedRoutes(),
     manualPathPrefixes: normalizeManualExcludePaths(manualPathPrefixes),
     manualPageIds,
+    autoExclude: normalizeSitemapAutoExclude(cfg.content?.sitemapAutoExclude),
   };
 }
 
@@ -273,6 +275,7 @@ function isProtectedExcluded(routePath: string, ctx: SitemapExclusionContext): b
 function isExcludedFromSitemap(routePath: string, ctx: SitemapExclusionContext): boolean {
   if (isProtectedExcluded(routePath, ctx)) return true;
   if (isManuallyExcluded(routePath, ctx)) return true;
+  if (shouldAutoExcludeFromSitemap(routePath, ctx.autoExclude)) return true;
   return false;
 }
 

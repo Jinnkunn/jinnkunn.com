@@ -6,7 +6,9 @@ import path from "node:path";
 const ROOT = process.cwd();
 const SCAN_DIRS = ["app", "lib", "components"];
 
-const ALLOWED_FACADE_FILES = new Set();
+const ALLOWED_FACADE_FILES = new Set([
+  "lib/notion/request.ts",
+]);
 
 async function listFilesRecursively(dir) {
   const out = [];

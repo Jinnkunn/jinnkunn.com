@@ -21,6 +21,7 @@ export function mapSiteSettingsRow(row: NotionPageLike | null | undefined): Site
     seoTitle: getPropString(row, "SEO Title"),
     seoDescription: getPropString(row, "SEO Description"),
     favicon: getPropString(row, "Favicon"),
+    ogImage: getPropString(row, "OG Image"),
     googleAnalyticsId: getPropString(row, "Google Analytics ID"),
     contentGithubUsers: getPropString(row, "Content GitHub Users"),
     sitemapExcludes: getPropString(row, "Sitemap Excludes"),

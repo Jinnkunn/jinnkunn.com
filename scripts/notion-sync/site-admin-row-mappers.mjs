@@ -36,6 +36,7 @@ export function applySiteSettingsRow(cfg, row) {
   const seoTitle = getPropString(row, "SEO Title");
   const seoDescription = getPropString(row, "SEO Description");
   const favicon = getPropString(row, "Favicon");
+  const ogImage = getPropString(row, "OG Image");
   const gaId = getPropString(row, "Google Analytics ID");
   const contentGithubUsers = getPropString(row, "Content GitHub Users");
   const sitemapExcludesRaw = getPropString(row, "Sitemap Excludes");
@@ -47,6 +48,7 @@ export function applySiteSettingsRow(cfg, row) {
   if (seoTitle) cfg.seo.title = seoTitle;
   if (seoDescription) cfg.seo.description = seoDescription;
   if (favicon) cfg.seo.favicon = favicon;
+  if (ogImage) cfg.seo.ogImage = ogImage;
   if (gaId) {
     cfg.integrations = cfg.integrations || {};
     cfg.integrations.googleAnalyticsId = gaId;

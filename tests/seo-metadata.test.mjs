@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildPageMetadata,
+  buildRootMetadata,
   canonicalPath,
   detectSiteOrigin,
   normalizeSiteOrigin,
@@ -15,6 +16,7 @@ const cfg = {
     title: "Jinkun Chen",
     description: "Research homepage",
     favicon: "/assets/favicon.png",
+    ogImage: "/assets/profile.png",
   },
   nav: { top: [], more: [] },
 };
@@ -64,4 +66,12 @@ test("seo-metadata: buildPageMetadata emits canonical + openGraph", () => {
   assert.equal(out.alternates?.canonical, "/blog/post-a");
   assert.equal(out.openGraph?.type, "article");
   assert.equal(out.twitter?.card, "summary_large_image");
+  assert.deepEqual(out.openGraph?.images, [{ url: "/assets/profile.png" }]);
+  assert.deepEqual(out.twitter?.images, ["/assets/profile.png"]);
+});
+
+test("seo-metadata: buildRootMetadata uses configured social image", () => {
+  const out = buildRootMetadata(cfg);
+  assert.deepEqual(out.openGraph?.images, [{ url: "/assets/profile.png" }]);
+  assert.deepEqual(out.twitter?.images, ["/assets/profile.png"]);
 });

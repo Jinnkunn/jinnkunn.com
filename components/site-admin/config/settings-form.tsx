@@ -83,6 +83,16 @@ export function SiteAdminSettingsForm({
       </div>
 
       <div className="site-admin-form__row">
+        <label className="site-admin-form__label">OG Image</label>
+        <input
+          className="site-admin-form__input"
+          value={asString(draftSettings.ogImage)}
+          onChange={(e) => updateField("ogImage", e.target.value)}
+          placeholder="/assets/profile.png"
+        />
+      </div>
+
+      <div className="site-admin-form__row">
         <label className="site-admin-form__label">Google Analytics ID</label>
         <input
           className="site-admin-form__input site-admin-form__input--mono"

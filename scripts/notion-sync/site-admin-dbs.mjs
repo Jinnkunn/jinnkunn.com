@@ -27,10 +27,20 @@ const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
  * @typedef {{
  *   siteName?: string,
  *   lang?: string,
- *   seo?: {title?: string, description?: string, favicon?: string},
+ *   seo?: {title?: string, description?: string, favicon?: string, ogImage?: string},
  *   integrations?: {googleAnalyticsId?: string},
  *   security?: {contentGithubUsers?: string[]},
- *   content?: {rootPageId?: string, homePageId?: string, routeOverrides?: Record<string, string>, sitemapExcludes?: string[]},
+ *   content?: {
+ *     rootPageId?: string,
+ *     homePageId?: string,
+ *     routeOverrides?: Record<string, string>,
+ *     sitemapExcludes?: string[],
+ *     sitemapAutoExclude?: {
+ *       enabled?: boolean,
+ *       excludeSections?: Array<"pages"|"blog"|"publications"|"teaching">,
+ *       maxDepthBySection?: Partial<Record<"pages"|"blog"|"publications"|"teaching", number>>
+ *     }
+ *   },
  *   nav?: NavConfig
  * }} SiteConfigRecord
  */

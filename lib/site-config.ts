@@ -1,6 +1,10 @@
 import { readContentJson } from "@/lib/server/content-json";
 import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config";
 import { normalizeGithubUserList } from "@/lib/shared/github-users";
+import {
+  type SitemapAutoExcludeConfig,
+  normalizeSitemapAutoExclude,
+} from "@/lib/shared/sitemap-policy";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
 
@@ -16,6 +20,7 @@ export type SiteConfig = {
     title: string;
     description: string;
     favicon: string; // Path under /public (e.g. "/assets/favicon.png")
+    ogImage?: string; // OpenGraph/Twitter share image path or absolute URL.
   };
   integrations?: {
     googleAnalyticsId?: string; // GA4 measurement ID (e.g. "G-XXXXXXX")
@@ -32,6 +37,7 @@ export type SiteConfig = {
     homePageId?: string | null;
     routeOverrides?: Record<string, string> | null;
     sitemapExcludes?: string[];
+    sitemapAutoExclude?: SitemapAutoExcludeConfig;
   };
 };
 
@@ -71,6 +77,10 @@ function asSitemapExcludes(x: unknown): string[] | undefined {
   return out.length ? out : undefined;
 }
 
+function asSitemapAutoExclude(x: unknown): SitemapAutoExcludeConfig {
+  return normalizeSitemapAutoExclude(x);
+}
+
 function asNavItems(x: unknown): NavItem[] | undefined {
   if (!Array.isArray(x)) return undefined;
   const out: NavItem[] = [];
@@ -97,6 +107,7 @@ function normalizeConfig(input: unknown): SiteConfig {
     cfg.seo.description =
       asString(input.seo.description) ?? cfg.seo.description;
     cfg.seo.favicon = asString(input.seo.favicon) ?? cfg.seo.favicon;
+    cfg.seo.ogImage = asString(input.seo.ogImage) ?? cfg.seo.ogImage;
   }
 
   if (isObject(input.integrations)) {
@@ -122,11 +133,13 @@ function normalizeConfig(input: unknown): SiteConfig {
       homePageId: null,
       routeOverrides: null,
       sitemapExcludes: [],
+      sitemapAutoExclude: normalizeSitemapAutoExclude(undefined),
     };
     cfg.content.rootPageId = asNullableString(input.content.rootPageId) ?? cfg.content.rootPageId;
     cfg.content.homePageId = asNullableString(input.content.homePageId) ?? cfg.content.homePageId;
     cfg.content.routeOverrides = asRouteOverrides(input.content.routeOverrides) ?? cfg.content.routeOverrides;
     cfg.content.sitemapExcludes = asSitemapExcludes(input.content.sitemapExcludes) ?? cfg.content.sitemapExcludes;
+    cfg.content.sitemapAutoExclude = asSitemapAutoExclude(input.content.sitemapAutoExclude);
   }
 
   return cfg;

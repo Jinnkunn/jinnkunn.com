@@ -25,7 +25,8 @@ This repo can compile a page tree (via the configured content source) into a sta
   "seo": {
     "title": "Jinkun Chen",
     "description": "Personal site.",
-    "favicon": "/assets/favicon.png"
+    "favicon": "/assets/favicon.png",
+    "ogImage": "/assets/profile.png"
   },
   "nav": {
     "top": [
@@ -36,7 +37,12 @@ This repo can compile a page tree (via the configured content source) into a sta
   },
   "content": {
     "rootPageId": null,
-    "homePageId": null
+    "homePageId": null,
+    "sitemapAutoExclude": {
+      "enabled": true,
+      "excludeSections": [],
+      "maxDepthBySection": { "teaching": 5 }
+    }
   }
 }
 ```

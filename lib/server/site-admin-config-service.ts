@@ -25,6 +25,7 @@ async function ensureSiteSettingsDbSchema(databaseId: string) {
   // Add missing properties lazily so /site-admin can run even if the admin DBs
   // were provisioned before we introduced new fields.
   await ensureDatabaseProperties(databaseId, {
+    "OG Image": { rich_text: {} },
     "Google Analytics ID": { rich_text: {} },
     "Content GitHub Users": { rich_text: {} },
     "Sitemap Excludes": { rich_text: {} },
