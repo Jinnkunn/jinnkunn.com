@@ -85,6 +85,16 @@ function safeNameFromPath(p) {
   return p.replace(/^\/+/, "").replace(/\/+$/, "").replaceAll("/", "__");
 }
 
+function parseTargets(raw) {
+  const out = String(raw || "")
+    .split(/[,\s]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (s.startsWith("/") ? s : `/${s}`))
+    .map((s) => (s === "/" ? s : s.replace(/\/+$/, "")));
+  return Array.from(new Set(out));
+}
+
 async function launchBrowser() {
   // Prefer system Chrome when available, but fall back for CI runners.
   try {
@@ -116,15 +126,10 @@ async function main() {
     });
     const page = await ctx.newPage();
 
-    const targets = [
-      "/", // navbar + hero layout
-      "/news", // dated headings + link styles
-      "/blog", // blog home (Notion page)
-      "/blog/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models", // long links + toggle + TOC
-      "/publications", // long toggle summaries + metadata
-      "/works", // toggles
-      "/notice", // link styles + lists
-    ];
+    const targets =
+      parseTargets(process.env.SNAPSHOT_TARGETS) ||
+      ["/", "/blog", "/publications", "/works", "/connect", "/sitemap"];
+    const effectiveTargets = targets.length > 0 ? targets : ["/", "/blog", "/publications", "/works", "/connect", "/sitemap"];
 
     const viewports = [
       { name: "desktop", width: 1280, height: 800 },
@@ -134,7 +139,7 @@ async function main() {
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
 
-      for (const p of targets) {
+      for (const p of effectiveTargets) {
         const url = `${origin}${p}`;
         await page.goto(url, { waitUntil: "domcontentloaded" });
         // Give client-side behaviors (menus, toggles, TOC spy) time to attach.
