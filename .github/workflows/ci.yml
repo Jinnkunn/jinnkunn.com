@@ -41,10 +41,23 @@ jobs:
           SMOKE_UI_SKIP_BUILD: "1"
         run: npm run smoke:ui
 
+      - name: Accessibility (Axe)
+        env:
+          A11Y_SKIP_BUILD: "1"
+        run: npm run check:a11y
+
       - name: Upload UI Smoke Artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-smoke-ci
+          name: ci-debug-artifacts
           path: output/ui-smoke/**
+          if-no-files-found: ignore
+
+      - name: Upload A11y Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-a11y-artifacts
+          path: output/a11y/**
           if-no-files-found: ignore

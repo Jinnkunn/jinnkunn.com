@@ -19,6 +19,7 @@
     "snapshot:compare": "node scripts/ui-compare-snapshots.mjs",
     "audit:notion": "node scripts/audit-notion-blocks.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
+    "check:a11y": "node scripts/a11y-check.mjs",
     "check:ui": "node scripts/check-ui.mjs"
   },
   "dependencies": {
@@ -36,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "axe-core": "^4.11.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "playwright-core": "^1.58.2",

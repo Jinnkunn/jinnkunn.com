@@ -30,6 +30,12 @@
   background: rgba(55, 53, 47, 0.06) !important;
 }
 
+/* Publications: red emphasis (e.g., [oral]) needs stronger contrast for accessibility. */
+.page__publications .notion-toggle__summary .highlighted-color.color-red,
+.page__publications .notion-toggle__summary .highlighted-color.color-red strong {
+  color: #7a2119;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page__publications .notion-toggle > .notion-toggle__summary {
     transition: background-color 120ms linear;
@@ -82,6 +88,37 @@
   vertical-align: baseline;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+
+/* Publications: enforce accessible chip contrast while preserving the original tone. */
+.page__publications .highlighted-background.bg-red {
+  background-color: #f3d8d4;
+}
+
+.page__publications .highlighted-background.bg-purple {
+  background-color: #e7ddf8;
+}
+
+.page__publications .highlighted-background.bg-orange {
+  background-color: #f6e3c7;
+}
+
+.page__publications .highlighted-color.color-red,
+.page__publications .highlighted-background.bg-red .code,
+.page__publications .highlighted-background.bg-red .code strong {
+  color: #6b231d !important;
+}
+
+.page__publications .highlighted-color.color-purple,
+.page__publications .highlighted-background.bg-purple .code,
+.page__publications .highlighted-background.bg-purple .code strong {
+  color: #4c2f73 !important;
+}
+
+.page__publications .highlighted-color.color-orange,
+.page__publications .highlighted-background.bg-orange .code,
+.page__publications .highlighted-background.bg-orange .code strong {
+  color: #7a4a17 !important;
 }
 
 /* In expanded publication details, add breathing room between stacked label rows. */

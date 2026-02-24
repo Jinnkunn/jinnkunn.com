@@ -178,6 +178,22 @@ Quick profile (for CI / PR gate):
 SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui
 ```
 
+## Accessibility Checks (Axe)
+
+Run automated accessibility checks (WCAG 2A/2AA) on core pages:
+
+```bash
+npm run check:a11y
+```
+
+CI profile (skip rebuild, run against already-built app):
+
+```bash
+A11Y_SKIP_BUILD=1 npm run check:a11y
+```
+
+Outputs go to `output/a11y/<timestamp>/report.json` and `output/a11y/latest.json`.
+
 ## One-Command Verification
 
 Run the full pipeline:
@@ -210,7 +226,7 @@ Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-
 
 ## GitHub Actions
 
-- `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke**.
+- `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **axe a11y checks**.
 - `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

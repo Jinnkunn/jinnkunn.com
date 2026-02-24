@@ -53,7 +53,7 @@ function buildBlogListHtml(items: Awaited<ReturnType<typeof getBlogIndex>>): str
       const dateText = it.dateText ? escapeHtml(it.dateText) : "";
       return (
         `<div id="${id}" class="notion-collection-list__item ">` +
-        `<a id="${id}" href="${href}" class="notion-link notion-collection-list__item-anchor"></a>` +
+        `<a id="${id}" href="${href}" class="notion-link notion-collection-list__item-anchor" aria-label="${title}"></a>` +
         `<div class="notion-property notion-property__title notion-semantic-string">` +
         `<div class="notion-property__title__icon-wrapper">${iconSvg}</div>` +
         `${title}` +
