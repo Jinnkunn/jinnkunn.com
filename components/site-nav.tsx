@@ -1,6 +1,5 @@
 import Link from "next/link";
-import SiteNavBehavior from "@/components/site-nav-behavior";
-import SiteSearchBehavior from "@/components/site-search-behavior";
+import SiteNavEnhancers from "@/components/site-nav-enhancers";
 import { getSiteConfig } from "@/lib/site-config";
 
 export default function SiteNav() {
@@ -21,10 +20,8 @@ export default function SiteNav() {
         WebkitBoxShadow: "var(--navbar-shadow)",
       }}
     >
-      {/* Tiny client-side enhancer: handles open/close, scroll lock, and active link classes. */}
-      <SiteNavBehavior />
-      {/* Search overlay behavior (Super-like). */}
-      <SiteSearchBehavior />
+      {/* Load nav/search behavior runtime on the client after initial paint. */}
+      <SiteNavEnhancers />
 
       <div className="super-navbar__content">
         <Link href="/" className="notion-link super-navbar__logo">

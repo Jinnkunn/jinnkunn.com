@@ -121,7 +121,9 @@ export async function syncAdminPageIntroAndFallback({ adminPageId, blocks }) {
 }
 
 /**
- * Ensure the Deploy section exists and points to the latest DEPLOY_TOKEN URL.
+ * Ensure the Deploy section exists and points to /site-admin.
+ * The secure deploy API requires signed POST headers, so it cannot be a plain
+ * Notion link button.
  * @param {{ adminPageId: string, blocks: NotionBlock[] }} input
  */
 export async function ensureDeploySection({ adminPageId, blocks }) {
@@ -129,15 +131,7 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
   const deployBase =
     String(process.env.DEPLOY_BASE_URL || "").trim().replace(/\/+$/, "") ||
     "https://jinnkunn-com.vercel.app";
-  const deployTokenRaw = String(process.env.DEPLOY_TOKEN || "").trim();
-  const deployToken =
-    deployTokenRaw && !["undefined", "null"].includes(deployTokenRaw.toLowerCase())
-      ? deployTokenRaw
-      : "";
-  const deployUrl = deployToken
-    ? `${deployBase}/api/deploy?token=${encodeURIComponent(deployToken)}`
-    : `${deployBase}/api/deploy?token=YOUR_DEPLOY_TOKEN`;
-  const shouldUpdateDeployLink = Boolean(deployToken);
+  const deployUrl = `${deployBase}/site-admin`;
 
   if (!deployHeading) {
     await appendBlocks(adminPageId, [
@@ -154,8 +148,8 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
           icon: { type: "emoji", emoji: "🚀" },
           color: "gray_background",
           rich_text: [
-            ...richText("Click to deploy: "),
-            ...richTextLink("Deploy now", deployUrl),
+            ...richText("Open admin deploy panel: "),
+            ...richTextLink("Site Admin", deployUrl),
           ],
         },
       },
@@ -164,7 +158,7 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
         type: "paragraph",
         paragraph: {
           rich_text: richText(
-            "If this link returns Unauthorized, set DEPLOY_TOKEN on Vercel and re-run this provision script with the same DEPLOY_TOKEN to update the link.",
+            "Deploy API now requires signed POST headers (x-deploy-ts + x-deploy-signature). Use Site Admin for one-click deploy.",
           ),
         },
       },
@@ -176,20 +170,20 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
   const idx = blocks.findIndex((b) => compactId(b.id) === compactId(deployHeading.id));
   const after = idx >= 0 ? blocks.slice(idx + 1) : blocks;
   const callout = after.find((b) => b?.type === "callout");
-  if (callout && shouldUpdateDeployLink) {
+  if (callout) {
     await updateBlock(compactId(callout.id), {
       callout: {
         ...(callout.callout || {}),
         rich_text: [
-          ...richText("Click to deploy: "),
-          ...richTextLink("Deploy now", deployUrl),
+          ...richText("Open admin deploy panel: "),
+          ...richTextLink("Site Admin", deployUrl),
         ],
       },
     });
   }
 
   const tipText =
-    "If this link returns Unauthorized, set DEPLOY_TOKEN on Vercel and re-run this provision script with the same DEPLOY_TOKEN to update the link.";
+    "Deploy API now requires signed POST headers (x-deploy-ts + x-deploy-signature). Use Site Admin for one-click deploy.";
 
   // Update older tip copy (we've used a few variants across iterations).
   const tip =

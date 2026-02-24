@@ -1,11 +1,14 @@
+import { NextResponse } from "next/server";
+
 import { compactId } from "@/lib/shared/route-utils";
 import {
   noStoreFail,
+  noStoreMethodNotAllowed,
   noStoreMisconfigured,
   noStoreOk,
-  noStoreUnauthorized,
   withNoStoreApi,
 } from "@/lib/server/api-response";
+import { authorizeDeployRequest } from "@/lib/server/deploy-auth";
 import { triggerDeployHook } from "@/lib/server/deploy-hook";
 import { createDatabaseRow, getSiteAdminDatabaseIdByTitle } from "@/lib/server/site-admin-notion";
 import { buildDeployLogCreateProperties } from "@/lib/server/site-admin-writers";
@@ -38,21 +41,29 @@ async function logDeployToNotion(opts: {
   );
 }
 
-function isAuthorized(req: Request): boolean {
-  const expected = process.env.DEPLOY_TOKEN?.trim() ?? "";
-  if (!expected) return false;
-  const url = new URL(req.url);
-  const got = url.searchParams.get("token") ?? "";
-  return got === expected;
-}
-
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   return withNoStoreApi(async () => {
-    if (!process.env.DEPLOY_TOKEN?.trim()) {
+    const secret = process.env.DEPLOY_TOKEN?.trim() ?? "";
+    if (!secret) {
       return noStoreMisconfigured("DEPLOY_TOKEN");
     }
-    if (!isAuthorized(req)) {
-      return noStoreUnauthorized();
+
+    const rawBody = await req.text();
+    const auth = authorizeDeployRequest(req, rawBody, secret);
+    if (!auth.ok) {
+      if (auth.status === 429) {
+        return NextResponse.json(
+          { ok: false, error: auth.error },
+          {
+            status: 429,
+            headers: {
+              "cache-control": "no-store",
+              "retry-after": String(auth.retryAfterSec ?? 60),
+            },
+          },
+        );
+      }
+      return noStoreFail(auth.error, { status: auth.status });
     }
 
     const triggeredAtIso = new Date().toISOString();
@@ -89,8 +100,6 @@ export async function GET(req: Request) {
   }, { status: 500, fallback: "Unexpected deploy API error" });
 }
 
-export async function POST(req: Request) {
-  // Allow POST as well, but keep the same auth mechanism so Notion "open link"
-  // can use GET while other tooling can use POST.
-  return GET(req);
+export async function GET() {
+  return noStoreMethodNotAllowed(["POST"]);
 }

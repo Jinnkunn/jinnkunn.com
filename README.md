@@ -71,7 +71,7 @@ Required for `/site-admin` GitHub login:
 
 Optional:
 - `CONTENT_GITHUB_USERS` (allowlist for viewing protected content)
-- `VERCEL_DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for Notion deploy button)
+- `VERCEL_DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for signed deploy API / Site Admin deploy)
 
 ### 3) Sync
 
@@ -85,17 +85,32 @@ This generates:
 
 `npm run build` will run Notion sync automatically via `prebuild` when `NOTION_*` env vars are set.
 
-## Deploy Button (Notion -> Vercel)
+## Deploy API (Signed POST)
 
-The site exposes `/api/deploy?token=...` which triggers a Vercel Deploy Hook.
+The site exposes `/api/deploy` and accepts only signed `POST` requests.
 
 Required env:
 - `DEPLOY_TOKEN`
 - `VERCEL_DEPLOY_HOOK_URL`
 
-In Notion, create a button or link pointing to:
+Headers required:
+- `x-deploy-ts`: unix timestamp (seconds or milliseconds)
+- `x-deploy-signature`: `sha256=<hex(hmac_sha256(DEPLOY_TOKEN, "${x-deploy-ts}.${rawBody}"))>`
 
-`https://<your-site-domain>/api/deploy?token=<DEPLOY_TOKEN>`
+Example:
+
+```bash
+TS="$(date +%s)"
+BODY='{}'
+SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$DEPLOY_TOKEN" -hex | sed 's/^.* //')"
+curl -X POST "https://<your-site-domain>/api/deploy" \
+  -H "content-type: application/json" \
+  -H "x-deploy-ts: $TS" \
+  -H "x-deploy-signature: sha256=$SIG" \
+  --data "$BODY"
+```
+
+`/site-admin` 页面里的 Deploy 按钮已使用服务端安全调用，无需手工签名。
 
 ## Site Admin Status
 

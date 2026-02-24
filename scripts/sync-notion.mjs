@@ -4,7 +4,7 @@
  * High-level:
  * - A Notion "Site Admin" page stores site config (JSON code block).
  * - The admin page's child pages (recursive) are compiled into `content/generated/raw/<route>.html`.
- * - A simple deploy button in Notion can trigger a Vercel deploy hook (see /api/deploy).
+ * - Deploys are triggered from /site-admin, which calls the signed /api/deploy endpoint.
  *
  * Required env:
  * - NOTION_TOKEN: Notion internal integration token
