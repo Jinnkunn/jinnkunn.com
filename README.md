@@ -212,6 +212,8 @@ A11Y_FAIL_ALL=1 npm run check:a11y
 
 Outputs go to `output/a11y/<timestamp>/report.json` and `output/a11y/latest.json`.
 
+CI currently runs with `A11Y_FAIL_ALL=1` (the sampled audited pages are blocking).
+
 ## One-Command Verification
 
 Run the full pipeline:

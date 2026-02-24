@@ -45,6 +45,7 @@ jobs:
         env:
           A11Y_SKIP_BUILD: "1"
           A11Y_MAX_PAGES: "12"
+          A11Y_FAIL_ALL: "1"
         run: npm run check:a11y
 
       - name: Upload UI Smoke Artifacts

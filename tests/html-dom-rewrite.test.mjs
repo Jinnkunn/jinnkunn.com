@@ -54,3 +54,21 @@ test("html-dom-rewrite: removes only absolute breadcrumb position style", () => 
   assert.equal(out.includes("top:4px"), true);
   assert.equal(out.includes("color:red"), true);
 });
+
+test("html-dom-rewrite: adds aria-label for empty links", () => {
+  const main = `
+    <main>
+      <p>
+        <span class="highlighted-background bg-yellow">
+          <a href="https://example.com/research" class="notion-link link" target="_blank" rel="noopener noreferrer"> </a>
+        </span>
+      </p>
+      <p>
+        <a href="/about" class="notion-link link"> </a>
+      </p>
+    </main>
+  `;
+  const out = rewriteMainHtmlWithDom(main);
+  assert.equal(out.includes('aria-label="Open link to example.com"'), true);
+  assert.equal(out.includes('aria-label="Open /about"'), true);
+});

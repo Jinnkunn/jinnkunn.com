@@ -28,6 +28,12 @@ function asChildren(node: HtmlNode): HtmlNode[] {
   return Array.isArray(n.childNodes) ? n.childNodes : [];
 }
 
+function nodeTextContent(node: HtmlNode): string {
+  const textNode = node as HtmlNode & { nodeName?: string; value?: string };
+  if (textNode.nodeName === "#text") return String(textNode.value || "");
+  return asChildren(node).map((child) => nodeTextContent(child)).join("");
+}
+
 function isElement(node: HtmlNode): node is HtmlElement {
   const n = node as HtmlElement;
   return typeof n.tagName === "string" && Array.isArray(n.attrs);
@@ -83,6 +89,23 @@ function hasClass(el: HtmlElement, className: string): boolean {
     .map((s) => s.trim())
     .filter(Boolean);
   return classes.includes(className);
+}
+
+function buildEmptyLinkAriaLabel(href: string): string {
+  const raw = String(href || "").trim();
+  if (!raw) return "Open link";
+
+  try {
+    const url = new URL(raw, "https://jinkunchen.com");
+    const isInternal = url.origin === "https://jinkunchen.com";
+    if (isInternal) {
+      const path = url.pathname || "/";
+      return `Open ${path}`;
+    }
+    return `Open link to ${url.hostname}`;
+  } catch {
+    return "Open link";
+  }
 }
 
 function rewriteAttrValue(value: string): string {
@@ -142,6 +165,19 @@ function fixElement(el: HtmlElement) {
 
   for (const attr of el.attrs) {
     attr.value = rewriteAttrValue(attr.value);
+  }
+
+  if (el.tagName === "a") {
+    const existingLabel = getAttr(el, "aria-label").trim();
+    if (!existingLabel) {
+      const text = nodeTextContent(el).replace(/\s+/g, " ").trim();
+      if (!text) {
+        const href = getAttr(el, "href");
+        if (href) {
+          setAttr(el, "aria-label", buildEmptyLinkAriaLabel(href));
+        }
+      }
+    }
   }
 
   if (el.tagName === "img" && getAttr(el, "src").includes("/assets/profile.png")) {

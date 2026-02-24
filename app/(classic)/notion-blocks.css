@@ -35,6 +35,12 @@
   border-radius: 6px;
 }
 
+.notion-toggle__trigger[role="button"]:focus-visible {
+  outline: 2px solid rgba(46, 170, 220, 0.7);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 @media (hover: none) {
   .notion-toggle__summary {
     -webkit-tap-highlight-color: transparent;
@@ -68,10 +74,16 @@
 /* Standard typography: captions + meta a bit smaller, references like footnotes. */
 .notion-caption {
   font-size: var(--v1-type-small);
+  color: rgba(55, 53, 47, 0.78);
 }
 
 .notion-page__properties {
   font-size: var(--v1-type-small);
+}
+
+/* Improve contrast for metadata labels (Date / Author / etc.) on content pages. */
+.notion-page__property-name > span {
+  color: rgba(55, 53, 47, 0.78);
 }
 
 /* Super custom CSS parity (original site):
@@ -94,6 +106,11 @@
 .notion-toggle[data-toggle-kind="references"] .notion-quote,
 .notion-toggle[data-toggle-kind="references"] .notion-text__content {
   font-size: inherit;
+}
+
+/* Inline code on light pages needs stronger contrast for readability and WCAG. */
+.notion-semantic-string .code {
+  color: #8b124d;
 }
 
 /* Notion callouts: tighter alignment and better mobile spacing (v1-consistent). */
@@ -200,8 +217,13 @@
 
 .notion-code .token.regex,
 .notion-code .token.important,
-.notion-code .token.variable {
-  color: #e36209;
+.notion-code .token.variable,
+.notion-code .token.table-header {
+  color: #8a3f00;
+}
+
+.notion-code .token.table-header.important {
+  color: #5f2700 !important;
 }
 
 .notion-code .token.bold {

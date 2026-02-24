@@ -9,12 +9,14 @@ import { createLightboxController, findLightboxSrcFromTarget } from "@/lib/clien
 import { revealHashTarget, scrollToElementTop } from "@/lib/client/notion/anchors";
 import { initTocScrollSpy } from "@/lib/client/notion/toc";
 import { decodeHashToId, initToggles, openToggleAncestors, toggleFromSummaryInteraction } from "@/lib/client/notion/toggles";
+import { initInlineEquationA11y } from "@/lib/client/notion/equations";
 export default function NotionBlockBehavior() {
   const pathname = usePathname();
 
   useEffect(() => {
     const root = document.getElementById("main-content") ?? document;
     initToggles(root);
+    initInlineEquationA11y(root);
     const cleanupEmbeds = initEmbeds(root);
     void initCodeHighlighting(root);
     const lightbox = createLightboxController();
@@ -91,9 +93,9 @@ export default function NotionBlockBehavior() {
 
       const summary = target.closest(".notion-toggle__summary");
       if (!summary) return;
-      e.preventDefault();
-
-      toggleFromSummaryInteraction(summary, target);
+      if (toggleFromSummaryInteraction(summary, target)) {
+        e.preventDefault();
+      }
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -104,10 +106,17 @@ export default function NotionBlockBehavior() {
       if (e.key !== "Enter" && e.key !== " ") return;
       const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
-      if (!target.classList.contains("notion-toggle__summary")) return;
+      const trigger = target.closest(".notion-toggle__trigger");
+      const isSummary = target.classList.contains("notion-toggle__summary");
+      if (!isSummary && !trigger) return;
+      const summary = (isSummary ? target : trigger?.closest(".notion-toggle__summary")) as
+        | Element
+        | null;
+      if (!summary) return;
 
       e.preventDefault();
-      toggleFromSummaryInteraction(target, target);
+      const eventTarget = trigger ?? target;
+      toggleFromSummaryInteraction(summary, eventTarget);
     };
 
     const cleanupTocSpy = initTocScrollSpy(root);

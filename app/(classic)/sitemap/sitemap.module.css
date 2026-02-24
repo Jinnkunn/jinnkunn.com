@@ -46,7 +46,7 @@
 }
 
 .path {
-  color: var(--color-text-default-light);
+  color: rgba(55, 53, 47, 0.78);
   font-family:
     ui-monospace,
     SFMono-Regular,

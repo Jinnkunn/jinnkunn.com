@@ -1,6 +1,19 @@
 function isProbablyInteractiveToggleTarget(el: Element): boolean {
-  // Avoid toggling when clicking an actual link inside the summary.
-  return !Boolean(el.closest("a[href]"));
+  // Avoid toggling when interacting with nested controls inside summary text.
+  // The explicit trigger remains a valid toggle target.
+  const nestedControl = el.closest(
+    'a[href],button,input,select,textarea,[role="link"],[role="button"]',
+  );
+  if (!nestedControl) return true;
+  return nestedControl.classList.contains("notion-toggle__trigger");
+}
+
+function summaryHasNestedInteractiveContent(summary: HTMLElement): boolean {
+  return Boolean(
+    summary.querySelector(
+      'a[href],button,input,select,textarea,[role="link"],[tabindex]:not([tabindex="-1"])',
+    ),
+  );
 }
 
 export function setToggleState(toggle: HTMLElement, open: boolean) {
@@ -9,9 +22,32 @@ export function setToggleState(toggle: HTMLElement, open: boolean) {
 
   const summary = toggle.querySelector<HTMLElement>(".notion-toggle__summary");
   if (summary) {
-    summary.setAttribute("role", "button");
-    summary.tabIndex = 0;
-    summary.setAttribute("aria-expanded", open ? "true" : "false");
+    const trigger = summary.querySelector<HTMLElement>(".notion-toggle__trigger");
+    const hasNestedInteractive = summaryHasNestedInteractiveContent(summary);
+    if (hasNestedInteractive && trigger) {
+      summary.removeAttribute("role");
+      summary.removeAttribute("tabindex");
+      summary.removeAttribute("aria-expanded");
+
+      trigger.setAttribute("role", "button");
+      trigger.tabIndex = 0;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!trigger.getAttribute("aria-label")) {
+        trigger.setAttribute("aria-label", "Toggle section");
+      }
+    } else {
+      summary.setAttribute("role", "button");
+      summary.tabIndex = 0;
+      summary.setAttribute("aria-expanded", open ? "true" : "false");
+      if (trigger) {
+        trigger.removeAttribute("role");
+        trigger.removeAttribute("tabindex");
+        trigger.removeAttribute("aria-expanded");
+        if (trigger.getAttribute("aria-label") === "Toggle section") {
+          trigger.removeAttribute("aria-label");
+        }
+      }
+    }
   }
 
   const content = toggle.querySelector<HTMLElement>(".notion-toggle__content");
@@ -87,4 +123,3 @@ export function toggleFromSummaryInteraction(summary: Element, target: Element):
   setToggleState(toggle, open);
   return true;
 }
-
