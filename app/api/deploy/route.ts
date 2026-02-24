@@ -15,6 +15,17 @@ import { buildDeployLogCreateProperties } from "@/lib/server/site-admin-writers"
 
 export const runtime = "nodejs";
 
+function deployErrorMessage(status: number, attempts: number, detail: string): string {
+  const suffix = detail ? `: ${detail}` : "";
+  return `Failed to trigger deploy (status ${status}, attempts ${attempts})${suffix}`;
+}
+
+function trimDetail(text: string): string {
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.slice(0, 200);
+}
+
 async function logDeployToNotion(opts: {
   reqUrl: string;
   ok: boolean;
@@ -69,19 +80,20 @@ export async function POST(req: Request) {
     const triggeredAtIso = new Date().toISOString();
     const out = await triggerDeployHook();
     if (!out.ok) {
+      const message = deployErrorMessage(out.status, out.attempts, trimDetail(out.text));
       // Best-effort logging (don't fail deploy trigger because upstream logging failed).
       try {
         await logDeployToNotion({
           reqUrl: req.url,
           ok: false,
           status: out.status,
-          message: out.text || `Failed to trigger deploy (status ${out.status})`,
+          message,
           triggeredAtIso,
         });
       } catch {
         // ignore
       }
-      return noStoreFail(`Failed to trigger deploy (status ${out.status})`, { status: 502 });
+      return noStoreFail(message, { status: 502 });
     }
 
     try {

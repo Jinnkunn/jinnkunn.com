@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FLAGS_SECRET: "KAxoGnNkSfOW8cmVqZ1bV29G1uMp4WXNCEvDWxcWID4"
+      FLAGS_SECRET: ${{ secrets.FLAGS_SECRET }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET != '' && secrets.NEXTAUTH_SECRET || format('ci-nextauth-{0}-{1}', github.run_id, github.run_attempt) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +26,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install

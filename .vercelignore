@@ -1,0 +1,26 @@
+# Local-only artifacts / caches
+.vercel
+.next
+node_modules
+out
+build
+.playwright-cli
+output
+coverage
+backups
+
+# VCS / editor / metadata
+.git
+.github
+.DS_Store
+*.tsbuildinfo
+
+# Local environment / logs
+.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Test and workflow files are not needed for runtime build output.
+tests

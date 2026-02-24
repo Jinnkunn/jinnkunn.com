@@ -4,6 +4,10 @@
 npm run dev
 ```
 
+## Vercel CLI Upload Scope
+
+Local `vercel deploy` / `vercel --prod` now uses `.vercelignore` to exclude local caches and debug artifacts (for example `.next`, `node_modules`, `output`, `.playwright-cli`, `tests`) to reduce upload size and speed up deploys.
+
 ## Content-Backed Site (Super-Like)
 
 This repo can compile a page tree (via the configured content source) into a static Next.js site.
@@ -75,6 +79,13 @@ Required for Vercel Flags SDK:
 Optional:
 - `CONTENT_GITHUB_USERS` (allowlist for viewing protected content)
 - `VERCEL_DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for signed deploy API / Site Admin deploy)
+- `DEPLOY_HOOK_TIMEOUT_MS` (default `10000`)
+- `DEPLOY_HOOK_MAX_ATTEMPTS` (default `3`)
+- `DEPLOY_HOOK_RETRY_BASE_DELAY_MS` (default `350`)
+
+GitHub Actions (`CI`, `UI Smoke`, `UI Compare`, `Search Snapshots`, `Production Smoke`) read:
+- `FLAGS_SECRET` from repo/org secret `FLAGS_SECRET`
+- `NEXTAUTH_SECRET` from secret `NEXTAUTH_SECRET` (if missing, workflow auto-generates an ephemeral CI-only value)
 
 ### 3) Sync
 
