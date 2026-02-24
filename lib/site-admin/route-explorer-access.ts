@@ -23,7 +23,6 @@ export function parseAdminRoutesPayload(
   for (const it of items) pathToPageId.set(normalizeRoutePath(it.routePath), it.id);
 
   const protectedByPageId: AdminConfig["protectedByPageId"] = {};
-  const protectedByPath: AdminConfig["protectedByPath"] = {};
   for (const it of protectedInput) {
     const rawPath = readTrimmedString(it.path);
     const rawMode = readTrimmedString(it.mode);
@@ -39,13 +38,12 @@ export function parseAdminRoutesPayload(
       continue;
     }
 
-    // Back-compat for legacy DB rows that only stored Path.
+    // Accept rows without pageId only if we can map an existing route.
     const mapped = pathToPageId.get(p) || "";
     if (mapped) protectedByPageId[mapped] = { auth, mode, path: p };
-    else protectedByPath[p] = { auth, mode };
   }
 
-  return { overrides, protectedByPageId, protectedByPath };
+  return { overrides, protectedByPageId };
 }
 
 export function createEffectiveAccessFinder({
@@ -61,20 +59,6 @@ export function createEffectiveAccessFinder({
   for (const it of items) byId.set(it.id, it);
 
   const directById = cfg.protectedByPageId || {};
-  const legacyByPath = cfg.protectedByPath || {};
-
-  const findLegacyByPath = (routePath: string) => {
-    const p = normalizeRoutePath(routePath);
-    let best: { sourcePath: string; auth: "password" | "github" } | null = null;
-    for (const [k, v] of Object.entries(legacyByPath)) {
-      const kp = normalizeRoutePath(k);
-      if (!kp || kp === "/") continue;
-      if (p === kp || p.startsWith(`${kp}/`)) {
-        if (!best || kp.length > best.sourcePath.length) best = { sourcePath: kp, auth: v.auth };
-      }
-    }
-    return best;
-  };
 
   return (pageId: string, routePath: string): EffectiveAccess | null => {
     const pid = compactId(pageId);
@@ -104,18 +88,6 @@ export function createEffectiveAccessFinder({
         };
       }
       cur = tree.parentById.get(cur) || "";
-    }
-
-    // Back-compat fallback: legacy path-only rule.
-    const legacy = findLegacyByPath(routePath);
-    if (legacy) {
-      return {
-        auth: legacy.auth,
-        direct: false,
-        inherited: true,
-        sourceId: "",
-        sourcePath: legacy.sourcePath,
-      };
     }
 
     return null;

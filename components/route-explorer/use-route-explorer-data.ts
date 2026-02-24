@@ -45,7 +45,6 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   const [cfg, setCfg] = useState<AdminConfig>({
     overrides: {},
     protectedByPageId: {},
-    protectedByPath: {},
   });
   const [busyId, setBusyId] = useState<string>("");
   const [err, setErr] = useState<string>("");
@@ -200,22 +199,19 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
         const next: AdminConfig = {
           overrides: prev.overrides,
           protectedByPageId: { ...prev.protectedByPageId },
-          protectedByPath: { ...prev.protectedByPath },
         };
         const pid = compactId(pageId);
-        const p = normalizeRoutePath(path);
+        const p = normalizeRoutePath(path) || "/";
 
         // Public means remove any direct protection for this page.
         if (access === "public") {
           delete next.protectedByPageId[pid];
-          if (p) delete next.protectedByPath[p];
           return next;
         }
 
         if (!pid) return next;
         const auth: "password" | "github" = access === "github" ? "github" : "password";
         next.protectedByPageId[pid] = { auth, mode: "prefix", path: p };
-        if (p) delete next.protectedByPath[p];
         return next;
       });
       return true;

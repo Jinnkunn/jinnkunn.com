@@ -20,10 +20,6 @@ export type AdminProtectedRule = {
 export type AdminConfig = {
   overrides: Record<string, string>; // pageId -> routePath
   protectedByPageId: Record<string, AdminProtectedRule>; // pageId -> protection rule
-  protectedByPath: Record<
-    string,
-    { auth: "password" | "github"; mode: "exact" | "prefix" }
-  >; // legacy path -> rule
 };
 
 export type EffectiveAccess = {

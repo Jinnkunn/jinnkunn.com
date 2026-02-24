@@ -123,7 +123,6 @@ test("route-explorer-model: createEffectiveAccessFinder supports direct + inheri
     tree,
     cfg: {
       overrides: {},
-      protectedByPath: {},
       protectedByPageId: {
         [ids.teachingId]: { auth: "github", mode: "prefix", path: "/teaching" },
       },
@@ -143,14 +142,13 @@ test("route-explorer-model: createEffectiveAccessFinder supports direct + inheri
   assert.equal(inherited?.sourceId, ids.teachingId);
 });
 
-test("route-explorer-model: parseAdminRoutesPayload maps legacy path rules", () => {
+test("route-explorer-model: parseAdminRoutesPayload maps protection rows by page id", () => {
   const { items, ids } = fixtureItems();
   const parsed = parseAdminRoutesPayload(
     {
       overrides: [{ pageId: ids.termId, routePath: "/fall" }],
       protectedRoutes: [
-        { path: "/teaching", mode: "prefix", auth: "github" },
-        { path: "/unknown", mode: "exact", auth: "password" },
+        { pageId: ids.teachingId, path: "/teaching", mode: "prefix", auth: "github" },
       ],
     },
     items,
@@ -161,10 +159,6 @@ test("route-explorer-model: parseAdminRoutesPayload maps legacy path rules", () 
     auth: "github",
     mode: "prefix",
     path: "/teaching",
-  });
-  assert.deepEqual(parsed.protectedByPath["/unknown"], {
-    auth: "password",
-    mode: "exact",
   });
 });
 
