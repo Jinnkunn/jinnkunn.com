@@ -1,7 +1,9 @@
+import JsonLdScript from "@/components/seo/json-ld-script";
 import RawHtml from "@/components/raw-html";
 import { getBlogIndex } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { buildPageMetadata } from "@/lib/seo/metadata";
+import { buildBlogIndexStructuredData } from "@/lib/seo/structured-data";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { escapeHtml } from "@/lib/shared/text-utils";
 import { getSiteConfig } from "@/lib/site-config";
@@ -109,6 +111,7 @@ function rewriteBlogIndexMainHtml(mainHtml: string, listHtml: string): string {
 }
 
 export default async function BlogPage() {
+  const cfg = getSiteConfig();
   let html = "";
   try {
     html = await loadNotionBlogMain();
@@ -118,5 +121,20 @@ export default async function BlogPage() {
   const index = await getBlogIndex();
   const listHtml = buildBlogListHtml(index);
   const rewritten = rewriteBlogIndexMainHtml(html, listHtml);
-  return <RawHtml html={rewritten} />;
+  const jsonLd = buildBlogIndexStructuredData(
+    cfg,
+    index
+      .filter((item) => item.kind === "list")
+      .map((item) => ({
+        title: item.title,
+        pathname: item.href,
+        dateIso: item.dateIso,
+      })),
+  );
+  return (
+    <>
+      <JsonLdScript id="ld-blog-index" data={jsonLd} />
+      <RawHtml html={rewritten} />
+    </>
+  );
 }

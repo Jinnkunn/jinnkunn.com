@@ -230,3 +230,109 @@
   border-color: rgba(235, 87, 87, 0.22);
   color: rgba(140, 32, 32, 0.95);
 }
+
+.site-admin-deploy-preview {
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.site-admin-deploy-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.site-admin-deploy-preview__title {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(55, 53, 47, 0.62);
+  font-weight: 700;
+}
+
+.site-admin-deploy-preview__refresh {
+  appearance: none;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  color: rgba(55, 53, 47, 0.9);
+  height: 32px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.site-admin-deploy-preview__refresh:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.site-admin-deploy-preview__summary {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(55, 53, 47, 0.84);
+}
+
+.site-admin-deploy-preview__error {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(140, 32, 32, 0.95);
+}
+
+.site-admin-deploy-preview__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.site-admin-deploy-preview__stats > span {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  background: rgba(55, 53, 47, 0.03);
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.78);
+}
+
+.site-admin-deploy-preview__details {
+  border: 1px dashed rgba(55, 53, 47, 0.16);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.site-admin-deploy-preview__details > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.84);
+  font-weight: 650;
+}
+
+.site-admin-deploy-preview__details ul {
+  margin: 8px 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.site-admin-deploy-preview__details li {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.86);
+  line-height: 1.35;
+}
+
+.site-admin-deploy-preview__muted {
+  color: rgba(55, 53, 47, 0.58);
+  font-size: 12px;
+}

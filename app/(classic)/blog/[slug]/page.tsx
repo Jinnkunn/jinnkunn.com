@@ -1,8 +1,10 @@
+import JsonLdScript from "@/components/seo/json-ld-script";
 import RawHtml from "@/components/raw-html";
 import { getBlogPostSlugs, parseBlogMetaFromMain } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
 import { buildPageMetadata } from "@/lib/seo/metadata";
+import { buildBlogPostStructuredData } from "@/lib/seo/structured-data";
 import { escapeHtml } from "@/lib/shared/text-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import type { Metadata } from "next";
@@ -75,8 +77,23 @@ export default async function BlogPostPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const cfg = getSiteConfig();
   const { slug } = await params;
   const raw = await loadRawMainHtml(`blog/list/${slug}`);
+  const meta = parseBlogMetaFromMain(raw);
+  const description = extractDescriptionFromMain(raw) ?? cfg.seo.description;
+  const jsonLd = buildBlogPostStructuredData(cfg, {
+    slug,
+    title: meta.title,
+    description,
+    publishedTime: meta.dateIso,
+    modifiedTime: meta.dateIso,
+  });
   const rewritten = rewriteBlogPostMainHtml(raw, { slug });
-  return <RawHtml html={rewritten} />;
+  return (
+    <>
+      <JsonLdScript id={`ld-blog-${slug}`} data={jsonLd} />
+      <RawHtml html={rewritten} />
+    </>
+  );
 }

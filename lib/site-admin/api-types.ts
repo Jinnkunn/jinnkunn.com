@@ -123,3 +123,46 @@ export type SiteAdminDeployPayload = {
 };
 
 export type SiteAdminDeployResult = SiteAdminDeployPayload | { ok: false; error: string };
+
+export type SiteAdminDeployPreviewRedirectChange = {
+  kind: "added" | "removed" | "changed";
+  source: "route" | "override" | "both";
+  pageId: string;
+  title: string;
+  fromPath: string;
+  toPath: string;
+};
+
+export type SiteAdminDeployPreviewProtectedChange = {
+  kind: "added" | "removed" | "changed";
+  pageId: string;
+  path: string;
+  mode: "exact" | "prefix";
+  auth: "password" | "github";
+  previousMode?: "exact" | "prefix";
+  previousAuth?: "password" | "github";
+};
+
+export type SiteAdminDeployPreviewPayload = {
+  ok: true;
+  generatedAt: string;
+  hasChanges: boolean;
+  summary: {
+    pagesAdded: number;
+    pagesRemoved: number;
+    redirectsAdded: number;
+    redirectsRemoved: number;
+    redirectsChanged: number;
+    protectedAdded: number;
+    protectedRemoved: number;
+    protectedChanged: number;
+  };
+  samples: {
+    pagesAdded: string[];
+    pagesRemoved: string[];
+    redirects: SiteAdminDeployPreviewRedirectChange[];
+    protected: SiteAdminDeployPreviewProtectedChange[];
+  };
+};
+
+export type SiteAdminDeployPreviewResult = SiteAdminDeployPreviewPayload | { ok: false; error: string };
