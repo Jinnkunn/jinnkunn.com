@@ -4,6 +4,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "playwright-core";
 
 const OUT_ROOT = path.join(process.cwd(), "output", "ui-smoke");
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+
+function envFlag(name) {
+  return TRUE_VALUES.has(String(process.env[name] || "").trim().toLowerCase());
+}
 
 function isoStampForPath(d = new Date()) {
   return d.toISOString().replace(/[:.]/g, "-");
@@ -56,16 +61,21 @@ async function launchBrowser() {
 }
 
 async function main() {
+  const quick = envFlag("SMOKE_UI_QUICK");
+  const skipBuild = envFlag("SMOKE_UI_SKIP_BUILD");
   const stamp = isoStampForPath();
   const outDir = path.join(OUT_ROOT, stamp);
   await mkdir(outDir, { recursive: true });
 
-  const port = 3011;
+  const portRaw = Number.parseInt(String(process.env.SMOKE_UI_PORT || "3011"), 10);
+  const port = Number.isFinite(portRaw) && portRaw > 0 ? portRaw : 3011;
   const baseURL = `http://localhost:${port}`;
 
   const results = {
     generatedAt: new Date().toISOString(),
     baseURL,
+    profile: quick ? "quick" : "full",
+    skipBuild,
     checks: [],
   };
 
@@ -77,7 +87,7 @@ async function main() {
   let browser = null;
 
   try {
-    ensureBuild();
+    if (!skipBuild) ensureBuild();
     server = startServer(port);
 
     // Capture a small tail of server logs for debugging.
@@ -291,8 +301,9 @@ async function main() {
       await context.close();
     }
 
-    // Embed loader hides (separate page that includes embeds)
-    {
+    // Embed loader hides (separate page that includes embeds).
+    // Skip in quick profile: this is slower and network-dependent.
+    if (!quick) {
       const context = await browser.newContext({
         viewport: { width: 1200, height: 800 },
       });
@@ -332,8 +343,9 @@ async function main() {
       await context.close();
     }
 
-    // References typography (ensure it's not oversized)
-    {
+    // References typography (ensure it's not oversized).
+    // Skip in quick profile to keep PR gate fast/stable.
+    if (!quick) {
       const context = await browser.newContext({
         viewport: { width: 1200, height: 800 },
       });

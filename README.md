@@ -172,6 +172,12 @@ npm run smoke:ui
 
 Outputs go to `output/ui-smoke/<timestamp>/` and `output/ui-smoke/latest.json`.
 
+Quick profile (for CI / PR gate):
+
+```bash
+SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui
+```
+
 ## One-Command Verification
 
 Run the full pipeline:
@@ -204,7 +210,7 @@ Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-
 
 ## GitHub Actions
 
-- `CI`: basic `npm ci` + `npm run build` (works without Notion secrets).
+- `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke**.
 - `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

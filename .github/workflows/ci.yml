@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,3 +32,19 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Keep a fast UI gate on PRs: core nav/search/mobile behavior only.
+      # Heavier embed/reference checks stay in manual UI Smoke workflow.
+      - name: UI Smoke (Quick)
+        env:
+          SMOKE_UI_QUICK: "1"
+          SMOKE_UI_SKIP_BUILD: "1"
+        run: npm run smoke:ui
+
+      - name: Upload UI Smoke Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-ci
+          path: output/ui-smoke/**
+          if-no-files-found: ignore
