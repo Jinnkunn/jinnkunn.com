@@ -190,6 +190,23 @@ Quick profile (for CI / PR gate):
 SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui
 ```
 
+## Production Smoke Checks
+
+Run browser smoke checks directly against production origin:
+
+```bash
+npm run smoke:prod
+```
+
+Optional overrides:
+
+```bash
+SMOKE_PROD_ORIGIN="https://jinkunchen.com" npm run smoke:prod
+SMOKE_PROD_QUERY="reasoning" npm run smoke:prod
+```
+
+Outputs go to `output/ui-smoke-prod/<timestamp>/` and `output/ui-smoke-prod/latest.json`.
+
 ## Accessibility Checks (Axe)
 
 Run automated accessibility checks (WCAG 2A/2AA).
@@ -281,5 +298,6 @@ Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-
 
 - `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **full-site axe a11y checks** + **performance budgets**.
 - `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
+- `Production Smoke`: manual only (workflow_dispatch). Runs Playwright checks directly on the production origin.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

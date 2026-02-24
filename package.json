@@ -19,6 +19,7 @@
     "snapshot:compare": "node scripts/ui-compare-snapshots.mjs",
     "audit:notion": "node scripts/audit-notion-blocks.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
+    "smoke:prod": "node scripts/smoke-prod.mjs",
     "check:a11y": "node scripts/a11y-check.mjs",
     "check:perf": "node scripts/perf-budget.mjs",
     "check:ui": "node scripts/check-ui.mjs"
