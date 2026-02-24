@@ -180,16 +180,34 @@ SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui
 
 ## Accessibility Checks (Axe)
 
-Run automated accessibility checks (WCAG 2A/2AA) on core pages:
+Run automated accessibility checks (WCAG 2A/2AA).
+
+By default, the checker:
+
+- discovers routes from `sitemap.xml` + section sitemaps,
+- keeps priority routes (`/`, `/blog`, `/publications`),
+- then round-robin samples across sections (default max: 12 pages).
+
+Exit code policy: serious/critical issues on priority routes fail the command; sampled routes are report-only unless `A11Y_FAIL_ALL=1`.
 
 ```bash
 npm run check:a11y
 ```
 
-CI profile (skip rebuild, run against already-built app):
+Common overrides:
 
 ```bash
+# CI profile (skip rebuild, run against already-built app)
 A11Y_SKIP_BUILD=1 npm run check:a11y
+
+# cap scanned page count
+A11Y_MAX_PAGES=16 npm run check:a11y
+
+# force explicit paths (skip sitemap discovery)
+A11Y_PATHS="/,/blog,/publications,/works" npm run check:a11y
+
+# fail on all audited pages (default only blocks on priority/core pages)
+A11Y_FAIL_ALL=1 npm run check:a11y
 ```
 
 Outputs go to `output/a11y/<timestamp>/report.json` and `output/a11y/latest.json`.
