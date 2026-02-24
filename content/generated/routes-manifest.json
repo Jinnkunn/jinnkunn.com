@@ -1,0 +1,832 @@
+[
+  {
+    "id": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "title": "Hi there!",
+    "kind": "page",
+    "routePath": "/",
+    "parentId": "",
+    "parentRoutePath": "/",
+    "navGroup": "top",
+    "overridden": false
+  },
+  {
+    "id": "c277f772b85a4e8d85938cd07ac85f94",
+    "title": "Publications",
+    "kind": "page",
+    "routePath": "/publications",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "top",
+    "overridden": false
+  },
+  {
+    "id": "e3a47d49c220484ab33773c1d010dd69",
+    "title": "Teaching",
+    "kind": "page",
+    "routePath": "/teaching",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "more",
+    "overridden": false
+  },
+  {
+    "id": "4a048f29599144b18aeaeae8eda733df",
+    "title": "Appointment",
+    "kind": "page",
+    "routePath": "/teaching/appointment",
+    "parentId": "e3a47d49c220484ab33773c1d010dd69",
+    "parentRoutePath": "/teaching",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "6b59278ee8c3450081a792ae1be461fe",
+    "title": "Feedback",
+    "kind": "page",
+    "routePath": "/teaching/feedback",
+    "parentId": "e3a47d49c220484ab33773c1d010dd69",
+    "parentRoutePath": "/teaching",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58035acc1e820aa3a4809",
+    "title": "Archive",
+    "kind": "page",
+    "routePath": "/teaching/archive",
+    "parentId": "e3a47d49c220484ab33773c1d010dd69",
+    "parentRoutePath": "/teaching",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf580c29811f438d7cced08",
+    "title": "2024/25 Fall",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall",
+    "parentId": "17040d70fdf58035acc1e820aa3a4809",
+    "parentRoutePath": "/teaching/archive",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581d0b439cbbbc2871f5a",
+    "title": "CSCI3141",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141",
+    "parentId": "17040d70fdf580c29811f438d7cced08",
+    "parentRoutePath": "/teaching/archive/2024-25-fall",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5816ca4ccdb1e97184183",
+    "title": "Timeline",
+    "kind": "database",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "parentId": "17040d70fdf581d0b439cbbbc2871f5a",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581a3ad9ffb8cd457c8ab",
+    "title": "⏰ Project Due",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/project-due",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58153aaf1c5c9e9ec2d77",
+    "title": "Assignment Due",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment-due",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58106b9bce6d1bbd15b1c",
+    "title": "🚀 Exam Period 🚀",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/exam-period",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581388aa0e28a9cb23fae",
+    "title": "MONDAY CLASS WILL BE HELD",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/monday-class-will-be-held",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5813884dccac1d2818b60",
+    "title": "💪 Final Exam",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/final-exam",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5810e8858db811123b892",
+    "title": "Final Exam Review 🎆 The Last Lecture",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/final-exam-review-the-last-lecture",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581fd8f6ce952d0f0df63",
+    "title": "Assignment4 Posted",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment4-posted",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58111bed1cbe863c92fda",
+    "title": "Hierarchical Clustering & Outlier Detection",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/hierarchical-clustering-outlier-detection",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581219800f5c4ed98fc69",
+    "title": "Online Q&A Session",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/online-q-a-session",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58127aae8e1262df9ae53",
+    "title": "Midterm Exam Grade Released",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/midterm-exam-grade-released",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581718cf5da13c28f84dc",
+    "title": "Assignment3 Due",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment3-due",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5816fa153f1ff88601124",
+    "title": "Project Dataset Selection Due",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/project-dataset-selection-due",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581f4acd0d90682a33120",
+    "title": "🍁 FALL STUDY BREAK 🍁",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/fall-study-break",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581d9a37de6a211051ecf",
+    "title": "Partition-Based Clustering",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/partition-based-clustering",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581358e8af4964445c8cf",
+    "title": "Lab10 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab10-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5814392cafdfd98bf61d9",
+    "title": "Descriptive Analytics",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/descriptive-analytics",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581d59ca7cf7b66ef4af7",
+    "title": "Lab10 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab10-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581229312caa2e7ac23a5",
+    "title": "Assignment3 Posted",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment3-posted",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581a1b051ce8bf6565abb",
+    "title": "Model Evaluation and Selection",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/model-evaluation-and-selection",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58145be88e89fd03e0eae",
+    "title": "Lab9 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab9-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58153bdaecdd752c6a2e1",
+    "title": "Tree-Based Models",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/tree-based-models",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5816b9cedd1127493caac",
+    "title": "Lab9 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab9-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581408f14eebdba3567ad",
+    "title": "Assignment2 Due",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment2-due",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581ecbdf2dee3b6527938",
+    "title": "SVM",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/svm",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5811a9ff4ec0210165e9a",
+    "title": "Linear Models",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/linear-models",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5813a93c8e045411a2781",
+    "title": "Lab8 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab8-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58117bbb0d1570e43a9ed",
+    "title": "Lab8 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab8-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5810fa48cd576e93c61de",
+    "title": "Predictive Analytics",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/predictive-analytics",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58102a803cd7288ce1341",
+    "title": "Get Data from Real-Time Data Feed",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/get-data-from-real-time-data-feed",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581c4a39cc58c689cfece",
+    "title": "Leb7 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/leb7-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5814f9b72d8b34ea225c2",
+    "title": "Assignment2 Posted",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment2-posted",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581a3b051d5ba0b685ff2",
+    "title": "Lab7 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab7-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581dd86f8ca5337659273",
+    "title": "Lab6 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab6-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58127a4baffcc5b51a7f6",
+    "title": "Web Scraping in R: rvest, httr, and jsonlite",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/web-scraping-in-r-rvest-httr-and-jsonlite",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581aaa7d9f85f1e5abd98",
+    "title": "Basic Web Component Review",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/basic-web-component-review",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581659f20ecc06d10ef63",
+    "title": "Lab6 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab6-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5818883e1e094e7460396",
+    "title": "Assignment 1 Due (Extended)",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment-1-due-extended",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581bd9e4fdf61a4c4d45b",
+    "title": "💪 Midterm Exam",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/midterm-exam",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581968dc5f426656e912d",
+    "title": "Midterm Review",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/midterm-review",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5810cbfc9eec9b6072ff2",
+    "title": "Lab5 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab5-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581db8cbfff9f7baae4f4",
+    "title": "Lab5 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab5-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581b99c08d4295a2d2a3e",
+    "title": "Data Visualization",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/data-visualization",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58121974ff96622f590c6",
+    "title": "Lab3 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab3-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581409642e9d4bdf00e86",
+    "title": "Lab4 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab4-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581e19905e613fb15e17f",
+    "title": "Data Summarization",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/data-summarization",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581c3a50fffef42d942b6",
+    "title": "Lab3 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab3-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581968dcdd3a7e74ed9a7",
+    "title": "Lab4 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab4-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5819abb4fc0d3dc0b1ddd",
+    "title": "Assignment 1 Posted",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/assignment-1-posted",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581d8a90aee4405b3cb1c",
+    "title": "Final Exam/Project Selection Due",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/final-exam-project-selection-due",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581249a2edb3e4a5c2813",
+    "title": "Project Description Posted",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/project-description-posted",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf5818b8ce1fb09379df096",
+    "title": "Data Pre-Processing",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/data-pre-processing",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581028ddce8d5c2bf48d7",
+    "title": "Data Manipulation",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/data-manipulation",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581d58183f2bf7ae89b2f",
+    "title": "Lab2 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab2-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58142857ceaf9150770f4",
+    "title": "Lab2 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab2-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581c59ff0f7d93a19540d",
+    "title": "Data Structure",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/data-structure",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58157aae0d12ee6671134",
+    "title": "Introduction to R Language",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/introduction-to-r-language",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581928066d9f4df3a6334",
+    "title": "Lab1 Sec01",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab1-sec01",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf58195b440c21f6efe3702",
+    "title": "Lab1 Sec02",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/lab1-sec02",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581d1bbbbd7b4ff5830c6",
+    "title": "Introduction to Data Science",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/introduction-to-data-science",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "17040d70fdf581f09a66c9411c1f5eb7",
+    "title": "First Class, Let’s Know Each Other!",
+    "kind": "page",
+    "routePath": "/teaching/archive/2024-25-fall/csci3141/timeline/first-class-let-s-know-each-other",
+    "parentId": "17040d70fdf5816ca4ccdb1e97184183",
+    "parentRoutePath": "/teaching/archive/2024-25-fall/csci3141/timeline",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "ed62ebed814c41f684fd918936b64c09",
+    "title": "Works",
+    "kind": "page",
+    "routePath": "/works",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "top",
+    "overridden": false
+  },
+  {
+    "id": "21040d70fdf5806aad08fe42515fe790",
+    "title": "Blog",
+    "kind": "page",
+    "routePath": "/blog",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "top",
+    "overridden": false
+  },
+  {
+    "id": "21040d70fdf580488cfbf71f19978866",
+    "title": "List",
+    "kind": "database",
+    "routePath": "/blog/list",
+    "parentId": "21040d70fdf5806aad08fe42515fe790",
+    "parentRoutePath": "/blog",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "30040d70fdf58106bc92ee4e16cdbba2",
+    "title": "Context Order and Reasoning Drift: Measuring Order Sensitivity from Token Probabilities",
+    "kind": "page",
+    "routePath": "/blog/list/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "2ff40d70fdf5813aa761e9f8f20238d4",
+    "title": "Measuring Reasoning Drift: A Token-Level Instability Signal",
+    "kind": "page",
+    "routePath": "/blog/list/measuring-reasoning-drift-a-token-level-instability-signal",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "2fa40d70fdf58178a2c1d3a9c3887af1",
+    "title": "When AI Reasoning Starts to Drift",
+    "kind": "page",
+    "routePath": "/blog/list/when-ai-reasoning-starts-to-drift",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "21740d70fdf580f281fbe08a7014ce1d",
+    "title": "The Effect of Chunk Retrieval Sequence in RAG on Multi-Step Inference Performance of Large Language Models",
+    "kind": "page",
+    "routePath": "/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "21640d70fdf580fb9977ea94cfa745a5",
+    "title": "Key Challenges in Current LLM Memory Systems",
+    "kind": "page",
+    "routePath": "/blog/list/key-challenges-in-current-llm-memory-systems",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "21040d70fdf580878bd6ca6b918034e0",
+    "title": "The Surprising Impact of Memory Order on LLM Responses",
+    "kind": "page",
+    "routePath": "/blog/list/the-surprising-impact-of-memory-order-on-llm-responses",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "21040d70fdf5807b8ae1c046f39753ed",
+    "title": "Do Language Model Embeddings Form an Approximate Abelian Group?",
+    "kind": "page",
+    "routePath": "/blog/list/do-language-model-embeddings-form-an-approximate-abelian-group",
+    "parentId": "21040d70fdf580488cfbf71f19978866",
+    "parentRoutePath": "/blog/list",
+    "navGroup": "",
+    "overridden": false
+  },
+  {
+    "id": "bd838cdf0d974ea59268a1c6b353fc20",
+    "title": "BIO",
+    "kind": "page",
+    "routePath": "/bio",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "more",
+    "overridden": false
+  },
+  {
+    "id": "428aa769b98042adb1aa84daa3d62d7b",
+    "title": "Connect",
+    "kind": "page",
+    "routePath": "/connect",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "more",
+    "overridden": true
+  },
+  {
+    "id": "17740d70fdf5809e9d90e23f24baeb63",
+    "title": "Yimen Chen (义门陈) Lineage",
+    "kind": "page",
+    "routePath": "/chen",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "",
+    "overridden": true
+  },
+  {
+    "id": "27640d70fdf580beb336f18fefe82284",
+    "title": "News",
+    "kind": "page",
+    "routePath": "/news",
+    "parentId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "parentRoutePath": "/",
+    "navGroup": "top",
+    "overridden": false
+  }
+]
