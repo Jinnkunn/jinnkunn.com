@@ -29,6 +29,12 @@ async function ensureSiteSettingsDbSchema(databaseId: string) {
     "Google Analytics ID": { rich_text: {} },
     "Content GitHub Users": { rich_text: {} },
     "Sitemap Excludes": { rich_text: {} },
+    "Sitemap Auto Exclude Enabled": { checkbox: {} },
+    "Sitemap Auto Exclude Sections": { rich_text: {} },
+    "Sitemap Max Depth Pages": { number: { format: "number" } },
+    "Sitemap Max Depth Blog": { number: { format: "number" } },
+    "Sitemap Max Depth Publications": { number: { format: "number" } },
+    "Sitemap Max Depth Teaching": { number: { format: "number" } },
   });
 }
 

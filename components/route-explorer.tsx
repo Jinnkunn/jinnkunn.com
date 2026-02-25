@@ -32,6 +32,9 @@ export default function RouteExplorer({
     applyBatchAccess,
     filtered,
     visible,
+    renderedVisible,
+    hasMoreVisible,
+    showMoreVisible,
     findEffectiveAccess,
     findOverrideConflict,
     toggleCollapsed,
@@ -154,10 +157,15 @@ export default function RouteExplorer({
       <div className="routes-explorer__meta">
         <span className="routes-explorer__count">{filtered.length}</span>
         <span className="routes-explorer__count-label">routes</span>
+        {renderedVisible.length < visible.length ? (
+          <span className="routes-explorer__count-label">
+            (showing {renderedVisible.length}/{visible.length})
+          </span>
+        ) : null}
       </div>
 
       <div className="routes-tree" role="list" aria-label="Routes">
-        {visible.map((it) => {
+        {renderedVisible.map((it) => {
           const match = findEffectiveAccess(it.id, it.routePath);
           const directProtected = Boolean(cfg.protectedByPageId[compactId(it.id)]);
           const effectiveProtected = Boolean(match);
@@ -204,6 +212,13 @@ export default function RouteExplorer({
           );
         })}
       </div>
+      {hasMoreVisible ? (
+        <div className="routes-explorer__more">
+          <button type="button" className="routes-explorer__filter-btn" onClick={showMoreVisible}>
+            Load more ({visible.length - renderedVisible.length} remaining)
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

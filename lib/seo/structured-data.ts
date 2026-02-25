@@ -1,6 +1,7 @@
 import type { SiteConfig } from "@/lib/site-config";
+import type { PublicationStructuredItem } from "@/lib/seo/publications-items";
 
-import { canonicalAbsolute, detectSiteOrigin } from "./metadata";
+import { canonicalAbsolute, detectSiteOrigin } from "./metadata.ts";
 
 type JsonLdObject = Record<string, unknown>;
 
@@ -143,17 +144,18 @@ export function buildBlogPostStructuredData(
 
 export function buildPublicationsStructuredData(
   cfg: SiteConfig,
-  input: { title: string; description: string },
+  input: { title: string; description: string; items?: PublicationStructuredItem[] },
 ): JsonLdObject[] {
   const ids = baseIds();
   const pathname = "/publications";
+  const pageId = canonicalAbsolute(pathname);
   const person = buildPersonStructuredData(cfg);
   const website = buildWebsiteStructuredData(cfg);
   const page: JsonLdObject = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    "@id": canonicalAbsolute(pathname),
-    url: canonicalAbsolute(pathname),
+    "@id": pageId,
+    url: pageId,
     name: input.title || "Publications",
     description: input.description || cfg.seo.description,
     inLanguage: cfg.lang || "en",
@@ -168,5 +170,56 @@ export function buildPublicationsStructuredData(
     { name: "Home", pathname: "/" },
     { name: input.title || "Publications", pathname },
   ]);
-  return [person, website, page, crumbs];
+
+  const cleanItems = Array.isArray(input.items)
+    ? input.items
+      .filter((it) => String(it?.title || "").trim().length > 0)
+      .slice(0, 200)
+    : [];
+
+  if (cleanItems.length === 0) {
+    return [person, website, page, crumbs];
+  }
+
+  const itemList: JsonLdObject = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "@id": `${pageId}#list`,
+    name: `${input.title || "Publications"} List`,
+    numberOfItems: cleanItems.length,
+    itemListElement: cleanItems.map((item, index) => {
+      const year = String(item.year || "").trim();
+      const datePublished = /^\d{4}$/.test(year) ? `${year}-01-01` : undefined;
+      const externalUrl = String(item.url || "").trim();
+      const labels = Array.isArray(item.labels)
+        ? item.labels.map((s) => String(s || "").trim()).filter(Boolean)
+        : [];
+      const article: JsonLdObject = {
+        "@type": "ScholarlyArticle",
+        "@id": `${pageId}#item-${index + 1}`,
+        headline: item.title,
+        name: item.title,
+        author: { "@id": ids.personId },
+        isPartOf: { "@id": pageId },
+      };
+      if (externalUrl) {
+        article.url = externalUrl;
+        article.sameAs = externalUrl;
+      }
+      if (datePublished) {
+        article.datePublished = datePublished;
+      }
+      if (labels.length > 0) {
+        article.keywords = labels.join(", ");
+      }
+
+      return {
+        "@type": "ListItem",
+        position: index + 1,
+        item: article,
+      };
+    }),
+  };
+
+  return [person, website, page, itemList, crumbs];
 }

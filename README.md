@@ -51,7 +51,7 @@ This repo can compile a page tree (via the configured content source) into a sta
 
 To make the `Site Admin` page feel like a real backend, you can provision 3 inline databases:
 
-- `Site Settings` (site name, SEO, content root/home page id)
+- `Site Settings` (site name, SEO, sitemap policy, content root/home page id)
 - `Navigation` (top nav + More dropdown)
 - `Route Overrides` (optional pageId -> route mapping)
 
@@ -89,7 +89,7 @@ Optional:
 - `DEPLOY_HOOK_MAX_ATTEMPTS` (default `3`)
 - `DEPLOY_HOOK_RETRY_BASE_DELAY_MS` (default `350`)
 
-GitHub Actions (`CI`, `UI Smoke`, `UI Compare`, `Search Snapshots`, `Production Smoke`) read:
+GitHub Actions (`CI`, `UI Smoke`, `UI Compare`, `Search Snapshots`, `Production Quality`) read:
 - `FLAGS_SECRET` from repo/org secret `FLAGS_SECRET`
 - `NEXTAUTH_SECRET` from secret `NEXTAUTH_SECRET` (if missing, workflow auto-generates an ephemeral CI-only value)
 
@@ -224,6 +224,23 @@ SMOKE_PROD_QUERY="reasoning" npm run smoke:prod
 
 Outputs go to `output/ui-smoke-prod/<timestamp>/` and `output/ui-smoke-prod/latest.json`.
 
+## Production Quality Checks (Sitemap / Canonical / Internal Links)
+
+Run non-UI production checks directly against your deployed origin:
+
+```bash
+npm run check:quality:prod
+```
+
+Optional overrides:
+
+```bash
+QUALITY_PROD_ORIGIN="https://jinkunchen.com" npm run check:quality:prod
+QUALITY_PROD_MAX_PAGES=160 QUALITY_PROD_MAX_LINKS_PER_PAGE=50 npm run check:quality:prod
+```
+
+Outputs go to `output/quality-prod/<timestamp>/report.json` and `output/quality-prod/latest.json`.
+
 ## Accessibility Checks (Axe)
 
 Run automated accessibility checks (WCAG 2A/2AA).
@@ -315,6 +332,6 @@ Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-
 
 - `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **full-site axe a11y checks** + **performance budgets**.
 - `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
-- `Production Smoke`: manual only (workflow_dispatch). Runs Playwright checks directly on the production origin.
+- `Production Quality`: manual only (workflow_dispatch). Runs Playwright smoke checks + sitemap/canonical/internal-link quality checks on the production origin.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.

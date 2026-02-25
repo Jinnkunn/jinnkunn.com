@@ -9,6 +9,12 @@ export type SiteSettings = {
   googleAnalyticsId: string;
   contentGithubUsers: string;
   sitemapExcludes: string;
+  sitemapAutoExcludeEnabled: boolean;
+  sitemapAutoExcludeSections: string;
+  sitemapAutoExcludeDepthPages: string;
+  sitemapAutoExcludeDepthBlog: string;
+  sitemapAutoExcludeDepthPublications: string;
+  sitemapAutoExcludeDepthTeaching: string;
   rootPageId: string;
   homePageId: string;
 };

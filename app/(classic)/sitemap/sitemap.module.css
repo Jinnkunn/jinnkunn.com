@@ -20,6 +20,8 @@
 
 .item {
   margin: 4px 0;
+  content-visibility: auto;
+  contain-intrinsic-size: 46px;
 }
 
 .link {

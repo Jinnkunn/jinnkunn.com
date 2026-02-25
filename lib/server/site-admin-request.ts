@@ -20,6 +20,18 @@ export type SiteAdminSettingsPatch = Partial<Omit<SiteSettings, "rowId">>;
 export type SiteAdminNavPatch = Partial<Omit<NavItemRow, "rowId">>;
 export type SiteAdminNavCreateInput = Omit<NavItemRow, "rowId">;
 
+function depthFieldFromUnknown(
+  patch: Record<string, unknown>,
+  key: string,
+): string {
+  if (!(key in patch)) return "";
+  const raw = patch[key];
+  if (raw === null || raw === undefined) return "";
+  const n = Number(typeof raw === "string" ? raw.trim() : raw);
+  if (!Number.isFinite(n)) return "";
+  return String(Math.max(0, Math.min(20, Math.floor(n))));
+}
+
 export type SiteAdminConfigCommand =
   | { kind: "settings"; rowId: string; patch: SiteAdminSettingsPatch }
   | { kind: "nav-update"; rowId: string; patch: SiteAdminNavPatch }
@@ -90,6 +102,39 @@ export function parseSiteAdminConfigCommand(
     }
     if (patch.sitemapExcludes !== undefined) {
       outPatch.sitemapExcludes = getString(patch, "sitemapExcludes", { maxLen: 3000 });
+    }
+    if (patch.sitemapAutoExcludeEnabled !== undefined) {
+      const enabled = getBoolean(patch, "sitemapAutoExcludeEnabled");
+      outPatch.sitemapAutoExcludeEnabled = enabled ?? true;
+    }
+    if (patch.sitemapAutoExcludeSections !== undefined) {
+      outPatch.sitemapAutoExcludeSections = getString(patch, "sitemapAutoExcludeSections", {
+        maxLen: 400,
+      });
+    }
+    if (patch.sitemapAutoExcludeDepthPages !== undefined) {
+      outPatch.sitemapAutoExcludeDepthPages = depthFieldFromUnknown(
+        patch,
+        "sitemapAutoExcludeDepthPages",
+      );
+    }
+    if (patch.sitemapAutoExcludeDepthBlog !== undefined) {
+      outPatch.sitemapAutoExcludeDepthBlog = depthFieldFromUnknown(
+        patch,
+        "sitemapAutoExcludeDepthBlog",
+      );
+    }
+    if (patch.sitemapAutoExcludeDepthPublications !== undefined) {
+      outPatch.sitemapAutoExcludeDepthPublications = depthFieldFromUnknown(
+        patch,
+        "sitemapAutoExcludeDepthPublications",
+      );
+    }
+    if (patch.sitemapAutoExcludeDepthTeaching !== undefined) {
+      outPatch.sitemapAutoExcludeDepthTeaching = depthFieldFromUnknown(
+        patch,
+        "sitemapAutoExcludeDepthTeaching",
+      );
     }
     if (patch.rootPageId !== undefined) {
       outPatch.rootPageId = getString(patch, "rootPageId", { maxLen: 64 });

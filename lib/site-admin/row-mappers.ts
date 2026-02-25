@@ -10,10 +10,36 @@ import type { NavItemRow, SiteSettings } from "./types.ts";
 export type RouteOverrideRow = SiteAdminRouteOverride;
 export type ProtectedRouteRow = SiteAdminProtectedRoute;
 
+function parseBooleanString(raw: string): boolean | null {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (["1", "true", "yes", "on"].includes(s)) return true;
+  if (["0", "false", "no", "off"].includes(s)) return false;
+  return null;
+}
+
+function parseNumberString(raw: string): string {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const n = Number(s);
+  if (!Number.isFinite(n)) return "";
+  return String(Math.floor(n));
+}
+
+function mapDepthField(row: NotionPageLike, key: string): string {
+  const n = getPropNumber(row, key);
+  if (typeof n === "number" && Number.isFinite(n)) return String(Math.floor(n));
+  return parseNumberString(getPropString(row, key));
+}
+
 export function mapSiteSettingsRow(row: NotionPageLike | null | undefined): SiteSettings | null {
   if (!row) return null;
   const rowId = compactId(String(row.id || ""));
   if (!rowId) return null;
+  const autoExcludeBool = getPropCheckbox(row, "Sitemap Auto Exclude Enabled");
+  const autoExcludeText = parseBooleanString(
+    getPropString(row, "Sitemap Auto Exclude Enabled"),
+  );
   return {
     rowId,
     siteName: getPropString(row, "Site Name"),
@@ -25,6 +51,15 @@ export function mapSiteSettingsRow(row: NotionPageLike | null | undefined): Site
     googleAnalyticsId: getPropString(row, "Google Analytics ID"),
     contentGithubUsers: getPropString(row, "Content GitHub Users"),
     sitemapExcludes: getPropString(row, "Sitemap Excludes"),
+    sitemapAutoExcludeEnabled: autoExcludeBool ?? autoExcludeText ?? true,
+    sitemapAutoExcludeSections: getPropString(row, "Sitemap Auto Exclude Sections"),
+    sitemapAutoExcludeDepthPages: mapDepthField(row, "Sitemap Max Depth Pages"),
+    sitemapAutoExcludeDepthBlog: mapDepthField(row, "Sitemap Max Depth Blog"),
+    sitemapAutoExcludeDepthPublications: mapDepthField(
+      row,
+      "Sitemap Max Depth Publications",
+    ),
+    sitemapAutoExcludeDepthTeaching: mapDepthField(row, "Sitemap Max Depth Teaching"),
     rootPageId: getPropString(row, "Root Page ID"),
     homePageId: getPropString(row, "Home Page ID"),
   };

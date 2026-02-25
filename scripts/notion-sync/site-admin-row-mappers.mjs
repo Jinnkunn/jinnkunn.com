@@ -24,6 +24,50 @@ export function parseGithubUserList(raw) {
   return out;
 }
 
+function parseBooleanString(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (["1", "true", "yes", "on"].includes(s)) return true;
+  if (["0", "false", "no", "off"].includes(s)) return false;
+  return null;
+}
+
+function parseSitemapSectionList(raw) {
+  const allowed = new Set(["pages", "blog", "publications", "teaching"]);
+  const list = String(raw || "")
+    .split(/[\s,\n]+/g)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const it of list) {
+    if (!allowed.has(it) || seen.has(it)) continue;
+    seen.add(it);
+    out.push(it);
+  }
+  return out;
+}
+
+function parseDepth(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(20, Math.floor(n)));
+}
+
+function readDepthField(row, propName) {
+  const n = getPropNumber(row, propName);
+  if (typeof n === "number" && Number.isFinite(n)) return Math.max(0, Math.min(20, Math.floor(n)));
+  return parseDepth(getPropString(row, propName));
+}
+
+function hasProperty(row, propName) {
+  const props = row?.properties;
+  if (!props || typeof props !== "object") return false;
+  return Object.prototype.hasOwnProperty.call(props, propName);
+}
+
 /**
  * @param {Record<string, unknown>} cfg
  * @param {Record<string, unknown>} row
@@ -40,6 +84,19 @@ export function applySiteSettingsRow(cfg, row) {
   const gaId = getPropString(row, "Google Analytics ID");
   const contentGithubUsers = getPropString(row, "Content GitHub Users");
   const sitemapExcludesRaw = getPropString(row, "Sitemap Excludes");
+  const autoExcludeEnabled = getPropCheckbox(row, "Sitemap Auto Exclude Enabled");
+  const autoExcludeEnabledRaw = getPropString(row, "Sitemap Auto Exclude Enabled");
+  const autoExcludeSectionsRaw = getPropString(row, "Sitemap Auto Exclude Sections");
+  const autoExcludeDepthPages = readDepthField(row, "Sitemap Max Depth Pages");
+  const autoExcludeDepthBlog = readDepthField(row, "Sitemap Max Depth Blog");
+  const autoExcludeDepthPublications = readDepthField(row, "Sitemap Max Depth Publications");
+  const autoExcludeDepthTeaching = readDepthField(row, "Sitemap Max Depth Teaching");
+  const hasAutoSectionsProp = hasProperty(row, "Sitemap Auto Exclude Sections");
+  const hasAutoDepthProp =
+    hasProperty(row, "Sitemap Max Depth Pages") ||
+    hasProperty(row, "Sitemap Max Depth Blog") ||
+    hasProperty(row, "Sitemap Max Depth Publications") ||
+    hasProperty(row, "Sitemap Max Depth Teaching");
   const rootPageId = getPropString(row, "Root Page ID");
   const homePageId = getPropString(row, "Home Page ID");
 
@@ -60,6 +117,24 @@ export function applySiteSettingsRow(cfg, row) {
   if (sitemapExcludesRaw) {
     cfg.content = cfg.content || {};
     cfg.content.sitemapExcludes = parseSitemapExcludeEntries(sitemapExcludesRaw);
+  }
+  const autoEnabled =
+    (typeof autoExcludeEnabled === "boolean" ? autoExcludeEnabled : null) ??
+    parseBooleanString(autoExcludeEnabledRaw);
+  const autoSections = parseSitemapSectionList(autoExcludeSectionsRaw);
+  const autoDepth = {};
+  if (typeof autoExcludeDepthPages === "number") autoDepth.pages = autoExcludeDepthPages;
+  if (typeof autoExcludeDepthBlog === "number") autoDepth.blog = autoExcludeDepthBlog;
+  if (typeof autoExcludeDepthPublications === "number") autoDepth.publications = autoExcludeDepthPublications;
+  if (typeof autoExcludeDepthTeaching === "number") autoDepth.teaching = autoExcludeDepthTeaching;
+  if (autoEnabled !== null || hasAutoSectionsProp || hasAutoDepthProp) {
+    cfg.content = cfg.content || {};
+    cfg.content.sitemapAutoExclude = {
+      ...(cfg.content.sitemapAutoExclude || {}),
+      ...(autoEnabled !== null ? { enabled: autoEnabled } : {}),
+      ...(hasAutoSectionsProp ? { excludeSections: autoSections } : {}),
+      ...(hasAutoDepthProp ? { maxDepthBySection: autoDepth } : {}),
+    };
   }
   if (rootPageId) cfg.content.rootPageId = rootPageId;
   if (homePageId) cfg.content.homePageId = homePageId;

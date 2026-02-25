@@ -109,6 +109,7 @@
   align-items: baseline;
   gap: 8px;
   color: rgba(55, 53, 47, 0.7);
+  flex-wrap: wrap;
 }
 
 .routes-explorer__count {
@@ -125,4 +126,10 @@
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   background: rgba(255, 255, 255, 0.9);
+}
+
+.routes-explorer__more {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
 }

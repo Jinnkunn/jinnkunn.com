@@ -5,6 +5,30 @@ import type { Dispatch, SetStateAction } from "react";
 import type { SiteSettings } from "./types";
 import { asString } from "./utils";
 
+const SITEMAP_SECTIONS = ["pages", "blog", "publications", "teaching"] as const;
+
+function parseSectionList(raw: string): Set<string> {
+  const out = new Set<string>();
+  const list = String(raw || "")
+    .split(/[\s,\n]+/g)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  for (const it of list) {
+    if (SITEMAP_SECTIONS.includes(it as (typeof SITEMAP_SECTIONS)[number])) {
+      out.add(it);
+    }
+  }
+  return out;
+}
+
+function asDepth(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "";
+  return String(Math.max(0, Math.min(20, Math.floor(n))));
+}
+
 type SiteAdminSettingsFormProps = {
   draftSettings: SiteSettings | null;
   busy: boolean;
@@ -26,8 +50,16 @@ export function SiteAdminSettingsForm({
     );
   }
 
-  const updateField = <K extends keyof SiteSettings>(key: K, value: string) => {
+  const updateField = <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => {
     setDraftSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+  const selectedSections = parseSectionList(draftSettings.sitemapAutoExcludeSections);
+
+  const toggleSection = (section: (typeof SITEMAP_SECTIONS)[number], checked: boolean) => {
+    const next = new Set(selectedSections);
+    if (checked) next.add(section);
+    else next.delete(section);
+    updateField("sitemapAutoExcludeSections", Array.from(next).join(", "));
   };
 
   return (
@@ -120,6 +152,97 @@ export function SiteAdminSettingsForm({
           onChange={(e) => updateField("sitemapExcludes", e.target.value)}
           placeholder={"/private\n/teaching/archive\n21040d70fdf580019476fa3c2ec769f2"}
         />
+      </div>
+
+      <div className="site-admin-form__row">
+        <label className="site-admin-form__label">Sitemap Auto Exclude</label>
+        <label className="site-admin-form__switch">
+          <input
+            type="checkbox"
+            checked={Boolean(draftSettings.sitemapAutoExcludeEnabled)}
+            onChange={(e) => updateField("sitemapAutoExcludeEnabled", e.target.checked)}
+          />
+          <span>Enable automatic exclusions</span>
+        </label>
+      </div>
+
+      <div className="site-admin-form__row">
+        <label className="site-admin-form__label">Sitemap Sections</label>
+        <div className="site-admin-form__checks" role="group" aria-label="Sitemap auto-exclude sections">
+          {SITEMAP_SECTIONS.map((section) => (
+            <label key={section} className="site-admin-form__check">
+              <input
+                type="checkbox"
+                checked={selectedSections.has(section)}
+                onChange={(e) => toggleSection(section, e.target.checked)}
+              />
+              <span>{section}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="site-admin-form__row">
+        <label className="site-admin-form__label">Sitemap Max Depth</label>
+        <div className="site-admin-form__depth-grid">
+          <label className="site-admin-form__depth-item">
+            <span>pages</span>
+            <input
+              className="site-admin-form__input site-admin-form__input--mono"
+              inputMode="numeric"
+              value={asString(draftSettings.sitemapAutoExcludeDepthPages)}
+              onChange={(e) =>
+                updateField(
+                  "sitemapAutoExcludeDepthPages",
+                  asDepth(e.target.value),
+                )
+              }
+              placeholder="-"
+            />
+          </label>
+          <label className="site-admin-form__depth-item">
+            <span>blog</span>
+            <input
+              className="site-admin-form__input site-admin-form__input--mono"
+              inputMode="numeric"
+              value={asString(draftSettings.sitemapAutoExcludeDepthBlog)}
+              onChange={(e) =>
+                updateField("sitemapAutoExcludeDepthBlog", asDepth(e.target.value))
+              }
+              placeholder="-"
+            />
+          </label>
+          <label className="site-admin-form__depth-item">
+            <span>publications</span>
+            <input
+              className="site-admin-form__input site-admin-form__input--mono"
+              inputMode="numeric"
+              value={asString(draftSettings.sitemapAutoExcludeDepthPublications)}
+              onChange={(e) =>
+                updateField(
+                  "sitemapAutoExcludeDepthPublications",
+                  asDepth(e.target.value),
+                )
+              }
+              placeholder="-"
+            />
+          </label>
+          <label className="site-admin-form__depth-item">
+            <span>teaching</span>
+            <input
+              className="site-admin-form__input site-admin-form__input--mono"
+              inputMode="numeric"
+              value={asString(draftSettings.sitemapAutoExcludeDepthTeaching)}
+              onChange={(e) =>
+                updateField(
+                  "sitemapAutoExcludeDepthTeaching",
+                  asDepth(e.target.value),
+                )
+              }
+              placeholder="-"
+            />
+          </label>
+        </div>
       </div>
 
       <div className="site-admin-form__row">

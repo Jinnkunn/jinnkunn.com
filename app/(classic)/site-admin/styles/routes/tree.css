@@ -11,6 +11,11 @@
   border-top: 1px solid rgba(55, 53, 47, 0.08);
 }
 
+.routes-tree__row[data-admin-open="0"] {
+  content-visibility: auto;
+  contain-intrinsic-size: 56px;
+}
+
 .routes-tree__row:first-child {
   border-top: 0;
 }

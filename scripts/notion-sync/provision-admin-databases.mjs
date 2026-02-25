@@ -24,6 +24,18 @@ function sitemapExcludesAsString(listOrString) {
   return String(listOrString || "").trim();
 }
 
+function sitemapAutoExcludeSectionsAsString(listOrString) {
+  if (Array.isArray(listOrString)) return listOrString.join(", ");
+  return String(listOrString || "").trim();
+}
+
+function sitemapDepthValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(20, Math.floor(n)));
+}
+
 /**
  * Ensure the Site Settings inline DB exists and has the latest schema.
  * @param {{ adminPageId: string, blocks: NotionBlock[], cfg: DefaultSiteConfig }} input
@@ -70,6 +82,12 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
         "Google Analytics ID": { rich_text: {} },
         "Content GitHub Users": { rich_text: {} },
         "Sitemap Excludes": { rich_text: {} },
+        "Sitemap Auto Exclude Enabled": { checkbox: {} },
+        "Sitemap Auto Exclude Sections": { rich_text: {} },
+        "Sitemap Max Depth Pages": { number: { format: "number" } },
+        "Sitemap Max Depth Blog": { number: { format: "number" } },
+        "Sitemap Max Depth Publications": { number: { format: "number" } },
+        "Sitemap Max Depth Teaching": { number: { format: "number" } },
         "Root Page ID": { rich_text: {} },
         "Home Page ID": { rich_text: {} },
       },
@@ -93,6 +111,32 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
         },
         "Sitemap Excludes": {
           rich_text: richText(sitemapExcludesAsString(cfg.content?.sitemapExcludes)),
+        },
+        "Sitemap Auto Exclude Enabled": {
+          checkbox: cfg.content?.sitemapAutoExclude?.enabled !== false,
+        },
+        "Sitemap Auto Exclude Sections": {
+          rich_text: richText(
+            sitemapAutoExcludeSectionsAsString(
+              cfg.content?.sitemapAutoExclude?.excludeSections,
+            ),
+          ),
+        },
+        "Sitemap Max Depth Pages": {
+          number: sitemapDepthValue(cfg.content?.sitemapAutoExclude?.maxDepthBySection?.pages),
+        },
+        "Sitemap Max Depth Blog": {
+          number: sitemapDepthValue(cfg.content?.sitemapAutoExclude?.maxDepthBySection?.blog),
+        },
+        "Sitemap Max Depth Publications": {
+          number: sitemapDepthValue(
+            cfg.content?.sitemapAutoExclude?.maxDepthBySection?.publications,
+          ),
+        },
+        "Sitemap Max Depth Teaching": {
+          number: sitemapDepthValue(
+            cfg.content?.sitemapAutoExclude?.maxDepthBySection?.teaching,
+          ),
         },
         "Root Page ID": { rich_text: richText(cfg.content?.rootPageId) },
         "Home Page ID": { rich_text: richText(cfg.content?.homePageId) },
@@ -132,6 +176,48 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
     await updateDatabase(dbId, {
       properties: {
         "Sitemap Excludes": { rich_text: {} },
+      },
+    });
+  }
+  if (!props["Sitemap Auto Exclude Enabled"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Auto Exclude Enabled": { checkbox: {} },
+      },
+    });
+  }
+  if (!props["Sitemap Auto Exclude Sections"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Auto Exclude Sections": { rich_text: {} },
+      },
+    });
+  }
+  if (!props["Sitemap Max Depth Pages"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Max Depth Pages": { number: { format: "number" } },
+      },
+    });
+  }
+  if (!props["Sitemap Max Depth Blog"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Max Depth Blog": { number: { format: "number" } },
+      },
+    });
+  }
+  if (!props["Sitemap Max Depth Publications"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Max Depth Publications": { number: { format: "number" } },
+      },
+    });
+  }
+  if (!props["Sitemap Max Depth Teaching"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "Sitemap Max Depth Teaching": { number: { format: "number" } },
       },
     });
   }

@@ -31,6 +31,12 @@ export function useSiteAdminSettingsMutation({
         googleAnalyticsId: draftSettings.googleAnalyticsId,
         contentGithubUsers: draftSettings.contentGithubUsers,
         sitemapExcludes: draftSettings.sitemapExcludes,
+        sitemapAutoExcludeEnabled: draftSettings.sitemapAutoExcludeEnabled,
+        sitemapAutoExcludeSections: draftSettings.sitemapAutoExcludeSections,
+        sitemapAutoExcludeDepthPages: draftSettings.sitemapAutoExcludeDepthPages,
+        sitemapAutoExcludeDepthBlog: draftSettings.sitemapAutoExcludeDepthBlog,
+        sitemapAutoExcludeDepthPublications: draftSettings.sitemapAutoExcludeDepthPublications,
+        sitemapAutoExcludeDepthTeaching: draftSettings.sitemapAutoExcludeDepthTeaching,
         rootPageId: draftSettings.rootPageId,
         homePageId: draftSettings.homePageId,
       };

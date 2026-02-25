@@ -19,6 +19,8 @@ import {
 import { fetchAdminConfig, postAccess, postOverride } from "./api";
 
 const COLLAPSED_STORAGE_KEY = "site-admin.routes.collapsed.v2";
+const INITIAL_RENDER_LIMIT = 180;
+const RENDER_STEP = 180;
 
 function parseStoredCollapsed(
   raw: string,
@@ -57,6 +59,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   const [batchPassword, setBatchPassword] = useState("");
   const [batchBusy, setBatchBusy] = useState(false);
   const [collapsedReady, setCollapsedReady] = useState(false);
+  const [renderLimit, setRenderLimit] = useState(INITIAL_RENDER_LIMIT);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,6 +130,44 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
       parentById: tree.parentById,
     });
   }, [filtered, collapsed, q, tree.parentById]);
+
+  useEffect(() => {
+    setRenderLimit(INITIAL_RENDER_LIMIT);
+  }, [q, filter]);
+
+  useEffect(() => {
+    setRenderLimit((prev) => {
+      if (visible.length >= prev) return prev;
+      if (visible.length <= INITIAL_RENDER_LIMIT) return INITIAL_RENDER_LIMIT;
+      if (visible.length <= 0) return INITIAL_RENDER_LIMIT;
+      return visible.length;
+    });
+  }, [visible.length]);
+
+  useEffect(() => {
+    if (!collapsedReady) return;
+    if (!q.trim()) return;
+    setRenderLimit((prev) => {
+      if (visible.length <= prev) return prev;
+      // Search should feel immediate even on deep trees.
+      return Math.min(visible.length, Math.max(prev, 500));
+    });
+  }, [collapsedReady, q, visible.length]);
+
+  const renderedVisible = useMemo(() => {
+    if (visible.length <= renderLimit) return visible;
+    return visible.slice(0, renderLimit);
+  }, [visible, renderLimit]);
+
+  const hasMoreVisible = renderedVisible.length < visible.length;
+
+  const showMoreVisible = () => {
+    setRenderLimit((prev) => {
+      const next = prev + RENDER_STEP;
+      if (next >= visible.length) return visible.length;
+      return next;
+    });
+  };
 
   const toggleOpenAdmin = (id: string) =>
     setOpenAdmin((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -289,6 +330,9 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     applyBatchAccess,
     filtered,
     visible,
+    renderedVisible,
+    hasMoreVisible,
+    showMoreVisible,
     findEffectiveAccess,
     findOverrideConflict,
     toggleCollapsed,
