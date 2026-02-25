@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     req,
     async () => {
       const payload = await buildSiteAdminDeployPreviewPayload();
-      return apiPayloadOk<SiteAdminDeployPreviewPayload>(payload);
+      return apiPayloadOk<Omit<SiteAdminDeployPreviewPayload, "ok">>(payload);
     },
     {
       requireAllowlist: true,

@@ -1,4 +1,4 @@
-import type { SiteAdminStat, SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
+import type { SiteAdminStat, SiteAdminStatusPayload } from "./api-types.ts";
 
 export type StatusFreshness = {
   ok: boolean;

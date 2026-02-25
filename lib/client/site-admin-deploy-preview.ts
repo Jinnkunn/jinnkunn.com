@@ -17,6 +17,10 @@ export async function fetchSiteAdminDeployPreview(): Promise<SiteAdminDeployPrev
     );
     return data;
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Request failed" };
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Request failed",
+      code: "REQUEST_FAILED",
+    };
   }
 }

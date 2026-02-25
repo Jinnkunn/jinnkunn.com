@@ -5,7 +5,11 @@ import type { NextRequest } from "next/server";
 import { isSiteAdminAuthorized, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 import { parseSiteAdminJsonCommand } from "@/lib/server/site-admin-request";
-import { noStoreFail, noStoreFailFromUnknown, noStoreOk } from "@/lib/server/api-response";
+import {
+  noStoreData,
+  noStoreFailWithCode,
+  noStoreFailFromUnknown,
+} from "@/lib/server/api-response";
 
 type RequireSiteAdminOptions = {
   requireAllowlist?: boolean;
@@ -17,7 +21,7 @@ type ApiErrorResponse = ReturnType<typeof apiError>;
 export type SiteAdminGuardResult<T> =
   | { ok: true; value: T }
   | { ok: false; res: ApiErrorResponse };
-export type SiteAdminOkPayload<T extends { ok: boolean }> = Omit<T, "ok">;
+export type SiteAdminOkPayload<T extends Record<string, unknown>> = T;
 
 export type RequireSiteAdminResult =
   | { ok: true }
@@ -27,23 +31,29 @@ export function apiOk<T extends Record<string, unknown> = Record<string, never>>
   payload?: T,
   init?: { status?: number },
 ) {
-  return noStoreOk(payload, init);
+  if (payload && Object.keys(payload).length > 0) {
+    return noStoreData(payload, init);
+  }
+  return noStoreData(null, init);
 }
 
-export function apiPayloadOk<T extends { ok: boolean }>(
+export function apiPayloadOk<T extends Record<string, unknown>>(
   payload: SiteAdminOkPayload<T>,
   init?: { status?: number },
 ) {
-  return apiOk(payload as Record<string, unknown>, init);
+  return noStoreData(payload, init);
 }
 
-export function apiError(error: string, init?: { status?: number }) {
-  return noStoreFail(error, init);
+export function apiError(
+  error: string,
+  init?: { status?: number; code?: string; extras?: Record<string, unknown> },
+) {
+  return noStoreFailWithCode(error, init);
 }
 
 export function apiErrorFromUnknown(
   e: unknown,
-  init?: { status?: number; fallback?: string },
+  init?: { status?: number; fallback?: string; code?: string },
 ) {
   return noStoreFailFromUnknown(e, init);
 }
@@ -55,20 +65,32 @@ export async function requireSiteAdmin(
   if (opts?.requireAllowlist) {
     const allow = parseAllowedAdminUsers();
     if (!allow.size) {
-      return { ok: false, res: apiError("Admin allowlist not configured", { status: 500 }) };
+      return {
+        ok: false,
+        res: apiError("Admin allowlist not configured", {
+          status: 500,
+          code: "ADMIN_ALLOWLIST_MISSING",
+        }),
+      };
     }
   }
 
   if (opts?.requireAuthSecret) {
     const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "";
     if (!secret.trim()) {
-      return { ok: false, res: apiError("Missing NEXTAUTH_SECRET", { status: 500 }) };
+      return {
+        ok: false,
+        res: apiError("Missing NEXTAUTH_SECRET", {
+          status: 500,
+          code: "AUTH_SECRET_MISSING",
+        }),
+      };
     }
   }
 
   const ok = await isSiteAdminAuthorized(req);
   if (!ok) {
-    return { ok: false, res: apiError("Unauthorized", { status: 401 }) };
+    return { ok: false, res: apiError("Unauthorized", { status: 401, code: "UNAUTHORIZED" }) };
   }
   return { ok: true };
 }
@@ -89,7 +111,10 @@ export async function withSiteAdmin(
 
 export function fromParsedCommand<T>(parsed: ParseResult<T>): SiteAdminGuardResult<T> {
   if (!parsed.ok) {
-    return { ok: false, res: apiError(parsed.error, { status: parsed.status }) };
+    return {
+      ok: false,
+      res: apiError(parsed.error, { status: parsed.status, code: "BAD_REQUEST" }),
+    };
   }
   return { ok: true, value: parsed.value };
 }
@@ -114,5 +139,5 @@ export function requireNonEmptyString(
 }
 
 export function apiExhaustive(_value: never, message = "Unsupported request"): Response {
-  return apiError(message, { status: 400 });
+  return apiError(message, { status: 400, code: "UNSUPPORTED_REQUEST" });
 }

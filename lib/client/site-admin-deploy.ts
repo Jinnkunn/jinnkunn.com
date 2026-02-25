@@ -18,6 +18,10 @@ export async function triggerSiteAdminDeploy(): Promise<SiteAdminDeployResult> {
     );
     return data;
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Request failed" };
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Request failed",
+      code: "REQUEST_FAILED",
+    };
   }
 }

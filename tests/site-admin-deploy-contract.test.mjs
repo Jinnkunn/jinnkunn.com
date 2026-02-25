@@ -21,7 +21,11 @@ test("site-admin-deploy-contract: parses valid success payload", () => {
 
 test("site-admin-deploy-contract: preserves api error payload", () => {
   const parsed = parseSiteAdminDeployResult({ ok: false, error: "Deploy hook is not configured" });
-  assert.deepEqual(parsed, { ok: false, error: "Deploy hook is not configured" });
+  assert.deepEqual(parsed, {
+    ok: false,
+    error: "Deploy hook is not configured",
+    code: "REQUEST_FAILED",
+  });
 });
 
 test("site-admin-deploy-contract: rejects malformed success payload", () => {
@@ -32,4 +36,3 @@ test("site-admin-deploy-contract: rejects malformed success payload", () => {
   });
   assert.equal(parsed, null);
 });
-

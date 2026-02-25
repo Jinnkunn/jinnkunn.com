@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       protectedRoutes,
     };
 
-    return apiPayloadOk<SiteAdminRoutesGetPayload>(payload);
+    return apiPayloadOk<SiteAdminRoutesResponsePayload>(payload);
   });
 }
 

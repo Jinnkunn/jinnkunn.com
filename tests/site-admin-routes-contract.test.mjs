@@ -56,7 +56,7 @@ test("site-admin-routes-contract: filters malformed list rows", () => {
 
 test("site-admin-routes-contract: preserves api error payload", () => {
   const parsed = parseSiteAdminRoutesResult({ ok: false, error: "Unauthorized" });
-  assert.deepEqual(parsed, { ok: false, error: "Unauthorized" });
+  assert.deepEqual(parsed, { ok: false, error: "Unauthorized", code: "REQUEST_FAILED" });
 });
 
 test("site-admin-routes-contract: rejects malformed success envelope", () => {

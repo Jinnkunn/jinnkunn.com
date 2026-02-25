@@ -34,7 +34,11 @@ export function useSiteAdminStatusData() {
       );
       setRes(data);
     } catch (e) {
-      setRes({ ok: false, error: e instanceof Error ? e.message : "Request failed" });
+      setRes({
+        ok: false,
+        error: e instanceof Error ? e.message : "Request failed",
+        code: "REQUEST_FAILED",
+      });
     } finally {
       setBusy(false);
     }

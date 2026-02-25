@@ -1,11 +1,17 @@
-import { asApiAck, isRecord } from "@/lib/client/api-guards";
+import {
+  asApiAck,
+  isRecord,
+  readApiErrorCode,
+  readApiErrorMessage,
+  unwrapApiData,
+} from "../client/api-guards.ts";
 import type {
   SiteAdminConfigGetPayload,
   SiteAdminConfigGetResult,
   SiteAdminConfigPostPayload,
   SiteAdminConfigPostResult,
-} from "@/lib/site-admin/api-types";
-import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+} from "./api-types.ts";
+import type { NavItemRow, SiteSettings } from "./types.ts";
 
 function toStringValue(x: unknown): string {
   return typeof x === "string" ? x : "";
@@ -18,8 +24,8 @@ function toNumberValue(x: unknown): number {
 
 function isSiteAdminConfigGetSuccess(
   x: unknown,
-): x is { ok: true; settings: SiteSettings | null; nav: NavItemRow[] } {
-  return isRecord(x) && x.ok === true && "settings" in x && Array.isArray(x.nav);
+): x is { settings: SiteSettings | null; nav: NavItemRow[] } {
+  return isRecord(x) && "settings" in x && Array.isArray(x.nav);
 }
 
 export function isSiteAdminConfigGetOk(v: SiteAdminConfigGetResult): v is SiteAdminConfigGetPayload {
@@ -47,17 +53,34 @@ export function parseCreatedNavRow(v: unknown): NavItemRow | null {
 export function parseSiteAdminConfigGet(v: unknown): SiteAdminConfigGetResult | null {
   const ack = asApiAck(v);
   if (!ack) return null;
-  if (!ack.ok) return ack;
-  if (!isSiteAdminConfigGetSuccess(v)) return null;
-  return v;
+  if (!ack.ok) {
+    return {
+      ok: false,
+      error: readApiErrorMessage(v) || ack.error,
+      code: readApiErrorCode(v) || ack.code || "REQUEST_FAILED",
+    };
+  }
+  const payload = unwrapApiData(v);
+  if (!isSiteAdminConfigGetSuccess(payload)) return null;
+  return {
+    ok: true,
+    settings: payload.settings,
+    nav: payload.nav,
+  };
 }
 
 export function parseSiteAdminConfigPost(v: unknown): SiteAdminConfigPostResult | null {
   const ack = asApiAck(v);
   if (!ack) return null;
-  if (!ack.ok) return ack;
-  if (!isRecord(v)) return null;
-  const created = parseCreatedNavRow(v.created);
+  if (!ack.ok) {
+    return {
+      ok: false,
+      error: readApiErrorMessage(v) || ack.error,
+      code: readApiErrorCode(v) || ack.code || "REQUEST_FAILED",
+    };
+  }
+  const payload = unwrapApiData(v);
+  if (!isRecord(payload)) return { ok: true };
+  const created = parseCreatedNavRow(payload.created);
   return created ? { ok: true, created } : { ok: true };
 }
-

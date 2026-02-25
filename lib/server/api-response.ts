@@ -4,6 +4,17 @@ import { NextResponse } from "next/server";
 
 type NoStoreInit = { status?: number };
 type NoStoreErrorInit = NoStoreInit & { fallback?: string; extras?: Record<string, unknown> };
+type NoStoreCodeErrorInit = NoStoreInit & { code?: string; extras?: Record<string, unknown> };
+
+export type ApiResponse<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; code: string };
+
+function normalizeErrorCode(value: string | undefined, fallback: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  return raw.replace(/[^A-Za-z0-9_]+/g, "_").toUpperCase();
+}
 
 export function noStoreJson<T>(
   body: T,
@@ -23,6 +34,13 @@ export function noStoreOk<T extends Record<string, unknown> = Record<string, nev
   return noStoreJson(body, init);
 }
 
+export function noStoreData<T>(
+  data: T,
+  init?: NoStoreInit,
+): NextResponse<ApiResponse<T>> {
+  return noStoreJson({ ok: true, data }, init);
+}
+
 export function noStoreFail(
   error: string,
   init?: NoStoreInit & { extras?: Record<string, unknown> },
@@ -35,22 +53,37 @@ export function noStoreFail(
   return noStoreJson(body, { status: init?.status ?? 400 });
 }
 
+export function noStoreFailWithCode(
+  error: string,
+  init?: NoStoreCodeErrorInit,
+): NextResponse<ApiResponse<never>> {
+  const body = {
+    ok: false as const,
+    error: String(error || "Request failed"),
+    code: normalizeErrorCode(init?.code, "REQUEST_FAILED"),
+    ...(init?.extras || {}),
+  };
+  return noStoreJson(body, { status: init?.status ?? 400 });
+}
+
 export function noStoreBadRequest(
   error = "Bad Request",
-  init?: NoStoreInit & { extras?: Record<string, unknown> },
+  init?: NoStoreCodeErrorInit,
 ) {
-  return noStoreFail(error, {
+  return noStoreFailWithCode(error, {
     status: init?.status ?? 400,
+    code: init?.code ?? "BAD_REQUEST",
     extras: init?.extras,
   });
 }
 
 export function noStoreUnauthorized(
   error = "Unauthorized",
-  init?: NoStoreInit & { extras?: Record<string, unknown> },
+  init?: NoStoreCodeErrorInit,
 ) {
-  return noStoreFail(error, {
+  return noStoreFailWithCode(error, {
     status: init?.status ?? 401,
+    code: init?.code ?? "UNAUTHORIZED",
     extras: init?.extras,
   });
 }
@@ -84,7 +117,7 @@ export function noStoreMisconfigured(
   const message = suffix
     ? `Server misconfigured: missing ${suffix}`
     : "Server misconfigured";
-  return noStoreFail(message, { status: init?.status ?? 500 });
+  return noStoreFailWithCode(message, { status: init?.status ?? 500, code: "MISCONFIGURED" });
 }
 
 export function noStoreErrorOnly(
@@ -100,7 +133,7 @@ export function noStoreErrorOnly(
 
 export function noStoreFailFromUnknown(
   e: unknown,
-  init?: NoStoreErrorInit,
+  init?: NoStoreErrorInit & { code?: string },
 ) {
   const message =
     e instanceof Error
@@ -108,19 +141,35 @@ export function noStoreFailFromUnknown(
       : typeof e === "string" && e.trim()
         ? e
         : (init?.fallback ?? "Unexpected server error");
-  return noStoreFail(message, {
+  return noStoreFailWithCode(message, {
     status: init?.status ?? 500,
+    code: init?.code ?? "INTERNAL_ERROR",
     extras: init?.extras,
   });
 }
 
 export async function withNoStoreApi(
   run: () => Promise<Response> | Response,
-  init?: NoStoreErrorInit,
+  init?: NoStoreErrorInit & { code?: string },
 ): Promise<Response> {
   try {
     return await run();
   } catch (e: unknown) {
     return noStoreFailFromUnknown(e, init);
   }
+}
+
+export function trimErrorDetail(text: string, maxLen = 200): string {
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.slice(0, Math.max(1, maxLen));
+}
+
+export function formatDeployTriggerError(
+  status: number,
+  attempts: number,
+  detail: string,
+): string {
+  const suffix = detail ? `: ${detail}` : "";
+  return `Failed to trigger deploy (status ${status}, attempts ${attempts})${suffix}`;
 }

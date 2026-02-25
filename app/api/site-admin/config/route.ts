@@ -16,7 +16,6 @@ import {
 import { parseSiteAdminConfigCommand } from "@/lib/server/site-admin-request";
 import type {
   SiteAdminConfigGetPayload,
-  SiteAdminConfigPostPayload,
 } from "@/lib/site-admin/api-types";
 
 export const runtime = "nodejs";
@@ -24,7 +23,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   return withSiteAdmin(req, async () => {
     const data = await loadSiteAdminConfigData();
-    return apiPayloadOk<SiteAdminConfigGetPayload>(data);
+    return apiPayloadOk<Omit<SiteAdminConfigGetPayload, "ok">>(data);
   });
 }
 
@@ -43,7 +42,7 @@ export async function POST(req: NextRequest) {
         return apiOk();
       case "nav-create": {
         const created = await createSiteNavRow(command.input);
-        return apiPayloadOk<SiteAdminConfigPostPayload>({ created });
+        return apiPayloadOk({ created });
       }
       default:
         return apiExhaustive(command, "Unknown kind");

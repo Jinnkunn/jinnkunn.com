@@ -1,25 +1,15 @@
 import type { SiteAdminStat, SiteAdminStatusPayload, SiteAdminStatusResult } from "./api-types";
 
-type ApiAck = { ok: true } | { ok: false; error: string };
+import {
+  asApiAck,
+  isRecord,
+  readApiErrorCode,
+  readApiErrorMessage,
+  unwrapApiData,
+} from "../client/api-guards.ts";
 
 export function isSiteAdminStatusOk(v: SiteAdminStatusResult): v is SiteAdminStatusPayload {
   return v.ok;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readApiErrorMessage(value: unknown): string {
-  if (!isRecord(value)) return "";
-  const error = value.error;
-  return typeof error === "string" && error.trim() ? error : "";
-}
-
-function asApiAck(value: unknown, fallbackError = "Request failed"): ApiAck | null {
-  if (!isRecord(value) || typeof value.ok !== "boolean") return null;
-  if (value.ok) return { ok: true };
-  return { ok: false, error: readApiErrorMessage(value) || fallbackError };
 }
 
 function toStringValue(value: unknown): string {
@@ -113,7 +103,7 @@ function parseFreshness(
 }
 
 function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | null {
-  if (!isRecord(value) || value.ok !== true) return null;
+  if (!isRecord(value)) return null;
   if (!isRecord(value.env) || !isRecord(value.build) || !isRecord(value.content)) return null;
   if (!isRecord(value.files) || !isRecord(value.notion)) return null;
 
@@ -235,6 +225,13 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
 export function parseSiteAdminStatusResult(x: unknown): SiteAdminStatusResult | null {
   const ack = asApiAck(x);
   if (!ack) return null;
-  if (!ack.ok) return { ok: false, error: readApiErrorMessage(ack) || "Request failed" };
-  return parseSiteAdminStatusPayload(x);
+  if (!ack.ok) {
+    return {
+      ok: false,
+      error: readApiErrorMessage(x) || ack.error || "Request failed",
+      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+    };
+  }
+  const payload = unwrapApiData(x);
+  return parseSiteAdminStatusPayload(payload);
 }

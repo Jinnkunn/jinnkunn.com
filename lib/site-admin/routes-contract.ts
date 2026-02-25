@@ -5,23 +5,13 @@ import type {
   SiteAdminRoutesResult,
 } from "./api-types";
 
-type ApiAck = { ok: true } | { ok: false; error: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readApiErrorMessage(value: unknown): string {
-  if (!isRecord(value)) return "";
-  const error = value.error;
-  return typeof error === "string" && error.trim() ? error : "";
-}
-
-function asApiAck(value: unknown, fallbackError = "Request failed"): ApiAck | null {
-  if (!isRecord(value) || typeof value.ok !== "boolean") return null;
-  if (value.ok) return { ok: true };
-  return { ok: false, error: readApiErrorMessage(value) || fallbackError };
-}
+import {
+  asApiAck,
+  isRecord,
+  readApiErrorCode,
+  readApiErrorMessage,
+  unwrapApiData,
+} from "../client/api-guards.ts";
 
 function toStringValue(x: unknown): string {
   return typeof x === "string" ? x : "";
@@ -67,21 +57,29 @@ export function isSiteAdminRoutesOk(v: SiteAdminRoutesResult): v is SiteAdminRou
 export function parseSiteAdminRoutesResult(x: unknown): SiteAdminRoutesResult | null {
   const ack = asApiAck(x);
   if (!ack) return null;
-  if (!ack.ok) return { ok: false, error: readApiErrorMessage(ack) || "Request failed" };
-  if (!isRecord(x)) return null;
+  if (!ack.ok) {
+    return {
+      ok: false,
+      error: readApiErrorMessage(x) || ack.error,
+      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+    };
+  }
 
-  const adminPageId = toStringValue(x.adminPageId).trim();
-  if (!adminPageId || !isRecord(x.databases)) return null;
+  const payload = unwrapApiData(x);
+  if (!isRecord(payload)) return null;
 
-  const overridesDbId = toStringValue(x.databases.overridesDbId).trim();
-  const protectedDbId = toStringValue(x.databases.protectedDbId).trim();
+  const adminPageId = toStringValue(payload.adminPageId).trim();
+  if (!adminPageId || !isRecord(payload.databases)) return null;
+
+  const overridesDbId = toStringValue(payload.databases.overridesDbId).trim();
+  const protectedDbId = toStringValue(payload.databases.protectedDbId).trim();
   if (!overridesDbId || !protectedDbId) return null;
 
-  const overrides = Array.isArray(x.overrides)
-    ? x.overrides.map(parseRouteOverride).filter((it): it is SiteAdminRouteOverride => Boolean(it))
+  const overrides = Array.isArray(payload.overrides)
+    ? payload.overrides.map(parseRouteOverride).filter((it): it is SiteAdminRouteOverride => Boolean(it))
     : null;
-  const protectedRoutes = Array.isArray(x.protectedRoutes)
-    ? x.protectedRoutes
+  const protectedRoutes = Array.isArray(payload.protectedRoutes)
+    ? payload.protectedRoutes
         .map(parseProtectedRoute)
         .filter((it): it is SiteAdminProtectedRoute => Boolean(it))
     : null;

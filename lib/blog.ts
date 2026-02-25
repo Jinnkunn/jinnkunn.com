@@ -4,6 +4,7 @@ import path from "node:path";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
+import { serverDebugLog } from "@/lib/server/debug-log";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -70,8 +71,8 @@ function parseRssItemPaths(rss: string): string[] {
       const u = new URL(link);
       // Only keep path; the runtime will serve locally.
       out.push(u.pathname);
-    } catch {
-      // ignore
+    } catch (e) {
+      serverDebugLog("blog", "Failed to parse RSS item link", { link, error: String(e) });
     }
   }
 
@@ -82,7 +83,8 @@ async function tryReadLocalBlogRss(): Promise<string | null> {
   const p = path.join(process.cwd(), "public", "blog.rss");
   try {
     return await readFile(p, "utf8");
-  } catch {
+  } catch (e) {
+    serverDebugLog("blog", "Local blog.rss is unavailable", { path: p, error: String(e) });
     return null;
   }
 }
@@ -132,11 +134,21 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
       try {
         // Source of truth stays under `blog/list/` (Notion structure); route is prettier.
         main = await loadRawMainHtml(src.replace(/^\/+/, ""));
-      } catch {
+      } catch (e1) {
+        serverDebugLog("blog", "Failed to load canonical blog source route", {
+          pathname,
+          sourceRoute: src,
+          error: String(e1),
+        });
         // Some workspaces may store the backing DB under `/list/<slug>`.
         try {
           main = await loadRawMainHtml(`list/${slug}`);
-        } catch {
+        } catch (e2) {
+          serverDebugLog("blog", "Failed to load fallback blog source route", {
+            pathname,
+            fallbackRoute: `list/${slug}`,
+            error: String(e2),
+          });
           continue;
         }
       }
@@ -166,7 +178,11 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
         dateText: meta.dateText,
         dateIso: meta.dateIso,
       });
-    } catch {
+    } catch (e) {
+      serverDebugLog("blog", "Skipping non-blog page while building blog index", {
+        slug,
+        error: String(e),
+      });
       // If a page isn't a "blog-like" Notion page, skip it (prevents polluting /blog).
       continue;
     }

@@ -84,7 +84,7 @@ test("site-admin-status-contract: parses valid success payload", () => {
 
 test("site-admin-status-contract: preserves api error payload", () => {
   const parsed = parseSiteAdminStatusResult({ ok: false, error: "Unauthorized" });
-  assert.deepEqual(parsed, { ok: false, error: "Unauthorized" });
+  assert.deepEqual(parsed, { ok: false, error: "Unauthorized", code: "REQUEST_FAILED" });
 });
 
 test("site-admin-status-contract: rejects malformed success payload", () => {

@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 
 import { compactId } from "@/lib/shared/route-utils";
 import {
-  noStoreFail,
+  formatDeployTriggerError,
+  noStoreFailWithCode,
   noStoreMethodNotAllowed,
   noStoreMisconfigured,
   noStoreOk,
+  trimErrorDetail,
   withNoStoreApi,
 } from "@/lib/server/api-response";
 import { authorizeDeployRequest } from "@/lib/server/deploy-auth";
@@ -14,17 +16,6 @@ import { createDatabaseRow, getSiteAdminDatabaseIdByTitle } from "@/lib/server/s
 import { buildDeployLogCreateProperties } from "@/lib/server/site-admin-writers";
 
 export const runtime = "nodejs";
-
-function deployErrorMessage(status: number, attempts: number, detail: string): string {
-  const suffix = detail ? `: ${detail}` : "";
-  return `Failed to trigger deploy (status ${status}, attempts ${attempts})${suffix}`;
-}
-
-function trimDetail(text: string): string {
-  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
-  if (!cleaned) return "";
-  return cleaned.slice(0, 200);
-}
 
 async function logDeployToNotion(opts: {
   reqUrl: string;
@@ -64,7 +55,7 @@ export async function POST(req: Request) {
     if (!auth.ok) {
       if (auth.status === 429) {
         return NextResponse.json(
-          { ok: false, error: auth.error },
+          { ok: false, error: auth.error, code: "RATE_LIMITED" },
           {
             status: 429,
             headers: {
@@ -74,13 +65,13 @@ export async function POST(req: Request) {
           },
         );
       }
-      return noStoreFail(auth.error, { status: auth.status });
+      return noStoreFailWithCode(auth.error, { status: auth.status, code: "UNAUTHORIZED" });
     }
 
     const triggeredAtIso = new Date().toISOString();
     const out = await triggerDeployHook();
     if (!out.ok) {
-      const message = deployErrorMessage(out.status, out.attempts, trimDetail(out.text));
+      const message = formatDeployTriggerError(out.status, out.attempts, trimErrorDetail(out.text));
       // Best-effort logging (don't fail deploy trigger because upstream logging failed).
       try {
         await logDeployToNotion({
@@ -93,7 +84,7 @@ export async function POST(req: Request) {
       } catch {
         // ignore
       }
-      return noStoreFail(message, { status: 502 });
+      return noStoreFailWithCode(message, { status: 502, code: "DEPLOY_TRIGGER_FAILED" });
     }
 
     try {

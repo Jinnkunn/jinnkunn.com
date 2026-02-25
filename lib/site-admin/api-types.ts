@@ -1,4 +1,6 @@
-import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import type { NavItemRow, SiteSettings } from "./types.ts";
+
+export type SiteAdminApiError = { ok: false; error: string; code: string };
 
 export type SiteAdminStat = {
   exists: boolean;
@@ -71,7 +73,7 @@ export type SiteAdminStatusPayload = {
   };
 };
 
-export type SiteAdminStatusResult = SiteAdminStatusPayload | { ok: false; error: string };
+export type SiteAdminStatusResult = SiteAdminStatusPayload | SiteAdminApiError;
 
 export type SiteAdminRouteOverride = {
   rowId: string;
@@ -100,7 +102,7 @@ export type SiteAdminRoutesGetPayload = {
   protectedRoutes: SiteAdminProtectedRoute[];
 };
 
-export type SiteAdminRoutesResult = SiteAdminRoutesGetPayload | { ok: false; error: string };
+export type SiteAdminRoutesResult = SiteAdminRoutesGetPayload | SiteAdminApiError;
 
 export type SiteAdminConfigGetPayload = {
   ok: true;
@@ -108,14 +110,14 @@ export type SiteAdminConfigGetPayload = {
   nav: NavItemRow[];
 };
 
-export type SiteAdminConfigGetResult = SiteAdminConfigGetPayload | { ok: false; error: string };
+export type SiteAdminConfigGetResult = SiteAdminConfigGetPayload | SiteAdminApiError;
 
 export type SiteAdminConfigPostPayload = {
   ok: true;
   created?: NavItemRow;
 };
 
-export type SiteAdminConfigPostResult = SiteAdminConfigPostPayload | { ok: false; error: string };
+export type SiteAdminConfigPostResult = SiteAdminConfigPostPayload | SiteAdminApiError;
 
 export type SiteAdminDeployPayload = {
   ok: true;
@@ -123,7 +125,7 @@ export type SiteAdminDeployPayload = {
   status: number;
 };
 
-export type SiteAdminDeployResult = SiteAdminDeployPayload | { ok: false; error: string };
+export type SiteAdminDeployResult = SiteAdminDeployPayload | SiteAdminApiError;
 
 export type SiteAdminDeployPreviewRedirectChange = {
   kind: "added" | "removed" | "changed";
@@ -166,4 +168,4 @@ export type SiteAdminDeployPreviewPayload = {
   };
 };
 
-export type SiteAdminDeployPreviewResult = SiteAdminDeployPreviewPayload | { ok: false; error: string };
+export type SiteAdminDeployPreviewResult = SiteAdminDeployPreviewPayload | SiteAdminApiError;

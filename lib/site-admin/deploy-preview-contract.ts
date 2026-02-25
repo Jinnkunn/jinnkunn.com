@@ -3,23 +3,13 @@ import type {
   SiteAdminDeployPreviewResult,
 } from "./api-types";
 
-type ApiAck = { ok: true } | { ok: false; error: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readApiErrorMessage(value: unknown): string {
-  if (!isRecord(value)) return "";
-  const error = value.error;
-  return typeof error === "string" && error.trim() ? error : "";
-}
-
-function asApiAck(value: unknown, fallbackError = "Request failed"): ApiAck | null {
-  if (!isRecord(value) || typeof value.ok !== "boolean") return null;
-  if (value.ok) return { ok: true };
-  return { ok: false, error: readApiErrorMessage(value) || fallbackError };
-}
+import {
+  asApiAck,
+  isRecord,
+  readApiErrorCode,
+  readApiErrorMessage,
+  unwrapApiData,
+} from "../client/api-guards.ts";
 
 function parseRedirectChange(value: unknown): SiteAdminDeployPreviewPayload["samples"]["redirects"][number] | null {
   if (!isRecord(value)) return null;
@@ -73,14 +63,22 @@ export function isSiteAdminDeployPreviewOk(
 export function parseSiteAdminDeployPreviewResult(x: unknown): SiteAdminDeployPreviewResult | null {
   const ack = asApiAck(x);
   if (!ack) return null;
-  if (!ack.ok) return { ok: false, error: ack.error || "Request failed" };
-  if (!isRecord(x)) return null;
+  if (!ack.ok) {
+    return {
+      ok: false,
+      error: readApiErrorMessage(x) || ack.error || "Request failed",
+      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+    };
+  }
 
-  if (typeof x.generatedAt !== "string" || typeof x.hasChanges !== "boolean") return null;
-  if (!isRecord(x.summary) || !isRecord(x.samples)) return null;
+  const payload = unwrapApiData(x);
+  if (!isRecord(payload)) return null;
 
-  const summary = x.summary;
-  const samples = x.samples;
+  if (typeof payload.generatedAt !== "string" || typeof payload.hasChanges !== "boolean") return null;
+  if (!isRecord(payload.summary) || !isRecord(payload.samples)) return null;
+
+  const summary = payload.summary;
+  const samples = payload.samples;
   const pagesAdded = summary.pagesAdded;
   const pagesRemoved = summary.pagesRemoved;
   const redirectsAdded = summary.redirectsAdded;
@@ -113,8 +111,8 @@ export function parseSiteAdminDeployPreviewResult(x: unknown): SiteAdminDeployPr
 
   return {
     ok: true,
-    generatedAt: x.generatedAt,
-    hasChanges: x.hasChanges,
+    generatedAt: payload.generatedAt,
+    hasChanges: payload.hasChanges,
     summary: {
       pagesAdded,
       pagesRemoved,

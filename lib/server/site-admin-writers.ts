@@ -4,66 +4,130 @@ import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
 import { parseDepthNumber } from "@/lib/shared/depth";
 import { notionRichText, normalizeHttpUrl, redactUrlQueryParams } from "@/lib/server/notion-format";
 
+type NotionPropertyMap = Record<string, unknown>;
+
+type PropertySpec<T extends Record<string, unknown>> = {
+  field: keyof T;
+  notionProperty: string;
+  build: (value: unknown, source: T) => unknown;
+};
+
+type SiteSettingsPatch = Partial<Omit<SiteSettings, "rowId">>;
+type NavWritableInput = Partial<Omit<NavItemRow, "rowId">>;
+
+function propertySpec<T extends Record<string, unknown>, K extends keyof T>(
+  field: K,
+  notionProperty: string,
+  build: (value: T[K], source: T) => unknown,
+): PropertySpec<T> {
+  return {
+    field,
+    notionProperty,
+    build: (value, source) => build(value as T[K], source),
+  };
+}
+
+function buildPropertiesFromSpecs<T extends Record<string, unknown>>(
+  source: T,
+  specs: Array<PropertySpec<T>>,
+): NotionPropertyMap {
+  const out: NotionPropertyMap = {};
+  for (const spec of specs) {
+    const value = source[spec.field];
+    if (value === undefined) continue;
+    out[spec.notionProperty] = spec.build(value, source);
+  }
+  return out;
+}
+
+function appendIfPresent(
+  out: NotionPropertyMap,
+  key: string,
+  value: unknown,
+  build: (value: unknown) => unknown,
+): void {
+  if (value === undefined || value === null) return;
+  const normalized = typeof value === "string" ? value.trim() : value;
+  if (typeof normalized === "string" && !normalized) return;
+  out[key] = build(normalized);
+}
+
+function toSafeNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function titleProperty(value: unknown): { title: ReturnType<typeof notionRichText> } {
+  return { title: notionRichText(String(value ?? "")) };
+}
+
+function richTextProperty(value: unknown): { rich_text: ReturnType<typeof notionRichText> } {
+  return { rich_text: notionRichText(String(value ?? "")) };
+}
+
+function checkboxProperty(value: unknown): { checkbox: boolean } {
+  return { checkbox: Boolean(value) };
+}
+
+function numberProperty(value: unknown, fallback = 0): { number: number } {
+  return { number: toSafeNumber(value, fallback) };
+}
+
+function selectProperty(name: string): { select: { name: string } } {
+  return { select: { name } };
+}
+
+const SITE_SETTINGS_PROPERTY_SPECS: Array<PropertySpec<SiteSettingsPatch>> = [
+  propertySpec("siteName", "Site Name", (value) => richTextProperty(value)),
+  propertySpec("lang", "Lang", (value) => selectProperty(String(value || "en") || "en")),
+  propertySpec("seoTitle", "SEO Title", (value) => richTextProperty(value)),
+  propertySpec("seoDescription", "SEO Description", (value) => richTextProperty(value)),
+  propertySpec("favicon", "Favicon", (value) => richTextProperty(value)),
+  propertySpec("ogImage", "OG Image", (value) => richTextProperty(value)),
+  propertySpec("googleAnalyticsId", "Google Analytics ID", (value) => richTextProperty(value)),
+  propertySpec("contentGithubUsers", "Content GitHub Users", (value) => richTextProperty(value)),
+  propertySpec("sitemapExcludes", "Sitemap Excludes", (value) => richTextProperty(value)),
+  propertySpec("sitemapAutoExcludeEnabled", "Sitemap Auto Exclude Enabled", (value) => checkboxProperty(value)),
+  propertySpec("sitemapAutoExcludeSections", "Sitemap Auto Exclude Sections", (value) =>
+    richTextProperty(value)
+  ),
+  propertySpec("sitemapAutoExcludeDepthPages", "Sitemap Max Depth Pages", (value) => ({ number: parseDepthNumber(value) })),
+  propertySpec("sitemapAutoExcludeDepthBlog", "Sitemap Max Depth Blog", (value) => ({ number: parseDepthNumber(value) })),
+  propertySpec("sitemapAutoExcludeDepthPublications", "Sitemap Max Depth Publications", (value) => ({
+    number: parseDepthNumber(value),
+  })),
+  propertySpec("sitemapAutoExcludeDepthTeaching", "Sitemap Max Depth Teaching", (value) => ({ number: parseDepthNumber(value) })),
+  propertySpec("rootPageId", "Root Page ID", (value) => richTextProperty(value)),
+  propertySpec("homePageId", "Home Page ID", (value) => richTextProperty(value)),
+];
+
+const NAV_PROPERTY_SPECS: Array<PropertySpec<NavWritableInput>> = [
+  propertySpec("label", "Label", (value) => titleProperty(value)),
+  propertySpec("href", "Href", (value) => richTextProperty(value)),
+  propertySpec("group", "Group", (value) => selectProperty(value === "top" ? "top" : "more")),
+  propertySpec("order", "Order", (value) => numberProperty(value, 0)),
+  propertySpec("enabled", "Enabled", (value) => checkboxProperty(value)),
+];
+
 export function buildSiteSettingsProperties(
-  patch: Partial<Omit<SiteSettings, "rowId">>,
+  patch: SiteSettingsPatch,
 ): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-  if (patch.siteName !== undefined) properties["Site Name"] = { rich_text: notionRichText(patch.siteName) };
-  if (patch.lang !== undefined) properties["Lang"] = { select: { name: patch.lang || "en" } };
-  if (patch.seoTitle !== undefined) properties["SEO Title"] = { rich_text: notionRichText(patch.seoTitle) };
-  if (patch.seoDescription !== undefined) properties["SEO Description"] = { rich_text: notionRichText(patch.seoDescription) };
-  if (patch.favicon !== undefined) properties["Favicon"] = { rich_text: notionRichText(patch.favicon) };
-  if (patch.ogImage !== undefined) properties["OG Image"] = { rich_text: notionRichText(patch.ogImage) };
-  if (patch.googleAnalyticsId !== undefined) properties["Google Analytics ID"] = { rich_text: notionRichText(patch.googleAnalyticsId) };
-  if (patch.contentGithubUsers !== undefined) properties["Content GitHub Users"] = { rich_text: notionRichText(patch.contentGithubUsers) };
-  if (patch.sitemapExcludes !== undefined) properties["Sitemap Excludes"] = { rich_text: notionRichText(patch.sitemapExcludes) };
-  if (patch.sitemapAutoExcludeEnabled !== undefined) {
-    properties["Sitemap Auto Exclude Enabled"] = { checkbox: Boolean(patch.sitemapAutoExcludeEnabled) };
-  }
-  if (patch.sitemapAutoExcludeSections !== undefined) {
-    properties["Sitemap Auto Exclude Sections"] = { rich_text: notionRichText(patch.sitemapAutoExcludeSections) };
-  }
-  if (patch.sitemapAutoExcludeDepthPages !== undefined) {
-    properties["Sitemap Max Depth Pages"] = { number: parseDepthNumber(patch.sitemapAutoExcludeDepthPages) };
-  }
-  if (patch.sitemapAutoExcludeDepthBlog !== undefined) {
-    properties["Sitemap Max Depth Blog"] = { number: parseDepthNumber(patch.sitemapAutoExcludeDepthBlog) };
-  }
-  if (patch.sitemapAutoExcludeDepthPublications !== undefined) {
-    properties["Sitemap Max Depth Publications"] = {
-      number: parseDepthNumber(patch.sitemapAutoExcludeDepthPublications),
-    };
-  }
-  if (patch.sitemapAutoExcludeDepthTeaching !== undefined) {
-    properties["Sitemap Max Depth Teaching"] = { number: parseDepthNumber(patch.sitemapAutoExcludeDepthTeaching) };
-  }
-  if (patch.rootPageId !== undefined) properties["Root Page ID"] = { rich_text: notionRichText(patch.rootPageId) };
-  if (patch.homePageId !== undefined) properties["Home Page ID"] = { rich_text: notionRichText(patch.homePageId) };
-  return properties;
+  return buildPropertiesFromSpecs(patch, SITE_SETTINGS_PROPERTY_SPECS);
+}
+
+function buildNavWritableProperties(input: NavWritableInput): Record<string, unknown> {
+  return buildPropertiesFromSpecs(input, NAV_PROPERTY_SPECS);
 }
 
 export function buildNavProperties(
   patch: Partial<Omit<NavItemRow, "rowId">>,
 ): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-  if (patch.label !== undefined) properties["Label"] = { title: notionRichText(patch.label) };
-  if (patch.href !== undefined) properties["Href"] = { rich_text: notionRichText(patch.href) };
-  if (patch.group !== undefined) properties["Group"] = { select: { name: patch.group === "top" ? "top" : "more" } };
-  if (patch.order !== undefined) properties["Order"] = { number: Number.isFinite(patch.order) ? patch.order : 0 };
-  if (patch.enabled !== undefined) properties["Enabled"] = { checkbox: Boolean(patch.enabled) };
-  return properties;
+  return buildNavWritableProperties(patch);
 }
 
 export function buildNavCreateProperties(
   input: Omit<NavItemRow, "rowId">,
 ): Record<string, unknown> {
-  return {
-    Label: { title: notionRichText(input.label) },
-    Href: { rich_text: notionRichText(input.href) },
-    Group: { select: { name: input.group === "top" ? "top" : "more" } },
-    Order: { number: Number.isFinite(input.order) ? input.order : 0 },
-    Enabled: { checkbox: Boolean(input.enabled) },
-  };
+  return buildNavWritableProperties(input);
 }
 
 export function buildRouteOverrideProperties(
@@ -119,50 +183,36 @@ export function buildDeployLogName(triggeredAtIso: string): string {
 }
 
 export function buildDeployLogCreateProperties(input: DeployLogRowInput): Record<string, unknown> {
-  const properties: Record<string, unknown> = {
+  const properties: NotionPropertyMap = {
     Name: { title: notionRichText(buildDeployLogName(input.triggeredAtIso)) },
     "Triggered At": { date: { start: input.triggeredAtIso } },
     Result: { select: { name: String(input.result || "").trim() || "Triggered" } },
   };
 
-  if (typeof input.httpStatus === "number" && Number.isFinite(input.httpStatus)) {
-    properties["HTTP Status"] = { number: input.httpStatus };
-  }
-
-  const reqUrl = String(input.requestUrl || "").trim();
-  if (reqUrl) {
-    properties.Request = { url: redactUrlQueryParams(reqUrl, ["token"]) };
-  }
-
-  const msg = String(input.message || "").trim();
-  if (msg) {
-    properties.Message = { rich_text: notionRichText(msg.slice(0, 1800)) };
-  }
-
-  const lastEvent = String(input.lastEvent || "").trim();
-  if (lastEvent) {
-    properties["Last Event"] = { rich_text: notionRichText(lastEvent) };
-  }
-
-  const deploymentId = String(input.deploymentId || "").trim();
-  if (deploymentId) {
-    properties["Deployment ID"] = { rich_text: notionRichText(deploymentId) };
-  }
-
-  const deploymentUrl = String(input.deploymentUrl || "").trim();
-  if (deploymentUrl) {
-    properties.Deployment = { url: normalizeHttpUrl(deploymentUrl) };
-  }
-
-  const dashboardUrl = String(input.dashboardUrl || "").trim();
-  if (dashboardUrl) {
-    properties.Dashboard = { url: normalizeHttpUrl(dashboardUrl) };
-  }
-
-  const target = String(input.target || "").trim();
-  if (target) {
-    properties.Target = { select: { name: target } };
-  }
+  appendIfPresent(properties, "HTTP Status", input.httpStatus, (v) =>
+    ({ number: toSafeNumber(v, 0) }),
+  );
+  appendIfPresent(properties, "Request", input.requestUrl, (v) =>
+    ({ url: redactUrlQueryParams(String(v), ["token"]) }),
+  );
+  appendIfPresent(properties, "Message", input.message, (v) =>
+    ({ rich_text: notionRichText(String(v).slice(0, 1800)) }),
+  );
+  appendIfPresent(properties, "Last Event", input.lastEvent, (v) =>
+    ({ rich_text: notionRichText(String(v)) }),
+  );
+  appendIfPresent(properties, "Deployment ID", input.deploymentId, (v) =>
+    ({ rich_text: notionRichText(String(v)) }),
+  );
+  appendIfPresent(properties, "Deployment", input.deploymentUrl, (v) =>
+    ({ url: normalizeHttpUrl(String(v)) }),
+  );
+  appendIfPresent(properties, "Dashboard", input.dashboardUrl, (v) =>
+    ({ url: normalizeHttpUrl(String(v)) }),
+  );
+  appendIfPresent(properties, "Target", input.target, (v) =>
+    ({ select: { name: String(v) } }),
+  );
 
   return properties;
 }
@@ -170,34 +220,25 @@ export function buildDeployLogCreateProperties(input: DeployLogRowInput): Record
 export function buildDeployLogUpdateProperties(
   input: Omit<DeployLogRowInput, "triggeredAtIso" | "httpStatus" | "requestUrl" | "message">,
 ): Record<string, unknown> {
-  const properties: Record<string, unknown> = {
+  const properties: NotionPropertyMap = {
     Result: { select: { name: String(input.result || "").trim() || "Building" } },
   };
 
-  const lastEvent = String(input.lastEvent || "").trim();
-  if (lastEvent) {
-    properties["Last Event"] = { rich_text: notionRichText(lastEvent) };
-  }
-
-  const deploymentId = String(input.deploymentId || "").trim();
-  if (deploymentId) {
-    properties["Deployment ID"] = { rich_text: notionRichText(deploymentId) };
-  }
-
-  const deploymentUrl = String(input.deploymentUrl || "").trim();
-  if (deploymentUrl) {
-    properties.Deployment = { url: normalizeHttpUrl(deploymentUrl) };
-  }
-
-  const dashboardUrl = String(input.dashboardUrl || "").trim();
-  if (dashboardUrl) {
-    properties.Dashboard = { url: normalizeHttpUrl(dashboardUrl) };
-  }
-
-  const target = String(input.target || "").trim();
-  if (target) {
-    properties.Target = { select: { name: target } };
-  }
+  appendIfPresent(properties, "Last Event", input.lastEvent, (v) =>
+    ({ rich_text: notionRichText(String(v)) }),
+  );
+  appendIfPresent(properties, "Deployment ID", input.deploymentId, (v) =>
+    ({ rich_text: notionRichText(String(v)) }),
+  );
+  appendIfPresent(properties, "Deployment", input.deploymentUrl, (v) =>
+    ({ url: normalizeHttpUrl(String(v)) }),
+  );
+  appendIfPresent(properties, "Dashboard", input.dashboardUrl, (v) =>
+    ({ url: normalizeHttpUrl(String(v)) }),
+  );
+  appendIfPresent(properties, "Target", input.target, (v) =>
+    ({ select: { name: String(v) } }),
+  );
 
   return properties;
 }
