@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import type { OverrideConflict, RouteTreeItem } from "@/lib/site-admin/route-explorer-model";
+import { normalizeAccessMode, type AccessMode } from "@/lib/shared/access";
 import { normalizeRoutePath } from "@/lib/shared/route-utils";
 
 export function RouteRowAdminPanel({
@@ -20,18 +21,18 @@ export function RouteRowAdminPanel({
 }: {
   it: RouteTreeItem;
   overrideValue: string;
-  selectedAccess: "public" | "password" | "github";
+  selectedAccess: AccessMode;
   inheritedProtected: boolean;
   effectiveProtected: boolean;
   protectedSource: string;
   busy: boolean;
   getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
-  onSetAccessChoice: (id: string, v: "public" | "password" | "github") => void;
+  onSetAccessChoice: (id: string, v: AccessMode) => void;
   onSaveOverride: (id: string, v: string) => void;
   onSaveAccess: (input: {
     pageId: string;
     path: string;
-    access: "public" | "password" | "github";
+    access: AccessMode;
     password?: string;
   }) => void;
 }) {
@@ -132,9 +133,7 @@ export function RouteRowAdminPanel({
               value={selectedAccess}
               disabled={inheritedProtected}
               onChange={(e) => {
-                const raw = String(e.target.value || "");
-                const nextAccess: "public" | "password" | "github" =
-                  raw === "password" ? "password" : raw === "github" ? "github" : "public";
+                const nextAccess = normalizeAccessMode(e.target.value, "public");
                 onSetAccessChoice(it.id, nextAccess);
                 if (nextAccess !== "password" || inheritedProtected) setPasswordInput("");
               }}

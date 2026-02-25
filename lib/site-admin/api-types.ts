@@ -1,4 +1,5 @@
 import type { NavItemRow, SiteSettings } from "./types.ts";
+import type { ProtectedAccessMode } from "../shared/access.ts";
 
 export type SiteAdminApiError = { ok: false; error: string; code: string };
 
@@ -87,7 +88,7 @@ export type SiteAdminProtectedRoute = {
   pageId: string;
   path: string;
   mode: "exact" | "prefix";
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
   enabled: true;
 };
 
@@ -141,9 +142,9 @@ export type SiteAdminDeployPreviewProtectedChange = {
   pageId: string;
   path: string;
   mode: "exact" | "prefix";
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
   previousMode?: "exact" | "prefix";
-  previousAuth?: "password" | "github";
+  previousAuth?: ProtectedAccessMode;
 };
 
 export type SiteAdminDeployPreviewPayload = {

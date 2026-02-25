@@ -1,12 +1,16 @@
 "use client";
 
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
+import {
+  normalizeProtectedAccessMode,
+  type AccessMode,
+} from "@/lib/shared/access";
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
 import type { RouteTreeItem } from "@/lib/site-admin/route-explorer-types";
 
 import { postAccess, postOverride } from "./api";
 
-type AccessKind = "public" | "password" | "github";
+type AccessKind = AccessMode;
 
 type MutationDeps = {
   setBusyId: (value: string) => void;
@@ -71,7 +75,7 @@ export async function applyRouteAccess(
       }
 
       if (!pid) return next;
-      const auth: "password" | "github" = access === "github" ? "github" : "password";
+      const auth = normalizeProtectedAccessMode(access);
       next.protectedByPageId[pid] = { auth, mode: "prefix", path: normalizedPath };
       return next;
     });

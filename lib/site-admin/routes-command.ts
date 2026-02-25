@@ -1,4 +1,8 @@
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
+import {
+  normalizeAccessMode,
+  type AccessMode,
+} from "../shared/access.ts";
 import { z } from "zod";
 import type { ParseResult } from "./request-types.ts";
 
@@ -8,7 +12,7 @@ export type SiteAdminRoutesCommand =
       kind: "protected";
       pageId: string;
       path: string;
-      authKind: "public" | "password" | "github";
+      authKind: AccessMode;
       password: string;
     };
 
@@ -46,18 +50,6 @@ function readString(
   return out;
 }
 
-function readEnum<T extends string>(
-  raw: unknown,
-  allowed: readonly T[],
-  fallback: T,
-): T {
-  const value = readString(raw).toLowerCase();
-  for (const option of allowed) {
-    if (value === option) return option;
-  }
-  return fallback;
-}
-
 function normalizeOptionalRoutePath(rawPath: string): string {
   if (!rawPath) return "";
   return normalizeRoutePath(rawPath);
@@ -86,11 +78,7 @@ export function parseSiteAdminRoutesCommand(
   const path = normalizeRoutePath(readString(command.path, { maxLen: 300 }));
   if (!path) return bad("Missing path", 400);
 
-  const authKind = readEnum(
-    command.auth,
-    ["public", "password", "github"] as const,
-    "password",
-  );
+  const authKind = normalizeAccessMode(command.auth, "password");
   const password = readString(command.password, { maxLen: 160 });
   if (authKind === "public" && password) {
     return bad("Public auth does not use a password", 400);

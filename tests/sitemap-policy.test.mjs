@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   normalizeSitemapAutoExclude,
+  parseSitemapSectionList,
   routePathDepth,
   sectionForRoutePath,
   shouldAutoExcludeFromSitemap,
@@ -19,6 +20,13 @@ test("sitemap-policy: routePathDepth counts path segments", () => {
   assert.equal(routePathDepth("/"), 0);
   assert.equal(routePathDepth("/teaching"), 1);
   assert.equal(routePathDepth("/teaching/archive/2024-25-fall"), 3);
+});
+
+test("sitemap-policy: parseSitemapSectionList filters invalid and dedupes", () => {
+  assert.deepEqual(
+    parseSitemapSectionList(" blog, teaching,unknown\nblog pages "),
+    ["blog", "teaching", "pages"],
+  );
 });
 
 test("sitemap-policy: normalizeSitemapAutoExclude sanitizes values", () => {

@@ -1,4 +1,5 @@
 import type { RouteManifestItem } from "../routes-manifest";
+import type { ProtectedAccessMode } from "../shared/access.ts";
 
 export type RouteTreeItem = RouteManifestItem & {
   depth: number;
@@ -12,7 +13,7 @@ export type RouteTree = {
 };
 
 export type AdminProtectedRule = {
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
   mode: "exact" | "prefix";
   path: string;
 };
@@ -23,7 +24,7 @@ export type AdminConfig = {
 };
 
 export type EffectiveAccess = {
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
   direct: boolean;
   inherited: boolean;
   sourceId: string; // 32-hex if known

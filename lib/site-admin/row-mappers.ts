@@ -1,5 +1,6 @@
 import { getPropCheckbox, getPropNumber, getPropString } from "../notion/api.ts";
 import type { NotionPageLike } from "../notion/types.ts";
+import { normalizeProtectedAccessMode } from "../shared/access.ts";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 import type {
   SiteAdminProtectedRoute,
@@ -115,8 +116,7 @@ export function mapProtectedRouteRows(rows: NotionPageLike[]): ProtectedRouteRow
     if (!path) continue;
     const modeRaw = (getPropString(row, "Mode") || "exact").toLowerCase();
     const mode: "exact" | "prefix" = modeRaw === "prefix" ? "prefix" : "exact";
-    const authRaw = (getPropString(row, "Auth") || "").toLowerCase();
-    const auth: "password" | "github" = authRaw === "github" ? "github" : "password";
+    const auth = normalizeProtectedAccessMode(getPropString(row, "Auth"), "password");
     protectedRoutes.push({ rowId, pageId, path, mode, auth, enabled: true });
   }
   return protectedRoutes;

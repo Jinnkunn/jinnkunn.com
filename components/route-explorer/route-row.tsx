@@ -9,6 +9,7 @@ import type {
   AdminConfig,
   OverrideConflict,
 } from "@/lib/site-admin/route-explorer-model";
+import type { AccessMode } from "@/lib/shared/access";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRowAdminPanel } from "./route-row-admin-panel";
@@ -39,7 +40,7 @@ export function RouteRow({
   collapsed: Record<string, boolean>;
   adminOpen: boolean;
   busy: boolean;
-  accessChoice: Record<string, "public" | "password" | "github">;
+  accessChoice: Record<string, AccessMode>;
   effectiveAccess: EffectiveAccess | null;
   inheritedProtected: boolean;
   directProtected: boolean;
@@ -49,9 +50,9 @@ export function RouteRow({
   getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
   onToggleCollapsed: (id: string) => void;
   onToggleAdmin: (id: string) => void;
-  onSetAccessChoice: (id: string, v: "public" | "password" | "github") => void;
+  onSetAccessChoice: (id: string, v: AccessMode) => void;
   onSaveOverride: (id: string, v: string) => void;
-  onSaveAccess: (input: { pageId: string; path: string; access: "public" | "password" | "github"; password?: string }) => void;
+  onSaveAccess: (input: { pageId: string; path: string; access: AccessMode; password?: string }) => void;
 }) {
   const p = normalizeRoutePath(it.routePath);
   const isHome = p === "/";
@@ -63,7 +64,7 @@ export function RouteRow({
 
   const indent = Math.min(56, it.depth * 16);
 
-  const directAccess: "public" | "password" | "github" = directProtected
+  const directAccess: AccessMode = directProtected
     ? cfg.protectedByPageId[compactId(it.id)]?.auth === "github"
       ? "github"
       : "password"

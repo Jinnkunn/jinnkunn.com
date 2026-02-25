@@ -1,6 +1,7 @@
 "use client";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
+import { normalizeAccessMode, type AccessMode } from "@/lib/shared/access";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRow } from "./route-explorer/route-row";
@@ -120,9 +121,7 @@ export default function RouteExplorer({
               className="routes-explorer__admin-select"
               value={batchAccess}
               onChange={(e) => {
-                const raw = String(e.target.value || "");
-                const next: "public" | "password" | "github" =
-                  raw === "password" ? "password" : raw === "github" ? "github" : "public";
+                const next: AccessMode = normalizeAccessMode(e.target.value, "public");
                 setBatchAccess(next);
               }}
             >

@@ -11,6 +11,10 @@ import { loadSiteAdminRouteData } from "@/lib/server/site-admin-routes-service";
 import { getSiteConfig } from "@/lib/site-config";
 import type { SiteAdminDeployPreviewPayload } from "@/lib/site-admin/api-types";
 import {
+  normalizeProtectedAccessMode,
+  type ProtectedAccessMode,
+} from "@/lib/shared/access";
+import {
   buildDeployPreviewDiff,
   type DeployPreviewProtectedEntry,
   type DeployPreviewRouteEntry,
@@ -107,13 +111,13 @@ function normalizeProtectedEntry(input: {
   pageId?: string;
   path: string;
   mode: "exact" | "prefix";
-  auth?: "password" | "github";
+  auth?: ProtectedAccessMode;
 }): DeployPreviewProtectedEntry | null {
   const path = normalizePublicRoutePath(input.path);
   if (!path) return null;
   const pageId = compactId(input.pageId || "") || `path:${path}`;
   const mode: "exact" | "prefix" = input.mode === "prefix" ? "prefix" : "exact";
-  const auth: "password" | "github" = input.auth === "github" ? "github" : "password";
+  const auth = normalizeProtectedAccessMode(input.auth, "password");
   return { pageId, path, mode, auth };
 }
 
@@ -133,7 +137,7 @@ function currentProtectedEntries(): DeployPreviewProtectedEntry[] {
 }
 
 function liveProtectedEntries(
-  rows: Array<{ pageId: string; path: string; mode: "exact" | "prefix"; auth: "password" | "github" }>,
+  rows: Array<{ pageId: string; path: string; mode: "exact" | "prefix"; auth: ProtectedAccessMode }>,
 ): DeployPreviewProtectedEntry[] {
   const out: DeployPreviewProtectedEntry[] = [];
   for (const row of rows) {

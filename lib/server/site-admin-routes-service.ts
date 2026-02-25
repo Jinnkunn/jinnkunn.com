@@ -1,6 +1,7 @@
 import "server-only";
 
 import { queryDatabase } from "@/lib/notion/api";
+import type { ProtectedAccessMode } from "@/lib/shared/access";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import {
   mapProtectedRouteRows,
@@ -41,7 +42,7 @@ export type ProtectedUpsertResult = {
   pageId: string;
   path: string;
   mode: "exact" | "prefix";
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
   enabled: true;
 };
 
@@ -129,7 +130,7 @@ export async function upsertProtected(input: {
   path: string;
   mode: "exact" | "prefix";
   password: string;
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
 }): Promise<ProtectedUpsertResult> {
   const normalized = normalizeRoutePath(input.path);
   if (!normalized) throw new Error("Missing path");

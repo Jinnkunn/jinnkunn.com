@@ -4,6 +4,10 @@ import type { Dispatch, SetStateAction } from "react";
 
 import { normalizeDepthString } from "@/lib/shared/depth";
 import {
+  parseSitemapSectionList,
+  SITEMAP_SECTIONS,
+} from "@/lib/shared/sitemap-policy";
+import {
   SiteAdminDepthGridRow,
   SiteAdminFormRow,
   SiteAdminSwitchRow,
@@ -12,22 +16,6 @@ import {
   type DepthFieldKey,
 } from "./settings-fields";
 import type { SiteSettings } from "./types";
-
-const SITEMAP_SECTIONS = ["pages", "blog", "publications", "teaching"] as const;
-
-function parseSectionList(raw: string): Set<string> {
-  const out = new Set<string>();
-  const list = String(raw || "")
-    .split(/[\s,\n]+/g)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  for (const it of list) {
-    if (SITEMAP_SECTIONS.includes(it as (typeof SITEMAP_SECTIONS)[number])) {
-      out.add(it);
-    }
-  }
-  return out;
-}
 
 type SiteAdminSettingsFormProps = {
   draftSettings: SiteSettings | null;
@@ -53,7 +41,9 @@ export function SiteAdminSettingsForm({
   const updateField = <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => {
     setDraftSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
-  const selectedSections = parseSectionList(draftSettings.sitemapAutoExcludeSections);
+  const selectedSections = new Set(
+    parseSitemapSectionList(draftSettings.sitemapAutoExcludeSections),
+  );
 
   const toggleSection = (section: (typeof SITEMAP_SECTIONS)[number], checked: boolean) => {
     const next = new Set(selectedSections);

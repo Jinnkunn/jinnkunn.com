@@ -1,5 +1,6 @@
 import type { RouteManifestItem } from "../routes-manifest";
 import { asRecordArray, isRecord, readTrimmedString } from "../notion/coerce.ts";
+import { normalizeProtectedAccessMode } from "../shared/access.ts";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 import type { AdminConfig, EffectiveAccess, RouteTree } from "./route-explorer-types.ts";
 
@@ -31,7 +32,7 @@ export function parseAdminRoutesPayload(
     const p = normalizeRoutePath(rawPath);
     if (!p) continue;
     const mode: "exact" | "prefix" = rawMode === "prefix" ? "prefix" : "exact";
-    const auth: "password" | "github" = readTrimmedString(it.auth) === "github" ? "github" : "password";
+    const auth = normalizeProtectedAccessMode(readTrimmedString(it.auth), "password");
     const pid = compactId(readTrimmedString(it.pageId));
     if (pid) {
       protectedByPageId[pid] = { auth, mode, path: p };

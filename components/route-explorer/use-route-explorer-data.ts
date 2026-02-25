@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useReducer } from "react";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
+import type { AccessMode } from "@/lib/shared/access";
 import {
   buildDescendantsGetter,
   buildRouteTree,
@@ -243,7 +244,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   }: {
     pageId: string;
     path: string;
-    access: "public" | "password" | "github";
+    access: AccessMode;
     password?: string;
     trackBusy: boolean;
   }) =>
@@ -270,7 +271,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   }: {
     pageId: string;
     path: string;
-    access: "public" | "password" | "github";
+    access: AccessMode;
     password?: string;
   }) => {
     await applyAccess({ pageId, path, access, password, trackBusy: true });

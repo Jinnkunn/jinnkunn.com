@@ -26,6 +26,22 @@ function isSitemapSection(x: string): x is SitemapSection {
   return (SITEMAP_SECTIONS as readonly string[]).includes(x);
 }
 
+export function parseSitemapSectionList(raw: string): SitemapSection[] {
+  const list = String(raw || "")
+    .split(/[\s,\n]+/g)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const seen = new Set<SitemapSection>();
+  const out: SitemapSection[] = [];
+  for (const item of list) {
+    if (!isSitemapSection(item)) continue;
+    if (seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
+}
+
 function parseEnabled(input: unknown): boolean {
   return typeof input === "boolean" ? input : DEFAULT_SITEMAP_AUTO_EXCLUDE.enabled;
 }

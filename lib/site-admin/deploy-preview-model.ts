@@ -3,6 +3,10 @@ import type {
   SiteAdminDeployPreviewProtectedChange,
   SiteAdminDeployPreviewRedirectChange,
 } from "./api-types.ts";
+import {
+  normalizeProtectedAccessMode,
+  type ProtectedAccessMode,
+} from "../shared/access.ts";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 
 export type DeployPreviewRouteEntry = {
@@ -15,7 +19,7 @@ export type DeployPreviewProtectedEntry = {
   pageId: string;
   path: string;
   mode: "exact" | "prefix";
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
 };
 
 export type BuildDeployPreviewDiffInput = {
@@ -67,7 +71,7 @@ function normalizeProtectedEntries(items: DeployPreviewProtectedEntry[]): Deploy
     const pageId = compactId(item.pageId);
     const path = normalizeEntryRoute(item.path);
     const mode = item.mode === "prefix" ? "prefix" : "exact";
-    const auth = item.auth === "github" ? "github" : "password";
+    const auth = normalizeProtectedAccessMode(item.auth, "password");
     if (!pageId || !path) continue;
     const key = `${pageId}|${path}|${mode}|${auth}`;
     if (seen.has(key)) continue;

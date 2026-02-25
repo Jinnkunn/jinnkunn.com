@@ -4,7 +4,6 @@ import { getProtectedRoutes } from "@/lib/protected-routes";
 import { getRoutesManifest, type RouteManifestItem } from "@/lib/routes-manifest";
 import {
   buildParentByPageIdMap,
-  canonicalizePublicRoute,
   lookupPageIdForPath,
   pickProtectedRule,
 } from "@/lib/routes/strategy";
@@ -16,7 +15,7 @@ import {
 } from "@/lib/shared/sitemap-policy";
 import { getSyncMeta } from "@/lib/sync-meta";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
+import { canonicalizeRoutePath, compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
 import { listRawHtmlFiles } from "@/lib/server/content-files";
 
@@ -51,12 +50,6 @@ type SitemapExclusionContext = {
 const EXCLUDED_EXACT = new Set<string>(["/auth", "/site-admin", "/blog/list", "/list"]);
 const EXCLUDED_PREFIXES = ["/_next", "/api/", "/site-admin/", "/auth/", "/blog/list/", "/list/"];
 const EXTRA_ROUTES = ["/blog", "/sitemap"];
-
-function canonicalizeRoutePath(routePath: string): string {
-  const raw = String(routePath || "").trim();
-  if (!raw) return "";
-  return normalizeRoutePath(canonicalizePublicRoute(raw)) || "/";
-}
 
 function routePathFromRawRelPath(relPath: string): string {
   if (relPath === "index") return "/";

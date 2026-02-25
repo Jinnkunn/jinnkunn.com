@@ -1,5 +1,9 @@
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
-import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
+import {
+  canonicalizeRoutePath,
+  compactId,
+  normalizeRoutePath,
+} from "../shared/route-utils.ts";
 
 export function normalizePathname(pathname: string): string {
   const p = String(pathname || "").trim();
@@ -10,11 +14,8 @@ export function normalizePathname(pathname: string): string {
 
 export function canonicalizePublicRoute(routePath: string): string {
   const p = normalizePathname(routePath);
-  if (p === "/blog/list") return "/blog";
-  if (p.startsWith("/blog/list/")) return p.replace(/^\/blog\/list\//, "/blog/");
-  if (p === "/list") return "/blog";
-  if (p.startsWith("/list/")) return p.replace(/^\/list\//, "/blog/");
-  return p;
+  if (!p.startsWith("/")) return p;
+  return canonicalizeRoutePath(p) || "/";
 }
 
 export function resolveNotionIdPathRedirect(

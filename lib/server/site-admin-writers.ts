@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import type { ProtectedAccessMode } from "@/lib/shared/access";
 import { parseDepthNumber } from "@/lib/shared/depth";
 import { notionRichText, normalizeHttpUrl, redactUrlQueryParams } from "@/lib/server/notion-format";
 
@@ -146,7 +147,7 @@ export function buildProtectedRouteProperties(input: {
   pageId: string;
   path: string;
   mode: "exact" | "prefix";
-  auth: "password" | "github";
+  auth: ProtectedAccessMode;
   password?: string;
 }): Record<string, unknown> {
   const pwd = String(input.password || "").trim();

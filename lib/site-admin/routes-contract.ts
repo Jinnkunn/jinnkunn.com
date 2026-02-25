@@ -4,6 +4,7 @@ import type {
   SiteAdminRoutesGetPayload,
   SiteAdminRoutesResult,
 } from "./api-types";
+import { normalizeProtectedAccessMode } from "../shared/access.ts";
 
 import {
   asApiAck,
@@ -37,8 +38,8 @@ function parseProtectedRoute(v: unknown): SiteAdminProtectedRoute | null {
   const pageId = toStringValue(v.pageId).trim();
   const path = toStringValue(v.path).trim();
   const mode = toStringValue(v.mode) === "prefix" ? "prefix" : toStringValue(v.mode) === "exact" ? "exact" : "";
-  const auth =
-    toStringValue(v.auth) === "github" ? "github" : toStringValue(v.auth) === "password" ? "password" : "";
+  const rawAuth = toStringValue(v.auth).trim().toLowerCase();
+  const auth = rawAuth ? normalizeProtectedAccessMode(rawAuth, "password") : null;
   if (!rowId || !pageId || !path || !mode || !auth) return null;
   return {
     rowId,

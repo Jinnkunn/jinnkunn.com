@@ -1,6 +1,8 @@
+import type { ProtectedAccessMode } from "./access.ts";
+
 export type ProtectedRoute = {
   id: string;
-  auth?: "password" | "github";
+  auth?: ProtectedAccessMode;
   key?: "pageId" | "path";
   pageId?: string;
   path: string;

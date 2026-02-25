@@ -25,6 +25,16 @@ export function normalizeRoutePath(p: string): string {
   return out || "/";
 }
 
+export function canonicalizeRoutePath(routePath: string): string {
+  const normalized = normalizeRoutePath(routePath);
+  if (!normalized) return "";
+  if (normalized === "/blog/list") return "/blog";
+  if (normalized.startsWith("/blog/list/")) return normalized.replace(/^\/blog\/list\//, "/blog/");
+  if (normalized === "/list") return "/blog";
+  if (normalized.startsWith("/list/")) return normalized.replace(/^\/list\//, "/blog/");
+  return normalized;
+}
+
 export function dashify32(id32: string): string {
   const s = String(id32 || "").replace(/-/g, "").toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(s)) return "";

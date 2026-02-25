@@ -3,6 +3,7 @@
 import type { RouteManifestItem } from "@/lib/routes-manifest";
 import { asApiAck } from "@/lib/client/api-guards";
 import { requestJsonOrThrow } from "@/lib/client/request-json";
+import type { AccessMode } from "@/lib/shared/access";
 import { parseAdminRoutesPayload, type AdminConfig } from "@/lib/site-admin/route-explorer-model";
 import {
   isSiteAdminRoutesOk,
@@ -45,7 +46,7 @@ export async function postOverride(input: { pageId: string; routePath: string })
 export async function postAccess(input: {
   pageId: string;
   path: string;
-  access: "public" | "password" | "github";
+  access: AccessMode;
   password?: string;
 }) {
   await requestJsonOrThrow(
