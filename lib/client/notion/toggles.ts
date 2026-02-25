@@ -1,10 +1,14 @@
-function isProbablyInteractiveToggleTarget(el: Element): boolean {
+function isProbablyInteractiveToggleTarget(summary: Element, el: Element): boolean {
   // Avoid toggling when interacting with nested controls inside summary text.
   // The explicit trigger remains a valid toggle target.
   const nestedControl = el.closest(
     'a[href],button,input,select,textarea,[role="link"],[role="button"]',
   );
   if (!nestedControl) return true;
+  // Summary itself may be a11y-upgraded to role="button"; clicking it should toggle.
+  if (nestedControl === summary || nestedControl.classList.contains("notion-toggle__summary")) {
+    return true;
+  }
   return nestedControl.classList.contains("notion-toggle__trigger");
 }
 
@@ -116,7 +120,7 @@ export function openToggleAncestors(target: Element) {
 }
 
 export function toggleFromSummaryInteraction(summary: Element, target: Element): boolean {
-  if (!isProbablyInteractiveToggleTarget(target)) return false;
+  if (!isProbablyInteractiveToggleTarget(summary, target)) return false;
   const toggle = summary.closest<HTMLElement>(".notion-toggle");
   if (!toggle) return false;
   const open = toggle.classList.contains("closed");
