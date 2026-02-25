@@ -2,8 +2,16 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
+import { normalizeDepthString } from "@/lib/shared/depth";
+import {
+  SiteAdminDepthGridRow,
+  SiteAdminFormRow,
+  SiteAdminSwitchRow,
+  SiteAdminTextAreaRow,
+  SiteAdminTextFieldRow,
+  type DepthFieldKey,
+} from "./settings-fields";
 import type { SiteSettings } from "./types";
-import { asString } from "./utils";
 
 const SITEMAP_SECTIONS = ["pages", "blog", "publications", "teaching"] as const;
 
@@ -19,14 +27,6 @@ function parseSectionList(raw: string): Set<string> {
     }
   }
   return out;
-}
-
-function asDepth(value: string): string {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return "";
-  return String(Math.max(0, Math.min(20, Math.floor(n))));
 }
 
 type SiteAdminSettingsFormProps = {
@@ -64,110 +64,72 @@ export function SiteAdminSettingsForm({
 
   return (
     <div className="site-admin-form" role="form" aria-label="Site settings">
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Site Name</label>
-        <input
-          className="site-admin-form__input"
-          value={asString(draftSettings.siteName)}
-          onChange={(e) => updateField("siteName", e.target.value)}
-          placeholder="Jinkun Chen."
-        />
-      </div>
+      <SiteAdminTextFieldRow
+        label="Site Name"
+        value={draftSettings.siteName}
+        onChange={(next) => updateField("siteName", next)}
+        placeholder="Jinkun Chen."
+      />
+      <SiteAdminTextFieldRow
+        label="Lang"
+        value={draftSettings.lang}
+        onChange={(next) => updateField("lang", next)}
+        placeholder="en"
+        mono
+      />
+      <SiteAdminTextFieldRow
+        label="SEO Title"
+        value={draftSettings.seoTitle}
+        onChange={(next) => updateField("seoTitle", next)}
+        placeholder="Jinkun Chen"
+      />
+      <SiteAdminTextAreaRow
+        label="SEO Description"
+        value={draftSettings.seoDescription}
+        onChange={(next) => updateField("seoDescription", next)}
+        placeholder="Short description for search engines."
+      />
+      <SiteAdminTextFieldRow
+        label="Favicon"
+        value={draftSettings.favicon}
+        onChange={(next) => updateField("favicon", next)}
+        placeholder="/favicon.ico"
+      />
+      <SiteAdminTextFieldRow
+        label="OG Image"
+        value={draftSettings.ogImage}
+        onChange={(next) => updateField("ogImage", next)}
+        placeholder="/assets/profile.png"
+      />
+      <SiteAdminTextFieldRow
+        label="Google Analytics ID"
+        value={draftSettings.googleAnalyticsId}
+        onChange={(next) => updateField("googleAnalyticsId", next)}
+        placeholder="G-XXXXXXXXXX"
+        mono
+      />
+      <SiteAdminTextAreaRow
+        label="Content GitHub Users"
+        value={draftSettings.contentGithubUsers}
+        onChange={(next) => updateField("contentGithubUsers", next)}
+        placeholder="comma-separated GitHub usernames (e.g. jinnkunn, alice, bob)"
+        mono
+      />
+      <SiteAdminTextAreaRow
+        label="Sitemap Excludes"
+        value={draftSettings.sitemapExcludes}
+        onChange={(next) => updateField("sitemapExcludes", next)}
+        placeholder={"/private\n/teaching/archive\n21040d70fdf580019476fa3c2ec769f2"}
+        mono
+      />
+      <SiteAdminSwitchRow
+        label="Sitemap Auto Exclude"
+        checked={Boolean(draftSettings.sitemapAutoExcludeEnabled)}
+        onChange={(next) => updateField("sitemapAutoExcludeEnabled", next)}
+        text="Enable automatic exclusions"
+      />
 
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Lang</label>
-        <input
-          className="site-admin-form__input site-admin-form__input--mono"
-          value={asString(draftSettings.lang)}
-          onChange={(e) => updateField("lang", e.target.value)}
-          placeholder="en"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">SEO Title</label>
-        <input
-          className="site-admin-form__input"
-          value={asString(draftSettings.seoTitle)}
-          onChange={(e) => updateField("seoTitle", e.target.value)}
-          placeholder="Jinkun Chen"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">SEO Description</label>
-        <textarea
-          className="site-admin-form__textarea"
-          value={asString(draftSettings.seoDescription)}
-          onChange={(e) => updateField("seoDescription", e.target.value)}
-          placeholder="Short description for search engines."
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Favicon</label>
-        <input
-          className="site-admin-form__input"
-          value={asString(draftSettings.favicon)}
-          onChange={(e) => updateField("favicon", e.target.value)}
-          placeholder="/favicon.ico"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">OG Image</label>
-        <input
-          className="site-admin-form__input"
-          value={asString(draftSettings.ogImage)}
-          onChange={(e) => updateField("ogImage", e.target.value)}
-          placeholder="/assets/profile.png"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Google Analytics ID</label>
-        <input
-          className="site-admin-form__input site-admin-form__input--mono"
-          value={asString(draftSettings.googleAnalyticsId)}
-          onChange={(e) => updateField("googleAnalyticsId", e.target.value)}
-          placeholder="G-XXXXXXXXXX"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Content GitHub Users</label>
-        <textarea
-          className="site-admin-form__textarea site-admin-form__textarea--mono"
-          value={asString(draftSettings.contentGithubUsers)}
-          onChange={(e) => updateField("contentGithubUsers", e.target.value)}
-          placeholder="comma-separated GitHub usernames (e.g. jinnkunn, alice, bob)"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Sitemap Excludes</label>
-        <textarea
-          className="site-admin-form__textarea site-admin-form__textarea--mono"
-          value={asString(draftSettings.sitemapExcludes)}
-          onChange={(e) => updateField("sitemapExcludes", e.target.value)}
-          placeholder={"/private\n/teaching/archive\n21040d70fdf580019476fa3c2ec769f2"}
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Sitemap Auto Exclude</label>
-        <label className="site-admin-form__switch">
-          <input
-            type="checkbox"
-            checked={Boolean(draftSettings.sitemapAutoExcludeEnabled)}
-            onChange={(e) => updateField("sitemapAutoExcludeEnabled", e.target.checked)}
-          />
-          <span>Enable automatic exclusions</span>
-        </label>
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Sitemap Sections</label>
+      <SiteAdminFormRow label="Sitemap Sections">
         <div className="site-admin-form__checks" role="group" aria-label="Sitemap auto-exclude sections">
           {SITEMAP_SECTIONS.map((section) => (
             <label key={section} className="site-admin-form__check">
@@ -180,90 +142,37 @@ export function SiteAdminSettingsForm({
             </label>
           ))}
         </div>
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Sitemap Max Depth</label>
-        <div className="site-admin-form__depth-grid">
-          <label className="site-admin-form__depth-item">
-            <span>pages</span>
-            <input
-              className="site-admin-form__input site-admin-form__input--mono"
-              inputMode="numeric"
-              value={asString(draftSettings.sitemapAutoExcludeDepthPages)}
-              onChange={(e) =>
-                updateField(
-                  "sitemapAutoExcludeDepthPages",
-                  asDepth(e.target.value),
-                )
-              }
-              placeholder="-"
-            />
-          </label>
-          <label className="site-admin-form__depth-item">
-            <span>blog</span>
-            <input
-              className="site-admin-form__input site-admin-form__input--mono"
-              inputMode="numeric"
-              value={asString(draftSettings.sitemapAutoExcludeDepthBlog)}
-              onChange={(e) =>
-                updateField("sitemapAutoExcludeDepthBlog", asDepth(e.target.value))
-              }
-              placeholder="-"
-            />
-          </label>
-          <label className="site-admin-form__depth-item">
-            <span>publications</span>
-            <input
-              className="site-admin-form__input site-admin-form__input--mono"
-              inputMode="numeric"
-              value={asString(draftSettings.sitemapAutoExcludeDepthPublications)}
-              onChange={(e) =>
-                updateField(
-                  "sitemapAutoExcludeDepthPublications",
-                  asDepth(e.target.value),
-                )
-              }
-              placeholder="-"
-            />
-          </label>
-          <label className="site-admin-form__depth-item">
-            <span>teaching</span>
-            <input
-              className="site-admin-form__input site-admin-form__input--mono"
-              inputMode="numeric"
-              value={asString(draftSettings.sitemapAutoExcludeDepthTeaching)}
-              onChange={(e) =>
-                updateField(
-                  "sitemapAutoExcludeDepthTeaching",
-                  asDepth(e.target.value),
-                )
-              }
-              placeholder="-"
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Root Page ID</label>
-        <input
-          className="site-admin-form__input site-admin-form__input--mono"
-          value={asString(draftSettings.rootPageId)}
-          onChange={(e) => updateField("rootPageId", e.target.value)}
-          placeholder="Page ID"
-        />
-      </div>
-
-      <div className="site-admin-form__row">
-        <label className="site-admin-form__label">Home Page ID</label>
-        <input
-          className="site-admin-form__input site-admin-form__input--mono"
-          value={asString(draftSettings.homePageId)}
-          onChange={(e) => updateField("homePageId", e.target.value)}
-          placeholder="Page ID"
-        />
-      </div>
+      </SiteAdminFormRow>
+      <SiteAdminDepthGridRow
+        label="Sitemap Max Depth"
+        fields={[
+          { key: "pages", value: draftSettings.sitemapAutoExcludeDepthPages },
+          { key: "blog", value: draftSettings.sitemapAutoExcludeDepthBlog },
+          { key: "publications", value: draftSettings.sitemapAutoExcludeDepthPublications },
+          { key: "teaching", value: draftSettings.sitemapAutoExcludeDepthTeaching },
+        ]}
+        onChange={(key: DepthFieldKey, value: string) => {
+          const next = normalizeDepthString(value);
+          if (key === "pages") updateField("sitemapAutoExcludeDepthPages", next);
+          if (key === "blog") updateField("sitemapAutoExcludeDepthBlog", next);
+          if (key === "publications") updateField("sitemapAutoExcludeDepthPublications", next);
+          if (key === "teaching") updateField("sitemapAutoExcludeDepthTeaching", next);
+        }}
+      />
+      <SiteAdminTextFieldRow
+        label="Root Page ID"
+        value={draftSettings.rootPageId}
+        onChange={(next) => updateField("rootPageId", next)}
+        placeholder="Page ID"
+        mono
+      />
+      <SiteAdminTextFieldRow
+        label="Home Page ID"
+        value={draftSettings.homePageId}
+        onChange={(next) => updateField("homePageId", next)}
+        placeholder="Page ID"
+        mono
+      />
 
       <div className="site-admin-form__actions">
         <button type="button" className="site-admin-form__btn" disabled={busy} onClick={onSaveSettings}>

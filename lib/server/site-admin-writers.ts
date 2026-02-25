@@ -1,15 +1,8 @@
 import "server-only";
 
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import { parseDepthNumber } from "@/lib/shared/depth";
 import { notionRichText, normalizeHttpUrl, redactUrlQueryParams } from "@/lib/server/notion-format";
-
-function depthToNumber(value: string): number | null {
-  const s = String(value || "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return Math.max(0, Math.min(20, Math.floor(n)));
-}
 
 export function buildSiteSettingsProperties(
   patch: Partial<Omit<SiteSettings, "rowId">>,
@@ -31,18 +24,18 @@ export function buildSiteSettingsProperties(
     properties["Sitemap Auto Exclude Sections"] = { rich_text: notionRichText(patch.sitemapAutoExcludeSections) };
   }
   if (patch.sitemapAutoExcludeDepthPages !== undefined) {
-    properties["Sitemap Max Depth Pages"] = { number: depthToNumber(patch.sitemapAutoExcludeDepthPages) };
+    properties["Sitemap Max Depth Pages"] = { number: parseDepthNumber(patch.sitemapAutoExcludeDepthPages) };
   }
   if (patch.sitemapAutoExcludeDepthBlog !== undefined) {
-    properties["Sitemap Max Depth Blog"] = { number: depthToNumber(patch.sitemapAutoExcludeDepthBlog) };
+    properties["Sitemap Max Depth Blog"] = { number: parseDepthNumber(patch.sitemapAutoExcludeDepthBlog) };
   }
   if (patch.sitemapAutoExcludeDepthPublications !== undefined) {
     properties["Sitemap Max Depth Publications"] = {
-      number: depthToNumber(patch.sitemapAutoExcludeDepthPublications),
+      number: parseDepthNumber(patch.sitemapAutoExcludeDepthPublications),
     };
   }
   if (patch.sitemapAutoExcludeDepthTeaching !== undefined) {
-    properties["Sitemap Max Depth Teaching"] = { number: depthToNumber(patch.sitemapAutoExcludeDepthTeaching) };
+    properties["Sitemap Max Depth Teaching"] = { number: parseDepthNumber(patch.sitemapAutoExcludeDepthTeaching) };
   }
   if (patch.rootPageId !== undefined) properties["Root Page ID"] = { rich_text: notionRichText(patch.rootPageId) };
   if (patch.homePageId !== undefined) properties["Home Page ID"] = { rich_text: notionRichText(patch.homePageId) };

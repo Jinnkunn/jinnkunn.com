@@ -1,12 +1,14 @@
 import "server-only";
 
 import { compactId } from "@/lib/shared/route-utils";
+import { z } from "zod";
 import {
   parseSiteAdminRoutesCommand,
   type SiteAdminRoutesCommand,
 } from "@/lib/site-admin/routes-command";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import { normalizeDepthString } from "@/lib/shared/depth";
 import {
   getBoolean,
   getEnum,
@@ -20,22 +22,39 @@ export type SiteAdminSettingsPatch = Partial<Omit<SiteSettings, "rowId">>;
 export type SiteAdminNavPatch = Partial<Omit<NavItemRow, "rowId">>;
 export type SiteAdminNavCreateInput = Omit<NavItemRow, "rowId">;
 
-function depthFieldFromUnknown(
-  patch: Record<string, unknown>,
-  key: string,
-): string {
-  if (!(key in patch)) return "";
-  const raw = patch[key];
-  if (raw === null || raw === undefined) return "";
-  const n = Number(typeof raw === "string" ? raw.trim() : raw);
-  if (!Number.isFinite(n)) return "";
-  return String(Math.max(0, Math.min(20, Math.floor(n))));
-}
-
 export type SiteAdminConfigCommand =
   | { kind: "settings"; rowId: string; patch: SiteAdminSettingsPatch }
   | { kind: "nav-update"; rowId: string; patch: SiteAdminNavPatch }
   | { kind: "nav-create"; input: SiteAdminNavCreateInput };
+
+const configCommandSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("settings"),
+      rowId: z.unknown().optional(),
+      patch: z.record(z.unknown()).optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      kind: z.literal("nav-update"),
+      rowId: z.unknown().optional(),
+      patch: z.record(z.unknown()).optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      kind: z.literal("nav-create"),
+      input: z.record(z.unknown()).optional(),
+    })
+    .passthrough(),
+]);
+
+function asString(raw: unknown): string {
+  if (typeof raw === "string") return raw.trim();
+  if (raw === null || raw === undefined) return "";
+  return String(raw).trim();
+}
 
 function bad(error: string, status = 400): ParseResult<never> {
   return { ok: false, error, status };
@@ -61,19 +80,16 @@ export async function parseSiteAdminJsonCommand<T>(
 export function parseSiteAdminConfigCommand(
   body: Record<string, unknown>,
 ): ParseResult<SiteAdminConfigCommand> {
-  const kind = getEnum(
-    body,
-    "kind",
-    ["settings", "nav-update", "nav-create"] as const,
-    "",
-  );
-  if (!kind) return bad("Unknown kind", 400);
+  const parsedBody = configCommandSchema.safeParse(body);
+  if (!parsedBody.success) return bad("Unknown kind", 400);
+  const command = parsedBody.data;
+  const kind = command.kind;
 
   if (kind === "settings") {
-    const rowId = compactId(getString(body, "rowId"));
+    const rowId = compactId(asString(command.rowId));
     if (!rowId) return bad("Missing rowId", 400);
 
-    const patch = isObject(body.patch) ? body.patch : {};
+    const patch = isObject(command.patch) ? command.patch : {};
     const outPatch: SiteAdminSettingsPatch = {};
 
     if (patch.siteName !== undefined) {
@@ -113,27 +129,23 @@ export function parseSiteAdminConfigCommand(
       });
     }
     if (patch.sitemapAutoExcludeDepthPages !== undefined) {
-      outPatch.sitemapAutoExcludeDepthPages = depthFieldFromUnknown(
-        patch,
-        "sitemapAutoExcludeDepthPages",
+      outPatch.sitemapAutoExcludeDepthPages = normalizeDepthString(
+        patch.sitemapAutoExcludeDepthPages,
       );
     }
     if (patch.sitemapAutoExcludeDepthBlog !== undefined) {
-      outPatch.sitemapAutoExcludeDepthBlog = depthFieldFromUnknown(
-        patch,
-        "sitemapAutoExcludeDepthBlog",
+      outPatch.sitemapAutoExcludeDepthBlog = normalizeDepthString(
+        patch.sitemapAutoExcludeDepthBlog,
       );
     }
     if (patch.sitemapAutoExcludeDepthPublications !== undefined) {
-      outPatch.sitemapAutoExcludeDepthPublications = depthFieldFromUnknown(
-        patch,
-        "sitemapAutoExcludeDepthPublications",
+      outPatch.sitemapAutoExcludeDepthPublications = normalizeDepthString(
+        patch.sitemapAutoExcludeDepthPublications,
       );
     }
     if (patch.sitemapAutoExcludeDepthTeaching !== undefined) {
-      outPatch.sitemapAutoExcludeDepthTeaching = depthFieldFromUnknown(
-        patch,
-        "sitemapAutoExcludeDepthTeaching",
+      outPatch.sitemapAutoExcludeDepthTeaching = normalizeDepthString(
+        patch.sitemapAutoExcludeDepthTeaching,
       );
     }
     if (patch.rootPageId !== undefined) {
@@ -147,10 +159,10 @@ export function parseSiteAdminConfigCommand(
   }
 
   if (kind === "nav-update") {
-    const rowId = compactId(getString(body, "rowId"));
+    const rowId = compactId(asString(command.rowId));
     if (!rowId) return bad("Missing rowId", 400);
 
-    const patch = isObject(body.patch) ? body.patch : {};
+    const patch = isObject(command.patch) ? command.patch : {};
     const outPatch: SiteAdminNavPatch = {};
 
     if (patch.label !== undefined) {
@@ -173,7 +185,7 @@ export function parseSiteAdminConfigCommand(
     return { ok: true, value: { kind, rowId, patch: outPatch } };
   }
 
-  const input = isObject(body.input) ? body.input : {};
+  const input = isObject(command.input) ? command.input : {};
   return {
     ok: true,
     value: {

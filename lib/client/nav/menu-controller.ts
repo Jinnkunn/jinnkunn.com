@@ -2,6 +2,17 @@ import { createFocusTrap, lockBodyScroll, setClassicInert } from "@/lib/client/d
 
 import type { SiteNavElements } from "./elements";
 import { setActiveLinks } from "./active-links";
+import {
+  applyMobileMenuOpenLayout,
+  attachMoreMenuHeightObserver,
+  hideMobileMenuImmediately,
+  playMobileMenuEnter,
+  playMobileMenuExit,
+  setMobilePageState,
+} from "./menu-animation";
+import { createMenuEventHandlers } from "./menu-events";
+import { focusMoreMenuItem, getMoreMenuItems } from "./menu-focus";
+import { clearCloseTimers, createNavMenuState } from "./menu-state";
 
 export function setupSiteNavMenuBehavior({
   nav,
@@ -21,172 +32,72 @@ export function setupSiteNavMenuBehavior({
     exclude: (el) => el.id === "mobile-backdrop",
     fallback: mobileClose ?? mobileBtn,
   });
+  const state = createNavMenuState();
 
-  let moreOpen = false;
-  let mobileOpen = false;
-  let unlockScroll: null | (() => void) = null;
-  let moreCloseTimer: number | null = null;
-  let mobileCloseTimer: number | null = null;
-  let mobilePrevFocus: HTMLElement | null = null;
-  let moreResizeObserver: ResizeObserver | null = null;
-
-  const getMoreItems = () =>
-    Array.from(moreMenu.querySelectorAll<HTMLElement>("a.super-navbar__list-item"));
-
+  const getMoreItems = () => getMoreMenuItems(moreMenu);
   const focusMoreItem = (which: "first" | "last" | number) => {
-    const items = getMoreItems();
-    if (items.length === 0) return;
-    if (which === "first") return items[0]?.focus();
-    if (which === "last") return items[items.length - 1]?.focus();
-    const idx = ((which % items.length) + items.length) % items.length;
-    return items[idx]?.focus();
-  };
-
-  const clearTimers = () => {
-    if (moreCloseTimer) window.clearTimeout(moreCloseTimer);
-    if (mobileCloseTimer) window.clearTimeout(mobileCloseTimer);
-    moreCloseTimer = null;
-    mobileCloseTimer = null;
-  };
-
-  const setElementVisibilityState = (el: HTMLElement, hidden: boolean) => {
-    const keyVis = "mobileMenuPrevVisibility";
-    const keyPtr = "mobileMenuPrevPointerEvents";
-    const keyAria = "mobileMenuPrevAriaHidden";
-
-    if (hidden) {
-      if (!(keyVis in el.dataset)) el.dataset[keyVis] = el.style.visibility || "__EMPTY__";
-      if (!(keyPtr in el.dataset)) el.dataset[keyPtr] = el.style.pointerEvents || "__EMPTY__";
-      if (!(keyAria in el.dataset)) el.dataset[keyAria] = el.getAttribute("aria-hidden") ?? "__NULL__";
-      el.style.setProperty("visibility", "hidden", "important");
-      el.style.setProperty("pointer-events", "none", "important");
-      el.setAttribute("aria-hidden", "true");
-      return;
-    }
-
-    const prevVis = el.dataset[keyVis];
-    const prevPtr = el.dataset[keyPtr];
-    const prevAria = el.dataset[keyAria];
-    if (prevVis === "__EMPTY__" || prevVis == null) el.style.removeProperty("visibility");
-    else el.style.setProperty("visibility", prevVis);
-    if (prevPtr === "__EMPTY__" || prevPtr == null) el.style.removeProperty("pointer-events");
-    else el.style.setProperty("pointer-events", prevPtr);
-    if (prevAria === "__NULL__" || prevAria == null) el.removeAttribute("aria-hidden");
-    else el.setAttribute("aria-hidden", prevAria);
-    delete el.dataset[keyVis];
-    delete el.dataset[keyPtr];
-    delete el.dataset[keyAria];
-  };
-
-  const setMobileLayerIsolation = (open: boolean) => {
-    const targets = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        ".super-content-wrapper, footer.super-footer",
-      ),
-    );
-    for (const target of targets) setElementVisibilityState(target, open);
-  };
-
-  const setMobilePageState = (open: boolean) => {
-    const root = document.documentElement;
-    root.classList.toggle("mobile-menu-open", open);
-    root.dataset.mobileMenuOpen = open ? "1" : "0";
-    setMobileLayerIsolation(open);
+    focusMoreMenuItem(moreMenu, which);
   };
 
   const setMobileOpen = (open: boolean, opts: { restoreFocus?: boolean } = {}) => {
-    if (mobileOpen === open) return;
-    mobileOpen = open;
+    if (state.mobileOpen === open) return;
+    state.mobileOpen = open;
     mobileBtn.setAttribute("aria-expanded", open ? "true" : "false");
-
-    clearTimers();
+    clearCloseTimers(state);
 
     if (open) {
       setMoreOpen(false);
 
-      mobilePrevFocus = document.activeElement as HTMLElement | null;
+      state.mobilePrevFocus = document.activeElement as HTMLElement | null;
       mobileMenu.hidden = false;
       mobileMenu.removeAttribute("inert");
       mobileMenu.setAttribute("data-state", "open");
-      mobileMenu.style.position = "fixed";
-      mobileMenu.style.inset = "0";
-      mobileMenu.style.top = "0";
-      mobileMenu.style.left = "0";
-      mobileMenu.style.right = "0";
-      mobileMenu.style.bottom = "0";
-      mobileMenu.style.width = "100vw";
-      mobileMenu.style.minWidth = "100vw";
-      mobileMenu.style.height = "100svh";
-      mobileMenu.style.minHeight = "100svh";
-      mobileMenu.style.maxHeight = "none";
-      mobileMenu.style.boxSizing = "border-box";
-      mobileMenu.style.zIndex = "6000";
-      mobileMenu.style.display = "flex";
-      mobileMenu.style.alignItems = "stretch";
-      mobileMenu.style.justifyContent = "flex-end";
-      mobileMenu.style.overflow = "hidden";
-      mobileMenu.style.pointerEvents = "auto";
-      mobileMenu.style.touchAction = "auto";
-      mobileMenu.style.background = "var(--mobile-menu-bg, #f5f2eb)";
+      applyMobileMenuOpenLayout(mobileMenu);
       setClassicInert(true);
       setMobilePageState(true);
+      playMobileMenuEnter(mobileMenu);
 
-      mobileMenu.classList.remove("exit", "exit-active");
-      mobileMenu.classList.add("enter");
-      requestAnimationFrame(() => {
-        mobileMenu.classList.remove("enter");
-        mobileMenu.classList.add("enter-done");
-      });
-
-      if (!unlockScroll) unlockScroll = lockBodyScroll();
-
+      if (!state.unlockScroll) state.unlockScroll = lockBodyScroll();
       requestAnimationFrame(() => {
         mobileTrap.focusFirst();
       });
+      return;
+    }
+
+    mobileMenu.setAttribute("inert", "");
+    mobileMenu.setAttribute("data-state", "closed");
+    setClassicInert(false);
+    setMobilePageState(false);
+
+    if (prefersReducedMotion) {
+      hideMobileMenuImmediately(mobileMenu);
     } else {
-      mobileMenu.setAttribute("inert", "");
-      mobileMenu.setAttribute("data-state", "closed");
-      setClassicInert(false);
-      setMobilePageState(false);
-      if (prefersReducedMotion) {
+      state.mobileCloseTimer = playMobileMenuExit(mobileMenu, () => {
         mobileMenu.hidden = true;
         mobileMenu.style.display = "none";
-        mobileMenu.classList.remove("enter", "enter-active", "enter-done");
-        mobileMenu.classList.remove("exit", "exit-active");
-      } else {
-        mobileMenu.classList.remove("enter", "enter-active", "enter-done");
-        mobileMenu.classList.add("exit");
-        requestAnimationFrame(() => {
-          mobileMenu.classList.add("exit-active");
-        });
-        mobileCloseTimer = window.setTimeout(() => {
-          mobileMenu.hidden = true;
-          mobileMenu.style.display = "none";
-          mobileMenu.classList.remove("exit", "exit-active");
-        }, 280);
-      }
-
-      if (unlockScroll) {
-        unlockScroll();
-        unlockScroll = null;
-      }
-
-      if (opts.restoreFocus) {
-        const toFocus =
-          (mobilePrevFocus && document.contains(mobilePrevFocus) ? mobilePrevFocus : mobileBtn) ??
-          mobileBtn;
-        requestAnimationFrame(() => toFocus?.focus?.());
-      }
-      mobilePrevFocus = null;
+      });
     }
+
+    if (state.unlockScroll) {
+      state.unlockScroll();
+      state.unlockScroll = null;
+    }
+
+    if (opts.restoreFocus) {
+      const toFocus =
+        (state.mobilePrevFocus && document.contains(state.mobilePrevFocus)
+          ? state.mobilePrevFocus
+          : mobileBtn) ?? mobileBtn;
+      requestAnimationFrame(() => toFocus?.focus?.());
+    }
+    state.mobilePrevFocus = null;
   };
 
   const setMoreOpen = (open: boolean, opts: { focus?: "first" | "last" } = {}) => {
-    if (moreOpen === open) return;
-    moreOpen = open;
+    if (state.moreOpen === open) return;
+    state.moreOpen = open;
     moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
-
-    clearTimers();
+    clearCloseTimers(state);
 
     if (open) {
       setMobileOpen(false);
@@ -194,37 +105,24 @@ export function setupSiteNavMenuBehavior({
       moreMenu.style.display = "";
       moreMenu.setAttribute("data-state", "open");
       moreMenu.removeAttribute("inert");
-
-      const syncMoreHeight = () => {
-        const content = moreMenu.querySelector<HTMLElement>(".super-navbar__list-content");
-        if (!content) return;
-        const rect = content.getBoundingClientRect();
-        const h = Math.max(0, Math.ceil(rect.height));
-        moreMenu.style.setProperty("--radix-navigation-menu-viewport-height", `${h}px`);
-      };
-
       requestAnimationFrame(() => {
-        syncMoreHeight();
-        const content = moreMenu.querySelector<HTMLElement>(".super-navbar__list-content");
-        if (content && typeof ResizeObserver !== "undefined") {
-          moreResizeObserver?.disconnect();
-          moreResizeObserver = new ResizeObserver(() => syncMoreHeight());
-          moreResizeObserver.observe(content);
-        }
+        state.moreResizeObserver = attachMoreMenuHeightObserver(moreMenu, state.moreResizeObserver);
       });
+
       const targetFocus = opts.focus;
       if (targetFocus) requestAnimationFrame(() => focusMoreItem(targetFocus));
+      return;
+    }
+
+    state.moreResizeObserver?.disconnect();
+    moreMenu.setAttribute("data-state", "closed");
+    moreMenu.setAttribute("inert", "");
+    if (prefersReducedMotion) {
+      moreMenu.style.display = "none";
     } else {
-      moreResizeObserver?.disconnect();
-      moreMenu.setAttribute("data-state", "closed");
-      moreMenu.setAttribute("inert", "");
-      if (prefersReducedMotion) {
+      state.moreCloseTimer = window.setTimeout(() => {
         moreMenu.style.display = "none";
-      } else {
-        moreCloseTimer = window.setTimeout(() => {
-          moreMenu.style.display = "none";
-        }, 220);
-      }
+      }, 220);
     }
   };
 
@@ -233,161 +131,22 @@ export function setupSiteNavMenuBehavior({
     setMobileOpen(false);
   };
 
-  const onPointerDown = (e: PointerEvent) => {
-    const t = e.target instanceof Node ? e.target : null;
-    if (!t) return closeAll();
-
-    if (mobileOpen) {
-      if (mobileBtn.contains(t) || mobileDialog.contains(t)) return;
-      return setMobileOpen(false, { restoreFocus: true });
-    }
-
-    if (moreOpen) {
-      if (moreBtn.contains(t) || moreMenu.contains(t)) return;
-      return setMoreOpen(false);
-    }
-
-    if (nav.contains(t)) return;
-    closeAll();
-  };
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Tab" && mobileOpen) {
-      mobileTrap.onKeyDown(e);
-      return;
-    }
-
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    const focusMore = moreOpen;
-    const focusMobile = mobileOpen;
-    closeAll();
-    if (focusMobile) (mobilePrevFocus ?? mobileBtn).focus();
-    else if (focusMore) moreBtn.focus();
-  };
-
-  const onFocusIn = (e: FocusEvent) => {
-    if (!mobileOpen) return;
-    mobileTrap.onFocusIn(e);
-  };
-
-  const onNavClickCapture = (e: MouseEvent) => {
-    const t = e.target instanceof Element ? e.target : null;
-    const a = t?.closest("a");
-    if (!a) return;
-    closeAll();
-  };
-
-  const onMoreClick = (e: MouseEvent) => {
-    e.preventDefault();
-    setMoreOpen(!moreOpen);
-  };
-
-  const canHover =
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches;
-  let moreHoverCloseTimer: number | null = null;
-  const clearMoreHoverClose = () => {
-    if (moreHoverCloseTimer) window.clearTimeout(moreHoverCloseTimer);
-    moreHoverCloseTimer = null;
-  };
-  const scheduleMoreHoverClose = () => {
-    if (!canHover) return;
-    clearMoreHoverClose();
-    moreHoverCloseTimer = window.setTimeout(() => {
-      setMoreOpen(false);
-    }, 120);
-  };
-
-  const onMorePointerEnter = () => {
-    if (!canHover) return;
-    clearMoreHoverClose();
-    setMoreOpen(true);
-  };
-
-  const onMorePointerLeave = () => {
-    if (!canHover) return;
-    scheduleMoreHoverClose();
-  };
-
-  const onMoreTriggerKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setMoreOpen(true, { focus: "first" });
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setMoreOpen(true, { focus: "last" });
-      return;
-    }
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      const next = !moreOpen;
-      setMoreOpen(next, next ? { focus: "first" } : {});
-      return;
-    }
-    if (e.key === "Escape" && moreOpen) {
-      e.preventDefault();
-      setMoreOpen(false);
-    }
-  };
-
-  const onMoreMenuKeyDown = (e: KeyboardEvent) => {
-    if (!moreOpen) return;
-
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setMoreOpen(false);
-      moreBtn.focus();
-      return;
-    }
-
-    if (e.key === "Tab") {
-      setMoreOpen(false);
-      return;
-    }
-
-    const items = getMoreItems();
-    if (items.length === 0) return;
-    const active = document.activeElement as HTMLElement | null;
-    const idx = Math.max(0, items.findIndex((el) => el === active));
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      focusMoreItem(idx + 1);
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      focusMoreItem(idx - 1);
-      return;
-    }
-    if (e.key === "Home") {
-      e.preventDefault();
-      focusMoreItem("first");
-      return;
-    }
-    if (e.key === "End") {
-      e.preventDefault();
-      focusMoreItem("last");
-    }
-  };
-
-  const onMobileClick = (e: MouseEvent) => {
-    e.preventDefault();
-    setMobileOpen(!mobileOpen);
-  };
-
-  const onBackdropClick = (e: MouseEvent) => {
-    e.preventDefault();
-    setMobileOpen(false, { restoreFocus: true });
-  };
-
-  const onCloseBtnClick = (e: MouseEvent) => {
-    e.preventDefault();
-    setMobileOpen(false, { restoreFocus: true });
-  };
+  const handlers = createMenuEventHandlers({
+    nav,
+    moreBtn,
+    moreMenu,
+    mobileBtn,
+    mobileDialog,
+    mobileTrap,
+    getMoreOpen: () => state.moreOpen,
+    getMobileOpen: () => state.mobileOpen,
+    getMobilePrevFocus: () => state.mobilePrevFocus,
+    getMoreItems,
+    focusMoreItem,
+    setMoreOpen,
+    setMobileOpen,
+    closeAll,
+  });
 
   moreMenu.style.display = "none";
   moreMenu.setAttribute("data-state", "closed");
@@ -399,20 +158,20 @@ export function setupSiteNavMenuBehavior({
   mobileMenu.setAttribute("data-state", "closed");
   setActiveLinks(nav);
 
-  window.addEventListener("pointerdown", onPointerDown, { passive: true });
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("focusin", onFocusIn);
-  nav.addEventListener("click", onNavClickCapture, true);
-  moreBtn.addEventListener("click", onMoreClick);
-  moreBtn.addEventListener("keydown", onMoreTriggerKeyDown);
-  moreMenu.addEventListener("keydown", onMoreMenuKeyDown, true);
-  moreBtn.addEventListener("pointerenter", onMorePointerEnter);
-  moreBtn.addEventListener("pointerleave", onMorePointerLeave);
-  moreMenu.addEventListener("pointerenter", onMorePointerEnter);
-  moreMenu.addEventListener("pointerleave", onMorePointerLeave);
-  mobileBtn.addEventListener("click", onMobileClick);
-  mobileBackdrop.addEventListener("click", onBackdropClick);
-  mobileClose.addEventListener("click", onCloseBtnClick);
+  window.addEventListener("pointerdown", handlers.onPointerDown, { passive: true });
+  window.addEventListener("keydown", handlers.onKeyDown);
+  window.addEventListener("focusin", handlers.onFocusIn);
+  nav.addEventListener("click", handlers.onNavClickCapture, true);
+  moreBtn.addEventListener("click", handlers.onMoreClick);
+  moreBtn.addEventListener("keydown", handlers.onMoreTriggerKeyDown);
+  moreMenu.addEventListener("keydown", handlers.onMoreMenuKeyDown, true);
+  moreBtn.addEventListener("pointerenter", handlers.onMorePointerEnter);
+  moreBtn.addEventListener("pointerleave", handlers.onMorePointerLeave);
+  moreMenu.addEventListener("pointerenter", handlers.onMorePointerEnter);
+  moreMenu.addEventListener("pointerleave", handlers.onMorePointerLeave);
+  mobileBtn.addEventListener("click", handlers.onMobileClick);
+  mobileBackdrop.addEventListener("click", handlers.onBackdropClick);
+  mobileClose.addEventListener("click", handlers.onCloseBtnClick);
 
   const onPopState = () => {
     closeAll();
@@ -421,25 +180,25 @@ export function setupSiteNavMenuBehavior({
   window.addEventListener("popstate", onPopState);
 
   return () => {
-    clearTimers();
-    moreResizeObserver?.disconnect();
-    window.removeEventListener("pointerdown", onPointerDown);
-    window.removeEventListener("keydown", onKeyDown);
-    window.removeEventListener("focusin", onFocusIn);
-    nav.removeEventListener("click", onNavClickCapture, true);
-    moreBtn.removeEventListener("click", onMoreClick);
-    moreBtn.removeEventListener("keydown", onMoreTriggerKeyDown);
-    moreMenu.removeEventListener("keydown", onMoreMenuKeyDown, true);
-    moreBtn.removeEventListener("pointerenter", onMorePointerEnter);
-    moreBtn.removeEventListener("pointerleave", onMorePointerLeave);
-    moreMenu.removeEventListener("pointerenter", onMorePointerEnter);
-    moreMenu.removeEventListener("pointerleave", onMorePointerLeave);
-    clearMoreHoverClose();
-    mobileBtn.removeEventListener("click", onMobileClick);
-    mobileBackdrop.removeEventListener("click", onBackdropClick);
-    mobileClose.removeEventListener("click", onCloseBtnClick);
+    clearCloseTimers(state);
+    state.moreResizeObserver?.disconnect();
+    window.removeEventListener("pointerdown", handlers.onPointerDown);
+    window.removeEventListener("keydown", handlers.onKeyDown);
+    window.removeEventListener("focusin", handlers.onFocusIn);
+    nav.removeEventListener("click", handlers.onNavClickCapture, true);
+    moreBtn.removeEventListener("click", handlers.onMoreClick);
+    moreBtn.removeEventListener("keydown", handlers.onMoreTriggerKeyDown);
+    moreMenu.removeEventListener("keydown", handlers.onMoreMenuKeyDown, true);
+    moreBtn.removeEventListener("pointerenter", handlers.onMorePointerEnter);
+    moreBtn.removeEventListener("pointerleave", handlers.onMorePointerLeave);
+    moreMenu.removeEventListener("pointerenter", handlers.onMorePointerEnter);
+    moreMenu.removeEventListener("pointerleave", handlers.onMorePointerLeave);
+    handlers.clearMoreHoverClose();
+    mobileBtn.removeEventListener("click", handlers.onMobileClick);
+    mobileBackdrop.removeEventListener("click", handlers.onBackdropClick);
+    mobileClose.removeEventListener("click", handlers.onCloseBtnClick);
     window.removeEventListener("popstate", onPopState);
-    if (unlockScroll) unlockScroll();
+    if (state.unlockScroll) state.unlockScroll();
     setMobilePageState(false);
     setClassicInert(false);
   };

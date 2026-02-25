@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { z } from "zod";
 
 import {
   noStoreBadRequest,
@@ -20,7 +21,34 @@ import {
   buildDeployLogCreateProperties,
   buildDeployLogUpdateProperties,
 } from "@/lib/server/site-admin-writers";
-import { isObject } from "@/lib/server/validate";
+
+const webhookEventSchema = z
+  .object({
+    type: z.string().optional(),
+    createdAt: z.union([z.number(), z.string()]).optional(),
+    payload: z
+      .object({
+        id: z.string().optional(),
+        url: z.string().optional(),
+        deployment: z
+          .object({
+            id: z.string().optional(),
+            url: z.string().optional(),
+            target: z.string().optional(),
+          })
+          .partial()
+          .optional(),
+        links: z
+          .object({
+            deployment: z.string().optional(),
+          })
+          .partial()
+          .optional(),
+      })
+      .partial()
+      .optional(),
+  })
+  .passthrough();
 
 export const runtime = "nodejs";
 
@@ -154,11 +182,14 @@ export async function POST(req: Request) {
       return noStoreBadRequest("Invalid JSON body");
     }
 
-    const evtObj = isObject(evt) ? evt : {};
+    const parsedEvent = webhookEventSchema.safeParse(evt);
+    if (!parsedEvent.success) return noStoreBadRequest("Invalid webhook payload");
+    const evtObj = parsedEvent.data;
+    const payloadObj = evtObj.payload ?? {};
+    const deploymentObj = payloadObj.deployment ?? {};
+    const linksObj = payloadObj.links ?? {};
+
     const eventType = String(evtObj.type ?? "").trim();
-    const payloadObj = isObject(evtObj.payload) ? evtObj.payload : {};
-    const deploymentObj = isObject(payloadObj.deployment) ? payloadObj.deployment : {};
-    const linksObj = isObject(payloadObj.links) ? payloadObj.links : {};
     if (!eventType) return noStoreOk({ skipped: true });
 
     const createdAtMs = Number(evtObj.createdAt ?? Date.now());

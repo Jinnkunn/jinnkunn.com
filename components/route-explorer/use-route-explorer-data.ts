@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import {
-  type AdminConfig,
   buildDescendantsGetter,
   buildRouteTree,
   computeVisibleRoutes,
@@ -16,7 +14,17 @@ import {
   normalizeSearchQuery,
 } from "@/lib/site-admin/route-explorer-model";
 
-import { fetchAdminConfig, postAccess, postOverride } from "./api";
+import { fetchAdminConfig } from "./api";
+import {
+  bindRouteExplorerSetters,
+  createRouteExplorerInitialState,
+  routeExplorerStateReducer,
+} from "./use-route-explorer-state";
+import {
+  applyBatchRouteAccess,
+  applyRouteAccess,
+  saveRouteOverride,
+} from "./use-route-explorer-mutations";
 
 const COLLAPSED_STORAGE_KEY = "site-admin.routes.collapsed.v2";
 const INITIAL_RENDER_LIMIT = 180;
@@ -42,24 +50,41 @@ function parseStoredCollapsed(
 }
 
 export function useRouteExplorerData(items: RouteManifestItem[]) {
-  const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "nav" | "overrides">("all");
-  const [cfg, setCfg] = useState<AdminConfig>({
-    overrides: {},
-    protectedByPageId: {},
-  });
-  const [busyId, setBusyId] = useState<string>("");
-  const [err, setErr] = useState<string>("");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [openAdmin, setOpenAdmin] = useState<Record<string, boolean>>({});
-  const [accessChoice, setAccessChoice] = useState<Record<string, "public" | "password" | "github">>(
-    {},
+  const [state, dispatch] = useReducer(
+    routeExplorerStateReducer,
+    createRouteExplorerInitialState(),
   );
-  const [batchAccess, setBatchAccess] = useState<"public" | "password" | "github">("public");
-  const [batchPassword, setBatchPassword] = useState("");
-  const [batchBusy, setBatchBusy] = useState(false);
-  const [collapsedReady, setCollapsedReady] = useState(false);
-  const [renderLimit, setRenderLimit] = useState(INITIAL_RENDER_LIMIT);
+  const {
+    q,
+    filter,
+    cfg,
+    busyId,
+    err,
+    collapsed,
+    openAdmin,
+    accessChoice,
+    batchAccess,
+    batchPassword,
+    batchBusy,
+    collapsedReady,
+    renderLimit,
+  } = state;
+  const setters = useMemo(() => bindRouteExplorerSetters(dispatch), [dispatch]);
+  const {
+    setQ,
+    setFilter,
+    setCfg,
+    setBusyId,
+    setErr,
+    setCollapsed,
+    setOpenAdmin,
+    setAccessChoice,
+    setBatchAccess,
+    setBatchPassword,
+    setBatchBusy,
+    setCollapsedReady,
+    setRenderLimit,
+  } = setters;
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +100,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     return () => {
       cancelled = true;
     };
-  }, [items]);
+  }, [items, setCfg, setErr]);
 
   const tree = useMemo(() => buildRouteTree(items), [items]);
   const ordered = tree.ordered;
@@ -102,7 +127,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     );
     setCollapsed(parsed ?? fallback);
     setCollapsedReady(true);
-  }, [ordered, collapsedReady]);
+  }, [ordered, collapsedReady, setCollapsed, setCollapsedReady]);
 
   useEffect(() => {
     if (!collapsedReady) return;
@@ -133,7 +158,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
 
   useEffect(() => {
     setRenderLimit(INITIAL_RENDER_LIMIT);
-  }, [q, filter]);
+  }, [q, filter, setRenderLimit]);
 
   useEffect(() => {
     setRenderLimit((prev) => {
@@ -142,7 +167,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
       if (visible.length <= 0) return INITIAL_RENDER_LIMIT;
       return visible.length;
     });
-  }, [visible.length]);
+  }, [visible.length, setRenderLimit]);
 
   useEffect(() => {
     if (!collapsedReady) return;
@@ -152,7 +177,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
       // Search should feel immediate even on deep trees.
       return Math.min(visible.length, Math.max(prev, 500));
     });
-  }, [collapsedReady, q, visible.length]);
+  }, [collapsedReady, q, visible.length, setRenderLimit]);
 
   const renderedVisible = useMemo(() => {
     if (visible.length <= renderLimit) return visible;
@@ -198,25 +223,16 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
 
   const expandAll = () => setCollapsed({});
 
-  const saveOverride = async (pageId: string, routePath: string) => {
-    setBusyId(pageId);
-    setErr("");
-    try {
-      await postOverride({ pageId, routePath });
-
-      setCfg((prev) => {
-        const next = { ...prev, overrides: { ...prev.overrides } };
-        const normalized = normalizeRoutePath(routePath);
-        if (!normalized) delete next.overrides[pageId];
-        else next.overrides[pageId] = normalized;
-        return next;
-      });
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId("");
-    }
-  };
+  const saveOverride = async (pageId: string, routePath: string) =>
+    saveRouteOverride(
+      {
+        setBusyId,
+        setErr,
+        setCfg,
+      },
+      pageId,
+      routePath,
+    );
 
   const applyAccess = async ({
     pageId,
@@ -230,39 +246,21 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     access: "public" | "password" | "github";
     password?: string;
     trackBusy: boolean;
-  }): Promise<boolean> => {
-    if (trackBusy) setBusyId(pageId);
-    setErr("");
-    try {
-      await postAccess({ pageId, path, access, password });
-
-      setCfg((prev) => {
-        const next: AdminConfig = {
-          overrides: prev.overrides,
-          protectedByPageId: { ...prev.protectedByPageId },
-        };
-        const pid = compactId(pageId);
-        const p = normalizeRoutePath(path) || "/";
-
-        // Public means remove any direct protection for this page.
-        if (access === "public") {
-          delete next.protectedByPageId[pid];
-          return next;
-        }
-
-        if (!pid) return next;
-        const auth: "password" | "github" = access === "github" ? "github" : "password";
-        next.protectedByPageId[pid] = { auth, mode: "prefix", path: p };
-        return next;
-      });
-      return true;
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-      return false;
-    } finally {
-      if (trackBusy) setBusyId("");
-    }
-  };
+  }) =>
+    applyRouteAccess(
+      {
+        setBusyId,
+        setErr,
+        setCfg,
+      },
+      {
+        pageId,
+        path,
+        access,
+        password,
+        trackBusy,
+      },
+    );
 
   const saveAccess = async ({
     pageId,
@@ -283,21 +281,20 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     if (!filtered.length) return;
     setBatchBusy(true);
     setErr("");
-    const auth = batchAccess;
-    const password = auth === "password" ? batchPassword : "";
-    let success = 0;
-    for (const it of filtered) {
-      const ok = await applyAccess({
-        pageId: it.id,
-        path: it.routePath,
-        access: auth,
-        password,
-        trackBusy: false,
-      });
-      if (ok) success += 1;
-    }
-    if (success !== filtered.length) {
-      setErr(`Batch applied to ${success}/${filtered.length} routes.`);
+    const { success, total } = await applyBatchRouteAccess(
+      {
+        setBusyId,
+        setErr,
+        setCfg,
+      },
+      {
+        routes: filtered,
+        access: batchAccess,
+        batchPassword,
+      },
+    );
+    if (success !== total) {
+      setErr(`Batch applied to ${success}/${total} routes.`);
     }
     setBatchBusy(false);
   };
