@@ -39,15 +39,19 @@ export function rewritePublicationsHtml(input: string): string {
       /(<em>\s*<span class="highlighted-color color-(?:red|purple|orange)">[\s\S]*?<code class="code">[\s\S]*?<\/code>[\s\S]*?<\/span>\s*<\/span>\s*<\/em>)\s*<span class="pub-tag-colon"><strong>:\s*<\/strong><\/span>/gi,
       '<span class="pub-tag-prefix">$1<span class="pub-tag-colon"><strong>: </strong></span></span>',
     )
-    // Keep a visible blank line between author list and the first detail tag.
+    // Keep exactly one blank line between author list and the first detail tag.
+    // This avoids per-entry drift caused by different leftover newline artifacts.
     .replace(
       /(<blockquote[^>]*class="notion-quote"[^>]*>\s*<span class="notion-semantic-string">[\s\S]*?)(<em>\s*<span class="highlighted-color color-(?:red|purple|orange)">[\s\S]*?<code class="code">[\s\S]*?<\/code>[\s\S]*?<\/span>\s*<\/span>\s*<\/em>\s*<span class="pub-tag-(?:prefix|colon)">[\s\S]*?<\/span>)/gi,
       (m, pre, firstTagLine) => {
-        if (/<br\s*\/?>\s*<br\s*\/?>\s*$/.test(String(pre))) return `${pre}${firstTagLine}`;
-        // Avoid adding blank lines when the tag is already on a fresh line.
-        if (/\n\s*$/.test(String(pre))) return `${pre}<br>${firstTagLine}`;
-        return `${pre}<br><br>${firstTagLine}`;
+        const normalizedPre = String(pre).replace(/(?:\s|&nbsp;|<br\s*\/?>)*$/gi, "");
+        return `${normalizedPre}<br><br>${firstTagLine}`;
       },
+    )
+    // Preserve each publication metadata label row as its own visual line.
+    .replace(
+      /(<blockquote[^>]*class="notion-quote"[^>]*>[\s\S]*?<\/blockquote>)/gi,
+      (block) => String(block).replace(/\n+\s*(<span class="pub-tag-prefix">)/gi, "<br>$1"),
     )
     // Condense accidental extra blank lines.
     .replace(/(?:<br\s*\/?>\s*){3,}/gi, "<br><br>");
