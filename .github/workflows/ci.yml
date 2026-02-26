@@ -69,7 +69,6 @@ jobs:
               - "scripts/perf-budget.mjs"
               - "package.json"
               - "package-lock.json"
-              - ".github/workflows/ci.yml"
 
       - name: Check Scripts
         run: npm run check:scripts
