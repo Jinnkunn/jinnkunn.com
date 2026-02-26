@@ -4,7 +4,7 @@ import type {
   SiteAdminRoutesGetPayload,
   SiteAdminRoutesResult,
 } from "./api-types";
-import { normalizeProtectedAccessMode } from "../shared/access.ts";
+import { parseProtectedAccessMode } from "../shared/access.ts";
 import { toStringValue } from "./contract-helpers.ts";
 
 import {
@@ -35,8 +35,7 @@ function parseProtectedRoute(v: unknown): SiteAdminProtectedRoute | null {
   const pageId = toStringValue(v.pageId).trim();
   const path = toStringValue(v.path).trim();
   const mode = toStringValue(v.mode) === "prefix" ? "prefix" : toStringValue(v.mode) === "exact" ? "exact" : "";
-  const rawAuth = toStringValue(v.auth).trim().toLowerCase();
-  const auth = rawAuth ? normalizeProtectedAccessMode(rawAuth, "password") : null;
+  const auth = parseProtectedAccessMode(v.auth);
   if (!rowId || !pageId || !path || !mode || !auth) return null;
   return {
     rowId,

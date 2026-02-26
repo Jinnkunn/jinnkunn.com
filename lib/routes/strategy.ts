@@ -4,6 +4,7 @@ import {
   compactId,
   normalizeRoutePath,
 } from "../shared/route-utils.ts";
+import { HIERARCHY_TRAVERSAL_LIMIT } from "../shared/hierarchy.ts";
 
 export function normalizePathname(pathname: string): string {
   const p = String(pathname || "").trim();
@@ -99,7 +100,7 @@ export function findProtectedByPageHierarchy(
 
   let cur = compactId(pageId32);
   let guard = 0;
-  while (cur && guard++ < 200) {
+  while (cur && guard++ < HIERARCHY_TRAVERSAL_LIMIT) {
     const hit = byId[cur];
     if (hit) return hit;
     cur = parentByPageId?.[cur] || "";

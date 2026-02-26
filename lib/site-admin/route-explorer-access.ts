@@ -1,6 +1,7 @@
 import type { RouteManifestItem } from "../routes-manifest";
 import { asRecordArray, isRecord, readTrimmedString } from "../notion/coerce.ts";
 import { normalizeProtectedAccessMode } from "../shared/access.ts";
+import { HIERARCHY_TRAVERSAL_LIMIT } from "../shared/hierarchy.ts";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 import type { AdminConfig, EffectiveAccess, RouteTree } from "./route-explorer-types.ts";
 
@@ -77,7 +78,7 @@ export function createEffectiveAccessFinder({
     // Inherit by Notion hierarchy (parentId chain), not by URL prefix.
     let cur = tree.parentById.get(pid) || "";
     let guard = 0;
-    while (cur && guard++ < 300) {
+    while (cur && guard++ < HIERARCHY_TRAVERSAL_LIMIT) {
       const hit = directById[cur];
       if (hit) {
         return {

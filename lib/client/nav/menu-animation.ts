@@ -44,10 +44,6 @@ export function setMobilePageState(open: boolean): void {
 export function applyMobileMenuOpenLayout(menu: HTMLElement): void {
   menu.style.position = "fixed";
   menu.style.inset = "0";
-  menu.style.top = "0";
-  menu.style.left = "0";
-  menu.style.right = "0";
-  menu.style.bottom = "0";
   menu.style.width = "100vw";
   menu.style.minWidth = "100vw";
   menu.style.height = "100svh";

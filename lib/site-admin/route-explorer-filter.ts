@@ -1,4 +1,5 @@
 import type { RouteTreeItem } from "./route-explorer-types.ts";
+import { HIERARCHY_TRAVERSAL_LIMIT } from "../shared/hierarchy.ts";
 
 export function normalizeSearchQuery(q: string): string {
   return String(q || "").trim().toLowerCase();
@@ -46,7 +47,7 @@ export function computeVisibleRoutes({
   const isHiddenByCollapsedAncestor = (id: string): boolean => {
     let pid = parentById.get(id) || "";
     let guard = 0;
-    while (pid && guard++ < 200) {
+    while (pid && guard++ < HIERARCHY_TRAVERSAL_LIMIT) {
       if (collapsedSet.has(pid)) return true;
       pid = parentById.get(pid) || "";
     }

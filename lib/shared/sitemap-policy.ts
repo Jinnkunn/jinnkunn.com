@@ -1,3 +1,4 @@
+import { parseDepthNumber } from "./depth.ts";
 import { normalizeRoutePath } from "./route-utils.ts";
 
 export const SITEMAP_SECTIONS = ["pages", "blog", "publications", "teaching"] as const;
@@ -73,9 +74,8 @@ function normalizeMaxDepthBySection(input: unknown): Partial<Record<SitemapSecti
       delete out[section];
       continue;
     }
-    const n = Number(raw);
-    if (!Number.isFinite(n)) continue;
-    const normalized = Math.max(0, Math.min(20, Math.floor(n)));
+    const normalized = parseDepthNumber(raw, { min: 0, max: 20 });
+    if (normalized === null) continue;
     out[section] = normalized;
   }
   return out;

@@ -6,7 +6,6 @@ export type NavMenuState = {
   mobileCloseTimer: number | null;
   mobilePrevFocus: HTMLElement | null;
   moreResizeObserver: ResizeObserver | null;
-  moreHoverCloseTimer: number | null;
 };
 
 export function createNavMenuState(): NavMenuState {
@@ -18,7 +17,6 @@ export function createNavMenuState(): NavMenuState {
     mobileCloseTimer: null,
     mobilePrevFocus: null,
     moreResizeObserver: null,
-    moreHoverCloseTimer: null,
   };
 }
 
@@ -27,9 +25,4 @@ export function clearCloseTimers(state: NavMenuState): void {
   if (state.mobileCloseTimer) window.clearTimeout(state.mobileCloseTimer);
   state.moreCloseTimer = null;
   state.mobileCloseTimer = null;
-}
-
-export function clearMoreHoverCloseTimer(state: NavMenuState): void {
-  if (state.moreHoverCloseTimer) window.clearTimeout(state.moreHoverCloseTimer);
-  state.moreHoverCloseTimer = null;
 }

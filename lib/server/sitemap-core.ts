@@ -13,6 +13,7 @@ import {
   shouldAutoExcludeFromSitemap,
   type SitemapAutoExcludeConfig,
 } from "@/lib/shared/sitemap-policy";
+import { HIERARCHY_TRAVERSAL_LIMIT } from "@/lib/shared/hierarchy";
 import { getSyncMeta } from "@/lib/sync-meta";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
 import { canonicalizeRoutePath, compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
@@ -211,7 +212,7 @@ function isPageDescendantOfAny(
 ): boolean {
   let cur = compactId(pageId);
   let guard = 0;
-  while (cur && guard++ < 300) {
+  while (cur && guard++ < HIERARCHY_TRAVERSAL_LIMIT) {
     if (ancestors.has(cur)) return true;
     cur = compactId(parentByPageId[cur] || "");
   }

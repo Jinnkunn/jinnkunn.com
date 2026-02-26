@@ -72,6 +72,7 @@ test("site-admin-routes-contract: filters malformed list rows", () => {
     protectedRoutes: [
       { rowId: "2", pageId: "pid2", path: "/teaching", mode: "exact", auth: "password" },
       { rowId: "3", pageId: "", path: "/bad", mode: "prefix", auth: "github" },
+      { rowId: "4", pageId: "pid4", path: "/bad-auth", mode: "prefix", auth: "typo" },
     ],
   });
 

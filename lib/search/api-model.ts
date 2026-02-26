@@ -1,4 +1,5 @@
 import { canonicalizePublicRoute, normalizePathname } from "../routes/strategy.ts";
+import { HIERARCHY_TRAVERSAL_LIMIT } from "../shared/hierarchy.ts";
 import { groupLabelForSearchResult, sortGroupLabels } from "../shared/search-group.ts";
 import { normalizeSearchKind, type SearchItem } from "../shared/search-contract.ts";
 import { tokenizeQuery } from "../shared/text-utils.ts";
@@ -62,7 +63,7 @@ export function buildBreadcrumb(
 
   let cur: SearchManifestItem | null = start;
   let guard = 0;
-  while (cur && guard++ < 200) {
+  while (cur && guard++ < HIERARCHY_TRAVERSAL_LIMIT) {
     const id = String(cur.id || "").replace(/-/g, "").toLowerCase();
     if (!id || seen.has(id)) break;
     seen.add(id);
