@@ -16,6 +16,13 @@ on:
         required: false
         default: "120"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   prod-quality:
     runs-on: ubuntu-latest
@@ -34,7 +41,7 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Run Production Smoke
         env:
