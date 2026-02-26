@@ -3,7 +3,21 @@ name: CI
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,8 +36,40 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Restore Next.js Build Cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-cache-${{ hashFiles('package-lock.json') }}-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-next-cache-${{ hashFiles('package-lock.json') }}-
+
       - name: Install
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Detect UI-Impacting Changes (PR)
+        if: github.event_name == 'pull_request'
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ui_quality:
+              - "app/**"
+              - "components/**"
+              - "lib/client/**"
+              - "lib/routes/**"
+              - "lib/search/**"
+              - "lib/publications/**"
+              - "lib/load-raw-main.ts"
+              - "lib/site-config.ts"
+              - "lib/seo/**"
+              - "public/**"
+              - "scripts/smoke-ui.mjs"
+              - "scripts/a11y-check.mjs"
+              - "scripts/perf-budget.mjs"
+              - "package.json"
+              - "package-lock.json"
+              - ".github/workflows/ci.yml"
 
       - name: Check Scripts
         run: npm run check:scripts
@@ -38,12 +84,14 @@ jobs:
       # Keep a fast UI gate on PRs: core nav/search/mobile behavior only.
       # Heavier embed/reference checks stay in manual UI Smoke workflow.
       - name: UI Smoke (Quick)
+        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
         env:
           SMOKE_UI_QUICK: "1"
           SMOKE_UI_SKIP_BUILD: "1"
         run: npm run smoke:ui
 
       - name: Accessibility (Axe)
+        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
         env:
           A11Y_SKIP_BUILD: "1"
           A11Y_FULL_SITE: "1"
@@ -51,6 +99,7 @@ jobs:
         run: npm run check:a11y
 
       - name: Performance Budget
+        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
         env:
           PERF_SKIP_BUILD: "1"
           PERF_STRICT: "1"
@@ -59,6 +108,10 @@ jobs:
           PERF_BUDGET_CLS: "0.12"
           PERF_BUDGET_INP_MS: "300"
         run: npm run check:perf
+
+      - name: Skip UI/A11y/Perf (No UI-Impacting Changes)
+        if: github.event_name == 'pull_request' && steps.changes.outputs.ui_quality != 'true'
+        run: echo "Skipping UI smoke, a11y, and performance checks for non-UI changes."
 
       - name: Upload UI Smoke Artifacts
         if: failure()

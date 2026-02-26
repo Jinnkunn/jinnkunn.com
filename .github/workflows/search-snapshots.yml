@@ -8,6 +8,13 @@ on:
         required: false
         default: "https://jinnkunn-com.vercel.app"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   search-snapshots:
     runs-on: ubuntu-latest
@@ -26,7 +33,7 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Capture Search Snapshots
         env:
