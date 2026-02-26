@@ -18,6 +18,7 @@ test("shared-ts-facades: default site config exposes expected required keys", ()
   assert.equal(typeof DEFAULT_SITE_CONFIG.siteName, "string");
   assert.equal(typeof DEFAULT_SITE_CONFIG.lang, "string");
   assert.equal(typeof DEFAULT_SITE_CONFIG.seo.ogImage, "string");
+  assert.equal(typeof DEFAULT_SITE_CONFIG.seo.pageOverrides, "object");
   assert.equal(Array.isArray(DEFAULT_SITE_CONFIG.nav.top), true);
   assert.equal(Array.isArray(DEFAULT_SITE_CONFIG.nav.more), true);
   assert.equal(typeof DEFAULT_SITE_CONFIG.content.sitemapAutoExclude.enabled, "boolean");

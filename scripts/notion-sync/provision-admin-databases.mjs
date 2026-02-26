@@ -79,6 +79,7 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
         "SEO Description": { rich_text: {} },
         Favicon: { rich_text: {} },
         "OG Image": { rich_text: {} },
+        "SEO Page Overrides": { rich_text: {} },
         "Google Analytics ID": { rich_text: {} },
         "Content GitHub Users": { rich_text: {} },
         "Sitemap Excludes": { rich_text: {} },
@@ -103,6 +104,9 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
         "SEO Description": { rich_text: richText(cfg.seo?.description) },
         Favicon: { rich_text: richText(cfg.seo?.favicon) },
         "OG Image": { rich_text: richText(cfg.seo?.ogImage) },
+        "SEO Page Overrides": {
+          rich_text: richText(JSON.stringify(cfg.seo?.pageOverrides || {}, null, 2)),
+        },
         "Google Analytics ID": {
           rich_text: richText(cfg.integrations?.googleAnalyticsId || ""),
         },
@@ -162,6 +166,13 @@ export async function ensureSettingsDatabase({ adminPageId, blocks, cfg }) {
     await updateDatabase(dbId, {
       properties: {
         "OG Image": { rich_text: {} },
+      },
+    });
+  }
+  if (!props["SEO Page Overrides"]) {
+    await updateDatabase(dbId, {
+      properties: {
+        "SEO Page Overrides": { rich_text: {} },
       },
     });
   }

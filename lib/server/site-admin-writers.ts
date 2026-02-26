@@ -84,6 +84,9 @@ const SITE_SETTINGS_PROPERTY_SPECS: Array<PropertySpec<SiteSettingsPatch>> = [
   propertySpec("seoDescription", "SEO Description", (value) => richTextProperty(value)),
   propertySpec("favicon", "Favicon", (value) => richTextProperty(value)),
   propertySpec("ogImage", "OG Image", (value) => richTextProperty(value)),
+  propertySpec("seoPageOverrides", "SEO Page Overrides", (value) =>
+    richTextProperty(String(value || "").slice(0, 1800))
+  ),
   propertySpec("googleAnalyticsId", "Google Analytics ID", (value) => richTextProperty(value)),
   propertySpec("contentGithubUsers", "Content GitHub Users", (value) => richTextProperty(value)),
   propertySpec("sitemapExcludes", "Sitemap Excludes", (value) => richTextProperty(value)),

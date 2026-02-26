@@ -6,6 +6,7 @@ import { SiteAdminBuildCard } from "@/components/site-admin/status/build-card";
 import { SiteAdminContentSyncCard } from "@/components/site-admin/status/content-sync-card";
 import { SiteAdminRequirementsCard } from "@/components/site-admin/status/admin-requirements-card";
 import { SiteAdminGeneratedFilesCard } from "@/components/site-admin/status/generated-files-card";
+import { SiteAdminPreflightCard } from "@/components/site-admin/status/preflight-card";
 import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
 import type {
   BannerState,
@@ -53,6 +54,7 @@ export function SiteAdminStatusView({
         <SiteAdminContentSyncCard payload={payload} stale={stale} generated={generated} />
         <SiteAdminRequirementsCard payload={payload} readiness={readiness} />
         <SiteAdminGeneratedFilesCard payload={payload} />
+        <SiteAdminPreflightCard payload={payload} />
       </div>
     </>
   );

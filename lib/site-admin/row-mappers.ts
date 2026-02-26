@@ -49,6 +49,7 @@ export function mapSiteSettingsRow(row: NotionPageLike | null | undefined): Site
     seoDescription: getPropString(row, "SEO Description"),
     favicon: getPropString(row, "Favicon"),
     ogImage: getPropString(row, "OG Image"),
+    seoPageOverrides: getPropString(row, "SEO Page Overrides"),
     googleAnalyticsId: getPropString(row, "Google Analytics ID"),
     contentGithubUsers: getPropString(row, "Content GitHub Users"),
     sitemapExcludes: getPropString(row, "Sitemap Excludes"),

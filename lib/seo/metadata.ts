@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import type { SiteConfig } from "../site-config.ts";
 import { canonicalizePublicRoute } from "../routes/strategy.ts";
 import { normalizeRoutePath } from "../shared/route-utils.ts";
+import type { SeoPageOverride } from "../shared/seo-page-overrides.ts";
 
 const FALLBACK_SITE_ORIGIN = "https://jinkunchen.com";
 
@@ -78,6 +79,15 @@ function defaultSocialImage(cfg: SiteConfig): string {
   return "/assets/profile.png";
 }
 
+function readPageOverride(cfg: SiteConfig, pathname: string): SeoPageOverride | null {
+  const all = cfg?.seo?.pageOverrides;
+  if (!all || typeof all !== "object") return null;
+  const key = canonicalPath(pathname);
+  const raw = (all as Record<string, unknown>)[key];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as SeoPageOverride;
+}
+
 type BuildPageMetadataInput = {
   cfg: SiteConfig;
   title: string;
@@ -90,12 +100,21 @@ type BuildPageMetadataInput = {
 
 export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
   const cfg = input.cfg;
-  const title = String(input.title || "").trim() || cfg.seo.title || cfg.siteName;
-  const description = String(input.description || cfg.seo.description || "").trim();
-  const canonical = canonicalPath(input.pathname);
+  const pageOverride = readPageOverride(cfg, input.pathname);
+  const title =
+    String(pageOverride?.title || "").trim() ||
+    String(input.title || "").trim() ||
+    cfg.seo.title ||
+    cfg.siteName;
+  const description =
+    String(pageOverride?.description || "").trim() ||
+    String(input.description || cfg.seo.description || "").trim();
+  const canonical = pageOverride?.canonicalPath
+    ? canonicalPath(pageOverride.canonicalPath)
+    : canonicalPath(input.pathname);
   const siteName = cfg.siteName || cfg.seo.title || title;
   const ogType = input.type === "article" ? "article" : "website";
-  const socialImage = defaultSocialImage(cfg);
+  const socialImage = normalizeImagePath(pageOverride?.ogImage || "") || defaultSocialImage(cfg);
   const openGraphImages = [{ url: socialImage }];
 
   const openGraphBase = {
@@ -127,14 +146,22 @@ export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
       description,
       images: [socialImage],
     },
+    robots: pageOverride?.noindex ? { index: false, follow: false } : undefined,
     icons: cfg.seo.favicon ? [{ rel: "icon", url: cfg.seo.favicon }] : undefined,
   };
 }
 
 export function buildRootMetadata(cfg: SiteConfig): Metadata {
-  const baseTitle = cfg.seo.title || cfg.siteName;
-  const description = cfg.seo.description;
-  const socialImage = defaultSocialImage(cfg);
+  const homeOverride = readPageOverride(cfg, "/");
+  const baseTitle =
+    String(homeOverride?.title || "").trim() ||
+    cfg.seo.title ||
+    cfg.siteName;
+  const description =
+    String(homeOverride?.description || "").trim() ||
+    cfg.seo.description;
+  const socialImage = normalizeImagePath(homeOverride?.ogImage || "") || defaultSocialImage(cfg);
+  const canonical = homeOverride?.canonicalPath ? canonicalPath(homeOverride.canonicalPath) : "/";
 
   return {
     metadataBase: getMetadataBase(),
@@ -143,14 +170,14 @@ export function buildRootMetadata(cfg: SiteConfig): Metadata {
       template: `%s | ${baseTitle}`,
     },
     description,
-    alternates: { canonical: "/" },
+    alternates: { canonical },
     openGraph: {
       type: "website",
       siteName: cfg.siteName || baseTitle,
       title: baseTitle,
       description,
       locale: localeFromLang(cfg.lang || "en"),
-      url: "/",
+      url: canonical,
       images: [{ url: socialImage }],
     },
     twitter: {
@@ -159,6 +186,7 @@ export function buildRootMetadata(cfg: SiteConfig): Metadata {
       description,
       images: [socialImage],
     },
+    robots: homeOverride?.noindex ? { index: false, follow: false } : undefined,
     icons: cfg.seo.favicon ? [{ rel: "icon", url: cfg.seo.favicon }] : undefined,
   };
 }

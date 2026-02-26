@@ -110,6 +110,9 @@ export function parseSiteAdminConfigCommand(
     if (patch.ogImage !== undefined) {
       outPatch.ogImage = getString(patch, "ogImage", { maxLen: 1000 });
     }
+    if (patch.seoPageOverrides !== undefined) {
+      outPatch.seoPageOverrides = getString(patch, "seoPageOverrides", { maxLen: 1800 });
+    }
     if (patch.googleAnalyticsId !== undefined) {
       outPatch.googleAnalyticsId = getString(patch, "googleAnalyticsId", { maxLen: 64 });
     }

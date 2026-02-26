@@ -17,6 +17,7 @@ function makeSettings() {
     seoDescription: "Research and publications",
     favicon: "/favicon.ico",
     ogImage: "/assets/profile.png",
+    seoPageOverrides: "",
     googleAnalyticsId: "G-XXXX",
     contentGithubUsers: "jinnkunn",
     sitemapExcludes: "",
@@ -76,4 +77,3 @@ test("site-admin-config-contract: preserves error payload", () => {
   const parsed = parseSiteAdminConfigGet({ ok: false, error: "Unauthorized" });
   assert.deepEqual(parsed, { ok: false, error: "Unauthorized", code: "REQUEST_FAILED" });
 });
-

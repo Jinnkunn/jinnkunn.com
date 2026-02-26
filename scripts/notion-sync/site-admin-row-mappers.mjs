@@ -1,4 +1,5 @@
 import { getPropCheckbox, getPropNumber, getPropString } from "../../lib/notion/index.mjs";
+import { normalizeSeoPageOverrides } from "../../lib/shared/seo-page-overrides.mjs";
 import { compactId, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
 import { parseSitemapExcludeEntries } from "../../lib/shared/sitemap-excludes.mjs";
 import { sha256Hex } from "./crypto-utils.mjs";
@@ -81,6 +82,7 @@ export function applySiteSettingsRow(cfg, row) {
   const seoDescription = getPropString(row, "SEO Description");
   const favicon = getPropString(row, "Favicon");
   const ogImage = getPropString(row, "OG Image");
+  const seoPageOverrides = getPropString(row, "SEO Page Overrides");
   const gaId = getPropString(row, "Google Analytics ID");
   const contentGithubUsers = getPropString(row, "Content GitHub Users");
   const sitemapExcludesRaw = getPropString(row, "Sitemap Excludes");
@@ -92,6 +94,7 @@ export function applySiteSettingsRow(cfg, row) {
   const autoExcludeDepthPublications = readDepthField(row, "Sitemap Max Depth Publications");
   const autoExcludeDepthTeaching = readDepthField(row, "Sitemap Max Depth Teaching");
   const hasAutoSectionsProp = hasProperty(row, "Sitemap Auto Exclude Sections");
+  const hasSeoPageOverridesProp = hasProperty(row, "SEO Page Overrides");
   const hasAutoDepthProp =
     hasProperty(row, "Sitemap Max Depth Pages") ||
     hasProperty(row, "Sitemap Max Depth Blog") ||
@@ -106,6 +109,9 @@ export function applySiteSettingsRow(cfg, row) {
   if (seoDescription) cfg.seo.description = seoDescription;
   if (favicon) cfg.seo.favicon = favicon;
   if (ogImage) cfg.seo.ogImage = ogImage;
+  if (hasSeoPageOverridesProp) {
+    cfg.seo.pageOverrides = normalizeSeoPageOverrides(seoPageOverrides);
+  }
   if (gaId) {
     cfg.integrations = cfg.integrations || {};
     cfg.integrations.googleAnalyticsId = gaId;
