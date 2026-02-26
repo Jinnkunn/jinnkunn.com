@@ -5,7 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
 import type { AccessMode } from "@/lib/shared/access";
 
-const INITIAL_RENDER_LIMIT = 180;
+export const INITIAL_RENDER_LIMIT = 180;
 
 type AccessKind = AccessMode;
 type FilterKind = "all" | "nav" | "overrides";

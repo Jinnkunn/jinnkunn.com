@@ -5,6 +5,7 @@ import {
   collectSitemapSnapshot,
   latestLastmod,
   resolveLastmod,
+  type SitemapTreeRow,
 } from "@/lib/server/sitemap-core";
 import {
   SITEMAP_SECTIONS,
@@ -12,12 +13,7 @@ import {
   type SitemapSection,
 } from "@/lib/shared/sitemap-policy";
 
-export type SitemapRoute = {
-  routePath: string;
-  title: string;
-  parentRoutePath: string;
-  depth: number;
-};
+export type SitemapRoute = SitemapTreeRow;
 
 export const SITEMAP_SECTION_ORDER = SITEMAP_SECTIONS;
 

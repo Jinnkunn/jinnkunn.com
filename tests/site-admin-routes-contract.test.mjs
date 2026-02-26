@@ -32,6 +32,34 @@ test("site-admin-routes-contract: parses valid success payload", () => {
   assert.equal(parsed.protectedRoutes[0].auth, "github");
 });
 
+test("site-admin-routes-contract: parses success payload in data envelope", () => {
+  const parsed = parseSiteAdminRoutesResult({
+    ok: true,
+    data: {
+      adminPageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      databases: { overridesDbId: "ovr", protectedDbId: "prot" },
+      overrides: [{ rowId: "1", pageId: "pid1", routePath: "/news", enabled: true }],
+      protectedRoutes: [
+        {
+          rowId: "2",
+          pageId: "pid2",
+          path: "/teaching",
+          mode: "prefix",
+          auth: "github",
+          enabled: true,
+        },
+      ],
+    },
+  });
+
+  assert.ok(parsed);
+  assert.equal(parsed?.ok, true);
+  if (!parsed || !isSiteAdminRoutesOk(parsed)) throw new Error("Expected success payload");
+  assert.equal(parsed.overrides.length, 1);
+  assert.equal(parsed.protectedRoutes.length, 1);
+  assert.equal(parsed.protectedRoutes[0].auth, "github");
+});
+
 test("site-admin-routes-contract: filters malformed list rows", () => {
   const parsed = parseSiteAdminRoutesResult({
     ok: true,

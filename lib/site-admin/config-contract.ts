@@ -5,6 +5,7 @@ import {
   readApiErrorMessage,
   unwrapApiData,
 } from "../client/api-guards.ts";
+import { toNumberOrZero, toStringValue } from "./contract-helpers.ts";
 import type {
   SiteAdminConfigGetPayload,
   SiteAdminConfigGetResult,
@@ -12,15 +13,6 @@ import type {
   SiteAdminConfigPostResult,
 } from "./api-types.ts";
 import type { NavItemRow, SiteSettings } from "./types.ts";
-
-function toStringValue(x: unknown): string {
-  return typeof x === "string" ? x : "";
-}
-
-function toNumberValue(x: unknown): number {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : 0;
-}
 
 function isSiteAdminConfigGetSuccess(
   x: unknown,
@@ -45,7 +37,7 @@ export function parseCreatedNavRow(v: unknown): NavItemRow | null {
     label: toStringValue(v.label),
     href: toStringValue(v.href),
     group: toStringValue(v.group) === "top" ? "top" : "more",
-    order: toNumberValue(v.order),
+    order: toNumberOrZero(v.order),
     enabled: Boolean(v.enabled),
   };
 }

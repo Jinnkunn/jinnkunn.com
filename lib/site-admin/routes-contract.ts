@@ -5,6 +5,7 @@ import type {
   SiteAdminRoutesResult,
 } from "./api-types";
 import { normalizeProtectedAccessMode } from "../shared/access.ts";
+import { toStringValue } from "./contract-helpers.ts";
 
 import {
   asApiAck,
@@ -13,10 +14,6 @@ import {
   readApiErrorMessage,
   unwrapApiData,
 } from "../client/api-guards.ts";
-
-function toStringValue(x: unknown): string {
-  return typeof x === "string" ? x : "";
-}
 
 function parseRouteOverride(v: unknown): SiteAdminRouteOverride | null {
   if (!isRecord(v)) return null;

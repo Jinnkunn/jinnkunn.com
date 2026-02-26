@@ -82,6 +82,27 @@ test("site-admin-status-contract: parses valid success payload", () => {
   assert.equal(parsed.files.notionSyncCache.count, 12);
 });
 
+test("site-admin-status-contract: parses success payload in data envelope", () => {
+  const payload = makeValidPayload();
+  const parsed = parseSiteAdminStatusResult({
+    ok: true,
+    data: {
+      env: payload.env,
+      build: payload.build,
+      content: payload.content,
+      files: payload.files,
+      notion: payload.notion,
+      freshness: payload.freshness,
+    },
+  });
+  assert.ok(parsed);
+  assert.equal(parsed?.ok, true);
+  if (!parsed || !isSiteAdminStatusOk(parsed)) throw new Error("Expected success payload");
+  assert.equal(parsed.env.isVercel, true);
+  assert.equal(parsed.content.nav.top, 4);
+  assert.equal(parsed.files.notionSyncCache.count, 12);
+});
+
 test("site-admin-status-contract: preserves api error payload", () => {
   const parsed = parseSiteAdminStatusResult({ ok: false, error: "Unauthorized" });
   assert.deepEqual(parsed, { ok: false, error: "Unauthorized", code: "REQUEST_FAILED" });

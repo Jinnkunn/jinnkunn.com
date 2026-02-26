@@ -19,6 +19,21 @@ test("site-admin-deploy-contract: parses valid success payload", () => {
   assert.equal(parsed.triggeredAt, "2026-02-15T20:00:00.000Z");
 });
 
+test("site-admin-deploy-contract: parses success payload in data envelope", () => {
+  const parsed = parseSiteAdminDeployResult({
+    ok: true,
+    data: {
+      triggeredAt: "2026-02-15T20:00:00.000Z",
+      status: 202,
+    },
+  });
+  assert.ok(parsed);
+  assert.equal(parsed?.ok, true);
+  if (!parsed || !isSiteAdminDeployOk(parsed)) throw new Error("Expected deploy success payload");
+  assert.equal(parsed.status, 202);
+  assert.equal(parsed.triggeredAt, "2026-02-15T20:00:00.000Z");
+});
+
 test("site-admin-deploy-contract: preserves api error payload", () => {
   const parsed = parseSiteAdminDeployResult({ ok: false, error: "Deploy hook is not configured" });
   assert.deepEqual(parsed, {

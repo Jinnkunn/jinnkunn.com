@@ -19,6 +19,7 @@ import { fetchAdminConfig } from "./api";
 import {
   bindRouteExplorerSetters,
   createRouteExplorerInitialState,
+  INITIAL_RENDER_LIMIT,
   routeExplorerStateReducer,
 } from "./use-route-explorer-state";
 import {
@@ -28,7 +29,6 @@ import {
 } from "./use-route-explorer-mutations";
 
 const COLLAPSED_STORAGE_KEY = "site-admin.routes.collapsed.v2";
-const INITIAL_RENDER_LIMIT = 180;
 const RENDER_STEP = 180;
 
 function parseStoredCollapsed(

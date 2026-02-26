@@ -7,31 +7,23 @@ import {
   readApiErrorMessage,
   unwrapApiData,
 } from "../client/api-guards.ts";
+import {
+  toBooleanOrNull,
+  toNumberOrNull,
+  toStringValue,
+} from "./contract-helpers.ts";
 
 export function isSiteAdminStatusOk(v: SiteAdminStatusResult): v is SiteAdminStatusPayload {
   return v.ok;
 }
 
-function toStringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function toNumberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return null;
-}
-
-function toBooleanValue(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
 function parseStat(value: unknown): SiteAdminStat | null {
   if (!isRecord(value)) return null;
-  const exists = toBooleanValue(value.exists);
+  const exists = toBooleanOrNull(value.exists);
   if (exists === null) return null;
-  const mtimeMs = toNumberValue(value.mtimeMs);
-  const size = toNumberValue(value.size);
-  const count = toNumberValue(value.count);
+  const mtimeMs = toNumberOrNull(value.mtimeMs);
+  const size = toNumberOrNull(value.size);
+  const count = toNumberOrNull(value.count);
   return {
     exists,
     ...(mtimeMs !== null ? { mtimeMs } : {}),
@@ -66,7 +58,7 @@ function parseSyncMeta(value: unknown): SiteAdminStatusPayload["content"]["syncM
     if (s) out[key] = s;
   }
   for (const key of maybeNumberKeys) {
-    const n = toNumberValue(value[key]);
+    const n = toNumberOrNull(value[key]);
     if (n !== null) out[key] = n;
   }
   return out;
@@ -89,12 +81,12 @@ function parseFreshness(
 ): SiteAdminStatusPayload["freshness"] | undefined | null {
   if (value === undefined) return undefined;
   if (!isRecord(value)) return null;
-  const stale = value.stale === null ? null : toBooleanValue(value.stale);
-  const syncMs = value.syncMs === null ? null : toNumberValue(value.syncMs);
+  const stale = value.stale === null ? null : toBooleanOrNull(value.stale);
+  const syncMs = value.syncMs === null ? null : toNumberOrNull(value.syncMs);
   const notionEditedMs =
-    value.notionEditedMs === null ? null : toNumberValue(value.notionEditedMs);
+    value.notionEditedMs === null ? null : toNumberOrNull(value.notionEditedMs);
   const generatedLatestMs =
-    value.generatedLatestMs === null ? null : toNumberValue(value.generatedLatestMs);
+    value.generatedLatestMs === null ? null : toNumberOrNull(value.generatedLatestMs);
   if (stale === null && value.stale !== null) return null;
   if (syncMs === null && value.syncMs !== null) return null;
   if (notionEditedMs === null && value.notionEditedMs !== null) return null;
@@ -109,16 +101,16 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
 
   const env = {
     nodeEnv: toStringValue(value.env.nodeEnv),
-    isVercel: toBooleanValue(value.env.isVercel),
+    isVercel: toBooleanOrNull(value.env.isVercel),
     vercelRegion: toStringValue(value.env.vercelRegion),
-    hasNotionToken: toBooleanValue(value.env.hasNotionToken),
-    hasNotionAdminPageId: toBooleanValue(value.env.hasNotionAdminPageId),
+    hasNotionToken: toBooleanOrNull(value.env.hasNotionToken),
+    hasNotionAdminPageId: toBooleanOrNull(value.env.hasNotionAdminPageId),
     notionVersion: toStringValue(value.env.notionVersion),
-    hasDeployHookUrl: toBooleanValue(value.env.hasDeployHookUrl),
-    hasNextAuthSecret: toBooleanValue(value.env.hasNextAuthSecret),
-    hasFlagsSecret: toBooleanValue(value.env.hasFlagsSecret),
-    githubAllowlistCount: toNumberValue(value.env.githubAllowlistCount),
-    contentGithubAllowlistCount: toNumberValue(value.env.contentGithubAllowlistCount),
+    hasDeployHookUrl: toBooleanOrNull(value.env.hasDeployHookUrl),
+    hasNextAuthSecret: toBooleanOrNull(value.env.hasNextAuthSecret),
+    hasFlagsSecret: toBooleanOrNull(value.env.hasFlagsSecret),
+    githubAllowlistCount: toNumberOrNull(value.env.githubAllowlistCount),
+    contentGithubAllowlistCount: toNumberOrNull(value.env.contentGithubAllowlistCount),
   };
   if (
     env.isVercel === null ||
@@ -143,11 +135,11 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
   };
 
   if (!isRecord(value.content.nav)) return null;
-  const navTop = toNumberValue(value.content.nav.top);
-  const navMore = toNumberValue(value.content.nav.more);
-  const routesDiscovered = toNumberValue(value.content.routesDiscovered);
+  const navTop = toNumberOrNull(value.content.nav.top);
+  const navMore = toNumberOrNull(value.content.nav.more);
+  const routesDiscovered = toNumberOrNull(value.content.routesDiscovered);
   const searchIndexItems =
-    value.content.searchIndexItems === null ? null : toNumberValue(value.content.searchIndexItems);
+    value.content.searchIndexItems === null ? null : toNumberOrNull(value.content.searchIndexItems);
   const syncMeta = parseSyncMeta(value.content.syncMeta);
   if (navTop === null || navMore === null || routesDiscovered === null) return null;
   if (searchIndexItems === null && value.content.searchIndexItems !== null) return null;

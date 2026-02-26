@@ -41,18 +41,6 @@ export function noStoreData<T>(
   return noStoreJson({ ok: true, data }, init);
 }
 
-export function noStoreFail(
-  error: string,
-  init?: NoStoreInit & { extras?: Record<string, unknown> },
-) {
-  const body = {
-    ok: false,
-    error: String(error || "Request failed"),
-    ...(init?.extras || {}),
-  };
-  return noStoreJson(body, { status: init?.status ?? 400 });
-}
-
 export function noStoreFailWithCode(
   error: string,
   init?: NoStoreCodeErrorInit,
@@ -93,18 +81,12 @@ export function noStoreMethodNotAllowed(
   error = "Method Not Allowed",
 ) {
   const allowList = Array.isArray(allow) ? allow : allow ? [allow] : [];
-  const headers: Record<string, string> = { "cache-control": "no-store" };
-  if (allowList.length) headers.allow = allowList.join(", ");
-  return NextResponse.json(
-    {
-      ok: false,
-      error,
-    },
-    {
-      status: 405,
-      headers,
-    },
-  );
+  const response = noStoreFailWithCode(error, {
+    status: 405,
+    code: "METHOD_NOT_ALLOWED",
+  });
+  if (allowList.length) response.headers.set("allow", allowList.join(", "));
+  return response;
 }
 
 export function noStoreMisconfigured(
@@ -122,13 +104,13 @@ export function noStoreMisconfigured(
 
 export function noStoreErrorOnly(
   error: string,
-  init?: NoStoreInit & { extras?: Record<string, unknown> },
+  init?: NoStoreCodeErrorInit,
 ) {
-  const body = {
-    error: String(error || "Request failed"),
-    ...(init?.extras || {}),
-  };
-  return noStoreJson(body, { status: init?.status ?? 400 });
+  return noStoreFailWithCode(error, {
+    status: init?.status ?? 400,
+    code: init?.code ?? "REQUEST_FAILED",
+    extras: init?.extras,
+  });
 }
 
 export function noStoreFailFromUnknown(
