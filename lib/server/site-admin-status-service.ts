@@ -43,6 +43,13 @@ function maxFinite(nums: number[]): number {
   return best;
 }
 
+function hasEffectiveFlagsSecret(): boolean {
+  const explicit = String(process.env.FLAGS_SECRET || "").trim();
+  if (explicit) return true;
+  const fallback = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
+  return Boolean(fallback);
+}
+
 async function fetchNotionPageMeta(pageId32: string): Promise<NotionPageMeta | null> {
   const token = (process.env.NOTION_TOKEN || "").trim();
   if (!token) return null;
@@ -154,7 +161,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       notionVersion: process.env.NOTION_VERSION || "2022-06-28",
       hasDeployHookUrl: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL?.trim()),
       hasNextAuthSecret: Boolean((process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim()),
-      hasFlagsSecret: Boolean((process.env.FLAGS_SECRET || "").trim()),
+      hasFlagsSecret: hasEffectiveFlagsSecret(),
       githubAllowlistCount: allow.size,
       contentGithubAllowlistCount: allowContent.size,
     },
