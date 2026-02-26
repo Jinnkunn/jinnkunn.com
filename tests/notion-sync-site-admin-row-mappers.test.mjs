@@ -43,3 +43,19 @@ test("notion-sync-site-admin-row-mappers: applySiteSettingsRow maps sitemap auto
     },
   });
 });
+
+test("notion-sync-site-admin-row-mappers: applySiteSettingsRow maps seo page overrides", () => {
+  const cfg = structuredClone(DEFAULT_SITE_CONFIG);
+  const row = {
+    id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    properties: {
+      "SEO Page Overrides": rich('{"/blog":{"title":"Blog","noindex":false},"/private":{"noindex":true}}'),
+    },
+  };
+
+  applySiteSettingsRow(cfg, row);
+  assert.deepEqual(cfg.seo.pageOverrides, {
+    "/blog": { title: "Blog", noindex: false },
+    "/private": { noindex: true },
+  });
+});

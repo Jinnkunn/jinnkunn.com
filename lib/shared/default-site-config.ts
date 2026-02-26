@@ -13,6 +13,16 @@ export type DefaultSiteConfig = {
     description: string;
     favicon: string;
     ogImage: string;
+    pageOverrides: Record<
+      string,
+      {
+        title?: string;
+        description?: string;
+        ogImage?: string;
+        canonicalPath?: string;
+        noindex?: boolean;
+      }
+    >;
   };
   integrations: {
     googleAnalyticsId: string;
@@ -42,6 +52,7 @@ export const DEFAULT_SITE_CONFIG: DefaultSiteConfig = {
       "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
     favicon: "/assets/favicon.png",
     ogImage: "/assets/profile.png",
+    pageOverrides: {},
   },
   integrations: {
     googleAnalyticsId: "",

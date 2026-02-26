@@ -1,5 +1,5 @@
 import type { SiteConfig } from "@/lib/site-config";
-import type { PublicationStructuredItem } from "@/lib/seo/publications-items";
+import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
 
 import { canonicalAbsolute, detectSiteOrigin } from "./metadata.ts";
 
@@ -144,7 +144,7 @@ export function buildBlogPostStructuredData(
 
 export function buildPublicationsStructuredData(
   cfg: SiteConfig,
-  input: { title: string; description: string; items?: PublicationStructuredItem[] },
+  input: { title: string; description: string; items?: PublicationStructuredEntry[] },
 ): JsonLdObject[] {
   const ids = baseIds();
   const pathname = "/publications";
@@ -190,24 +190,51 @@ export function buildPublicationsStructuredData(
     itemListElement: cleanItems.map((item, index) => {
       const year = String(item.year || "").trim();
       const datePublished = /^\d{4}$/.test(year) ? `${year}-01-01` : undefined;
-      const externalUrl = String(item.url || "").trim();
+      const doiUrl = String(item.doiUrl || "").trim();
+      const arxivUrl = String(item.arxivUrl || "").trim();
+      const externalUrl = doiUrl || arxivUrl || String(item.url || "").trim();
       const labels = Array.isArray(item.labels)
         ? item.labels.map((s) => String(s || "").trim()).filter(Boolean)
         : [];
+      const externalUrls = Array.isArray(item.externalUrls)
+        ? Array.from(
+            new Set(
+              item.externalUrls
+                .map((href) => String(href || "").trim())
+                .filter((href) => /^https?:\/\//i.test(href)),
+            ),
+          )
+        : [];
+      const authors = Array.isArray(item.authors)
+        ? item.authors.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 24)
+        : [];
+      const venue = String(item.venue || "").trim();
       const article: JsonLdObject = {
         "@type": "ScholarlyArticle",
         "@id": `${pageId}#item-${index + 1}`,
         headline: item.title,
         name: item.title,
-        author: { "@id": ids.personId },
+        author:
+          authors.length > 0
+            ? authors.map((name) => ({ "@type": "Person", name }))
+            : { "@id": ids.personId },
         isPartOf: { "@id": pageId },
       };
       if (externalUrl) {
         article.url = externalUrl;
         article.sameAs = externalUrl;
       }
+      if (externalUrls.length > 0) {
+        article.sameAs = externalUrls.slice(0, 6);
+      }
       if (datePublished) {
         article.datePublished = datePublished;
+      }
+      if (doiUrl) {
+        article.identifier = doiUrl;
+      }
+      if (venue) {
+        article.publisher = { "@type": "Organization", name: venue };
       }
       if (labels.length > 0) {
         article.keywords = labels.join(", ");

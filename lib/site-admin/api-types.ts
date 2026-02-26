@@ -66,6 +66,28 @@ export type SiteAdminStatusPayload = {
     adminPage: null | { id: string; lastEdited: string; title: string };
     rootPage: null | { id: string; lastEdited: string; title: string };
   };
+  preflight?: {
+    generatedFiles: {
+      ok: boolean;
+      expected: number;
+      missingRoutes: string[];
+    };
+    routeOverrides: {
+      ok: boolean;
+      orphanPageIds: string[];
+      duplicatePaths: string[];
+    };
+    navigation: {
+      ok: boolean;
+      invalidInternalHrefs: string[];
+    };
+    notionBlocks: {
+      ok: boolean;
+      unsupportedBlockCount: number;
+      pagesWithUnsupported: number;
+      sampleRoutes: string[];
+    };
+  };
   freshness?: {
     stale: boolean | null;
     syncMs: number | null;

@@ -27,7 +27,19 @@ const DEFAULT_CONFIG = DEFAULT_SITE_CONFIG;
  * @typedef {{
  *   siteName?: string,
  *   lang?: string,
- *   seo?: {title?: string, description?: string, favicon?: string, ogImage?: string},
+ *   seo?: {
+ *     title?: string,
+ *     description?: string,
+ *     favicon?: string,
+ *     ogImage?: string,
+ *     pageOverrides?: Record<string, {
+ *       title?: string,
+ *       description?: string,
+ *       ogImage?: string,
+ *       canonicalPath?: string,
+ *       noindex?: boolean
+ *     }>
+ *   },
  *   integrations?: {googleAnalyticsId?: string},
  *   security?: {contentGithubUsers?: string[]},
  *   content?: {

@@ -5,6 +5,10 @@ import {
   type SitemapAutoExcludeConfig,
   normalizeSitemapAutoExclude,
 } from "@/lib/shared/sitemap-policy";
+import {
+  type SeoPageOverride,
+  normalizeSeoPageOverrides,
+} from "@/lib/shared/seo-page-overrides";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
 
@@ -21,6 +25,7 @@ export type SiteConfig = {
     description: string;
     favicon: string; // Path under /public (e.g. "/assets/favicon.png")
     ogImage?: string; // OpenGraph/Twitter share image path or absolute URL.
+    pageOverrides?: Record<string, SeoPageOverride>;
   };
   integrations?: {
     googleAnalyticsId?: string; // GA4 measurement ID (e.g. "G-XXXXXXX")
@@ -108,6 +113,7 @@ function normalizeConfig(input: unknown): SiteConfig {
       asString(input.seo.description) ?? cfg.seo.description;
     cfg.seo.favicon = asString(input.seo.favicon) ?? cfg.seo.favicon;
     cfg.seo.ogImage = asString(input.seo.ogImage) ?? cfg.seo.ogImage;
+    cfg.seo.pageOverrides = normalizeSeoPageOverrides(input.seo.pageOverrides);
   }
 
   if (isObject(input.integrations)) {

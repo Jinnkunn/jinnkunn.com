@@ -5,7 +5,7 @@ import RawHtml from "@/components/raw-html";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
 import { buildPageMetadata } from "@/lib/seo/metadata";
-import { extractPublicationsStructuredItems } from "@/lib/seo/publications-items";
+import { extractPublicationStructuredEntries } from "@/lib/seo/publications-items";
 import { buildPublicationsStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
 
@@ -40,7 +40,7 @@ export default async function PublicationsPage() {
   const html = await loadRawMainHtml("publications");
   const title = extractTitleFromMain(html, "Publications");
   const description = extractDescriptionFromMain(html) ?? cfg.seo.description;
-  const items = extractPublicationsStructuredItems(html);
+  const items = extractPublicationStructuredEntries(html);
   const jsonLd = buildPublicationsStructuredData(cfg, { title, description, items });
 
   return (

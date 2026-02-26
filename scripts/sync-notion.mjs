@@ -73,6 +73,7 @@ const buildPageTree = createPageTreeBuilder({
 
 const downloadAsset = createAssetDownloader({
   outPublicAssetsDir: OUT_PUBLIC_ASSETS_DIR,
+  cacheDir: CACHE_DIR,
   force: ASSET_FORCE,
 });
 

@@ -1,5 +1,6 @@
 import "server-only";
 
+import fs from "node:fs";
 import path from "node:path";
 
 import { notionRequest } from "@/lib/notion/api";
@@ -7,18 +8,23 @@ import { parseNotionPageMeta } from "@/lib/notion/adapters";
 import { readTrimmedString } from "@/lib/notion/coerce";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSearchIndex } from "@/lib/search-index";
-import { getGeneratedContentDir, getNotionSyncCacheDir } from "@/lib/server/content-files";
+import {
+  getGeneratedContentDir,
+  getNotionSyncCacheDir,
+  listRawHtmlFiles,
+} from "@/lib/server/content-files";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { parseAllowedAdminUsers } from "@/lib/site-admin-auth";
-import { dashify32 } from "@/lib/shared/route-utils";
+import { compactId, dashify32, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
 import type { NotionPageMeta } from "@/lib/notion/types";
 
 export type SiteAdminStatusResponsePayload = Omit<SiteAdminStatusPayload, "ok">;
 const REPRODUCIBLE_BUILD_EPOCH_MAX_MS = Date.UTC(2019, 0, 1);
+const PREFLIGHT_SAMPLE_MAX = 8;
 
 function pickCommitSha(): string {
   return (
@@ -77,6 +83,129 @@ function normalizeGeneratedFileMtime(
     return { ...stat, mtimeMs: syncedAtMs };
   }
   return stat;
+}
+
+function routePathToRawRel(routePath: string): string {
+  const normalized = normalizeRoutePath(routePath);
+  if (!normalized || normalized === "/") return "index";
+  return normalized.replace(/^\/+/, "");
+}
+
+function rawRelToRoutePath(relPath: string): string {
+  const rel = String(relPath || "").trim().replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!rel || rel === "index") return "/";
+  return `/${rel}`;
+}
+
+function isExternalHref(href: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(href);
+}
+
+function buildPreflight(input: {
+  manifest: ReturnType<typeof getRoutesManifest>;
+  site: ReturnType<typeof getSiteConfig>;
+}): NonNullable<SiteAdminStatusResponsePayload["preflight"]> {
+  const { manifest, site } = input;
+
+  const manifestRouteSet = new Set<string>();
+  const manifestPageIdSet = new Set<string>();
+  for (const row of manifest) {
+    const route = normalizeRoutePath(row.routePath);
+    if (route) manifestRouteSet.add(route);
+    const id = compactId(row.id);
+    if (id) manifestPageIdSet.add(id);
+  }
+
+  const rawFiles = listRawHtmlFiles();
+  const rawRelSet = new Set(rawFiles.map((it) => String(it.relPath || "").trim()).filter(Boolean));
+  const missingRoutes = Array.from(manifestRouteSet)
+    .filter((route) => !rawRelSet.has(routePathToRawRel(route)))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, 100);
+
+  const routeOverrides = site?.content?.routeOverrides && typeof site.content.routeOverrides === "object"
+    ? site.content.routeOverrides
+    : {};
+  const orphanPageIds: string[] = [];
+  const pathToOverrideIds = new Map<string, string[]>();
+  for (const [rawPageId, rawRoutePath] of Object.entries(routeOverrides)) {
+    const pageId = compactId(rawPageId) || String(rawPageId || "").trim();
+    if (!pageId) continue;
+    if (!manifestPageIdSet.has(pageId)) orphanPageIds.push(pageId);
+    const routePath = normalizeRoutePath(String(rawRoutePath || ""));
+    if (!routePath) continue;
+    const ids = pathToOverrideIds.get(routePath) || [];
+    ids.push(pageId);
+    pathToOverrideIds.set(routePath, ids);
+  }
+  const duplicatePaths = Array.from(pathToOverrideIds.entries())
+    .filter(([, ids]) => ids.length > 1)
+    .map(([path]) => path)
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, 100);
+
+  const invalidInternalHrefs: string[] = [];
+  const allowedInternalRoutes = new Set<string>([
+    ...manifestRouteSet,
+    "/blog",
+    "/sitemap",
+    "/site-admin",
+  ]);
+  const navItems = [
+    ...(Array.isArray(site?.nav?.top) ? site.nav.top : []),
+    ...(Array.isArray(site?.nav?.more) ? site.nav.more : []),
+  ];
+  for (const item of navItems) {
+    const href = String(item?.href || "").trim();
+    if (!href || href.startsWith("#") || isExternalHref(href)) continue;
+    const normalized = normalizeRoutePath(href);
+    if (!normalized || !allowedInternalRoutes.has(normalized)) {
+      const label = String(item?.label || "").trim();
+      invalidInternalHrefs.push(label ? `${label}: ${href}` : href);
+    }
+  }
+
+  let unsupportedBlockCount = 0;
+  let pagesWithUnsupported = 0;
+  const sampleRoutes: string[] = [];
+  for (const raw of rawFiles) {
+    let html = "";
+    try {
+      html = fs.readFileSync(raw.filePath, "utf8");
+    } catch {
+      continue;
+    }
+    const hits = html.match(/\bnotion-unsupported\b/g);
+    if (!hits || hits.length === 0) continue;
+    unsupportedBlockCount += hits.length;
+    pagesWithUnsupported += 1;
+    if (sampleRoutes.length < PREFLIGHT_SAMPLE_MAX) {
+      sampleRoutes.push(rawRelToRoutePath(raw.relPath));
+    }
+  }
+
+  return {
+    generatedFiles: {
+      ok: missingRoutes.length === 0,
+      expected: manifestRouteSet.size,
+      missingRoutes,
+    },
+    routeOverrides: {
+      ok: orphanPageIds.length === 0 && duplicatePaths.length === 0,
+      orphanPageIds: orphanPageIds.sort((a, b) => a.localeCompare(b)).slice(0, 100),
+      duplicatePaths,
+    },
+    navigation: {
+      ok: invalidInternalHrefs.length === 0,
+      invalidInternalHrefs: invalidInternalHrefs.slice(0, 100),
+    },
+    notionBlocks: {
+      ok: unsupportedBlockCount === 0,
+      unsupportedBlockCount,
+      pagesWithUnsupported,
+      sampleRoutes,
+    },
+  };
 }
 
 export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResponsePayload> {
@@ -150,6 +279,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     Number.isFinite(notionLatestEditedMs) && Number.isFinite(effectiveSyncMs)
       ? notionLatestEditedMs > effectiveSyncMs + 3_000
       : null;
+  const preflight = buildPreflight({ manifest, site });
 
   return {
     env: {
@@ -184,6 +314,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       syncMeta,
     },
     notion,
+    preflight,
     freshness: {
       stale,
       syncMs: Number.isFinite(effectiveSyncMs) ? effectiveSyncMs : null,

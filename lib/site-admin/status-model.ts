@@ -179,6 +179,15 @@ export function deriveStatusBanner(
   if (!stale.ok) parts.push(stale.reason ? `Freshness: ${stale.reason}` : "Freshness: stale");
   if (!generated.ok) parts.push(generated.reason ? `Generated: ${generated.reason}` : "Generated: mismatch");
   if (!readiness.ok) parts.push(readiness.reason ? `Admin: ${readiness.reason}` : "Admin: needs setup");
+  if (payload?.preflight) {
+    const pre = payload.preflight;
+    const preParts: string[] = [];
+    if (!pre.generatedFiles.ok) preParts.push(`missing routes ${pre.generatedFiles.missingRoutes.length}`);
+    if (!pre.routeOverrides.ok) preParts.push("route overrides");
+    if (!pre.navigation.ok) preParts.push("nav links");
+    if (!pre.notionBlocks.ok) preParts.push(`unsupported blocks ${pre.notionBlocks.unsupportedBlockCount}`);
+    if (preParts.length > 0) parts.push(`Preflight: ${preParts.join(", ")}`);
+  }
 
   if (!parts.length) {
     return {

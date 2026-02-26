@@ -26,6 +26,7 @@ async function ensureSiteSettingsDbSchema(databaseId: string) {
   // were provisioned before we introduced new fields.
   await ensureDatabaseProperties(databaseId, {
     "OG Image": { rich_text: {} },
+    "SEO Page Overrides": { rich_text: {} },
     "Google Analytics ID": { rich_text: {} },
     "Content GitHub Users": { rich_text: {} },
     "Sitemap Excludes": { rich_text: {} },

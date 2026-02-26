@@ -28,6 +28,7 @@ export function useSiteAdminSettingsMutation({
         seoDescription: draftSettings.seoDescription,
         favicon: draftSettings.favicon,
         ogImage: draftSettings.ogImage,
+        seoPageOverrides: draftSettings.seoPageOverrides,
         googleAnalyticsId: draftSettings.googleAnalyticsId,
         contentGithubUsers: draftSettings.contentGithubUsers,
         sitemapExcludes: draftSettings.sitemapExcludes,

@@ -94,6 +94,77 @@ function parseFreshness(
   return { stale, syncMs, notionEditedMs, generatedLatestMs };
 }
 
+function parseStringList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    out.push(item);
+  }
+  return out;
+}
+
+function parsePreflight(
+  value: unknown,
+): SiteAdminStatusPayload["preflight"] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  if (!isRecord(value.generatedFiles)) return null;
+  if (!isRecord(value.routeOverrides)) return null;
+  if (!isRecord(value.navigation)) return null;
+  if (!isRecord(value.notionBlocks)) return null;
+
+  const generatedOk = toBooleanOrNull(value.generatedFiles.ok);
+  const generatedExpected = toNumberOrNull(value.generatedFiles.expected);
+  const generatedMissing = parseStringList(value.generatedFiles.missingRoutes);
+  if (generatedOk === null || generatedExpected === null || generatedMissing === null) return null;
+
+  const overridesOk = toBooleanOrNull(value.routeOverrides.ok);
+  const orphanPageIds = parseStringList(value.routeOverrides.orphanPageIds);
+  const duplicatePaths = parseStringList(value.routeOverrides.duplicatePaths);
+  if (overridesOk === null || orphanPageIds === null || duplicatePaths === null) return null;
+
+  const navigationOk = toBooleanOrNull(value.navigation.ok);
+  const invalidInternalHrefs = parseStringList(value.navigation.invalidInternalHrefs);
+  if (navigationOk === null || invalidInternalHrefs === null) return null;
+
+  const notionBlocksOk = toBooleanOrNull(value.notionBlocks.ok);
+  const unsupportedBlockCount = toNumberOrNull(value.notionBlocks.unsupportedBlockCount);
+  const pagesWithUnsupported = toNumberOrNull(value.notionBlocks.pagesWithUnsupported);
+  const sampleRoutes = parseStringList(value.notionBlocks.sampleRoutes);
+  if (
+    notionBlocksOk === null ||
+    unsupportedBlockCount === null ||
+    pagesWithUnsupported === null ||
+    sampleRoutes === null
+  ) {
+    return null;
+  }
+
+  return {
+    generatedFiles: {
+      ok: generatedOk,
+      expected: generatedExpected,
+      missingRoutes: generatedMissing,
+    },
+    routeOverrides: {
+      ok: overridesOk,
+      orphanPageIds,
+      duplicatePaths,
+    },
+    navigation: {
+      ok: navigationOk,
+      invalidInternalHrefs,
+    },
+    notionBlocks: {
+      ok: notionBlocksOk,
+      unsupportedBlockCount,
+      pagesWithUnsupported,
+      sampleRoutes,
+    },
+  };
+}
+
 function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | null {
   if (!isRecord(value)) return null;
   if (!isRecord(value.env) || !isRecord(value.build) || !isRecord(value.content)) return null;
@@ -170,6 +241,8 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
 
   const freshness = parseFreshness(value.freshness);
   if (freshness === null) return null;
+  const preflight = parsePreflight(value.preflight);
+  if (preflight === null) return null;
 
   return {
     ok: true,
@@ -210,6 +283,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
       adminPage,
       rootPage,
     },
+    ...(preflight !== undefined ? { preflight } : {}),
     ...(freshness !== undefined ? { freshness } : {}),
   };
 }

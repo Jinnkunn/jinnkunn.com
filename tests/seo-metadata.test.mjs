@@ -17,6 +17,7 @@ const cfg = {
     description: "Research homepage",
     favicon: "/assets/favicon.png",
     ogImage: "/assets/profile.png",
+    pageOverrides: {},
   },
   nav: { top: [], more: [] },
 };
@@ -74,4 +75,35 @@ test("seo-metadata: buildRootMetadata uses configured social image", () => {
   const out = buildRootMetadata(cfg);
   assert.deepEqual(out.openGraph?.images, [{ url: "/assets/profile.png" }]);
   assert.deepEqual(out.twitter?.images, ["/assets/profile.png"]);
+});
+
+test("seo-metadata: page override can set canonical/image/noindex", () => {
+  const out = buildPageMetadata({
+    cfg: {
+      ...cfg,
+      seo: {
+        ...cfg.seo,
+        pageOverrides: {
+          "/blog/post-a": {
+            title: "Custom Title",
+            description: "Custom Description",
+            ogImage: "https://cdn.example.com/og.png",
+            canonicalPath: "/blog/post-canonical",
+            noindex: true,
+          },
+        },
+      },
+    },
+    title: "Fallback Title",
+    description: "fallback",
+    pathname: "/blog/post-a",
+    type: "article",
+  });
+
+  assert.equal(out.title, "Custom Title");
+  assert.equal(out.description, "Custom Description");
+  assert.equal(out.alternates?.canonical, "/blog/post-canonical");
+  assert.deepEqual(out.openGraph?.images, [{ url: "https://cdn.example.com/og.png" }]);
+  assert.deepEqual(out.twitter?.images, ["https://cdn.example.com/og.png"]);
+  assert.deepEqual(out.robots, { index: false, follow: false });
 });

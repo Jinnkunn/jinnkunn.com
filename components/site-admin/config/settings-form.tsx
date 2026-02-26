@@ -91,6 +91,13 @@ export function SiteAdminSettingsForm({
         onChange={(next) => updateField("ogImage", next)}
         placeholder="/assets/profile.png"
       />
+      <SiteAdminTextAreaRow
+        label="SEO Page Overrides (JSON)"
+        value={draftSettings.seoPageOverrides}
+        onChange={(next) => updateField("seoPageOverrides", next)}
+        placeholder={'{"/blog": {"title": "Blog", "description": "Latest posts"}}'}
+        mono
+      />
       <SiteAdminTextFieldRow
         label="Google Analytics ID"
         value={draftSettings.googleAnalyticsId}

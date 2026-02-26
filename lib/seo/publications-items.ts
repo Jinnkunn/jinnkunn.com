@@ -10,6 +10,14 @@ export type PublicationStructuredItem = {
   labels: string[];
 };
 
+export type PublicationStructuredEntry = PublicationStructuredItem & {
+  authors?: string[];
+  externalUrls?: string[];
+  doiUrl?: string;
+  arxivUrl?: string;
+  venue?: string;
+};
+
 function asChildren(node: HtmlNode): HtmlNode[] {
   const n = node as HtmlNode & { childNodes?: HtmlNode[] };
   return Array.isArray(n.childNodes) ? n.childNodes : [];
@@ -110,6 +118,74 @@ function extractFirstExternalUrl(root: HtmlElement): string {
   return link ? String(getAttr(link, "href") || "").trim() : "";
 }
 
+function extractExternalUrls(root: HtmlElement): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const link of findDescendants(root, (el) => el.tagName === "a")) {
+    const href = String(getAttr(link, "href") || "").trim();
+    if (!/^https?:\/\//i.test(href)) continue;
+    if (seen.has(href)) continue;
+    seen.add(href);
+    out.push(href);
+  }
+  return out;
+}
+
+function extractQuoteLines(contentEl: HtmlElement): string[] {
+  const lines: string[] = [];
+  for (const quote of findDescendants(contentEl, (el) => el.tagName === "blockquote")) {
+    const text = normalizeText(textContent(quote));
+    if (text) lines.push(text);
+  }
+  return lines;
+}
+
+function splitAuthors(raw: string): string[] {
+  const normalized = normalizeText(raw)
+    .replace(/[，]/g, ",")
+    .replace(/\s+and\s+/gi, ", ")
+    .replace(/\s*&\s*/g, ", ");
+  if (!normalized) return [];
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of normalized.split(",").map((s) => s.trim())) {
+    if (!part) continue;
+    if (/^https?:\/\//i.test(part)) continue;
+    const cleaned = part.replace(/\s+/g, " ").trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+  }
+  return out;
+}
+
+function extractAuthorsFromContent(contentEl: HtmlElement): string[] {
+  const lines = extractQuoteLines(contentEl);
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("http://") || lower.includes("https://")) continue;
+    if (/^\s*(conference|journal|workshop|arxiv\.org|doi)\b/i.test(line)) continue;
+    const authors = splitAuthors(line);
+    if (authors.length > 0) return authors;
+  }
+  return [];
+}
+
+function extractVenueFromContent(contentEl: HtmlElement): string {
+  const lines = extractQuoteLines(contentEl);
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("http://") || lower.includes("https://")) continue;
+    if (line.includes(":") || /\b(conference|journal|workshop|proceedings)\b/i.test(line)) {
+      return normalizeText(line);
+    }
+  }
+  return "";
+}
+
 function findPublicationsMain(root: HtmlNode): HtmlElement | null {
   return findFirstDescendant(root, (el) => {
     if (el.tagName !== "main") return false;
@@ -129,12 +205,24 @@ export function extractPublicationsStructuredItems(
   mainHtml: string,
   opts?: { maxItems?: number },
 ): PublicationStructuredItem[] {
+  return extractPublicationStructuredEntries(mainHtml, opts).map((item) => ({
+    title: item.title,
+    year: item.year,
+    url: item.url,
+    labels: item.labels,
+  }));
+}
+
+export function extractPublicationStructuredEntries(
+  mainHtml: string,
+  opts?: { maxItems?: number },
+): PublicationStructuredEntry[] {
   const maxItems = Math.max(1, Math.min(300, Math.floor(Number(opts?.maxItems ?? 120))));
   const doc = parse(String(mainHtml || ""));
   const main = findPublicationsMain(doc as unknown as HtmlNode);
   if (!main) return [];
 
-  const out: PublicationStructuredItem[] = [];
+  const out: PublicationStructuredEntry[] = [];
   let currentYear = "";
 
   walkNodes(main, (el) => {
@@ -158,13 +246,28 @@ export function extractPublicationsStructuredItems(
 
     const title = extractTitleFromSummary(summary);
     if (!title) return;
+    const labels = extractLabelsFromSummary(summary);
+    const externalUrls = content ? extractExternalUrls(content) : [];
+    const fallbackUrl = content ? extractFirstExternalUrl(content) : "";
+    const doiUrl = externalUrls.find((href) => /doi\.org/i.test(href)) || "";
+    const arxivUrl = externalUrls.find((href) => /arxiv\.org\/abs\//i.test(href)) || "";
+    const primaryUrl = doiUrl || arxivUrl || externalUrls[0] || fallbackUrl;
+    const authors = content ? extractAuthorsFromContent(content) : [];
+    const venue = content ? extractVenueFromContent(content) : "";
 
-    out.push({
+    const item: PublicationStructuredEntry = {
       title,
       year: currentYear,
-      url: content ? extractFirstExternalUrl(content) : "",
-      labels: extractLabelsFromSummary(summary),
-    });
+      url: primaryUrl,
+      labels,
+    };
+    if (authors.length > 0) item.authors = authors;
+    if (externalUrls.length > 0) item.externalUrls = externalUrls;
+    if (doiUrl) item.doiUrl = doiUrl;
+    if (arxivUrl) item.arxivUrl = arxivUrl;
+    if (venue) item.venue = venue;
+
+    out.push(item);
   });
 
   return out;
