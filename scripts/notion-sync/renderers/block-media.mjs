@@ -1,6 +1,11 @@
 import { escapeHtml } from "../../../lib/shared/text-utils.mjs";
 import { renderRichText, richTextPlain } from "../render-rich-text.mjs";
 
+const RESPONSIVE_WIDTHS = [480, 768, 1024, 1280, 1536, 1920];
+const RESPONSIVE_QUALITY = 82;
+const RESPONSIVE_FALLBACK_WIDTH = 1280;
+const RESPONSIVE_SIZES = "(max-width: 960px) 100vw, 960px";
+
 function pickCalloutBgClass(color) {
   const c = String(color || "default").replace(/_background$/, "");
   if (c === "default") return "bg-gray-light";
@@ -9,6 +14,30 @@ function pickCalloutBgClass(color) {
 
 function embedSpinnerSvg() {
   return `<svg class="super-loader__spinner" viewBox="0 0 24 24"><defs><linearGradient x1="28.1542969%" y1="63.7402344%" x2="74.6289062%" y2="17.7832031%" id="linearGradient-1"><stop stop-color="rgba(164, 164, 164, 1)" offset="0%"></stop><stop stop-color="rgba(164, 164, 164, 0)" stop-opacity="0" offset="100%"></stop></linearGradient></defs><g id="Page-1" stroke="none" stroke-width="1" fill="none"><g transform="translate(-236.000000, -286.000000)"><g transform="translate(238.000000, 286.000000)"><circle id="Oval-2" stroke="url(#linearGradient-1)" stroke-width="4" cx="10" cy="12" r="10"></circle><path d="M10,2 C4.4771525,2 0,6.4771525 0,12" id="Oval-2" stroke="rgba(164, 164, 164, 1)" stroke-width="4"></path><rect id="Rectangle-1" fill="rgba(164, 164, 164, 1)" x="8" y="0" width="4" height="4" rx="8"></rect></g></g></g></g></svg>`;
+}
+
+function isOptimizableLocalAsset(src) {
+  const s = String(src || "").trim();
+  if (!s) return false;
+  return s.startsWith("/notion-assets/");
+}
+
+function buildNextImageUrl(src, width, quality = RESPONSIVE_QUALITY) {
+  const w = Math.max(1, Math.floor(Number(width) || 0));
+  const q = Math.max(1, Math.min(100, Math.floor(Number(quality) || RESPONSIVE_QUALITY)));
+  return `/_next/image?url=${encodeURIComponent(String(src || ""))}&w=${w}&q=${q}`;
+}
+
+function buildResponsiveImageAttrs(src) {
+  if (!isOptimizableLocalAsset(src)) return null;
+  const srcset = RESPONSIVE_WIDTHS
+    .map((w) => `${buildNextImageUrl(src, w)} ${w}w`)
+    .join(", ");
+  return {
+    src: buildNextImageUrl(src, RESPONSIVE_FALLBACK_WIDTH),
+    srcset,
+    sizes: RESPONSIVE_SIZES,
+  };
 }
 
 export function renderEmbedBlock({ b, blockIdAttr, ctx }) {
@@ -43,16 +72,18 @@ export async function renderImageBlock({ b, blockIdAttr, id, ctx }) {
   const publicSrc = img.type === "file" && src && typeof ctx.downloadAsset === "function"
     ? await ctx.downloadAsset(src, stableName)
     : src;
+  const responsive = buildResponsiveImageAttrs(publicSrc);
   const caption = renderRichText(img.caption ?? [], ctx);
   const figcaption = caption ? `<figcaption class="notion-caption notion-semantic-string">${caption}</figcaption>` : "";
   const altText = escapeHtml(richTextPlain(img.caption ?? []) || "image");
+  const srcAttr = escapeHtml(responsive?.src || publicSrc || "");
+  const srcsetAttr = responsive?.srcset ? ` srcset="${escapeHtml(responsive.srcset)}"` : "";
+  const sizesAttr = responsive?.sizes ? ` sizes="${escapeHtml(responsive.sizes)}"` : "";
   return `<div id="${blockIdAttr}" class="notion-image align-start page-width"><span data-full-size="${escapeHtml(
     publicSrc || "",
   )}" data-lightbox-src="${escapeHtml(
     publicSrc || "",
-  )}" style="display:contents"><img alt="${altText}" loading="lazy" decoding="async" style="color: transparent; height: auto;" src="${escapeHtml(
-    publicSrc || "",
-  )}"></span>${figcaption}</div>`;
+  )}" style="display:contents"><img alt="${altText}" loading="lazy" decoding="async" style="color: transparent; height: auto;" src="${srcAttr}"${srcsetAttr}${sizesAttr}></span>${figcaption}</div>`;
 }
 
 export function renderCodeBlock({ b, blockIdAttr, ctx }) {
