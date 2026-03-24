@@ -133,6 +133,43 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
     "https://jinnkunn-com.vercel.app";
   const deployUrl = `${deployBase}/site-admin`;
 
+  const legacyDeployUrls = [
+    "/api/deploy",
+    "/api/site-admin/deploy",
+  ];
+
+  const richTextContainsLegacyDeployUrl = (items) =>
+    Array.isArray(items) &&
+    items.some((item) => {
+      const url = String(item?.text?.link?.url || item?.href || "").trim();
+      return legacyDeployUrls.some((needle) => url.includes(needle));
+    });
+
+  const isLegacyDeployLinkBlock = (block) => {
+    if (!block || typeof block !== "object") return false;
+    if (block.archived) return false;
+    const type = String(block.type || "");
+    if (type === "bookmark") {
+      const url = String(block.bookmark?.url || "").trim();
+      return legacyDeployUrls.some((needle) => url.includes(needle));
+    }
+    if (type === "link_preview") {
+      const url = String(block.link_preview?.url || "").trim();
+      return legacyDeployUrls.some((needle) => url.includes(needle));
+    }
+    const richText = block?.[type]?.rich_text ?? [];
+    return richTextContainsLegacyDeployUrl(richText);
+  };
+
+  for (const block of blocks) {
+    if (!isLegacyDeployLinkBlock(block)) continue;
+    try {
+      await archiveBlock(compactId(block.id));
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
+
   if (!deployHeading) {
     await appendBlocks(adminPageId, [
       { object: "block", type: "divider", divider: {} },
@@ -168,7 +205,7 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
 
   // Update existing deploy link if the section already exists.
   const idx = blocks.findIndex((b) => compactId(b.id) === compactId(deployHeading.id));
-  const after = idx >= 0 ? blocks.slice(idx + 1) : blocks;
+  const after = (idx >= 0 ? blocks.slice(idx + 1) : blocks).filter((b) => !b?.archived);
   const callout = after.find((b) => b?.type === "callout");
   if (callout) {
     await updateBlock(compactId(callout.id), {

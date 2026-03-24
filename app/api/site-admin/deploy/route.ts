@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { apiError, apiPayloadOk, withSiteAdmin } from "@/lib/server/site-admin-api";
@@ -32,4 +33,10 @@ export async function POST(req: NextRequest) {
       requireAuthSecret: true,
     },
   );
+}
+
+export async function GET(req: NextRequest) {
+  const url = new URL("/site-admin", req.url);
+  url.searchParams.set("legacy", "deploy-api");
+  return NextResponse.redirect(url, { status: 307 });
 }
