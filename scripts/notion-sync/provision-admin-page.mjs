@@ -132,6 +132,27 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
     String(process.env.DEPLOY_BASE_URL || "").trim().replace(/\/+$/, "") ||
     "https://jinnkunn-com.vercel.app";
   const deployUrl = `${deployBase}/site-admin`;
+  const deployCalloutBlock = {
+    object: "block",
+    type: "callout",
+    callout: {
+      icon: { type: "emoji", emoji: "🚀" },
+      color: "gray_background",
+      rich_text: [
+        ...richText("Open deploy panel: "),
+        ...richTextLink("Site Admin", deployUrl),
+      ],
+    },
+  };
+  const deployTipText =
+    "Deploy API now requires signed POST headers (x-deploy-ts + x-deploy-signature). Use Site Admin for one-click deploy.";
+  const deployTipBlock = {
+    object: "block",
+    type: "paragraph",
+    paragraph: {
+      rich_text: richText(deployTipText),
+    },
+  };
 
   const legacyDeployUrls = [
     "/api/deploy",
@@ -178,55 +199,49 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
         type: "heading_2",
         heading_2: { rich_text: richText("Deploy") },
       },
-      {
-        object: "block",
-        type: "callout",
-        callout: {
-          icon: { type: "emoji", emoji: "🚀" },
-          color: "gray_background",
-          rich_text: [
-            ...richText("Open admin deploy panel: "),
-            ...richTextLink("Site Admin", deployUrl),
-          ],
-        },
-      },
-      {
-        object: "block",
-        type: "paragraph",
-        paragraph: {
-          rich_text: richText(
-            "Deploy API now requires signed POST headers (x-deploy-ts + x-deploy-signature). Use Site Admin for one-click deploy.",
-          ),
-        },
-      },
+      deployCalloutBlock,
+      deployTipBlock,
     ]);
     return;
   }
 
   // Update existing deploy link if the section already exists.
   const idx = blocks.findIndex((b) => compactId(b.id) === compactId(deployHeading.id));
-  const after = (idx >= 0 ? blocks.slice(idx + 1) : blocks).filter((b) => !b?.archived);
-  const callout = after.find((b) => b?.type === "callout");
+  const sectionAfter = [];
+  for (const block of idx >= 0 ? blocks.slice(idx + 1) : blocks) {
+    if (block?.archived) continue;
+    if (String(block?.type || "").startsWith("heading_")) break;
+    sectionAfter.push(block);
+  }
+
+  const callout = sectionAfter.find((b) => b?.type === "callout");
   if (callout) {
     await updateBlock(compactId(callout.id), {
       callout: {
         ...(callout.callout || {}),
         rich_text: [
-          ...richText("Open admin deploy panel: "),
+          ...richText("Open deploy panel: "),
           ...richTextLink("Site Admin", deployUrl),
         ],
       },
     });
   }
 
-  const tipText =
-    "Deploy API now requires signed POST headers (x-deploy-ts + x-deploy-signature). Use Site Admin for one-click deploy.";
-
   // Update older tip copy (we've used a few variants across iterations).
   const tip =
-    findTextBlock(after, { type: "paragraph", includes: "Unauthorized" }) ||
-    findTextBlock(after, { type: "paragraph", includes: "notion button" }) ||
-    findTextBlock(after, { type: "paragraph", includes: "deploy url" }) ||
-    findTextBlock(after, { type: "paragraph", includes: "tip:" });
-  if (tip) await updateBlock(compactId(tip.id), { paragraph: { rich_text: richText(tipText) } });
+    findTextBlock(sectionAfter, { type: "paragraph", includes: "Unauthorized" }) ||
+    findTextBlock(sectionAfter, { type: "paragraph", includes: "notion button" }) ||
+    findTextBlock(sectionAfter, { type: "paragraph", includes: "deploy url" }) ||
+    findTextBlock(sectionAfter, { type: "paragraph", includes: "tip:" }) ||
+    findTextBlock(sectionAfter, { type: "paragraph", includes: "signed POST headers" });
+  if (tip) {
+    await updateBlock(compactId(tip.id), { paragraph: { rich_text: richText(deployTipText) } });
+  }
+
+  if (!callout) {
+    const children = tip ? [deployCalloutBlock] : [deployCalloutBlock, deployTipBlock];
+    await appendBlocks(adminPageId, children, { after: compactId(deployHeading.id) });
+  } else if (!tip) {
+    await appendBlocks(adminPageId, [deployTipBlock], { after: compactId(callout.id) });
+  }
 }
