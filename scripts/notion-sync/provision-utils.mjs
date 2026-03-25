@@ -14,11 +14,13 @@ export function richTextLink(label, url) {
   return [{ type: "text", text: { content: l, link: { url: u } } }];
 }
 
-export async function appendBlocks(parentBlockId, children) {
+export async function appendBlocks(parentBlockId, children, opts = {}) {
   if (!children.length) return;
+  const body = { children };
+  if (opts.after) body.after = String(opts.after).trim();
   await notionRequest(`blocks/${parentBlockId}/children`, {
     method: "PATCH",
-    body: { children },
+    body,
   });
 }
 
