@@ -1,8 +1,9 @@
 "use client";
 
+import { SiteAdminEditorStatusBar } from "@/components/site-admin/editor-status-bar";
 import type { RouteManifestItem } from "@/lib/routes-manifest";
 import { normalizeAccessMode, type AccessMode } from "@/lib/shared/access";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
+import { normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRow } from "./route-explorer/route-row";
 import { useRouteExplorerData } from "./route-explorer/use-route-explorer-data";
@@ -18,18 +19,24 @@ export default function RouteExplorer({
     setQ,
     filter,
     setFilter,
-    cfg,
+    loading,
     busyId,
     err,
+    status,
+    conflictLocked,
+    loadLatest,
     collapsed,
     openAdmin,
-    accessChoice,
-    setAccessChoice,
+    routeDraftStateById,
+    setOverrideDraft,
+    setRouteAccessChoice,
+    setRoutePasswordDraft,
     batchAccess,
     setBatchAccess,
     batchPassword,
     setBatchPassword,
     batchBusy,
+    batchResult,
     applyBatchAccess,
     filtered,
     visible,
@@ -37,7 +44,6 @@ export default function RouteExplorer({
     hasMoreVisible,
     showMoreVisible,
     findEffectiveAccess,
-    findOverrideConflict,
     toggleCollapsed,
     toggleOpenAdmin,
     collapseAll,
@@ -53,7 +59,7 @@ export default function RouteExplorer({
         <div className="routes-explorer__title">
           <h1 className="routes-explorer__h1">Routes</h1>
           <p className="routes-explorer__sub">
-            Auto-generated from your content source on deploy. Edit overrides/protection here, then Deploy.
+            Save writes route overrides and protection rules to GitHub main. Deploy publishes those saved changes to the live site.
           </p>
         </div>
 
@@ -120,6 +126,7 @@ export default function RouteExplorer({
             <select
               className="routes-explorer__admin-select"
               value={batchAccess}
+              disabled={batchBusy || conflictLocked}
               onChange={(e) => {
                 const next: AccessMode = normalizeAccessMode(e.target.value, "public");
                 setBatchAccess(next);
@@ -135,13 +142,19 @@ export default function RouteExplorer({
                 type="password"
                 value={batchPassword}
                 placeholder="Password"
+                disabled={batchBusy || conflictLocked}
                 onChange={(e) => setBatchPassword(e.target.value)}
               />
             ) : null}
             <button
               type="button"
               className="routes-explorer__admin-btn"
-              disabled={batchBusy || filtered.length === 0 || (batchAccess === "password" && !batchPassword)}
+              disabled={
+                batchBusy ||
+                conflictLocked ||
+                filtered.length === 0 ||
+                (batchAccess === "password" && !batchPassword)
+              }
               onClick={() => void applyBatchAccess()}
               title="Apply to current filtered routes"
             >
@@ -151,7 +164,24 @@ export default function RouteExplorer({
         </div>
       </div>
 
+      <SiteAdminEditorStatusBar
+        status={status}
+        busy={loading || batchBusy || Boolean(busyId)}
+        canReload={conflictLocked}
+        onReload={() => void loadLatest()}
+      />
+
       {err ? <div className="routes-explorer__error">{err}</div> : null}
+      {batchResult ? (
+        <div
+          className={cn(
+            "routes-explorer__batch-result",
+            `routes-explorer__batch-result--${batchResult.kind}`,
+          )}
+        >
+          {batchResult.message}
+        </div>
+      ) : null}
 
       <div className="routes-explorer__meta">
         <span className="routes-explorer__count">{filtered.length}</span>
@@ -166,47 +196,37 @@ export default function RouteExplorer({
       <div className="routes-tree" role="list" aria-label="Routes">
         {renderedVisible.map((it) => {
           const match = findEffectiveAccess(it.id, it.routePath);
-          const directProtected = Boolean(cfg.protectedByPageId[compactId(it.id)]);
-          const effectiveProtected = Boolean(match);
-          const inheritedProtected = effectiveProtected && !directProtected;
           const adminOpen = Boolean(openAdmin[it.id]);
-          const overrideValue = cfg.overrides[it.id] || "";
+          const routeState = routeDraftStateById.get(it.id);
+          const overrideValue = routeState?.overrideInput || "";
           const overridePending =
-            Boolean(overrideValue) && normalizeRoutePath(overrideValue) !== normalizeRoutePath(it.routePath);
-          const overrideConflict = overrideValue ? findOverrideConflict(it.id, overrideValue) : null;
+            Boolean(overrideValue) &&
+            normalizeRoutePath(overrideValue) !== normalizeRoutePath(it.routePath);
           return (
             <RouteRow
               key={it.id}
               it={it}
-              cfg={cfg}
               collapsed={collapsed}
               adminOpen={adminOpen}
               busy={busyId === it.id}
-              accessChoice={accessChoice}
               effectiveAccess={match}
-              inheritedProtected={inheritedProtected}
-              directProtected={directProtected}
+              inheritedProtected={routeState?.inheritedProtected || false}
+              directProtected={routeState?.directProtected || false}
               overrideValue={overrideValue}
+              overrideDirty={routeState?.overrideDirty || false}
               overridePending={overridePending}
-              overrideConflict={overrideConflict}
-              getOverrideConflict={(candidatePath) => findOverrideConflict(it.id, candidatePath)}
+              accessPending={routeState?.accessDirty || false}
+              overrideConflict={routeState?.overrideConflict || null}
+              selectedAccess={routeState?.selectedAccess || "public"}
+              passwordValue={routeState?.passwordInput || ""}
+              conflictLocked={conflictLocked}
               onToggleCollapsed={toggleCollapsed}
               onToggleAdmin={toggleOpenAdmin}
-              onSetAccessChoice={(id, v) =>
-                setAccessChoice((prev) => ({
-                  ...prev,
-                  [id]: v,
-                }))
-              }
-              onSaveOverride={(id, v) => void saveOverride(id, v)}
-              onSaveAccess={(input) =>
-                void saveAccess({
-                  pageId: input.pageId,
-                  path: input.path,
-                  access: input.access,
-                  password: input.password,
-                })
-              }
+              onSetOverrideValue={setOverrideDraft}
+              onSetAccessChoice={setRouteAccessChoice}
+              onSetPasswordValue={setRoutePasswordDraft}
+              onSaveOverride={(id) => void saveOverride(id)}
+              onSaveAccess={(input) => void saveAccess(input)}
             />
           );
         })}

@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 
 import {
   apiExhaustive,
-  apiOk,
   apiPayloadOk,
   readSiteAdminJsonCommand,
   withSiteAdmin,
@@ -35,14 +34,19 @@ export async function POST(req: NextRequest) {
 
     switch (command.kind) {
       case "settings":
-        await updateSiteSettingsRow(command.rowId, command.patch);
-        return apiOk();
+        return apiPayloadOk(await updateSiteSettingsRow(
+          command.rowId,
+          command.expectedSiteConfigSha,
+          command.patch,
+        ));
       case "nav-update":
-        await updateSiteNavRow(command.rowId, command.patch);
-        return apiOk();
+        return apiPayloadOk(await updateSiteNavRow(
+          command.rowId,
+          command.expectedSiteConfigSha,
+          command.patch,
+        ));
       case "nav-create": {
-        const created = await createSiteNavRow(command.input);
-        return apiPayloadOk({ created });
+        return apiPayloadOk(await createSiteNavRow(command.expectedSiteConfigSha, command.input));
       }
       default:
         return apiExhaustive(command, "Unknown kind");

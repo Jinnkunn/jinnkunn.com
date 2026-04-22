@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
+import { resolveContentSourceKind } from "../lib/shared/content-source.mjs";
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -34,7 +35,7 @@ function ensureGeneratedStubs() {
   };
 
   // These files are imported at build time (edge / proxy) so CI must have *something*
-  // even when NOTION_* is not configured.
+  // even when no content source is configured.
   writeIfMissing("routes.json", {});
   writeIfMissing("routes-manifest.json", []);
   writeIfMissing("search-index.json", []);
@@ -49,24 +50,33 @@ async function main() {
     return;
   }
 
-  const hasNotion =
-    Boolean(process.env.NOTION_TOKEN) && Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID);
+  const filesystemSourceDir = path.join(process.cwd(), "content", "filesystem");
+  const hasFilesystem =
+    fs.existsSync(path.join(filesystemSourceDir, "site-config.json")) ||
+    fs.existsSync(path.join(filesystemSourceDir, "raw")) ||
+    fs.existsSync(path.join(filesystemSourceDir, "pages"));
+  const source = resolveContentSourceKind();
 
-  if (hasNotion) {
-    console.log("[prebuild] Running Notion sync...");
-    await run("npm", ["run", "sync:notion"]);
+  if (source === "notion") {
+    console.log("[prebuild] Running content sync (notion)...");
+    await run("npm", ["run", "sync:content"]);
     return;
   }
 
-  // Keep builds usable without Notion credentials (local dev / clone mode).
-  // On Vercel, missing NOTION_* is almost certainly misconfiguration.
+  if (hasFilesystem) {
+    console.log("[prebuild] Running content sync (filesystem)...");
+    await run("npm", ["run", "sync:content"]);
+    return;
+  }
+
+  // Keep builds usable without a configured content source (local dev / clone mode).
   ensureGeneratedStubs();
   if (process.env.VERCEL) {
     console.warn(
-      "[prebuild] VERCEL detected but NOTION_TOKEN/NOTION_SITE_ADMIN_PAGE_ID are missing; skipping Notion sync.",
+      "[prebuild] VERCEL detected but no content source is configured; skipping content sync.",
     );
   } else {
-    console.log("[prebuild] No Notion config found; skipping Notion sync.");
+    console.log("[prebuild] No content source found; skipping content sync.");
   }
 }
 

@@ -16,6 +16,7 @@ export function RouteRowTop({
   isHome,
   adminOpen,
   overridePending,
+  accessPending,
   overrideConflict,
   directProtected,
   inheritedProtected,
@@ -28,6 +29,7 @@ export function RouteRowTop({
   isHome: boolean;
   adminOpen: boolean;
   overridePending: boolean;
+  accessPending: boolean;
   overrideConflict: OverrideConflict | null;
   directProtected: boolean;
   inheritedProtected: boolean;
@@ -92,6 +94,7 @@ export function RouteRowTop({
           kind={it.kind}
           overridden={it.overridden}
           overridePending={overridePending}
+          accessPending={accessPending}
           overrideConflict={overrideConflict}
           directProtected={directProtected}
           inheritedProtected={inheritedProtected}

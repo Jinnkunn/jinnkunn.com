@@ -10,6 +10,7 @@ export function RouteRowBadges({
   kind,
   overridden,
   overridePending,
+  accessPending,
   overrideConflict,
   directProtected,
   inheritedProtected,
@@ -19,6 +20,7 @@ export function RouteRowBadges({
   kind: string;
   overridden: boolean;
   overridePending: boolean;
+  accessPending: boolean;
   overrideConflict: OverrideConflict | null;
   directProtected: boolean;
   inheritedProtected: boolean;
@@ -37,6 +39,11 @@ export function RouteRowBadges({
       {overridden || overridePending ? (
         <span className="routes-explorer__pill routes-explorer__pill--override">
           {overridePending ? "override (pending)" : "overridden"}
+        </span>
+      ) : null}
+      {accessPending ? (
+        <span className="routes-explorer__pill routes-explorer__pill--override">
+          access (pending)
         </span>
       ) : null}
       {overrideConflict ? (

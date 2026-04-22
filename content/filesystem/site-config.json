@@ -1,0 +1,58 @@
+{
+  "siteName": "Jinkun Chen.",
+  "lang": "en",
+  "seo": {
+    "title": "Jinkun Chen",
+    "description": "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
+    "favicon": "/assets/favicon.png"
+  },
+  "integrations": {
+    "googleAnalyticsId": ""
+  },
+  "nav": {
+    "top": [
+      {
+        "href": "/",
+        "label": "Home"
+      },
+      {
+        "href": "/news",
+        "label": "News"
+      },
+      {
+        "href": "/publications",
+        "label": "Publications"
+      },
+      {
+        "href": "/works",
+        "label": "Works"
+      },
+      {
+        "href": "/blog",
+        "label": "Blog"
+      }
+    ],
+    "more": [
+      {
+        "href": "/teaching",
+        "label": "Teaching"
+      },
+      {
+        "href": "/bio",
+        "label": "BIO"
+      },
+      {
+        "href": "/connect",
+        "label": "Connect"
+      }
+    ]
+  },
+  "content": {
+    "rootPageId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "homePageId": "8d6dfeef4c7f4d678b4899d2198877cb",
+    "routeOverrides": {
+      "428aa769b98042adb1aa84daa3d62d7b": "/connect",
+      "17740d70fdf5809e9d90e23f24baeb63": "/chen"
+    }
+  }
+}

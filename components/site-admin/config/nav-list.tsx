@@ -1,5 +1,6 @@
 "use client";
 
+import { hasNavRowDraftChanges } from "@/lib/site-admin/editor-state";
 import { asNumber, asString, cn, copyToClipboard } from "./utils";
 import type { NavItemRow } from "./types";
 
@@ -29,7 +30,7 @@ export function SiteAdminNavList({
       {rows.map((it) => {
         const open = Boolean(openNav[it.rowId]);
         const d = navDraft[it.rowId] || {};
-        const dirty = Object.keys(d).length > 0;
+        const dirty = hasNavRowDraftChanges(it, d);
         const label = asString(d.label ?? it.label);
         const href = asString(d.href ?? it.href);
         const order = asNumber(d.order ?? it.order);

@@ -3,6 +3,23 @@ import type { ProtectedAccessMode } from "../shared/access.ts";
 
 export type SiteAdminApiError = { ok: false; error: string; code: string };
 
+export type SiteAdminSourceVersion = {
+  branchSha: string;
+  siteConfigSha: string;
+  protectedRoutesSha: string;
+  routesManifestSha: string;
+};
+
+export type SiteAdminSourceInfo = {
+  storeKind: string;
+  repo: string;
+  branch: string;
+  headSha: string;
+  headCommittedAt: string;
+  pendingDeploy: boolean;
+  error?: string;
+};
+
 export type SiteAdminStat = {
   exists: boolean;
   mtimeMs?: number;
@@ -12,6 +29,7 @@ export type SiteAdminStat = {
 
 export type SiteAdminSyncMeta = null | {
   syncedAt: string;
+  contentSource?: string;
   notionVersion?: string;
   adminPageId?: string;
   rootPageId?: string;
@@ -26,6 +44,7 @@ export type SiteAdminSyncMeta = null | {
 export type SiteAdminStatusPayload = {
   ok: true;
   env: {
+    contentSource: string;
     nodeEnv: string;
     isVercel: boolean;
     vercelRegion: string;
@@ -46,6 +65,7 @@ export type SiteAdminStatusPayload = {
     deploymentId: string;
     vercelUrl: string;
   };
+  source: SiteAdminSourceInfo;
   content: {
     siteName: string;
     nav: { top: number; more: number };
@@ -117,6 +137,7 @@ export type SiteAdminProtectedRoute = {
 export type SiteAdminRoutesGetPayload = {
   ok: true;
   adminPageId: string;
+  sourceVersion: SiteAdminSourceVersion;
   databases: {
     overridesDbId: string;
     protectedDbId: string;
@@ -131,6 +152,7 @@ export type SiteAdminConfigGetPayload = {
   ok: true;
   settings: SiteSettings | null;
   nav: NavItemRow[];
+  sourceVersion: SiteAdminSourceVersion;
 };
 
 export type SiteAdminConfigGetResult = SiteAdminConfigGetPayload | SiteAdminApiError;
@@ -138,9 +160,19 @@ export type SiteAdminConfigGetResult = SiteAdminConfigGetPayload | SiteAdminApiE
 export type SiteAdminConfigPostPayload = {
   ok: true;
   created?: NavItemRow;
+  sourceVersion: SiteAdminSourceVersion;
 };
 
 export type SiteAdminConfigPostResult = SiteAdminConfigPostPayload | SiteAdminApiError;
+
+export type SiteAdminRoutesPostPayload = {
+  ok: true;
+  override?: SiteAdminRouteOverride;
+  protected?: SiteAdminProtectedRoute;
+  sourceVersion: SiteAdminSourceVersion;
+};
+
+export type SiteAdminRoutesPostResult = SiteAdminRoutesPostPayload | SiteAdminApiError;
 
 export type SiteAdminDeployPayload = {
   ok: true;

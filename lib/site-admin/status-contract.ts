@@ -40,6 +40,7 @@ function parseSyncMeta(value: unknown): SiteAdminStatusPayload["content"]["syncM
 
   const out: NonNullable<SiteAdminStatusPayload["content"]["syncMeta"]> = { syncedAt };
   const maybeStringKeys = [
+    "contentSource",
     "notionVersion",
     "adminPageId",
     "rootPageId",
@@ -167,10 +168,11 @@ function parsePreflight(
 
 function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | null {
   if (!isRecord(value)) return null;
-  if (!isRecord(value.env) || !isRecord(value.build) || !isRecord(value.content)) return null;
+  if (!isRecord(value.env) || !isRecord(value.build) || !isRecord(value.content) || !isRecord(value.source)) return null;
   if (!isRecord(value.files) || !isRecord(value.notion)) return null;
 
   const env = {
+    contentSource: toStringValue(value.env.contentSource),
     nodeEnv: toStringValue(value.env.nodeEnv),
     isVercel: toBooleanOrNull(value.env.isVercel),
     vercelRegion: toStringValue(value.env.vercelRegion),
@@ -204,6 +206,17 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
     deploymentId: toStringValue(value.build.deploymentId),
     vercelUrl: toStringValue(value.build.vercelUrl),
   };
+
+  const source = {
+    storeKind: toStringValue(value.source.storeKind),
+    repo: toStringValue(value.source.repo),
+    branch: toStringValue(value.source.branch),
+    headSha: toStringValue(value.source.headSha),
+    headCommittedAt: toStringValue(value.source.headCommittedAt),
+    pendingDeploy: toBooleanOrNull(value.source.pendingDeploy),
+    error: toStringValue(value.source.error),
+  };
+  if (source.pendingDeploy === null) return null;
 
   if (!isRecord(value.content.nav)) return null;
   const navTop = toNumberOrNull(value.content.nav.top);
@@ -247,6 +260,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
   return {
     ok: true,
     env: {
+      contentSource: env.contentSource,
       nodeEnv: env.nodeEnv,
       isVercel: env.isVercel,
       vercelRegion: env.vercelRegion,
@@ -260,6 +274,15 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
       contentGithubAllowlistCount: env.contentGithubAllowlistCount,
     },
     build,
+    source: {
+      storeKind: source.storeKind,
+      repo: source.repo,
+      branch: source.branch,
+      headSha: source.headSha,
+      headCommittedAt: source.headCommittedAt,
+      pendingDeploy: source.pendingDeploy,
+      ...(source.error ? { error: source.error } : {}),
+    },
     content: {
       siteName: toStringValue(value.content.siteName),
       nav: {

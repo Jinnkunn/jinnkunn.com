@@ -8,9 +8,107 @@ npm run dev
 
 Local `vercel deploy` / `vercel --prod` now uses `.vercelignore` to exclude local caches and debug artifacts (for example `.next`, `node_modules`, `output`, `.playwright-cli`, `tests`) to reduce upload size and speed up deploys.
 
-## Content-Backed Site (Super-Like)
+## Content-Backed Site
 
-This repo can compile a page tree (via the configured content source) into a static Next.js site.
+This repo compiles a configured content source into static artifacts under `content/generated/`, which the Next.js runtime consumes.
+
+Supported content sources:
+
+- `filesystem`: repo-local source files under `content/filesystem/`
+- `notion`: the legacy Notion-backed adapter
+
+`npm run sync:content` chooses the source in this order:
+
+- `CONTENT_SOURCE` when explicitly set
+- `notion` when both `NOTION_TOKEN` and `NOTION_SITE_ADMIN_PAGE_ID` are configured
+- `filesystem` otherwise
+
+### Filesystem Source (Recommended)
+
+Repo-local content lives under:
+
+- `content/filesystem/site-config.json`
+- `content/filesystem/routes-manifest.json`
+- `content/filesystem/protected-routes.json`
+- `content/filesystem/raw/**/*.html`
+- `content/filesystem/pages/**/*.mdx`
+
+Use this mode when you want the site to build without live Notion access. Raw HTML keeps the current Super/Notion DOM stable, while MDX pages are available for incremental migration.
+
+Sync it with:
+
+```bash
+npm run sync:content
+```
+
+### Site Admin Storage
+
+`/site-admin` now supports two storage backends for structured edits:
+
+- `SITE_ADMIN_STORAGE=local`: local development / tests. Saves update repo files under `content/filesystem/*`.
+- `SITE_ADMIN_STORAGE=github`: production-safe mode. Saves commit directly to `SITE_ADMIN_REPO_BRANCH` via GitHub App Contents API.
+
+When using GitHub storage, Save and Deploy are intentionally separate:
+
+- `Save`: persists source files to GitHub
+- `Deploy`: triggers the Vercel deploy hook
+
+Required env for GitHub storage:
+
+- `GITHUB_APP_ID`
+- `GITHUB_APP_PRIVATE_KEY`
+- `GITHUB_APP_INSTALLATION_ID`
+- `SITE_ADMIN_REPO_OWNER`
+- `SITE_ADMIN_REPO_NAME`
+- `SITE_ADMIN_REPO_BRANCH` (default `main`)
+
+The admin API uses optimistic concurrency against GitHub file SHAs. If another admin saves first, the later save returns `409 SOURCE_CONFLICT` and the UI should refresh.
+
+#### Production Rollout Checklist
+
+For the current v1 model (`Save = write to main`, `Deploy = publish later`), keep production setup aligned with these rules:
+
+- Grant the GitHub App only `Repository metadata: read-only` and `Contents: read/write`.
+- Set `SITE_ADMIN_STORAGE=github` in Vercel for the production environment.
+- Point `SITE_ADMIN_REPO_OWNER`, `SITE_ADMIN_REPO_NAME`, and `SITE_ADMIN_REPO_BRANCH` at the exact repo/branch that Vercel builds from.
+- Disable any automatic production deploy triggered by `main` pushes. Production release should happen only from `/site-admin` Deploy or the signed deploy hook.
+- Treat rollback as two steps: `git revert` the saved source commit on `main`, then trigger a fresh Deploy.
+- Before flipping production traffic, run one smoke check with real production credentials and confirm:
+  - Save creates a GitHub commit without changing the live site immediately.
+  - `/site-admin` status reports `pendingDeploy=true`.
+  - Deploy publishes the saved source and status returns to `pendingDeploy=false`.
+
+#### Staging-First Rollout
+
+This repo now includes:
+
+- [`vercel.json`](/Users/jinnkunn/Desktop/jinnkunn.com/vercel.json), which disables automatic Git-triggered deploys for `main` and `site-admin-staging`
+- `npm run audit:site-admin`, which audits a Vercel project, source branch, deploy hook presence, and required env names
+- [`docs/site-admin-rollout.md`](/Users/jinnkunn/Desktop/jinnkunn.com/docs/site-admin-rollout.md), which captures the staging-first setup, smoke run, production cutover, and rollback flow
+
+Staging audit example:
+
+```bash
+npm run audit:site-admin -- \
+  --project jinnkunn-com-staging \
+  --scope jinnkunns-projects \
+  --branch site-admin-staging \
+  --repo-owner Jinnkunn \
+  --repo-name jinnkunn.com
+```
+
+Production audit example:
+
+```bash
+npm run audit:site-admin -- \
+  --project jinnkunn-com \
+  --scope jinnkunns-projects \
+  --branch main \
+  --repo-owner Jinnkunn \
+  --repo-name jinnkunn.com
+```
+
+Vercel currently documents deploy hook creation from the project Git settings page. The audit command will fail until the matching branch hook and env are present.
 
 ### 1) Create "Site Admin" Page
 
@@ -55,7 +153,7 @@ To make the `Site Admin` page feel like a real backend, you can provision 3 inli
 - `Navigation` (top nav + More dropdown)
 - `Route Overrides` (optional pageId -> route mapping)
 
-If these databases exist, `npm run sync:notion` will prefer them over the JSON code block.
+If these databases exist, the Notion adapter will prefer them over the JSON code block.
 
 To auto-create and seed them from the existing JSON config:
 
@@ -69,7 +167,7 @@ npm run provision:admin
 - Share the `Site Admin` page with that integration.
 - Set env vars (see `.env.example` if present, otherwise use the list below).
 
-Required for Notion sync:
+Required for the Notion adapter:
 - `NOTION_TOKEN`
 - `NOTION_SITE_ADMIN_PAGE_ID`
 
@@ -96,14 +194,19 @@ GitHub Actions (`CI`, `UI Smoke`, `UI Compare`, `Search Snapshots`, `Production 
 ### 3) Sync
 
 ```bash
-npm run sync:notion
+npm run sync:content
 ```
 
 This generates:
 - `content/generated/site-config.json`
 - `content/generated/raw/<route>.html`
 
-`npm run build` will run Notion sync automatically via `prebuild` when `NOTION_*` env vars are set.
+`npm run build` will run content sync automatically via `prebuild` when either:
+
+- a filesystem source exists under `content/filesystem/`, or
+- the Notion adapter is configured
+
+If you specifically want the legacy Notion-only command, `npm run sync:notion` is still available.
 
 ## Deploy API (Signed POST)
 

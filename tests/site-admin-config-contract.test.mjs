@@ -8,6 +8,15 @@ import {
   parseSiteAdminConfigPost,
 } from "../lib/site-admin/config-contract.ts";
 
+function makeSourceVersion() {
+  return {
+    branchSha: "branch-sha",
+    siteConfigSha: "site-config-sha",
+    protectedRoutesSha: "protected-routes-sha",
+    routesManifestSha: "routes-manifest-sha",
+  };
+}
+
 function makeSettings() {
   return {
     rowId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -51,6 +60,7 @@ test("site-admin-config-contract: parses get payload in data envelope", () => {
     data: {
       settings: makeSettings(),
       nav: makeNav(),
+      sourceVersion: makeSourceVersion(),
     },
   });
   assert.ok(parsed);
@@ -58,6 +68,7 @@ test("site-admin-config-contract: parses get payload in data envelope", () => {
   if (!parsed || !isSiteAdminConfigGetOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.settings?.siteName, "Jinkun Chen.");
   assert.equal(parsed.nav.length, 1);
+  assert.equal(parsed.sourceVersion.siteConfigSha, "site-config-sha");
 });
 
 test("site-admin-config-contract: parses post payload in data envelope", () => {
@@ -65,12 +76,14 @@ test("site-admin-config-contract: parses post payload in data envelope", () => {
     ok: true,
     data: {
       created: makeNav()[0],
+      sourceVersion: makeSourceVersion(),
     },
   });
   assert.ok(parsed);
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminConfigPostOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.created?.label, "Home");
+  assert.equal(parsed.sourceVersion.branchSha, "branch-sha");
 });
 
 test("site-admin-config-contract: preserves error payload", () => {

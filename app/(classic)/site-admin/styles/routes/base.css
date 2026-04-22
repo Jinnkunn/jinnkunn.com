@@ -103,6 +103,33 @@
   font-size: 13px;
 }
 
+.routes-explorer .site-admin-editor-status {
+  margin-top: 14px;
+}
+
+.routes-explorer__batch-result {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(55, 53, 47, 0.84);
+  font-size: 13px;
+}
+
+.routes-explorer__batch-result--saved {
+  border-color: rgba(46, 204, 113, 0.22);
+  background: rgba(46, 204, 113, 0.08);
+  color: rgba(21, 118, 66, 0.95);
+}
+
+.routes-explorer__batch-result--conflict,
+.routes-explorer__batch-result--error {
+  border-color: rgba(235, 87, 87, 0.22);
+  background: rgba(235, 87, 87, 0.08);
+  color: rgba(140, 32, 32, 0.95);
+}
+
 .routes-explorer__meta {
   margin-top: 18px;
   display: flex;

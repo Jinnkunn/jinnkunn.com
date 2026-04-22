@@ -38,7 +38,7 @@ export default async function SiteAdminHome() {
           <section>
             <h2 className="notion-heading notion-semantic-string">Deploy</h2>
             <p className="notion-text notion-text__content notion-semantic-string">
-              Triggers a Vercel deploy (which will re-sync content during build).
+              Save writes structured source to GitHub main. Deploy is a separate step that publishes the current saved source to production.
             </p>
             <SiteAdminDeployClient />
           </section>
@@ -57,7 +57,7 @@ export default async function SiteAdminHome() {
                   <Link href="/site-admin/routes" className="notion-link link">
                     Routes
                   </Link>{" "}
-                  (inspect discovered routes)
+                  (override URLs + manage access)
                 </li>
               </ul>
             </div>

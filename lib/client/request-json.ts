@@ -1,9 +1,27 @@
-import { readApiErrorMessage } from "@/lib/client/api-guards";
+import { readApiErrorCode, readApiErrorMessage } from "@/lib/client/api-guards";
 
 export type JsonResponsePacket = {
   response: Response;
   raw: unknown;
 };
+
+export class RequestJsonError extends Error {
+  status: number;
+  code: string;
+  raw: unknown;
+
+  constructor(message: string, init: { status: number; code: string; raw: unknown }) {
+    super(message);
+    this.name = "RequestJsonError";
+    this.status = init.status;
+    this.code = init.code;
+    this.raw = init.raw;
+  }
+}
+
+export function isRequestJsonError(value: unknown): value is RequestJsonError {
+  return value instanceof RequestJsonError;
+}
 
 export async function requestJson(
   input: RequestInfo | URL,
@@ -35,7 +53,11 @@ export function parseJsonOrThrow<T, TOk extends T = T>(
       response: packet.response,
     });
     const fallback = readApiErrorMessage(parsed ?? packet.raw) || `HTTP ${packet.response.status}`;
-    throw new Error(custom || fallback);
+    throw new RequestJsonError(custom || fallback, {
+      status: packet.response.status,
+      code: readApiErrorCode(parsed ?? packet.raw) || "REQUEST_FAILED",
+      raw: packet.raw,
+    });
   }
 
   return parsed as TOk;

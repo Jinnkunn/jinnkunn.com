@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 
+import { useUnsavedChangesGuard } from "@/components/site-admin/use-unsaved-changes-guard";
 import type { RouteManifestItem } from "@/lib/routes-manifest";
 import type { AccessMode } from "@/lib/shared/access";
+import { compactId } from "@/lib/shared/route-utils";
+import {
+  deriveEditorStatus,
+  hasRouteAccessDraftChanges,
+  hasRouteOverrideDraftChanges,
+  IDLE_EDITOR_RESULT,
+  type SiteAdminEditorResultState,
+} from "@/lib/site-admin/editor-state";
 import {
   buildDescendantsGetter,
   buildRouteTree,
@@ -51,6 +60,15 @@ function parseStoredCollapsed(
 }
 
 export function useRouteExplorerData(items: RouteManifestItem[]) {
+  const [loading, setLoading] = useState(false);
+  const [overrideDrafts, setOverrideDrafts] = useState<Record<string, string>>({});
+  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
+  const [editorResult, setEditorResult] =
+    useState<SiteAdminEditorResultState>(IDLE_EDITOR_RESULT);
+  const [batchResult, setBatchResult] = useState<{
+    kind: "saved" | "conflict" | "error";
+    message: string;
+  } | null>(null);
   const [state, dispatch] = useReducer(
     routeExplorerStateReducer,
     createRouteExplorerInitialState(),
@@ -86,22 +104,13 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     setCollapsedReady,
     setRenderLimit,
   } = setters;
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const parsed = await fetchAdminConfig(items);
-        if (!cancelled) setCfg(parsed);
-      } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [items, setCfg, setErr]);
+  const conflictLocked = editorResult.kind === "conflict";
+  const clearEditorResultOnEdit = useCallback(() => {
+    setEditorResult((prev) =>
+      prev.kind === "saved" || prev.kind === "error" ? IDLE_EDITOR_RESULT : prev,
+    );
+    setBatchResult(null);
+  }, []);
 
   const tree = useMemo(() => buildRouteTree(items), [items]);
   const ordered = tree.ordered;
@@ -195,6 +204,36 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     });
   };
 
+  const loadLatest = useCallback(
+    async (opts?: { resetEditorResult?: boolean }) => {
+      setLoading(true);
+      setErr("");
+      try {
+        const parsed = await fetchAdminConfig(items);
+        setCfg(parsed);
+        setAccessChoice({});
+        setOverrideDrafts({});
+        setPasswordDrafts({});
+        setBatchResult(null);
+        if (opts?.resetEditorResult !== false) {
+          setEditorResult({
+            kind: "idle",
+            message: "Latest source loaded from GitHub main.",
+          });
+        }
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [items, setAccessChoice, setCfg, setErr],
+  );
+
+  useEffect(() => {
+    void loadLatest({ resetEditorResult: false });
+  }, [loadLatest]);
+
   const toggleOpenAdmin = (id: string) =>
     setOpenAdmin((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -224,89 +263,335 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
 
   const expandAll = () => setCollapsed({});
 
-  const saveOverride = async (pageId: string, routePath: string) =>
-    saveRouteOverride(
-      {
-        setBusyId,
-        setErr,
-        setCfg,
-      },
-      pageId,
-      routePath,
-    );
+  const findEffectiveAccess = useMemo(() => {
+    return createEffectiveAccessFinder({ cfg, tree, items });
+  }, [cfg, tree, items]);
 
-  const applyAccess = async ({
-    pageId,
-    path,
-    access,
-    password,
-    trackBusy,
-  }: {
-    pageId: string;
-    path: string;
-    access: AccessMode;
-    password?: string;
-    trackBusy: boolean;
-  }) =>
-    applyRouteAccess(
+  const effectiveAccessById = useMemo(() => {
+    const byId = new Map<string, ReturnType<typeof findEffectiveAccess>>();
+    for (const it of ordered) byId.set(it.id, findEffectiveAccess(it.id, it.routePath));
+    return byId;
+  }, [findEffectiveAccess, ordered]);
+
+  const draftAwareOverrides = useMemo(() => {
+    const next = { ...cfg.overrides };
+    for (const [pageId, routePath] of Object.entries(overrideDrafts)) {
+      if (!routePath.trim()) {
+        delete next[pageId];
+        continue;
+      }
+      next[pageId] = routePath;
+    }
+    return next;
+  }, [cfg.overrides, overrideDrafts]);
+
+  const findOverrideConflict = useMemo(() => {
+    return createOverrideConflictFinder({ items, overrides: draftAwareOverrides });
+  }, [items, draftAwareOverrides]);
+
+  const routeDraftStateById = useMemo(() => {
+    const byId = new Map<
+      string,
       {
-        setBusyId,
-        setErr,
-        setCfg,
-      },
-      {
+        overrideInput: string;
+        overrideDirty: boolean;
+        overrideConflict: ReturnType<typeof findOverrideConflict>;
+        directProtected: boolean;
+        inheritedProtected: boolean;
+        baselineAccess: AccessMode;
+        selectedAccess: AccessMode;
+        passwordInput: string;
+        accessDirty: boolean;
+      }
+    >();
+
+    for (const it of ordered) {
+      const match = effectiveAccessById.get(it.id) || null;
+      const compactPageId = compactId(it.id);
+      const directProtected = Boolean(cfg.protectedByPageId[compactPageId]);
+      const inheritedProtected = Boolean(match) && !directProtected;
+      const baselineAccess: AccessMode = inheritedProtected
+        ? match?.auth === "github"
+          ? "github"
+          : "password"
+        : directProtected
+          ? cfg.protectedByPageId[compactPageId]?.auth === "github"
+            ? "github"
+            : "password"
+          : "public";
+      const selectedAccess = accessChoice[it.id] || baselineAccess;
+      const passwordInput =
+        inheritedProtected || selectedAccess !== "password" ? "" : passwordDrafts[it.id] || "";
+      const overrideInput = overrideDrafts[it.id] ?? cfg.overrides[it.id] ?? "";
+      const overrideDirty = hasRouteOverrideDraftChanges(
+        cfg.overrides[it.id] || "",
+        overrideInput,
+      );
+      const accessDirty = hasRouteAccessDraftChanges({
+        inheritedProtected,
+        baselineAccess,
+        selectedAccess,
+        passwordDraft: passwordDrafts[it.id] || "",
+      });
+      const overrideConflict = overrideInput
+        ? findOverrideConflict(it.id, overrideInput)
+        : null;
+
+      byId.set(it.id, {
+        overrideInput,
+        overrideDirty,
+        overrideConflict,
+        directProtected,
+        inheritedProtected,
+        baselineAccess,
+        selectedAccess,
+        passwordInput,
+        accessDirty,
+      });
+    }
+
+    return byId;
+  }, [
+    accessChoice,
+    cfg.overrides,
+    cfg.protectedByPageId,
+    effectiveAccessById,
+    findOverrideConflict,
+    ordered,
+    overrideDrafts,
+    passwordDrafts,
+  ]);
+
+  const dirtyRouteCount = useMemo(() => {
+    let count = 0;
+    for (const stateForRoute of routeDraftStateById.values()) {
+      if (stateForRoute.overrideDirty || stateForRoute.accessDirty) count += 1;
+    }
+    return count;
+  }, [routeDraftStateById]);
+
+  const hasUnsavedChanges = dirtyRouteCount > 0;
+  const status = deriveEditorStatus({
+    hasUnsavedChanges,
+    result: editorResult,
+    dirtyMessage:
+      dirtyRouteCount === 1
+        ? "You have unsaved changes on 1 route."
+        : `You have unsaved changes on ${dirtyRouteCount} routes.`,
+    idleMessage: "No local route changes.",
+  });
+
+  const clearDraftsForPageIds = useCallback(
+    (pageIds: string[]) => {
+      if (!pageIds.length) return;
+      setOverrideDrafts((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const pageId of pageIds) {
+          if (!(pageId in next)) continue;
+          delete next[pageId];
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+      setPasswordDrafts((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const pageId of pageIds) {
+          if (!(pageId in next)) continue;
+          delete next[pageId];
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+      setAccessChoice((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const pageId of pageIds) {
+          if (!(pageId in next)) continue;
+          delete next[pageId];
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    },
+    [setAccessChoice],
+  );
+
+  const setOverrideDraft = useCallback(
+    (pageId: string, value: string) => {
+      if (conflictLocked) return;
+      clearEditorResultOnEdit();
+      setOverrideDrafts((prev) => ({ ...prev, [pageId]: value }));
+    },
+    [clearEditorResultOnEdit, conflictLocked],
+  );
+
+  const setRouteAccessChoice = useCallback(
+    (pageId: string, value: AccessMode) => {
+      if (conflictLocked) return;
+      clearEditorResultOnEdit();
+      setAccessChoice((prev) => ({ ...prev, [pageId]: value }));
+      if (value !== "password") {
+        setPasswordDrafts((prev) => {
+          if (!(pageId in prev)) return prev;
+          const next = { ...prev };
+          delete next[pageId];
+          return next;
+        });
+      }
+    },
+    [clearEditorResultOnEdit, conflictLocked, setAccessChoice],
+  );
+
+  const setRoutePasswordDraft = useCallback(
+    (pageId: string, value: string) => {
+      if (conflictLocked) return;
+      clearEditorResultOnEdit();
+      setPasswordDrafts((prev) => ({ ...prev, [pageId]: value }));
+    },
+    [clearEditorResultOnEdit, conflictLocked],
+  );
+
+  const saveOverride = useCallback(
+    async (pageId: string) => {
+      if (conflictLocked) return;
+      setBatchResult(null);
+      const routePath = overrideDrafts[pageId] ?? cfg.overrides[pageId] ?? "";
+      const saved = await saveRouteOverride(
+        {
+          setBusyId,
+          setErr,
+          setCfg,
+          setEditorResult,
+        },
+        cfg.sourceVersion.siteConfigSha,
         pageId,
-        path,
-        access,
-        password,
-        trackBusy,
-      },
-    );
+        routePath,
+      );
+      if (saved) {
+        setOverrideDrafts((prev) => {
+          if (!(pageId in prev)) return prev;
+          const next = { ...prev };
+          delete next[pageId];
+          return next;
+        });
+      }
+    },
+    [
+      cfg.overrides,
+      cfg.sourceVersion.siteConfigSha,
+      conflictLocked,
+      overrideDrafts,
+      setBusyId,
+      setCfg,
+      setErr,
+    ],
+  );
 
-  const saveAccess = async ({
-    pageId,
-    path,
-    access,
-    password,
-  }: {
-    pageId: string;
-    path: string;
-    access: AccessMode;
-    password?: string;
-  }) => {
-    await applyAccess({ pageId, path, access, password, trackBusy: true });
-  };
+  const saveAccess = useCallback(
+    async ({ pageId, path }: { pageId: string; path: string }) => {
+      if (conflictLocked) return;
+      const stateForRoute = routeDraftStateById.get(pageId);
+      if (!stateForRoute) return;
+      setBatchResult(null);
+      const result = await applyRouteAccess(
+        {
+          setBusyId,
+          setErr,
+          setCfg,
+          setEditorResult,
+        },
+        {
+          pageId,
+          path,
+          access: stateForRoute.selectedAccess,
+          password: stateForRoute.passwordInput,
+          expectedProtectedRoutesSha: cfg.sourceVersion.protectedRoutesSha,
+          trackBusy: true,
+          trackEditorResult: true,
+        },
+      );
+      if (result.ok) clearDraftsForPageIds([pageId]);
+    },
+    [
+      cfg.sourceVersion.protectedRoutesSha,
+      clearDraftsForPageIds,
+      conflictLocked,
+      routeDraftStateById,
+      setBusyId,
+      setCfg,
+      setErr,
+    ],
+  );
 
-  const applyBatchAccess = async () => {
-    if (batchBusy) return;
+  const applyBatchAccess = useCallback(async () => {
+    if (batchBusy || conflictLocked) return;
     if (!filtered.length) return;
     setBatchBusy(true);
     setErr("");
-    const { success, total } = await applyBatchRouteAccess(
+    setBatchResult(null);
+    setEditorResult({
+      kind: "saving",
+      message: `Saving access changes for ${filtered.length} routes to GitHub main...`,
+    });
+    const result = await applyBatchRouteAccess(
       {
         setBusyId,
         setErr,
         setCfg,
+        setEditorResult,
       },
       {
         routes: filtered,
         access: batchAccess,
         batchPassword,
+        expectedProtectedRoutesSha: cfg.sourceVersion.protectedRoutesSha,
       },
     );
-    if (success !== total) {
-      setErr(`Batch applied to ${success}/${total} routes.`);
+    clearDraftsForPageIds(result.appliedPageIds);
+
+    if (result.interruptedByConflict) {
+      const message = `Applied to ${result.success}/${result.total} routes before a source conflict interrupted the batch.`;
+      setBatchResult({ kind: "conflict", message });
+      setEditorResult({
+        kind: "conflict",
+        message: `${message} Reload latest before continuing.`,
+      });
+    } else if (result.errorMessage) {
+      const failed = result.total - result.success;
+      const message = `Applied to ${result.success}/${result.total} routes. ${failed} failed. ${result.errorMessage}`;
+      setBatchResult({ kind: "error", message });
+      setEditorResult({
+        kind: "error",
+        message,
+      });
+    } else {
+      const message = `Applied to ${result.success}/${result.total} routes. Saved to GitHub main. Deploy to publish.`;
+      setBatchResult({ kind: "saved", message });
+      setEditorResult({
+        kind: "saved",
+        message,
+      });
     }
     setBatchBusy(false);
-  };
+  }, [
+    batchAccess,
+    batchBusy,
+    batchPassword,
+    cfg.sourceVersion.protectedRoutesSha,
+    clearDraftsForPageIds,
+    conflictLocked,
+    filtered,
+    setBatchBusy,
+    setCfg,
+    setErr,
+    setBusyId,
+  ]);
 
-  const findEffectiveAccess = useMemo(() => {
-    return createEffectiveAccessFinder({ cfg, tree, items });
-  }, [cfg, tree, items]);
-
-  const findOverrideConflict = useMemo(() => {
-    return createOverrideConflictFinder({ items, overrides: cfg.overrides });
-  }, [items, cfg.overrides]);
+  useUnsavedChangesGuard({
+    enabled: hasUnsavedChanges,
+  });
 
   return {
     q,
@@ -314,17 +599,25 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     filter,
     setFilter,
     cfg,
+    loading,
     busyId,
     err,
+    status,
+    conflictLocked,
+    hasUnsavedChanges,
+    loadLatest,
     collapsed,
     openAdmin,
-    accessChoice,
-    setAccessChoice,
+    routeDraftStateById,
+    setOverrideDraft,
+    setRouteAccessChoice,
+    setRoutePasswordDraft,
     batchAccess,
     setBatchAccess,
     batchPassword,
     setBatchPassword,
     batchBusy,
+    batchResult,
     applyBatchAccess,
     filtered,
     visible,
@@ -332,7 +625,6 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     hasMoreVisible,
     showMoreVisible,
     findEffectiveAccess,
-    findOverrideConflict,
     toggleCollapsed,
     toggleOpenAdmin,
     collapseAll,

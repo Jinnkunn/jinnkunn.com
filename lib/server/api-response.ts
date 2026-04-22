@@ -117,6 +117,14 @@ export function noStoreFailFromUnknown(
   e: unknown,
   init?: NoStoreErrorInit & { code?: string },
 ) {
+  const status =
+    e && typeof e === "object" && "status" in e && Number.isFinite(Number((e as { status?: unknown }).status))
+      ? Number((e as { status?: unknown }).status)
+      : init?.status ?? 500;
+  const code =
+    e && typeof e === "object" && "code" in e && String((e as { code?: unknown }).code || "").trim()
+      ? String((e as { code?: unknown }).code || "").trim()
+      : init?.code ?? "INTERNAL_ERROR";
   const message =
     e instanceof Error
       ? e.message
@@ -124,8 +132,8 @@ export function noStoreFailFromUnknown(
         ? e
         : (init?.fallback ?? "Unexpected server error");
   return noStoreFailWithCode(message, {
-    status: init?.status ?? 500,
-    code: init?.code ?? "INTERNAL_ERROR",
+    status,
+    code,
     extras: init?.extras,
   });
 }

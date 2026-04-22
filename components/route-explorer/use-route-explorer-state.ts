@@ -3,9 +3,17 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
+import type { SiteAdminSourceVersion } from "@/lib/site-admin/api-types";
 import type { AccessMode } from "@/lib/shared/access";
 
 export const INITIAL_RENDER_LIMIT = 180;
+
+const EMPTY_SOURCE_VERSION: SiteAdminSourceVersion = {
+  branchSha: "",
+  siteConfigSha: "",
+  protectedRoutesSha: "",
+  routesManifestSha: "",
+};
 
 type AccessKind = AccessMode;
 type FilterKind = "all" | "nav" | "overrides";
@@ -68,6 +76,7 @@ export function createRouteExplorerInitialState(): RouteExplorerState {
     q: "",
     filter: "all",
     cfg: {
+      sourceVersion: EMPTY_SOURCE_VERSION,
       overrides: {},
       protectedByPageId: {},
     },

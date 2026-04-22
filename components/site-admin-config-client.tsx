@@ -3,22 +3,26 @@
 import { SiteAdminNavSection } from "@/components/site-admin/config/nav-section";
 import { SiteAdminSettingsForm } from "@/components/site-admin/config/settings-form";
 import { useSiteAdminConfigData } from "@/components/site-admin/config/use-config-data";
+import { SiteAdminEditorStatusBar } from "@/components/site-admin/editor-status-bar";
 
 export default function SiteAdminConfigClient() {
   const {
     busy,
     err,
+    status,
+    conflictLocked,
     openNav,
     draftSettings,
     navDraft,
     navByGroup,
-    setDraftSettings,
+    updateDraftSettings,
     saveSettings,
     updateNavDraftField,
     clearNavDraft,
     toggleOpenNav,
     saveNavRow,
     addNavRow,
+    loadLatest,
   } = useSiteAdminConfigData();
 
   return (
@@ -26,9 +30,16 @@ export default function SiteAdminConfigClient() {
       <section>
         <h2 className="notion-heading notion-semantic-string">Config</h2>
         <p className="notion-text notion-text__content notion-semantic-string">
-          Edits here write to your site settings. Changes take effect after you click Deploy.
+          Save writes structured source to GitHub main. Deploy publishes those saved changes to the live site.
         </p>
       </section>
+
+      <SiteAdminEditorStatusBar
+        status={status}
+        busy={busy}
+        canReload={conflictLocked}
+        onReload={() => void loadLatest()}
+      />
 
       {err ? <div className="routes-explorer__error">{err}</div> : null}
 
@@ -36,8 +47,8 @@ export default function SiteAdminConfigClient() {
         <h3 className="notion-heading notion-semantic-string">Site Settings</h3>
         <SiteAdminSettingsForm
           draftSettings={draftSettings}
-          busy={busy}
-          setDraftSettings={setDraftSettings}
+          busy={busy || conflictLocked}
+          setDraftSettings={updateDraftSettings}
           onSaveSettings={saveSettings}
         />
       </section>
@@ -48,7 +59,7 @@ export default function SiteAdminConfigClient() {
           title="top"
           group="top"
           rows={navByGroup.top}
-          busy={busy}
+          busy={busy || conflictLocked}
           openNav={openNav}
           navDraft={navDraft}
           onAddRow={addNavRow}
@@ -61,7 +72,7 @@ export default function SiteAdminConfigClient() {
           title="more"
           group="more"
           rows={navByGroup.more}
-          busy={busy}
+          busy={busy || conflictLocked}
           openNav={openNav}
           navDraft={navDraft}
           onAddRow={addNavRow}

@@ -11,13 +11,14 @@ import type {
   SiteAdminConfigGetResult,
   SiteAdminConfigPostPayload,
   SiteAdminConfigPostResult,
+  SiteAdminSourceVersion,
 } from "./api-types.ts";
 import type { NavItemRow, SiteSettings } from "./types.ts";
 
 function isSiteAdminConfigGetSuccess(
   x: unknown,
-): x is { settings: SiteSettings | null; nav: NavItemRow[] } {
-  return isRecord(x) && "settings" in x && Array.isArray(x.nav);
+): x is { settings: SiteSettings | null; nav: NavItemRow[]; sourceVersion: unknown } {
+  return isRecord(x) && "settings" in x && Array.isArray(x.nav) && "sourceVersion" in x;
 }
 
 export function isSiteAdminConfigGetOk(v: SiteAdminConfigGetResult): v is SiteAdminConfigGetPayload {
@@ -42,6 +43,16 @@ export function parseCreatedNavRow(v: unknown): NavItemRow | null {
   };
 }
 
+function parseSourceVersion(value: unknown): SiteAdminSourceVersion | null {
+  if (!isRecord(value)) return null;
+  return {
+    branchSha: toStringValue(value.branchSha),
+    siteConfigSha: toStringValue(value.siteConfigSha),
+    protectedRoutesSha: toStringValue(value.protectedRoutesSha),
+    routesManifestSha: toStringValue(value.routesManifestSha),
+  };
+}
+
 export function parseSiteAdminConfigGet(v: unknown): SiteAdminConfigGetResult | null {
   const ack = asApiAck(v);
   if (!ack) return null;
@@ -54,10 +65,13 @@ export function parseSiteAdminConfigGet(v: unknown): SiteAdminConfigGetResult | 
   }
   const payload = unwrapApiData(v);
   if (!isSiteAdminConfigGetSuccess(payload)) return null;
+  const sourceVersion = parseSourceVersion(payload.sourceVersion);
+  if (!sourceVersion) return null;
   return {
     ok: true,
     settings: payload.settings,
     nav: payload.nav,
+    sourceVersion,
   };
 }
 
@@ -72,7 +86,9 @@ export function parseSiteAdminConfigPost(v: unknown): SiteAdminConfigPostResult 
     };
   }
   const payload = unwrapApiData(v);
-  if (!isRecord(payload)) return { ok: true };
+  if (!isRecord(payload)) return null;
+  const sourceVersion = parseSourceVersion(payload.sourceVersion);
+  if (!sourceVersion) return null;
   const created = parseCreatedNavRow(payload.created);
-  return created ? { ok: true, created } : { ok: true };
+  return created ? { ok: true, created, sourceVersion } : { ok: true, sourceVersion };
 }

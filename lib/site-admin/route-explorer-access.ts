@@ -4,12 +4,21 @@ import { normalizeProtectedAccessMode } from "../shared/access.ts";
 import { HIERARCHY_TRAVERSAL_LIMIT } from "../shared/hierarchy.ts";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 import type { AdminConfig, EffectiveAccess, RouteTree } from "./route-explorer-types.ts";
+import type { SiteAdminSourceVersion } from "./api-types.ts";
+
+const EMPTY_SOURCE_VERSION: SiteAdminSourceVersion = {
+  branchSha: "",
+  siteConfigSha: "",
+  protectedRoutesSha: "",
+  routesManifestSha: "",
+};
 
 export function parseAdminRoutesPayload(
   payload: unknown,
   items: RouteManifestItem[],
 ): AdminConfig {
   const raw = isRecord(payload) ? payload : {};
+  const sourceVersionRaw = isRecord(raw.sourceVersion) ? raw.sourceVersion : {};
   const overridesInput = asRecordArray(raw.overrides);
   const protectedInput = asRecordArray(raw.protectedRoutes);
 
@@ -45,7 +54,18 @@ export function parseAdminRoutesPayload(
     if (mapped) protectedByPageId[mapped] = { auth, mode, path: p };
   }
 
-  return { overrides, protectedByPageId };
+  return {
+    sourceVersion: {
+      branchSha: readTrimmedString(sourceVersionRaw.branchSha) || EMPTY_SOURCE_VERSION.branchSha,
+      siteConfigSha: readTrimmedString(sourceVersionRaw.siteConfigSha) || EMPTY_SOURCE_VERSION.siteConfigSha,
+      protectedRoutesSha:
+        readTrimmedString(sourceVersionRaw.protectedRoutesSha) || EMPTY_SOURCE_VERSION.protectedRoutesSha,
+      routesManifestSha:
+        readTrimmedString(sourceVersionRaw.routesManifestSha) || EMPTY_SOURCE_VERSION.routesManifestSha,
+    },
+    overrides,
+    protectedByPageId,
+  };
 }
 
 export function createEffectiveAccessFinder({

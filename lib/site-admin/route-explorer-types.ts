@@ -1,4 +1,5 @@
 import type { RouteManifestItem } from "../routes-manifest";
+import type { SiteAdminSourceVersion } from "./api-types.ts";
 import type { ProtectedAccessMode } from "../shared/access.ts";
 
 export type RouteTreeItem = RouteManifestItem & {
@@ -19,6 +20,7 @@ export type AdminProtectedRule = {
 };
 
 export type AdminConfig = {
+  sourceVersion: SiteAdminSourceVersion;
   overrides: Record<string, string>; // pageId -> routePath
   protectedByPageId: Record<string, AdminProtectedRule>; // pageId -> protection rule
 };

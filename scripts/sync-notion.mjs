@@ -16,6 +16,7 @@
  */
 
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import katex from "katex";
 
 import { DEFAULT_SITE_CONFIG } from "../lib/shared/default-site-config.mjs";
@@ -91,7 +92,7 @@ function renderKatex(expression, { displayMode }) {
   }
 }
 
-async function main() {
+export async function syncNotionContent() {
   const adminPageId = compactId(process.env.NOTION_SITE_ADMIN_PAGE_ID);
   if (!adminPageId) {
     throw new Error(
@@ -263,6 +264,7 @@ async function main() {
   const homeRouteNode = allPages.find((p) => p?.routePath === "/") || null;
   const syncMeta = {
     syncedAt: new Date().toISOString(),
+    contentSource: "notion",
     notionVersion: NOTION_VERSION,
     adminPageId,
     rootPageId,
@@ -317,7 +319,15 @@ async function main() {
   console.log("[sync:notion] Done.");
 }
 
-main().catch((err) => {
-  console.error(err?.stack || String(err));
-  process.exitCode = 1;
-});
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+}
+
+if (isMainModule()) {
+  syncNotionContent().catch((err) => {
+    console.error(err?.stack || String(err));
+    process.exitCode = 1;
+  });
+}

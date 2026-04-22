@@ -164,6 +164,9 @@ export function deriveReadinessState(payload: SiteAdminStatusPayload | null): Re
   if (!env.hasFlagsSecret) parts.push("Missing FLAGS_SECRET");
   else okParts.push("Flags secret");
 
+  if (payload?.source?.error) parts.push(`Source store: ${payload.source.error}`);
+  else if (payload?.source?.storeKind === "github") okParts.push("GitHub source");
+
   return { ok: parts.length === 0, reason: parts.join("; "), okHint: okParts.join(", ") };
 }
 
@@ -179,6 +182,7 @@ export function deriveStatusBanner(
   if (!stale.ok) parts.push(stale.reason ? `Freshness: ${stale.reason}` : "Freshness: stale");
   if (!generated.ok) parts.push(generated.reason ? `Generated: ${generated.reason}` : "Generated: mismatch");
   if (!readiness.ok) parts.push(readiness.reason ? `Admin: ${readiness.reason}` : "Admin: needs setup");
+  if (payload.source.pendingDeploy) parts.push("Source is ahead of this deployment");
   if (payload?.preflight) {
     const pre = payload.preflight;
     const preParts: string[] = [];
@@ -193,7 +197,9 @@ export function deriveStatusBanner(
     return {
       kind: "ok",
       title: "Up-to-date",
-      detail: "This deployment looks consistent with the latest content + config.",
+      detail: payload.source.pendingDeploy
+        ? "Source changes are saved but not deployed yet."
+        : "This deployment looks consistent with the latest content + config.",
     };
   }
   return {

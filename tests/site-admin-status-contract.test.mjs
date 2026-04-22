@@ -14,6 +14,7 @@ function makeValidPayload(overrides = {}) {
   return {
     ok: true,
     env: {
+      contentSource: "filesystem",
       nodeEnv: "production",
       isVercel: true,
       vercelRegion: "iad1",
@@ -33,6 +34,14 @@ function makeValidPayload(overrides = {}) {
       commitMessage: "msg",
       deploymentId: "dep",
       vercelUrl: "example.vercel.app",
+    },
+    source: {
+      storeKind: "github",
+      repo: "jinnkunn/jinnkunn.com",
+      branch: "main",
+      headSha: "deadbeefdeadbeef",
+      headCommittedAt: "2026-02-01T00:00:01.000Z",
+      pendingDeploy: true,
     },
     content: {
       siteName: "Site",
@@ -112,6 +121,7 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
     data: {
       env: payload.env,
       build: payload.build,
+      source: payload.source,
       content: payload.content,
       files: payload.files,
       notion: payload.notion,
@@ -124,6 +134,7 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
   assert.equal(parsed.env.isVercel, true);
   assert.equal(parsed.content.nav.top, 4);
   assert.equal(parsed.files.notionSyncCache.count, 12);
+  assert.equal(parsed.source.pendingDeploy, true);
 });
 
 test("site-admin-status-contract: preserves api error payload", () => {
@@ -157,6 +168,10 @@ test("site-admin-status-contract: accepts nullable optional sections", () => {
         notionEditedMs: null,
         generatedLatestMs: null,
       },
+      source: {
+        ...makeValidPayload().source,
+        error: "GitHub source unavailable",
+      },
       notion: {
         adminPage: null,
         rootPage: {
@@ -173,4 +188,5 @@ test("site-admin-status-contract: accepts nullable optional sections", () => {
   assert.equal(parsed.content.syncMeta, null);
   assert.equal(parsed.notion.adminPage, null);
   assert.equal(parsed.notion.rootPage?.title, "Home");
+  assert.equal(parsed.source.error, "GitHub source unavailable");
 });

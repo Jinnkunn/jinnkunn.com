@@ -5,6 +5,10 @@
   gap: 22px;
 }
 
+.site-admin-config .site-admin-editor-status {
+  margin-top: -4px;
+}
+
 .site-admin-config__section {
   display: flex;
   flex-direction: column;

@@ -99,7 +99,7 @@ function asNavItems(x: unknown): NavItem[] | undefined {
   return out.length ? out : undefined;
 }
 
-function normalizeConfig(input: unknown): SiteConfig {
+export function normalizeSiteConfigInput(input: unknown): SiteConfig {
   if (!isObject(input)) return DEFAULT_CONFIG;
 
   const cfg: SiteConfig = structuredClone(DEFAULT_CONFIG);
@@ -154,5 +154,5 @@ function normalizeConfig(input: unknown): SiteConfig {
 export function getSiteConfig(): SiteConfig {
   const parsed = readContentJson("site-config.json");
   if (!parsed) return DEFAULT_CONFIG;
-  return normalizeConfig(parsed);
+  return normalizeSiteConfigInput(parsed);
 }

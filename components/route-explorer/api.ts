@@ -1,12 +1,14 @@
 "use client";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
-import { asApiAck } from "@/lib/client/api-guards";
 import { requestJsonOrThrow } from "@/lib/client/request-json";
+import type { SiteAdminSourceVersion } from "@/lib/site-admin/api-types";
 import type { AccessMode } from "@/lib/shared/access";
 import { parseAdminRoutesPayload, type AdminConfig } from "@/lib/site-admin/route-explorer-model";
 import {
   isSiteAdminRoutesOk,
+  isSiteAdminRoutesPostOk,
+  parseSiteAdminRoutesPostResult,
   parseSiteAdminRoutesResult,
 } from "@/lib/site-admin/routes-contract";
 
@@ -26,8 +28,12 @@ export async function fetchAdminConfig(items: RouteManifestItem[]): Promise<Admi
   return parseAdminRoutesPayload(data, items);
 }
 
-export async function postOverride(input: { pageId: string; routePath: string }) {
-  await requestJsonOrThrow(
+export async function postOverride(input: {
+  pageId: string;
+  routePath: string;
+  expectedSiteConfigSha: string;
+}): Promise<SiteAdminSourceVersion> {
+  const data = await requestJsonOrThrow(
     "/api/site-admin/routes",
     {
       method: "POST",
@@ -36,11 +42,13 @@ export async function postOverride(input: { pageId: string; routePath: string })
         kind: "override",
         pageId: input.pageId,
         routePath: input.routePath.trim(),
+        expectedSiteConfigSha: input.expectedSiteConfigSha,
       }),
     },
-    asApiAck,
-    { isOk: isApiOkResult },
+    parseSiteAdminRoutesPostResult,
+    { isOk: isSiteAdminRoutesPostOk },
   );
+  return data.sourceVersion;
 }
 
 export async function postAccess(input: {
@@ -48,8 +56,9 @@ export async function postAccess(input: {
   path: string;
   access: AccessMode;
   password?: string;
-}) {
-  await requestJsonOrThrow(
+  expectedProtectedRoutesSha: string;
+}): Promise<SiteAdminSourceVersion> {
+  const data = await requestJsonOrThrow(
     "/api/site-admin/routes",
     {
       method: "POST",
@@ -60,9 +69,11 @@ export async function postAccess(input: {
         path: input.path,
         auth: input.access,
         password: String(input.password || "").trim(),
+        expectedProtectedRoutesSha: input.expectedProtectedRoutesSha,
       }),
     },
-    asApiAck,
-    { isOk: isApiOkResult },
+    parseSiteAdminRoutesPostResult,
+    { isOk: isSiteAdminRoutesPostOk },
   );
+  return data.sourceVersion;
 }

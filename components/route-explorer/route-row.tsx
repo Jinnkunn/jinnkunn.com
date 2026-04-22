@@ -6,53 +6,60 @@ import { useMemo } from "react";
 import type {
   RouteTreeItem,
   EffectiveAccess,
-  AdminConfig,
   OverrideConflict,
 } from "@/lib/site-admin/route-explorer-model";
 import type { AccessMode } from "@/lib/shared/access";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
+import { normalizeRoutePath } from "@/lib/shared/route-utils";
 
 import { RouteRowAdminPanel } from "./route-row-admin-panel";
 import { RouteRowTop } from "./route-row-top";
 
 export function RouteRow({
   it,
-  cfg,
   collapsed,
   adminOpen,
   busy,
-  accessChoice,
   effectiveAccess,
   inheritedProtected,
   directProtected,
   overrideValue,
+  overrideDirty,
   overridePending,
+  accessPending,
   overrideConflict,
-  getOverrideConflict,
+  selectedAccess,
+  passwordValue,
+  conflictLocked,
   onToggleCollapsed,
   onToggleAdmin,
+  onSetOverrideValue,
   onSetAccessChoice,
+  onSetPasswordValue,
   onSaveOverride,
   onSaveAccess,
 }: {
   it: RouteTreeItem;
-  cfg: AdminConfig;
   collapsed: Record<string, boolean>;
   adminOpen: boolean;
   busy: boolean;
-  accessChoice: Record<string, AccessMode>;
   effectiveAccess: EffectiveAccess | null;
   inheritedProtected: boolean;
   directProtected: boolean;
   overrideValue: string;
+  overrideDirty: boolean;
   overridePending: boolean;
+  accessPending: boolean;
   overrideConflict: OverrideConflict | null;
-  getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
+  selectedAccess: AccessMode;
+  passwordValue: string;
+  conflictLocked: boolean;
   onToggleCollapsed: (id: string) => void;
   onToggleAdmin: (id: string) => void;
+  onSetOverrideValue: (id: string, value: string) => void;
   onSetAccessChoice: (id: string, v: AccessMode) => void;
-  onSaveOverride: (id: string, v: string) => void;
-  onSaveAccess: (input: { pageId: string; path: string; access: AccessMode; password?: string }) => void;
+  onSetPasswordValue: (id: string, value: string) => void;
+  onSaveOverride: (id: string) => void;
+  onSaveAccess: (input: { pageId: string; path: string }) => void;
 }) {
   const p = normalizeRoutePath(it.routePath);
   const isHome = p === "/";
@@ -63,16 +70,6 @@ export function RouteRow({
   const protectedState = directProtected ? "direct" : inheritedProtected ? "inherited" : "0";
 
   const indent = Math.min(56, it.depth * 16);
-
-  const directAccess: AccessMode = directProtected
-    ? cfg.protectedByPageId[compactId(it.id)]?.auth === "github"
-      ? "github"
-      : "password"
-    : "public";
-
-  const selectedAccess =
-    accessChoice[it.id] ||
-    (inheritedProtected ? (match?.auth === "github" ? "github" : "password") : directAccess);
 
   // Keep expensive DOM lookups out of event handlers; re-used within panel actions.
   const panelKey = useMemo(() => `ov:${it.id}:${overrideValue}`, [it.id, overrideValue]);
@@ -96,6 +93,7 @@ export function RouteRow({
         isHome={isHome}
         adminOpen={adminOpen}
         overridePending={overridePending}
+        accessPending={accessPending}
         overrideConflict={overrideConflict}
         directProtected={directProtected}
         inheritedProtected={inheritedProtected}
@@ -109,13 +107,19 @@ export function RouteRow({
           key={panelKey}
           it={it}
           overrideValue={overrideValue}
+          overrideDirty={overrideDirty}
           selectedAccess={selectedAccess}
+          passwordValue={passwordValue}
+          accessDirty={accessPending}
           inheritedProtected={inheritedProtected}
           effectiveProtected={effectiveProtected}
           protectedSource={protectedSource}
           busy={busy}
-          getOverrideConflict={getOverrideConflict}
+          conflictLocked={conflictLocked}
+          overrideConflict={overrideConflict}
+          onSetOverrideValue={onSetOverrideValue}
           onSetAccessChoice={onSetAccessChoice}
+          onSetPasswordValue={onSetPasswordValue}
           onSaveOverride={onSaveOverride}
           onSaveAccess={onSaveAccess}
         />

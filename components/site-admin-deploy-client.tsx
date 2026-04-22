@@ -54,7 +54,9 @@ export default function SiteAdminDeployClient() {
           previewRes.ok ? (
             <>
               <p className="site-admin-deploy-preview__summary">
-                {previewRes.hasChanges ? "Changes detected:" : "No config or route changes detected."}{" "}
+                {previewRes.hasChanges
+                  ? "Saved source changes are waiting to be published:"
+                  : "No saved config or route changes are waiting to be published."}{" "}
                 <code className="code">{previewRes.generatedAt}</code>
               </p>
               <div className="site-admin-deploy-preview__stats">
@@ -154,7 +156,7 @@ export default function SiteAdminDeployClient() {
         <p className="notion-text notion-text__content notion-semantic-string">
           {res.ok ? (
             <>
-              Deploy triggered ({res.status}) at <code className="code">{res.triggeredAt}</code>.
+              Deploy triggered ({res.status}) at <code className="code">{res.triggeredAt}</code>. Refresh status after Vercel finishes to confirm production has caught up with source.
             </>
           ) : (
             <span className="highlighted-color color-red">{res.error}</span>

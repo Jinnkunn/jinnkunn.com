@@ -13,10 +13,20 @@ import {
   getNotionSyncCacheDir,
   listRawHtmlFiles,
 } from "@/lib/server/content-files";
+import {
+  filesystemProtectedRoutesFile,
+  filesystemRoutesManifestFile,
+  filesystemSiteConfigFile,
+} from "@/lib/server/filesystem-source";
+import {
+  getSiteAdminSourceStore,
+  resolveSiteAdminStorageKind,
+} from "@/lib/server/site-admin-source-store";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { parseAllowedAdminUsers } from "@/lib/site-admin-auth";
+import { resolveContentSourceKind } from "@/lib/shared/content-source";
 import { compactId, dashify32, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
@@ -54,6 +64,57 @@ function hasEffectiveFlagsSecret(): boolean {
   if (explicit) return true;
   const fallback = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
   return Boolean(fallback);
+}
+
+function latestFilesystemSourceMtime(): number {
+  const files = [
+    filesystemSiteConfigFile(),
+    filesystemRoutesManifestFile(),
+    filesystemProtectedRoutesFile(),
+  ];
+  const dirs = [
+    path.join(process.cwd(), "content", "filesystem", "raw"),
+    path.join(process.cwd(), "content", "filesystem", "pages"),
+  ];
+
+  const mtimes: number[] = [];
+  for (const file of files) {
+    try {
+      const st = fs.statSync(file);
+      if (st.isFile()) mtimes.push(st.mtimeMs);
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const dir of dirs) {
+    const stack = [dir];
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current) continue;
+      let ents: fs.Dirent[] = [];
+      try {
+        ents = fs.readdirSync(current, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const ent of ents) {
+        const abs = path.join(current, ent.name);
+        if (ent.isDirectory()) {
+          stack.push(abs);
+          continue;
+        }
+        if (!ent.isFile()) continue;
+        try {
+          mtimes.push(fs.statSync(abs).mtimeMs);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  return maxFinite(mtimes);
 }
 
 async function fetchNotionPageMeta(pageId32: string): Promise<NotionPageMeta | null> {
@@ -211,6 +272,8 @@ function buildPreflight(input: {
 export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResponsePayload> {
   const allow = parseAllowedAdminUsers();
   const allowContent = parseAllowedContentUsers();
+  const contentSource = resolveContentSourceKind();
+  const storageKind = contentSource === "filesystem" ? resolveSiteAdminStorageKind() : "legacy-notion";
 
   const syncMeta = getSyncMeta();
   const site = getSiteConfig();
@@ -246,18 +309,20 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     rootPage: null,
   };
 
-  // Best-effort: show Notion edit timestamps so admins can tell if the deploy is stale.
-  try {
-    const adminId = String(process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim();
-    if (adminId) notion.adminPage = await fetchNotionPageMeta(adminId);
-  } catch {
-    // ignore
-  }
-  try {
-    const rootId = String(syncMeta?.rootPageId || "").trim();
-    if (rootId) notion.rootPage = await fetchNotionPageMeta(rootId);
-  } catch {
-    // ignore
+  if (contentSource === "notion") {
+    // Best-effort: show Notion edit timestamps so admins can tell if the deploy is stale.
+    try {
+      const adminId = String(process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim();
+      if (adminId) notion.adminPage = await fetchNotionPageMeta(adminId);
+    } catch {
+      // ignore
+    }
+    try {
+      const rootId = String(syncMeta?.rootPageId || "").trim();
+      if (rootId) notion.rootPage = await fetchNotionPageMeta(rootId);
+    } catch {
+      // ignore
+    }
   }
 
   const generatedLatestMs = maxFinite([
@@ -273,16 +338,57 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     notion.adminPage?.lastEdited ? parseIsoMs(notion.adminPage.lastEdited) : NaN,
     notion.rootPage?.lastEdited ? parseIsoMs(notion.rootPage.lastEdited) : NaN,
   ]);
+  let source = {
+    storeKind: storageKind,
+    repo: "",
+    branch: storageKind === "local" ? "local" : "",
+    headSha: "",
+    headCommittedAt: "",
+    pendingDeploy: false,
+    error: "",
+  };
+  let sourceLatestMs =
+    contentSource === "filesystem" ? latestFilesystemSourceMtime() : notionLatestEditedMs;
+
+  if (contentSource === "filesystem") {
+    try {
+      const snapshot = await getSiteAdminSourceStore().getSnapshot();
+      source = {
+        storeKind: snapshot.source.storeKind,
+        repo: snapshot.source.repo,
+        branch: snapshot.source.branch,
+        headSha: snapshot.source.headSha,
+        headCommittedAt: snapshot.source.headCommittedAt,
+        pendingDeploy: Boolean(snapshot.source.headSha && commitSha && snapshot.source.headSha !== commitSha),
+        error: "",
+      };
+      const headCommittedMs = parseIsoMs(snapshot.source.headCommittedAt);
+      if (Number.isFinite(headCommittedMs)) sourceLatestMs = headCommittedMs;
+    } catch (e: unknown) {
+      source = {
+        storeKind: storageKind,
+        repo: String(process.env.SITE_ADMIN_REPO_OWNER || "").trim() && String(process.env.SITE_ADMIN_REPO_NAME || "").trim()
+          ? `${String(process.env.SITE_ADMIN_REPO_OWNER || "").trim()}/${String(process.env.SITE_ADMIN_REPO_NAME || "").trim()}`
+          : "",
+        branch: String(process.env.SITE_ADMIN_REPO_BRANCH || "main").trim() || "main",
+        headSha: "",
+        headCommittedAt: "",
+        pendingDeploy: false,
+        error: e instanceof Error ? e.message : String(e || ""),
+      };
+    }
+  }
 
   const effectiveSyncMs = Number.isFinite(syncedAtMs) ? syncedAtMs : generatedLatestMs;
   const stale =
-    Number.isFinite(notionLatestEditedMs) && Number.isFinite(effectiveSyncMs)
-      ? notionLatestEditedMs > effectiveSyncMs + 3_000
+    Number.isFinite(sourceLatestMs) && Number.isFinite(effectiveSyncMs)
+      ? sourceLatestMs > effectiveSyncMs + 3_000
       : null;
   const preflight = buildPreflight({ manifest, site });
 
   return {
     env: {
+      contentSource,
       nodeEnv: process.env.NODE_ENV || "",
       isVercel: Boolean(process.env.VERCEL),
       vercelRegion: process.env.VERCEL_REGION || "",
@@ -303,6 +409,15 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       deploymentId: (process.env.VERCEL_DEPLOYMENT_ID || "").trim(),
       vercelUrl: (process.env.VERCEL_URL || "").trim(),
     },
+    source: {
+      storeKind: source.storeKind,
+      repo: source.repo,
+      branch: source.branch,
+      headSha: source.headSha,
+      headCommittedAt: source.headCommittedAt,
+      pendingDeploy: source.pendingDeploy,
+      ...(source.error ? { error: source.error } : {}),
+    },
     content: {
       siteName: site.siteName,
       nav: {
@@ -318,7 +433,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     freshness: {
       stale,
       syncMs: Number.isFinite(effectiveSyncMs) ? effectiveSyncMs : null,
-      notionEditedMs: Number.isFinite(notionLatestEditedMs) ? notionLatestEditedMs : null,
+      notionEditedMs: Number.isFinite(sourceLatestMs) ? sourceLatestMs : null,
       generatedLatestMs: Number.isFinite(generatedLatestMs) ? generatedLatestMs : null,
     },
     files,

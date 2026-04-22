@@ -2,6 +2,7 @@ import { readContentJson } from "@/lib/server/content-json";
 
 export type SyncMeta = {
   syncedAt: string;
+  contentSource?: string;
   notionVersion?: string;
   adminPageId?: string;
   rootPageId?: string;
@@ -29,6 +30,7 @@ function normalizeSyncMeta(input: unknown): SyncMeta | null {
 
   return {
     syncedAt,
+    contentSource: asString(o.contentSource),
     notionVersion: asString(o.notionVersion),
     adminPageId: asString(o.adminPageId),
     rootPageId: asString(o.rootPageId),

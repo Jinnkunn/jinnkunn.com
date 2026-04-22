@@ -23,15 +23,16 @@ export type SiteAdminNavPatch = Partial<Omit<NavItemRow, "rowId">>;
 export type SiteAdminNavCreateInput = Omit<NavItemRow, "rowId">;
 
 export type SiteAdminConfigCommand =
-  | { kind: "settings"; rowId: string; patch: SiteAdminSettingsPatch }
-  | { kind: "nav-update"; rowId: string; patch: SiteAdminNavPatch }
-  | { kind: "nav-create"; input: SiteAdminNavCreateInput };
+  | { kind: "settings"; rowId: string; expectedSiteConfigSha: string; patch: SiteAdminSettingsPatch }
+  | { kind: "nav-update"; rowId: string; expectedSiteConfigSha: string; patch: SiteAdminNavPatch }
+  | { kind: "nav-create"; expectedSiteConfigSha: string; input: SiteAdminNavCreateInput };
 
 const configCommandSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("settings"),
       rowId: z.unknown().optional(),
+      expectedSiteConfigSha: z.unknown().optional(),
       patch: z.record(z.unknown()).optional(),
     })
     .passthrough(),
@@ -39,12 +40,14 @@ const configCommandSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("nav-update"),
       rowId: z.unknown().optional(),
+      expectedSiteConfigSha: z.unknown().optional(),
       patch: z.record(z.unknown()).optional(),
     })
     .passthrough(),
   z
     .object({
       kind: z.literal("nav-create"),
+      expectedSiteConfigSha: z.unknown().optional(),
       input: z.record(z.unknown()).optional(),
     })
     .passthrough(),
@@ -86,8 +89,9 @@ export function parseSiteAdminConfigCommand(
   const kind = command.kind;
 
   if (kind === "settings") {
-    const rowId = compactId(asString(command.rowId));
+    const rowId = asString(command.rowId).slice(0, 160);
     if (!rowId) return bad("Missing rowId", 400);
+    const expectedSiteConfigSha = asString(command.expectedSiteConfigSha).slice(0, 200);
 
     const patch = isObject(command.patch) ? command.patch : {};
     const outPatch: SiteAdminSettingsPatch = {};
@@ -158,12 +162,13 @@ export function parseSiteAdminConfigCommand(
       outPatch.homePageId = getString(patch, "homePageId", { maxLen: 64 });
     }
 
-    return { ok: true, value: { kind, rowId, patch: outPatch } };
+    return { ok: true, value: { kind, rowId, expectedSiteConfigSha, patch: outPatch } };
   }
 
   if (kind === "nav-update") {
-    const rowId = compactId(asString(command.rowId));
+    const rowId = asString(command.rowId).slice(0, 160);
     if (!rowId) return bad("Missing rowId", 400);
+    const expectedSiteConfigSha = asString(command.expectedSiteConfigSha).slice(0, 200);
 
     const patch = isObject(command.patch) ? command.patch : {};
     const outPatch: SiteAdminNavPatch = {};
@@ -185,14 +190,16 @@ export function parseSiteAdminConfigCommand(
       if (enabled !== null) outPatch.enabled = enabled;
     }
 
-    return { ok: true, value: { kind, rowId, patch: outPatch } };
+    return { ok: true, value: { kind, rowId, expectedSiteConfigSha, patch: outPatch } };
   }
 
   const input = isObject(command.input) ? command.input : {};
+  const expectedSiteConfigSha = asString(command.expectedSiteConfigSha).slice(0, 200);
   return {
     ok: true,
     value: {
       kind,
+      expectedSiteConfigSha,
       input: {
         label: getString(input, "label", { maxLen: 120 }),
         href: getString(input, "href", { maxLen: 300 }),

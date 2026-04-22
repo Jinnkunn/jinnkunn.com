@@ -2,7 +2,10 @@ import type {
   SiteAdminProtectedRoute,
   SiteAdminRouteOverride,
   SiteAdminRoutesGetPayload,
+  SiteAdminRoutesPostPayload,
+  SiteAdminRoutesPostResult,
   SiteAdminRoutesResult,
+  SiteAdminSourceVersion,
 } from "./api-types";
 import { parseProtectedAccessMode } from "../shared/access.ts";
 import { toStringValue } from "./contract-helpers.ts";
@@ -47,6 +50,16 @@ function parseProtectedRoute(v: unknown): SiteAdminProtectedRoute | null {
   };
 }
 
+function parseSourceVersion(value: unknown): SiteAdminSourceVersion | null {
+  if (!isRecord(value)) return null;
+  return {
+    branchSha: toStringValue(value.branchSha),
+    siteConfigSha: toStringValue(value.siteConfigSha),
+    protectedRoutesSha: toStringValue(value.protectedRoutesSha),
+    routesManifestSha: toStringValue(value.routesManifestSha),
+  };
+}
+
 export function isSiteAdminRoutesOk(v: SiteAdminRoutesResult): v is SiteAdminRoutesGetPayload {
   return v.ok;
 }
@@ -66,11 +79,12 @@ export function parseSiteAdminRoutesResult(x: unknown): SiteAdminRoutesResult | 
   if (!isRecord(payload)) return null;
 
   const adminPageId = toStringValue(payload.adminPageId).trim();
-  if (!adminPageId || !isRecord(payload.databases)) return null;
+  if (!isRecord(payload.databases)) return null;
+  const sourceVersion = parseSourceVersion(payload.sourceVersion);
+  if (!sourceVersion) return null;
 
   const overridesDbId = toStringValue(payload.databases.overridesDbId).trim();
   const protectedDbId = toStringValue(payload.databases.protectedDbId).trim();
-  if (!overridesDbId || !protectedDbId) return null;
 
   const overrides = Array.isArray(payload.overrides)
     ? payload.overrides.map(parseRouteOverride).filter((it): it is SiteAdminRouteOverride => Boolean(it))
@@ -85,11 +99,43 @@ export function parseSiteAdminRoutesResult(x: unknown): SiteAdminRoutesResult | 
   return {
     ok: true,
     adminPageId,
+    sourceVersion,
     databases: {
       overridesDbId,
       protectedDbId,
     },
     overrides,
     protectedRoutes,
+  };
+}
+
+export function isSiteAdminRoutesPostOk(v: SiteAdminRoutesPostResult): v is SiteAdminRoutesPostPayload {
+  return v.ok;
+}
+
+export function parseSiteAdminRoutesPostResult(x: unknown): SiteAdminRoutesPostResult | null {
+  const ack = asApiAck(x);
+  if (!ack) return null;
+  if (!ack.ok) {
+    return {
+      ok: false,
+      error: readApiErrorMessage(x) || ack.error,
+      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+    };
+  }
+
+  const payload = unwrapApiData(x);
+  if (!isRecord(payload)) return null;
+  const sourceVersion = parseSourceVersion(payload.sourceVersion);
+  if (!sourceVersion) return null;
+  const override = payload.override === undefined ? undefined : parseRouteOverride(payload.override);
+  if (payload.override !== undefined && !override) return null;
+  const protectedRoute = payload.protected === undefined ? undefined : parseProtectedRoute(payload.protected);
+  if (payload.protected !== undefined && !protectedRoute) return null;
+  return {
+    ok: true,
+    ...(override ? { override } : {}),
+    ...(protectedRoute ? { protected: protectedRoute } : {}),
+    sourceVersion,
   };
 }

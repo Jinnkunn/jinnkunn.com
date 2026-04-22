@@ -15,6 +15,7 @@ test("site-admin-request routes: override normalizes route path", () => {
     kind: "override",
     pageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     routePath: "/news/latest",
+    expectedSiteConfigSha: "",
   });
 });
 
@@ -45,6 +46,7 @@ test("site-admin-request routes: protected normalizes path and defaults to passw
     path: "/teaching/archive",
     authKind: "password",
     password: "",
+    expectedProtectedRoutesSha: "",
   });
 });
 

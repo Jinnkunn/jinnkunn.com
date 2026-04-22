@@ -4,46 +4,51 @@
   "seo": {
     "title": "Jinkun Chen",
     "description": "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
-    "favicon": "/assets/favicon.png"
+    "favicon": "/assets/favicon.png",
+    "ogImage": "/assets/profile.png",
+    "pageOverrides": {}
   },
   "integrations": {
     "googleAnalyticsId": ""
   },
+  "security": {
+    "contentGithubUsers": []
+  },
   "nav": {
     "top": [
       {
-        "href": "/",
-        "label": "Home"
+        "label": "Home",
+        "href": "/"
       },
       {
-        "href": "/news",
-        "label": "News"
+        "label": "News",
+        "href": "/news"
       },
       {
-        "href": "/publications",
-        "label": "Publications"
+        "label": "Publications",
+        "href": "/publications"
       },
       {
-        "href": "/works",
-        "label": "Works"
+        "label": "Works",
+        "href": "/works"
       },
       {
-        "href": "/blog",
-        "label": "Blog"
+        "label": "Blog",
+        "href": "/blog"
       }
     ],
     "more": [
       {
-        "href": "/teaching",
-        "label": "Teaching"
+        "label": "Teaching",
+        "href": "/teaching"
       },
       {
-        "href": "/bio",
-        "label": "BIO"
+        "label": "BIO",
+        "href": "/bio"
       },
       {
-        "href": "/connect",
-        "label": "Connect"
+        "label": "Connect",
+        "href": "/connect"
       }
     ]
   },
@@ -53,6 +58,14 @@
     "routeOverrides": {
       "428aa769b98042adb1aa84daa3d62d7b": "/connect",
       "17740d70fdf5809e9d90e23f24baeb63": "/chen"
+    },
+    "sitemapExcludes": [],
+    "sitemapAutoExclude": {
+      "enabled": true,
+      "excludeSections": [],
+      "maxDepthBySection": {
+        "teaching": 5
+      }
     }
   }
 }

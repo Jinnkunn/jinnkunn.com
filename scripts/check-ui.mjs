@@ -18,17 +18,14 @@ function run(cmd, args, opts = {}) {
 async function main() {
   // A single command to keep the clone stable over time.
   // Default sequence:
-  // 1) sync raw hydrated HTML from the live Super site
+  // 1) sync content from the configured source
   // 2) audit which Notion/Super block classes are in use
   // 3) run E2E smoke checks for key interactions
   // 4) take UI snapshots for visual regression
   const skipSync = process.env.SKIP_SYNC === "1" || process.env.SKIP_SYNC === "true";
 
   if (!skipSync) {
-    const hasNotion =
-      Boolean(process.env.NOTION_TOKEN) && Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID);
-    const syncScript = hasNotion ? "sync:notion" : "sync:raw";
-    await run("npm", ["run", syncScript]);
+    await run("npm", ["run", "sync:content"]);
   } else {
     console.log("[check:ui] SKIP_SYNC enabled; skipping content sync");
   }

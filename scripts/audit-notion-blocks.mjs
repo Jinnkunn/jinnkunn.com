@@ -3,6 +3,7 @@ import path from "node:path";
 
 const RAW_DIRS = [
   path.join(process.cwd(), "content", "generated", "raw"),
+  path.join(process.cwd(), "content", "filesystem", "raw"),
   path.join(process.cwd(), "content", "raw"),
 ];
 const OUT_DIR = path.join(process.cwd(), "output", "notion-block-audit");
@@ -49,7 +50,7 @@ async function main() {
   }
   if (!existingDirs.length) {
     console.error(
-      `Missing content roots. Run \`npm run sync:notion\` (preferred) or \`npm run sync:raw\` first.`,
+      `Missing content roots. Run \`npm run sync:content\` (preferred) or \`npm run sync:raw\` first.`,
     );
     process.exit(1);
   }

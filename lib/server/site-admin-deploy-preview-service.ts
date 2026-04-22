@@ -8,6 +8,7 @@ import { canonicalizePublicRoute } from "@/lib/routes/strategy";
 import { getNotionSyncCacheDir } from "@/lib/server/content-files";
 import { loadSiteAdminConfigData } from "@/lib/server/site-admin-config-service";
 import { loadSiteAdminRouteData } from "@/lib/server/site-admin-routes-service";
+import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import { getSiteConfig } from "@/lib/site-config";
 import type { SiteAdminDeployPreviewPayload } from "@/lib/site-admin/api-types";
 import {
@@ -19,6 +20,7 @@ import {
   type DeployPreviewProtectedEntry,
   type DeployPreviewRouteEntry,
 } from "@/lib/site-admin/deploy-preview-model";
+import { resolveContentSourceKind } from "@/lib/shared/content-source";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getSyncMeta } from "@/lib/sync-meta";
 
@@ -244,12 +246,55 @@ function resolveHomePageId(liveHome: string, rootPageId: string): string {
 export async function buildSiteAdminDeployPreviewPayload(): Promise<
   Omit<SiteAdminDeployPreviewPayload, "ok">
 > {
-  const token = String(process.env.NOTION_TOKEN || "").trim();
-  if (!token) throw new Error("Missing NOTION_TOKEN");
-
   const currentRoutes = currentRouteEntries();
   const currentOverrides = currentOverrideRecord();
   const currentProtected = currentProtectedEntries();
+  const source = resolveContentSourceKind();
+
+  if (source === "filesystem") {
+    const snapshot = await getSiteAdminSourceStore().getSnapshot();
+
+    const liveRoutes = normalizeRouteEntries(
+      snapshot.routesManifest.map((row) => ({
+        pageId: compactId(row.id),
+        routePath: row.routePath,
+        title: row.title,
+      })),
+    );
+    const liveOverrides = Object.fromEntries(
+      Object.entries(snapshot.siteConfig.content?.routeOverrides || {})
+        .map(([pageId, routePath]) => [
+          compactId(pageId),
+          normalizePublicRoutePath(String(routePath || "")),
+        ])
+        .filter(([pageId, routePath]) => pageId && routePath),
+    );
+    const liveProtected = liveProtectedEntries(
+      snapshot.protectedRoutes.map((row) => ({
+        pageId: compactId(row.pageId || ""),
+        path: row.path,
+        mode: row.mode,
+        auth: row.auth === "github" ? "github" : "password",
+      })),
+    );
+
+    const diff = buildDeployPreviewDiff({
+      currentRoutes,
+      liveRoutes,
+      currentOverrides,
+      liveOverrides,
+      currentProtected,
+      liveProtected,
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      ...diff,
+    };
+  }
+
+  const token = String(process.env.NOTION_TOKEN || "").trim();
+  if (!token) throw new Error("Missing NOTION_TOKEN");
 
   const [{ settings }, routeData] = await Promise.all([
     loadSiteAdminConfigData(),
