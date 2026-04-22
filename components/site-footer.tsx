@@ -1,11 +1,11 @@
 import Image from "next/image";
-import Link from "next/link";
+import { NavItem } from "@/components/ui/nav-item";
 
 export default function SiteFooter() {
   return (
     <footer className="super-footer stack no-links no-footnote">
       <div className="super-footer__content">
-        <Link href="/" className="notion-link super-footer__logo">
+        <NavItem href="/" className="notion-link super-footer__logo">
           <div className="super-footer__logo-image">
             <Image
               alt="Logo"
@@ -19,7 +19,7 @@ export default function SiteFooter() {
               }}
             />
           </div>
-        </Link>
+        </NavItem>
 
         <div className="super-footer__icons">
           <a

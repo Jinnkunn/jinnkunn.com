@@ -1,6 +1,7 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import type { StatusViewCoreProps } from "@/components/site-admin/status/view-types";
 
 function summarize(items: string[], max = 3): string {
@@ -13,7 +14,7 @@ export function SiteAdminPreflightCard({ payload }: StatusViewCoreProps) {
   const pre = payload.preflight;
 
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Preflight</div>
       {!pre ? (
         <p className="site-admin-kv__muted" style={{ margin: 0 }}>
@@ -75,6 +76,6 @@ export function SiteAdminPreflightCard({ payload }: StatusViewCoreProps) {
           </div>
         </dl>
       )}
-    </div>
+    </Card>
   );
 }

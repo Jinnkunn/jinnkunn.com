@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { SpecialStatePage } from "@/components/special-state-page";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { StatusNotice } from "@/components/ui/status-notice";
 
 export const metadata: Metadata = {
   title: "Protected",
@@ -36,19 +38,23 @@ export default async function AuthPage({
       description="This page is access-restricted. Enter the password to continue."
       actions={
         <>
-          <button type="submit" form="state-auth-form" className="page-404__btn page-404__btn--primary">
+          <Button type="submit" form="state-auth-form" className="page-404__btn page-404__btn--primary">
             Unlock
-          </button>
-          <Link href="/" className="page-404__btn page-404__btn--ghost">
+          </Button>
+          <Button
+            href="/"
+            variant="ghost"
+            className="page-404__btn page-404__btn--ghost"
+          >
             Home
-          </Link>
+          </Button>
         </>
       }
     >
       {error ? (
-        <p className="page-state__notice page-state__notice--error">
+        <StatusNotice className="page-state__notice page-state__notice--error" tone="danger">
           Incorrect password. Please try again.
-        </p>
+        </StatusNotice>
       ) : null}
 
       <form id="state-auth-form" method="post" action="/api/site-auth" className="page-state-form">
@@ -57,7 +63,7 @@ export default async function AuthPage({
         <label htmlFor="password" className="page-state-form__label">
           Password
         </label>
-        <input
+        <Field
           id="password"
           name="password"
           type="password"
@@ -65,6 +71,7 @@ export default async function AuthPage({
           autoFocus
           autoComplete="current-password"
           className="page-state-form__input page-state-form__input--mono"
+          mono
           placeholder="Enter password"
         />
       </form>

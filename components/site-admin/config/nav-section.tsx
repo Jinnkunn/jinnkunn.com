@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { NavItemRow } from "./types";
 import { SiteAdminNavList } from "./nav-list";
 
@@ -35,12 +37,19 @@ export function SiteAdminNavSection({
   return (
     <div className={className}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span className={group === "top" ? "routes-explorer__pill routes-explorer__pill--nav" : "routes-explorer__pill"}>
+        <Badge
+          className={group === "top" ? "routes-explorer__pill routes-explorer__pill--nav" : "routes-explorer__pill"}
+        >
           {title}
-        </span>
-        <button type="button" className="site-admin-form__btn" disabled={busy} onClick={() => onAddRow(group)}>
+        </Badge>
+        <Button
+          type="button"
+          className="site-admin-form__btn"
+          disabled={busy}
+          onClick={() => onAddRow(group)}
+        >
           Add {group} item
-        </button>
+        </Button>
       </div>
 
       <SiteAdminNavList

@@ -15,7 +15,7 @@
 .level .level {
   margin: 4px 0 6px 16px;
   padding-left: 12px;
-  border-left: 1px solid rgba(55, 53, 47, 0.16);
+  border-left: 1px solid var(--ds-border-subtle);
 }
 
 .item {
@@ -37,7 +37,7 @@
 }
 
 .link:hover {
-  background: rgba(55, 53, 47, 0.08);
+  background: var(--ds-interactive-active);
 }
 
 .title {
@@ -48,7 +48,7 @@
 }
 
 .path {
-  color: rgba(55, 53, 47, 0.78);
+  color: var(--ds-text-muted);
   font-family:
     ui-monospace,
     SFMono-Regular,

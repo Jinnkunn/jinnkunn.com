@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { SpecialStatePage } from "@/components/special-state-page";
 import SiteAdminLoginClient from "@/components/site-admin-login-client";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "Site Admin Login",
@@ -25,9 +25,13 @@ export default async function SiteAdminLoginPage({
       title="Sign in required"
       description="This area is restricted to approved GitHub accounts."
       actions={
-        <Link href="/" className="page-404__btn page-404__btn--ghost">
+        <Button
+          href="/"
+          variant="ghost"
+          className="page-404__btn page-404__btn--ghost"
+        >
           Home
-        </Link>
+        </Button>
       }
     >
       <SiteAdminLoginClient nextPath={next} />

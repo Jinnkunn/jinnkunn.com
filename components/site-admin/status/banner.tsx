@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import type { StatusPayload } from "@/components/site-admin/status/types";
 import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
 import type { BannerState } from "@/lib/site-admin/status-model";
@@ -30,14 +31,14 @@ export function SiteAdminStatusBanner({
       <div className="site-admin-status__banner-detail">{banner.detail}</div>
       {banner.kind !== "ok" && payload.env.hasDeployHookUrl ? (
         <div className="site-admin-status__banner-cta">
-          <button
+          <Button
             type="button"
             className="site-admin-status__banner-button"
             onClick={onDeploy}
             disabled={deployBusy}
           >
             {deployBusy ? "Deploying..." : "Deploy"}
-          </button>
+          </Button>
           {deployRes ? (
             <span
               className={`site-admin-status__banner-feedback ${

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { CheckboxRow, Field, Textarea } from "@/components/ui/field";
 import { asString } from "./utils";
 
 export function SiteAdminFormRow({
@@ -36,8 +37,9 @@ export function SiteAdminTextFieldRow({
 }: TextFieldRowProps) {
   return (
     <SiteAdminFormRow label={label}>
-      <input
+      <Field
         className={`site-admin-form__input${mono ? " site-admin-form__input--mono" : ""}`}
+        mono={mono}
         value={asString(value)}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -63,8 +65,9 @@ export function SiteAdminTextAreaRow({
 }: TextAreaRowProps) {
   return (
     <SiteAdminFormRow label={label}>
-      <textarea
+      <Textarea
         className={`site-admin-form__textarea${mono ? " site-admin-form__textarea--mono" : ""}`}
+        mono={mono}
         value={asString(value)}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -88,14 +91,13 @@ export function SiteAdminSwitchRow({
 }: SwitchRowProps) {
   return (
     <SiteAdminFormRow label={label}>
-      <label className="site-admin-form__switch">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span>{text}</span>
-      </label>
+      <CheckboxRow
+        className="site-admin-form__switch"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      >
+        {text}
+      </CheckboxRow>
     </SiteAdminFormRow>
   );
 }
@@ -124,8 +126,9 @@ export function SiteAdminDepthGridRow({
         {fields.map((field) => (
           <label key={field.key} className="site-admin-form__depth-item">
             <span>{field.key}</span>
-            <input
+            <Field
               className="site-admin-form__input site-admin-form__input--mono"
+              mono
               inputMode="numeric"
               value={asString(field.value)}
               onChange={(e) => onChange(field.key, e.target.value)}

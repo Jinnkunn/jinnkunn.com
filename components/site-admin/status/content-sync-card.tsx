@@ -1,6 +1,7 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import { fmtIso, fmtWhen } from "@/components/site-admin/status/utils";
 import type { StatusViewCoreProps, StatusViewDerivedProps } from "@/components/site-admin/status/view-types";
 
@@ -8,7 +9,7 @@ type SiteAdminContentSyncCardProps = StatusViewCoreProps & Pick<StatusViewDerive
 
 export function SiteAdminContentSyncCard({ payload, stale, generated }: SiteAdminContentSyncCardProps) {
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Content + Sync</div>
       <dl className="site-admin-kv">
         <div className="site-admin-kv__row">
@@ -101,6 +102,6 @@ export function SiteAdminContentSyncCard({ payload, stale, generated }: SiteAdmi
           <dd>{payload.content.syncMeta?.protectedRules ?? "—"}</dd>
         </div>
       </dl>
-    </div>
+    </Card>
   );
 }

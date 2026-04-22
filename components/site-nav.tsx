@@ -1,5 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import ThemeToggle from "@/components/design-system/theme-toggle";
 import SiteNavEnhancers from "@/components/site-nav-enhancers";
+import { NavItem } from "@/components/ui/nav-item";
 import { getSiteConfig } from "@/lib/site-config";
 
 export default function SiteNav() {
@@ -38,9 +41,9 @@ export default function SiteNav() {
           >
             {topItems.map((it) => (
               <li key={it.href}>
-                <Link href={it.href} className="notion-link super-navbar__item">
+                <NavItem href={it.href} className="notion-link super-navbar__item">
                   {it.label}
-                </Link>
+                </NavItem>
               </li>
             ))}
 
@@ -75,6 +78,9 @@ export default function SiteNav() {
         </div>
 
         <div className="super-navbar__actions">
+          <Suspense fallback={null}>
+            <ThemeToggle />
+          </Suspense>
           <button
             id="search-trigger"
             type="button"
@@ -154,9 +160,9 @@ export default function SiteNav() {
             <ul className="super-navbar__list-content-column" role="none">
               {moreItems.map((it) => (
                 <li key={it.href} role="none">
-                  <Link
+                  <NavItem
                     href={it.href}
-                    role="menuitem"
+                    menuItem
                     className="notion-link super-navbar__list-item"
                   >
                     <div className="super-navbar__list-item-content">
@@ -164,7 +170,7 @@ export default function SiteNav() {
                         {it.label}
                       </div>
                     </div>
-                  </Link>
+                  </NavItem>
                 </li>
               ))}
             </ul>
@@ -191,13 +197,13 @@ export default function SiteNav() {
             <div className="super-navigation-menu__items-wrapper">
               <div className="super-navigation-menu__items">
                 {[...topItems, ...moreItems].map((it) => (
-                  <Link
+                  <NavItem
                     key={it.href}
                     href={it.href}
                     className="notion-link super-navbar__item"
                   >
                     {it.label}
-                  </Link>
+                  </NavItem>
                 ))}
               </div>
             </div>

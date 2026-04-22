@@ -1,3 +1,5 @@
+import { designThemeMeta } from "@/lib/design-system/tokens";
+
 export const dynamic = "force-static";
 
 export function GET() {
@@ -16,8 +18,8 @@ export function GET() {
       ],
       start_url: "/",
       display: "standalone",
-      background_color: "#ffffff",
-      theme_color: "#ffffff",
+      background_color: designThemeMeta.light.backgroundColor,
+      theme_color: designThemeMeta.light.themeColor,
     },
     null,
     2,

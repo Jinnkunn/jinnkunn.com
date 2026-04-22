@@ -1,12 +1,13 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import { fmtWhen } from "@/components/site-admin/status/utils";
 import type { StatusViewCoreProps } from "@/components/site-admin/status/view-types";
 
 export function SiteAdminGeneratedFilesCard({ payload }: StatusViewCoreProps) {
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Generated Files</div>
       <dl className="site-admin-kv">
         {(
@@ -40,6 +41,6 @@ export function SiteAdminGeneratedFilesCard({ payload }: StatusViewCoreProps) {
           </dd>
         </div>
       </dl>
-    </div>
+    </Card>
   );
 }

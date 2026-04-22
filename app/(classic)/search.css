@@ -38,7 +38,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 84px 16px 24px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--ds-search-backdrop);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -52,9 +52,9 @@
 .notion-search__box {
   width: min(740px, 100%);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(55, 53, 47, 0.14);
-  box-shadow: 0 16px 60px rgba(15, 15, 15, 0.14);
+  background: var(--ds-surface-elevated);
+  border: 1px solid var(--ds-border-subtle);
+  box-shadow: var(--ds-shadow-overlay);
   overflow: hidden;
 }
 
@@ -64,7 +64,7 @@
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(55, 53, 47, 0.12);
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .notion-search__filters {
@@ -73,7 +73,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(55, 53, 47, 0.1);
+  border-bottom: 1px solid var(--ds-border-subtle);
   flex-wrap: wrap;
 }
 
@@ -86,9 +86,9 @@
 
 .notion-search__pill {
   appearance: none;
-  border: 1px solid rgba(55, 53, 47, 0.14);
-  background: rgba(255, 255, 255, 0.82);
-  color: rgba(55, 53, 47, 0.78);
+  border: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-panel);
+  color: var(--ds-text-secondary);
   border-radius: 999px;
   padding: 6px 10px;
   display: inline-flex;
@@ -114,21 +114,21 @@
 }
 
 .notion-search__pill:hover {
-  background: rgba(55, 53, 47, 0.04);
-  color: rgba(55, 53, 47, 0.88);
+  background: var(--ds-interactive-hover);
+  color: var(--ds-text-primary);
   transform: translateY(-1px);
 }
 
 .notion-search__pill.is-disabled:hover {
-  background: rgba(255, 255, 255, 0.82);
-  color: rgba(55, 53, 47, 0.78);
+  background: var(--ds-surface-panel);
+  color: var(--ds-text-secondary);
   transform: none;
 }
 
 .notion-search__pill.is-active {
-  background: rgba(55, 53, 47, 0.06);
-  color: rgba(55, 53, 47, 0.92);
-  border-color: rgba(55, 53, 47, 0.22);
+  background: var(--ds-interactive-active);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-emphasis);
 }
 
 .notion-search__pill--scope {
@@ -145,15 +145,15 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-top: 1px solid rgba(55, 53, 47, 0.08);
+  border-top: 1px solid var(--ds-border-subtle);
   background: transparent;
-  color: rgba(55, 53, 47, 0.88);
+  color: var(--ds-text-primary);
   font: inherit;
   cursor: pointer;
 }
 
 .notion-search__group:hover {
-  background: rgba(55, 53, 47, 0.03);
+  background: var(--ds-surface-soft);
 }
 
 .notion-search__group-caret {
@@ -187,15 +187,15 @@
 
 .notion-search__more {
   padding: 12px 14px 14px;
-  border-top: 1px solid rgba(55, 53, 47, 0.08);
+  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .notion-search__more-btn {
   width: 100%;
   appearance: none;
-  border: 1px solid rgba(55, 53, 47, 0.14);
-  background: rgba(255, 255, 255, 0.82);
-  color: rgba(55, 53, 47, 0.88);
+  border: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-panel);
+  color: var(--ds-text-primary);
   border-radius: 12px;
   padding: 10px 12px;
   font: inherit;
@@ -205,8 +205,8 @@
 }
 
 .notion-search__more-btn:hover {
-  background: rgba(55, 53, 47, 0.04);
-  border-color: rgba(55, 53, 47, 0.22);
+  background: var(--ds-interactive-hover);
+  border-color: var(--ds-border-emphasis);
   transform: translateY(-1px);
 }
 
@@ -230,14 +230,14 @@
 }
 
 #notion-search-input::placeholder {
-  color: rgba(55, 53, 47, 0.5);
+  color: var(--ds-text-subtle);
 }
 
 .notion-search__clear {
   appearance: none;
   border: 0;
   background: transparent;
-  color: rgba(55, 53, 47, 0.6);
+  color: var(--ds-text-faint);
   cursor: pointer;
   padding: 6px;
   margin: -6px -6px -6px 0;
@@ -254,15 +254,15 @@
 }
 
 .notion-search__clear:hover {
-  background: rgba(55, 53, 47, 0.06);
-  color: rgba(55, 53, 47, 0.82);
+  background: var(--ds-interactive-hover);
+  color: var(--ds-text-primary);
 }
 
 .notion-search__close {
   appearance: none;
   border: 0;
   background: transparent;
-  color: rgba(55, 53, 47, 0.6);
+  color: var(--ds-text-faint);
   cursor: pointer;
   padding: 6px;
   margin: -6px -6px -6px 0;
@@ -274,8 +274,8 @@
 }
 
 .notion-search__close:hover {
-  background: rgba(55, 53, 47, 0.06);
-  color: rgba(55, 53, 47, 0.82);
+  background: var(--ds-interactive-hover);
+  color: var(--ds-text-primary);
 }
 
 .notion-search__result-list {
@@ -289,7 +289,7 @@
   align-items: baseline;
   justify-content: space-between;
   padding: 10px 22px 6px;
-  color: rgba(55, 53, 47, 0.55);
+  color: var(--ds-text-faint);
   font-size: 12px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -328,7 +328,7 @@
 }
 
 .notion-search__result-item:hover {
-  background: rgba(55, 53, 47, 0.06);
+  background: var(--ds-interactive-hover);
 }
 
 .notion-search__result-item * {
@@ -336,18 +336,18 @@
 }
 
 .notion-search__hl {
-  background: rgba(255, 237, 176, 0.9);
-  box-shadow: inset 0 -2px 0 rgba(201, 165, 74, 0.55);
+  background: var(--ds-search-highlight);
+  box-shadow: inset 0 -2px 0 var(--ds-warning-border);
   border-radius: 4px;
   padding: 0 2px;
 }
 
 .notion-search__result-item.is-active {
-  background: rgba(55, 53, 47, 0.08);
+  background: var(--ds-interactive-active);
 }
 
 .notion-search__result-item:focus-visible {
-  outline: 2px solid rgba(46, 170, 220, 0.65);
+  outline: 2px solid var(--ds-focus-ring);
   outline-offset: 2px;
 }
 
@@ -376,7 +376,7 @@
 
 .notion-search__result-footer {
   padding: 10px 14px;
-  border-top: 1px solid rgba(55, 53, 47, 0.12);
+  border-top: 1px solid var(--ds-border-subtle);
   font-size: 13px;
   opacity: 0.8;
   display: flex;
@@ -392,8 +392,8 @@
   height: 22px;
   padding: 0 8px;
   border-radius: 8px;
-  border: 1px solid rgba(55, 53, 47, 0.16);
-  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-surface-panel);
   font-weight: 650;
   opacity: 0.85;
 }
