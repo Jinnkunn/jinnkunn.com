@@ -5,6 +5,15 @@ import { chromium } from "playwright-core";
 
 const OUT_ROOT = path.join(process.cwd(), "output", "ui-smoke");
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const BLOG_THEME_PROBE_PATH = "/blog";
+const BLOG_STABLE_POST =
+  "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities";
+const EMBED_POST =
+  "/blog/list/do-language-model-embeddings-form-an-approximate-abelian-group";
+const REFERENCES_POST =
+  "/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models";
+const SCRIPT_NEXTAUTH_SECRET =
+  process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
 
 function envFlag(name) {
   return TRUE_VALUES.has(String(process.env[name] || "").trim().toLowerCase());
@@ -12,6 +21,36 @@ function envFlag(name) {
 
 function isoStampForPath(d = new Date()) {
   return d.toISOString().replace(/[:.]/g, "-");
+}
+
+function buildThemedUrl(baseURL, pathname, theme) {
+  const url = new URL(pathname, baseURL);
+  if (theme) url.searchParams.set("theme", theme);
+  return url.toString();
+}
+
+async function captureFailure(page, outDir, name, fullPage = true) {
+  await page.screenshot({
+    path: path.join(outDir, `${name}.png`),
+    fullPage,
+  });
+}
+
+async function gotoPath(page, baseURL, pathname, options = {}) {
+  const { theme = null, waitUntil = "networkidle" } = options;
+  const url = buildThemedUrl(baseURL, pathname, theme);
+  await page.goto(url, { waitUntil });
+  if (theme) {
+    await page.waitForFunction(
+      (expectedTheme) => document.documentElement.dataset.theme === expectedTheme,
+      theme,
+    );
+  }
+  return url;
+}
+
+async function readTheme(page) {
+  return await page.evaluate(() => document.documentElement.dataset.theme || "");
 }
 
 async function sleep(ms) {
@@ -46,7 +85,12 @@ function ensureBuild() {
 function startServer(port) {
   const child = spawn("npm", ["run", "start", "--", "-p", String(port)], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PORT: String(port) },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+    },
   });
   return child;
 }
@@ -110,29 +154,52 @@ async function main() {
     {
       const context = await browser.newContext({
         viewport: { width: 1280, height: 800 },
+        colorScheme: "light",
       });
       const page = await context.newPage();
-      await page.goto(`${baseURL}/`, { waitUntil: "networkidle" });
+      await gotoPath(page, baseURL, "/");
+
+      // Theme toggle + persistence
+      try {
+        const initialTheme = await readTheme(page);
+        record("desktop:theme-default-light", initialTheme === "light", { initialTheme });
+
+        await page.getByRole("button", { name: "Switch to dark theme" }).click();
+        await page.waitForTimeout(140);
+
+        const toggledTheme = await readTheme(page);
+        const storedTheme = await page.evaluate(() => window.localStorage.getItem("ds-theme"));
+        record("desktop:theme-toggle-dark", toggledTheme === "dark", { toggledTheme });
+        record("desktop:theme-storage-persisted", storedTheme === "dark", { storedTheme });
+
+        await page.reload({ waitUntil: "networkidle" });
+        const reloadedTheme = await readTheme(page);
+        record("desktop:theme-refresh-persists", reloadedTheme === "dark", { reloadedTheme });
+      } catch (e) {
+        record("desktop:theme-toggle", false, { error: String(e) });
+        await captureFailure(page, outDir, "fail-desktop-theme");
+      }
 
       // More hover shows dropdown
       try {
         await page.hover("#more-trigger");
         await page.waitForTimeout(200);
         const visible = await page.isVisible("#more-menu");
-        record("desktop:more-hover-dropdown", visible);
+        const theme = await readTheme(page);
+        record("desktop:more-hover-dropdown", visible && theme === "dark", { theme });
         if (!visible) {
-          await page.screenshot({
-            path: path.join(outDir, "fail-desktop-more-hover.png"),
-            fullPage: true,
-          });
+          await captureFailure(page, outDir, "fail-desktop-more-hover");
         }
       } catch (e) {
         record("desktop:more-hover-dropdown", false, { error: String(e) });
       }
 
-      // Search modal basics: open, scope pill, results, clear, close
+      // Search modal basics: open, scope pill, results, clear, close in dark mode.
       try {
-        await page.goto(`${baseURL}/blog`, { waitUntil: "networkidle" });
+        await gotoPath(page, baseURL, BLOG_THEME_PROBE_PATH);
+        const theme = await readTheme(page);
+        record("desktop:search-theme-dark", theme === "dark", { theme });
+
         await page.click("#search-trigger");
         await page.waitForSelector("#notion-search.open", { timeout: 4000 });
 
@@ -157,10 +224,28 @@ async function main() {
         record("desktop:search-close-button", closed);
       } catch (e) {
         record("desktop:search-modal", false, { error: String(e) });
-        await page.screenshot({
-          path: path.join(outDir, "fail-desktop-search.png"),
-          fullPage: true,
+        await captureFailure(page, outDir, "fail-desktop-search");
+      }
+
+      // Site Admin shell should still load with dark theme applied.
+      try {
+        await gotoPath(page, baseURL, "/site-admin");
+        await page.waitForTimeout(220);
+        const theme = await readTheme(page);
+        const hasShell = (await page.locator("main, .page-state").count()) > 0;
+        record("desktop:site-admin-theme-dark", theme === "dark", {
+          theme,
+          path: new URL(page.url()).pathname,
         });
+        record("desktop:site-admin-shell-available", hasShell, {
+          path: new URL(page.url()).pathname,
+        });
+        if (!hasShell) {
+          await captureFailure(page, outDir, "fail-desktop-site-admin");
+        }
+      } catch (e) {
+        record("desktop:site-admin-dark", false, { error: String(e) });
+        await captureFailure(page, outDir, "fail-desktop-site-admin");
       }
 
       await context.close();
@@ -172,20 +257,29 @@ async function main() {
         viewport: { width: 390, height: 844 },
         isMobile: true,
         hasTouch: true,
+        colorScheme: "light",
+      });
+      await context.addInitScript(() => {
+        window.localStorage.setItem("ds-theme", "dark");
       });
       const page = await context.newPage();
-      await page.goto(`${baseURL}/`, { waitUntil: "networkidle" });
+      await gotoPath(page, baseURL, "/");
+
+      try {
+        const theme = await readTheme(page);
+        record("mobile:theme-from-storage-dark", theme === "dark", { theme });
+      } catch (e) {
+        record("mobile:theme-from-storage-dark", false, { error: String(e) });
+      }
 
       // Open menu
       try {
         await page.click("#mobile-trigger");
         const open = await page.isVisible("#mobile-menu");
-        record("mobile:menu-open", open);
+        const theme = await readTheme(page);
+        record("mobile:menu-open", open && theme === "dark", { theme });
         if (!open) {
-          await page.screenshot({
-            path: path.join(outDir, "fail-mobile-menu-open.png"),
-            fullPage: true,
-          });
+          await captureFailure(page, outDir, "fail-mobile-menu-open");
         }
       } catch (e) {
         record("mobile:menu-open", false, { error: String(e) });
@@ -225,8 +319,7 @@ async function main() {
       });
       const page = await context.newPage();
       // Pick a stable blog post that includes toggles + code blocks.
-      const url = `${baseURL}/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities`;
-      await page.goto(url, { waitUntil: "networkidle" });
+      await gotoPath(page, baseURL, BLOG_STABLE_POST);
 
       // Toggle expand/collapse (if present)
       try {
@@ -308,8 +401,7 @@ async function main() {
         viewport: { width: 1200, height: 800 },
       });
       const page = await context.newPage();
-      const url = `${baseURL}/blog/list/do-language-model-embeddings-form-an-approximate-abelian-group`;
-      await page.goto(url, { waitUntil: "networkidle" });
+      await gotoPath(page, baseURL, EMBED_POST);
 
       try {
         const embed = page.locator(".notion-embed").first();
@@ -350,8 +442,7 @@ async function main() {
         viewport: { width: 1200, height: 800 },
       });
       const page = await context.newPage();
-      const url = `${baseURL}/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models`;
-      await page.goto(url, { waitUntil: "networkidle" });
+      await gotoPath(page, baseURL, REFERENCES_POST);
 
       try {
         const refsToggle = page.locator(".notion-toggle-heading-1", {

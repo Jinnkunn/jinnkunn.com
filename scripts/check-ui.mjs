@@ -21,7 +21,8 @@ async function main() {
   // 1) sync raw hydrated HTML from the live Super site
   // 2) audit which Notion/Super block classes are in use
   // 3) run E2E smoke checks for key interactions
-  // 4) take UI snapshots for visual regression
+  // 4) run representative accessibility checks in light/dark themes
+  // 5) take UI snapshots for visual regression
   const skipSync = process.env.SKIP_SYNC === "1" || process.env.SKIP_SYNC === "true";
 
   if (!skipSync) {
@@ -35,6 +36,7 @@ async function main() {
 
   await run("npm", ["run", "audit:notion"]);
   await run("npm", ["run", "smoke:ui"]);
+  await run("npm", ["run", "check:a11y"]);
   await run("npm", ["run", "snapshot:ui"]);
 
   const doCompare =
