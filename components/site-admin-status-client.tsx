@@ -2,6 +2,9 @@
 
 import { useSiteAdminStatusData } from "@/components/site-admin/status/use-status-data";
 import { SiteAdminStatusView } from "@/components/site-admin/status/view";
+import { Button } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatusNotice } from "@/components/ui/status-notice";
 
 type SiteAdminStatusClientProps = {
   showBanner?: boolean;
@@ -28,27 +31,26 @@ export default function SiteAdminStatusClient({
   return (
     <section className="site-admin-status">
       <div className="site-admin-status__head">
-        <div>
-          <h2 className="notion-heading notion-semantic-string" style={{ margin: 0 }}>
-            Status
-          </h2>
-          <p className="notion-text notion-text__content notion-semantic-string" style={{ marginTop: 6 }}>
-            Quick sanity-check that content sync ran and this deploy is using the expected config.
-          </p>
-        </div>
+        <SectionHeader
+          title="Status"
+          description="Quick sanity-check that content sync ran and this deploy is using the expected config."
+        />
 
-        <button
+        <Button
           type="button"
           onClick={load}
           disabled={busy}
+          variant="ghost"
           className="site-admin-status__refresh"
         >
           {busy ? "Refreshing..." : "Refresh"}
-        </button>
+        </Button>
       </div>
 
       {res && "ok" in res && !res.ok ? (
-        <div className="site-admin-status__error">{res.error}</div>
+        <StatusNotice className="site-admin-status__error" tone="danger">
+          {res.error}
+        </StatusNotice>
       ) : null}
 
       {payload ? (

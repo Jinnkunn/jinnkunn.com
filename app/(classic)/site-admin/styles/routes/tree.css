@@ -1,14 +1,14 @@
 /* Super-like tree list for /site-admin/routes */
 .routes-tree {
   margin-top: 14px;
-  border: 1px solid rgba(55, 53, 47, 0.16);
+  border: 1px solid var(--ds-card-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ds-surface-panel);
   overflow: hidden;
 }
 
 .routes-tree__row {
-  border-top: 1px solid rgba(55, 53, 47, 0.08);
+  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .routes-tree__row[data-admin-open="0"] {
@@ -29,7 +29,7 @@
 }
 
 .routes-tree__row-top:hover {
-  background: rgba(55, 53, 47, 0.03);
+  background: var(--ds-surface-soft);
 }
 
 .routes-tree__left {
@@ -44,7 +44,7 @@
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  color: rgba(55, 53, 47, 0.62);
+  color: var(--ds-text-faint);
 }
 
 .routes-tree__text {
@@ -70,7 +70,7 @@
   font-size: 13px;
   font-weight: 750;
   letter-spacing: -0.01em;
-  color: rgba(55, 53, 47, 0.92);
+  color: var(--ds-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -79,7 +79,7 @@
 
 .routes-tree__home {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.58);
+  color: var(--ds-text-faint);
   white-space: nowrap;
 }
 
@@ -92,7 +92,7 @@
 
 .routes-tree__title {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.76);
+  color: var(--ds-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -101,13 +101,13 @@
 
 .routes-tree__dot {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.4);
+  color: var(--ds-text-subtle);
   flex: 0 0 auto;
 }
 
 .routes-tree__id {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.55);
+  color: var(--ds-text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   white-space: nowrap;
@@ -140,28 +140,28 @@
 
 .routes-tree__icon-btn {
   appearance: none;
-  border: 1px solid rgba(55, 53, 47, 0.14);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ds-surface-panel);
   width: 34px;
   height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: rgba(55, 53, 47, 0.86);
+  color: var(--ds-text-secondary);
   transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
   flex: 0 0 auto;
 }
 
 .routes-tree__icon-btn:hover {
   transform: translateY(-1px);
-  background: rgba(55, 53, 47, 0.04);
+  background: var(--ds-interactive-hover);
 }
 
 .routes-tree__icon-btn.is-active {
-  background: rgba(55, 53, 47, 0.08);
-  border-color: rgba(55, 53, 47, 0.22);
+  background: var(--ds-interactive-active);
+  border-color: var(--ds-border-emphasis);
 }
 
 .routes-tree__icon-btn:disabled {
@@ -177,8 +177,8 @@
 }
 
 .routes-tree__panel {
-  border-top: 1px solid rgba(55, 53, 47, 0.08);
-  background: rgba(55, 53, 47, 0.02);
+  border-top: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-soft);
   padding: 14px;
 }
 
@@ -189,9 +189,9 @@
 }
 
 .routes-tree__panel-card {
-  border: 1px solid rgba(55, 53, 47, 0.12);
+  border: 1px solid var(--ds-card-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--ds-surface-panel);
   padding: 12px;
 }
 
@@ -207,14 +207,14 @@
   font-size: 13px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(55, 53, 47, 0.58);
+  color: var(--ds-text-faint);
   font-weight: 750;
 }
 
 .routes-tree__panel-sub {
   margin-top: 6px;
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.64);
+  color: var(--ds-text-muted);
   line-height: 1.35;
 }
 
@@ -227,7 +227,7 @@
 
 .routes-tree__panel-label {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.72);
+  color: var(--ds-text-muted);
   white-space: nowrap;
 }
 
@@ -241,10 +241,10 @@
 .routes-tree__panel-note {
   margin-top: 10px;
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.66);
+  color: var(--ds-text-secondary);
   line-height: 1.4;
 }
 
 .routes-tree__panel-note--warn {
-  color: rgba(140, 32, 32, 0.95);
+  color: var(--ds-danger-text);
 }

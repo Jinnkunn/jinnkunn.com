@@ -27,13 +27,13 @@
 .page__publications .notion-toggle.open > .notion-toggle__summary,
 .page__publications .notion-toggle > .notion-toggle__summary:hover,
 .page__publications .notion-toggle > .notion-toggle__summary:focus-visible {
-  background: rgba(55, 53, 47, 0.06) !important;
+  background: var(--ds-interactive-hover) !important;
 }
 
 /* Publications: red emphasis (e.g., [oral]) needs stronger contrast for accessibility. */
 .page__publications .notion-toggle__summary .highlighted-color.color-red,
 .page__publications .notion-toggle__summary .highlighted-color.color-red strong {
-  color: #7a2119;
+  color: var(--ds-publication-red-text);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -92,33 +92,33 @@
 
 /* Publications: enforce accessible chip contrast while preserving the original tone. */
 .page__publications .highlighted-background.bg-red {
-  background-color: #f3d8d4;
+  background-color: var(--ds-publication-red-bg);
 }
 
 .page__publications .highlighted-background.bg-purple {
-  background-color: #e7ddf8;
+  background-color: var(--ds-publication-purple-bg);
 }
 
 .page__publications .highlighted-background.bg-orange {
-  background-color: #f6e3c7;
+  background-color: var(--ds-publication-orange-bg);
 }
 
 .page__publications .highlighted-color.color-red,
 .page__publications .highlighted-background.bg-red .code,
 .page__publications .highlighted-background.bg-red .code strong {
-  color: #6b231d !important;
+  color: var(--ds-publication-red-text) !important;
 }
 
 .page__publications .highlighted-color.color-purple,
 .page__publications .highlighted-background.bg-purple .code,
 .page__publications .highlighted-background.bg-purple .code strong {
-  color: #4c2f73 !important;
+  color: var(--ds-publication-purple-text) !important;
 }
 
 .page__publications .highlighted-color.color-orange,
 .page__publications .highlighted-background.bg-orange .code,
 .page__publications .highlighted-background.bg-orange .code strong {
-  color: #7a4a17 !important;
+  color: var(--ds-publication-orange-text) !important;
 }
 
 /* In expanded publication details, add breathing room between stacked label rows. */

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { StatusNotice } from "@/components/ui/status-notice";
 import type { OverrideConflict, RouteTreeItem } from "@/lib/site-admin/route-explorer-model";
 import { normalizeAccessMode, type AccessMode } from "@/lib/shared/access";
 import { normalizeRoutePath } from "@/lib/shared/route-utils";
@@ -68,7 +71,7 @@ export function RouteRowAdminPanel({
 
           <div className="routes-tree__panel-row">
             <label className="routes-tree__panel-label">Override URL</label>
-            <input
+            <Field
               className="routes-explorer__admin-input"
               value={overrideInput}
               placeholder="e.g. /my-page"
@@ -81,7 +84,7 @@ export function RouteRowAdminPanel({
           </div>
 
           <div className="routes-tree__panel-actions">
-            <button
+            <Button
               type="button"
               className="routes-explorer__admin-btn"
               disabled={busy || Boolean(overrideConflict)}
@@ -89,9 +92,10 @@ export function RouteRowAdminPanel({
               onClick={() => onSaveOverride(it.id, overrideInput)}
             >
               Save
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
               className="routes-explorer__admin-btn"
               disabled={busy}
               onClick={() => {
@@ -100,11 +104,11 @@ export function RouteRowAdminPanel({
               }}
             >
               Clear
-            </button>
+            </Button>
           </div>
 
           {overrideConflict ? (
-            <div className="routes-tree__panel-note routes-tree__panel-note--warn">
+            <StatusNotice className="routes-tree__panel-note routes-tree__panel-note--warn" tone="danger">
               URL conflict on <code className="routes-explorer__admin-note-code">{overrideConflict.path}</code>.{" "}
               Already used by{" "}
               {overrideConflict.others
@@ -112,7 +116,7 @@ export function RouteRowAdminPanel({
                 .map((x) => x.title || x.id)
                 .join(", ")}
               {overrideConflict.count > 3 ? ` and ${overrideConflict.count - 3} more` : ""}.
-            </div>
+            </StatusNotice>
           ) : null}
         </section>
 
@@ -146,7 +150,7 @@ export function RouteRowAdminPanel({
 
           <div className="routes-tree__panel-row">
             <label className="routes-tree__panel-label">Password</label>
-            <input
+            <Field
               className="routes-explorer__admin-input"
               type="password"
               disabled={inheritedProtected || selectedAccess !== "password"}
@@ -174,7 +178,7 @@ export function RouteRowAdminPanel({
           </div>
 
           <div className="routes-tree__panel-actions">
-            <button
+            <Button
               type="button"
               className="routes-explorer__admin-btn"
               disabled={busy || inheritedProtected}
@@ -184,16 +188,17 @@ export function RouteRowAdminPanel({
               }}
             >
               Save
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
               className="routes-explorer__admin-btn"
               disabled={busy || inheritedProtected}
               onClick={() => onSaveAccess({ pageId: it.id, path: it.routePath, access: "public" })}
               title={inheritedProtected ? "Inherited protection must be managed on the parent route." : "Make this page public"}
             >
               Public
-            </button>
+            </Button>
           </div>
 
           {inheritedProtected ? (

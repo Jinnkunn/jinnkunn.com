@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { SpecialStatePage } from "@/components/special-state-page";
+import { Button } from "@/components/ui/button";
 
 export default function Error({
   reset,
@@ -17,16 +17,20 @@ export default function Error({
       description="Please try again. If this keeps happening, go back home and navigate from there."
       actions={
         <>
-          <button
+          <Button
             type="button"
             className="page-404__btn page-404__btn--primary"
             onClick={() => reset()}
           >
             Try again
-          </button>
-          <Link href="/" className="page-404__btn page-404__btn--ghost">
+          </Button>
+          <Button
+            href="/"
+            variant="ghost"
+            className="page-404__btn page-404__btn--ghost"
+          >
             Home
-          </Link>
+          </Button>
         </>
       }
     />

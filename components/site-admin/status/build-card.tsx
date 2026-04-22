@@ -1,13 +1,14 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import type { StatusViewCoreProps, StatusViewDerivedProps } from "@/components/site-admin/status/view-types";
 
 type SiteAdminBuildCardProps = StatusViewCoreProps & Pick<StatusViewDerivedProps, "vercelLink">;
 
 export function SiteAdminBuildCard({ payload, vercelLink }: SiteAdminBuildCardProps) {
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Build</div>
       <dl className="site-admin-kv">
         <div className="site-admin-kv__row">
@@ -38,6 +39,6 @@ export function SiteAdminBuildCard({ payload, vercelLink }: SiteAdminBuildCardPr
           </dd>
         </div>
       </dl>
-    </div>
+    </Card>
   );
 }

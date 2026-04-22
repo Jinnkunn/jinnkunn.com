@@ -1,0 +1,36 @@
+html[data-theme],
+:root {
+  --color-text-default: var(--ds-text-primary);
+  --color-text-default-light: var(--ds-text-faint);
+  --color-bg-default: var(--ds-surface-page);
+  --color-border-default: var(--ds-border-subtle);
+  --color-border-dark: var(--ds-border-subtle);
+  --color-ui-hover-bg: var(--ds-interactive-hover);
+  --color-card-bg: var(--ds-surface-panel);
+  --color-card-bg-hover: var(--ds-surface-elevated);
+  --scrollbar-background-color: var(--ds-scrollbar-bg);
+  --scrollbar-thumb-color: var(--ds-scrollbar-thumb);
+  --scrollbar-border-color: var(--ds-scrollbar-border);
+  --navbar-text-color: var(--ds-nav-text);
+  --navbar-list-item-hover: var(--ds-nav-list-hover);
+  --navbar-background-color-hover: var(--ds-nav-surface-hover);
+  --navbar-background-color: var(--ds-nav-surface);
+  --navbar-button-text-color: var(--ds-nav-action-text);
+  --navbar-button-background-color: var(--ds-nav-action-surface);
+  --navbar-menu-background-color: var(--ds-nav-surface);
+  --navbar-text-color-dark: var(--ds-text-primary);
+  --footer-text-color: var(--ds-text-primary);
+  --footer-background-color: var(--ds-footer-surface);
+  --sidebar-text-color: var(--ds-text-primary);
+  --sidebar-cta-text-color: var(--ds-text-primary);
+  --sidebar-background-color: var(--ds-sidebar-surface);
+  --sidebar-cta-background-color: var(--ds-sidebar-surface);
+  --sidebar-border-color: var(--ds-border-subtle);
+  --sidebar-background-color-hover: var(--ds-sidebar-surface-hover);
+  --sidebar-text-color-dark: var(--ds-text-primary);
+  --sidebar-cta-background-color-hover: var(--ds-sidebar-surface-hover);
+  --primary-font: var(--ds-font-heading);
+  --secondary-font: var(--ds-font-body);
+  --navbar-shadow: none;
+}
+

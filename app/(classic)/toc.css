@@ -50,7 +50,7 @@
 .notion-table-of-contents
   .notion-table-of-contents__item[data-active="true"]
   .notion-semantic-string:not(.no-border) {
-  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-color: var(--ds-toc-underline);
   text-decoration-thickness: 2px;
 }
 
@@ -107,7 +107,7 @@
     bottom: -4px;
     border-radius: 10px;
     pointer-events: none;
-    background: hsl(38 100% 80% / 0.55);
+    background: var(--ds-anchor-flash);
     filter: saturate(0.95);
     animation: anchor-flash 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -127,4 +127,3 @@
     transform: translateY(0);
   }
 }
-

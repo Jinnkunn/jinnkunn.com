@@ -11,7 +11,7 @@
 }
 
 :root {
-  --mobile-menu-bg: #ffffff;
+  --mobile-menu-bg: var(--ds-nav-surface);
 }
 
 /* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
@@ -43,7 +43,7 @@
     transform: none !important;
     touch-action: auto !important;
     overscroll-behavior: none !important;
-    background: var(--mobile-menu-bg, #ffffff) !important;
+    background: var(--mobile-menu-bg, var(--ds-nav-surface)) !important;
   }
 
   #mobile-menu[data-state="open"],
@@ -68,7 +68,7 @@
     left: 0 !important;
     display: flex !important;
     flex-direction: column !important;
-    background: var(--mobile-menu-bg, #ffffff) !important;
+    background: var(--mobile-menu-bg, var(--ds-nav-surface)) !important;
   }
 
   #mobile-menu .super-navbar__menu-backdrop,
@@ -92,7 +92,7 @@
     max-width: 100% !important;
     height: 100% !important;
     min-height: 100% !important;
-    background: var(--mobile-menu-bg, #ffffff) !important;
+    background: var(--mobile-menu-bg, var(--ds-nav-surface)) !important;
     isolation: isolate !important;
     display: flex !important;
     flex-direction: column !important;
@@ -181,7 +181,7 @@
     min-width: 100vw;
     width: 100%;
     z-index: 6000;
-    background: var(--mobile-menu-bg, #ffffff);
+    background: var(--mobile-menu-bg, var(--ds-nav-surface));
     overscroll-behavior: contain;
     display: block;
   }
@@ -196,7 +196,7 @@
     min-width: 100%;
     width: 100%;
     border-radius: 0;
-    background: var(--mobile-menu-bg, #ffffff);
+    background: var(--mobile-menu-bg, var(--ds-nav-surface));
   }
 
   .super-navbar__menu-surface {
@@ -264,19 +264,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(55, 53, 47, 0.18);
+  background: var(--ds-surface-elevated);
+  border: 1px solid var(--ds-border-strong);
   border-radius: 999px;
   padding: 0;
-  color: var(--color-text-default);
+  color: var(--ds-text-primary);
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(15, 15, 15, 0.08);
+  box-shadow: var(--ds-shadow-soft);
   transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .super-navbar__menu .super-navbar__menu-close:hover {
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 10px 28px rgba(15, 15, 15, 0.12);
+  background: var(--ds-surface-page);
+  box-shadow: var(--ds-shadow-overlay);
 }
 
 .super-navbar__menu .super-navbar__menu-close:active {

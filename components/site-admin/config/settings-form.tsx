@@ -2,6 +2,8 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
+import { Button } from "@/components/ui/button";
+import { CheckboxRow } from "@/components/ui/field";
 import { normalizeDepthString } from "@/lib/shared/depth";
 import {
   parseSitemapSectionList,
@@ -129,14 +131,14 @@ export function SiteAdminSettingsForm({
       <SiteAdminFormRow label="Sitemap Sections">
         <div className="site-admin-form__checks" role="group" aria-label="Sitemap auto-exclude sections">
           {SITEMAP_SECTIONS.map((section) => (
-            <label key={section} className="site-admin-form__check">
-              <input
-                type="checkbox"
-                checked={selectedSections.has(section)}
-                onChange={(e) => toggleSection(section, e.target.checked)}
-              />
-              <span>{section}</span>
-            </label>
+            <CheckboxRow
+              key={section}
+              className="site-admin-form__check"
+              checked={selectedSections.has(section)}
+              onChange={(e) => toggleSection(section, e.target.checked)}
+            >
+              {section}
+            </CheckboxRow>
           ))}
         </div>
       </SiteAdminFormRow>
@@ -172,9 +174,14 @@ export function SiteAdminSettingsForm({
       />
 
       <div className="site-admin-form__actions">
-        <button type="button" className="site-admin-form__btn" disabled={busy} onClick={onSaveSettings}>
+        <Button
+          type="button"
+          className="site-admin-form__btn"
+          disabled={busy}
+          onClick={onSaveSettings}
+        >
           Save Settings
-        </button>
+        </Button>
       </div>
     </div>
   );

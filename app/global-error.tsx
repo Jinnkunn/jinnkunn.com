@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { getDesignThemeInitScript } from "@/lib/design-system/theme";
 import { SpecialStatePage } from "@/components/special-state-page";
+import { Button } from "@/components/ui/button";
 
 export default function GlobalError({
   reset,
@@ -10,7 +11,13 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <html lang="en" dir="ltr" className="theme-light">
+    <html lang="en" dir="ltr" data-theme="light" className="theme-light">
+      <head>
+        <script
+          id="design-theme-init-error"
+          dangerouslySetInnerHTML={{ __html: getDesignThemeInitScript() }}
+        />
+      </head>
       <body>
         <SpecialStatePage
           tone="danger"
@@ -19,16 +26,20 @@ export default function GlobalError({
           description="Please try again. If this keeps happening, go back home and navigate from there."
           actions={
             <>
-              <button
+              <Button
                 type="button"
                 className="page-404__btn page-404__btn--primary"
                 onClick={() => reset()}
               >
                 Try again
-              </button>
-              <Link href="/" className="page-404__btn page-404__btn--ghost">
+              </Button>
+              <Button
+                href="/"
+                variant="ghost"
+                className="page-404__btn page-404__btn--ghost"
+              >
                 Home
-              </Link>
+              </Button>
             </>
           }
         />

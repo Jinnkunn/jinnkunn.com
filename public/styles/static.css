@@ -3,13 +3,13 @@
 }
 
 *::selection {
-  background: rgba(221, 205, 178, 0.42);
-  color: #302c27;
+  background: var(--ds-selection-bg);
+  color: var(--ds-selection-text);
 }
 
 *::-moz-selection {
-  background: rgba(221, 205, 178, 0.42);
-  color: #302c27;
+  background: var(--ds-selection-bg);
+  color: var(--ds-selection-text);
 }
 
 strong {
