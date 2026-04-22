@@ -9,9 +9,12 @@ const require = createRequire(import.meta.url);
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const OUT_ROOT = path.join(process.cwd(), "output", "a11y");
 const AXE_SCRIPT_PATH = require.resolve("axe-core/axe.min.js");
-const DEFAULT_PRIORITY_PATHS = ["/", "/blog", "/publications"];
+const DEFAULT_PRIORITY_PATHS = ["/", "/blog", "/publications", "/site-admin"];
+const DEFAULT_THEMES = ["light", "dark"];
 const DEFAULT_MAX_PAGES = 12;
 const FAILING_IMPACTS = new Set(["serious", "critical"]);
+const SCRIPT_NEXTAUTH_SECRET =
+  process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
 
 function envFlag(name) {
   return TRUE_VALUES.has(String(process.env[name] || "").trim().toLowerCase());
@@ -34,6 +37,14 @@ function parsePathList(value) {
     .split(/[\s,]+/g)
     .map((item) => normalizePathname(item))
     .filter(Boolean);
+}
+
+function parseThemeList(value) {
+  const themes = String(value || "")
+    .split(/[\s,]+/g)
+    .map((item) => String(item || "").trim().toLowerCase())
+    .filter((item) => item === "light" || item === "dark");
+  return themes.length > 0 ? Array.from(new Set(themes)) : [...DEFAULT_THEMES];
 }
 
 function parseLocTags(xmlText) {
@@ -179,7 +190,12 @@ function ensureBuild() {
 function startServer(port) {
   return spawn("npm", ["run", "start", "--", "-p", String(port)], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PORT: String(port) },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+    },
   });
 }
 
@@ -241,6 +257,12 @@ async function runPageA11y(page, url) {
   return out;
 }
 
+function buildAuditUrl(baseURL, pathname, theme) {
+  const url = new URL(pathname, baseURL);
+  if (theme) url.searchParams.set("theme", theme);
+  return url.toString();
+}
+
 async function main() {
   const skipBuild = envFlag("A11Y_SKIP_BUILD");
   const failAll = envFlag("A11Y_FAIL_ALL");
@@ -253,6 +275,7 @@ async function main() {
   const maxPages = Number.isFinite(maxPagesRaw) && maxPagesRaw > 0 ? maxPagesRaw : DEFAULT_MAX_PAGES;
   const priorityPaths = parsePathList(process.env.A11Y_PRIORITY_PATHS || DEFAULT_PRIORITY_PATHS.join(","));
   const explicitPaths = parsePathList(process.env.A11Y_PATHS || "");
+  const themes = parseThemeList(process.env.A11Y_THEMES || DEFAULT_THEMES.join(","));
 
   const stamp = isoStampForPath();
   const outDir = path.join(OUT_ROOT, stamp);
@@ -269,6 +292,7 @@ async function main() {
     maxPages,
     priorityPaths,
     source: explicitPaths.length > 0 ? "env" : "sitemap",
+    themes,
     failMode: failAllEffective ? "all" : "core",
     discoveredCount: 0,
     discoveredPaths: [],
@@ -303,7 +327,7 @@ async function main() {
     }
 
     console.log(
-      `[a11y] Source=${report.source}; failMode=${report.failMode}; discovered=${report.discoveredCount}; auditing=${targetPaths.length}; max=${maxPages}`,
+      `[a11y] Source=${report.source}; failMode=${report.failMode}; discovered=${report.discoveredCount}; auditing=${targetPaths.length}; max=${maxPages}; themes=${themes.join(",")}`,
     );
     if (report.fullSite) {
       console.log("[a11y] full-site mode enabled (all sitemap routes are blocking).");
@@ -312,36 +336,40 @@ async function main() {
     const enforcedPaths = new Set(priorityPaths.map((p) => normalizePathname(p)).filter(Boolean));
 
     for (const pathname of targetPaths) {
-      const page = await browser.newPage();
-      const url = `${baseURL}${pathname}`;
-      const result = await runPageA11y(page, url);
+      for (const theme of themes) {
+        const page = await browser.newPage();
+        const url = buildAuditUrl(baseURL, pathname, theme);
+        const result = await runPageA11y(page, url);
 
-      const rawViolations = Array.isArray(result?.violations) ? result.violations : [];
-      const violations = rawViolations.map((v) => compactViolation(v, pathname));
-      const high = violations.filter((v) => FAILING_IMPACTS.has(v.impact));
-      const isEnforced = enforcedPaths.has(pathname);
-      const blocking = failAllEffective ? high.length : isEnforced ? high.length : 0;
+        const rawViolations = Array.isArray(result?.violations) ? result.violations : [];
+        const violations = rawViolations.map((v) => compactViolation(v, pathname));
+        const high = violations.filter((v) => FAILING_IMPACTS.has(v.impact));
+        const isEnforced = enforcedPaths.has(pathname);
+        const blocking = failAllEffective ? high.length : isEnforced ? high.length : 0;
 
-      report.pages.push({
-        path: pathname,
-        url,
-        enforced: isEnforced,
-        violations,
-        seriousOrCritical: high.length,
-        blockingSeriousOrCritical: blocking,
-      });
-
-      report.summary.totalViolations += violations.length;
-      report.summary.totalSeriousOrCritical += high.length;
-      report.summary.totalBlockingSeriousOrCritical += blocking;
-      if (blocking > 0) {
-        report.summary.failingPages += 1;
-        await page.screenshot({
-          path: path.join(outDir, `fail-${pathname === "/" ? "home" : pathname.slice(1)}.png`),
-          fullPage: true,
+        report.pages.push({
+          path: pathname,
+          theme,
+          url,
+          enforced: isEnforced,
+          violations,
+          seriousOrCritical: high.length,
+          blockingSeriousOrCritical: blocking,
         });
+
+        report.summary.totalViolations += violations.length;
+        report.summary.totalSeriousOrCritical += high.length;
+        report.summary.totalBlockingSeriousOrCritical += blocking;
+        if (blocking > 0) {
+          report.summary.failingPages += 1;
+          const stem = pathname === "/" ? "home" : pathname.slice(1).replaceAll("/", "__");
+          await page.screenshot({
+            path: path.join(outDir, `fail-${stem}-${theme}.png`),
+            fullPage: true,
+          });
+        }
+        await page.close();
       }
-      await page.close();
     }
 
     await writeFile(path.join(outDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");

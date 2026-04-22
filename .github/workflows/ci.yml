@@ -97,6 +97,12 @@ jobs:
           A11Y_FAIL_ALL: "1"
         run: npm run check:a11y
 
+      - name: UI Snapshots (Light/Dark Matrix)
+        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
+        env:
+          SNAPSHOT_THEMES: "light,dark"
+        run: npm run snapshot:ui
+
       - name: Performance Budget
         if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
         env:
@@ -117,7 +123,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-debug-artifacts
-          path: output/ui-smoke/**
+          path: |
+            output/ui-smoke/**
+            output/ui-snapshots/**
           if-no-files-found: ignore
 
       - name: Upload A11y Artifacts
