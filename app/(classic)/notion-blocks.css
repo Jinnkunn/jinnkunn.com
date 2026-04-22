@@ -74,7 +74,7 @@
 /* Standard typography: captions + meta a bit smaller, references like footnotes. */
 .notion-caption {
   font-size: var(--v1-type-small);
-  color: rgba(55, 53, 47, 0.78);
+  color: var(--ds-text-secondary);
 }
 
 .notion-page__properties {
@@ -83,7 +83,7 @@
 
 /* Improve contrast for metadata labels (Date / Author / etc.) on content pages. */
 .notion-page__property-name > span {
-  color: rgba(55, 53, 47, 0.78);
+  color: var(--ds-text-muted);
 }
 
 /* Super custom CSS parity (original site):
@@ -108,9 +108,11 @@
   font-size: inherit;
 }
 
-/* Inline code on light pages needs stronger contrast for readability and WCAG. */
+/* Inline code contrast across both themes. */
 .notion-semantic-string .code {
-  color: #8b124d;
+  color: var(--ds-danger-text);
+  background-color: var(--ds-surface-soft-strong);
+  border: 1px solid var(--ds-border-subtle);
 }
 
 /* Notion callouts: tighter alignment and better mobile spacing (v1-consistent). */
@@ -160,16 +162,16 @@
   overscroll-behavior-x: contain;
 }
 
-/* Prism token colors (light) tuned to Notion code blocks. */
+/* Prism token colors driven by design tokens so dark mode keeps contrast. */
 .notion-code .token.comment,
 .notion-code .token.prolog,
 .notion-code .token.doctype,
 .notion-code .token.cdata {
-  color: rgba(55, 53, 47, 0.55);
+  color: var(--ds-text-faint);
 }
 
 .notion-code .token.punctuation {
-  color: rgba(55, 53, 47, 0.92);
+  color: var(--ds-text-primary);
 }
 
 .notion-code .token.namespace {
@@ -181,12 +183,12 @@
 .notion-code .token.constant,
 .notion-code .token.symbol,
 .notion-code .token.deleted {
-  color: #d73a49;
+  color: var(--ds-danger-text);
 }
 
 .notion-code .token.boolean,
 .notion-code .token.number {
-  color: #005cc5;
+  color: var(--ds-info-text);
 }
 
 .notion-code .token.selector,
@@ -195,35 +197,40 @@
 .notion-code .token.char,
 .notion-code .token.builtin,
 .notion-code .token.inserted {
-  color: #22863a;
+  color: var(--ds-success-text);
 }
 
 .notion-code .token.operator,
 .notion-code .token.entity,
 .notion-code .token.url {
-  color: #b15c00;
+  color: var(--ds-warning-text);
 }
 
 .notion-code .token.atrule,
 .notion-code .token.attr-value,
 .notion-code .token.keyword {
-  color: #6f42c1;
+  color: var(--ds-accent);
 }
 
 .notion-code .token.function,
 .notion-code .token.class-name {
-  color: #005cc5;
+  color: var(--ds-info-text);
 }
 
 .notion-code .token.regex,
 .notion-code .token.important,
 .notion-code .token.variable,
 .notion-code .token.table-header {
-  color: #8a3f00;
+  color: var(--ds-warning-text);
+}
+
+.notion-code .token.table-data,
+.notion-code .token.table-data.important {
+  color: var(--ds-text-primary);
 }
 
 .notion-code .token.table-header.important {
-  color: #5f2700 !important;
+  color: color-mix(in srgb, var(--ds-warning-text) 70%, var(--ds-text-primary)) !important;
 }
 
 .notion-code .token.bold {
