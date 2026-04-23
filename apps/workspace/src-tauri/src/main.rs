@@ -422,6 +422,9 @@ fn debug_set_traffic_lights(_x: f32, _y: f32) -> Result<(), String> {
 fn main() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_decorum::init())
+        // Persist window position/size/maximized state across launches.
+        // Writes to the OS app-data dir; no app code required.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             site_admin_http_request,
             secure_store_set,
