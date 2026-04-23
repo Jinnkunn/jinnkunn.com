@@ -59,21 +59,55 @@ function SiteAdminContent() {
   const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
   const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
 
-  // Global ⌘K / Ctrl+K opens the command palette. CodeMirror binds Mod-k
-  // at Prec.high for "insert link" inside the editor and stops propagation,
-  // so this window-level listener only fires when focus is outside the
-  // editor — exactly the behavior we want.
+  // Global keyboard shortcuts. CodeMirror binds a few modifiers (Mod-k,
+  // Mod-b, Mod-i, Mod-`) at Prec.high inside the editor and stops
+  // propagation, so this window-level listener only fires when focus is
+  // outside the editor — the behavior we want for every shortcut here.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "k") return;
       if (!event.metaKey && !event.ctrlKey) return;
-      if (event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      setPaletteOpen((open) => !open);
+      if (event.altKey || event.shiftKey) return;
+
+      switch (event.key) {
+        case "k": {
+          // Toggle command palette.
+          event.preventDefault();
+          setPaletteOpen((open) => !open);
+          return;
+        }
+        case "s": {
+          // Save current editor. PostEditor and PageEditor each render
+          // their form with a stable id; submitting that form reuses the
+          // same path the Save button takes, including validation + the
+          // "Saving…" spinner. If no editor is mounted, fall through so
+          // the browser's default save-page dialog still doesn't fire.
+          const form =
+            document.getElementById("post-editor-form") ??
+            document.getElementById("page-editor-form");
+          event.preventDefault();
+          if (form instanceof HTMLFormElement) {
+            form.requestSubmit();
+          }
+          return;
+        }
+        case "n": {
+          // New post / new page, scoped to the current tab. Outside of
+          // content tabs the shortcut is a no-op (we don't default to
+          // Posts so ⌘N in Routes doesn't silently jump elsewhere).
+          if (activeTab === "posts") {
+            event.preventDefault();
+            setPostsSelected({ kind: "new" });
+          } else if (activeTab === "pages") {
+            event.preventDefault();
+            setPagesSelected({ kind: "new" });
+          }
+          return;
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [activeTab]);
 
   const closePalette = useCallback(() => setPaletteOpen(false), []);
   const selectTab = useCallback((tab: SiteAdminTab) => setActiveTab(tab), []);
