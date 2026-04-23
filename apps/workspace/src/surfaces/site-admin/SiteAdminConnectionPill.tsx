@@ -27,6 +27,12 @@ export function SiteAdminConnectionPill() {
     clearAuth,
     setCfAccessServiceToken,
     clearCfAccessServiceToken,
+    profiles,
+    activeProfileId,
+    switchProfile,
+    addProfile,
+    renameProfile,
+    removeProfile,
   } = useSiteAdmin();
 
   const [open, setOpen] = useState(false);
@@ -67,7 +73,9 @@ export function SiteAdminConnectionPill() {
   const hasToken = Boolean(connection.authToken);
   const currentTone = tone(connection.authLoading, hasToken, hasCfService);
 
-  const pillLabel = connection.authLoading
+  const activeProfile = profiles.find((p) => p.id === activeProfileId);
+  const profileLabel = activeProfile?.label ?? "Default";
+  const statusLabel = connection.authLoading
     ? "Signing in…"
     : hasToken
       ? connection.authLogin
@@ -76,6 +84,7 @@ export function SiteAdminConnectionPill() {
       : hasCfService
         ? "CF Access"
         : "Not connected";
+  const pillLabel = `${profileLabel} · ${statusLabel}`;
 
   const disableLogin = connection.authLoading || !normalizeString(connection.baseUrl);
   const disableClear = connection.authLoading || !connection.authToken;
@@ -122,6 +131,79 @@ export function SiteAdminConnectionPill() {
             <h3>Connection</h3>
             <p>API endpoint + app-token (browser sign-in).</p>
           </header>
+
+          <label className="site-admin-pill__field">
+            <span>Profile</span>
+            <div className="site-admin-pill__profile-row">
+              <select
+                className="site-admin-pill__profile-select"
+                value={activeProfileId}
+                onChange={(event) => switchProfile(event.target.value)}
+              >
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn--ghost site-admin-pill__profile-btn"
+                title="Rename current profile"
+                onClick={() => {
+                  if (!activeProfile) return;
+                  const next = window.prompt(
+                    "Profile name",
+                    activeProfile.label,
+                  );
+                  if (next && next.trim()) {
+                    renameProfile(activeProfileId, next.trim());
+                  }
+                }}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost site-admin-pill__profile-btn"
+                title="Add a new profile"
+                onClick={() => {
+                  const label = window.prompt(
+                    "New profile name (e.g. Staging)",
+                    "",
+                  );
+                  if (!label || !label.trim()) return;
+                  const url = window.prompt(
+                    "Base URL for this profile",
+                    base || "https://example.com",
+                  );
+                  if (!url || !url.trim()) return;
+                  const id = addProfile(label.trim(), url.trim());
+                  switchProfile(id);
+                }}
+              >
+                + Add
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost site-admin-pill__profile-btn"
+                title="Delete current profile"
+                disabled={profiles.length <= 1}
+                onClick={() => {
+                  if (profiles.length <= 1) return;
+                  if (
+                    window.confirm(
+                      `Delete profile "${profileLabel}"? Credentials stay in the keyring — only the entry is removed.`,
+                    )
+                  ) {
+                    removeProfile(activeProfileId);
+                  }
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </label>
 
           <label className="site-admin-pill__field">
             <span>API Base URL</span>
