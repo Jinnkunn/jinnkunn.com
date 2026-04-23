@@ -13,9 +13,7 @@
         "teaching": 5
       }
     },
-    "sitemapExcludes": [
-      "/__prod_pending_probe__"
-    ]
+    "sitemapExcludes": []
   },
   "integrations": {
     "googleAnalyticsId": ""
