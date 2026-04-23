@@ -1,0 +1,174 @@
+/* Blog index: dedicated list styling for <BlogIndexView/>.
+   Mirrors the visual rhythm of the Publications list so both index pages
+   feel like siblings — year groups, thin inter-item dividers, no cards. */
+
+.blog-index {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-4);
+  margin-top: 2rem;
+}
+
+.blog-index__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blog-index__search-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.blog-index__search-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-field-border);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-field-bg);
+  color: var(--ds-text-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  transition: border-color var(--ds-duration-fast) ease,
+    box-shadow var(--ds-duration-fast) ease;
+}
+
+.blog-index__search-input::placeholder {
+  color: var(--ds-text-faint);
+}
+
+.blog-index__search-input:focus-visible {
+  outline: none;
+  border-color: var(--ds-border-emphasis);
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+
+.blog-index__counts {
+  font-size: 12.5px;
+  color: var(--ds-text-faint);
+  margin: 0;
+}
+
+.blog-index__empty {
+  padding: var(--ds-space-5) 0;
+  text-align: left;
+  color: var(--ds-text-muted);
+  margin: 0;
+}
+
+/* Year groups ------------------------------------------------------- */
+
+.blog-index__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.blog-index__year {
+  font-family: var(--ds-font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+  margin: var(--ds-space-5) 0 var(--ds-space-2);
+  padding: 0;
+}
+
+.blog-index__group:first-of-type > .blog-index__year {
+  margin-top: 0;
+}
+
+.blog-index__items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.blog-index__items > li + li {
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+/* Row -------------------------------------------------------------- */
+
+.blog-row {
+  padding: 0;
+}
+
+.blog-row__link {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0;
+  transition: background-color var(--ds-duration-fast) ease;
+}
+
+.blog-row__link:hover,
+.blog-row__link:focus-visible {
+  background: var(--ds-interactive-hover);
+}
+
+.blog-row__link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+
+.blog-row__title {
+  font-family: var(--ds-font-heading);
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ds-text-primary);
+  letter-spacing: -0.005em;
+  transition: color var(--ds-duration-fast) ease;
+}
+
+.blog-row__link:hover .blog-row__title,
+.blog-row__link:focus-visible .blog-row__title {
+  color: var(--ds-accent);
+}
+
+.blog-row__excerpt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ds-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.blog-row__meta {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ds-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.blog-row__meta-dot {
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blog-row__link,
+  .blog-row__title,
+  .blog-index__search-input {
+    transition: none;
+  }
+}

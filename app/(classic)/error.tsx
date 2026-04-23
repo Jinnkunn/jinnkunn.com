@@ -19,16 +19,11 @@ export default function Error({
         <>
           <Button
             type="button"
-            className="page-404__btn page-404__btn--primary"
             onClick={() => reset()}
           >
             Try again
           </Button>
-          <Button
-            href="/"
-            variant="ghost"
-            className="page-404__btn page-404__btn--ghost"
-          >
+          <Button href="/" variant="ghost">
             Home
           </Button>
         </>

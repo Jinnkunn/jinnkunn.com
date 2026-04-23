@@ -39,7 +39,7 @@ export default function SiteAdminDeployClient() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="site-admin-deploy-client">
       <Panel className="site-admin-deploy-preview">
         <div className="site-admin-deploy-preview__head">
           <div className="site-admin-deploy-preview__title">Deploy Preview</div>

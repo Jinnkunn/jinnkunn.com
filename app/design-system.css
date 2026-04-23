@@ -385,6 +385,22 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   font-weight: 700;
 }
 
+.ds-badge--size-sm {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.ds-badge--size-md {
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.ds-badge--density-compact {
+  gap: 4px;
+}
+
 .ds-badge--tone-success {
   background: var(--ds-success-bg);
   border-color: var(--ds-success-border);
@@ -438,6 +454,34 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   resize: vertical;
 }
 
+.ds-field--size-sm {
+  height: 40px;
+  font-size: 13px;
+}
+
+.ds-field--size-md {
+  height: 46px;
+  font-size: 14px;
+}
+
+.ds-textarea--size-sm {
+  min-height: 96px;
+  font-size: 13px;
+}
+
+.ds-textarea--size-md {
+  min-height: 120px;
+  font-size: 14px;
+}
+
+.ds-field--density-compact {
+  padding: 0 12px;
+}
+
+.ds-textarea--density-compact {
+  padding: 8px 12px;
+}
+
 .ds-field--mono,
 .ds-textarea--mono {
   font-family: var(--ds-font-mono);
@@ -456,6 +500,20 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   gap: 8px;
   min-height: 46px;
   color: var(--ds-text-secondary);
+}
+
+.ds-checkbox-row--size-sm {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.ds-checkbox-row--size-md {
+  min-height: 46px;
+  font-size: 14px;
+}
+
+.ds-checkbox-row--density-compact {
+  gap: 6px;
 }
 
 .ds-checkbox-row input {
@@ -529,6 +587,11 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   line-height: 1.5;
 }
 
+.ds-status-notice--tone-neutral {
+  border-left-color: var(--ds-border-strong);
+  color: var(--ds-text-secondary);
+}
+
 .ds-status-notice--tone-success {
   border-left-color: var(--ds-success-border);
   color: var(--ds-success-text);
@@ -547,6 +610,19 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
 .ds-status-notice--tone-info {
   border-left-color: var(--ds-info-border);
   color: var(--ds-info-text);
+}
+
+.ds-status-notice--size-sm {
+  font-size: 13px;
+}
+
+.ds-status-notice--size-md {
+  font-size: 14px;
+}
+
+.ds-status-notice--density-compact {
+  padding-left: 8px;
+  line-height: 1.4;
 }
 
 .ds-nav-item {

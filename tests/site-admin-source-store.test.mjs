@@ -1,0 +1,96 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import {
+  createLocalSiteAdminSourceStore,
+  isSiteAdminSourceConflictError,
+} from "../lib/server/site-admin-source-store.ts";
+
+function writeJson(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function createFixtureRoot() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "site-admin-source-store-"));
+  writeJson(path.join(root, "content", "generated", "site-config.json"), {
+    siteName: "Fixture Site",
+    lang: "en",
+    seo: {
+      title: "Fixture",
+      description: "desc",
+      favicon: "/favicon.ico",
+    },
+    nav: {
+      top: [{ href: "/", label: "Home" }],
+      more: [{ href: "/blog", label: "Blog" }],
+    },
+    content: {
+      routeOverrides: {},
+      sitemapExcludes: [],
+      sitemapAutoExclude: {
+        enabled: true,
+        excludeSections: [],
+        maxDepthBySection: {},
+      },
+    },
+  });
+  writeJson(path.join(root, "content", "generated", "protected-routes.json"), []);
+  writeJson(path.join(root, "content", "generated", "routes-manifest.json"), []);
+  return root;
+}
+
+test("site-admin-source-store: config save updates sourceVersion and writes filesystem source", async () => {
+  const root = createFixtureRoot();
+  const store = createLocalSiteAdminSourceStore({ rootDir: root });
+
+  const before = await store.loadConfig();
+  assert.equal(before.settings.siteName, "Fixture Site");
+  assert.equal(before.nav.length, 2);
+  assert.ok(before.sourceVersion.siteConfigSha);
+  assert.ok(before.sourceVersion.branchSha);
+
+  const afterVersion = await store.updateSettings({
+    rowId: before.settings.rowId,
+    patch: { siteName: "Updated Fixture Site" },
+    expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+  });
+
+  assert.notEqual(afterVersion.siteConfigSha, before.sourceVersion.siteConfigSha);
+
+  const savedConfig = JSON.parse(
+    fs.readFileSync(path.join(root, "content", "filesystem", "site-config.json"), "utf8"),
+  );
+  assert.equal(savedConfig.siteName, "Updated Fixture Site");
+});
+
+test("site-admin-source-store: stale expected sha returns SOURCE_CONFLICT", async () => {
+  const root = createFixtureRoot();
+  const store = createLocalSiteAdminSourceStore({ rootDir: root });
+
+  const before = await store.loadConfig();
+  await store.updateSettings({
+    rowId: before.settings.rowId,
+    patch: { siteName: "First Save" },
+    expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+  });
+
+  await assert.rejects(
+    () =>
+      store.updateSettings({
+        rowId: before.settings.rowId,
+        patch: { siteName: "Second Save" },
+        expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+      }),
+    (err) => {
+      assert.equal(isSiteAdminSourceConflictError(err), true);
+      if (isSiteAdminSourceConflictError(err)) {
+        assert.equal(err.code, "SOURCE_CONFLICT");
+      }
+      return true;
+    },
+  );
+});

@@ -36,7 +36,7 @@ export function SiteAdminNavSection({
 }: SiteAdminNavSectionProps) {
   return (
     <div className={className}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div className="site-admin-nav-section__head">
         <Badge
           className={group === "top" ? "routes-explorer__pill routes-explorer__pill--nav" : "routes-explorer__pill"}
         >

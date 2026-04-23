@@ -1,13 +1,17 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+
+import { PostView } from "@/components/posts-mdx/post-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
 import RawHtml from "@/components/raw-html";
 import { getBlogPostSlugs, parseBlogMetaFromMain } from "@/lib/blog";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
+import { getPostEntry, getPostSlugs, readPostSource } from "@/lib/posts/index";
 import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogPostStructuredData } from "@/lib/seo/structured-data";
 import { escapeHtml } from "@/lib/shared/text-utils";
 import { getSiteConfig } from "@/lib/site-config";
-import type { Metadata } from "next";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
@@ -20,24 +24,25 @@ function buildBreadcrumbsHtml({ title, slug }: { title: string; slug: string }):
 
 function rewriteBlogPostMainHtml(input: string, { slug }: { slug: string }): string {
   let out = input;
-
-  // Replace the whole breadcrumb block so we always get:
-  //   Home / Blog / <post title>
-  // This avoids depending on the Notion hierarchy (which may include an
-  // intermediate "List" database) and matches the original site's UX.
   const title = extractTitleFromMain(out, "Blog");
   const breadcrumbs = buildBreadcrumbsHtml({ title, slug });
   out = out.replace(
     /<div class="super-navbar__breadcrumbs"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i,
     breadcrumbs,
   );
-
   return out;
 }
 
 export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
-  const slugs = await getBlogPostSlugs();
-  return slugs.map((slug) => ({ slug }));
+  const [mdxSlugs, notionSlugs] = await Promise.all([
+    getPostSlugs(),
+    getBlogPostSlugs(),
+  ]);
+  const merged = new Set<string>();
+  for (const s of mdxSlugs) merged.add(s);
+  // MDX store wins on conflict; Notion is a fallback only.
+  for (const s of notionSlugs) if (!merged.has(s)) merged.add(s);
+  return Array.from(merged).map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
@@ -48,6 +53,20 @@ export async function generateMetadata({
   const cfg = getSiteConfig();
   const { slug } = await params;
   const pathname = `/blog/${slug}`;
+
+  const mdxEntry = await getPostEntry(slug);
+  if (mdxEntry) {
+    return buildPageMetadata({
+      cfg,
+      title: `${mdxEntry.title} | Blog`,
+      description: mdxEntry.description ?? cfg.seo.description,
+      pathname,
+      type: "article",
+      publishedTime: mdxEntry.dateIso || undefined,
+      modifiedTime: mdxEntry.dateIso || undefined,
+    });
+  }
+
   try {
     const main = await loadRawMainHtml(`blog/list/${slug}`);
     const meta = parseBlogMetaFromMain(main);
@@ -79,6 +98,28 @@ export default async function BlogPostPage({
 }) {
   const cfg = getSiteConfig();
   const { slug } = await params;
+
+  // 1. MDX store wins.
+  const mdxEntry = await getPostEntry(slug);
+  if (mdxEntry) {
+    const file = await readPostSource(slug);
+    if (!file) notFound();
+    const jsonLd = buildBlogPostStructuredData(cfg, {
+      slug,
+      title: mdxEntry.title,
+      description: mdxEntry.description ?? cfg.seo.description,
+      publishedTime: mdxEntry.dateIso,
+      modifiedTime: mdxEntry.dateIso,
+    });
+    return (
+      <>
+        <JsonLdScript id={`ld-blog-${slug}`} data={jsonLd} />
+        <PostView entry={mdxEntry} source={file.source} />
+      </>
+    );
+  }
+
+  // 2. Notion HTML fallback (existing posts).
   const raw = await loadRawMainHtml(`blog/list/${slug}`);
   const meta = parseBlogMetaFromMain(raw);
   const description = extractDescriptionFromMain(raw) ?? cfg.seo.description;

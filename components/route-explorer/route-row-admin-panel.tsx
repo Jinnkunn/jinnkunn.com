@@ -17,7 +17,7 @@ export function RouteRowAdminPanel({
   effectiveProtected,
   protectedSource,
   busy,
-  getOverrideConflict,
+  findOverrideConflict,
   onSetAccessChoice,
   onSaveOverride,
   onSaveAccess,
@@ -29,7 +29,7 @@ export function RouteRowAdminPanel({
   effectiveProtected: boolean;
   protectedSource: string;
   busy: boolean;
-  getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
+  findOverrideConflict: (pageId: string, candidatePath: string) => OverrideConflict | null;
   onSetAccessChoice: (id: string, v: AccessMode) => void;
   onSaveOverride: (id: string, v: string) => void;
   onSaveAccess: (input: {
@@ -43,7 +43,7 @@ export function RouteRowAdminPanel({
   const [passwordInput, setPasswordInput] = useState("");
   const normalizedOverrideInput = normalizeRoutePath(overrideInput);
   const overrideConflict = normalizedOverrideInput
-    ? getOverrideConflict(normalizedOverrideInput)
+    ? findOverrideConflict(it.id, normalizedOverrideInput)
     : null;
 
   const saveAccess = () => {

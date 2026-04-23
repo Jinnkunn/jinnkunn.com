@@ -7,13 +7,19 @@ import { z } from "zod";
 import type { ParseResult } from "./request-types.ts";
 
 export type SiteAdminRoutesCommand =
-  | { kind: "override"; pageId: string; routePath: string }
+  | {
+      kind: "override";
+      pageId: string;
+      routePath: string;
+      expectedSiteConfigSha: string;
+    }
   | {
       kind: "protected";
       pageId: string;
       path: string;
       authKind: AccessMode;
       password: string;
+      expectedProtectedRoutesSha: string;
     };
 
 function bad(error: string, status = 400): ParseResult<never> {
@@ -26,6 +32,7 @@ const routesCommandSchema = z.discriminatedUnion("kind", [
       kind: z.literal("override"),
       pageId: z.unknown().optional(),
       routePath: z.unknown().optional(),
+      expectedSiteConfigSha: z.unknown().optional(),
     })
     .passthrough(),
   z
@@ -35,6 +42,7 @@ const routesCommandSchema = z.discriminatedUnion("kind", [
       path: z.unknown().optional(),
       auth: z.unknown().optional(),
       password: z.unknown().optional(),
+      expectedProtectedRoutesSha: z.unknown().optional(),
     })
     .passthrough(),
 ]);
@@ -66,10 +74,14 @@ export function parseSiteAdminRoutesCommand(
   if (kind === "override") {
     const pageId = compactId(readString(command.pageId));
     if (!pageId) return bad("Missing pageId", 400);
+    const expectedSiteConfigSha = readString(command.expectedSiteConfigSha, {
+      maxLen: 128,
+    });
+    if (!expectedSiteConfigSha) return bad("Missing expectedSiteConfigSha", 400);
     const routePathInput = readString(command.routePath, { maxLen: 300 });
     const routePath = normalizeOptionalRoutePath(routePathInput);
     if (routePathInput && !routePath) return bad("Invalid routePath", 400);
-    return { ok: true, value: { kind, pageId, routePath } };
+    return { ok: true, value: { kind, pageId, routePath, expectedSiteConfigSha } };
   }
 
   const pageId = compactId(readString(command.pageId));
@@ -80,6 +92,10 @@ export function parseSiteAdminRoutesCommand(
 
   const authKind = normalizeAccessMode(command.auth, "password");
   const password = readString(command.password, { maxLen: 160 });
+  const expectedProtectedRoutesSha = readString(command.expectedProtectedRoutesSha, {
+    maxLen: 128,
+  });
+  if (!expectedProtectedRoutesSha) return bad("Missing expectedProtectedRoutesSha", 400);
   if (authKind === "public" && password) {
     return bad("Public auth does not use a password", 400);
   }
@@ -87,5 +103,15 @@ export function parseSiteAdminRoutesCommand(
     return bad("GitHub auth does not use a password", 400);
   }
 
-  return { ok: true, value: { kind, pageId, path, authKind, password } };
+  return {
+    ok: true,
+    value: {
+      kind,
+      pageId,
+      path,
+      authKind,
+      password,
+      expectedProtectedRoutesSha,
+    },
+  };
 }

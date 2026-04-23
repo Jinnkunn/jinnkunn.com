@@ -1,21 +1,23 @@
 import Link from "next/link";
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
 
+import {
+  type ButtonSurface,
+  BUTTON_DEFAULTS,
+  type DesignDensity,
+  type DesignSize,
+  type DesignTone,
+  type DesignVariant,
+} from "@/lib/design-system/primitives";
 import { cn } from "./cn";
-
-type ButtonVariant = "solid" | "ghost" | "subtle" | "nav";
-type ButtonTone = "neutral" | "accent" | "success" | "danger" | "warning" | "info";
-type ButtonSize = "sm" | "md";
-type ButtonDensity = "compact" | "default";
-type ButtonSurface = "default" | "inverse";
 
 type ButtonBaseProps = {
   children: ReactNode;
   className?: string;
-  variant?: ButtonVariant;
-  tone?: ButtonTone;
-  size?: ButtonSize;
-  density?: ButtonDensity;
+  variant?: DesignVariant;
+  tone?: DesignTone;
+  size?: DesignSize;
+  density?: DesignDensity;
   surface?: ButtonSurface;
   href?: string;
   external?: boolean;
@@ -38,18 +40,15 @@ function isInternalHref(href: string): boolean {
 }
 
 function buttonClassName(
-  input: Pick<
-    ButtonBaseProps,
-    "className" | "variant" | "tone" | "size" | "density" | "surface"
-  >,
+  input: Pick<ButtonBaseProps, "className" | "variant" | "tone" | "size" | "density" | "surface">,
 ) {
   return cn(
     "ds-button",
-    `ds-button--variant-${input.variant || "solid"}`,
-    `ds-button--tone-${input.tone || "neutral"}`,
-    `ds-button--size-${input.size || "md"}`,
-    `ds-button--density-${input.density || "default"}`,
-    `ds-button--surface-${input.surface || "default"}`,
+    `ds-button--variant-${input.variant}`,
+    `ds-button--tone-${input.tone}`,
+    `ds-button--size-${input.size}`,
+    `ds-button--density-${input.density}`,
+    `ds-button--surface-${input.surface}`,
     input.className || "",
   );
 }
@@ -57,11 +56,11 @@ function buttonClassName(
 export function Button(props: ButtonProps) {
   const {
     className,
-    variant = "solid",
-    tone = "neutral",
-    size = "md",
-    density = "default",
-    surface = "default",
+    variant = BUTTON_DEFAULTS.variant,
+    tone = BUTTON_DEFAULTS.tone,
+    size = BUTTON_DEFAULTS.size,
+    density = BUTTON_DEFAULTS.density,
+    surface = BUTTON_DEFAULTS.surface,
     href,
     children,
     ...rest

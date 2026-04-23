@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
 import type {
   RouteTreeItem,
@@ -15,45 +15,47 @@ import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { RouteRowAdminPanel } from "./route-row-admin-panel";
 import { RouteRowTop } from "./route-row-top";
 
-export function RouteRow({
-  it,
-  cfg,
-  collapsed,
-  adminOpen,
-  busy,
-  accessChoice,
-  effectiveAccess,
-  inheritedProtected,
-  directProtected,
-  overrideValue,
-  overridePending,
-  overrideConflict,
-  getOverrideConflict,
-  onToggleCollapsed,
-  onToggleAdmin,
-  onSetAccessChoice,
-  onSaveOverride,
-  onSaveAccess,
-}: {
+type RouteRowProps = {
   it: RouteTreeItem;
   cfg: AdminConfig;
-  collapsed: Record<string, boolean>;
+  isCollapsed: boolean;
   adminOpen: boolean;
   busy: boolean;
-  accessChoice: Record<string, AccessMode>;
+  selectedAccessChoice: AccessMode | undefined;
   effectiveAccess: EffectiveAccess | null;
   inheritedProtected: boolean;
   directProtected: boolean;
   overrideValue: string;
   overridePending: boolean;
   overrideConflict: OverrideConflict | null;
-  getOverrideConflict: (candidatePath: string) => OverrideConflict | null;
+  findOverrideConflict: (pageId: string, candidatePath: string) => OverrideConflict | null;
   onToggleCollapsed: (id: string) => void;
   onToggleAdmin: (id: string) => void;
   onSetAccessChoice: (id: string, v: AccessMode) => void;
   onSaveOverride: (id: string, v: string) => void;
   onSaveAccess: (input: { pageId: string; path: string; access: AccessMode; password?: string }) => void;
-}) {
+};
+
+function RouteRowInner({
+  it,
+  cfg,
+  isCollapsed,
+  adminOpen,
+  busy,
+  selectedAccessChoice,
+  effectiveAccess,
+  inheritedProtected,
+  directProtected,
+  overrideValue,
+  overridePending,
+  overrideConflict,
+  findOverrideConflict,
+  onToggleCollapsed,
+  onToggleAdmin,
+  onSetAccessChoice,
+  onSaveOverride,
+  onSaveAccess,
+}: RouteRowProps) {
   const p = normalizeRoutePath(it.routePath);
   const isHome = p === "/";
   const match = effectiveAccess;
@@ -71,7 +73,7 @@ export function RouteRow({
     : "public";
 
   const selectedAccess =
-    accessChoice[it.id] ||
+    selectedAccessChoice ||
     (inheritedProtected ? (match?.auth === "github" ? "github" : "password") : directAccess);
 
   // Keep expensive DOM lookups out of event handlers; re-used within panel actions.
@@ -92,7 +94,7 @@ export function RouteRow({
     >
       <RouteRowTop
         it={it}
-        collapsed={Boolean(collapsed[it.id])}
+        collapsed={isCollapsed}
         isHome={isHome}
         adminOpen={adminOpen}
         overridePending={overridePending}
@@ -114,7 +116,7 @@ export function RouteRow({
           effectiveProtected={effectiveProtected}
           protectedSource={protectedSource}
           busy={busy}
-          getOverrideConflict={getOverrideConflict}
+          findOverrideConflict={findOverrideConflict}
           onSetAccessChoice={onSetAccessChoice}
           onSaveOverride={onSaveOverride}
           onSaveAccess={onSaveAccess}
@@ -123,3 +125,17 @@ export function RouteRow({
     </div>
   );
 }
+
+/**
+ * `RouteRow` renders a row inside the admin RouteExplorer list. The parent
+ * passes down aggregate state (`collapsed`, `accessChoice`) that changes on
+ * every click somewhere in the tree — without memoisation, every row
+ * re-renders for every collapse/admin/toggle, even when the row's own
+ * inputs are unchanged.
+ *
+ * We hoist the per-row lookups up to the parent (so the props we accept
+ * here are already row-scoped scalars, not the full maps) and wrap the
+ * component in `memo`. With primitive props and stable handler identities,
+ * the default shallow comparator is exactly what we want.
+ */
+export const RouteRow = memo(RouteRowInner);

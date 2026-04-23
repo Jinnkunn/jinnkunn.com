@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -16,6 +17,8 @@
 # next.js
 /.next/
 /out/
+/.open-next/
+/.wrangler/
 
 # local artifacts
 /.playwright-cli/
@@ -31,6 +34,8 @@
 
 # production
 /build
+apps/workspace/dist/
+apps/workspace/src-tauri/target/
 
 # misc
 .DS_Store

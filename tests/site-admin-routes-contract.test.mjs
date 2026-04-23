@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   isSiteAdminRoutesOk,
+  isSiteAdminRoutesPostOk,
+  parseSiteAdminRoutesPost,
   parseSiteAdminRoutesResult,
 } from "../lib/site-admin/routes-contract.ts";
 
@@ -11,6 +13,11 @@ test("site-admin-routes-contract: parses valid success payload", () => {
     ok: true,
     adminPageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     databases: { overridesDbId: "ovr", protectedDbId: "prot" },
+    sourceVersion: {
+      siteConfigSha: "site-sha",
+      protectedRoutesSha: "protected-sha",
+      branchSha: "branch-sha",
+    },
     overrides: [{ rowId: "1", pageId: "pid1", routePath: "/news", enabled: true }],
     protectedRoutes: [
       {
@@ -30,6 +37,7 @@ test("site-admin-routes-contract: parses valid success payload", () => {
   assert.equal(parsed.overrides.length, 1);
   assert.equal(parsed.protectedRoutes.length, 1);
   assert.equal(parsed.protectedRoutes[0].auth, "github");
+  assert.equal(parsed.sourceVersion.branchSha, "branch-sha");
 });
 
 test("site-admin-routes-contract: parses success payload in data envelope", () => {
@@ -38,6 +46,11 @@ test("site-admin-routes-contract: parses success payload in data envelope", () =
     data: {
       adminPageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       databases: { overridesDbId: "ovr", protectedDbId: "prot" },
+      sourceVersion: {
+        siteConfigSha: "site-sha",
+        protectedRoutesSha: "protected-sha",
+        branchSha: "branch-sha",
+      },
       overrides: [{ rowId: "1", pageId: "pid1", routePath: "/news", enabled: true }],
       protectedRoutes: [
         {
@@ -58,6 +71,7 @@ test("site-admin-routes-contract: parses success payload in data envelope", () =
   assert.equal(parsed.overrides.length, 1);
   assert.equal(parsed.protectedRoutes.length, 1);
   assert.equal(parsed.protectedRoutes[0].auth, "github");
+  assert.equal(parsed.sourceVersion.protectedRoutesSha, "protected-sha");
 });
 
 test("site-admin-routes-contract: filters malformed list rows", () => {
@@ -65,6 +79,11 @@ test("site-admin-routes-contract: filters malformed list rows", () => {
     ok: true,
     adminPageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     databases: { overridesDbId: "ovr", protectedDbId: "prot" },
+    sourceVersion: {
+      siteConfigSha: "site-sha",
+      protectedRoutesSha: "protected-sha",
+      branchSha: "branch-sha",
+    },
     overrides: [
       { rowId: "1", pageId: "pid1", routePath: "/news" },
       { rowId: "", pageId: "pid2", routePath: "/bad" },
@@ -93,8 +112,38 @@ test("site-admin-routes-contract: rejects malformed success envelope", () => {
     ok: true,
     adminPageId: "",
     databases: { overridesDbId: "ovr", protectedDbId: "prot" },
+    sourceVersion: {
+      siteConfigSha: "site-sha",
+      protectedRoutesSha: "protected-sha",
+      branchSha: "branch-sha",
+    },
     overrides: [],
     protectedRoutes: [],
   });
   assert.equal(parsed, null);
+});
+
+test("site-admin-routes-contract: parses post payload with source version", () => {
+  const parsed = parseSiteAdminRoutesPost({
+    ok: true,
+    data: {
+      sourceVersion: {
+        siteConfigSha: "site-sha",
+        protectedRoutesSha: "protected-sha",
+        branchSha: "branch-sha",
+      },
+      override: {
+        rowId: "1",
+        pageId: "pid1",
+        routePath: "/news",
+        enabled: true,
+      },
+    },
+  });
+
+  assert.ok(parsed);
+  assert.equal(parsed?.ok, true);
+  if (!parsed || !isSiteAdminRoutesPostOk(parsed)) throw new Error("Expected success payload");
+  assert.equal(parsed.sourceVersion.branchSha, "branch-sha");
+  assert.equal(parsed.override?.routePath, "/news");
 });

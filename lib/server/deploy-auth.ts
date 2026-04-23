@@ -1,29 +1,17 @@
 import crypto from "node:crypto";
 
+import { checkRateLimit, requestIpFromHeaders } from "./rate-limit.ts";
+
 const SIGNATURE_HEADER = "x-deploy-signature";
 const TIMESTAMP_HEADER = "x-deploy-ts";
 const TIMESTAMP_MAX_SKEW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_NAMESPACE = "deploy";
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 10;
-const RATE_LIMIT_GC_INTERVAL_MS = 30 * 1000;
-
-type RateLimitEntry = {
-  count: number;
-  resetAtMs: number;
-};
-
-type RateLimitResult =
-  | { ok: true }
-  | { ok: false; retryAfterSec: number };
 
 type DeployAuthResult =
   | { ok: true; ip: string }
   | { ok: false; status: 400 | 401 | 429; error: string; retryAfterSec?: number };
-
-type DeployRateLimitGlobal = typeof globalThis & {
-  __deployRateLimitStore?: Map<string, RateLimitEntry>;
-  __deployRateLimitLastGcMs?: number;
-};
 
 function normalizeHeader(value: string | null): string {
   return String(value || "").trim();
@@ -52,57 +40,13 @@ function timingSafeEqualHex(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aa, bb);
 }
 
-function getRateLimitStore(): Map<string, RateLimitEntry> {
-  const g = globalThis as DeployRateLimitGlobal;
-  if (!g.__deployRateLimitStore) g.__deployRateLimitStore = new Map<string, RateLimitEntry>();
-  return g.__deployRateLimitStore;
-}
-
-function gcRateLimitStore(nowMs: number) {
-  const g = globalThis as DeployRateLimitGlobal;
-  if ((g.__deployRateLimitLastGcMs || 0) + RATE_LIMIT_GC_INTERVAL_MS > nowMs) return;
-  g.__deployRateLimitLastGcMs = nowMs;
-  const store = getRateLimitStore();
-  for (const [key, entry] of store) {
-    if (entry.resetAtMs <= nowMs) store.delete(key);
-  }
-}
-
-function checkRateLimit(ip: string, nowMs: number): RateLimitResult {
-  gcRateLimitStore(nowMs);
-  const store = getRateLimitStore();
-  const key = ip || "unknown";
-  const current = store.get(key);
-
-  if (!current || current.resetAtMs <= nowMs) {
-    store.set(key, {
-      count: 1,
-      resetAtMs: nowMs + RATE_LIMIT_WINDOW_MS,
-    });
-    return { ok: true };
-  }
-
-  if (current.count >= RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfterMs = Math.max(0, current.resetAtMs - nowMs);
-    return { ok: false, retryAfterSec: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
-  }
-
-  current.count += 1;
-  store.set(key, current);
-  return { ok: true };
-}
-
 function expectedSignatureHex(secret: string, timestamp: string, rawBody: string): string {
   return crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`, "utf8").digest("hex");
 }
 
-export function requestIpFromHeaders(headers: Headers): string {
-  const forwardedFor = normalizeHeader(headers.get("x-forwarded-for"));
-  if (forwardedFor) return forwardedFor.split(",")[0]?.trim() || "unknown";
-  const realIp = normalizeHeader(headers.get("x-real-ip"));
-  if (realIp) return realIp;
-  return "unknown";
-}
+// Re-export so existing callers (app/api/deploy/route.ts) keep the same
+// import path instead of learning about the shared helper.
+export { requestIpFromHeaders };
 
 export function verifyDeploySignature(opts: {
   secret: string;
@@ -121,7 +65,13 @@ export function authorizeDeployRequest(
   nowMs = Date.now(),
 ): DeployAuthResult {
   const ip = requestIpFromHeaders(req.headers);
-  const rate = checkRateLimit(ip, nowMs);
+  const rate = checkRateLimit({
+    namespace: RATE_LIMIT_NAMESPACE,
+    ip,
+    maxRequests: RATE_LIMIT_MAX_REQUESTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    nowMs,
+  });
   if (!rate.ok) {
     return {
       ok: false,

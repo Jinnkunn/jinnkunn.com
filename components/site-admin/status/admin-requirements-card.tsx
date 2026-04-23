@@ -7,6 +7,7 @@ import type { StatusViewCoreProps, StatusViewDerivedProps } from "@/components/s
 type SiteAdminRequirementsCardProps = StatusViewCoreProps & Pick<StatusViewDerivedProps, "readiness">;
 
 export function SiteAdminRequirementsCard({ payload, readiness }: SiteAdminRequirementsCardProps) {
+  const hasDeployTarget = payload.env.hasDeployTarget || payload.env.hasDeployHookUrl;
   return (
     <Card className="site-admin-card">
       <div className="site-admin-card__title">Admin Requirements</div>
@@ -39,10 +40,10 @@ export function SiteAdminRequirementsCard({ payload, readiness }: SiteAdminRequi
           </dd>
         </div>
         <div className="site-admin-kv__row">
-          <dt>Deploy Hook</dt>
+          <dt>Deploy Target</dt>
           <dd>
-            <StatusBadge ok={payload.env.hasDeployHookUrl}>
-              {payload.env.hasDeployHookUrl ? "configured" : "missing"}
+            <StatusBadge ok={hasDeployTarget}>
+              {hasDeployTarget ? "configured" : "missing"}
             </StatusBadge>
           </dd>
         </div>

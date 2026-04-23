@@ -1,0 +1,109 @@
+/* MDX post rich-component styling.
+   These components render alongside the legacy Notion HTML, so we reuse the
+   existing `.notion-*` classes wherever possible (Toggle, Embed, Figure).
+   The only truly new widget is <Callout/>, styled with design-system tokens. */
+
+.mdx-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--ds-space-4) 0;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-soft);
+  color: var(--ds-text-primary);
+}
+
+.mdx-callout__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.mdx-callout__body > :first-child {
+  margin-top: 0;
+}
+
+.mdx-callout__body > :last-child {
+  margin-bottom: 0;
+}
+
+.mdx-callout--info {
+  background: var(--ds-info-bg);
+  border-color: var(--ds-info-border);
+  color: var(--ds-info-text);
+}
+
+.mdx-callout--info .mdx-callout__body {
+  color: var(--ds-text-primary);
+}
+
+.mdx-callout--warning {
+  background: var(--ds-warning-bg);
+  border-color: var(--ds-warning-border);
+  color: var(--ds-warning-text);
+}
+
+.mdx-callout--warning .mdx-callout__body {
+  color: var(--ds-text-primary);
+}
+
+.mdx-callout--danger {
+  background: var(--ds-danger-bg);
+  border-color: var(--ds-danger-border);
+  color: var(--ds-danger-text);
+}
+
+.mdx-callout--danger .mdx-callout__body {
+  color: var(--ds-text-primary);
+}
+
+.mdx-callout--success {
+  background: var(--ds-success-bg);
+  border-color: var(--ds-success-border);
+  color: var(--ds-success-text);
+}
+
+.mdx-callout--success .mdx-callout__body {
+  color: var(--ds-text-primary);
+}
+
+.mdx-callout--note {
+  background: var(--ds-surface-soft);
+  border-color: var(--ds-border-subtle);
+  color: var(--ds-text-primary);
+}
+
+/* MDX toggle: native <details>, keeps the Notion-toggle cursor-pointer feel. */
+.mdx-toggle > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.mdx-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mdx-toggle[open] > .notion-toggle__summary .notion-toggle__trigger_icon {
+  transform: rotate(90deg);
+}
+
+.mdx-toggle .notion-toggle__trigger_icon {
+  transition: transform 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdx-toggle .notion-toggle__trigger_icon {
+    transition: none;
+  }
+}
+
+/* MDX figure wrapper */
+.mdx-figure img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--ds-radius-sm);
+}

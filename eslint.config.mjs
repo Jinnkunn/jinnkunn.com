@@ -11,9 +11,18 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    ".open-next/**",
+    ".wrangler/**",
     "next-env.d.ts",
     // Third-party vendored scripts; not maintained in this repo.
     "public/cdn-cgi/**",
+    // Tauri workspace app — `dist/` is the Vite build output and
+    // `src-tauri/target/**` is the Rust/Tauri build directory containing
+    // minified generated JS that would otherwise flood ESLint output.
+    "apps/workspace/dist/**",
+    "apps/workspace/src-tauri/target/**",
+    // Local Playwright CLI cache.
+    ".playwright-cli/**",
   ]),
 ]);
 

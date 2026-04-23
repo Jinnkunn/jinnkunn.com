@@ -178,6 +178,16 @@
   opacity: 0.72;
 }
 
+/* Header row above each nav-group list: title Badge + Add-item Button,
+ * wrapping when the admin shell is narrow. Previously an inline
+ * `style={{ display: flex, alignItems: center, gap: 10, flexWrap: wrap }}`. */
+.site-admin-nav-section__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  flex-wrap: wrap;
+}
+
 .site-admin-nav {
   margin-top: 12px;
   border: 1px solid var(--ds-card-border);

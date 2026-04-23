@@ -6,10 +6,87 @@ import { buildSearchResponse, type SearchTypeParam } from "@/lib/search/api-serv
 import { emptySearchResponse, type SearchResponse } from "@/lib/shared/search-contract";
 import { noStoreErrorOnly, noStoreJson, withNoStoreApi } from "@/lib/server/api-response";
 import { searchRichSnippetsFlag } from "@/lib/flags";
+import generatedSearchIndex from "@/content/generated/search-index.json";
+import generatedRoutesManifest from "@/content/generated/routes-manifest.json";
+import type { SearchIndexItem } from "@/lib/search-index";
+import type { RouteManifestItem } from "@/lib/routes-manifest";
 
 export const runtime = "nodejs";
 
 const SEARCH_TYPES: SearchTypeParam[] = ["all", "page", "pages", "blog", "database", "databases"];
+
+// The generated search-index + routes-manifest are immutable for the
+// lifetime of a runtime instance — they come from files baked into the
+// deploy and never change until redeploy. Normalising them on every
+// request was wasted CPU (especially painful on Workers Free under the
+// 10ms/request cap). Compute once per isolate and reuse.
+let cachedFallbackIndex: SearchIndexItem[] | null = null;
+let cachedFallbackManifest: RouteManifestItem[] | null = null;
+
+function getFallbackIndex(): SearchIndexItem[] {
+  if (cachedFallbackIndex === null) {
+    cachedFallbackIndex = normalizeSearchIndexSnapshot(generatedSearchIndex);
+  }
+  return cachedFallbackIndex;
+}
+
+function getFallbackManifest(): RouteManifestItem[] {
+  if (cachedFallbackManifest === null) {
+    cachedFallbackManifest = normalizeRoutesManifestSnapshot(generatedRoutesManifest);
+  }
+  return cachedFallbackManifest;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeSearchIndexSnapshot(raw: unknown): SearchIndexItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SearchIndexItem[] = [];
+  for (const item of raw) {
+    const row = asRecord(item);
+    if (!row) continue;
+    const routePath = String(row.routePath || "");
+    if (!routePath) continue;
+    out.push({
+      id: String(row.id || ""),
+      title: String(row.title || ""),
+      kind: String(row.kind || ""),
+      routePath,
+      headings: Array.isArray(row.headings)
+        ? row.headings.map((s) => String(s || "").trim()).filter(Boolean)
+        : undefined,
+      text: String(row.text || ""),
+    });
+  }
+  return out;
+}
+
+function normalizeRoutesManifestSnapshot(raw: unknown): RouteManifestItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RouteManifestItem[] = [];
+  for (const item of raw) {
+    const row = asRecord(item);
+    if (!row) continue;
+    const id = String(row.id || "");
+    const routePath = String(row.routePath || "");
+    if (!id || !routePath) continue;
+    out.push({
+      id,
+      title: String(row.title || ""),
+      kind: String(row.kind || ""),
+      routePath,
+      parentId: String(row.parentId || ""),
+      parentRoutePath: String(row.parentRoutePath || "/"),
+      navGroup: String(row.navGroup || ""),
+      overridden: Boolean(row.overridden),
+    });
+  }
+  return out;
+}
 
 function isSearchTypeParam(value: string): value is SearchTypeParam {
   return SEARCH_TYPES.includes(value as SearchTypeParam);
@@ -36,14 +113,18 @@ export async function GET(req: Request) {
     const scopeRaw = String(url.searchParams.get("scope") || "").trim();
     const scope = scopeRaw && scopeRaw.startsWith("/") ? normalizePathname(scopeRaw) : "";
     const includeSnippets = await searchRichSnippetsFlag();
+    const liveIndex = getSearchIndex();
+    const liveManifest = getRoutesManifest();
+    const indexSource = liveIndex.length > 0 ? liveIndex : getFallbackIndex();
+    const manifestSource = liveManifest.length > 0 ? liveManifest : getFallbackManifest();
     const response = buildSearchResponse({
       q,
       type,
       offset,
       limit,
       scope,
-      index: getSearchIndex().filter((it) => !isIgnoredPath(it.routePath)),
-      manifest: getRoutesManifest().filter((it) => !isIgnoredPath(it.routePath)),
+      index: indexSource.filter((it) => !isIgnoredPath(it.routePath)),
+      manifest: manifestSource.filter((it) => !isIgnoredPath(it.routePath)),
       includeSnippets,
     });
     return noStoreJson(response satisfies SearchResponse);

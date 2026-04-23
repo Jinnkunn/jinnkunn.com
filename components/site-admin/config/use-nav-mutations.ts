@@ -5,16 +5,24 @@ import { useState } from "react";
 
 import type { NavItemRow } from "./types";
 import { errorFromUnknown } from "./utils";
-import { requestJsonOrThrow } from "@/lib/client/request-json";
-import { isSiteAdminConfigPostOk, parseSiteAdminConfigPost } from "@/lib/site-admin/config-contract";
+import { siteAdminBackend } from "@/lib/client/site-admin-backend";
+import type { SiteAdminConfigSourceVersion } from "@/lib/site-admin/api-types";
 
 type UseSiteAdminNavMutationsArgs = {
   setBusy: (value: boolean) => void;
   setErr: (value: string) => void;
   setNav: Dispatch<SetStateAction<NavItemRow[]>>;
+  sourceVersion: SiteAdminConfigSourceVersion | null;
+  setSourceVersion: (value: SiteAdminConfigSourceVersion) => void;
 };
 
-export function useSiteAdminNavMutations({ setBusy, setErr, setNav }: UseSiteAdminNavMutationsArgs) {
+export function useSiteAdminNavMutations({
+  setBusy,
+  setErr,
+  setNav,
+  sourceVersion,
+  setSourceVersion,
+}: UseSiteAdminNavMutationsArgs) {
   const [openNav, setOpenNav] = useState<Record<string, boolean>>({});
   const [navDraft, setNavDraft] = useState<Record<string, Partial<NavItemRow>>>({});
 
@@ -40,21 +48,22 @@ export function useSiteAdminNavMutations({ setBusy, setErr, setNav }: UseSiteAdm
   };
 
   const saveNavRow = async (row: NavItemRow) => {
+    if (!sourceVersion?.siteConfigSha) {
+      setErr("Missing sourceVersion. Reload latest and try again.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
       const patch = navDraft[row.rowId] || {};
-      await requestJsonOrThrow(
-        "/api/site-admin/config",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ kind: "nav-update", rowId: row.rowId, patch }),
-        },
-        parseSiteAdminConfigPost,
-        { isOk: isSiteAdminConfigPostOk },
-      );
+      const data = await siteAdminBackend.postConfig({
+        kind: "nav-update",
+        rowId: row.rowId,
+        patch,
+        expectedSiteConfigSha: sourceVersion.siteConfigSha,
+      });
 
+      setSourceVersion(data.sourceVersion);
       setNav((prev) => prev.map((it) => (it.rowId === row.rowId ? { ...it, ...patch } : it)));
       clearNavDraft(row.rowId);
     } catch (e: unknown) {
@@ -65,28 +74,25 @@ export function useSiteAdminNavMutations({ setBusy, setErr, setNav }: UseSiteAdm
   };
 
   const addNavRow = async (group: "top" | "more") => {
+    if (!sourceVersion?.siteConfigSha) {
+      setErr("Missing sourceVersion. Reload latest and try again.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
-      const data = await requestJsonOrThrow(
-        "/api/site-admin/config",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            kind: "nav-create",
-            input: {
-              label: "New item",
-              href: "/new",
-              group,
-              order: 999,
-              enabled: true,
-            },
-          }),
+      const data = await siteAdminBackend.postConfig({
+        kind: "nav-create",
+        input: {
+          label: "New item",
+          href: "/new",
+          group,
+          order: 999,
+          enabled: true,
         },
-        parseSiteAdminConfigPost,
-        { isOk: isSiteAdminConfigPostOk },
-      );
+        expectedSiteConfigSha: sourceVersion.siteConfigSha,
+      });
+      setSourceVersion(data.sourceVersion);
       const created = data.created || null;
       if (created?.rowId) {
         setNav((prev) => [...prev, created].sort((a, b) => a.order - b.order));

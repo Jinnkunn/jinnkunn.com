@@ -2,9 +2,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadRawMainHtml } from "@/lib/load-raw-main";
+import { getPostEntries } from "@/lib/posts/index";
 import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy";
 import { listRawHtmlRelPaths } from "@/lib/server/content-files";
 import { serverDebugLog } from "@/lib/server/debug-log";
+
+export { parseBlogMetaFromMain } from "@/lib/blog-meta";
+import { parseBlogMetaFromMain } from "@/lib/blog-meta";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -13,6 +17,9 @@ export type BlogPostIndexItem = {
   title: string;
   dateText: string | null;
   dateIso: string | null; // YYYY-MM-DD if parseable
+  description?: string | null; // First substantive paragraph, trimmed ~200 chars
+  wordCount?: number | null;
+  readingMinutes?: number | null;
 };
 
 function decodeEntities(s: string): string {
@@ -24,40 +31,6 @@ function decodeEntities(s: string): string {
     .replaceAll("&#39;", "'")
     .replaceAll("&#x27;", "'")
     .replaceAll("&#x2F;", "/");
-}
-
-function toIsoDate(dateText: string): string | null {
-  const t = Date.parse(dateText);
-  if (!Number.isFinite(t)) return null;
-  const d = new Date(t);
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-export function parseBlogMetaFromMain(mainHtml: string): {
-  title: string;
-  dateText: string | null;
-  dateIso: string | null;
-} {
-  const title =
-    decodeEntities(
-      mainHtml.match(/class="notion-header__title">([\s\S]*?)<\/h1>/i)?.[1] ??
-        ""
-    )
-      .replace(/<[^>]+>/g, "")
-      .trim() || "Blog Post";
-
-  const dateText =
-    decodeEntities(
-      mainHtml.match(/<span class="date">([^<]+)<\/span>/i)?.[1] ?? ""
-    )
-      .replace(/<[^>]+>/g, "")
-      .trim() || null;
-
-  const dateIso = dateText ? toIsoDate(dateText) : null;
-  return { title, dateText, dateIso };
 }
 
 function parseRssItemPaths(rss: string): string[] {
@@ -160,6 +133,9 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
         title: meta.title,
         dateText: meta.dateText,
         dateIso: meta.dateIso,
+        description: meta.description,
+        wordCount: meta.wordCount,
+        readingMinutes: meta.readingMinutes,
       });
       continue;
     }
@@ -177,6 +153,9 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
         title: meta.title,
         dateText: meta.dateText,
         dateIso: meta.dateIso,
+        description: meta.description,
+        wordCount: meta.wordCount,
+        readingMinutes: meta.readingMinutes,
       });
     } catch (e) {
       serverDebugLog("blog", "Skipping non-blog page while building blog index", {
@@ -186,6 +165,35 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
       // If a page isn't a "blog-like" Notion page, skip it (prevents polluting /blog).
       continue;
     }
+  }
+
+  // Merge posts authored directly as MDX. On slug collision, MDX wins.
+  try {
+    const mdxPosts = await getPostEntries();
+    const taken = new Set(items.map((it) => it.href));
+    // Remove any Notion entries whose slug now exists in the MDX store.
+    const mdxHrefs = new Set(mdxPosts.map((p) => p.href));
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      if (mdxHrefs.has(items[i].href)) items.splice(i, 1);
+    }
+    for (const post of mdxPosts) {
+      if (taken.has(post.href)) continue;
+      items.push({
+        kind: "list",
+        slug: post.slug,
+        href: post.href,
+        title: post.title,
+        dateText: post.dateText,
+        dateIso: post.dateIso,
+        description: post.description,
+        wordCount: post.wordCount,
+        readingMinutes: post.readingMinutes,
+      });
+    }
+  } catch (e) {
+    serverDebugLog("blog", "Failed to load MDX posts while building index", {
+      error: String(e),
+    });
   }
 
   // Sort by date desc (unknown dates last), then by slug.

@@ -1,21 +1,29 @@
 import type { ReactNode } from "react";
 
+import {
+  type BadgeVariant,
+  BADGE_DEFAULTS,
+  type DesignDensity,
+  type DesignSize,
+  type DesignTone,
+} from "@/lib/design-system/primitives";
 import { cn } from "./cn";
-
-type BadgeTone = "neutral" | "success" | "danger" | "warning" | "info" | "accent";
-type BadgeVariant = "soft" | "outline";
 
 export function Badge({
   children,
   className,
-  tone = "neutral",
-  variant = "soft",
+  tone = BADGE_DEFAULTS.tone,
+  variant = BADGE_DEFAULTS.variant,
+  size = BADGE_DEFAULTS.size,
+  density = BADGE_DEFAULTS.density,
   title,
 }: {
   children: ReactNode;
   className?: string;
-  tone?: BadgeTone;
+  tone?: DesignTone;
   variant?: BadgeVariant;
+  size?: DesignSize;
+  density?: DesignDensity;
   title?: string;
 }) {
   return (
@@ -25,6 +33,8 @@ export function Badge({
         "ds-badge",
         `ds-badge--tone-${tone}`,
         `ds-badge--variant-${variant}`,
+        `ds-badge--size-${size}`,
+        `ds-badge--density-${density}`,
         className || "",
       )}
     >
@@ -32,4 +42,3 @@ export function Badge({
     </span>
   );
 }
-

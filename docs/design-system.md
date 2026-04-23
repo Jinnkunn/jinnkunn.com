@@ -50,6 +50,7 @@ This repo now has a code-first design system built as a compatibility layer on t
   - long-tail Notion block styling in `app/(classic)/notion-blocks.css`
   - bridge output in `app/(classic)/design-system-bridge.css`
 - Temporary allowed exceptions:
+  - `app/design-system.css` (foundation token definitions)
   - `public/styles/super*.css`
   - `public/styles/notion.css`
   - `app/(classic)/notion-blocks.css`
@@ -69,10 +70,12 @@ This repo now has a code-first design system built as a compatibility layer on t
   - persisted theme after refresh
   - dark-mode navigation, search, mobile menu, and site-admin shell
 - Accessibility regression stays on [`scripts/a11y-check.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/a11y-check.mjs) and audits representative light/dark pages through the same theme contract.
+- Token leakage hard gate is [`scripts/check-design-system.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/check-design-system.mjs), exposed as `npm run check:design-system`.
 
 ## Post-v1 Expansion Entry
 
 - Treat v1 as stabilized only when the current worktree can pass:
+  - `npm run check:design-system`
   - `npm test`
   - `npm run build`
   - `SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui`
@@ -83,3 +86,13 @@ This repo now has a code-first design system built as a compatibility layer on t
   - fix blocker-level dark-mode contrast/accessibility issues
   - avoid broad visual rework in raw content rendering
   - keep shell/admin/primitives changes in the design-system layer (`--ds-*` + shared primitives)
+
+## Phase D Minimal Closure
+
+- `app/(classic)/notion-blocks.css` now uses `--ds-*` for blocker-level interactions:
+  - copy-success feedback
+  - toggle focus ring and touch active state
+  - sticky table header surfaces
+  - code token contrast for table headers/data in dark mode
+- Regression is locked by [`tests/design-system-notion-blocks.test.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/tests/design-system-notion-blocks.test.mjs), which prevents raw color literals and legacy `--color-*` reintroduction in `notion-blocks.css`.
+- This does not expand scope into full long-tail Notion visual parity; only blocker-level accessibility/readability fixes are in-phase.

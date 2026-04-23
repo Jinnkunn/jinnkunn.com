@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { ICON_BUTTON_DEFAULTS } from "@/lib/design-system/primitives";
 import { cn } from "./cn";
 import { Button, type ButtonProps } from "./button";
 
@@ -24,8 +25,11 @@ export function IconButton({
   label,
   title,
   active = false,
-  variant = "subtle",
-  size = "sm",
+  variant = ICON_BUTTON_DEFAULTS.variant,
+  tone = ICON_BUTTON_DEFAULTS.tone,
+  size = ICON_BUTTON_DEFAULTS.size,
+  density = ICON_BUTTON_DEFAULTS.density,
+  surface = ICON_BUTTON_DEFAULTS.surface,
   ...rest
 }: IconButtonProps) {
   return (
@@ -33,7 +37,10 @@ export function IconButton({
       {...rest}
       className={cn("ds-icon-button", active ? "is-active" : "", className || "")}
       variant={variant}
+      tone={tone}
       size={size}
+      density={density}
+      surface={surface}
       aria-label={label}
       title={title || label}
     >

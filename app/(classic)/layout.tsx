@@ -14,6 +14,8 @@ import "./search.css";
 import "./toc.css";
 import "./lightbox.css";
 import "./publications.css";
+import "./blog-index.css";
+import "./posts-mdx.css";
 import "./page-overrides.css";
 import "./notion-blocks.css";
 import "./navigation.css";

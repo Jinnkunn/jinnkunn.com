@@ -9,9 +9,7 @@ export default function NotFound() {
       title="This page could not be found."
       description=""
       actions={
-        <Button href="/" className="page-404__btn page-404__btn--primary">
-          Back Home
-        </Button>
+        <Button href="/">Back Home</Button>
       }
     />
   );

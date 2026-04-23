@@ -175,34 +175,95 @@
 }
 
 .site-admin-kv__muted {
+  margin: 0;
   margin-left: 8px;
   color: var(--ds-text-faint);
   font-size: 12px;
 }
 
-.site-admin-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  border: 1px solid var(--ds-border-subtle);
+/* Diagnostics card — renders the admin error ring-buffer tail so
+ * admins can see warn/error events without tailing Worker logs. */
+.site-admin-diagnostics__list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.site-admin-diagnostics__item {
+  display: grid;
+  grid-template-columns: 78px 50px auto 1fr;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
   background: var(--ds-surface-soft);
-  color: var(--ds-text-secondary);
+  font-size: 12px;
+  align-items: baseline;
 }
 
-.site-admin-badge--ok {
-  background: var(--ds-success-bg);
-  border-color: var(--ds-success-border);
-  color: var(--ds-success-text);
-}
-
-.site-admin-badge--bad {
+.site-admin-diagnostics__item[data-severity="error"] {
   background: var(--ds-danger-bg);
-  border-color: var(--ds-danger-border);
+}
+
+.site-admin-diagnostics__time {
+  font-family: var(--ds-font-mono);
+  color: var(--ds-text-faint);
+  font-size: 11px;
+}
+
+.site-admin-diagnostics__sev {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  text-align: center;
+  align-self: start;
+}
+
+.site-admin-diagnostics__sev[data-severity="warn"] {
+  background: var(--ds-warning-bg);
+  color: var(--ds-warning-text);
+}
+
+.site-admin-diagnostics__sev[data-severity="error"] {
+  background: var(--ds-danger-bg);
   color: var(--ds-danger-text);
+}
+
+.site-admin-diagnostics__source {
+  font-family: var(--ds-font-mono);
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.site-admin-diagnostics__message {
+  grid-column: 1 / -1;
+  color: var(--ds-text-primary);
+  margin-top: 2px;
+}
+
+.site-admin-diagnostics__detail {
+  grid-column: 1 / -1;
+  color: var(--ds-text-muted);
+  font-family: var(--ds-font-mono);
+  font-size: 11px;
+  word-break: break-word;
+}
+
+/* The deploy client wraps its preview panel + deploy button + result
+ * banner in a vertical flex stack. Previously an inline `style={{ display:
+ * flex, flexDirection: column, gap: 10 }}` — now expressed in CSS so the
+ * design-system linter has full visibility. */
+.site-admin-deploy-client {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
 }
 
 .site-admin-deploy-preview {

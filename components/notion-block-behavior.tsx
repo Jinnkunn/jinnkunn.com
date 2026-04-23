@@ -3,23 +3,113 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
-import { initEmbeds } from "@/lib/client/notion/embeds";
-import { handleCopyButtonClick, initCodeHighlighting, shouldHandleCopyButtonClick } from "@/lib/client/notion/code";
-import { createLightboxController, findLightboxSrcFromTarget } from "@/lib/client/notion/lightbox";
-import { revealHashTarget, scrollToElementTop } from "@/lib/client/notion/anchors";
-import { initTocScrollSpy } from "@/lib/client/notion/toc";
-import { decodeHashToId, initToggles, openToggleAncestors, toggleFromSummaryInteraction } from "@/lib/client/notion/toggles";
-import { initInlineEquationA11y } from "@/lib/client/notion/equations";
+// Only the hot-path modules used inside the click/keydown handlers are
+// statically imported — everything else is dynamically imported from
+// inside the effect and gated on DOM presence. Bundle analyzer showed
+// the previous top-of-file static imports pulling ~15KB (toc + lightbox
+// + embeds + code + equations) into the initial client bundle on every
+// classic page even when those features weren't present on that page.
+import {
+  revealHashTarget,
+  scrollToElementTop,
+} from "@/lib/client/notion/anchors";
+import {
+  decodeHashToId,
+  initToggles,
+  openToggleAncestors,
+  toggleFromSummaryInteraction,
+} from "@/lib/client/notion/toggles";
+
+type LightboxController = {
+  open: (src: string) => void;
+  close: () => void;
+  cleanup: () => void;
+};
+
+function noopLightbox(): LightboxController {
+  return { open: () => {}, close: () => {}, cleanup: () => {} };
+}
+
 export default function NotionBlockBehavior() {
   const pathname = usePathname();
 
   useEffect(() => {
     const root = document.getElementById("main-content") ?? document;
     initToggles(root);
-    initInlineEquationA11y(root);
-    const cleanupEmbeds = initEmbeds(root);
-    void initCodeHighlighting(root);
-    const lightbox = createLightboxController();
+
+    let cancelled = false;
+    let cleanupEmbeds = () => {};
+    let cleanupTocSpy = () => {};
+    let lightbox: LightboxController = noopLightbox();
+
+    // Synchronous lightbox fallback: if the controller hasn't resolved
+    // by the time the user clicks an image, the initial click falls
+    // back to the browser's default behavior and the next click picks
+    // up the interactive controller.
+    const hasImages = Boolean(root.querySelector(".notion-image img"));
+    const hasEmbeds = Boolean(root.querySelector(".notion-embed"));
+    const hasCode = Boolean(root.querySelector("pre > code"));
+    const hasToc = Boolean(root.querySelector("ul.notion-table-of-contents"));
+    const hasEquations = Boolean(
+      root.querySelector(".notion-equation, .notion-inline-equation"),
+    );
+
+    if (hasImages) {
+      void import("@/lib/client/notion/lightbox").then((mod) => {
+        if (cancelled) return;
+        lightbox = mod.createLightboxController();
+      });
+    }
+    if (hasEmbeds) {
+      void import("@/lib/client/notion/embeds").then((mod) => {
+        if (cancelled) return;
+        cleanupEmbeds = mod.initEmbeds(root);
+      });
+    }
+    if (hasCode) {
+      void import("@/lib/client/notion/code").then((mod) => {
+        if (cancelled) return;
+        void mod.initCodeHighlighting(root);
+      });
+    }
+    if (hasToc) {
+      void import("@/lib/client/notion/toc").then((mod) => {
+        if (cancelled) return;
+        cleanupTocSpy = mod.initTocScrollSpy(root);
+      });
+    }
+    if (hasEquations) {
+      void import("@/lib/client/notion/equations").then((mod) => {
+        if (cancelled) return;
+        mod.initInlineEquationA11y(root);
+      });
+    }
+
+    let lightboxSrcResolver:
+      | ((target: Element) => string | null)
+      | null = null;
+    let codeCopyHandler:
+      | {
+          should: (target: Element) => HTMLElement | null;
+          handle: (btn: HTMLElement) => Promise<void> | void;
+        }
+      | null = null;
+
+    if (hasImages) {
+      void import("@/lib/client/notion/lightbox").then((mod) => {
+        if (cancelled) return;
+        lightboxSrcResolver = mod.findLightboxSrcFromTarget;
+      });
+    }
+    if (hasCode) {
+      void import("@/lib/client/notion/code").then((mod) => {
+        if (cancelled) return;
+        codeCopyHandler = {
+          should: mod.shouldHandleCopyButtonClick,
+          handle: mod.handleCopyButtonClick,
+        };
+      });
+    }
 
     const onClick = (e: MouseEvent) => {
       const target = e.target instanceof Element ? e.target : null;
@@ -60,20 +150,22 @@ export default function NotionBlockBehavior() {
       }
 
       // Code block copy button (Notion code blocks).
-      const copyBtn = shouldHandleCopyButtonClick(target);
-      if (copyBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        void handleCopyButtonClick(copyBtn);
-        return;
+      if (codeCopyHandler) {
+        const copyBtn = codeCopyHandler.should(target);
+        if (copyBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          void codeCopyHandler.handle(copyBtn);
+          return;
+        }
       }
 
       // Image lightbox: click on a Notion image to open full-size.
       const isNotionImage =
         Boolean(target.closest(".notion-image")) &&
         Boolean(target.closest("img"));
-      if (isNotionImage) {
-        const src = findLightboxSrcFromTarget(target);
+      if (isNotionImage && lightboxSrcResolver) {
+        const src = lightboxSrcResolver(target);
         if (src) {
           // Home page profile photo should not be zoomable.
           // We can't rely on the image URL (Notion assets vary), so use layout heuristics:
@@ -119,8 +211,6 @@ export default function NotionBlockBehavior() {
       toggleFromSummaryInteraction(summary, eventTarget);
     };
 
-    const cleanupTocSpy = initTocScrollSpy(root);
-
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown, true);
 
@@ -130,6 +220,7 @@ export default function NotionBlockBehavior() {
     window.setTimeout(() => revealHashTarget(window.location.hash), 0);
 
     return () => {
+      cancelled = true;
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("hashchange", onHashChange);

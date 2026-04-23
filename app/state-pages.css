@@ -114,51 +114,11 @@
   color: var(--ds-text-secondary);
 }
 
-.page-state-form__input {
-  width: 100%;
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid var(--ds-field-border);
-  padding: 0 12px;
-  background: var(--ds-field-bg);
-  color: var(--ds-text-primary);
-  transition: border-color 140ms ease, box-shadow 140ms ease;
-}
-
-.page-state-form__input--mono {
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace;
-}
-
-.page-state-form__input:focus-visible {
-  outline: none;
-  border-color: var(--ds-border-emphasis);
-  box-shadow: 0 0 0 3px var(--ds-focus-ring);
-}
-
 .page-state-auth {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.page-state__notice {
-  margin: 0;
-  padding: 2px 0 2px 10px;
-  border-left: 2px solid var(--ds-border-strong);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--ds-text-secondary);
-}
-
-.page-state__notice--error {
-  border-left-color: var(--ds-danger-border);
-  color: var(--ds-danger-text);
-}
-
-.page-state__notice--ok {
-  border-left-color: var(--ds-success-border);
-  color: var(--ds-success-text);
 }
 
 .page-state--danger .page-state__badge {
@@ -167,46 +127,6 @@
 
 .page-state--locked .page-state__badge {
   color: var(--ds-info-text);
-}
-
-.page-404__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--ds-border-emphasis);
-  text-decoration: none;
-  font-weight: 620;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-
-.page-404__btn--primary {
-  background: var(--ds-text-primary);
-  color: var(--ds-text-inverse);
-  border-color: var(--ds-text-primary);
-}
-
-.page-404__btn--ghost {
-  background: transparent;
-  color: var(--ds-text-secondary);
-}
-
-.page-404__btn:hover {
-  border-color: var(--ds-border-emphasis);
-}
-
-.page-404__btn--primary:hover {
-  background: var(--ds-text-secondary);
-  border-color: var(--ds-text-secondary);
-}
-
-.page-404__btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 @media (max-width: 700px) {
@@ -243,7 +163,8 @@
     font-size: 15px;
   }
 
-  .page-404__btn {
+  .page-state__actions .ds-button,
+  .page-404__actions .ds-button {
     width: 100%;
   }
 }
