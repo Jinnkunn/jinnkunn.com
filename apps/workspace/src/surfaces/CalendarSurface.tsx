@@ -17,7 +17,7 @@ export function CalendarSurface() {
         When implemented, this surface will own its own connection card (provider
         URL + OAuth credentials) and persist tokens through the
         <code className="mx-1 px-1 py-0.5 rounded bg-bg-surface-alt text-[12px]">
-          createNamespacedSecureStorage("calendar")
+          createNamespacedSecureStorage(&quot;calendar&quot;)
         </code>
         namespace, keeping credentials isolated from other tools.
       </p>
