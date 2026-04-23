@@ -15,6 +15,7 @@ import {
   parsePostSource,
   type PostFrontmatterForm,
 } from "./mdx-source";
+import { formatDraftAge, useEditorDraft } from "./use-editor-draft";
 import { normalizeString } from "./utils";
 import { usePreview } from "./use-preview";
 
@@ -68,6 +69,19 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
 
   const previewSource = useMemo(() => buildPostSource(form, body), [form, body]);
   const preview = usePreview(previewSource, previewOn, request);
+
+  // In create mode the draft lives under a shared `__new__` key so typing
+  // the slug doesn't scatter orphan entries across keys. In edit mode we
+  // anchor on the initial slug (never the mutable `slug` state, which is
+  // read-only in edit anyway but this is safer).
+  const draftKeySlug = mode === "create" ? "" : (initialSlug ?? "");
+  const { restorable, clearDraft, dismissRestore } = useEditorDraft(
+    "post",
+    draftKeySlug,
+    body,
+    form,
+    !loading,
+  );
 
   useEffect(() => {
     if (mode !== "edit" || !initialSlug) return;
@@ -166,6 +180,7 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
           setMessage("error", `Create post failed: ${response.code}: ${response.error}`);
           return;
         }
+        clearDraft();
         setMessage("success", `Post created.`);
         onExit("saved", slug.trim());
         return;
@@ -185,10 +200,11 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
       const data = (response.data ?? {}) as Record<string, unknown>;
       const nextVersion = normalizeString(data.version);
       if (nextVersion) setVersion(nextVersion);
+      clearDraft();
       setMessage("success", `Post saved.`);
       onExit("saved", currentSlug);
     },
-    [body, canSave, form, initialSlug, mode, onExit, request, saving, setMessage, slug, version],
+    [body, canSave, clearDraft, form, initialSlug, mode, onExit, request, saving, setMessage, slug, version],
   );
 
   const remove = useCallback(async () => {
@@ -206,9 +222,10 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
       setMessage("error", `Delete post failed: ${response.code}: ${response.error}`);
       return;
     }
+    clearDraft();
     setMessage("success", `Post deleted.`);
     onExit("deleted", initialSlug);
-  }, [initialSlug, mode, onExit, request, setMessage, version]);
+  }, [clearDraft, initialSlug, mode, onExit, request, setMessage, version]);
 
   const onEditorReady = useCallback((api: MarkdownEditorApi) => {
     editorApiRef.current = api;
@@ -271,6 +288,32 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
 
       {error && (
         <p className="m-0 text-[12px] text-[color:var(--text-danger,#b02a37)]">{error}</p>
+      )}
+
+      {restorable && !loading && (
+        <div className="draft-restore" role="status">
+          <span className="draft-restore__label">
+            Unsaved draft · {formatDraftAge(restorable.savedAt)}
+          </span>
+          <button
+            type="button"
+            className="btn btn--secondary draft-restore__btn"
+            onClick={() => {
+              setBody(restorable.body);
+              setForm(restorable.form);
+              dismissRestore();
+            }}
+          >
+            Restore
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost draft-restore__btn"
+            onClick={clearDraft}
+          >
+            Discard
+          </button>
+        </div>
       )}
 
       {loading ? (

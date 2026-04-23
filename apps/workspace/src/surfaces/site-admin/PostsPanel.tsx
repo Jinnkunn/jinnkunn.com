@@ -3,10 +3,13 @@ import { ListDetailLayout } from "./ListDetailLayout";
 import { PostEditor } from "./PostEditor";
 import { PublishButton } from "./PublishButton";
 import { useSiteAdmin } from "./state";
-import type { PostListRow } from "./types";
+import type { ItemSelection, PostListRow } from "./types";
 import { normalizeString } from "./utils";
 
-type Selected = null | { kind: "new" } | { kind: "edit"; slug: string };
+export interface PostsPanelProps {
+  selected: ItemSelection;
+  onSelectedChange: (next: ItemSelection) => void;
+}
 
 function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
@@ -36,13 +39,12 @@ function normalizePostListRow(raw: unknown): PostListRow | null {
   };
 }
 
-export function PostsPanel() {
-  const { connection, request, setMessage } = useSiteAdmin();
+export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
+  const { connection, request, setMessage, setPostsIndex } = useSiteAdmin();
   const [rows, setRows] = useState<PostListRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [error, setError] = useState("");
   const [includeDrafts, setIncludeDrafts] = useState(true);
-  const [selected, setSelected] = useState<Selected>(null);
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
 
@@ -67,8 +69,9 @@ export function PostsPanel() {
       if (row) parsed.push(row);
     }
     setRows(parsed);
+    setPostsIndex(parsed);
     setMessage("success", `Loaded ${parsed.length} post${parsed.length === 1 ? "" : "s"}.`);
-  }, [includeDrafts, ready, request, setMessage]);
+  }, [includeDrafts, ready, request, setMessage, setPostsIndex]);
 
   useEffect(() => {
     // Auto-load posts list once the connection is ready. The async state
@@ -79,10 +82,10 @@ export function PostsPanel() {
 
   const onEditorExit = useCallback(
     (action: "saved" | "deleted" | "cancel") => {
-      setSelected(null);
+      onSelectedChange(null);
       if (action !== "cancel") void refresh();
     },
-    [refresh],
+    [onSelectedChange, refresh],
   );
 
   // --- Left: list ----------------------------------------------------------
@@ -120,7 +123,7 @@ export function PostsPanel() {
                 type="button"
                 className="list-detail__row"
                 aria-current={active ? "true" : undefined}
-                onClick={() => setSelected({ kind: "edit", slug: row.slug })}
+                onClick={() => onSelectedChange({ kind: "edit", slug: row.slug })}
               >
                 <span className="list-detail__row-title" title={row.title}>
                   {row.title}
@@ -149,7 +152,7 @@ export function PostsPanel() {
         <button
           className="btn btn--primary"
           type="button"
-          onClick={() => setSelected({ kind: "new" })}
+          onClick={() => onSelectedChange({ kind: "new" })}
           disabled={!ready}
         >
           New post
@@ -175,7 +178,7 @@ export function PostsPanel() {
       <button
         className="btn btn--primary"
         type="button"
-        onClick={() => setSelected({ kind: "new" })}
+        onClick={() => onSelectedChange({ kind: "new" })}
         disabled={!ready}
       >
         New post

@@ -21,6 +21,8 @@ import type {
   MessageKind,
   MessageState,
   NormalizedApiResponse,
+  PageListRow,
+  PostListRow,
 } from "./types";
 import {
   decodeJwtPayload,
@@ -75,6 +77,14 @@ export interface SiteAdminContextValue {
   drawerOpen: boolean;
   toggleDrawer: () => void;
   setDrawerOpen: (open: boolean) => void;
+
+  // Shared indexes — panels push their most-recently-fetched list here
+  // so the command palette can search post/page titles without doing its
+  // own fetch. Source of truth is still the panel; this is a snapshot.
+  postsIndex: PostListRow[];
+  pagesIndex: PageListRow[];
+  setPostsIndex: (rows: PostListRow[]) => void;
+  setPagesIndex: (rows: PageListRow[]) => void;
 
   // API helper — performs request + mirrors into the debug pane.
   request: (
@@ -149,6 +159,8 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     body: "",
   });
   const [drawerOpen, setDrawerOpenState] = useState(false);
+  const [postsIndex, setPostsIndexState] = useState<PostListRow[]>([]);
+  const [pagesIndex, setPagesIndexState] = useState<PageListRow[]>([]);
 
   const toggleDrawer = useCallback(() => {
     setDrawerOpenState((prev) => !prev);
@@ -156,6 +168,14 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
 
   const setDrawerOpen = useCallback((open: boolean) => {
     setDrawerOpenState(open);
+  }, []);
+
+  const setPostsIndex = useCallback((rows: PostListRow[]) => {
+    setPostsIndexState(rows);
+  }, []);
+
+  const setPagesIndex = useCallback((rows: PageListRow[]) => {
+    setPagesIndexState(rows);
   }, []);
 
   // Auto-dismiss timer for `success` / `info` messages. Errors + warnings
@@ -419,6 +439,10 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       drawerOpen,
       toggleDrawer,
       setDrawerOpen,
+      postsIndex,
+      pagesIndex,
+      setPostsIndex,
+      setPagesIndex,
       request,
     }),
     [
@@ -437,6 +461,10 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       drawerOpen,
       toggleDrawer,
       setDrawerOpen,
+      postsIndex,
+      pagesIndex,
+      setPostsIndex,
+      setPagesIndex,
       request,
     ],
   );
