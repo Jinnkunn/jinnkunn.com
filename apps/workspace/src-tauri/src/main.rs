@@ -425,6 +425,12 @@ fn main() {
         // Persist window position/size/maximized state across launches.
         // Writes to the OS app-data dir; no app code required.
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Self-update plugin. Inert until tauri.conf.json's
+        // `plugins.updater.pubkey` is filled with the public half of a
+        // `tauri signer generate` keypair, and `endpoints` points at a
+        // signed manifest. See .github/workflows/release.yml for the
+        // build/publish pipeline.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             site_admin_http_request,
             secure_store_set,

@@ -24,6 +24,12 @@ tauri-plugin-decorum = "1"
 # Writes to the OS-standard app data dir (~/Library/Application Support
 # on macOS).
 tauri-plugin-window-state = "2"
+# Self-update plugin. Currently inert — needs `pubkey` + `endpoints` in
+# tauri.conf.json's `plugins.updater` block, plus a signed release
+# pipeline (see .github/workflows/release.yml) for updates to actually
+# land. Safe to ship disabled: without a pubkey, the plugin initializes
+# but check_update() rejects.
+tauri-plugin-updater = "2"
 # window-vibrancy applies the native macOS NSVisualEffectView behind the
 # webview so the window background picks up desktop blur — the translucent
 # "和谐" feel personal-os gets from NSVisualEffectMaterial::WindowBackground.
