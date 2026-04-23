@@ -154,3 +154,28 @@ jobs:
           name: ci-perf-artifacts
           path: output/perf/**
           if-no-files-found: ignore
+
+  workspace-quality:
+    # Tauri workspace lives in apps/workspace with its own package.json +
+    # tsconfig. The root `build` job's `next build` doesn't typecheck it,
+    # so TS errors there can slip past CI. This job closes that gap.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/workspace/package-lock.json
+
+      - name: Install (workspace)
+        working-directory: apps/workspace
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Type Check (workspace)
+        working-directory: apps/workspace
+        run: npm run typecheck
