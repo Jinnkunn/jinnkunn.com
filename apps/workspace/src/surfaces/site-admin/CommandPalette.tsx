@@ -80,14 +80,14 @@ export function CommandPalette({
     items.push({
       id: "new:post",
       label: "New post",
-      hint: "Posts",
+      hint: activeTab === "posts" ? "⌘N" : "Posts",
       keywords: "new post create blog draft",
       run: onNewPost,
     });
     items.push({
       id: "new:page",
       label: "New page",
-      hint: "Pages",
+      hint: activeTab === "pages" ? "⌘N" : "Pages",
       keywords: "new page create standalone",
       run: onNewPage,
     });
