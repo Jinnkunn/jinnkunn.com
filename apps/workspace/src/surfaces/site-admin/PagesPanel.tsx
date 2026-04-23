@@ -3,10 +3,13 @@ import { ListDetailLayout } from "./ListDetailLayout";
 import { PageEditor } from "./PageEditor";
 import { PublishButton } from "./PublishButton";
 import { useSiteAdmin } from "./state";
-import type { PageListRow } from "./types";
+import type { ItemSelection, PageListRow } from "./types";
 import { normalizeString } from "./utils";
 
-type Selected = null | { kind: "new" } | { kind: "edit"; slug: string };
+export interface PagesPanelProps {
+  selected: ItemSelection;
+  onSelectedChange: (next: ItemSelection) => void;
+}
 
 function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
@@ -34,13 +37,12 @@ function normalizePageListRow(raw: unknown): PageListRow | null {
   };
 }
 
-export function PagesPanel() {
-  const { connection, request, setMessage } = useSiteAdmin();
+export function PagesPanel({ selected, onSelectedChange }: PagesPanelProps) {
+  const { connection, request, setMessage, setPagesIndex } = useSiteAdmin();
   const [rows, setRows] = useState<PageListRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [error, setError] = useState("");
   const [includeDrafts, setIncludeDrafts] = useState(true);
-  const [selected, setSelected] = useState<Selected>(null);
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
 
@@ -65,8 +67,9 @@ export function PagesPanel() {
       if (row) parsed.push(row);
     }
     setRows(parsed);
+    setPagesIndex(parsed);
     setMessage("success", `Loaded ${parsed.length} page${parsed.length === 1 ? "" : "s"}.`);
-  }, [includeDrafts, ready, request, setMessage]);
+  }, [includeDrafts, ready, request, setMessage, setPagesIndex]);
 
   useEffect(() => {
     // Auto-load pages list once the connection is ready. See PostsPanel.
@@ -76,10 +79,10 @@ export function PagesPanel() {
 
   const onEditorExit = useCallback(
     (action: "saved" | "deleted" | "cancel") => {
-      setSelected(null);
+      onSelectedChange(null);
       if (action !== "cancel") void refresh();
     },
-    [refresh],
+    [onSelectedChange, refresh],
   );
 
   const listHeader = (
@@ -116,7 +119,7 @@ export function PagesPanel() {
                 type="button"
                 className="list-detail__row"
                 aria-current={active ? "true" : undefined}
-                onClick={() => setSelected({ kind: "edit", slug: row.slug })}
+                onClick={() => onSelectedChange({ kind: "edit", slug: row.slug })}
               >
                 <span className="list-detail__row-title" title={row.title}>
                   {row.title}
@@ -144,7 +147,7 @@ export function PagesPanel() {
         <button
           className="btn btn--primary"
           type="button"
-          onClick={() => setSelected({ kind: "new" })}
+          onClick={() => onSelectedChange({ kind: "new" })}
           disabled={!ready}
         >
           New page
@@ -169,7 +172,7 @@ export function PagesPanel() {
       <button
         className="btn btn--primary"
         type="button"
-        onClick={() => setSelected({ kind: "new" })}
+        onClick={() => onSelectedChange({ kind: "new" })}
         disabled={!ready}
       >
         New page

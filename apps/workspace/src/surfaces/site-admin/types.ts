@@ -150,6 +150,15 @@ export interface PageDetail extends PageListRow {
   source: string;
 }
 
+/** Selection state for the Posts/Pages list-detail shells. `null` → detail
+ * column shows the empty-state; `{kind:"new"}` → create form; otherwise
+ * the editor for `slug` is open. Shared between the containers and the
+ * command palette so ⌘K can deep-link into a specific entry. */
+export type ItemSelection =
+  | null
+  | { kind: "new" }
+  | { kind: "edit"; slug: string };
+
 // --- Assets ---------------------------------------------------------------
 
 export interface AssetUploadResponse {

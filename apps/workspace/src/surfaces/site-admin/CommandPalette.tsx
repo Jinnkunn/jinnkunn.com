@@ -23,6 +23,10 @@ interface CommandPaletteProps {
   onClose: () => void;
   activeTab: SiteAdminTab;
   onSelectTab: (tab: SiteAdminTab) => void;
+  onOpenPost: (slug: string) => void;
+  onOpenPage: (slug: string) => void;
+  onNewPost: () => void;
+  onNewPage: () => void;
 }
 
 /** ⌘K command palette — keyboard-first navigation across the site-admin
@@ -33,6 +37,10 @@ export function CommandPalette({
   onClose,
   activeTab,
   onSelectTab,
+  onOpenPost,
+  onOpenPage,
+  onNewPost,
+  onNewPage,
 }: CommandPaletteProps) {
   const {
     connection,
@@ -41,6 +49,8 @@ export function CommandPalette({
     signInWithBrowser,
     clearAuth,
     saveConnectionLocally,
+    postsIndex,
+    pagesIndex,
   } = useSiteAdmin();
 
   const [query, setQuery] = useState("");
@@ -64,6 +74,47 @@ export function CommandPalette({
 
   const commands = useMemo<CommandItem[]>(() => {
     const trimmedBase = stripTrailingSlash(connection.baseUrl || "");
+    const items: CommandItem[] = [];
+
+    // Creation shortcuts — first so they stay near the top for fast access.
+    items.push({
+      id: "new:post",
+      label: "New post",
+      hint: "Posts",
+      keywords: "new post create blog draft",
+      run: onNewPost,
+    });
+    items.push({
+      id: "new:page",
+      label: "New page",
+      hint: "Pages",
+      keywords: "new page create standalone",
+      run: onNewPage,
+    });
+
+    // Per-entry "Open …" — one row per post/page title, so ⌘K can
+    // deep-link straight into the editor. Relies on the panel having
+    // published its index (auto-fetched on first ready).
+    for (const row of postsIndex) {
+      items.push({
+        id: `open:post:${row.slug}`,
+        label: `Open post · ${row.title}`,
+        hint: row.draft ? "draft" : (row.dateText || row.dateIso || "—"),
+        keywords: `post ${row.title} ${row.slug} ${row.tags.join(" ")}`,
+        run: () => onOpenPost(row.slug),
+      });
+    }
+    for (const row of pagesIndex) {
+      items.push({
+        id: `open:page:${row.slug}`,
+        label: `Open page · ${row.title}`,
+        hint: row.draft ? "draft" : (row.updatedIso || "—"),
+        keywords: `page ${row.title} ${row.slug}`,
+        run: () => onOpenPage(row.slug),
+      });
+    }
+
+    // Tab switches
     const tabs: Array<{ id: SiteAdminTab; label: string }> = [
       { id: "status", label: "Status" },
       { id: "posts", label: "Posts" },
@@ -71,13 +122,15 @@ export function CommandPalette({
       { id: "config", label: "Settings & Navigation" },
       { id: "routes", label: "Routes" },
     ];
-    const items: CommandItem[] = tabs.map((tab) => ({
-      id: `goto:${tab.id}`,
-      label: `Go to ${tab.label}`,
-      hint: tab.id === activeTab ? "current" : undefined,
-      keywords: `goto go to ${tab.label} ${tab.id}`,
-      run: () => onSelectTab(tab.id),
-    }));
+    for (const tab of tabs) {
+      items.push({
+        id: `goto:${tab.id}`,
+        label: `Go to ${tab.label}`,
+        hint: tab.id === activeTab ? "current" : undefined,
+        keywords: `goto go to ${tab.label} ${tab.id}`,
+        run: () => onSelectTab(tab.id),
+      });
+    }
 
     items.push({
       id: "drawer:toggle",
@@ -138,7 +191,13 @@ export function CommandPalette({
     connection.authToken,
     connection.baseUrl,
     drawerOpen,
+    onNewPage,
+    onNewPost,
+    onOpenPage,
+    onOpenPost,
     onSelectTab,
+    pagesIndex,
+    postsIndex,
     saveConnectionLocally,
     signInWithBrowser,
     toggleDrawer,

@@ -21,6 +21,7 @@ import {
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider } from "./state";
 import { StatusPanel } from "./StatusPanel";
+import type { ItemSelection } from "./types";
 
 // Grouped into three buckets so the sidebar communicates intent:
 //   Content → day-to-day authoring
@@ -53,6 +54,10 @@ const SECTIONS: readonly SiteAdminSectionDef[] = [
 function SiteAdminContent() {
   const [activeTab, setActiveTab] = useState<SiteAdminTab>("status");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Selection state lives in the shell (not the panels) so the command
+  // palette can deep-link straight into a specific post/page.
+  const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
+  const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
 
   // Global ⌘K / Ctrl+K opens the command palette. CodeMirror binds Mod-k
   // at Prec.high for "insert link" inside the editor and stops propagation,
@@ -73,6 +78,23 @@ function SiteAdminContent() {
   const closePalette = useCallback(() => setPaletteOpen(false), []);
   const selectTab = useCallback((tab: SiteAdminTab) => setActiveTab(tab), []);
 
+  const openPost = useCallback((slug: string) => {
+    setActiveTab("posts");
+    setPostsSelected({ kind: "edit", slug });
+  }, []);
+  const openPage = useCallback((slug: string) => {
+    setActiveTab("pages");
+    setPagesSelected({ kind: "edit", slug });
+  }, []);
+  const newPost = useCallback(() => {
+    setActiveTab("posts");
+    setPostsSelected({ kind: "new" });
+  }, []);
+  const newPage = useCallback(() => {
+    setActiveTab("pages");
+    setPagesSelected({ kind: "new" });
+  }, []);
+
   return (
     <div className="site-admin-shell">
       <SiteAdminTopBar sections={SECTIONS} activeTab={activeTab} />
@@ -86,8 +108,18 @@ function SiteAdminContent() {
           <MessageBar />
 
           {activeTab === "status" && <StatusPanel />}
-          {activeTab === "posts" && <PostsPanel />}
-          {activeTab === "pages" && <PagesPanel />}
+          {activeTab === "posts" && (
+            <PostsPanel
+              selected={postsSelected}
+              onSelectedChange={setPostsSelected}
+            />
+          )}
+          {activeTab === "pages" && (
+            <PagesPanel
+              selected={pagesSelected}
+              onSelectedChange={setPagesSelected}
+            />
+          )}
           {activeTab === "config" && <ConfigPanel />}
           {activeTab === "routes" && <RoutesPanel />}
         </div>
@@ -98,6 +130,10 @@ function SiteAdminContent() {
         onClose={closePalette}
         activeTab={activeTab}
         onSelectTab={selectTab}
+        onOpenPost={openPost}
+        onOpenPage={openPage}
+        onNewPost={newPost}
+        onNewPage={newPage}
       />
     </div>
   );
