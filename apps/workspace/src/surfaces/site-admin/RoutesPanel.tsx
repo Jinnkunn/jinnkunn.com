@@ -1,4 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
+import {
+  BLANK_NEW_OVERRIDE,
+  OverridesSection,
+  type NewOverrideInput,
+} from "./routes/OverridesSection";
+import {
+  BLANK_NEW_PROTECTED,
+  ProtectedSection,
+  type NewProtectedInput,
+  validateProtected,
+} from "./routes/ProtectedSection";
 import { useSiteAdmin } from "./state";
 import type {
   OverrideRow,
@@ -14,44 +25,10 @@ import {
   normalizeString,
 } from "./utils";
 
-interface NewOverrideInput {
-  pageId: string;
-  routePath: string;
-}
-
-interface NewProtectedInput {
-  pageId: string;
-  path: string;
-  auth: "password" | "github" | "public";
-  password: string;
-}
-
-const BLANK_NEW_OVERRIDE: NewOverrideInput = { pageId: "", routePath: "" };
-const BLANK_NEW_PROTECTED: NewProtectedInput = {
-  pageId: "",
-  path: "",
-  auth: "password",
-  password: "",
-};
-
-function validateProtected(draft: {
-  pageId: string;
-  path: string;
-  auth: string;
-  password: string;
-}): string {
-  if (!normalizeString(draft.pageId)) return "Protected route requires pageId.";
-  if (!normalizeString(draft.path)) return "Protected route requires path.";
-  const auth = normalizeString(draft.auth);
-  if (!["password", "github", "public"].includes(auth)) {
-    return "Protected route auth is invalid.";
-  }
-  if (auth === "password" && !normalizeString(draft.password)) {
-    return "Password auth requires a password. Empty password disables protection.";
-  }
-  return "";
-}
-
+/** Orchestrator for the Routes surface: owns load/save state + conflict
+ * handling. The two visual sections (Route Overrides, Protected Routes)
+ * each render their own table + create-form via components under
+ * `routes/`. */
 export function RoutesPanel() {
   const { request, setMessage } = useSiteAdmin();
 
@@ -401,230 +378,35 @@ export function RoutesPanel() {
       </p>
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
-      <details className="surface-details" open>
-        <summary>Route Overrides</summary>
-        <div className="flex flex-col gap-2 mt-1">
-          {overrides.length === 0 ? (
-            <p className="empty-note">No route overrides.</p>
-          ) : (
-            <>
-              <div className="grid-row grid-header routes-override">
-                <span>Page ID</span>
-                <span>Route Path</span>
-                <span>Action</span>
-              </div>
-              {overrides.map((row) => {
-                const draft = overrideDrafts[row.pageId] ?? row;
-                const dirty = isOverrideDirty(row, draft);
-                const saving = Boolean(overrideSaving[row.pageId]);
-                return (
-                  <div className="grid-row routes-override" key={row.pageId}>
-                    <span>{row.pageId}</span>
-                    <input
-                      value={draft.routePath}
-                      placeholder="/custom-path (empty disables)"
-                      onChange={(e) => updateOverrideDraft(row.pageId, e.target.value)}
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="btn btn--secondary"
-                        type="button"
-                        disabled={conflict || saving}
-                        onClick={() => void saveOverride(row.pageId)}
-                      >
-                        {saving ? "Saving…" : "Save"}
-                      </button>
-                      <span className={`row-note ${dirty ? "dirty" : "clean"}`}>
-                        {dirty ? "unsaved" : "saved"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
+      <OverridesSection
+        overrides={overrides}
+        overrideDrafts={overrideDrafts}
+        overrideSaving={overrideSaving}
+        conflict={conflict}
+        loading={loading}
+        sourceVersion={sourceVersion}
+        creatingOverride={creatingOverride}
+        newOverride={newOverride}
+        setNewOverride={setNewOverride}
+        updateOverrideDraft={updateOverrideDraft}
+        saveOverride={(pageId) => void saveOverride(pageId)}
+        createOverride={() => void createOverride()}
+      />
 
-        <h3 className="mt-4 mb-2 text-[13px] font-semibold text-text-primary">
-          Create Override
-        </h3>
-        <div
-          className="grid gap-2.5"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-        >
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Page ID
-            <input
-              value={newOverride.pageId}
-              onChange={(e) =>
-                setNewOverride({ ...newOverride, pageId: e.target.value })
-              }
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Route Path
-            <input
-              value={newOverride.routePath}
-              placeholder="/new-path"
-              onChange={(e) =>
-                setNewOverride({ ...newOverride, routePath: e.target.value })
-              }
-            />
-          </label>
-        </div>
-        <div className="flex gap-2 pt-2">
-          <button
-            className="btn"
-            type="button"
-            disabled={loading || creatingOverride || conflict || !sourceVersion}
-            onClick={() => void createOverride()}
-          >
-            Create Override
-          </button>
-        </div>
-      </details>
-
-      <details className="surface-details" open>
-        <summary>Protected Routes</summary>
-        <div className="flex flex-col gap-2 mt-1">
-          {protectedRows.length === 0 ? (
-            <p className="empty-note">No protected routes.</p>
-          ) : (
-            <>
-              <div className="grid-row grid-header routes-protected">
-                <span>Page ID</span>
-                <span>Path</span>
-                <span>Auth</span>
-                <span>Password</span>
-                <span>Action</span>
-              </div>
-              {protectedRows.map((row) => {
-                const draft = protectedDrafts[row.rowId] ?? row;
-                const dirty = isProtectedDirty(row, draft);
-                const saving = Boolean(protectedSaving[row.rowId]);
-                const passwordDisabled = draft.auth !== "password";
-                return (
-                  <div className="grid-row routes-protected" key={row.rowId}>
-                    <span>{row.pageId}</span>
-                    <input
-                      value={draft.path}
-                      placeholder="/path"
-                      onChange={(e) =>
-                        updateProtectedDraft(row.rowId, "path", e.target.value)
-                      }
-                    />
-                    <select
-                      value={draft.auth}
-                      onChange={(e) =>
-                        updateProtectedDraft(
-                          row.rowId,
-                          "auth",
-                          (e.target.value as ProtectedRow["auth"]) ?? "password",
-                        )
-                      }
-                    >
-                      <option value="password">password</option>
-                      <option value="github">github</option>
-                      <option value="public">public (disable protection)</option>
-                    </select>
-                    <input
-                      type="password"
-                      value={draft.password}
-                      placeholder={
-                        passwordDisabled ? "unused" : "required for password auth"
-                      }
-                      disabled={passwordDisabled}
-                      onChange={(e) =>
-                        updateProtectedDraft(row.rowId, "password", e.target.value)
-                      }
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="btn btn--secondary"
-                        type="button"
-                        disabled={conflict || saving}
-                        onClick={() => void saveProtected(row.rowId)}
-                      >
-                        {saving ? "Saving…" : "Save"}
-                      </button>
-                      <span className={`row-note ${dirty ? "dirty" : "clean"}`}>
-                        {dirty ? "unsaved" : "saved"} | mode={row.mode}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
-
-        <h3 className="mt-4 mb-2 text-[13px] font-semibold text-text-primary">
-          Create Protected Route
-        </h3>
-        <div
-          className="grid gap-2.5"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-        >
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Page ID
-            <input
-              value={newProtected.pageId}
-              onChange={(e) =>
-                setNewProtected({ ...newProtected, pageId: e.target.value })
-              }
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Path
-            <input
-              value={newProtected.path}
-              placeholder="/private"
-              onChange={(e) =>
-                setNewProtected({ ...newProtected, path: e.target.value })
-              }
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Auth
-            <select
-              value={newProtected.auth}
-              onChange={(e) =>
-                setNewProtected({
-                  ...newProtected,
-                  auth: (e.target.value as NewProtectedInput["auth"]) ?? "password",
-                  password:
-                    (e.target.value as string) === "password" ? newProtected.password : "",
-                })
-              }
-            >
-              <option value="password">password</option>
-              <option value="github">github</option>
-              <option value="public">public (disable protection)</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Password (password auth only)
-            <input
-              type="password"
-              value={newProtected.password}
-              disabled={newProtected.auth !== "password"}
-              onChange={(e) =>
-                setNewProtected({ ...newProtected, password: e.target.value })
-              }
-            />
-          </label>
-        </div>
-        <div className="flex gap-2 pt-2">
-          <button
-            className="btn"
-            type="button"
-            disabled={loading || creatingProtected || conflict || !sourceVersion}
-            onClick={() => void createProtected()}
-          >
-            Create Protected Route
-          </button>
-        </div>
-      </details>
+      <ProtectedSection
+        protectedRows={protectedRows}
+        protectedDrafts={protectedDrafts}
+        protectedSaving={protectedSaving}
+        conflict={conflict}
+        loading={loading}
+        sourceVersion={sourceVersion}
+        creatingProtected={creatingProtected}
+        newProtected={newProtected}
+        setNewProtected={setNewProtected}
+        updateProtectedDraft={updateProtectedDraft}
+        saveProtected={(rowId) => void saveProtected(rowId)}
+        createProtected={() => void createProtected()}
+      />
     </section>
   );
 }
