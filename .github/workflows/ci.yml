@@ -179,3 +179,7 @@ jobs:
       - name: Type Check (workspace)
         working-directory: apps/workspace
         run: npm run typecheck
+
+      - name: Test (workspace)
+        working-directory: apps/workspace
+        run: npm test

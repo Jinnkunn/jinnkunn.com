@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -14,4 +15,10 @@ export default defineConfig({
     strictPort: true,
   },
   clearScreen: false,
+  test: {
+    // Vitest picks up *.test.ts files under src/ without extra config. We
+    // don't need jsdom yet — all tests to date cover pure-function modules.
+    environment: "node",
+    include: ["src/**/*.test.ts"],
+  },
 });
