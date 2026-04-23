@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -157,14 +158,45 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     setDrawerOpenState(open);
   }, []);
 
-  const setMessage = useCallback((kind: MessageKind, text: string) => {
-    const safe = normalizeString(text);
-    setMessageState(safe ? { kind, text: safe } : { kind: "", text: "" });
+  // Auto-dismiss timer for `success` / `info` messages. Errors + warnings
+  // stay pinned until the user acts on them or another message overwrites.
+  const autoDismissRef = useRef<number | null>(null);
+  const cancelAutoDismiss = useCallback(() => {
+    if (autoDismissRef.current !== null) {
+      window.clearTimeout(autoDismissRef.current);
+      autoDismissRef.current = null;
+    }
   }, []);
 
+  const setMessage = useCallback(
+    (kind: MessageKind, text: string) => {
+      const safe = normalizeString(text);
+      cancelAutoDismiss();
+      if (!safe) {
+        setMessageState({ kind: "", text: "" });
+        return;
+      }
+      setMessageState({ kind, text: safe });
+      if (kind === "success" || kind === "info") {
+        autoDismissRef.current = window.setTimeout(() => {
+          setMessageState({ kind: "", text: "" });
+          autoDismissRef.current = null;
+        }, 5000);
+      }
+    },
+    [cancelAutoDismiss],
+  );
+
   const clearMessage = useCallback(() => {
+    cancelAutoDismiss();
     setMessageState({ kind: "", text: "" });
-  }, []);
+  }, [cancelAutoDismiss]);
+
+  // Clean up any pending timer on unmount. (Provider typically lives for
+  // the whole session, but the test harness + hot-reload do tear it down.)
+  useEffect(() => {
+    return cancelAutoDismiss;
+  }, [cancelAutoDismiss]);
 
   const writeDebugResponse = useCallback((title: string, payload: unknown) => {
     const body = typeof payload === "string" ? payload : serializeJson(payload);

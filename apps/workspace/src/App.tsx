@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Sidebar } from "./shell/Sidebar";
 import { Titlebar } from "./shell/Titlebar";
 import { useWindowFocus } from "./shell/useWindowFocus";
@@ -59,7 +60,9 @@ export function App() {
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"
           aria-labelledby="surface-label"
         >
-          <ActiveComponent />
+          <ErrorBoundary label={activeSurface.title} key={activeSurface.id}>
+            <ActiveComponent />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
