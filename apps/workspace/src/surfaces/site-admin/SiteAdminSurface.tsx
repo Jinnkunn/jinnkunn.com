@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ConfigIcon,
   PagesIcon,
@@ -6,74 +6,100 @@ import {
   RoutesIcon,
   StatusIcon,
 } from "../icons";
+import { CommandPalette } from "./CommandPalette";
 import { ConfigPanel } from "./ConfigPanel";
-import { ConnectionCard } from "./ConnectionCard";
 import { MessageBar } from "./MessageBar";
 import { PagesPanel } from "./PagesPanel";
 import { PostsPanel } from "./PostsPanel";
-import { ResponsePane } from "./ResponsePane";
 import { RoutesPanel } from "./RoutesPanel";
+import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
+import {
+  SiteAdminSidebar,
+  type SiteAdminSectionDef,
+  type SiteAdminTab,
+} from "./SiteAdminSidebar";
+import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider } from "./state";
 import { StatusPanel } from "./StatusPanel";
 
-type Tab = "status" | "config" | "routes" | "posts" | "pages";
-
-interface TabDef {
-  id: Tab;
-  label: string;
-  Icon: () => React.JSX.Element;
-}
-
-const TABS: readonly TabDef[] = [
-  { id: "status", label: "Status", Icon: StatusIcon },
-  { id: "posts", label: "Posts", Icon: PostsIcon },
-  { id: "pages", label: "Pages", Icon: PagesIcon },
-  { id: "config", label: "Config", Icon: ConfigIcon },
-  { id: "routes", label: "Routes", Icon: RoutesIcon },
+// Grouped into three buckets so the sidebar communicates intent:
+//   Content → day-to-day authoring
+//   Site    → configuration that tunes the public site
+//   Ops     → runtime / deployment health
+const SECTIONS: readonly SiteAdminSectionDef[] = [
+  {
+    id: "content",
+    label: "Content",
+    items: [
+      { id: "posts", label: "Posts", Icon: PostsIcon },
+      { id: "pages", label: "Pages", Icon: PagesIcon },
+    ],
+  },
+  {
+    id: "site",
+    label: "Site",
+    items: [
+      { id: "config", label: "Settings & Navigation", Icon: ConfigIcon },
+      { id: "routes", label: "Routes", Icon: RoutesIcon },
+    ],
+  },
+  {
+    id: "ops",
+    label: "Ops",
+    items: [{ id: "status", label: "Status", Icon: StatusIcon }],
+  },
 ];
 
 function SiteAdminContent() {
-  const [activeTab, setActiveTab] = useState<Tab>("status");
+  const [activeTab, setActiveTab] = useState<SiteAdminTab>("status");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K opens the command palette. CodeMirror binds Mod-k
+  // at Prec.high for "insert link" inside the editor and stops propagation,
+  // so this window-level listener only fires when focus is outside the
+  // editor — exactly the behavior we want.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "k") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      if (event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      setPaletteOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const selectTab = useCallback((tab: SiteAdminTab) => setActiveTab(tab), []);
 
   return (
-    <>
-      <ConnectionCard />
-      <MessageBar />
-      <nav
-        className="flex gap-1 p-1 rounded-[10px] border border-border-subtle bg-bg-surface self-start"
-        role="tablist"
-        aria-label="Site admin sub-surfaces"
-      >
-        {TABS.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={active}
-              aria-current={active ? "page" : undefined}
-              className="sidebar-nav-item"
-              style={{ padding: "5px 10px", borderRadius: 7, fontSize: 12.5 }}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-            >
-              <span className="sidebar-nav-item-icon">
-                <tab.Icon />
-              </span>
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+    <div className="site-admin-shell">
+      <SiteAdminTopBar sections={SECTIONS} activeTab={activeTab} />
+      <div className="site-admin-layout">
+        <SiteAdminSidebar
+          sections={SECTIONS}
+          activeTab={activeTab}
+          onSelect={setActiveTab}
+        />
+        <div className="site-admin-layout__main">
+          <MessageBar />
 
-      {activeTab === "status" && <StatusPanel />}
-      {activeTab === "posts" && <PostsPanel />}
-      {activeTab === "pages" && <PagesPanel />}
-      {activeTab === "config" && <ConfigPanel />}
-      {activeTab === "routes" && <RoutesPanel />}
-
-      <ResponsePane />
-    </>
+          {activeTab === "status" && <StatusPanel />}
+          {activeTab === "posts" && <PostsPanel />}
+          {activeTab === "pages" && <PagesPanel />}
+          {activeTab === "config" && <ConfigPanel />}
+          {activeTab === "routes" && <RoutesPanel />}
+        </div>
+      </div>
+      <SiteAdminDevDrawer />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={closePalette}
+        activeTab={activeTab}
+        onSelectTab={selectTab}
+      />
+    </div>
   );
 }
 

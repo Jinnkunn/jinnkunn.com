@@ -68,6 +68,13 @@ export interface SiteAdminContextValue {
   debugResponse: DebugResponseState;
   writeDebugResponse: (title: string, payload: unknown) => void;
 
+  // Dev drawer — collapsible bottom drawer that hosts ResponsePane +
+  // other debug tooling. Hidden by default; user toggles via topbar
+  // button or ⌘\.
+  drawerOpen: boolean;
+  toggleDrawer: () => void;
+  setDrawerOpen: (open: boolean) => void;
+
   // API helper — performs request + mirrors into the debug pane.
   request: (
     path: string,
@@ -140,6 +147,15 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     title: "",
     body: "",
   });
+  const [drawerOpen, setDrawerOpenState] = useState(false);
+
+  const toggleDrawer = useCallback(() => {
+    setDrawerOpenState((prev) => !prev);
+  }, []);
+
+  const setDrawerOpen = useCallback((open: boolean) => {
+    setDrawerOpenState(open);
+  }, []);
 
   const setMessage = useCallback((kind: MessageKind, text: string) => {
     const safe = normalizeString(text);
@@ -368,6 +384,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       clearMessage,
       debugResponse,
       writeDebugResponse,
+      drawerOpen,
+      toggleDrawer,
+      setDrawerOpen,
       request,
     }),
     [
@@ -383,6 +402,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       clearMessage,
       debugResponse,
       writeDebugResponse,
+      drawerOpen,
+      toggleDrawer,
+      setDrawerOpen,
       request,
     ],
   );
