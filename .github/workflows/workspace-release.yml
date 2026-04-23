@@ -1,85 +1,39 @@
 # Workspace (Tauri desktop app) release pipeline.
 #
-# Current status: SCAFFOLDED, NOT ACTIVE.
-# The workflow definition is here so turning on releases is a
-# one-checkbox flip; until the items below are done, it's inert.
+# Active. Fires on a v-prefixed tag (`git tag v0.1.1 && git push origin
+# v0.1.1`) or via manual dispatch in the Actions UI. Each run builds a
+# signed, updater-compatible .dmg for macOS and uploads it as a draft
+# GitHub Release along with `latest.json` (the updater manifest that
+# `tauri-plugin-updater` reads from the endpoint configured in
+# apps/workspace/src-tauri/tauri.conf.json).
 #
-# Before the first release, the user must:
+# Required repo secrets (set via `gh secret set`):
+#   TAURI_SIGNING_PRIVATE_KEY           contents of the ~/.tauri/*.key file
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  "" if the key has no password
+#   GITHUB_TOKEN                        auto-provided, no action needed
 #
-#   1. Generate a Tauri signing keypair:
-#        npx tauri signer generate -w ~/.tauri/jinnkunn-workspace.key
-#      (pick a strong password — it'll be needed on every build).
-#
-#   2. Add three GitHub repo secrets:
-#        TAURI_SIGNING_PRIVATE_KEY           (contents of the .key file)
-#        TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (password from step 1)
-#        (GITHUB_TOKEN is auto-provided, no action needed)
-#
-#   3. Copy the *public* half of the key (printed by `tauri signer
-#      generate` as "Your public key was saved to…") into
-#      apps/workspace/src-tauri/tauri.conf.json →
-#      plugins.updater.pubkey.
-#
-#   4. Decide on a manifest hosting URL. Options:
-#        a. GitHub Releases auto-manifest:
-#             https://github.com/<owner>/<repo>/releases/latest/download/latest.json
-#           (tauri-action can upload `latest.json` to each release)
-#        b. CF Pages / Worker / S3 — host a JSON manifest yourself.
-#      Fill the chosen URL into
-#        plugins.updater.endpoints = ["…"]
-#      and flip `plugins.updater.active` to true.
-#
-#   5. Flip `bundle.active: true` in tauri.conf.json. First build needs
-#      full-size icons; run `npx tauri icon path/to/source.png` to
-#      generate the .icns / .ico / PNG variants under src-tauri/icons.
-#
-#   6. Uncomment the `on:` trigger block below. Push a v-prefixed tag
-#      (`git tag v0.1.0 && git push origin v0.1.0`) to kick off the
-#      first signed build.
+# To rotate the key: regenerate with `tauri signer generate`, update the
+# two secrets above, and replace `plugins.updater.pubkey` in
+# tauri.conf.json. Already-installed app builds signed by the old key
+# will stop accepting updates until a fresh install.
 
 name: Workspace Release
 
-# Triggers intentionally commented out until the setup above is done.
-# Uncomment to activate.
-# on:
-#   push:
-#     tags:
-#       - "v*.*.*"
-#   workflow_dispatch:
-
 on:
-  # Inert trigger — runs only on a manual invocation, and only once the
-  # user has flipped the comments above. Leaving the file registered
-  # prevents the "workflow has no triggers" GitHub warning.
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Type "release" to confirm you have completed the setup in this file'
-        required: true
-        default: ""
 
 jobs:
-  guard:
-    # Defensive gate: block accidental runs before the user has gone
-    # through the checklist above. Remove this job once the trigger is
-    # activated for real.
-    runs-on: ubuntu-latest
-    steps:
-      - name: Abort if setup not confirmed
-        run: |
-          if [ "${{ github.event.inputs.confirm }}" != "release" ]; then
-            echo "Release not confirmed. Complete the setup in the header of this workflow file first."
-            exit 1
-          fi
-
   build:
-    needs: guard
     strategy:
       fail-fast: false
       matrix:
-        # Cross-build matrix. Comment out platforms you don't plan to
-        # ship; macOS is the default given this is a personal admin tool
-        # running on the author's MacBook.
+        # Cross-build matrix. macOS only by default since this is a
+        # personal admin tool running on the author's MacBook. Add
+        # windows-latest / ubuntu-22.04 if you want cross-platform
+        # builds — `tauri-action` handles each.
         platform:
           - macos-latest
         # - windows-latest
@@ -116,11 +70,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/workspace
-          tagName: app-v__VERSION__
+          tagName: v__VERSION__
           releaseName: "Workspace v__VERSION__"
           releaseDraft: true
           prerelease: false
           # tauri-action auto-generates `latest.json` (the updater
-          # manifest) and attaches it to the release, so Option (a)
-          # under item 4 in the header works out of the box.
+          # manifest) and attaches it to the release, which matches the
+          # endpoint configured in tauri.conf.json.
           updaterJsonPreferNsis: false
