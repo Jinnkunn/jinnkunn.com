@@ -20,6 +20,10 @@ tauri = { version = "2.0.0", features = [] }
 # on the WebviewWindow, which lets us slide the macOS traffic lights
 # into the sidebar card's top edge (matching personal-os's look).
 tauri-plugin-decorum = "1"
+# Remembers window position, size, and maximized state across launches.
+# Writes to the OS-standard app data dir (~/Library/Application Support
+# on macOS).
+tauri-plugin-window-state = "2"
 # window-vibrancy applies the native macOS NSVisualEffectView behind the
 # webview so the window background picks up desktop blur — the translucent
 # "和谐" feel personal-os gets from NSVisualEffectMaterial::WindowBackground.
