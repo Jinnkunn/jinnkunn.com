@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { SeoOverridesEditor } from "./SeoOverridesEditor";
+import { BLANK_NEW_NAV, NavSection, type NewNavInput } from "./config/NavSection";
+import { SettingsSection } from "./config/SettingsSection";
 import { useSiteAdmin } from "./state";
 import type { ConfigSourceVersion, NavRow, SiteSettings } from "./types";
 import {
@@ -10,52 +11,12 @@ import {
   normalizeNavRow,
   normalizeSettings,
   settingsPatch,
-  toInteger,
 } from "./utils";
 
-// Text fields on the settings object — rendered as a grid. Boolean
-// fields are pulled out separately so we can use a <select> variant.
-const TEXT_FIELDS: readonly {
-  key: keyof SiteSettings;
-  label: string;
-  wide?: boolean;
-  textarea?: boolean;
-}[] = [
-  { key: "siteName", label: "Site Name" },
-  { key: "lang", label: "Language" },
-  { key: "seoTitle", label: "SEO Title" },
-  { key: "seoDescription", label: "SEO Description", textarea: true },
-  { key: "favicon", label: "Favicon URL" },
-  { key: "ogImage", label: "OG Image URL" },
-  { key: "googleAnalyticsId", label: "Google Analytics ID" },
-  { key: "contentGithubUsers", label: "Content GitHub Users", textarea: true },
-  { key: "rootPageId", label: "Root Page ID" },
-  { key: "homePageId", label: "Home Page ID" },
-  { key: "seoPageOverrides", label: "SEO Page Overrides (JSON)", wide: true, textarea: true },
-  { key: "sitemapExcludes", label: "Sitemap Excludes", wide: true, textarea: true },
-  { key: "sitemapAutoExcludeSections", label: "Sitemap Auto Exclude Sections" },
-  { key: "sitemapAutoExcludeDepthPages", label: "Sitemap Auto Exclude Depth Pages" },
-  { key: "sitemapAutoExcludeDepthBlog", label: "Sitemap Auto Exclude Depth Blog" },
-  { key: "sitemapAutoExcludeDepthPublications", label: "Sitemap Auto Exclude Depth Publications" },
-  { key: "sitemapAutoExcludeDepthTeaching", label: "Sitemap Auto Exclude Depth Teaching" },
-];
-
-interface NewNavInput {
-  label: string;
-  href: string;
-  group: "top" | "more";
-  order: number;
-  enabled: boolean;
-}
-
-const BLANK_NEW_NAV: NewNavInput = {
-  label: "",
-  href: "",
-  group: "top",
-  order: 0,
-  enabled: true,
-};
-
+/** Orchestrator for the Config surface: owns load/save state + dirty
+ * tracking + conflict handling, and delegates the two visual sections
+ * (Site Settings form, Navigation Rows table + create form) to
+ * dedicated presentational components under `config/`. */
 export function ConfigPanel() {
   const { request, setMessage } = useSiteAdmin();
 
@@ -258,12 +219,12 @@ export function ConfigPanel() {
     await loadConfig({ silent: true });
   }, [conflict, sourceVersion, newNav, request, setMessage, applyConflict, loadConfig]);
 
-  const updateDraft = useCallback(<K extends keyof SiteSettings>(
-    key: K,
-    value: SiteSettings[K],
-  ) => {
-    setSettingsDraft((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  const updateDraft = useCallback(
+    <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => {
+      setSettingsDraft((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
 
   const updateNavDraft = useCallback(
     <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => {
@@ -321,209 +282,22 @@ export function ConfigPanel() {
       </p>
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
-      <details className="surface-details" open>
-        <summary>Site Settings</summary>
-        <div
-          className="grid gap-2.5"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-        >
-          {TEXT_FIELDS.map((field) => (
-            <label
-              key={field.key}
-              className="flex flex-col gap-1 text-[12px] text-text-secondary"
-              style={field.wide ? { gridColumn: "1 / -1" } : undefined}
-            >
-              {field.label}
-              {field.textarea ? (
-                <textarea
-                  rows={3}
-                  value={settingsDraft[field.key] as string}
-                  onChange={(e) => updateDraft(field.key, e.target.value as never)}
-                />
-              ) : (
-                <input
-                  value={settingsDraft[field.key] as string}
-                  onChange={(e) => updateDraft(field.key, e.target.value as never)}
-                />
-              )}
-            </label>
-          ))}
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Sitemap Auto Exclude Enabled
-            <select
-              value={settingsDraft.sitemapAutoExcludeEnabled ? "true" : "false"}
-              onChange={(e) =>
-                updateDraft("sitemapAutoExcludeEnabled", e.target.value === "true")
-              }
-            >
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </label>
-        </div>
+      <SettingsSection settingsDraft={settingsDraft} onUpdate={updateDraft} />
 
-        <div style={{ marginTop: 16 }}>
-          <SeoOverridesEditor
-            value={settingsDraft.seoPageOverrides}
-            onChange={(next) => updateDraft("seoPageOverrides", next as never)}
-          />
-        </div>
-      </details>
-
-      <details className="surface-details" open>
-        <summary>Navigation Rows</summary>
-        <div className="flex flex-col gap-2 mt-1">
-          {navRows.length === 0 ? (
-            <p className="empty-note">No navigation rows.</p>
-          ) : (
-            <>
-              <div className="grid-row grid-header">
-                <span>Label</span>
-                <span>Href</span>
-                <span>Group</span>
-                <span>Order</span>
-                <span>Enabled</span>
-                <span>Action</span>
-              </div>
-              {navRows.map((row) => {
-                const draft = navDrafts[row.rowId] ?? row;
-                const dirty = isNavDirty(row, draft);
-                const saving = Boolean(navSaving[row.rowId]);
-                return (
-                  <div className="grid-row" key={row.rowId}>
-                    <input
-                      value={draft.label}
-                      placeholder="Label"
-                      onChange={(e) =>
-                        updateNavDraft(row.rowId, "label", e.target.value)
-                      }
-                    />
-                    <input
-                      value={draft.href}
-                      placeholder="/path"
-                      onChange={(e) =>
-                        updateNavDraft(row.rowId, "href", e.target.value)
-                      }
-                    />
-                    <select
-                      value={draft.group}
-                      onChange={(e) =>
-                        updateNavDraft(
-                          row.rowId,
-                          "group",
-                          e.target.value === "top" ? "top" : "more",
-                        )
-                      }
-                    >
-                      <option value="top">top</option>
-                      <option value="more">more</option>
-                    </select>
-                    <input
-                      type="number"
-                      value={draft.order}
-                      onChange={(e) =>
-                        updateNavDraft(row.rowId, "order", toInteger(e.target.value, 0))
-                      }
-                    />
-                    <select
-                      value={draft.enabled ? "true" : "false"}
-                      onChange={(e) =>
-                        updateNavDraft(row.rowId, "enabled", e.target.value === "true")
-                      }
-                    >
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="btn btn--secondary"
-                        type="button"
-                        disabled={conflict || saving}
-                        onClick={() => void saveNavRow(row.rowId)}
-                      >
-                        {saving ? "Saving…" : "Save"}
-                      </button>
-                      <span className={`row-note ${dirty ? "dirty" : "clean"}`}>
-                        {dirty ? "unsaved" : "saved"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
-
-        <h3 className="mt-4 mb-2 text-[13px] font-semibold text-text-primary">
-          Create Navigation Row
-        </h3>
-        <div
-          className="grid gap-2.5"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-        >
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Label
-            <input
-              value={newNav.label}
-              onChange={(e) => setNewNav({ ...newNav, label: e.target.value })}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Href
-            <input
-              value={newNav.href}
-              onChange={(e) => setNewNav({ ...newNav, href: e.target.value })}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Group
-            <select
-              value={newNav.group}
-              onChange={(e) =>
-                setNewNav({
-                  ...newNav,
-                  group: e.target.value === "top" ? "top" : "more",
-                })
-              }
-            >
-              <option value="top">top</option>
-              <option value="more">more</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Order
-            <input
-              type="number"
-              value={newNav.order}
-              onChange={(e) =>
-                setNewNav({ ...newNav, order: toInteger(e.target.value, 0) })
-              }
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-            Enabled
-            <select
-              value={newNav.enabled ? "true" : "false"}
-              onChange={(e) =>
-                setNewNav({ ...newNav, enabled: e.target.value === "true" })
-              }
-            >
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </label>
-        </div>
-        <div className="flex gap-2 pt-2">
-          <button
-            className="btn"
-            type="button"
-            disabled={loading || creatingNav || conflict || !sourceVersion}
-            onClick={() => void createNavRow()}
-          >
-            Create Nav Row
-          </button>
-        </div>
-      </details>
+      <NavSection
+        navRows={navRows}
+        navDrafts={navDrafts}
+        navSaving={navSaving}
+        conflict={conflict}
+        creatingNav={creatingNav}
+        loading={loading}
+        sourceVersion={sourceVersion}
+        newNav={newNav}
+        setNewNav={setNewNav}
+        updateNavDraft={updateNavDraft}
+        saveNavRow={(rowId) => void saveNavRow(rowId)}
+        createNavRow={() => void createNavRow()}
+      />
     </section>
   );
 }
