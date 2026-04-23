@@ -97,6 +97,16 @@ export interface ConnectionState {
   cfAccessClientSecret: string;
 }
 
+/** A named connection target — one per environment (Local, Staging,
+ * Prod, …). Credentials (app token, CF Access pair) still live in the
+ * system keyring keyed by `baseUrl`, so switching profiles picks up the
+ * right token automatically. */
+export interface ConnectionProfile {
+  id: string;
+  label: string;
+  baseUrl: string;
+}
+
 export interface NormalizedApiSuccess {
   ok: true;
   status: number;

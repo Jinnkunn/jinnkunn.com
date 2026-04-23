@@ -17,6 +17,7 @@ import {
   tokenStoreKeyForBase,
 } from "./api";
 import type {
+  ConnectionProfile,
   ConnectionState,
   MessageKind,
   MessageState,
@@ -33,6 +34,8 @@ import {
 
 const DEFAULT_BASE_URL = "https://jinkunchen.com";
 const LOCAL_STORAGE_KEY = "workspace.site-admin.connection.v1";
+const PROFILES_STORAGE_KEY = "workspace.site-admin.profiles.v1";
+const DEFAULT_PROFILE_ID = "default";
 
 // Per-tool secure storage namespace. Each feature module gets its own
 // prefix in the system keychain so e.g. a future calendar tool can't
@@ -85,6 +88,17 @@ export interface SiteAdminContextValue {
   pagesIndex: PageListRow[];
   setPostsIndex: (rows: PostListRow[]) => void;
   setPagesIndex: (rows: PageListRow[]) => void;
+
+  // Connection profiles — named environments (Local, Staging, Prod, …)
+  // each with its own baseUrl. Credentials in the keyring are still
+  // keyed by baseUrl, so switching profiles picks up the right token
+  // automatically.
+  profiles: ConnectionProfile[];
+  activeProfileId: string;
+  switchProfile: (id: string) => void;
+  addProfile: (label: string, baseUrl: string) => string;
+  renameProfile: (id: string, label: string) => void;
+  removeProfile: (id: string) => void;
 
   // API helper — performs request + mirrors into the debug pane.
   request: (
@@ -140,11 +154,87 @@ function persistConnection(connection: ConnectionState) {
   );
 }
 
+interface ProfilesEnvelope {
+  profiles: ConnectionProfile[];
+  activeProfileId: string;
+}
+
+function loadProfiles(): ProfilesEnvelope {
+  // Try the explicit profiles envelope first.
+  try {
+    const raw = localStorage.getItem(PROFILES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<ProfilesEnvelope>;
+      const profiles = Array.isArray(parsed.profiles)
+        ? parsed.profiles
+            .map((p) => {
+              if (!p || typeof p !== "object") return null;
+              const id = normalizeString((p as ConnectionProfile).id);
+              const label = normalizeString((p as ConnectionProfile).label);
+              const baseUrl = normalizeString(
+                (p as ConnectionProfile).baseUrl,
+              );
+              if (!id || !baseUrl) return null;
+              return { id, label: label || id, baseUrl } as ConnectionProfile;
+            })
+            .filter((p): p is ConnectionProfile => p !== null)
+        : [];
+      if (profiles.length > 0) {
+        const activeFromStorage = normalizeString(parsed.activeProfileId);
+        const activeProfileId = profiles.some((p) => p.id === activeFromStorage)
+          ? activeFromStorage
+          : profiles[0].id;
+        return { profiles, activeProfileId };
+      }
+    }
+  } catch {
+    // fall through to migration
+  }
+
+  // Migration: first run after upgrade → seed from the legacy single-
+  // baseUrl storage so the user lands on the same URL they had before.
+  const legacy = loadPersistedConnection();
+  return {
+    profiles: [
+      {
+        id: DEFAULT_PROFILE_ID,
+        label: "Default",
+        baseUrl: legacy.baseUrl,
+      },
+    ],
+    activeProfileId: DEFAULT_PROFILE_ID,
+  };
+}
+
+function persistProfiles(envelope: ProfilesEnvelope) {
+  try {
+    localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(envelope));
+  } catch {
+    // quota / serialization — drop silently
+  }
+}
+
+function randomProfileId(): string {
+  // No need for crypto strength — this is just a stable client-local key.
+  return `p_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+}
+
 export function SiteAdminProvider({ children }: { children: ReactNode }) {
+  // Load profiles once, eagerly, and use the result to seed both the
+  // profiles state and the connection's initial baseUrl. This guarantees
+  // the two slots start in sync even if the legacy connection storage
+  // points at a different URL than the user's last active profile.
+  const [profilesState, setProfilesEnvelope] = useState<ProfilesEnvelope>(
+    () => loadProfiles(),
+  );
+  const { profiles, activeProfileId } = profilesState;
   const [connection, setConnection] = useState<ConnectionState>(() => {
     const persisted = loadPersistedConnection();
+    const initialActive = profilesState.profiles.find(
+      (p) => p.id === profilesState.activeProfileId,
+    );
     return {
-      baseUrl: persisted.baseUrl,
+      baseUrl: initialActive?.baseUrl || persisted.baseUrl,
       authToken: "",
       authLogin: persisted.authLogin,
       authExpiresAt: persisted.authExpiresAt,
@@ -223,8 +313,89 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     setDebugResponse({ title, body });
   }, []);
 
-  const setBaseUrl = useCallback((next: string) => {
-    setConnection((prev) => ({ ...prev, baseUrl: next }));
+  // Keep the active profile's baseUrl in sync with the connection input
+  // so switching profiles later picks up whatever the user typed.
+  const setBaseUrl = useCallback(
+    (next: string) => {
+      setConnection((prev) => ({ ...prev, baseUrl: next }));
+      setProfilesEnvelope((prev) => {
+        const nextProfiles = prev.profiles.map((p) =>
+          p.id === prev.activeProfileId ? { ...p, baseUrl: next } : p,
+        );
+        const envelope = {
+          profiles: nextProfiles,
+          activeProfileId: prev.activeProfileId,
+        };
+        persistProfiles(envelope);
+        return envelope;
+      });
+    },
+    [],
+  );
+
+  const switchProfile = useCallback(
+    (id: string) => {
+      setProfilesEnvelope((prev) => {
+        const target = prev.profiles.find((p) => p.id === id);
+        if (!target) return prev;
+        // Point the connection at the new profile's baseUrl — the keyring-
+        // reload effect keyed on baseUrl will pick up the matching token.
+        setConnection((c) => ({ ...c, baseUrl: target.baseUrl }));
+        const envelope = {
+          profiles: prev.profiles,
+          activeProfileId: id,
+        };
+        persistProfiles(envelope);
+        return envelope;
+      });
+    },
+    [],
+  );
+
+  const addProfile = useCallback((label: string, baseUrl: string): string => {
+    const id = randomProfileId();
+    const safeLabel = normalizeString(label) || "Untitled";
+    const safeBase = normalizeString(baseUrl) || DEFAULT_BASE_URL;
+    setProfilesEnvelope((prev) => {
+      const envelope = {
+        profiles: [...prev.profiles, { id, label: safeLabel, baseUrl: safeBase }],
+        activeProfileId: prev.activeProfileId,
+      };
+      persistProfiles(envelope);
+      return envelope;
+    });
+    return id;
+  }, []);
+
+  const renameProfile = useCallback((id: string, label: string) => {
+    const safeLabel = normalizeString(label);
+    if (!safeLabel) return;
+    setProfilesEnvelope((prev) => {
+      const envelope = {
+        profiles: prev.profiles.map((p) =>
+          p.id === id ? { ...p, label: safeLabel } : p,
+        ),
+        activeProfileId: prev.activeProfileId,
+      };
+      persistProfiles(envelope);
+      return envelope;
+    });
+  }, []);
+
+  const removeProfile = useCallback((id: string) => {
+    setProfilesEnvelope((prev) => {
+      if (prev.profiles.length <= 1) return prev; // never leave zero profiles
+      const nextProfiles = prev.profiles.filter((p) => p.id !== id);
+      let nextActive = prev.activeProfileId;
+      if (nextActive === id) {
+        nextActive = nextProfiles[0].id;
+        // Move connection to the new active profile's baseUrl.
+        setConnection((c) => ({ ...c, baseUrl: nextProfiles[0].baseUrl }));
+      }
+      const envelope = { profiles: nextProfiles, activeProfileId: nextActive };
+      persistProfiles(envelope);
+      return envelope;
+    });
   }, []);
 
   const saveConnectionLocally = useCallback(() => {
@@ -443,6 +614,12 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       pagesIndex,
       setPostsIndex,
       setPagesIndex,
+      profiles,
+      activeProfileId,
+      switchProfile,
+      addProfile,
+      renameProfile,
+      removeProfile,
       request,
     }),
     [
@@ -465,6 +642,12 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       pagesIndex,
       setPostsIndex,
       setPagesIndex,
+      profiles,
+      activeProfileId,
+      switchProfile,
+      addProfile,
+      renameProfile,
+      removeProfile,
       request,
     ],
   );
