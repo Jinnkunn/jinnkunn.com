@@ -1,0 +1,82 @@
+---
+title: The MDX authoring pipeline is wired
+date: 2026-04-23
+description: A smoke-test post that exercises every rich component we want the MDX pipeline to support, so regressions are obvious at a glance.
+tags:
+  - site
+  - mdx
+draft: false
+---
+
+This post is a fixture that exercises every rich component the MDX pipeline needs to
+support. If something here renders incorrectly, the pipeline has regressed.
+
+## Typography basics
+
+Prose should inherit the existing `.notion-root` typography — no extra wrapper needed.
+**Bold**, *italic*, and `inline code` should read naturally. A link to
+[jinkunchen.com](https://jinkunchen.com) should pick up the Notion link style.
+
+- Bulleted lists keep the Notion bullet spacing.
+- Nested lists:
+  - inherit the existing hanging indent
+  - and should not lose the bullet glyph.
+
+1. Numbered lists show numerals with the same rhythm.
+2. Second item.
+3. Third item.
+
+> Block quotes render with the Notion-quote treatment thanks to the shared
+> `.notion-root` container.
+
+---
+
+## Math
+
+Inline math: the triangle inequality is $\\lVert a + b \\rVert \\le \\lVert a \\rVert + \\lVert b \\rVert$.
+
+Block math:
+
+$$
+\\mathcal{L}(\\theta) = \\frac{1}{N}\\sum_{i=1}^{N} \\ell\\bigl(f_\\theta(x_i), y_i\\bigr)
+$$
+
+## Code
+
+```ts
+type LabelKind = "conference" | "journal" | "arxiv";
+
+function classify(label: string): LabelKind | "other" {
+  const key = label.toLowerCase().trim();
+  if (key === "conference") return "conference";
+  if (key === "journal") return "journal";
+  if (key === "arxiv.org" || key === "arxiv") return "arxiv";
+  return "other";
+}
+```
+
+## Custom components
+
+<Callout tone="info" title="Heads up">
+  Callouts support **markdown** inside the body. They should pick up the design-system
+  info/warning/danger/success tones.
+</Callout>
+
+<Callout tone="warning">
+  When no `title` is passed, the body is the whole callout.
+</Callout>
+
+<Toggle title="Click to expand — Toggle contents">
+  Toggles render as native `<details>` elements, so they work without client JS and
+  mirror the Notion-toggle class hooks so existing CSS keeps applying.
+</Toggle>
+
+<Figure
+  src="/assets/profile.png"
+  alt="Profile portrait"
+  caption="A figure with caption — images reuse the .notion-image class family so the lightbox still works."
+/>
+
+## Headings should auto-link
+
+Anchor links should be auto-generated and clickable via the heading text.

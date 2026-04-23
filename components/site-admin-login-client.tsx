@@ -42,11 +42,11 @@ export default function SiteAdminLoginClient({ nextPath }: { nextPath: string })
     <div className="page-state-auth">
       {status === "authenticated" ? (
         <>
-          <StatusNotice className="page-state__notice page-state__notice--ok" tone="success">
+          <StatusNotice tone="success">
             Signed in as <strong>{login || session?.user?.name || "GitHub user"}</strong>.
           </StatusNotice>
           <div className="page-state__actions">
-            <Button href={safeNext} className="page-404__btn page-404__btn--primary">
+            <Button href={safeNext}>
               Continue
             </Button>
             <Button
@@ -54,19 +54,13 @@ export default function SiteAdminLoginClient({ nextPath }: { nextPath: string })
               onClick={onSignOut}
               disabled={busy}
               variant="ghost"
-              className="page-404__btn page-404__btn--ghost"
             >
               Sign out
             </Button>
           </div>
         </>
       ) : (
-        <Button
-          type="button"
-          onClick={onSignIn}
-          disabled={busy}
-          className="page-404__btn page-404__btn--primary"
-        >
+        <Button type="button" onClick={onSignIn} disabled={busy}>
           {busy ? "Redirecting..." : "Continue with GitHub"}
         </Button>
       )}

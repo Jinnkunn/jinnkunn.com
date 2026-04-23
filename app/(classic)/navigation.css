@@ -345,3 +345,55 @@
 html {
   scroll-padding-top: calc(var(--navbar-height) + 24px);
 }
+
+/* ------------------------------------------------------------------ *
+ * Theme toggle inside the Super navbar
+ *
+ * The `<ThemeToggle>` primitive ships with `ds-button--variant-nav`
+ * (40x40, solid `--ds-nav-action-surface` background, rounded rect,
+ * white icon). Inside the Super navbar that reads as a heavy dark
+ * block next to the ghost `.super-navbar__button` (transparent, 0.7
+ * opacity) search/more triggers. Scope-override the chrome here so
+ * it matches its siblings without forking the primitive.
+ * ------------------------------------------------------------------ */
+.super-navbar .ds-theme-toggle {
+  /* Match the `.super-navbar__button` sibling's hit area (~32x32 at
+   * rest). Use explicit border-box so the 6px padding is included in
+   * the declared size rather than inflating the box — `width: auto`
+   * combined with the primitive's `content-box` was resolving to the
+   * 20x20 icon alone, leaving a sub-minimum tap target. */
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--navbar-text-color);
+  opacity: 0.7;
+  transition: opacity 200ms ease-in-out, background-color 120ms ease;
+}
+
+.super-navbar .ds-theme-toggle:hover {
+  opacity: 1;
+  background: transparent;
+  border-color: transparent;
+  color: var(--navbar-text-color);
+}
+
+/* `is-active` reflects the dark theme. We already communicate that
+ * via the moon-vs-sun icon swap, so drop the extra background chip
+ * that the primitive adds — it would re-introduce the heavy block. */
+.super-navbar .ds-theme-toggle.is-active {
+  background: transparent;
+  border-color: transparent;
+}
+
+.super-navbar .ds-theme-toggle.is-active:hover {
+  background: transparent;
+}
+
+.super-navbar .ds-theme-toggle .ds-icon-button__icon {
+  width: 20px;
+  height: 20px;
+}

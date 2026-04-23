@@ -17,7 +17,7 @@ export default function SiteAdminStatusClient({
     busy,
     res,
     payload,
-    vercelLink,
+    deploymentLink,
     stale,
     generated,
     readiness,
@@ -57,7 +57,7 @@ export default function SiteAdminStatusClient({
         <SiteAdminStatusView
           payload={payload}
           banner={showBanner ? banner : null}
-          vercelLink={vercelLink}
+          deploymentLink={deploymentLink}
           stale={stale}
           generated={generated}
           readiness={readiness}

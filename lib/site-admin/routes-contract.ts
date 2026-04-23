@@ -1,19 +1,16 @@
 import type {
   SiteAdminProtectedRoute,
+  SiteAdminRoutesPostPayload,
+  SiteAdminRoutesPostResult,
+  SiteAdminRoutesSourceVersion,
   SiteAdminRouteOverride,
   SiteAdminRoutesGetPayload,
   SiteAdminRoutesResult,
 } from "./api-types";
 import { parseProtectedAccessMode } from "../shared/access.ts";
-import { toStringValue } from "./contract-helpers.ts";
+import { parseApiContract, toStringValue } from "./contract-helpers.ts";
 
-import {
-  asApiAck,
-  isRecord,
-  readApiErrorCode,
-  readApiErrorMessage,
-  unwrapApiData,
-} from "../client/api-guards.ts";
+import { isRecord } from "../client/api-guards.ts";
 
 function parseRouteOverride(v: unknown): SiteAdminRouteOverride | null {
   if (!isRecord(v)) return null;
@@ -47,49 +44,77 @@ function parseProtectedRoute(v: unknown): SiteAdminProtectedRoute | null {
   };
 }
 
+function parseSourceVersion(v: unknown): SiteAdminRoutesSourceVersion | null {
+  if (!isRecord(v)) return null;
+  const siteConfigSha = toStringValue(v.siteConfigSha).trim();
+  const protectedRoutesSha = toStringValue(v.protectedRoutesSha).trim();
+  const branchSha = toStringValue(v.branchSha).trim();
+  if (!siteConfigSha || !protectedRoutesSha || !branchSha) return null;
+  return {
+    siteConfigSha,
+    protectedRoutesSha,
+    branchSha,
+  };
+}
+
 export function isSiteAdminRoutesOk(v: SiteAdminRoutesResult): v is SiteAdminRoutesGetPayload {
   return v.ok;
 }
 
+export function isSiteAdminRoutesPostOk(v: SiteAdminRoutesPostResult): v is SiteAdminRoutesPostPayload {
+  return v.ok;
+}
+
 export function parseSiteAdminRoutesResult(x: unknown): SiteAdminRoutesResult | null {
-  const ack = asApiAck(x);
-  if (!ack) return null;
-  if (!ack.ok) {
+  return parseApiContract<SiteAdminRoutesResult>(x, (payload) => {
+    if (!isRecord(payload)) return null;
+
+    const adminPageId = toStringValue(payload.adminPageId).trim();
+    if (!adminPageId || !isRecord(payload.databases)) return null;
+
+    const overridesDbId = toStringValue(payload.databases.overridesDbId).trim();
+    const protectedDbId = toStringValue(payload.databases.protectedDbId).trim();
+    if (!overridesDbId || !protectedDbId) return null;
+    const sourceVersion = parseSourceVersion(payload.sourceVersion);
+    if (!sourceVersion) return null;
+
+    const overrides = Array.isArray(payload.overrides)
+      ? payload.overrides.map(parseRouteOverride).filter((it): it is SiteAdminRouteOverride => Boolean(it))
+      : null;
+    const protectedRoutes = Array.isArray(payload.protectedRoutes)
+      ? payload.protectedRoutes
+          .map(parseProtectedRoute)
+          .filter((it): it is SiteAdminProtectedRoute => Boolean(it))
+      : null;
+    if (!overrides || !protectedRoutes) return null;
+
     return {
-      ok: false,
-      error: readApiErrorMessage(x) || ack.error,
-      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+      ok: true,
+      adminPageId,
+      databases: {
+        overridesDbId,
+        protectedDbId,
+      },
+      overrides,
+      protectedRoutes,
+      sourceVersion,
     };
-  }
+  });
+}
 
-  const payload = unwrapApiData(x);
-  if (!isRecord(payload)) return null;
+export function parseSiteAdminRoutesPost(x: unknown): SiteAdminRoutesPostResult | null {
+  return parseApiContract<SiteAdminRoutesPostResult>(x, (payload) => {
+    if (!isRecord(payload)) return null;
+    const sourceVersion = parseSourceVersion(payload.sourceVersion);
+    if (!sourceVersion) return null;
 
-  const adminPageId = toStringValue(payload.adminPageId).trim();
-  if (!adminPageId || !isRecord(payload.databases)) return null;
-
-  const overridesDbId = toStringValue(payload.databases.overridesDbId).trim();
-  const protectedDbId = toStringValue(payload.databases.protectedDbId).trim();
-  if (!overridesDbId || !protectedDbId) return null;
-
-  const overrides = Array.isArray(payload.overrides)
-    ? payload.overrides.map(parseRouteOverride).filter((it): it is SiteAdminRouteOverride => Boolean(it))
-    : null;
-  const protectedRoutes = Array.isArray(payload.protectedRoutes)
-    ? payload.protectedRoutes
-        .map(parseProtectedRoute)
-        .filter((it): it is SiteAdminProtectedRoute => Boolean(it))
-    : null;
-  if (!overrides || !protectedRoutes) return null;
-
-  return {
-    ok: true,
-    adminPageId,
-    databases: {
-      overridesDbId,
-      protectedDbId,
-    },
-    overrides,
-    protectedRoutes,
-  };
+    const override = parseRouteOverride(payload.override);
+    const protectedRoute = parseProtectedRoute(payload.protected);
+    return {
+      ok: true,
+      sourceVersion,
+      ...(override ? { override } : {}),
+      ...(protectedRoute ? { protected: protectedRoute } : {}),
+    };
+  });
 }

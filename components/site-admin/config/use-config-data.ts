@@ -6,14 +6,15 @@ import type { NavItemRow, SiteSettings } from "@/components/site-admin/config/ty
 import { errorFromUnknown } from "@/components/site-admin/config/utils";
 import { useSiteAdminNavMutations } from "@/components/site-admin/config/use-nav-mutations";
 import { useSiteAdminSettingsMutation } from "@/components/site-admin/config/use-settings-mutation";
-import { requestJsonOrThrow } from "@/lib/client/request-json";
-import { isSiteAdminConfigGetOk, parseSiteAdminConfigGet } from "@/lib/site-admin/config-contract";
+import { siteAdminBackend } from "@/lib/client/site-admin-backend";
+import type { SiteAdminConfigSourceVersion } from "@/lib/site-admin/api-types";
 
 export function useSiteAdminConfigData() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [nav, setNav] = useState<NavItemRow[]>([]);
   const [draftSettings, setDraftSettings] = useState<SiteSettings | null>(null);
+  const [sourceVersion, setSourceVersion] = useState<SiteAdminConfigSourceVersion | null>(null);
   const {
     openNav,
     navDraft,
@@ -23,23 +24,31 @@ export function useSiteAdminConfigData() {
     toggleOpenNav,
     saveNavRow,
     addNavRow,
-  } = useSiteAdminNavMutations({ setBusy, setErr, setNav });
-  const saveSettings = useSiteAdminSettingsMutation({ draftSettings, setBusy, setErr });
+  } = useSiteAdminNavMutations({
+    setBusy,
+    setErr,
+    setNav,
+    sourceVersion,
+    setSourceVersion,
+  });
+  const saveSettings = useSiteAdminSettingsMutation({
+    draftSettings,
+    setBusy,
+    setErr,
+    sourceVersion,
+    setSourceVersion,
+  });
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       setErr("");
       try {
-        const data = await requestJsonOrThrow(
-          "/api/site-admin/config",
-          { cache: "no-store" },
-          parseSiteAdminConfigGet,
-          { isOk: isSiteAdminConfigGetOk },
-        );
+        const data = await siteAdminBackend.getConfig();
         if (!cancelled) {
           setDraftSettings(data.settings ? { ...data.settings } : null);
           setNav(data.nav || []);
+          setSourceVersion(data.sourceVersion);
           resetNavEditorState();
         }
       } catch (e: unknown) {
@@ -73,5 +82,6 @@ export function useSiteAdminConfigData() {
     toggleOpenNav,
     saveNavRow,
     addNavRow,
+    sourceVersion,
   };
 }

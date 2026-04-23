@@ -26,18 +26,10 @@ export default function GlobalError({
           description="Please try again. If this keeps happening, go back home and navigate from there."
           actions={
             <>
-              <Button
-                type="button"
-                className="page-404__btn page-404__btn--primary"
-                onClick={() => reset()}
-              >
+              <Button type="button" onClick={() => reset()}>
                 Try again
               </Button>
-              <Button
-                href="/"
-                variant="ghost"
-                className="page-404__btn page-404__btn--ghost"
-              >
+              <Button href="/" variant="ghost">
                 Home
               </Button>
             </>

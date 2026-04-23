@@ -1,18 +1,20 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
+import {
+  type ContainerSurface,
+  CONTAINER_DEFAULTS,
+} from "@/lib/design-system/primitives";
 import { cn } from "./cn";
-
-type Surface = "default" | "elevated" | "soft";
 
 export function Card({
   children,
   className,
-  surface = "default",
+  surface = CONTAINER_DEFAULTS.surface,
   ...props
 }: {
   children: ReactNode;
   className?: string;
-  surface?: Surface;
+  surface?: ContainerSurface;
 } & HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -27,12 +29,12 @@ export function Card({
 export function Panel({
   children,
   className,
-  surface = "default",
+  surface = CONTAINER_DEFAULTS.surface,
   ...props
 }: {
   children: ReactNode;
   className?: string;
-  surface?: Surface;
+  surface?: ContainerSurface;
 } & HTMLAttributes<HTMLElement>) {
   return (
     <section

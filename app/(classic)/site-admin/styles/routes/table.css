@@ -80,6 +80,16 @@
   flex: 0 0 auto;
 }
 
+/* Rendered when a row has no expandable children. Keeps the chevron
+ * column aligned without the button's visual weight. Width is
+ * intentionally smaller than the 34px expander so leaf rows read as
+ * "there is no control here" rather than "disabled control". */
+.routes-explorer__expander-spacer {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
 .routes-explorer__expander:hover {
   transform: translateY(-1px);
   background: var(--ds-interactive-hover);

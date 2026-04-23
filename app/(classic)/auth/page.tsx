@@ -38,21 +38,17 @@ export default async function AuthPage({
       description="This page is access-restricted. Enter the password to continue."
       actions={
         <>
-          <Button type="submit" form="state-auth-form" className="page-404__btn page-404__btn--primary">
+          <Button type="submit" form="state-auth-form">
             Unlock
           </Button>
-          <Button
-            href="/"
-            variant="ghost"
-            className="page-404__btn page-404__btn--ghost"
-          >
+          <Button href="/" variant="ghost">
             Home
           </Button>
         </>
       }
     >
       {error ? (
-        <StatusNotice className="page-state__notice page-state__notice--error" tone="danger">
+        <StatusNotice tone="danger">
           Incorrect password. Please try again.
         </StatusNotice>
       ) : null}
@@ -70,7 +66,8 @@ export default async function AuthPage({
           required
           autoFocus
           autoComplete="current-password"
-          className="page-state-form__input page-state-form__input--mono"
+          size="sm"
+          density="compact"
           mono
           placeholder="Enter password"
         />

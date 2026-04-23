@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { StatusResult } from "@/components/site-admin/status/types";
+import { siteAdminBackend } from "@/lib/client/site-admin-backend";
 import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
 import { triggerSiteAdminDeploy } from "@/lib/client/site-admin-deploy";
-import { requestJsonOrThrow } from "@/lib/client/request-json";
-import { isSiteAdminStatusOk, parseSiteAdminStatusResult } from "@/lib/site-admin/status-contract";
+import { isSiteAdminStatusOk } from "@/lib/site-admin/status-contract";
 import {
   deriveSiteAdminStatus,
   type BannerState,
@@ -26,12 +26,7 @@ export function useSiteAdminStatusData() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const data = await requestJsonOrThrow(
-        "/api/site-admin/status",
-        { cache: "no-store" },
-        parseSiteAdminStatusResult,
-        { isOk: isSiteAdminStatusOk },
-      );
+      const data = await siteAdminBackend.getStatus();
       setRes(data);
     } catch (e) {
       setRes({
@@ -67,7 +62,7 @@ export function useSiteAdminStatusData() {
     busy,
     res,
     payload,
-    vercelLink: derived.vercelLink,
+    deploymentLink: derived.deploymentLink,
     stale: derived.stale,
     generated: derived.generated,
     readiness: derived.readiness,

@@ -20,6 +20,7 @@ export function SiteAdminStatusBanner({
   deployRes,
   onDeploy,
 }: SiteAdminStatusBannerProps) {
+  const hasDeployTarget = payload.env.hasDeployTarget || payload.env.hasDeployHookUrl;
   return (
     <div
       className={`site-admin-status__banner ${
@@ -29,7 +30,7 @@ export function SiteAdminStatusBanner({
     >
       <div className="site-admin-status__banner-title">{banner.title}</div>
       <div className="site-admin-status__banner-detail">{banner.detail}</div>
-      {banner.kind !== "ok" && payload.env.hasDeployHookUrl ? (
+      {banner.kind !== "ok" && hasDeployTarget ? (
         <div className="site-admin-status__banner-cta">
           <Button
             type="button"
@@ -47,7 +48,11 @@ export function SiteAdminStatusBanner({
                   : "site-admin-status__banner-feedback--error"
               }`}
             >
-              {deployRes.ok ? `Triggered at ${deployRes.triggeredAt}` : deployRes.error}
+              {deployRes.ok
+                ? `Triggered at ${deployRes.triggeredAt}${
+                  deployRes.provider ? ` (${deployRes.provider})` : ""
+                }${deployRes.deploymentId ? ` · ${deployRes.deploymentId.slice(0, 8)}` : ""}`
+                : deployRes.error}
             </span>
           ) : null}
         </div>

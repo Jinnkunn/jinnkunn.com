@@ -1,18 +1,16 @@
 import type { NextRequest } from "next/server";
 
 import {
-  apiExhaustive,
-  apiOk,
+  apiError,
   apiPayloadOk,
   readSiteAdminJsonCommand,
-  withSiteAdmin,
+  withSiteAdminContext,
 } from "@/lib/server/site-admin-api";
 import {
-  createSiteNavRow,
-  loadSiteAdminConfigData,
-  updateSiteNavRow,
-  updateSiteSettingsRow,
-} from "@/lib/server/site-admin-config-service";
+  getSiteAdminConfigBackend,
+  postSiteAdminConfigBackend,
+} from "@/lib/server/site-admin-backend-service";
+import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import { parseSiteAdminConfigCommand } from "@/lib/server/site-admin-request";
 import type {
   SiteAdminConfigGetPayload,
@@ -20,32 +18,54 @@ import type {
 
 export const runtime = "nodejs";
 
+const RATE_LIMIT = { namespace: "site-admin-config" };
+
 export async function GET(req: NextRequest) {
-  return withSiteAdmin(req, async () => {
-    const data = await loadSiteAdminConfigData();
-    return apiPayloadOk<Omit<SiteAdminConfigGetPayload, "ok">>(data);
-  });
+  return withSiteAdminContext(
+    req,
+    async () => {
+      const out = await getSiteAdminConfigBackend();
+      if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
+      const data = out.data;
+      return apiPayloadOk<Omit<SiteAdminConfigGetPayload, "ok">>(data);
+    },
+    { rateLimit: RATE_LIMIT },
+  );
 }
 
 export async function POST(req: NextRequest) {
-  return withSiteAdmin(req, async () => {
-    const parsedCommand = await readSiteAdminJsonCommand(req, parseSiteAdminConfigCommand);
-    if (!parsedCommand.ok) return parsedCommand.res;
-    const command = parsedCommand.value;
+  return withSiteAdminContext(
+    req,
+    async (ctx) => {
+      const parsedCommand = await readSiteAdminJsonCommand(req, parseSiteAdminConfigCommand);
+      if (!parsedCommand.ok) return parsedCommand.res;
+      const command = parsedCommand.value;
+      const out = await postSiteAdminConfigBackend(command);
+      const isConflict = !out.ok && out.code === "SOURCE_CONFLICT";
+      await writeSiteAdminAuditLog({
+        actor: ctx.login,
+        action: "config.save",
+        endpoint: "/api/site-admin/config",
+        method: "POST",
+        status: out.ok ? 200 : out.status,
+        result: out.ok ? "success" : isConflict ? "source_conflict" : "error",
+        code: out.ok ? "OK" : out.code,
+        message: out.ok ? "" : out.error,
+        metadata: {
+          kind: command.kind,
+          rowId:
+            command.kind === "settings" || command.kind === "nav-update"
+              ? command.rowId
+              : null,
+        },
+      });
 
-    switch (command.kind) {
-      case "settings":
-        await updateSiteSettingsRow(command.rowId, command.patch);
-        return apiOk();
-      case "nav-update":
-        await updateSiteNavRow(command.rowId, command.patch);
-        return apiOk();
-      case "nav-create": {
-        const created = await createSiteNavRow(command.input);
-        return apiPayloadOk({ created });
+      if (!out.ok) {
+        return apiError(out.error, { status: out.status, code: out.code });
       }
-      default:
-        return apiExhaustive(command, "Unknown kind");
-    }
-  });
+
+      return apiPayloadOk(out.data);
+    },
+    { rateLimit: RATE_LIMIT },
+  );
 }

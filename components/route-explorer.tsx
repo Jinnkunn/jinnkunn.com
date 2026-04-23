@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -50,6 +52,29 @@ export default function RouteExplorer({
     saveAccess,
     isSearchActive,
   } = useRouteExplorerData(items);
+
+  // Hoist the per-row callbacks to stable parent-scoped closures so the
+  // memoized RouteRow only re-renders when its own row-scoped inputs
+  // actually change. Without this, every keystroke in the search box would
+  // rebuild each row's `onSetAccessChoice`/`onSaveOverride`/... closures
+  // and defeat `React.memo`.
+  const handleSetAccessChoice = useCallback(
+    (id: string, v: AccessMode) => {
+      setAccessChoice((prev) => ({ ...prev, [id]: v }));
+    },
+    [setAccessChoice],
+  );
+
+  const handleSaveOverride = useCallback(
+    (id: string, v: string) => void saveOverride(id, v),
+    [saveOverride],
+  );
+
+  const handleSaveAccess = useCallback(
+    (input: { pageId: string; path: string; access: AccessMode; password?: string }) =>
+      void saveAccess(input),
+    [saveAccess],
+  );
 
   return (
     <div className="routes-explorer">
@@ -189,34 +214,22 @@ export default function RouteExplorer({
               key={it.id}
               it={it}
               cfg={cfg}
-              collapsed={collapsed}
+              isCollapsed={Boolean(collapsed[it.id])}
               adminOpen={adminOpen}
               busy={busyId === it.id}
-              accessChoice={accessChoice}
+              selectedAccessChoice={accessChoice[it.id]}
               effectiveAccess={match}
               inheritedProtected={inheritedProtected}
               directProtected={directProtected}
               overrideValue={overrideValue}
               overridePending={overridePending}
               overrideConflict={overrideConflict}
-              getOverrideConflict={(candidatePath) => findOverrideConflict(it.id, candidatePath)}
+              findOverrideConflict={findOverrideConflict}
               onToggleCollapsed={toggleCollapsed}
               onToggleAdmin={toggleOpenAdmin}
-              onSetAccessChoice={(id, v) =>
-                setAccessChoice((prev) => ({
-                  ...prev,
-                  [id]: v,
-                }))
-              }
-              onSaveOverride={(id, v) => void saveOverride(id, v)}
-              onSaveAccess={(input) =>
-                void saveAccess({
-                  pageId: input.pageId,
-                  path: input.path,
-                  access: input.access,
-                  password: input.password,
-                })
-              }
+              onSetAccessChoice={handleSetAccessChoice}
+              onSaveOverride={handleSaveOverride}
+              onSaveAccess={handleSaveAccess}
             />
           );
         })}

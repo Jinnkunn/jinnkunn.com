@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 
+import { PublicationsView } from "@/components/publications/publications-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
-import RawHtml from "@/components/raw-html";
+import { extractProfileLinks } from "@/lib/publications/extract";
 import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
 import { buildPageMetadata } from "@/lib/seo/metadata";
@@ -40,13 +41,14 @@ export default async function PublicationsPage() {
   const html = await loadRawMainHtml("publications");
   const title = extractTitleFromMain(html, "Publications");
   const description = extractDescriptionFromMain(html) ?? cfg.seo.description;
-  const items = extractPublicationStructuredEntries(html);
-  const jsonLd = buildPublicationsStructuredData(cfg, { title, description, items });
+  const entries = extractPublicationStructuredEntries(html);
+  const profileLinks = extractProfileLinks(html);
+  const jsonLd = buildPublicationsStructuredData(cfg, { title, description, items: entries });
 
   return (
     <>
       <JsonLdScript id="ld-publications" data={jsonLd} />
-      <RawHtml html={html} />
+      <PublicationsView title={title} profileLinks={profileLinks} entries={entries} />
     </>
   );
 }

@@ -1,0 +1,584 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Theme tokens (Tailwind v4 `@theme` directive)
+ *
+ * Warm neutral palette + orange accent to mirror the website's Notion-
+ * esque style. Exposed as CSS custom properties + Tailwind utility
+ * classes (e.g. `bg-bg-sidebar`, `text-text-primary`, `rounded-xl-card`).
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Surface ladder: window (tablecloth) → sidebar card → surface card.
+   * `--bg-window-blend` is the semi-translucent tint painted over
+   * NSVisualEffectView on macOS (see src-tauri/main.rs). Fallback to the
+   * solid `--bg-window` on platforms without vibrancy. */
+  --color-bg-window: #ece9e2;
+  --color-bg-window-blend: rgba(236, 233, 226, 0.68);
+  --color-bg-sidebar: #ffffff;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-alt: #f7f4ed;
+  --color-bg-hover: rgba(55, 53, 47, 0.06);
+
+  --color-text-primary: #37352f;
+  --color-text-secondary: rgba(55, 53, 47, 0.82);
+  --color-text-muted: rgba(55, 53, 47, 0.62);
+  --color-text-inverse: #ffffff;
+
+  --color-border-subtle: rgba(55, 53, 47, 0.1);
+  --color-border-default: rgba(55, 53, 47, 0.16);
+  --color-border-strong: rgba(55, 53, 47, 0.24);
+
+  /* Notion `--color-orange` at 42% lightness so white-on-orange meets
+   * WCAG AA (~4.8:1). `--color-accent-strong` is the hover tier. */
+  --color-accent: hsl(30, 87%, 42%);
+  --color-accent-strong: hsl(30, 87%, 36%);
+
+  --color-danger: #b3261e;
+  --color-danger-strong: #8f1d17;
+  --color-warn: #b84a00;
+  --color-success: #1f7a34;
+
+  /* Layout */
+  --spacing-titlebar: 40px;
+  --spacing-sidebar: 248px;
+  --spacing-shell-gap: 8px;
+
+  --radius-card: 16px;
+
+  /* Tuned z-indices so sidebar card sits above titlebar (the card visually
+   * wraps the OS-rendered traffic lights via decorum). */
+  --z-titlebar: 30;
+  --z-sidebar-card: 32;
+}
+
+/* Dark mode is driven by `data-theme="dark"` on <html>, set by the
+ * useTheme hook (src/shell/useTheme.ts). Three user modes: "light",
+ * "dark", and "system". In "system" mode the hook mirrors the OS
+ * preference onto the attribute so this selector still drives the
+ * palette without any @media fallback in the CSS. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg-window: #120f0d;
+  --color-bg-window-blend: rgba(18, 15, 13, 0.65);
+  --color-bg-sidebar: #1b1816;
+  --color-bg-surface: #1b1816;
+  --color-bg-surface-alt: #25211d;
+  --color-bg-hover: rgba(242, 235, 223, 0.08);
+
+  --color-text-primary: #f2ebdf;
+  --color-text-secondary: rgba(242, 235, 223, 0.82);
+  --color-text-muted: rgba(242, 235, 223, 0.62);
+  --color-text-inverse: #171513;
+
+  --color-border-subtle: rgba(242, 235, 223, 0.08);
+  --color-border-default: rgba(242, 235, 223, 0.14);
+  --color-border-strong: rgba(242, 235, 223, 0.2);
+
+  --color-accent: hsl(30, 90%, 62%);
+  --color-accent-strong: hsl(30, 90%, 70%);
+  --color-danger: #ff8479;
+  --color-danger-strong: #ff9b91;
+  --color-warn: #f0a45a;
+  --color-success: #62cb7c;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ *
+ * Base reset
+ * ------------------------------------------------------------------ */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-window-blend);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ------------------------------------------------------------------ *
+ * Chrome shell — ported verbatim from personal-os `workspace-chrome.css`.
+ *
+ * Key layout: absolutely-positioned titlebar sits above a full-height
+ * flex-row body. Sidebar uses `margin: -32px 8px 8px 8px` to pull its top
+ * edge up into the titlebar's visual lane (so the rounded corners visually
+ * wrap the OS-rendered traffic lights repositioned by decorum).
+ * ------------------------------------------------------------------ */
+
+.app-shell {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.app-body {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  padding-top: var(--spacing-titlebar);
+}
+
+.titlebar-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--spacing-titlebar);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 14px;
+  background: transparent;
+  z-index: var(--z-titlebar);
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0.85;
+  transition:
+    opacity 150ms ease,
+    filter 170ms ease;
+}
+
+body[data-window-focused="true"] .titlebar-shell {
+  opacity: 1;
+}
+
+/* Theme toggle — compact ghost-style button pinned to the titlebar's
+ * right edge. Interactive, so it opts out of the parent's drag region.
+ * Size/padding match the breadcrumb text rhythm (~24px square). */
+.theme-toggle {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.theme-toggle:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  border-color: var(--color-border-subtle);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Reserve the sidebar's footprint on the titlebar so breadcrumb / actions
+ * render past the card's right edge. */
+.titlebar-leading-pad {
+  width: calc(var(--spacing-sidebar) + var(--spacing-shell-gap));
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.sidebar-surface {
+  position: relative;
+  z-index: var(--z-sidebar-card);
+  flex-shrink: 0;
+  width: var(--spacing-sidebar);
+  margin: -32px var(--spacing-shell-gap) var(--spacing-shell-gap) var(--spacing-shell-gap);
+  background: var(--color-bg-sidebar);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  backdrop-filter: none;
+  box-shadow:
+    0 1px 2px rgba(3, 8, 20, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: box-shadow 180ms ease;
+}
+
+body[data-window-focused="true"] .sidebar-surface {
+  box-shadow:
+    0 1px 3px rgba(3, 8, 20, 0.06),
+    0 0 0 0.5px rgba(3, 8, 20, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+:root[data-theme="dark"] .sidebar-surface {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+:root[data-theme="dark"] body[data-window-focused="true"] .sidebar-surface {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.45),
+    0 0 0 0.5px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* 52px drag strip. macOS traffic lights sit inside this via
+ * set_traffic_lights_inset(26, 28) — keep this height in sync. */
+.sidebar-header-strip {
+  display: flex;
+  align-items: stretch;
+  height: 52px;
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Sidebar nav items
+ * ------------------------------------------------------------------ */
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.sidebar-nav-item:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-primary);
+}
+
+.sidebar-nav-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.sidebar-nav-item[aria-current="page"] .sidebar-nav-item-icon {
+  color: var(--color-accent);
+}
+
+.sidebar-nav-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: var(--color-text-muted);
+}
+
+.sidebar-nav-item-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared primitives — buttons, inputs
+ *
+ * Flat selectors (no `button.btn`) so variant modifiers
+ * (.btn--secondary / .btn--ghost / .btn--danger) aren't overridden by
+ * the base rule. See old styles.css Dec-2025 fix notes.
+ * ------------------------------------------------------------------ */
+.btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.btn:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.btn.btn--secondary {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.btn.btn--secondary:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  border-color: var(--color-border-strong);
+}
+
+.btn.btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: transparent;
+  padding: 6px 10px;
+}
+
+.btn.btn--ghost:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  color: var(--color-text-primary);
+}
+
+.btn.btn--danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #ffffff;
+}
+
+.btn.btn--danger:hover {
+  background: var(--color-danger-strong);
+  border-color: var(--color-danger-strong);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Surface card + message banner
+ * ------------------------------------------------------------------ */
+.surface-card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.message-bar {
+  border-radius: 10px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface-alt);
+  padding: 10px 12px;
+  border-left: 4px solid var(--color-accent);
+}
+
+.message-bar.kind-success {
+  border-left-color: var(--color-success);
+}
+
+.message-bar.kind-error {
+  border-left-color: var(--color-danger);
+}
+
+.message-bar.kind-warn {
+  border-left-color: var(--color-warn);
+}
+
+.message-bar p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-primary);
+}
+
+/* ------------------------------------------------------------------ *
+ * KV pairs (Status surface)
+ * ------------------------------------------------------------------ */
+.key-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.key-values > div {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+  padding: 8px 10px;
+}
+
+.key-values dt {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.key-values dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ *
+ * Grid tables (nav + routes editors)
+ * ------------------------------------------------------------------ */
+.grid-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(180px, 2fr) minmax(100px, 0.8fr) minmax(80px, 0.7fr) minmax(90px, 0.7fr) auto;
+  align-items: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--color-bg-surface);
+}
+
+.grid-row.routes-override {
+  grid-template-columns: minmax(180px, 1.3fr) minmax(220px, 2fr) auto;
+}
+
+.grid-row.routes-protected {
+  grid-template-columns: minmax(170px, 1.2fr) minmax(220px, 1.8fr) minmax(120px, 0.9fr) minmax(180px, 1.2fr) auto;
+}
+
+.grid-header {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+}
+
+.row-note {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.row-note.dirty {
+  color: var(--color-warn);
+}
+
+.row-note.clean {
+  color: var(--color-success);
+}
+
+.empty-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ------------------------------------------------------------------ *
+ * Debug response pane + details
+ * ------------------------------------------------------------------ */
+pre.debug-pane {
+  margin: 0;
+  min-height: 120px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+details.surface-details {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface-alt);
+  padding: 12px 14px;
+}
+
+details.surface-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--color-text-primary);
+  padding: 2px 0;
+}
+
+details.surface-details[open] > summary {
+  margin-bottom: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Responsive fallback — hide the sidebar card under a narrow breakpoint
+ * so the main column stays usable. Traffic lights stay native at their
+ * fallback position since there's no card to align to.
+ * ------------------------------------------------------------------ */
+@media (max-width: 840px) {
+  .sidebar-surface {
+    display: none;
+  }
+  .titlebar-leading-pad {
+    width: 78px; /* room for native traffic lights */
+  }
+}

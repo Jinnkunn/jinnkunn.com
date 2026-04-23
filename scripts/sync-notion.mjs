@@ -314,6 +314,28 @@ async function main() {
     searchIndex,
   });
 
+  // Notion's CDN serves raw, uncompressed PNGs (commonly 3-4MB each).
+  // Losslessly re-encoding them here cuts both the deploy upload size
+  // and the first-time derivative generation cost inside Next's image
+  // optimiser. Set `NOTION_SYNC_SKIP_OPTIMIZE=1` to keep the
+  // originals (useful when debugging asset pipeline issues).
+  const skipOptimize = ["1", "true", "yes", "on"].includes(
+    String(process.env.NOTION_SYNC_SKIP_OPTIMIZE || "").toLowerCase(),
+  );
+  if (!skipOptimize) {
+    try {
+      const mod = await import("./optimize-notion-assets.mjs");
+      if (typeof mod.optimizeNotionAssets === "function") {
+        await mod.optimizeNotionAssets({ quiet: true });
+      }
+    } catch (err) {
+      console.warn(
+        "[sync:notion] asset optimisation skipped:",
+        err?.message || String(err),
+      );
+    }
+  }
+
   console.log("[sync:notion] Done.");
 }
 

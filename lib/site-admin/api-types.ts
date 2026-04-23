@@ -3,6 +3,17 @@ import type { ProtectedAccessMode } from "../shared/access.ts";
 
 export type SiteAdminApiError = { ok: false; error: string; code: string };
 
+export type SiteAdminConfigSourceVersion = {
+  siteConfigSha: string;
+  branchSha: string;
+};
+
+export type SiteAdminRoutesSourceVersion = {
+  siteConfigSha: string;
+  protectedRoutesSha: string;
+  branchSha: string;
+};
+
 export type SiteAdminStat = {
   exists: boolean;
   mtimeMs?: number;
@@ -27,6 +38,9 @@ export type SiteAdminStatusPayload = {
   ok: true;
   env: {
     nodeEnv: string;
+    runtimeProvider: "local" | "vercel" | "cloudflare" | "unknown";
+    runtimeRegion: string;
+    hasDeployTarget: boolean;
     isVercel: boolean;
     vercelRegion: string;
     hasNotionToken: boolean;
@@ -39,11 +53,13 @@ export type SiteAdminStatusPayload = {
     contentGithubAllowlistCount: number;
   };
   build: {
+    provider: "local" | "vercel" | "cloudflare" | "unknown";
     commitSha: string;
     commitShort: string;
     branch: string;
     commitMessage: string;
     deploymentId: string;
+    deploymentUrl: string;
     vercelUrl: string;
   };
   content: {
@@ -65,6 +81,16 @@ export type SiteAdminStatusPayload = {
   notion: {
     adminPage: null | { id: string; lastEdited: string; title: string };
     rootPage: null | { id: string; lastEdited: string; title: string };
+  };
+  source: {
+    storeKind: "local" | "github";
+    repo: string | null;
+    branch: string | null;
+    headSha: string | null;
+    headCommitTime: string | null;
+    pendingDeploy: boolean | null;
+    pendingDeployReason?: string | null;
+    error?: string;
   };
   preflight?: {
     generatedFiles: {
@@ -94,6 +120,24 @@ export type SiteAdminStatusPayload = {
     notionEditedMs: number | null;
     generatedLatestMs: number | null;
   };
+  diagnostics?: SiteAdminDiagnostics;
+};
+
+export type SiteAdminDiagnosticsEvent = {
+  at: string;
+  severity: "warn" | "error";
+  source: string;
+  message: string;
+  detail?: string;
+};
+
+export type SiteAdminDiagnostics = {
+  total: number;
+  warnCount: number;
+  errorCount: number;
+  oldestAt: string | null;
+  newestAt: string | null;
+  recent: SiteAdminDiagnosticsEvent[];
 };
 
 export type SiteAdminStatusResult = SiteAdminStatusPayload | SiteAdminApiError;
@@ -123,20 +167,32 @@ export type SiteAdminRoutesGetPayload = {
   };
   overrides: SiteAdminRouteOverride[];
   protectedRoutes: SiteAdminProtectedRoute[];
+  sourceVersion: SiteAdminRoutesSourceVersion;
 };
 
 export type SiteAdminRoutesResult = SiteAdminRoutesGetPayload | SiteAdminApiError;
+
+export type SiteAdminRoutesPostPayload = {
+  ok: true;
+  sourceVersion: SiteAdminRoutesSourceVersion;
+  override?: SiteAdminRouteOverride;
+  protected?: SiteAdminProtectedRoute;
+};
+
+export type SiteAdminRoutesPostResult = SiteAdminRoutesPostPayload | SiteAdminApiError;
 
 export type SiteAdminConfigGetPayload = {
   ok: true;
   settings: SiteSettings | null;
   nav: NavItemRow[];
+  sourceVersion: SiteAdminConfigSourceVersion;
 };
 
 export type SiteAdminConfigGetResult = SiteAdminConfigGetPayload | SiteAdminApiError;
 
 export type SiteAdminConfigPostPayload = {
   ok: true;
+  sourceVersion: SiteAdminConfigSourceVersion;
   created?: NavItemRow;
 };
 
@@ -146,6 +202,8 @@ export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;
   status: number;
+  provider?: "generic" | "vercel" | "cloudflare";
+  deploymentId?: string;
 };
 
 export type SiteAdminDeployResult = SiteAdminDeployPayload | SiteAdminApiError;

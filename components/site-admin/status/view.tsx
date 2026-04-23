@@ -5,6 +5,7 @@ import { SiteAdminStatusBanner } from "@/components/site-admin/status/banner";
 import { SiteAdminBuildCard } from "@/components/site-admin/status/build-card";
 import { SiteAdminContentSyncCard } from "@/components/site-admin/status/content-sync-card";
 import { SiteAdminRequirementsCard } from "@/components/site-admin/status/admin-requirements-card";
+import { SiteAdminDiagnosticsCard } from "@/components/site-admin/status/diagnostics-card";
 import { SiteAdminGeneratedFilesCard } from "@/components/site-admin/status/generated-files-card";
 import { SiteAdminPreflightCard } from "@/components/site-admin/status/preflight-card";
 import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
@@ -18,7 +19,7 @@ import type {
 type SiteAdminStatusViewProps = {
   payload: StatusPayload;
   banner: BannerState | null;
-  vercelLink: string;
+  deploymentLink: string;
   stale: StatusFreshness;
   generated: GeneratedState;
   readiness: ReadinessState;
@@ -30,7 +31,7 @@ type SiteAdminStatusViewProps = {
 export function SiteAdminStatusView({
   payload,
   banner,
-  vercelLink,
+  deploymentLink,
   stale,
   generated,
   readiness,
@@ -50,11 +51,12 @@ export function SiteAdminStatusView({
         />
       ) : null}
       <div className="site-admin-status__grid">
-        <SiteAdminBuildCard payload={payload} vercelLink={vercelLink} />
+        <SiteAdminBuildCard payload={payload} deploymentLink={deploymentLink} />
         <SiteAdminContentSyncCard payload={payload} stale={stale} generated={generated} />
         <SiteAdminRequirementsCard payload={payload} readiness={readiness} />
         <SiteAdminGeneratedFilesCard payload={payload} />
         <SiteAdminPreflightCard payload={payload} />
+        <SiteAdminDiagnosticsCard payload={payload} />
       </div>
     </>
   );

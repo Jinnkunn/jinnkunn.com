@@ -17,9 +17,7 @@ export function SiteAdminPreflightCard({ payload }: StatusViewCoreProps) {
     <Card className="site-admin-card">
       <div className="site-admin-card__title">Preflight</div>
       {!pre ? (
-        <p className="site-admin-kv__muted" style={{ margin: 0 }}>
-          No preflight data.
-        </p>
+        <p className="site-admin-kv__muted">No preflight data.</p>
       ) : (
         <dl className="site-admin-kv">
           <div className="site-admin-kv__row">

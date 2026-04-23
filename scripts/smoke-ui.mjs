@@ -1,10 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { chromium } from "playwright-core";
+
+import { ensureOutputDir, envFlag, isoStampForPath } from "./_lib/fs.mjs";
+import { launchBrowser } from "./_lib/playwright.mjs";
 
 const OUT_ROOT = path.join(process.cwd(), "output", "ui-smoke");
-const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const BLOG_THEME_PROBE_PATH = "/blog";
 const BLOG_STABLE_POST =
   "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities";
@@ -14,14 +15,6 @@ const REFERENCES_POST =
   "/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models";
 const SCRIPT_NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
-
-function envFlag(name) {
-  return TRUE_VALUES.has(String(process.env[name] || "").trim().toLowerCase());
-}
-
-function isoStampForPath(d = new Date()) {
-  return d.toISOString().replace(/[:.]/g, "-");
-}
 
 function buildThemedUrl(baseURL, pathname, theme) {
   const url = new URL(pathname, baseURL);
@@ -95,21 +88,11 @@ function startServer(port) {
   return child;
 }
 
-async function launchBrowser() {
-  // Prefer system Chrome when available, but fall back for CI runners.
-  try {
-    return await chromium.launch({ channel: "chrome", headless: true });
-  } catch {
-    return await chromium.launch({ headless: true });
-  }
-}
-
 async function main() {
   const quick = envFlag("SMOKE_UI_QUICK");
   const skipBuild = envFlag("SMOKE_UI_SKIP_BUILD");
   const stamp = isoStampForPath();
-  const outDir = path.join(OUT_ROOT, stamp);
-  await mkdir(outDir, { recursive: true });
+  const outDir = await ensureOutputDir(OUT_ROOT, stamp);
 
   const portRaw = Number.parseInt(String(process.env.SMOKE_UI_PORT || "3011"), 10);
   const port = Number.isFinite(portRaw) && portRaw > 0 ? portRaw : 3011;
