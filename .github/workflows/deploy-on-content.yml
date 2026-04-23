@@ -1,8 +1,13 @@
-name: deploy-on-content
+name: Deploy (auto)
 
-# Auto-rebuild + deploy the Cloudflare Worker when site-admin writes touch
-# MDX content or uploaded assets. Staging and production share one workflow
-# but pick the target via the branch name.
+# Rebuild + deploy the Cloudflare Worker when main or site-admin-staging
+# picks up a change that affects the public site. Staging and production
+# share one workflow but pick the target via the branch name.
+#
+# Scope: anything outside `apps/**` (Tauri workspace), `tests/**`, `docs/**`,
+# unrelated `.github/workflows/*`, and markdown-only edits. Expressed as
+# `paths-ignore` so new top-level dirs default to "deployable" — safer than
+# a positive allow-list that silently drops renames.
 #
 # Required secrets:
 #   CLOUDFLARE_API_TOKEN
@@ -17,10 +22,21 @@ on:
     branches:
       - main
       - site-admin-staging
-    paths:
-      - "content/posts/**"
-      - "content/pages/**"
-      - "public/uploads/**"
+    paths-ignore:
+      # Tauri desktop workspace — not part of the public site.
+      - "apps/**"
+      # Tests + docs — CI gates them, no runtime impact.
+      - "tests/**"
+      - "docs/**"
+      - "**/*.md"
+      - "**/README*"
+      # Other workflows — avoid meta-loops on CI-only edits.
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/workspace-release.yml"
+      - ".github/workflows/prod-smoke.yml"
+      - ".github/workflows/search-snapshots.yml"
+      - ".github/workflows/ui-compare.yml"
+      - ".github/workflows/ui-smoke.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -54,7 +70,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Guard: required secrets present
+      - name: Guard — required secrets present
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set to auto-deploy."
@@ -77,7 +93,8 @@ jobs:
         run: npm run build:cf
 
       - name: Deploy to Cloudflare (${{ env.TARGET_ENV }})
-        run: npx --yes wrangler@latest deploy --env "$TARGET_ENV" --message "auto: content update (${{ github.sha }})"
+        run: |
+          npx --yes wrangler@latest deploy --env "$TARGET_ENV" --message "auto deploy ${{ github.sha }}"
 
       - name: Smoke ping
         run: |

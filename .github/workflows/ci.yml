@@ -84,12 +84,21 @@ jobs:
         run: npm test
 
       - name: Site Admin Write Smoke (Staging)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.SITE_ADMIN_BASE_URL_STAGING != '' && secrets.NEXTAUTH_SECRET != '' && secrets.SITE_ADMIN_GITHUB_USERS != ''
+        # `secrets.X != ''` is not reliable inside `if:` (the secrets
+        # context isn't guaranteed to be available during workflow
+        # expression evaluation). Gate on branch here and skip at runtime
+        # when the secrets aren't populated.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           SITE_ADMIN_BASE_URL_STAGING: ${{ secrets.SITE_ADMIN_BASE_URL_STAGING }}
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           SITE_ADMIN_GITHUB_USERS: ${{ secrets.SITE_ADMIN_GITHUB_USERS }}
-        run: npm run smoke:site-admin:write:staging
+        run: |
+          if [ -z "$SITE_ADMIN_BASE_URL_STAGING" ] || [ -z "$NEXTAUTH_SECRET" ] || [ -z "$SITE_ADMIN_GITHUB_USERS" ]; then
+            echo "Skipping: required smoke secrets not configured."
+            exit 0
+          fi
+          npm run smoke:site-admin:write:staging
 
       # Keep a fast UI gate on PRs: core nav/search/mobile behavior only.
       # Heavier embed/reference checks stay in manual UI Smoke workflow.
