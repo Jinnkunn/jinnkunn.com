@@ -13,9 +13,7 @@
         "teaching": 5
       }
     },
-    "sitemapExcludes": [
-      "/__prod_smoke_route_do_not_use__"
-    ]
+    "sitemapExcludes": []
   },
   "integrations": {
     "googleAnalyticsId": ""
