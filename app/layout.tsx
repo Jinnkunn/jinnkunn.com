@@ -1,16 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { designViewportThemeColors } from "@/lib/design-system/tokens";
+import { getDesignThemeInitScript } from "@/lib/design-system/theme";
 import { getSiteConfig } from "@/lib/site-config";
 import { buildRootMetadata } from "@/lib/seo/metadata";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
 import Providers from "@/components/providers";
+import "./design-system.css";
 import "./globals.css";
 import "./state-pages.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   return buildRootMetadata(getSiteConfig());
 }
+
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [...designViewportThemeColors],
+};
 
 export default function RootLayout({
   children,
@@ -21,8 +29,11 @@ export default function RootLayout({
   const gaId = cfg.integrations?.googleAnalyticsId?.trim() || "";
   const enableVercelRuntimeInsights = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   return (
-    <html lang={cfg.lang || "en"} dir="ltr" className="theme-light">
+    <html lang={cfg.lang || "en"} dir="ltr" data-theme="light" className="theme-light">
       <body>
+        <Script id="design-theme-init" strategy="beforeInteractive">
+          {getDesignThemeInitScript()}
+        </Script>
         <Providers>{children}</Providers>
         {enableVercelRuntimeInsights ? (
           <>

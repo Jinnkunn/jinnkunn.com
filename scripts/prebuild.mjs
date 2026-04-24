@@ -49,25 +49,25 @@ async function main() {
     return;
   }
 
-  const hasNotion =
-    Boolean(process.env.NOTION_TOKEN) && Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID);
+  const modeRaw = String(process.env.CONTENT_SYNC_MODE || "stubs").trim().toLowerCase();
+  const mode =
+    modeRaw === "notion" || modeRaw === "stubs" ? modeRaw : "stubs";
 
-  if (hasNotion) {
-    console.log("[prebuild] Running Notion sync...");
+  if (mode === "notion") {
+    const hasNotion =
+      Boolean(process.env.NOTION_TOKEN) && Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID);
+    if (!hasNotion) {
+      throw new Error(
+        "CONTENT_SYNC_MODE=notion requires NOTION_TOKEN and NOTION_SITE_ADMIN_PAGE_ID",
+      );
+    }
+    console.log("[prebuild] CONTENT_SYNC_MODE=notion; running Notion sync...");
     await run("npm", ["run", "sync:notion"]);
     return;
   }
 
-  // Keep builds usable without Notion credentials (local dev / clone mode).
-  // On Vercel, missing NOTION_* is almost certainly misconfiguration.
   ensureGeneratedStubs();
-  if (process.env.VERCEL) {
-    console.warn(
-      "[prebuild] VERCEL detected but NOTION_TOKEN/NOTION_SITE_ADMIN_PAGE_ID are missing; skipping Notion sync.",
-    );
-  } else {
-    console.log("[prebuild] No Notion config found; skipping Notion sync.");
-  }
+  console.log("[prebuild] CONTENT_SYNC_MODE=stubs; ensured generated stubs.");
 }
 
 main().catch((err) => {

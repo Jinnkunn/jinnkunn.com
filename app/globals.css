@@ -15,13 +15,13 @@
 
 /* Global text selection highlight: warm-neutral to match link accent styling. */
 ::selection {
-  background: rgba(216, 191, 131, 0.56);
-  color: #2f2c26;
+  background: var(--ds-selection-bg);
+  color: var(--ds-selection-text);
 }
 
 ::-moz-selection {
-  background: rgba(216, 191, 131, 0.56);
-  color: #2f2c26;
+  background: var(--ds-selection-bg);
+  color: var(--ds-selection-text);
 }
 
 /* A11y: keyboard-only skip link (invisible unless focused). */
@@ -31,9 +31,9 @@
   top: 10px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(55, 53, 47, 0.18);
-  color: #37352f;
+  background: var(--ds-surface-elevated);
+  border: 1px solid var(--ds-border-strong);
+  color: var(--ds-text-primary);
   text-decoration: none;
   font-weight: 600;
   z-index: 1000;
@@ -43,13 +43,13 @@
 
 .skip-link:focus-visible {
   transform: translateY(0);
-  outline: 3px solid rgba(46, 170, 220, 0.35);
+  outline: 3px solid var(--ds-focus-ring);
   outline-offset: 2px;
 }
 
 /* A11y: restore visible focus rings for keyboard users. */
 :where(.super-root) :where(a, button, [role="menuitem"]):focus-visible {
-  outline: 3px solid rgba(46, 170, 220, 0.35);
+  outline: 3px solid var(--ds-focus-ring);
   outline-offset: 2px;
   border-radius: 10px;
 }

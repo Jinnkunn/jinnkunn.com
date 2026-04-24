@@ -1,10 +1,4 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-
-import { loadRawMainHtml } from "@/lib/load-raw-main";
-import { blogSourceRouteForPublicPath } from "@/lib/routes/strategy";
-import { listRawHtmlRelPaths } from "@/lib/server/content-files";
-import { serverDebugLog } from "@/lib/server/debug-log";
+import { getPostEntries } from "@/lib/posts/index";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -13,182 +7,34 @@ export type BlogPostIndexItem = {
   title: string;
   dateText: string | null;
   dateIso: string | null; // YYYY-MM-DD if parseable
+  description?: string | null; // First substantive paragraph, trimmed ~200 chars
+  wordCount?: number | null;
+  readingMinutes?: number | null;
 };
 
-function decodeEntities(s: string): string {
-  return s
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&#x27;", "'")
-    .replaceAll("&#x2F;", "/");
-}
-
-function toIsoDate(dateText: string): string | null {
-  const t = Date.parse(dateText);
-  if (!Number.isFinite(t)) return null;
-  const d = new Date(t);
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-export function parseBlogMetaFromMain(mainHtml: string): {
-  title: string;
-  dateText: string | null;
-  dateIso: string | null;
-} {
-  const title =
-    decodeEntities(
-      mainHtml.match(/class="notion-header__title">([\s\S]*?)<\/h1>/i)?.[1] ??
-        ""
-    )
-      .replace(/<[^>]+>/g, "")
-      .trim() || "Blog Post";
-
-  const dateText =
-    decodeEntities(
-      mainHtml.match(/<span class="date">([^<]+)<\/span>/i)?.[1] ?? ""
-    )
-      .replace(/<[^>]+>/g, "")
-      .trim() || null;
-
-  const dateIso = dateText ? toIsoDate(dateText) : null;
-  return { title, dateText, dateIso };
-}
-
-function parseRssItemPaths(rss: string): string[] {
-  const items = Array.from(rss.matchAll(/<item>[\s\S]*?<\/item>/g)).map((m) => m[0]);
-  const out: string[] = [];
-
-  for (const item of items) {
-    const link = item.match(/<link>([^<]+)<\/link>/)?.[1]?.trim();
-    if (!link) continue;
-    try {
-      const u = new URL(link);
-      // Only keep path; the runtime will serve locally.
-      out.push(u.pathname);
-    } catch (e) {
-      serverDebugLog("blog", "Failed to parse RSS item link", { link, error: String(e) });
-    }
-  }
-
-  return Array.from(new Set(out));
-}
-
-async function tryReadLocalBlogRss(): Promise<string | null> {
-  const p = path.join(process.cwd(), "public", "blog.rss");
-  try {
-    return await readFile(p, "utf8");
-  } catch (e) {
-    serverDebugLog("blog", "Local blog.rss is unavailable", { path: p, error: String(e) });
-    return null;
-  }
-}
-
+/** Sorted list of all published blog post slugs, read from
+ * `content/posts/*.mdx`. Drafts are excluded in getPostEntries. */
 export async function getBlogPostSlugs(): Promise<string[]> {
-  const out = new Set<string>();
-
-  // Preferred source structure is `blog/list/<slug>`; some workspaces may also expose `list/<slug>`.
-  const rels = listRawHtmlRelPaths();
-  for (const rel of rels) {
-    if (rel.startsWith("blog/list/")) {
-      const slug = rel.slice("blog/list/".length);
-      if (slug && !slug.includes("/")) out.add(slug);
-      continue;
-    }
-    if (rel.startsWith("list/")) {
-      const slug = rel.slice("list/".length);
-      if (slug && !slug.includes("/")) out.add(slug);
-      continue;
-    }
-  }
-
-  return Array.from(out).sort();
+  const entries = await getPostEntries();
+  return entries.map((e) => e.slug).sort();
 }
 
+/** Return all blog posts sorted newest-first. Single source of truth is
+ * the MDX store under `content/posts/`. */
 export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
-  const rss = await tryReadLocalBlogRss();
-  const candidates = rss ? parseRssItemPaths(rss) : null;
+  const entries = await getPostEntries();
+  const items: BlogPostIndexItem[] = entries.map((post) => ({
+    kind: "list",
+    slug: post.slug,
+    href: post.href,
+    title: post.title,
+    dateText: post.dateText,
+    dateIso: post.dateIso,
+    description: post.description,
+    wordCount: post.wordCount,
+    readingMinutes: post.readingMinutes,
+  }));
 
-  const items: BlogPostIndexItem[] = [];
-
-  // Prefer the locally-synced HTML files (authoritative after Notion sync).
-  // RSS is treated as a fallback for older builds that might not have files present.
-  const slugs = await getBlogPostSlugs();
-  const paths =
-    slugs.length > 0
-      ? slugs.map((s) => `/blog/${s}`)
-      : candidates ?? [];
-
-  for (const pathname of paths) {
-    // Canonical blog post route: /blog/<slug>
-    if (pathname.startsWith("/blog/") && !pathname.startsWith("/blog/list/")) {
-      const src = blogSourceRouteForPublicPath(pathname);
-      const slug = pathname.split("/").filter(Boolean)[1] || "";
-      if (!slug || !src) continue;
-      let main: string;
-      try {
-        // Source of truth stays under `blog/list/` (Notion structure); route is prettier.
-        main = await loadRawMainHtml(src.replace(/^\/+/, ""));
-      } catch (e1) {
-        serverDebugLog("blog", "Failed to load canonical blog source route", {
-          pathname,
-          sourceRoute: src,
-          error: String(e1),
-        });
-        // Some workspaces may store the backing DB under `/list/<slug>`.
-        try {
-          main = await loadRawMainHtml(`list/${slug}`);
-        } catch (e2) {
-          serverDebugLog("blog", "Failed to load fallback blog source route", {
-            pathname,
-            fallbackRoute: `list/${slug}`,
-            error: String(e2),
-          });
-          continue;
-        }
-      }
-      const meta = parseBlogMetaFromMain(main);
-      items.push({
-        kind: "list",
-        slug,
-        href: `/blog/${slug}`,
-        title: meta.title,
-        dateText: meta.dateText,
-        dateIso: meta.dateIso,
-      });
-      continue;
-    }
-
-    const slug = pathname.replace(/^\/+/, "").replace(/\/+$/, "");
-    if (!slug) continue;
-
-    try {
-      const main = await loadRawMainHtml(slug);
-      const meta = parseBlogMetaFromMain(main);
-      items.push({
-        kind: "page",
-        slug,
-        href: `/${slug}`,
-        title: meta.title,
-        dateText: meta.dateText,
-        dateIso: meta.dateIso,
-      });
-    } catch (e) {
-      serverDebugLog("blog", "Skipping non-blog page while building blog index", {
-        slug,
-        error: String(e),
-      });
-      // If a page isn't a "blog-like" Notion page, skip it (prevents polluting /blog).
-      continue;
-    }
-  }
-
-  // Sort by date desc (unknown dates last), then by slug.
   items.sort((a, b) => {
     if (a.dateIso && b.dateIso) return a.dateIso < b.dateIso ? 1 : a.dateIso > b.dateIso ? -1 : 0;
     if (a.dateIso && !b.dateIso) return -1;
@@ -211,58 +57,4 @@ export async function getAdjacentBlogPosts(href: string): Promise<{
     prev: i > 0 ? idx[i - 1] : null,
     next: i < idx.length - 1 ? idx[i + 1] : null,
   };
-}
-
-export function extractArticleInnerFromMain(mainHtml: string): string {
-  const m = mainHtml.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i);
-  if (!m) throw new Error("Could not find <article> in blog post");
-  return m[1] ?? "";
-}
-
-type Heading = { id: string; level: 2 | 3; text: string };
-
-export function extractHeadingsFromHtml(html: string): Heading[] {
-  const out: Heading[] = [];
-  const re = /<h([23])\b[^>]*\bid="(block-[^"]+)"[^>]*>([\s\S]*?)<\/h\1>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) {
-    const level = Number(m[1]) === 3 ? 3 : 2;
-    const id = m[2];
-    const raw = m[3] ?? "";
-    const text = decodeEntities(raw.replace(/<[^>]+>/g, "")).trim();
-    if (!text) continue;
-    out.push({ id, level: level as 2 | 3, text });
-  }
-  return out;
-}
-
-export function splitBlogArticleInner(articleInner: string): {
-  propertiesHtml: string;
-  bodyHtml: string;
-} {
-  const propsClassIdx = articleInner.indexOf('class="notion-page__properties"');
-  if (propsClassIdx === -1) {
-    return { propertiesHtml: "", bodyHtml: articleInner };
-  }
-
-  const propsStart = articleInner.lastIndexOf("<div", propsClassIdx);
-  if (propsStart === -1) {
-    return { propertiesHtml: "", bodyHtml: articleInner };
-  }
-
-  // Find the first TOC `<ul ... notion-table-of-contents ...>` after properties.
-  const tocClassIdx = articleInner.indexOf("notion-table-of-contents", propsStart);
-  if (tocClassIdx === -1) {
-    return { propertiesHtml: articleInner.slice(propsStart), bodyHtml: "" };
-  }
-
-  const ulStart = articleInner.lastIndexOf("<ul", tocClassIdx);
-  const ulEnd = articleInner.indexOf("</ul>", tocClassIdx);
-  if (ulStart === -1 || ulEnd === -1) {
-    return { propertiesHtml: articleInner, bodyHtml: "" };
-  }
-
-  const propertiesHtml = articleInner.slice(propsStart, ulStart);
-  const bodyHtml = articleInner.slice(ulEnd + "</ul>".length);
-  return { propertiesHtml, bodyHtml };
 }

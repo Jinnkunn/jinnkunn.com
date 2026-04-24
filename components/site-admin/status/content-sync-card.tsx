@@ -1,28 +1,83 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import { fmtIso, fmtWhen } from "@/components/site-admin/status/utils";
 import type { StatusViewCoreProps, StatusViewDerivedProps } from "@/components/site-admin/status/view-types";
 
 type SiteAdminContentSyncCardProps = StatusViewCoreProps & Pick<StatusViewDerivedProps, "stale" | "generated">;
 
+function formatPendingDeployReason(reason: string | null | undefined): string {
+  const raw = String(reason || "").trim();
+  if (!raw) return "Active deployment sha unavailable";
+  if (raw === "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE") {
+    return "Active deployment does not expose source sha";
+  }
+  if (raw === "ACTIVE_DEPLOYMENT_SHA_UNAVAILABLE") {
+    return "Active deployment sha unavailable";
+  }
+  if (raw === "SOURCE_HEAD_UNAVAILABLE") {
+    return "Source head sha unavailable";
+  }
+  return raw;
+}
+
 export function SiteAdminContentSyncCard({ payload, stale, generated }: SiteAdminContentSyncCardProps) {
+  const hasDeployTarget = payload.env.hasDeployTarget || payload.env.hasDeployHookUrl;
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Content + Sync</div>
       <dl className="site-admin-kv">
         <div className="site-admin-kv__row">
-          <dt>Source Token</dt>
+          <dt>Source Store</dt>
           <dd>
-            <StatusBadge ok={payload.env.hasNotionToken}>{payload.env.hasNotionToken ? "configured" : "missing"}</StatusBadge>
+            <code className="code">{payload.source.storeKind}</code>
           </dd>
         </div>
         <div className="site-admin-kv__row">
-          <dt>Admin Page</dt>
+          <dt>Source Repo</dt>
           <dd>
-            <StatusBadge ok={payload.env.hasNotionAdminPageId}>
-              {payload.env.hasNotionAdminPageId ? "configured" : "missing"}
-            </StatusBadge>
+            {payload.source.repo ? <code className="code">{payload.source.repo}</code> : <span>—</span>}
+          </dd>
+        </div>
+        <div className="site-admin-kv__row">
+          <dt>Source Branch</dt>
+          <dd>
+            {payload.source.branch ? <code className="code">{payload.source.branch}</code> : <span>—</span>}
+          </dd>
+        </div>
+        <div className="site-admin-kv__row">
+          <dt>Source Head</dt>
+          <dd>
+            {payload.source.headSha ? <code className="code">{payload.source.headSha.slice(0, 12)}</code> : <span>—</span>}
+          </dd>
+        </div>
+        <div className="site-admin-kv__row">
+          <dt>Head Time</dt>
+          <dd>
+            {payload.source.headCommitTime ? (
+              <code className="code">{fmtIso(payload.source.headCommitTime)}</code>
+            ) : (
+              <span>—</span>
+            )}
+          </dd>
+        </div>
+        <div className="site-admin-kv__row">
+          <dt>Pending Deploy</dt>
+          <dd>
+            {payload.source.pendingDeploy === null ? (
+              <>
+                <span>—</span>
+                <span className="site-admin-status__hint">
+                  {" "}
+                  {formatPendingDeployReason(payload.source.pendingDeployReason)}
+                </span>
+              </>
+            ) : (
+              <StatusBadge ok={!payload.source.pendingDeploy}>
+                {payload.source.pendingDeploy ? "yes" : "no"}
+              </StatusBadge>
+            )}
           </dd>
         </div>
         <div className="site-admin-kv__row">
@@ -58,7 +113,17 @@ export function SiteAdminContentSyncCard({ payload, stale, generated }: SiteAdmi
         </div>
         <div className="site-admin-kv__row">
           <dt>Action</dt>
-          <dd>{(!stale.ok || !generated.ok) && payload.env.hasDeployHookUrl ? <span>Deploy recommended</span> : <span>—</span>}</dd>
+          <dd>
+            {((!stale.ok || !generated.ok || payload.source.pendingDeploy === true) && hasDeployTarget) ? (
+              <span>Deploy recommended</span>
+            ) : (
+              <span>—</span>
+            )}
+          </dd>
+        </div>
+        <div className="site-admin-kv__row">
+          <dt>Source Error</dt>
+          <dd>{payload.source.error ? <span>{payload.source.error}</span> : <span>—</span>}</dd>
         </div>
         <div className="site-admin-kv__row">
           <dt>Admin Edited</dt>
@@ -101,6 +166,6 @@ export function SiteAdminContentSyncCard({ payload, stale, generated }: SiteAdmi
           <dd>{payload.content.syncMeta?.protectedRules ?? "—"}</dd>
         </div>
       </dl>
-    </div>
+    </Card>
   );
 }

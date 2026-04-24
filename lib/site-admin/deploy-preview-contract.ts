@@ -3,13 +3,8 @@ import type {
   SiteAdminDeployPreviewResult,
 } from "./api-types";
 
-import {
-  asApiAck,
-  isRecord,
-  readApiErrorCode,
-  readApiErrorMessage,
-  unwrapApiData,
-} from "../client/api-guards.ts";
+import { isRecord } from "../client/api-guards.ts";
+import { parseApiContract } from "./contract-helpers.ts";
 
 function parseRedirectChange(value: unknown): SiteAdminDeployPreviewPayload["samples"]["redirects"][number] | null {
   if (!isRecord(value)) return null;
@@ -61,73 +56,64 @@ export function isSiteAdminDeployPreviewOk(
 }
 
 export function parseSiteAdminDeployPreviewResult(x: unknown): SiteAdminDeployPreviewResult | null {
-  const ack = asApiAck(x);
-  if (!ack) return null;
-  if (!ack.ok) {
+  return parseApiContract<SiteAdminDeployPreviewResult>(x, (payload) => {
+    if (!isRecord(payload)) return null;
+
+    if (typeof payload.generatedAt !== "string" || typeof payload.hasChanges !== "boolean") return null;
+    if (!isRecord(payload.summary) || !isRecord(payload.samples)) return null;
+
+    const summary = payload.summary;
+    const samples = payload.samples;
+    const pagesAdded = summary.pagesAdded;
+    const pagesRemoved = summary.pagesRemoved;
+    const redirectsAdded = summary.redirectsAdded;
+    const redirectsRemoved = summary.redirectsRemoved;
+    const redirectsChanged = summary.redirectsChanged;
+    const protectedAdded = summary.protectedAdded;
+    const protectedRemoved = summary.protectedRemoved;
+    const protectedChanged = summary.protectedChanged;
+    if (typeof pagesAdded !== "number") return null;
+    if (typeof pagesRemoved !== "number") return null;
+    if (typeof redirectsAdded !== "number") return null;
+    if (typeof redirectsRemoved !== "number") return null;
+    if (typeof redirectsChanged !== "number") return null;
+    if (typeof protectedAdded !== "number") return null;
+    if (typeof protectedRemoved !== "number") return null;
+    if (typeof protectedChanged !== "number") return null;
+
+    if (!Array.isArray(samples.pagesAdded) || !samples.pagesAdded.every((v) => typeof v === "string")) return null;
+    if (!Array.isArray(samples.pagesRemoved) || !samples.pagesRemoved.every((v) => typeof v === "string")) return null;
+    if (!Array.isArray(samples.redirects) || !Array.isArray(samples.protected)) return null;
+
+    const redirects = samples.redirects
+      .map(parseRedirectChange)
+      .filter((it): it is NonNullable<typeof it> => Boolean(it));
+    const protectedChanges = samples.protected
+      .map(parseProtectedChange)
+      .filter((it): it is NonNullable<typeof it> => Boolean(it));
+    if (redirects.length !== samples.redirects.length) return null;
+    if (protectedChanges.length !== samples.protected.length) return null;
+
     return {
-      ok: false,
-      error: readApiErrorMessage(x) || ack.error || "Request failed",
-      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+      ok: true,
+      generatedAt: payload.generatedAt,
+      hasChanges: payload.hasChanges,
+      summary: {
+        pagesAdded,
+        pagesRemoved,
+        redirectsAdded,
+        redirectsRemoved,
+        redirectsChanged,
+        protectedAdded,
+        protectedRemoved,
+        protectedChanged,
+      },
+      samples: {
+        pagesAdded: samples.pagesAdded,
+        pagesRemoved: samples.pagesRemoved,
+        redirects,
+        protected: protectedChanges,
+      },
     };
-  }
-
-  const payload = unwrapApiData(x);
-  if (!isRecord(payload)) return null;
-
-  if (typeof payload.generatedAt !== "string" || typeof payload.hasChanges !== "boolean") return null;
-  if (!isRecord(payload.summary) || !isRecord(payload.samples)) return null;
-
-  const summary = payload.summary;
-  const samples = payload.samples;
-  const pagesAdded = summary.pagesAdded;
-  const pagesRemoved = summary.pagesRemoved;
-  const redirectsAdded = summary.redirectsAdded;
-  const redirectsRemoved = summary.redirectsRemoved;
-  const redirectsChanged = summary.redirectsChanged;
-  const protectedAdded = summary.protectedAdded;
-  const protectedRemoved = summary.protectedRemoved;
-  const protectedChanged = summary.protectedChanged;
-  if (typeof pagesAdded !== "number") return null;
-  if (typeof pagesRemoved !== "number") return null;
-  if (typeof redirectsAdded !== "number") return null;
-  if (typeof redirectsRemoved !== "number") return null;
-  if (typeof redirectsChanged !== "number") return null;
-  if (typeof protectedAdded !== "number") return null;
-  if (typeof protectedRemoved !== "number") return null;
-  if (typeof protectedChanged !== "number") return null;
-
-  if (!Array.isArray(samples.pagesAdded) || !samples.pagesAdded.every((v) => typeof v === "string")) return null;
-  if (!Array.isArray(samples.pagesRemoved) || !samples.pagesRemoved.every((v) => typeof v === "string")) return null;
-  if (!Array.isArray(samples.redirects) || !Array.isArray(samples.protected)) return null;
-
-  const redirects = samples.redirects
-    .map(parseRedirectChange)
-    .filter((it): it is NonNullable<typeof it> => Boolean(it));
-  const protectedChanges = samples.protected
-    .map(parseProtectedChange)
-    .filter((it): it is NonNullable<typeof it> => Boolean(it));
-  if (redirects.length !== samples.redirects.length) return null;
-  if (protectedChanges.length !== samples.protected.length) return null;
-
-  return {
-    ok: true,
-    generatedAt: payload.generatedAt,
-    hasChanges: payload.hasChanges,
-    summary: {
-      pagesAdded,
-      pagesRemoved,
-      redirectsAdded,
-      redirectsRemoved,
-      redirectsChanged,
-      protectedAdded,
-      protectedRemoved,
-      protectedChanged,
-    },
-    samples: {
-      pagesAdded: samples.pagesAdded,
-      pagesRemoved: samples.pagesRemoved,
-      redirects,
-      protected: protectedChanges,
-    },
-  };
+  });
 }

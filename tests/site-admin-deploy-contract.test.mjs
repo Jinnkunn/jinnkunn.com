@@ -11,12 +11,16 @@ test("site-admin-deploy-contract: parses valid success payload", () => {
     ok: true,
     triggeredAt: "2026-02-15T20:00:00.000Z",
     status: 202,
+    provider: "cloudflare",
+    deploymentId: "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
   });
   assert.ok(parsed);
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminDeployOk(parsed)) throw new Error("Expected deploy success payload");
   assert.equal(parsed.status, 202);
   assert.equal(parsed.triggeredAt, "2026-02-15T20:00:00.000Z");
+  assert.equal(parsed.provider, "cloudflare");
+  assert.equal(parsed.deploymentId, "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e");
 });
 
 test("site-admin-deploy-contract: parses success payload in data envelope", () => {

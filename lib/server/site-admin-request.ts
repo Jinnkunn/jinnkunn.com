@@ -23,9 +23,23 @@ export type SiteAdminNavPatch = Partial<Omit<NavItemRow, "rowId">>;
 export type SiteAdminNavCreateInput = Omit<NavItemRow, "rowId">;
 
 export type SiteAdminConfigCommand =
-  | { kind: "settings"; rowId: string; patch: SiteAdminSettingsPatch }
-  | { kind: "nav-update"; rowId: string; patch: SiteAdminNavPatch }
-  | { kind: "nav-create"; input: SiteAdminNavCreateInput };
+  | {
+      kind: "settings";
+      rowId: string;
+      patch: SiteAdminSettingsPatch;
+      expectedSiteConfigSha: string;
+    }
+  | {
+      kind: "nav-update";
+      rowId: string;
+      patch: SiteAdminNavPatch;
+      expectedSiteConfigSha: string;
+    }
+  | {
+      kind: "nav-create";
+      input: SiteAdminNavCreateInput;
+      expectedSiteConfigSha: string;
+    };
 
 const configCommandSchema = z.discriminatedUnion("kind", [
   z
@@ -33,6 +47,7 @@ const configCommandSchema = z.discriminatedUnion("kind", [
       kind: z.literal("settings"),
       rowId: z.unknown().optional(),
       patch: z.record(z.unknown()).optional(),
+      expectedSiteConfigSha: z.unknown().optional(),
     })
     .passthrough(),
   z
@@ -40,12 +55,14 @@ const configCommandSchema = z.discriminatedUnion("kind", [
       kind: z.literal("nav-update"),
       rowId: z.unknown().optional(),
       patch: z.record(z.unknown()).optional(),
+      expectedSiteConfigSha: z.unknown().optional(),
     })
     .passthrough(),
   z
     .object({
       kind: z.literal("nav-create"),
       input: z.record(z.unknown()).optional(),
+      expectedSiteConfigSha: z.unknown().optional(),
     })
     .passthrough(),
 ]);
@@ -63,13 +80,28 @@ function bad(error: string, status = 400): ParseResult<never> {
 type ParseJsonCommandOptions = {
   invalidJsonError?: string;
   invalidJsonStatus?: number;
+  /** Reject bodies whose declared Content-Length exceeds this value */
+  /*  before attempting to parse them. Missing header skips the check */
+  /*  (bodies bounded by the eventual `req.text()` buffer still apply */
+  /*  the limit inside Node's streaming layer). Defaults to 64KB, */
+  /*  which is comfortably above the largest admin command body but */
+  /*  small enough that a malicious caller cannot exhaust Worker RAM. */
+  maxBytes?: number;
 };
+
+const DEFAULT_ADMIN_BODY_MAX_BYTES = 64 * 1024;
 
 export async function parseSiteAdminJsonCommand<T>(
   req: Request,
   parseBody: (body: Record<string, unknown>) => ParseResult<T>,
   opts?: ParseJsonCommandOptions,
 ): Promise<ParseResult<T>> {
+  const maxBytes = opts?.maxBytes ?? DEFAULT_ADMIN_BODY_MAX_BYTES;
+  const declared = Number(req.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    return bad("Request body too large", 413);
+  }
+
   const body = await readJsonBody(req);
   if (!body) {
     return bad(opts?.invalidJsonError || "Invalid JSON", opts?.invalidJsonStatus ?? 400);
@@ -88,6 +120,8 @@ export function parseSiteAdminConfigCommand(
   if (kind === "settings") {
     const rowId = compactId(asString(command.rowId));
     if (!rowId) return bad("Missing rowId", 400);
+    const expectedSiteConfigSha = asString(command.expectedSiteConfigSha);
+    if (!expectedSiteConfigSha) return bad("Missing expectedSiteConfigSha", 400);
 
     const patch = isObject(command.patch) ? command.patch : {};
     const outPatch: SiteAdminSettingsPatch = {};
@@ -158,12 +192,14 @@ export function parseSiteAdminConfigCommand(
       outPatch.homePageId = getString(patch, "homePageId", { maxLen: 64 });
     }
 
-    return { ok: true, value: { kind, rowId, patch: outPatch } };
+    return { ok: true, value: { kind, rowId, patch: outPatch, expectedSiteConfigSha } };
   }
 
   if (kind === "nav-update") {
     const rowId = compactId(asString(command.rowId));
     if (!rowId) return bad("Missing rowId", 400);
+    const expectedSiteConfigSha = asString(command.expectedSiteConfigSha);
+    if (!expectedSiteConfigSha) return bad("Missing expectedSiteConfigSha", 400);
 
     const patch = isObject(command.patch) ? command.patch : {};
     const outPatch: SiteAdminNavPatch = {};
@@ -185,14 +221,17 @@ export function parseSiteAdminConfigCommand(
       if (enabled !== null) outPatch.enabled = enabled;
     }
 
-    return { ok: true, value: { kind, rowId, patch: outPatch } };
+    return { ok: true, value: { kind, rowId, patch: outPatch, expectedSiteConfigSha } };
   }
 
+  const expectedSiteConfigSha = asString(command.expectedSiteConfigSha);
+  if (!expectedSiteConfigSha) return bad("Missing expectedSiteConfigSha", 400);
   const input = isObject(command.input) ? command.input : {};
   return {
     ok: true,
     value: {
       kind,
+      expectedSiteConfigSha,
       input: {
         label: getString(input, "label", { maxLen: 120 }),
         href: getString(input, "href", { maxLen: 300 }),

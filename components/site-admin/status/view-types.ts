@@ -9,5 +9,5 @@ export type StatusViewDerivedProps = {
   stale: StatusFreshness;
   generated: GeneratedState;
   readiness: ReadinessState;
-  vercelLink: string;
+  deploymentLink: string;
 };

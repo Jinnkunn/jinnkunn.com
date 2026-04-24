@@ -11,10 +11,46 @@ function sanitizeRelPath(relPath: string): string {
   return rel;
 }
 
+function getGeneratedContentRoots(): string[] {
+  const cwd = process.cwd();
+  const dirs = [
+    path.join(cwd, "content", "generated"),
+    path.join(cwd, "server-functions", "default", "content", "generated"),
+    path.join(cwd, ".open-next", "server-functions", "default", "content", "generated"),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const dir of dirs) {
+    if (!dir || seen.has(dir)) continue;
+    seen.add(dir);
+    out.push(dir);
+  }
+  return out;
+}
+
+function getFilesystemContentRoots(): string[] {
+  const cwd = process.cwd();
+  const dirs = [
+    path.join(cwd, "content", "filesystem"),
+    path.join(cwd, "server-functions", "default", "content", "filesystem"),
+    path.join(cwd, ".open-next", "server-functions", "default", "content", "filesystem"),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const dir of dirs) {
+    if (!dir || seen.has(dir)) continue;
+    seen.add(dir);
+    out.push(dir);
+  }
+  return out;
+}
+
 export function getContentFileCandidates(relPath: string): string[] {
   const rel = sanitizeRelPath(relPath);
   if (!rel) return [];
-  return [path.join(process.cwd(), "content", "generated", rel)];
+  const filesystem = getFilesystemContentRoots().map((root) => path.join(root, rel));
+  const generated = getGeneratedContentRoots().map((root) => path.join(root, rel));
+  return [...filesystem, ...generated];
 }
 
 export function findFirstExistingFile(candidates: string[]): string | null {
@@ -83,7 +119,7 @@ function isDirSync(dir: string): boolean {
 }
 
 export function getRawHtmlRoots(): string[] {
-  return [path.join(process.cwd(), "content", "generated", "raw")];
+  return getGeneratedContentRoots().map((root) => path.join(root, "raw"));
 }
 
 function normalizeRawHtmlRoutePath(routePath: string): string {
@@ -107,13 +143,27 @@ function resolveRawHtmlFileInRoot(root: string, routePath: string): string {
 }
 
 export function resolveRawHtmlFile(routePath: string): string {
-  const root = getRawHtmlRoots()[0];
-  if (!root) throw new Error("Missing generated raw content root");
-  return resolveRawHtmlFileInRoot(root, routePath);
+  const roots = getRawHtmlRoots();
+  if (roots.length === 0) throw new Error("Missing raw content root");
+
+  for (const root of roots) {
+    const file = resolveRawHtmlFileInRoot(root, routePath);
+    try {
+      if (fs.statSync(file).isFile()) return file;
+    } catch {
+      // keep trying next root
+    }
+  }
+
+  return resolveRawHtmlFileInRoot(roots[0], routePath);
 }
 
 export function getGeneratedContentDir(): string {
-  return path.join(process.cwd(), "content", "generated");
+  const candidates = getGeneratedContentRoots();
+  for (const dir of candidates) {
+    if (isDirSync(dir)) return dir;
+  }
+  return candidates[0] ?? path.join(process.cwd(), "content", "generated");
 }
 
 export function getNotionSyncCacheDir(): string {
@@ -132,30 +182,32 @@ export function listRawHtmlRelPaths(): string[] {
  * Return raw-html files (rel path + file path + mtimeMs) from generated content.
  */
 export function listRawHtmlFiles(): RawHtmlFileInfo[] {
-  const root = getRawHtmlRoots()[0];
-  const out: RawHtmlFileInfo[] = [];
+  const roots = getRawHtmlRoots();
+  const dedup = new Map<string, RawHtmlFileInfo>();
 
-  if (!root || !isDirSync(root)) return out;
-  const files = listHtmlFilesRecSync(root);
-  for (const abs of files) {
-    const rel = path.relative(root, abs).replace(/\\/g, "/");
-    if (!rel.endsWith(".html")) continue;
-    const noExt = rel.slice(0, -".html".length);
-    if (!noExt) continue;
-    let mtimeMs = 0;
-    try {
-      mtimeMs = fs.statSync(abs).mtimeMs;
-    } catch {
-      // ignore
+  for (const root of roots) {
+    if (!root || !isDirSync(root)) continue;
+    const files = listHtmlFilesRecSync(root);
+    for (const abs of files) {
+      const rel = path.relative(root, abs).replace(/\\/g, "/");
+      if (!rel.endsWith(".html")) continue;
+      const noExt = rel.slice(0, -".html".length);
+      if (!noExt || dedup.has(noExt)) continue;
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(abs).mtimeMs;
+      } catch {
+        // ignore
+      }
+      dedup.set(noExt, {
+        relPath: noExt,
+        filePath: abs,
+        mtimeMs,
+      });
     }
-    out.push({
-      relPath: noExt,
-      filePath: abs,
-      mtimeMs,
-    });
   }
 
-  // Deterministic output.
+  const out = [...dedup.values()];
   out.sort((a, b) => a.relPath.localeCompare(b.relPath));
   return out;
 }

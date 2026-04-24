@@ -1,42 +1,18 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+
+import { PostView } from "@/components/posts-mdx/post-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
-import RawHtml from "@/components/raw-html";
-import { getBlogPostSlugs, parseBlogMetaFromMain } from "@/lib/blog";
-import { loadRawMainHtml } from "@/lib/load-raw-main";
-import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
+import { getPostEntry, getPostSlugs, readPostSource } from "@/lib/posts/index";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogPostStructuredData } from "@/lib/seo/structured-data";
-import { escapeHtml } from "@/lib/shared/text-utils";
 import { getSiteConfig } from "@/lib/site-config";
-import type { Metadata } from "next";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
 
-function buildBreadcrumbsHtml({ title, slug }: { title: string; slug: string }): string {
-  const safeTitle = escapeHtml(title);
-  const safeSlug = escapeHtml(slug);
-  return `<div class="super-navbar__breadcrumbs"><div class="notion-breadcrumb"><a href="/" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">Home</div></a><span class="notion-breadcrumb__divider">/</span><a href="/blog" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">Blog</div></a><span class="notion-breadcrumb__divider">/</span><a href="/blog/${safeSlug}" class="notion-link notion-breadcrumb__item"><div class="notion-navbar__title notion-breadcrumb__title">${safeTitle}</div></a></div></div>`;
-}
-
-function rewriteBlogPostMainHtml(input: string, { slug }: { slug: string }): string {
-  let out = input;
-
-  // Replace the whole breadcrumb block so we always get:
-  //   Home / Blog / <post title>
-  // This avoids depending on the Notion hierarchy (which may include an
-  // intermediate "List" database) and matches the original site's UX.
-  const title = extractTitleFromMain(out, "Blog");
-  const breadcrumbs = buildBreadcrumbsHtml({ title, slug });
-  out = out.replace(
-    /<div class="super-navbar__breadcrumbs"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i,
-    breadcrumbs,
-  );
-
-  return out;
-}
-
 export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
-  const slugs = await getBlogPostSlugs();
+  const slugs = await getPostSlugs();
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -47,29 +23,25 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const cfg = getSiteConfig();
   const { slug } = await params;
-  const pathname = `/blog/${slug}`;
-  try {
-    const main = await loadRawMainHtml(`blog/list/${slug}`);
-    const meta = parseBlogMetaFromMain(main);
-    const description = extractDescriptionFromMain(main) ?? cfg.seo.description;
-    return buildPageMetadata({
-      cfg,
-      title: `${meta.title} | Blog`,
-      description,
-      pathname,
-      type: "article",
-      publishedTime: meta.dateIso || undefined,
-      modifiedTime: meta.dateIso || undefined,
-    });
-  } catch {
+  const entry = await getPostEntry(slug);
+  if (!entry) {
     return buildPageMetadata({
       cfg,
       title: "Blog",
       description: cfg.seo.description,
-      pathname,
+      pathname: `/blog/${slug}`,
       type: "article",
     });
   }
+  return buildPageMetadata({
+    cfg,
+    title: `${entry.title} | Blog`,
+    description: entry.description ?? cfg.seo.description,
+    pathname: `/blog/${slug}`,
+    type: "article",
+    publishedTime: entry.dateIso || undefined,
+    modifiedTime: entry.dateIso || undefined,
+  });
 }
 
 export default async function BlogPostPage({
@@ -79,21 +51,23 @@ export default async function BlogPostPage({
 }) {
   const cfg = getSiteConfig();
   const { slug } = await params;
-  const raw = await loadRawMainHtml(`blog/list/${slug}`);
-  const meta = parseBlogMetaFromMain(raw);
-  const description = extractDescriptionFromMain(raw) ?? cfg.seo.description;
+
+  const entry = await getPostEntry(slug);
+  if (!entry) notFound();
+  const file = await readPostSource(slug);
+  if (!file) notFound();
+
   const jsonLd = buildBlogPostStructuredData(cfg, {
     slug,
-    title: meta.title,
-    description,
-    publishedTime: meta.dateIso,
-    modifiedTime: meta.dateIso,
+    title: entry.title,
+    description: entry.description ?? cfg.seo.description,
+    publishedTime: entry.dateIso,
+    modifiedTime: entry.dateIso,
   });
-  const rewritten = rewriteBlogPostMainHtml(raw, { slug });
   return (
     <>
       <JsonLdScript id={`ld-blog-${slug}`} data={jsonLd} />
-      <RawHtml html={rewritten} />
+      <PostView entry={entry} source={file.source} />
     </>
   );
 }

@@ -57,7 +57,7 @@ export function applyMobileMenuOpenLayout(menu: HTMLElement): void {
   menu.style.overflow = "hidden";
   menu.style.pointerEvents = "auto";
   menu.style.touchAction = "auto";
-  menu.style.background = "var(--mobile-menu-bg, #f5f2eb)";
+  menu.style.background = "var(--mobile-menu-bg, var(--ds-nav-surface))";
 }
 
 export function playMobileMenuEnter(menu: HTMLElement): void {

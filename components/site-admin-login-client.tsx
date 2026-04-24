@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { Button } from "@/components/ui/button";
+import { StatusNotice } from "@/components/ui/status-notice";
 
 function normalizeNextPath(p: string): string {
   const raw = String(p || "").trim();
@@ -40,35 +42,27 @@ export default function SiteAdminLoginClient({ nextPath }: { nextPath: string })
     <div className="page-state-auth">
       {status === "authenticated" ? (
         <>
-          <p className="page-state__notice page-state__notice--ok">
+          <StatusNotice tone="success">
             Signed in as <strong>{login || session?.user?.name || "GitHub user"}</strong>.
-          </p>
+          </StatusNotice>
           <div className="page-state__actions">
-            <a
-              href={safeNext}
-              className="page-404__btn page-404__btn--primary"
-            >
+            <Button href={safeNext}>
               Continue
-            </a>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={onSignOut}
               disabled={busy}
-              className="page-404__btn page-404__btn--ghost"
+              variant="ghost"
             >
               Sign out
-            </button>
+            </Button>
           </div>
         </>
       ) : (
-        <button
-          type="button"
-          onClick={onSignIn}
-          disabled={busy}
-          className="page-404__btn page-404__btn--primary"
-        >
+        <Button type="button" onClick={onSignIn} disabled={busy}>
           {busy ? "Redirecting..." : "Continue with GitHub"}
-        </button>
+        </Button>
       )}
     </div>
   );

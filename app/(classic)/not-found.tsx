@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { SpecialStatePage } from "@/components/special-state-page";
+import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
@@ -9,9 +9,7 @@ export default function NotFound() {
       title="This page could not be found."
       description=""
       actions={
-        <Link href="/" className="page-404__btn page-404__btn--primary">
-          Back Home
-        </Link>
+        <Button href="/">Back Home</Button>
       }
     />
   );

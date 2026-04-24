@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
 import type { AccessMode } from "@/lib/shared/access";
@@ -55,10 +55,12 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     routeExplorerStateReducer,
     createRouteExplorerInitialState(),
   );
+  const sourceVersionRef = useRef(state.sourceVersion);
   const {
     q,
     filter,
     cfg,
+    sourceVersion,
     busyId,
     err,
     collapsed,
@@ -75,6 +77,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     setQ,
     setFilter,
     setCfg,
+    setSourceVersion: setSourceVersionState,
     setBusyId,
     setErr,
     setCollapsed,
@@ -88,11 +91,19 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
   } = setters;
 
   useEffect(() => {
+    sourceVersionRef.current = sourceVersion;
+  }, [sourceVersion]);
+
+  useEffect(() => {
     let cancelled = false;
     const run = async () => {
       try {
         const parsed = await fetchAdminConfig(items);
-        if (!cancelled) setCfg(parsed);
+        if (!cancelled) {
+          setCfg(parsed.config);
+          sourceVersionRef.current = parsed.sourceVersion;
+          setSourceVersionState(parsed.sourceVersion);
+        }
       } catch (e: unknown) {
         if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
       }
@@ -101,7 +112,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     return () => {
       cancelled = true;
     };
-  }, [items, setCfg, setErr]);
+  }, [items, setCfg, setErr, setSourceVersionState]);
 
   const tree = useMemo(() => buildRouteTree(items), [items]);
   const ordered = tree.ordered;
@@ -195,87 +206,122 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     });
   };
 
-  const toggleOpenAdmin = (id: string) =>
-    setOpenAdmin((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleOpenAdmin = useCallback(
+    (id: string) => setOpenAdmin((prev) => ({ ...prev, [id]: !prev[id] })),
+    [setOpenAdmin],
+  );
 
-  const toggleCollapsed = (id: string) => {
-    setCollapsed((prev) => {
-      const next = { ...prev };
-      const currentlyCollapsed = Boolean(prev[id]);
-      if (currentlyCollapsed) {
-        // Expand: only expand this node (leave descendants collapsed).
-        delete next[id];
+  // `descendantsOf` depends on the current tree; we capture its latest value
+  // through a ref so `toggleCollapsed` itself can stay identity-stable and
+  // let the memoized RouteRow skip re-renders on unrelated tree changes.
+  // Writing the ref must happen inside an effect (React prohibits mutating
+  // refs during render). `toggleCollapsed` is only invoked in event
+  // handlers after commit, so the ref is always up-to-date at call time.
+  const descendantsRef = useRef(descendantsOf);
+  useEffect(() => {
+    descendantsRef.current = descendantsOf;
+  }, [descendantsOf]);
+
+  const toggleCollapsed = useCallback(
+    (id: string) => {
+      setCollapsed((prev) => {
+        const next = { ...prev };
+        const currentlyCollapsed = Boolean(prev[id]);
+        if (currentlyCollapsed) {
+          // Expand: only expand this node (leave descendants collapsed).
+          delete next[id];
+          return next;
+        }
+
+        // Collapse: collapse this node AND its subtree so re-expanding doesn't
+        // unexpectedly show deep levels (Super-like).
+        next[id] = true;
+        for (const d of descendantsRef.current(id)) next[d] = true;
         return next;
-      }
+      });
+    },
+    [setCollapsed],
+  );
 
-      // Collapse: collapse this node AND its subtree so re-expanding doesn't
-      // unexpectedly show deep levels (Super-like).
-      next[id] = true;
-      for (const d of descendantsOf(id)) next[d] = true;
-      return next;
-    });
-  };
-
-  const collapseAll = () => {
+  const collapseAll = useCallback(() => {
     const next: Record<string, boolean> = {};
     for (const it of ordered) if (it.hasChildren) next[it.id] = true;
     setCollapsed(next);
-  };
+  }, [ordered, setCollapsed]);
 
-  const expandAll = () => setCollapsed({});
+  const expandAll = useCallback(() => setCollapsed({}), [setCollapsed]);
 
-  const saveOverride = async (pageId: string, routePath: string) =>
-    saveRouteOverride(
-      {
-        setBusyId,
-        setErr,
-        setCfg,
-      },
-      pageId,
-      routePath,
-    );
-
-  const applyAccess = async ({
-    pageId,
-    path,
-    access,
-    password,
-    trackBusy,
-  }: {
-    pageId: string;
-    path: string;
-    access: AccessMode;
-    password?: string;
-    trackBusy: boolean;
-  }) =>
-    applyRouteAccess(
-      {
-        setBusyId,
-        setErr,
-        setCfg,
-      },
-      {
+  const saveOverride = useCallback(
+    async (pageId: string, routePath: string) =>
+      saveRouteOverride(
+        {
+          setBusyId,
+          setErr,
+          setCfg,
+          getSourceVersion: () => sourceVersionRef.current,
+          setSourceVersion: (value) => {
+            sourceVersionRef.current = value;
+            setSourceVersionState(value);
+          },
+        },
         pageId,
-        path,
-        access,
-        password,
-        trackBusy,
-      },
-    );
+        routePath,
+      ),
+    [setBusyId, setErr, setCfg, setSourceVersionState],
+  );
 
-  const saveAccess = async ({
-    pageId,
-    path,
-    access,
-    password,
-  }: {
-    pageId: string;
-    path: string;
-    access: AccessMode;
-    password?: string;
-  }) => {
-    await applyAccess({ pageId, path, access, password, trackBusy: true });
-  };
+  const applyAccess = useCallback(
+    async ({
+      pageId,
+      path,
+      access,
+      password,
+      trackBusy,
+    }: {
+      pageId: string;
+      path: string;
+      access: AccessMode;
+      password?: string;
+      trackBusy: boolean;
+    }) =>
+      applyRouteAccess(
+        {
+          setBusyId,
+          setErr,
+          setCfg,
+          getSourceVersion: () => sourceVersionRef.current,
+          setSourceVersion: (value) => {
+            sourceVersionRef.current = value;
+            setSourceVersionState(value);
+          },
+        },
+        {
+          pageId,
+          path,
+          access,
+          password,
+          trackBusy,
+        },
+      ),
+    [setBusyId, setErr, setCfg, setSourceVersionState],
+  );
+
+  const saveAccess = useCallback(
+    async ({
+      pageId,
+      path,
+      access,
+      password,
+    }: {
+      pageId: string;
+      path: string;
+      access: AccessMode;
+      password?: string;
+    }) => {
+      await applyAccess({ pageId, path, access, password, trackBusy: true });
+    },
+    [applyAccess],
+  );
 
   const applyBatchAccess = async () => {
     if (batchBusy) return;
@@ -287,6 +333,11 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
         setBusyId,
         setErr,
         setCfg,
+        getSourceVersion: () => sourceVersionRef.current,
+        setSourceVersion: (value) => {
+          sourceVersionRef.current = value;
+          setSourceVersionState(value);
+        },
       },
       {
         routes: filtered,
@@ -314,6 +365,7 @@ export function useRouteExplorerData(items: RouteManifestItem[]) {
     filter,
     setFilter,
     cfg,
+    sourceVersion,
     busyId,
     err,
     collapsed,

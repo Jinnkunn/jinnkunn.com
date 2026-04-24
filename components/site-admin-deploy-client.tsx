@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/card";
+import { StatusNotice } from "@/components/ui/status-notice";
 import type {
   SiteAdminDeployPreviewResult,
   SiteAdminDeployResult,
@@ -36,18 +39,20 @@ export default function SiteAdminDeployClient() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div className="site-admin-deploy-preview">
+    <div className="site-admin-deploy-client">
+      <Panel className="site-admin-deploy-preview">
         <div className="site-admin-deploy-preview__head">
           <div className="site-admin-deploy-preview__title">Deploy Preview</div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             className="site-admin-deploy-preview__refresh"
             onClick={() => void loadPreview()}
             disabled={previewBusy}
           >
             {previewBusy ? "Checking..." : "Refresh"}
-          </button>
+          </Button>
         </div>
 
         {previewRes ? (
@@ -124,42 +129,35 @@ export default function SiteAdminDeployClient() {
               ) : null}
             </>
           ) : (
-            <p className="site-admin-deploy-preview__error">{previewRes.error}</p>
+            <StatusNotice className="site-admin-deploy-preview__error" tone="danger">
+              {previewRes.error}
+            </StatusNotice>
           )
         ) : (
           <p className="site-admin-deploy-preview__summary">Loading preview...</p>
         )}
-      </div>
+      </Panel>
 
-      <button
+      <Button
         type="button"
         onClick={onDeploy}
         disabled={busy}
-        style={{
-          height: 40,
-          width: "fit-content",
-          padding: "0 14px",
-          borderRadius: 10,
-          border: "1px solid var(--color-border-default)",
-          background: "var(--color-card-bg)",
-          color: "var(--color-text-default)",
-          cursor: busy ? "not-allowed" : "pointer",
-          fontWeight: 650,
-        }}
+        tone="accent"
+        className="site-admin-form__btn"
       >
         {busy ? "Deploying..." : "Deploy"}
-      </button>
+      </Button>
 
       {res ? (
-        <p className="notion-text notion-text__content notion-semantic-string">
+        <StatusNotice tone={res.ok ? "success" : "danger"}>
           {res.ok ? (
             <>
               Deploy triggered ({res.status}) at <code className="code">{res.triggeredAt}</code>.
             </>
           ) : (
-            <span className="highlighted-color color-red">{res.error}</span>
+            <>{res.error}</>
           )}
-        </p>
+        </StatusNotice>
       ) : null}
     </div>
   );

@@ -61,7 +61,7 @@ export function RouteRowTop({
             </svg>
           </button>
         ) : (
-          <span style={{ width: 22, height: 22, flex: "0 0 auto" }} />
+          <span className="routes-explorer__expander-spacer" aria-hidden="true" />
         )}
 
         <RouteKindIcon

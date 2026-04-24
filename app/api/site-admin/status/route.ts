@@ -1,13 +1,19 @@
 import type { NextRequest } from "next/server";
 
-import { apiOk, withSiteAdmin } from "@/lib/server/site-admin-api";
-import { buildSiteAdminStatusPayload } from "@/lib/server/site-admin-status-service";
+import { apiError, apiOk, withSiteAdminContext } from "@/lib/server/site-admin-api";
+import { getSiteAdminStatusBackend } from "@/lib/server/site-admin-backend-service";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  return withSiteAdmin(req, async () => {
-    const payload = await buildSiteAdminStatusPayload();
-    return apiOk(payload);
-  });
+  return withSiteAdminContext(
+    req,
+    async () => {
+      const out = await getSiteAdminStatusBackend();
+      if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
+      const payload = out.data;
+      return apiOk(payload);
+    },
+    { rateLimit: { namespace: "site-admin-status" } },
+  );
 }

@@ -51,6 +51,10 @@ test("site-admin-config-contract: parses get payload in data envelope", () => {
     data: {
       settings: makeSettings(),
       nav: makeNav(),
+      sourceVersion: {
+        siteConfigSha: "site-sha",
+        branchSha: "branch-sha",
+      },
     },
   });
   assert.ok(parsed);
@@ -58,6 +62,7 @@ test("site-admin-config-contract: parses get payload in data envelope", () => {
   if (!parsed || !isSiteAdminConfigGetOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.settings?.siteName, "Jinkun Chen.");
   assert.equal(parsed.nav.length, 1);
+  assert.equal(parsed.sourceVersion.siteConfigSha, "site-sha");
 });
 
 test("site-admin-config-contract: parses post payload in data envelope", () => {
@@ -65,12 +70,17 @@ test("site-admin-config-contract: parses post payload in data envelope", () => {
     ok: true,
     data: {
       created: makeNav()[0],
+      sourceVersion: {
+        siteConfigSha: "site-sha-2",
+        branchSha: "branch-sha-2",
+      },
     },
   });
   assert.ok(parsed);
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminConfigPostOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.created?.label, "Home");
+  assert.equal(parsed.sourceVersion.siteConfigSha, "site-sha-2");
 });
 
 test("site-admin-config-contract: preserves error payload", () => {

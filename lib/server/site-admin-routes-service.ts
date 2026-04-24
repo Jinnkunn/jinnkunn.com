@@ -1,34 +1,15 @@
 import "server-only";
 
-import { queryDatabase } from "@/lib/notion/api";
-import type { ProtectedAccessMode } from "@/lib/shared/access";
-import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import {
-  mapProtectedRouteRows,
-  mapRouteOverrideRows,
-} from "@/lib/server/site-admin-mappers";
-import {
-  disableDatabaseRowByRichTextLookups,
-  ensureDatabaseProperties,
-  findSiteAdminDatabaseIdByTitle,
-  loadSiteAdminDatabases,
-  upsertDatabaseRowByRichTextLookups,
-} from "@/lib/server/site-admin-notion";
-import {
-  buildEnabledOnlyProperties,
-  buildProtectedRouteProperties,
-  buildRouteOverrideProperties,
-} from "@/lib/server/site-admin-writers";
+  getSiteAdminSourceStore,
+  type SiteAdminRoutesSourceVersion,
+} from "@/lib/server/site-admin-source-store";
 import type {
-  SiteAdminProtectedRoute,
-  SiteAdminRouteOverride,
-} from "@/lib/site-admin/api-types";
+  SiteAdminRoutesSnapshot,
+} from "@/lib/server/site-admin-source-store";
+import type { ProtectedAccessMode } from "@/lib/shared/access";
 
-export type AdminDbIds = {
-  adminPageId: string;
-  overridesDbId: string;
-  protectedDbId: string;
-};
+export type SiteAdminRouteData = SiteAdminRoutesSnapshot;
 
 export type OverrideUpsertResult = {
   rowId: string;
@@ -46,139 +27,84 @@ export type ProtectedUpsertResult = {
   enabled: true;
 };
 
-export type SiteAdminRouteData = {
-  adminPageId: string;
-  overridesDbId: string;
-  protectedDbId: string;
-  overrides: SiteAdminRouteOverride[];
-  protectedRoutes: SiteAdminProtectedRoute[];
-};
-
-async function ensureProtectedDbSchema(databaseId: string) {
-  if (!databaseId) return;
-  await ensureDatabaseProperties(databaseId, {
-    "Page ID": { rich_text: {} },
-    Auth: {
-      select: {
-        options: [
-          { name: "Password", color: "red" },
-          { name: "GitHub", color: "blue" },
-        ],
-      },
-    },
-  });
-}
-
-export async function getAdminDbIds(): Promise<AdminDbIds> {
-  const { adminPageId, databases } = await loadSiteAdminDatabases();
-  const overridesDbId = compactId(findSiteAdminDatabaseIdByTitle(databases, "Route Overrides"));
-  const protectedDbId = compactId(findSiteAdminDatabaseIdByTitle(databases, "Protected Routes"));
-  if (protectedDbId) await ensureProtectedDbSchema(protectedDbId);
-  return {
-    adminPageId,
-    overridesDbId,
-    protectedDbId,
-  };
-}
+const sourceStore = getSiteAdminSourceStore();
 
 export async function loadSiteAdminRouteData(): Promise<SiteAdminRouteData> {
-  const { adminPageId, overridesDbId, protectedDbId } = await getAdminDbIds();
-  const overridesRows = overridesDbId ? await queryDatabase(overridesDbId) : [];
-  const protectedRows = protectedDbId ? await queryDatabase(protectedDbId) : [];
-  const overrides: SiteAdminRouteOverride[] = mapRouteOverrideRows(overridesRows);
-  const protectedRoutes: SiteAdminProtectedRoute[] = mapProtectedRouteRows(protectedRows);
-  return {
-    adminPageId,
-    overridesDbId,
-    protectedDbId,
-    overrides,
-    protectedRoutes,
-  };
+  return sourceStore.loadRoutes();
 }
 
 export async function upsertOverride(input: {
-  overridesDbId: string;
   pageId: string;
   routePath: string;
-}): Promise<OverrideUpsertResult> {
-  const normalized = normalizeRoutePath(input.routePath);
-  if (!normalized) throw new Error("Missing routePath");
-
-  const properties = buildRouteOverrideProperties(input.pageId, normalized);
-  const { rowId } = await upsertDatabaseRowByRichTextLookups({
-    databaseId: input.overridesDbId,
-    lookups: [{ property: "Page ID", equals: input.pageId }],
-    properties,
+  expectedSiteConfigSha: string;
+}): Promise<{ override: OverrideUpsertResult; sourceVersion: SiteAdminRoutesSourceVersion }> {
+  const sourceVersion = await sourceStore.updateOverride({
+    pageId: input.pageId,
+    routePath: input.routePath,
+    expectedSiteConfigSha: input.expectedSiteConfigSha,
   });
-  return { rowId, pageId: input.pageId, routePath: normalized, enabled: true };
+  return {
+    override: {
+      rowId: input.pageId,
+      pageId: input.pageId,
+      routePath: input.routePath,
+      enabled: true,
+    },
+    sourceVersion,
+  };
 }
 
 export async function disableOverride(input: {
-  overridesDbId: string;
   pageId: string;
-}): Promise<void> {
-  await disableDatabaseRowByRichTextLookups({
-    databaseId: input.overridesDbId,
-    lookups: [{ property: "Page ID", equals: input.pageId }],
-    disableProperties: buildEnabledOnlyProperties(false),
+  expectedSiteConfigSha: string;
+}): Promise<SiteAdminRoutesSourceVersion> {
+  return sourceStore.updateOverride({
+    pageId: input.pageId,
+    routePath: "",
+    expectedSiteConfigSha: input.expectedSiteConfigSha,
   });
 }
 
 export async function upsertProtected(input: {
-  protectedDbId: string;
   pageId: string;
   path: string;
   mode: "exact" | "prefix";
   password: string;
   auth: ProtectedAccessMode;
-}): Promise<ProtectedUpsertResult> {
-  const normalized = normalizeRoutePath(input.path);
-  if (!normalized) throw new Error("Missing path");
-  const pid = compactId(input.pageId);
-  if (!pid) throw new Error("Missing pageId");
-  const pwd = String(input.password || "").trim();
-  if (input.auth === "password" && !pwd) throw new Error("Missing password");
-
-  const properties = buildProtectedRouteProperties({
-    pageId: pid,
-    path: normalized,
+  expectedProtectedRoutesSha: string;
+}): Promise<{ protected: ProtectedUpsertResult; sourceVersion: SiteAdminRoutesSourceVersion }> {
+  const sourceVersion = await sourceStore.updateProtected({
+    pageId: input.pageId,
+    path: input.path,
     mode: input.mode,
+    password: input.password,
     auth: input.auth,
-    password: pwd,
-  });
-  const { rowId: createdId } = await upsertDatabaseRowByRichTextLookups({
-    databaseId: input.protectedDbId,
-    lookups: [
-      { property: "Page ID", equals: pid },
-      { property: "Path", equals: normalized },
-    ],
-    options: { ignoreLookupErrors: true },
-    properties,
+    expectedProtectedRoutesSha: input.expectedProtectedRoutesSha,
   });
   return {
-    rowId: createdId,
-    pageId: pid,
-    path: normalized,
-    mode: input.mode,
-    auth: input.auth,
-    enabled: true,
+    protected: {
+      rowId: input.pageId,
+      pageId: input.pageId,
+      path: input.path,
+      mode: input.mode,
+      auth: input.auth,
+      enabled: true,
+    },
+    sourceVersion,
   };
 }
 
 export async function disableProtected(input: {
-  protectedDbId: string;
   pageId: string;
   path: string;
-}): Promise<void> {
-  const normalized = normalizeRoutePath(input.path);
-  const pid = compactId(input.pageId);
-  await disableDatabaseRowByRichTextLookups({
-    databaseId: input.protectedDbId,
-    lookups: [
-      { property: "Page ID", equals: pid },
-      { property: "Path", equals: normalized },
-    ],
-    options: { ignoreLookupErrors: true },
-    disableProperties: buildEnabledOnlyProperties(false),
+  expectedProtectedRoutesSha: string;
+}): Promise<SiteAdminRoutesSourceVersion> {
+  return sourceStore.updateProtected({
+    pageId: input.pageId,
+    path: input.path,
+    mode: "prefix",
+    auth: "password",
+    password: "",
+    expectedProtectedRoutesSha: input.expectedProtectedRoutesSha,
   });
 }

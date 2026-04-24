@@ -1,0 +1,195 @@
+---
+title: "Do Language Model Embeddings Form an Approximate Abelian Group?"
+date: 2025-06-03
+description: "This post explores a theoretical question about how language models represent meaning internally. The main text uses mathematical concepts to examine whether…"
+draft: false
+---
+
+## For non-expert readers
+
+This post explores a theoretical question about how language models represent meaning internally. The main text uses mathematical concepts to examine whether word and sentence representations behave like a well-structured system, but the broader idea is simple: small assumptions about internal structure can strongly influence how models combine and transform meaning.
+
+If you don't have a technical background, the key takeaway is that not all intuitive or elegant mathematical frameworks fully capture how language models actually work. Understanding where these abstractions break down helps explain why models can behave inconsistently when combining ideas, even if they perform well on surface tasks.
+
+If you're only here for a high-level takeaway, you can stop after this section.
+
+## Abstract
+
+Do language model embeddings follow a deeper mathematical structure, perhaps resembling an abelian group from abstract algebra? In this post, we explore whether embeddings from models like GPT-2 exhibit such properties. Our empirical study evaluates five group axioms using vector addition as the operation. The results show near-perfect adherence, with over 99 percent satisfaction across all tests.
+
+## **Introduction**
+
+Language model embeddings have long attracted attention for their geometric properties, such as analogy solving and linear interpolation. But can we go further? Can these spaces be described using formal algebraic structure?
+
+This investigation tests whether the embedding space behaves like an abelian group, which is a well-defined mathematical object characterized by five axioms. This perspective provides a new lens for understanding how language models encode and manipulate meaning.
+
+![Figure 1: Comparative performance across all five abelian group axioms showing consistently high satisfaction rates. The bar chart demonstrates robust mathematical structure preservation across different axiom types.](https://cdn.jinkunchen.com/blog/1/axiom_comparison.png)
+
+## **Methodology**
+
+### **Experimental Framework**
+
+We define a group candidate as$(G, \oplus)$ where $G$ is the set of all embeddings and $\oplus$ is approximated by vector addition: $\text{embed}(x \oplus y) \approx \text{embed}(x) + \text{embed}(y)$
+
+The five axioms tested are:
+
+1.  **Closure**: $\forall a, b \in G: a \oplus b \in G$
+2.  **Identity**: $\exists e \in G: \forall a \in G, a \oplus e = a$
+3.  **Inverse**: $\forall a \in G: \exists a^{-1} \in G, a \oplus a^{-1} = e$
+4.  **Commutativity**: $\forall a, b \in G: a \oplus b = b \oplus a$
+5.  **Associativity**: $\forall a, b, c \in G: (a \oplus b) \oplus c = a \oplus (b \oplus c)$
+
+Each axiom is evaluated by generating text combinations and comparing the embeddings using cosine similarity.
+
+### **Data Generation**
+
+We constructed over 500 sentence pairs from the following categories:
+
+-   Arithmetic expressions such as “2 plus 3”
+-   Sentence conjunctions such as “Cats and dogs”
+-   Negations such as “Not true”
+-   Comparisons such as “Taller than”
+
+### **Models Tested**
+
+-   **GPT-2** (117M parameters): Base transformer model
+-   **DistilGPT-2** (82M parameters): Distilled version for efficiency comparison
+
+### **Evaluation Metrics**
+
+We employ cosine similarity as the primary metric for evaluating axiom satisfaction:
+
+
+
+$$\text{similarity}(u, v) = \frac{u \cdot v}{\|u\| \|v\|}$$
+
+
+
+A threshold of $\tau = 0.95$ is used for determining axiom satisfaction. For each axiom test, we compute:
+
+
+
+$$\text{satisfaction\_rate} = \frac{1}{n} \sum{i=1}^{n} \mathbf{1}[\text{similarity}(u_i, v_i) \geq \tau]$$
+
+
+
+where $\mathbf{1}[\cdot]$ is the indicator function, and $(u_i, v_i)$ are the expected and observed embedding pairs. Additionally, we compute semantic consistency scores to ensure meaningful preservation of linguistic relationships.
+
+## **Results**
+
+### **Large-Scale Experiment (500 samples)**
+
+Our comprehensive evaluation on GPT-2 with 500 samples per axiom category yielded exceptional results:
+
+Copy
+
+```markdown
+| Axiom         | Samples | Satisfaction Rate | Mean Similarity |
+| ------------- | ------- | ----------------- | --------------- |
+| Closure       | 500     | 100.0%            | 0.995           |
+| Identity      | 100     | 100.0%            | 0.993           |
+| Inverse       | 500     | 100.0%            | 0.997           |
+| Commutativity | 500     | 100.0%            | 0.994           |
+| Associativity | 100     | 100.0%            | 0.998           |
+```
+
+**Overall Satisfaction Rate: 100.0%**
+
+![Figure 2: Radar chart showing comprehensive performance metrics across different dimensions. The near-perfect scores across all metrics confirm the mathematical structure hypothesis.](https://cdn.jinkunchen.com/blog/1/performance_radar.png)
+
+### **Multi-Model Comparison**
+
+Both GPT-2 and DistilGPT-2 demonstrated identical performance:
+
+Copy
+
+```markdown
+| Model       | Overall Rate | Processing Time |
+| ----------- | ------------ | --------------- |
+| GPT-2       | 100.0%       | 63.1 seconds    |
+| DistilGPT-2 | 100.0%       | 34.4 seconds    |
+```
+
+![Figure 3: Distribution of cosine similarity scores across all axiom tests. The tight distributions around high similarity values (>0.99) demonstrate the consistency and reliability of the group structure.](https://cdn.jinkunchen.com/blog/1/error_distributions.png)
+
+### **Performance Analysis**
+
+The experiments revealed several key insights:
+
+-   **Computational Efficiency**: DistilGPT-2 achieved identical mathematical structure preservation while requiring ~45% less computation time
+-   **Semantic Consistency**: High semantic similarity scores (>0.99) indicate that group operations preserve meaningful linguistic relationships
+-   **Scalability**: Performance remained consistent across different sample sizes (100, 200, 500 samples)
+
+## **Technical Implementation**
+
+### **Progress Tracking**
+
+The framework includes automatic fallback mechanisms:
+
+-   Primary execution on Apple Silicon (MPS) when available
+-   Graceful fallback to CPU for unsupported operations
+-   Optimized memory management for large-scale experiments
+
+### Visualization
+
+Generated visualizations include:
+
+-   Interactive embedding space plots (t-SNE)
+-   Operation trajectory visualizations
+-   Performance radar charts
+-   Error distribution analysis
+
+Additionally, we provide interactive visualizations including:
+
+Interactive t-SNE plot
+
+Vector operation paths
+
+Comprehensive results explorer
+
+## Discussion
+
+### Implications for Language Understanding
+
+The near-perfect satisfaction of abelian group axioms suggests that transformer embeddings naturally encode mathematical structure that extends beyond simple vector arithmetic. This finding has several implications:
+
+1.  **Compositional Semantics**: The group structure provides a formal foundation for understanding how meaning composes in embedding spaces. If $\text{embed}(A)$ and $\text{embed}(B)$ represent semantic concepts, then: $\text{embed}(A \text{ and } B) \approx \text{embed}(A) \oplus \text{embed}(B)$
+2.  **Algebraic Reasoning**: Language models may inherently perform algebraic operations when processing linguistic relationships. The commutativity property ensures: $\text{embed}(\text{``A and B"}) \approx \text{embed}(\text{``B and A"})$
+3.  **Transfer Learning**: The mathematical structure could explain the effectiveness of pre-trained embeddings across diverse tasks. The group properties ensure that semantic relationships are preserved under the embedding transformation $\phi: \text{Language} \rightarrow \mathbb{R}^d$.
+
+### Limitations
+
+While our results are promising, several limitations warrant consideration:
+
+1.  **Threshold Sensitivity**: The $\tau = 0.95$ cosine similarity threshold, while standard, may influence results. Future work should explore the relationship: $\text{satisfaction\_rate}(\tau) = f(\tau)$
+2.  **Sample Diversity:** Future work should explore more diverse linguistic constructions and test the robustness of the group structure across different domains.
+3.  **Cross-Lingual Analysis**: Testing group structure across different languages to determine if the mathematical properties are universal or language-specific.
+4.  **Larger Models**: Investigating whether group structure scales to larger transformer models and whether the relationship holds: $\lim_{|\theta| \rightarrow \infty} \text{group\_satisfaction}(\mathcal{M}_\theta) = 1$ where $\mathcal{M}_\theta$ represents a model with parameters $\theta$.
+
+## Mathematical Summary
+
+Our empirical investigation demonstrates that transformer embeddings satisfy the abelian group axioms with remarkable consistency. Formally, we have shown that the embedding space $(E, \oplus)$where $E = \{\text{embed}(x) : x \in \text{Language}\}$ and $\oplus$ represents vector addition, satisfies:
+
+
+
+$$\begin{align}
+\text{Closure:} \quad &\mathbb{P}[a \oplus b \in E \mid a, b \in E] \approx 1.000 \\
+\text{Identity:} \quad &\mathbb{P}[\exists e: a \oplus e = a \mid a \in E] \approx 1.000 \\
+\text{Inverse:} \quad &\mathbb{P}[\exists a^{-1}: a \oplus a^{-1} = e \mid a \in E] \approx 1.000 \\
+\text{Commutativity:} \quad &\mathbb{P}[a \oplus b = b \oplus a \mid a, b \in E] \approx 1.000 \\
+\text{Associativity:} \quad &\mathbb{P}[(a \oplus b) \oplus c = a \oplus (b \oplus c) \mid a, b, c \in E] \approx 1.000
+\end{align}$$
+
+
+
+This establishes $(E, \oplus)$ as an empirical abelian group with high confidence.
+
+## Conclusion
+
+So, do language model embeddings form an approximate abelian group?
+
+**Empirically, yes.**
+
+Across five axioms, two models, and hundreds of examples, transformer embeddings showed remarkably consistent group-like behavior. While the term “group” is used informally here, the results suggest an underlying structure that goes beyond intuitive vector arithmetic.
+
+This might just be the beginning of understanding the *mathematics of meaning* in large language models.

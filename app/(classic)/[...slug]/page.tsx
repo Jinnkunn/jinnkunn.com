@@ -1,31 +1,21 @@
-import RawHtml from "@/components/raw-html";
-import { loadRawMainHtml } from "@/lib/load-raw-main";
-import { listRawHtmlRelPaths } from "@/lib/server/content-files";
-import { extractDescriptionFromMain, extractTitleFromMain } from "@/lib/seo/html-meta";
-import { buildPageMetadata } from "@/lib/seo/metadata";
-import { getSiteConfig } from "@/lib/site-config";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+import { PageView } from "@/components/posts-mdx/page-view";
+import { getPageEntry, getPageSlugs, readPageSource } from "@/lib/pages/index";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
 
-export async function generateStaticParams(): Promise<
-  Array<{ slug: string[] }>
-> {
-  const rels = listRawHtmlRelPaths();
-
-  return rels
-    .filter((rel) => rel !== "index")
-    // `/blog` is rendered by a dedicated route to avoid route conflicts with `/blog/list`.
-    .filter((rel) => rel !== "blog")
-    // `/publications` is rendered by a dedicated route for publication-specific structured data.
-    .filter((rel) => rel !== "publications")
-    // `/blog/list` is rendered by a dedicated route using a consistent template.
-    .filter((rel) => rel !== "blog/list")
-    // Blog posts are rendered by a dedicated route using a consistent template.
-    .filter((rel) => !rel.startsWith("blog/list/"))
-    .map((rel) => ({ slug: rel.split("/").filter(Boolean) }));
+export async function generateStaticParams(): Promise<Array<{ slug: string[] }>> {
+  // Every route that the catch-all serves now lives as an MDX file
+  // under `content/pages/*.mdx`. The legacy Notion raw-HTML pipeline
+  // was retired — dedicated routes (home, blog, publications, news,
+  // teaching, works) handle the rest.
+  const pageSlugs = await getPageSlugs();
+  return pageSlugs.map((slug) => ({ slug: [slug] }));
 }
 
 export async function generateMetadata({
@@ -35,29 +25,29 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const cfg = getSiteConfig();
   const { slug } = await params;
-  const route = slug.join("/");
-  const pathname = `/${route.replace(/^\/+/, "")}`;
+  const pathname = `/${slug.join("/").replace(/^\/+/, "")}`;
 
-  try {
-    const main = await loadRawMainHtml(route);
-    const title = extractTitleFromMain(main, "Page");
-    const description = extractDescriptionFromMain(main) ?? undefined;
-    return buildPageMetadata({
-      cfg,
-      title,
-      description,
-      pathname,
-      type: "website",
-    });
-  } catch {
-    return buildPageMetadata({
-      cfg,
-      title: "Page",
-      description: cfg.seo.description,
-      pathname,
-      type: "website",
-    });
+  if (slug.length === 1) {
+    const entry = await getPageEntry(slug[0]);
+    if (entry) {
+      return buildPageMetadata({
+        cfg,
+        title: entry.title,
+        description: entry.description ?? cfg.seo.description,
+        pathname,
+        type: "website",
+        modifiedTime: entry.updatedIso || undefined,
+      });
+    }
   }
+
+  return buildPageMetadata({
+    cfg,
+    title: "Page",
+    description: cfg.seo.description,
+    pathname,
+    type: "website",
+  });
 }
 
 export default async function SlugPage({
@@ -66,13 +56,10 @@ export default async function SlugPage({
   params: Promise<{ slug: string[] }>;
 }) {
   const { slug } = await params;
-
-  let html: string;
-  try {
-    html = await loadRawMainHtml(slug.join("/"));
-  } catch {
-    notFound();
-  }
-
-  return <RawHtml html={html} />;
+  if (slug.length !== 1) notFound();
+  const entry = await getPageEntry(slug[0]);
+  if (!entry) notFound();
+  const file = await readPageSource(slug[0]);
+  if (!file) notFound();
+  return <PageView entry={entry} source={file.source} />;
 }

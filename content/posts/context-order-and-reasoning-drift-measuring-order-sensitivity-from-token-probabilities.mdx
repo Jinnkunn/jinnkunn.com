@@ -1,0 +1,162 @@
+---
+title: "Context Order and Reasoning Drift: Measuring Order Sensitivity from Token Probabilities"
+date: 2026-02-07
+description: "How the same evidence can yield different answers when you only change the order."
+draft: false
+---
+
+*How the same evidence can yield different answers when you only change the order.*
+
+People often treat retrieval order as a formatting detail.
+
+In practice, context order can change the early next token distributions, and that can push decoding into a different trajectory.
+
+This post is about how to measure that sensitivity using only token probabilities.
+
+## The phenomenon: same chunks, different outcomes
+
+In many retrieval augmented setups, the model receives a question and a set of retrieved chunks.
+
+If you permute those chunks but keep everything else fixed, you often get different answers.
+
+There are two important points.
+
+First, order effects are not rare edge cases.
+
+They show up even with greedy decoding because the model still makes a sequence of locally optimal choices.
+
+Second, the effect is process level.
+
+You can observe drift before the final answer diverges.
+
+![Figure 1. Same chunk set, different order. A small permutation can change early next token distributions, which can change the entire decoding trajectory.](https://cdn.jinkunchen.com/blog/7/order_sensitivity_schematic_v2.png)
+
+## What we can observe during decoding
+
+At each decoding step $t$, an autoregressive model produces a next token distribution $p_t(\cdot)$.
+
+Many APIs expose only top $k$ candidates with log probabilities.
+
+That is enough.
+
+We can renormalize the logged support and compute lightweight signals from the resulting distribution.
+
+The key idea is to measure two things.
+
+1.  Uncertainty at a step.
+2.  Distributional change from one step to the next.
+
+![Figure 2. A compact pipeline from logged top k token probabilities to an instability score and summary statistics.](https://cdn.jinkunchen.com/blog/7/order_sensitivity_pipeline_v2.png)
+
+## A simple instability signal
+
+Define an entropy term $H_t$ from $p_t$ and a Jensen Shannon divergence term $D_t$ between $p_t$ and $p_{t-1}$.
+
+Then define an instability index
+
+
+
+$$I_t = D_t + \lambda H_t$$
+
+
+
+where $\lambda$ is a mixing weight.
+
+I use $\lambda = 1$ as a default.
+
+To summarize a trace, use a peak statistic.
+
+-   $S = \max_t I_t$
+
+For early diagnostics, use prefix windows.
+
+-   $S_w = \max_{t \le w} I_t$
+
+This is simple on purpose.
+
+The goal is not a perfect theory of decoding.
+
+The goal is a consistent metric you can compute across many runs.
+
+## Measuring order sensitivity
+
+Now we can define a clean protocol.
+
+1.  Fix a question and its retrieved chunk set.
+2.  Generate multiple permutations of the chunk order.
+3.  Decode with the same settings for each permutation and log top $k$ token probabilities.
+4.  Compute $I_t$, then summarize each run by $S$ or $S_w$.
+5.  Quantify sensitivity from variability across permutations.
+
+![Figure 3. Protocol for measuring order sensitivity by varying only the chunk order and comparing drift diagnostics across permutations.](https://cdn.jinkunchen.com/blog/7/order_sensitivity_protocol.png)
+
+You can report sensitivity in several equivalent ways.
+
+-   $\operatorname{Var}(S \mid q, \text{chunks})$
+-   $\operatorname{mean}_{a<b}\,\lvert S(\pi_a) - S(\pi_b) \rvert$
+-   The fraction of permutations that cross a chosen risk threshold.
+
+If you also label runs as correct or wrong, you can test whether higher sensitivity correlates with a higher chance of failure.
+
+## What this diagnostic is and is not
+
+What it is.
+
+-   A way to measure how much the decoding path changes under context permutations.
+-   A method that works with logged token probabilities.
+-   A tool to compare retrieval and prompting strategies by process dynamics.
+
+What it is not.
+
+-   Not an intervention.
+-   Not a claim that you can eliminate order effects with a single heuristic.
+
+## Practical notes
+
+A few details matter in practice.
+
+1.  Keep decoding settings fixed.
+2.  Keep the chunk set fixed.
+3.  Use a fixed random seed for permutation sampling.
+4.  Use the same stopping rules across runs.
+
+If you have access to full vocabulary logits, compute entropy and divergence on the full distribution.
+
+If you only have top $k$ logging, renormalize on the logged support and treat the metric as a consistent approximation.
+
+‣
+
+Implementation sketch
+
+Copy
+
+```python
+# Inputs: per step top k logprobs: logp[t] = {token: log_prob}
+# Output: instability strength S
+
+def renormalize(logp_dict):
+    probs = {tok: math.exp(lp) for tok, lp in logp_dict.items()}
+    z = sum(probs.values())
+    return {tok: p / z for tok, p in probs.items()}
+
+def entropy(p):
+    return -sum(pi * math.log(pi) for pi in p.values() if pi > 0.0)
+
+def jsd(p, q):
+    keys = set(p) | set(q)
+    m = {k: 0.5 * (p.get(k, 0.0) + q.get(k, 0.0)) for k in keys}
+    def kl(a, b):
+        return sum(ai * math.log(ai / b[k]) for k, ai in a.items() if ai > 0.0)
+    return 0.5 * kl(p, m) + 0.5 * kl(q, m)
+
+p_prev = None
+I = []
+for t in range(T):
+    p_t = renormalize(logp[t])
+    H_t = entropy(p_t)
+    D_t = 0.0 if p_prev is None else jsd(p_t, p_prev)
+    I.append(D_t + 1.0 * H_t)
+    p_prev = p_t
+
+S = max(I)
+```

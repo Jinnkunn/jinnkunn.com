@@ -1,21 +1,16 @@
 import type { NextRequest } from "next/server";
 
 import {
-  apiExhaustive,
-  apiOk,
+  apiError,
   apiPayloadOk,
   readSiteAdminJsonCommand,
-  requireNonEmptyString,
-  withSiteAdmin,
+  withSiteAdminContext,
 } from "@/lib/server/site-admin-api";
 import {
-  disableOverride,
-  disableProtected,
-  getAdminDbIds,
-  loadSiteAdminRouteData,
-  upsertOverride,
-  upsertProtected,
-} from "@/lib/server/site-admin-routes-service";
+  getSiteAdminRoutesBackend,
+  postSiteAdminRoutesBackend,
+} from "@/lib/server/site-admin-backend-service";
+import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import {
   parseSiteAdminRoutesCommand,
 } from "@/lib/server/site-admin-request";
@@ -27,94 +22,51 @@ export const runtime = "nodejs";
 
 type SiteAdminRoutesResponsePayload = Omit<SiteAdminRoutesGetPayload, "ok">;
 
+const RATE_LIMIT = { namespace: "site-admin-routes" };
+
 export async function GET(req: NextRequest) {
-  return withSiteAdmin(req, async () => {
-    const { adminPageId, overridesDbId, protectedDbId, overrides, protectedRoutes } =
-      await loadSiteAdminRouteData();
-
-    const payload: SiteAdminRoutesResponsePayload = {
-      adminPageId,
-      databases: { overridesDbId, protectedDbId },
-      overrides,
-      protectedRoutes,
-    };
-
-    return apiPayloadOk<SiteAdminRoutesResponsePayload>(payload);
-  });
+  return withSiteAdminContext(
+    req,
+    async () => {
+      const out = await getSiteAdminRoutesBackend();
+      if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
+      const payload: SiteAdminRoutesResponsePayload = out.data;
+      return apiPayloadOk<SiteAdminRoutesResponsePayload>(payload);
+    },
+    { rateLimit: RATE_LIMIT },
+  );
 }
 
 export async function POST(req: NextRequest) {
-  return withSiteAdmin(req, async () => {
-    const { overridesDbId, protectedDbId } = await getAdminDbIds();
-    const parsedCommand = await readSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand);
-    if (!parsedCommand.ok) return parsedCommand.res;
-    const command = parsedCommand.value;
-
-    if (command.kind === "override") {
-      const validOverridesDbId = requireNonEmptyString(
-        overridesDbId,
-        "Missing Route Overrides DB",
-        500,
-      );
-      if (!validOverridesDbId.ok) return validOverridesDbId.res;
-      const dbId = validOverridesDbId.value;
-
-      if (!command.routePath) {
-        await disableOverride({ overridesDbId: dbId, pageId: command.pageId });
-        return apiOk();
-      }
-
-      const out = await upsertOverride({
-        overridesDbId: dbId,
-        pageId: command.pageId,
-        routePath: command.routePath,
-      });
-      return apiOk({ override: out });
-    }
-
-    if (command.kind === "protected") {
-      const validProtectedDbId = requireNonEmptyString(
-        protectedDbId,
-        "Missing Protected Routes DB",
-        500,
-      );
-      if (!validProtectedDbId.ok) return validProtectedDbId.res;
-      const dbId = validProtectedDbId.value;
-      // Product decision: protecting a page must protect its subtree (Super-like),
-      // so we always store prefix rules.
-      const mode = "prefix" as const;
-
-      // Public = disable any protection rule for this page.
-      if (command.authKind === "public") {
-        await disableProtected({
-          protectedDbId: dbId,
+  return withSiteAdminContext(
+    req,
+    async (ctx) => {
+      const parsedCommand = await readSiteAdminJsonCommand(req, parseSiteAdminRoutesCommand);
+      if (!parsedCommand.ok) return parsedCommand.res;
+      const command = parsedCommand.value;
+      const out = await postSiteAdminRoutesBackend(command);
+      const isConflict = !out.ok && out.code === "SOURCE_CONFLICT";
+      await writeSiteAdminAuditLog({
+        actor: ctx.login,
+        action:
+          command.kind === "override" ? "routes.override.save" : "routes.protected.save",
+        endpoint: "/api/site-admin/routes",
+        method: "POST",
+        status: out.ok ? 200 : out.status,
+        result: out.ok ? "success" : isConflict ? "source_conflict" : "error",
+        code: out.ok ? "OK" : out.code,
+        message: out.ok ? "" : out.error,
+        metadata: {
+          kind: command.kind,
           pageId: command.pageId,
-          path: command.path,
-        });
-        return apiOk();
-      }
-
-      // Disable password protection if password is blank.
-      if (command.authKind === "password" && !command.password) {
-        await disableProtected({
-          protectedDbId: dbId,
-          pageId: command.pageId,
-          path: command.path,
-        });
-        return apiOk();
-      }
-
-      const out = await upsertProtected({
-        protectedDbId: dbId,
-        pageId: command.pageId,
-        path: command.path,
-        mode,
-        password: command.password,
-        auth: command.authKind,
+          path: command.kind === "protected" ? command.path : null,
+          routePath: command.kind === "override" ? command.routePath : null,
+        },
       });
-      return apiOk({ protected: out });
-    }
 
-    return apiExhaustive(command, "Unsupported kind");
-  });
+      if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
+      return apiPayloadOk(out.data);
+    },
+    { rateLimit: RATE_LIMIT },
+  );
 }

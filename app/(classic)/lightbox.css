@@ -13,7 +13,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--ds-lightbox-backdrop);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -35,8 +35,8 @@
   height: auto;
   width: auto;
   border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+  background: var(--ds-lightbox-surface);
+  box-shadow: var(--ds-shadow-overlay);
 }
 
 .notion-lightbox__close {
@@ -46,18 +46,18 @@
   width: 40px;
   height: 40px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  background: rgba(255, 255, 255, 0.92);
-  color: #111;
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-primary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--ds-shadow-overlay);
 }
 
 .notion-lightbox__close:hover {
-  background: #fff;
+  background: var(--ds-surface-page);
 }
 
 @media (max-width: 546px) {
@@ -69,4 +69,3 @@
     right: 14px;
   }
 }
-

@@ -3,9 +3,6 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 
-import { notionRequest } from "@/lib/notion/api";
-import { parseNotionPageMeta } from "@/lib/notion/adapters";
-import { readTrimmedString } from "@/lib/notion/coerce";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSearchIndex } from "@/lib/search-index";
 import {
@@ -13,14 +10,19 @@ import {
   getNotionSyncCacheDir,
   listRawHtmlFiles,
 } from "@/lib/server/content-files";
+import {
+  hasCloudflareApiDeployConfig,
+  resolveCloudflareWorkerName,
+} from "./cloudflare-deploy-env.ts";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
+import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { parseAllowedAdminUsers } from "@/lib/site-admin-auth";
-import { compactId, dashify32, normalizeRoutePath } from "@/lib/shared/route-utils";
+import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
-import type { NotionPageMeta } from "@/lib/notion/types";
+import { readErrorLogSummary } from "@/lib/server/error-log";
 
 export type SiteAdminStatusResponsePayload = Omit<SiteAdminStatusPayload, "ok">;
 const REPRODUCIBLE_BUILD_EPOCH_MAX_MS = Date.UTC(2019, 0, 1);
@@ -28,11 +30,167 @@ const PREFLIGHT_SAMPLE_MAX = 8;
 
 function pickCommitSha(): string {
   return (
+    process.env.ACTIVE_DEPLOY_SOURCE_SHA ||
+    process.env.DEPLOYED_SOURCE_SHA ||
     process.env.VERCEL_GIT_COMMIT_SHA ||
     process.env.GITHUB_SHA ||
+    process.env.CF_COMMIT_SHA ||
     process.env.CF_PAGES_COMMIT_SHA ||
     ""
   ).trim();
+}
+
+function pickRuntimeProvider(): SiteAdminStatusPayload["env"]["runtimeProvider"] {
+  if (process.env.CF_PAGES || process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID) {
+    return "cloudflare";
+  }
+  if (process.env.VERCEL) return "vercel";
+  if (process.env.NODE_ENV) return "local";
+  return "unknown";
+}
+
+function pickRuntimeRegion(): string {
+  return (
+    process.env.CF_REGION ||
+    process.env.CLOUDFLARE_REGION ||
+    process.env.VERCEL_REGION ||
+    ""
+  ).trim();
+}
+
+function pickBuildBranch(): string {
+  return (
+    process.env.CF_PAGES_BRANCH ||
+    process.env.VERCEL_GIT_COMMIT_REF ||
+    process.env.GITHUB_REF_NAME ||
+    ""
+  ).trim();
+}
+
+function pickBuildCommitMessage(): string {
+  return (
+    process.env.CF_PAGES_COMMIT_MESSAGE ||
+    process.env.VERCEL_GIT_COMMIT_MESSAGE ||
+    process.env.GITHUB_COMMIT_MESSAGE ||
+    ""
+  ).trim();
+}
+
+function pickDeploymentId(): string {
+  return (
+    process.env.CLOUDFLARE_DEPLOYMENT_ID ||
+    process.env.CF_DEPLOYMENT_ID ||
+    process.env.VERCEL_DEPLOYMENT_ID ||
+    ""
+  ).trim();
+}
+
+function pickDeploymentUrl(): string {
+  const raw =
+    process.env.CLOUDFLARE_DEPLOYMENT_URL ||
+    process.env.CF_PAGES_URL ||
+    process.env.VERCEL_URL ||
+    "";
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function hasDeployTargetConfigured(): boolean {
+  if (String(process.env.DEPLOY_HOOK_URL || "").trim()) return true;
+  if (String(process.env.VERCEL_DEPLOY_HOOK_URL || "").trim()) return true;
+  if (hasCloudflareApiDeployConfig(process.env)) {
+    return true;
+  }
+  return false;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readCloudflareStatusConfig(): {
+  accountId: string;
+  apiToken: string;
+  workerName: string;
+} | null {
+  const accountId = asString(process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID);
+  const apiToken = asString(process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN);
+  const workerName = resolveCloudflareWorkerName(process.env);
+  if (!accountId || !apiToken || !workerName) return null;
+  return { accountId, apiToken, workerName };
+}
+
+function parseSourceShaFromDeployMessage(messageRaw: unknown): string | null {
+  const message = asString(messageRaw);
+  if (!message) return null;
+  const hit = /\bsource(?:sha)?=([a-f0-9]{7,40})\b/i.exec(message);
+  return hit?.[1] ? hit[1].toLowerCase() : null;
+}
+
+async function fetchCloudflareActiveDeployedSourceSha(): Promise<string | null> {
+  const cfg = readCloudflareStatusConfig();
+  if (!cfg) return null;
+
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+      cfg.accountId,
+    )}/workers/scripts/${encodeURIComponent(cfg.workerName)}/deployments`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${cfg.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    },
+  ).catch(() => null);
+  if (!(res instanceof Response) || !res.ok) return null;
+
+  const raw = (await res.json().catch(() => null)) as unknown;
+  const payload = asRecord(raw);
+  if (payload.success !== true) return null;
+
+  const result = asRecord(payload.result);
+  const deployments = Array.isArray(result.deployments)
+    ? result.deployments
+    : Array.isArray(result.items)
+      ? result.items
+      : Array.isArray(payload.result)
+        ? (payload.result as unknown[])
+        : [];
+  if (deployments.length === 0) return null;
+
+  const latest = [...deployments]
+    .map((item) => asRecord(item))
+    .sort((a, b) => {
+      const ta = Date.parse(asString(a.created_on));
+      const tb = Date.parse(asString(b.created_on));
+      if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return tb - ta;
+      return asString(b.id).localeCompare(asString(a.id));
+    })[0];
+  if (!latest) return null;
+
+  const annotations = asRecord(latest.annotations);
+  return parseSourceShaFromDeployMessage(annotations["workers/message"]);
+}
+
+function derivePendingDeployReason(input: {
+  runtimeProvider: SiteAdminStatusPayload["env"]["runtimeProvider"];
+  headSha: string | null;
+  deployedSourceSha: string | null;
+  deployedCommitSha: string | null;
+}): string | null {
+  if (!input.headSha) return "SOURCE_HEAD_UNAVAILABLE";
+  if (input.deployedSourceSha || input.deployedCommitSha) return null;
+  if (input.runtimeProvider === "cloudflare") return "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE";
+  return "ACTIVE_DEPLOYMENT_SHA_UNAVAILABLE";
 }
 
 function parseIsoMs(iso: string): number {
@@ -54,21 +212,6 @@ function hasEffectiveFlagsSecret(): boolean {
   if (explicit) return true;
   const fallback = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
   return Boolean(fallback);
-}
-
-async function fetchNotionPageMeta(pageId32: string): Promise<NotionPageMeta | null> {
-  const token = (process.env.NOTION_TOKEN || "").trim();
-  if (!token) return null;
-  const dashed = dashify32(pageId32);
-  if (!dashed) return null;
-  const data = await notionRequest<unknown>(`pages/${dashed}`, { maxRetries: 2 }).catch(() => null);
-  const parsed = parseNotionPageMeta(data, { fallbackId: pageId32, fallbackTitle: "Untitled" });
-  if (!parsed) return null;
-  return {
-    id: readTrimmedString(pageId32) || parsed.id,
-    title: parsed.title,
-    lastEdited: parsed.lastEdited,
-  };
 }
 
 function normalizeGeneratedFileMtime(
@@ -240,25 +383,12 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
   const searchIndexItems = files.searchIndex.exists ? getSearchIndex().length : null;
 
   const commitSha = pickCommitSha();
+  const deployedCommitSha = commitSha ? commitSha.toLowerCase() : null;
 
   const notion: SiteAdminStatusResponsePayload["notion"] = {
     adminPage: null,
     rootPage: null,
   };
-
-  // Best-effort: show Notion edit timestamps so admins can tell if the deploy is stale.
-  try {
-    const adminId = String(process.env.NOTION_SITE_ADMIN_PAGE_ID || "").trim();
-    if (adminId) notion.adminPage = await fetchNotionPageMeta(adminId);
-  } catch {
-    // ignore
-  }
-  try {
-    const rootId = String(syncMeta?.rootPageId || "").trim();
-    if (rootId) notion.rootPage = await fetchNotionPageMeta(rootId);
-  } catch {
-    // ignore
-  }
 
   const generatedLatestMs = maxFinite([
     files.siteConfig.mtimeMs ?? NaN,
@@ -280,27 +410,90 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       ? notionLatestEditedMs > effectiveSyncMs + 3_000
       : null;
   const preflight = buildPreflight({ manifest, site });
+  let source: SiteAdminStatusResponsePayload["source"] = {
+    storeKind: "local",
+    repo: null,
+    branch: null,
+    headSha: null,
+    headCommitTime: null,
+    pendingDeploy: null,
+  };
+
+  try {
+    const sourceState = await getSiteAdminSourceStore().getSourceState();
+    const headSha = sourceState.headSha ? sourceState.headSha.toLowerCase() : null;
+    const runtimeProvider = pickRuntimeProvider();
+    const deployedSourceSha =
+      runtimeProvider === "cloudflare"
+        ? await fetchCloudflareActiveDeployedSourceSha().catch(() => null)
+        : null;
+    const pendingDeploy =
+      headSha && deployedSourceSha
+        ? headSha !== deployedSourceSha
+        : headSha && deployedCommitSha
+          ? headSha !== deployedCommitSha
+        : null;
+    const pendingDeployReason =
+      pendingDeploy === null
+        ? derivePendingDeployReason({
+            runtimeProvider,
+            headSha,
+            deployedSourceSha,
+            deployedCommitSha,
+          })
+        : null;
+    source = {
+      storeKind: sourceState.storeKind,
+      repo: sourceState.repo,
+      branch: sourceState.branch,
+      headSha: sourceState.headSha,
+      headCommitTime: sourceState.headCommitTime,
+      pendingDeploy,
+      ...(pendingDeployReason ? { pendingDeployReason } : {}),
+    };
+  } catch (err: unknown) {
+    const configuredKind =
+      String(process.env.SITE_ADMIN_STORAGE || "local").trim().toLowerCase() === "github"
+        ? "github"
+        : "local";
+    source = {
+      storeKind: configuredKind,
+      repo: null,
+      branch: null,
+      headSha: null,
+      headCommitTime: null,
+      pendingDeploy: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 
   return {
     env: {
       nodeEnv: process.env.NODE_ENV || "",
+      runtimeProvider: pickRuntimeProvider(),
+      runtimeRegion: pickRuntimeRegion(),
+      hasDeployTarget: hasDeployTargetConfigured(),
       isVercel: Boolean(process.env.VERCEL),
       vercelRegion: process.env.VERCEL_REGION || "",
-      hasNotionToken: Boolean(process.env.NOTION_TOKEN?.trim()),
-      hasNotionAdminPageId: Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID?.trim()),
-      notionVersion: process.env.NOTION_VERSION || "2022-06-28",
-      hasDeployHookUrl: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL?.trim()),
+      hasNotionToken: false,
+      hasNotionAdminPageId: false,
+      notionVersion: "",
+      hasDeployHookUrl: Boolean(
+        (process.env.DEPLOY_HOOK_URL || process.env.VERCEL_DEPLOY_HOOK_URL || "").trim(),
+      ),
       hasNextAuthSecret: Boolean((process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim()),
       hasFlagsSecret: hasEffectiveFlagsSecret(),
       githubAllowlistCount: allow.size,
       contentGithubAllowlistCount: allowContent.size,
     },
     build: {
+      provider: pickRuntimeProvider(),
       commitSha,
       commitShort: commitSha ? commitSha.slice(0, 7) : "",
-      branch: (process.env.VERCEL_GIT_COMMIT_REF || process.env.GITHUB_REF_NAME || "").trim(),
-      commitMessage: (process.env.VERCEL_GIT_COMMIT_MESSAGE || "").trim(),
-      deploymentId: (process.env.VERCEL_DEPLOYMENT_ID || "").trim(),
+      branch: pickBuildBranch(),
+      commitMessage: pickBuildCommitMessage(),
+      deploymentId: pickDeploymentId(),
+      deploymentUrl: pickDeploymentUrl(),
       vercelUrl: (process.env.VERCEL_URL || "").trim(),
     },
     content: {
@@ -314,6 +507,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       syncMeta,
     },
     notion,
+    source,
     preflight,
     freshness: {
       stale,
@@ -321,6 +515,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       notionEditedMs: Number.isFinite(notionLatestEditedMs) ? notionLatestEditedMs : null,
       generatedLatestMs: Number.isFinite(generatedLatestMs) ? generatedLatestMs : null,
     },
+    diagnostics: readErrorLogSummary(10),
     files,
   };
 }

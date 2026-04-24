@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { IconButton as PrimitiveIconButton } from "@/components/ui/icon-button";
 import { cn } from "./utils";
 
 export function IconButton({
@@ -21,32 +22,35 @@ export function IconButton({
   href?: string;
   title?: string;
 }) {
-  const cls = cn("routes-tree__icon-btn", className || "");
+  const props = {
+    className: cn("routes-tree__icon-btn", className || ""),
+    label,
+    title: title || label,
+    variant: "subtle" as const,
+    size: "sm" as const,
+    active: className?.includes("is-active"),
+    children,
+  };
+
   if (href) {
     return (
-      <a
-        className={cls}
+      <PrimitiveIconButton
+        {...props}
         href={href}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={label}
-        title={title || label}
+        external
       >
         {children}
-      </a>
+      </PrimitiveIconButton>
     );
   }
+
   return (
-    <button
-      type="button"
-      className={cls}
+    <PrimitiveIconButton
+      {...props}
       onClick={onClick}
       disabled={disabled}
-      aria-label={label}
-      title={title || label}
     >
       {children}
-    </button>
+    </PrimitiveIconButton>
   );
 }
-
