@@ -1,9 +1,15 @@
-/* Classic (1:1) styling: load the static Super/Notion CSS from /public/styles.
+/* Classic (1:1) base layer: load the static Super/Notion CSS from /public/styles.
  *
  * We keep these as public assets to match the original site, but import a
  * shim here so Next attaches them to the classic route segment only.
  *
- * Order matters.
+ * Order matters and is guarded by `npm run check:classic-css`:
+ * 1. Super inline customizations, including known link icons.
+ * 2. Third-party typography/rendering CSS.
+ * 3. Original Notion/Super CSS in source order.
+ *
+ * Route/page overrides live in `app/(classic)/layout.tsx`, after this base
+ * layer. Keep new page-specific CSS out of this file.
  */
 
 /* Import from the filesystem so Next bundles everything into a single hashed CSS

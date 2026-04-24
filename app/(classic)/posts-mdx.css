@@ -95,6 +95,14 @@
   transition: transform 160ms ease;
 }
 
+.mdx-post__body p,
+.mdx-post__body li,
+.mdx-post__body blockquote {
+  color: var(--color-text-default);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mdx-toggle .notion-toggle__trigger_icon {
     transition: none;
@@ -106,4 +114,19 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--ds-radius-sm);
+}
+
+/* Native Markdown images do not go through <Figure/>. Keep them inside the
+   classic content column so large source images cannot create page-level
+   horizontal scroll on mobile. */
+.mdx-post__body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mdx-post__body pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }

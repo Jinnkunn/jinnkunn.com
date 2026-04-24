@@ -5,9 +5,14 @@ html[data-theme],
   --color-bg-default: var(--ds-surface-page);
   --color-border-default: var(--ds-border-subtle);
   --color-border-dark: var(--ds-border-subtle);
+  --color-border-subtle: var(--ds-border-subtle);
   --color-ui-hover-bg: var(--ds-interactive-hover);
   --color-card-bg: var(--ds-surface-panel);
   --color-card-bg-hover: var(--ds-surface-elevated);
+  --color-bg-surface: var(--ds-surface-panel);
+  --color-bg-subtle: var(--ds-surface-soft);
+  --color-text-muted: var(--ds-text-muted);
+  --color-accent: var(--ds-accent);
   --scrollbar-background-color: var(--ds-scrollbar-bg);
   --scrollbar-thumb-color: var(--ds-scrollbar-thumb);
   --scrollbar-border-color: var(--ds-scrollbar-border);
@@ -33,4 +38,3 @@ html[data-theme],
   --secondary-font: var(--ds-font-body);
   --navbar-shadow: none;
 }
-
