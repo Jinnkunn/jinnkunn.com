@@ -3,8 +3,7 @@ import "server-only";
 import Image from "next/image";
 import type { ReactElement } from "react";
 
-import { compilePostMdx } from "@/lib/posts/compile";
-import { postMdxComponents } from "@/components/posts-mdx/components";
+import { renderSimpleMarkdown } from "@/lib/posts/simple-markdown";
 import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
 
 /** Split markdown body on the first blank line so the opening paragraph
@@ -31,12 +30,14 @@ export async function HomeView({
 }): Promise<ReactElement> {
   const { intro, rest } = splitIntroAndRest(data.body);
 
-  const IntroContent = intro
-    ? (await compilePostMdx(intro)).Content
-    : null;
-  const RestContent = rest
-    ? (await compilePostMdx(rest)).Content
-    : null;
+  // Pure AST pipeline (remark → rehype → jsx-runtime) instead of
+  // @mdx-js/mdx's evaluate(). evaluate() relies on `new Function()`,
+  // which Cloudflare Workers block at runtime — and the home page is
+  // dynamic-rendered on staging (STAGING_GATE), so we can't rely on
+  // the build-time pre-render. home.json is short trusted markdown, so
+  // the full MDX component layer isn't needed here.
+  const introNode = await renderSimpleMarkdown(intro);
+  const restNode = await renderSimpleMarkdown(rest);
 
   return (
     <main
@@ -66,16 +67,12 @@ export async function HomeView({
               />
             </div>
           )}
-          {IntroContent && (
-            <div className="home-intro-row__body mdx-post__body">
-              <IntroContent components={postMdxComponents} />
-            </div>
+          {introNode && (
+            <div className="home-intro-row__body mdx-post__body">{introNode}</div>
           )}
         </div>
-        {RestContent && (
-          <div className="home-body mdx-post__body">
-            <RestContent components={postMdxComponents} />
-          </div>
+        {restNode && (
+          <div className="home-body mdx-post__body">{restNode}</div>
         )}
       </article>
     </main>
