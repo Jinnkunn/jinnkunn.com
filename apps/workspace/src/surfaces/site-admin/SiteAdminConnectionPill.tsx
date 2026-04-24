@@ -43,6 +43,21 @@ export function SiteAdminConnectionPill() {
   const [cfSecret, setCfSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
 
+  // Profile editing state. Tauri's webview suppresses `window.prompt` /
+  // `window.confirm`, so we roll our own inline forms instead of relying
+  // on native dialogs.
+  type ProfileMode = "idle" | "rename" | "add" | "confirmDelete";
+  const [profileMode, setProfileMode] = useState<ProfileMode>("idle");
+  const [renameValue, setRenameValue] = useState("");
+  const [addLabel, setAddLabel] = useState("");
+  const [addUrl, setAddUrl] = useState("");
+  const resetProfileMode = useCallback(() => {
+    setProfileMode("idle");
+    setRenameValue("");
+    setAddLabel("");
+    setAddUrl("");
+  }, []);
+
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   // Click-outside → close. Also Escape key.
@@ -132,78 +147,165 @@ export function SiteAdminConnectionPill() {
             <p>API endpoint + app-token (browser sign-in).</p>
           </header>
 
-          <label className="site-admin-pill__field">
+          <div className="site-admin-pill__field">
             <span>Profile</span>
-            <div className="site-admin-pill__profile-row">
-              <select
-                className="site-admin-pill__profile-select"
-                value={activeProfileId}
-                onChange={(event) => switchProfile(event.target.value)}
-              >
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="btn btn--ghost site-admin-pill__profile-btn"
-                title="Rename current profile"
-                onClick={() => {
-                  if (!activeProfile) return;
-                  const next = window.prompt(
-                    "Profile name",
-                    activeProfile.label,
-                  );
-                  if (next && next.trim()) {
-                    renameProfile(activeProfileId, next.trim());
-                  }
-                }}
-              >
-                Rename
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost site-admin-pill__profile-btn"
-                title="Add a new profile"
-                onClick={() => {
-                  const label = window.prompt(
-                    "New profile name (e.g. Staging)",
-                    "",
-                  );
-                  if (!label || !label.trim()) return;
-                  const url = window.prompt(
-                    "Base URL for this profile",
-                    base || "https://example.com",
-                  );
-                  if (!url || !url.trim()) return;
-                  const id = addProfile(label.trim(), url.trim());
-                  switchProfile(id);
-                }}
-              >
-                + Add
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost site-admin-pill__profile-btn"
-                title="Delete current profile"
-                disabled={profiles.length <= 1}
-                onClick={() => {
-                  if (profiles.length <= 1) return;
-                  if (
-                    window.confirm(
-                      `Delete profile "${profileLabel}"? Credentials stay in the keyring — only the entry is removed.`,
-                    )
-                  ) {
-                    removeProfile(activeProfileId);
-                  }
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </label>
+
+            {profileMode === "rename" ? (
+              <div className="site-admin-pill__profile-row">
+                <input
+                  className="site-admin-pill__profile-select"
+                  value={renameValue}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && renameValue.trim()) {
+                      renameProfile(activeProfileId, renameValue.trim());
+                      resetProfileMode();
+                    } else if (event.key === "Escape") {
+                      resetProfileMode();
+                    }
+                  }}
+                  autoFocus
+                  placeholder="Profile name"
+                />
+                <button
+                  type="button"
+                  className="btn btn--secondary site-admin-pill__profile-btn"
+                  disabled={!renameValue.trim()}
+                  onClick={() => {
+                    renameProfile(activeProfileId, renameValue.trim());
+                    resetProfileMode();
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost site-admin-pill__profile-btn"
+                  onClick={resetProfileMode}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="site-admin-pill__profile-row">
+                <select
+                  className="site-admin-pill__profile-select"
+                  value={activeProfileId}
+                  onChange={(event) => switchProfile(event.target.value)}
+                >
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                {profileMode === "confirmDelete" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn--danger site-admin-pill__profile-btn"
+                      onClick={() => {
+                        removeProfile(activeProfileId);
+                        resetProfileMode();
+                      }}
+                    >
+                      Confirm delete
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost site-admin-pill__profile-btn"
+                      onClick={resetProfileMode}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn--ghost site-admin-pill__profile-btn"
+                      title="Rename current profile"
+                      onClick={() => {
+                        setRenameValue(activeProfile?.label ?? "");
+                        setProfileMode("rename");
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost site-admin-pill__profile-btn"
+                      title="Add a new profile"
+                      onClick={() => {
+                        setAddLabel("");
+                        setAddUrl(base || "https://");
+                        setProfileMode("add");
+                      }}
+                    >
+                      + Add
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost site-admin-pill__profile-btn"
+                      title="Delete current profile"
+                      disabled={profiles.length <= 1}
+                      onClick={() => setProfileMode("confirmDelete")}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {profileMode === "add" && (
+              <div className="site-admin-pill__profile-add">
+                <input
+                  className="site-admin-pill__profile-add-input"
+                  value={addLabel}
+                  onChange={(event) => setAddLabel(event.target.value)}
+                  placeholder="Profile name (e.g. Staging)"
+                  autoFocus
+                />
+                <input
+                  className="site-admin-pill__profile-add-input"
+                  value={addUrl}
+                  onChange={(event) => setAddUrl(event.target.value)}
+                  placeholder="Base URL"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <div className="site-admin-pill__profile-add-actions">
+                  <button
+                    type="button"
+                    className="btn btn--secondary site-admin-pill__profile-btn"
+                    disabled={!addLabel.trim() || !addUrl.trim()}
+                    onClick={() => {
+                      const id = addProfile(addLabel.trim(), addUrl.trim());
+                      switchProfile(id);
+                      resetProfileMode();
+                    }}
+                  >
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost site-admin-pill__profile-btn"
+                    onClick={resetProfileMode}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {profileMode === "confirmDelete" && (
+              <p className="site-admin-pill__note site-admin-pill__profile-warn">
+                Credentials stay in the keyring — only the profile entry is
+                removed.
+              </p>
+            )}
+          </div>
 
           <label className="site-admin-pill__field">
             <span>API Base URL</span>
