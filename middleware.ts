@@ -101,6 +101,11 @@ function resolveNotionIdPathRedirect(pathname: string): string | null {
   return pageIdToRouteMap[pageId] ?? null;
 }
 
+// Staging-wide gate: when `STAGING_GATE=1` (see wrangler.toml
+// [env.staging.vars]), every non-bypass route requires a signed-in site
+// admin. Prod leaves the flag unset so it stays public.
+const STAGING_GATE = process.env.STAGING_GATE === "1";
+
 export async function middleware(req: NextRequest) {
   const pathname = normalizePathname(req.nextUrl.pathname || "/");
   if (isBypassedPath(pathname)) return NextResponse.next();
@@ -109,6 +114,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
   if (pathname === "/site-admin" || pathname.startsWith("/site-admin/")) {
+    const ok = await isSiteAdminAuthorized(req);
+    if (!ok) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/site-admin/login";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url, 302);
+    }
+  }
+
+  // On staging: anything that reaches this point (not bypassed, not
+  // already handled by the /site-admin branch above) is a public page
+  // we still want to hide. Gate it behind the same NextAuth cookie so
+  // one GitHub sign-in covers both the marketing pages and the admin.
+  if (STAGING_GATE) {
     const ok = await isSiteAdminAuthorized(req);
     if (!ok) {
       const url = req.nextUrl.clone();
