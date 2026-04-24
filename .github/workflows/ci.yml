@@ -60,7 +60,6 @@ jobs:
               - "lib/routes/**"
               - "lib/search/**"
               - "lib/publications/**"
-              - "lib/load-raw-main.ts"
               - "lib/site-config.ts"
               - "lib/seo/**"
               - "public/**"

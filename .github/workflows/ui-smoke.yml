@@ -33,15 +33,8 @@ jobs:
       - name: Install
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      # Keep raw snapshots up to date (no Notion token needed).
-      - name: Sync Raw (Hydrated)
-        run: npm run sync:raw
-
       - name: Build
         run: npm run build
-
-      - name: Audit Notion/Super Classes
-        run: npm run audit:notion
 
       - name: UI Smoke Checks
         run: npm run smoke:ui
@@ -53,5 +46,4 @@ jobs:
           name: ui-smoke
           path: |
             output/ui-smoke/**
-            output/notion-block-audit/latest.*
           if-no-files-found: ignore

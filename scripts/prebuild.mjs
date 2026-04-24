@@ -51,15 +51,7 @@ async function main() {
 
   const modeRaw = String(process.env.CONTENT_SYNC_MODE || "stubs").trim().toLowerCase();
   const mode =
-    modeRaw === "raw" || modeRaw === "notion" || modeRaw === "stubs"
-      ? modeRaw
-      : "stubs";
-
-  if (mode === "raw") {
-    console.log("[prebuild] CONTENT_SYNC_MODE=raw; running raw sync...");
-    await run("npm", ["run", "sync:raw"]);
-    return;
-  }
+    modeRaw === "notion" || modeRaw === "stubs" ? modeRaw : "stubs";
 
   if (mode === "notion") {
     const hasNotion =
