@@ -170,12 +170,16 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
   // Merge posts authored directly as MDX. On slug collision, MDX wins.
   try {
     const mdxPosts = await getPostEntries();
-    const taken = new Set(items.map((it) => it.href));
-    // Remove any Notion entries whose slug now exists in the MDX store.
+    // Remove any Notion entries whose slug now exists in the MDX store…
     const mdxHrefs = new Set(mdxPosts.map((p) => p.href));
     for (let i = items.length - 1; i >= 0; i -= 1) {
       if (mdxHrefs.has(items[i].href)) items.splice(i, 1);
     }
+    // …then compute `taken` from what's left so the MDX posts whose slugs
+    // collided with Notion entries still get inserted. (Computing `taken`
+    // before the splice was the old behavior and silently dropped every
+    // migrated MDX post whose slug existed on both sides.)
+    const taken = new Set(items.map((it) => it.href));
     for (const post of mdxPosts) {
       if (taken.has(post.href)) continue;
       items.push({
