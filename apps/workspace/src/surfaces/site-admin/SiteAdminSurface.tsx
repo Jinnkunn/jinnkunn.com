@@ -14,6 +14,7 @@ import { PagesPanel } from "./PagesPanel";
 import { PostsPanel } from "./PostsPanel";
 import { PublicationsPanel } from "./PublicationsPanel";
 import { RoutesPanel } from "./RoutesPanel";
+import { HomePanel } from "./HomePanel";
 import { TeachingPanel } from "./TeachingPanel";
 import { WorksPanel } from "./WorksPanel";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
@@ -36,6 +37,7 @@ const SECTIONS: readonly SiteAdminSectionDef[] = [
     id: "content",
     label: "Content",
     items: [
+      { id: "home", label: "Home", Icon: PagesIcon },
       { id: "posts", label: "Posts", Icon: PostsIcon },
       { id: "pages", label: "Pages", Icon: PagesIcon },
       { id: "publications", label: "Publications", Icon: PagesIcon },
@@ -150,6 +152,7 @@ function SiteAdminContent() {
           <MessageBar />
 
           {activeTab === "status" && <StatusPanel />}
+          {activeTab === "home" && <HomePanel />}
           {activeTab === "posts" && (
             <PostsPanel
               selected={postsSelected}

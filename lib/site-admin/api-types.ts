@@ -372,6 +372,30 @@ export type SiteAdminWorksPostResult =
   | SiteAdminWorksPostPayload
   | SiteAdminApiError;
 
+// --- Home (landing page hero) --------------------------------------------
+
+export type SiteAdminHomeData = {
+  title: string;
+  profileImageUrl?: string;
+  profileImageAlt?: string;
+  body: string; // markdown intro
+};
+
+export type SiteAdminHomeGetPayload = {
+  ok: true;
+  data: SiteAdminHomeData;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminHomeGetResult = SiteAdminHomeGetPayload | SiteAdminApiError;
+
+export type SiteAdminHomePostPayload = {
+  ok: true;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminHomePostResult = SiteAdminHomePostPayload | SiteAdminApiError;
+
 export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;

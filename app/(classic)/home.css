@@ -1,0 +1,50 @@
+/* Home landing page hero — profile image + markdown body. Read from
+ * content/home.json, edited via the Tauri admin Home tab. */
+
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(280px, 2fr);
+  gap: 24px;
+  align-items: start;
+  margin-block: 12px 20px;
+}
+
+.home-hero__image {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 50% 50% 48% 52% / 42% 58% 42% 58%;
+  background: var(--color-bg-subtle, rgba(235, 235, 235, 0.6));
+}
+
+.home-hero__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-hero__body {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.home-hero__body > *:first-child {
+  margin-top: 0;
+}
+
+.home-hero__body > *:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .home-hero {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .home-hero__image {
+    max-width: 220px;
+    margin-inline: auto;
+  }
+}

@@ -257,6 +257,15 @@ export interface WorksData {
   entries: WorksEntry[];
 }
 
+// --- Home (landing page hero) --------------------------------------------
+
+export interface HomeData {
+  title: string;
+  profileImageUrl?: string;
+  profileImageAlt?: string;
+  body: string;
+}
+
 // --- Assets ---------------------------------------------------------------
 
 export interface AssetUploadResponse {
