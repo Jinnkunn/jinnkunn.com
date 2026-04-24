@@ -132,6 +132,20 @@ export interface SiteAdminSourceStore {
     row: Omit<NavItemRow, "rowId">;
     expectedSiteConfigSha: string;
   }): Promise<{ created: NavItemRow; sourceVersion: SiteAdminConfigSourceVersion }>;
+  /** Read a UTF-8 file at the repo-root-relative path. Returns null when
+   * the file doesn't exist. Used for new structured-data features (e.g.
+   * publications.json) that don't fit the SiteSettings / NavRows / Routes
+   * schemas baked into the methods above. */
+  readTextFile(relPath: string): Promise<{ content: string; sha: string } | null>;
+  /** Write a UTF-8 file at the repo-root-relative path, creating the
+   * commit on the configured branch. `expectedSha` (if provided) is
+   * checked before write and a SOURCE_CONFLICT is raised on mismatch. */
+  writeTextFile(input: {
+    relPath: string;
+    content: string;
+    expectedSha?: string;
+    message?: string;
+  }): Promise<{ fileSha: string; commitSha: string }>;
   loadRoutes(): Promise<SiteAdminRoutesSnapshot>;
   updateOverride(input: {
     pageId: string;
@@ -242,10 +256,12 @@ export function createGithubSiteAdminSourceStore(input: {
 class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
   readonly kind = "local" as const;
 
+  private readonly rootDir: string;
   private readonly filesystemDir: string;
   private readonly generatedDir: string;
 
   constructor(rootDir: string) {
+    this.rootDir = rootDir;
     this.filesystemDir = path.join(rootDir, "content", "filesystem");
     this.generatedDir = path.join(rootDir, "content", "generated");
   }
@@ -519,6 +535,53 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     fs.mkdirSync(this.filesystemDir, { recursive: true });
     const outPath = path.join(this.filesystemDir, relPath);
     fs.writeFileSync(outPath, `${JSON.stringify(sortJson(value), null, 2)}\n`, "utf8");
+  }
+
+  async readTextFile(relPath: string): Promise<{ content: string; sha: string } | null> {
+    const filePath = path.join(this.rootDir, relPath);
+    try {
+      const content = fs.readFileSync(filePath, "utf8");
+      return { content, sha: jsonSha(content) };
+    } catch {
+      return null;
+    }
+  }
+
+  async writeTextFile(input: {
+    relPath: string;
+    content: string;
+    expectedSha?: string;
+    message?: string;
+  }): Promise<{ fileSha: string; commitSha: string }> {
+    const filePath = path.join(this.rootDir, input.relPath);
+    // Check expected sha against current file content (best-effort
+    // optimistic concurrency in local mode; real enforcement happens in
+    // the GitHub store path).
+    if (input.expectedSha) {
+      try {
+        const current = fs.readFileSync(filePath, "utf8");
+        const currentSha = jsonSha(current);
+        if (currentSha !== input.expectedSha) {
+          throw new SiteAdminSourceConflictError({
+            expectedSha: input.expectedSha,
+            currentSha,
+          });
+        }
+      } catch (err) {
+        if (err instanceof SiteAdminSourceConflictError) throw err;
+        // File missing — treat empty sha as mismatch unless caller sent "".
+        if (input.expectedSha !== "") {
+          throw new SiteAdminSourceConflictError({
+            expectedSha: input.expectedSha,
+            currentSha: "",
+          });
+        }
+      }
+    }
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, input.content, "utf8");
+    const sha = jsonSha(input.content);
+    return { fileSha: sha, commitSha: sha };
   }
 }
 
@@ -916,6 +979,62 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
       sha: jsonSha(fallback),
       parsed: structuredClone(fallback),
     };
+  }
+
+  async readTextFile(relPath: string): Promise<{ content: string; sha: string } | null> {
+    const file = await this.getRepoFile(relPath);
+    if (!file) return null;
+    return { content: file.content, sha: file.sha };
+  }
+
+  async writeTextFile(input: {
+    relPath: string;
+    content: string;
+    expectedSha?: string;
+    message?: string;
+  }): Promise<{ fileSha: string; commitSha: string }> {
+    const existing = await this.getRepoFile(input.relPath);
+    if (input.expectedSha) {
+      const currentSha = existing?.sha ?? "";
+      if (currentSha !== input.expectedSha) {
+        throw new SiteAdminSourceConflictError({
+          expectedSha: input.expectedSha,
+          currentSha,
+        });
+      }
+    }
+    try {
+      const payload = await this.githubJsonRequest<unknown>({
+        method: "PUT",
+        apiPath: `/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(
+          this.repo,
+        )}/contents/${encodeRepoPath(input.relPath)}`,
+        body: {
+          message: input.message || `chore(site-admin): update ${input.relPath}`,
+          content: Buffer.from(input.content, "utf8").toString("base64"),
+          branch: this.branch,
+          ...(existing?.sha ? { sha: existing.sha } : {}),
+        },
+      });
+      const data = asRecord(payload);
+      const commit = asRecord(data.commit);
+      const file = asRecord(data.content);
+      const commitSha = asString(commit.sha);
+      const fileSha = asString(file.sha);
+      if (!commitSha || !fileSha) {
+        throw new Error(`Invalid GitHub write response for ${input.relPath}`);
+      }
+      return { fileSha, commitSha };
+    } catch (err: unknown) {
+      if (err instanceof GitHubApiError && (err.status === 409 || err.status === 422)) {
+        const latest = await this.getRepoFile(input.relPath);
+        throw new SiteAdminSourceConflictError({
+          expectedSha: input.expectedSha ?? "",
+          currentSha: latest?.sha ?? "",
+        });
+      }
+      throw err;
+    }
   }
 
   private async fetchBranchHead(): Promise<GitHubBranchHead> {

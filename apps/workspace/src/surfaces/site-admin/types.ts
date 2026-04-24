@@ -169,6 +169,33 @@ export type ItemSelection =
   | { kind: "new" }
   | { kind: "edit"; slug: string };
 
+// --- Publications (structured editor) ------------------------------------
+
+export interface PublicationProfileLink {
+  label: string;
+  href: string;
+  hostname?: string;
+}
+
+export interface PublicationEntry {
+  title: string;
+  year: string;
+  url: string;
+  labels: string[];
+  authors?: string[];
+  doiUrl?: string;
+  arxivUrl?: string;
+  venue?: string;
+  externalUrls?: string[];
+}
+
+export interface PublicationsData {
+  title: string;
+  description?: string;
+  profileLinks: PublicationProfileLink[];
+  entries: PublicationEntry[];
+}
+
 // --- Assets ---------------------------------------------------------------
 
 export interface AssetUploadResponse {
