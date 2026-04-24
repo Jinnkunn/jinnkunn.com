@@ -36,6 +36,8 @@ function pickWorkerName(targetEnv) {
 }
 
 function pickSourceBranch(targetEnv) {
+  const override = readStringEnv("DEPLOY_SOURCE_BRANCH");
+  if (override) return override;
   if (targetEnv === "staging") {
     return (
       readStringEnv("SITE_ADMIN_REPO_BRANCH_STAGING") ||
@@ -116,6 +118,11 @@ async function cfRequest({ accountId, apiToken, method, path, body }) {
   return envelope.result;
 }
 
+function pickSourceShaOverride() {
+  const raw = readStringEnv("DEPLOY_SOURCE_SHA").toLowerCase();
+  return /^[a-f0-9]{40}$/.test(raw) ? raw : "";
+}
+
 function pickLatestVersionId(result) {
   const payload = asRecord(result);
   const items = Array.isArray(payload.items)
@@ -142,11 +149,13 @@ async function main() {
   const sourceBranch = pickSourceBranch(targetEnv);
   const sourceOwner = readStringEnv("SITE_ADMIN_REPO_OWNER");
   const sourceRepo = readStringEnv("SITE_ADMIN_REPO_NAME");
-  const sourceSha = await fetchGithubBranchHeadSha({
-    owner: sourceOwner,
-    repo: sourceRepo,
-    branch: sourceBranch,
-  });
+  const sourceSha =
+    pickSourceShaOverride() ||
+    (await fetchGithubBranchHeadSha({
+      owner: sourceOwner,
+      repo: sourceRepo,
+      branch: sourceBranch,
+    }));
   if (!workerName) {
     throw new Error(
       targetEnv === "staging"
@@ -167,8 +176,9 @@ async function main() {
   }
 
   const deployPath = `/workers/scripts/${encodeURIComponent(workerName)}/deployments`;
+  const dirtySuffix = readStringEnv("DEPLOY_SOURCE_DIRTY") === "1" ? " dirty=1" : "";
   const deployMessage = sourceSha
-    ? `Manual deploy (${targetEnv}) source=${sourceSha} branch=${sourceBranch}`
+    ? `Manual deploy (${targetEnv}) source=${sourceSha} branch=${sourceBranch}${dirtySuffix}`
     : `Manual deploy (${targetEnv}) branch=${sourceBranch}`;
   const baseDeployBody = {
     strategy: "percentage",
