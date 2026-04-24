@@ -3,6 +3,7 @@ import "server-only";
 import type { ReactElement } from "react";
 import { evaluate, type EvaluateOptions } from "@mdx-js/mdx";
 import * as runtime from "react/jsx-runtime";
+import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -18,7 +19,13 @@ export async function compilePostMdx(source: string): Promise<{
 }> {
   const options: EvaluateOptions = {
     ...runtime,
-    remarkPlugins: [remarkGfm, remarkMath],
+    // remark-frontmatter MUST run before any rendering plugin so the
+    // `---` YAML block becomes a dedicated frontmatter AST node instead
+    // of getting parsed as content. Without it, a frontmatter block
+    // whose last pre-`---` line is plain text (no tags list, no blank
+    // line) is interpreted as a setext H2 — we were leaking the whole
+    // frontmatter into the rendered HTML.
+    remarkPlugins: [[remarkFrontmatter, ["yaml"]], remarkGfm, remarkMath],
     rehypePlugins: [
       rehypeSlug,
       [
