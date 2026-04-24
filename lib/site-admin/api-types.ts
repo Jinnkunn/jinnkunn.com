@@ -258,6 +258,34 @@ export type SiteAdminPublicationsPostResult =
   | SiteAdminPublicationsPostPayload
   | SiteAdminApiError;
 
+// --- News (dated timeline) ----------------------------------------------
+
+export type NewsEntryDTO = {
+  dateIso: string; // YYYY-MM-DD
+  body: string; // markdown (inline formatting + links)
+};
+
+export type SiteAdminNewsData = {
+  title: string;
+  description?: string;
+  entries: NewsEntryDTO[];
+};
+
+export type SiteAdminNewsGetPayload = {
+  ok: true;
+  data: SiteAdminNewsData;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminNewsGetResult = SiteAdminNewsGetPayload | SiteAdminApiError;
+
+export type SiteAdminNewsPostPayload = {
+  ok: true;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminNewsPostResult = SiteAdminNewsPostPayload | SiteAdminApiError;
+
 export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;

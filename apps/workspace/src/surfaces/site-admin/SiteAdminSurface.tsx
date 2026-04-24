@@ -9,6 +9,7 @@ import {
 import { CommandPalette } from "./CommandPalette";
 import { ConfigPanel } from "./ConfigPanel";
 import { MessageBar } from "./MessageBar";
+import { NewsPanel } from "./NewsPanel";
 import { PagesPanel } from "./PagesPanel";
 import { PostsPanel } from "./PostsPanel";
 import { PublicationsPanel } from "./PublicationsPanel";
@@ -36,6 +37,7 @@ const SECTIONS: readonly SiteAdminSectionDef[] = [
       { id: "posts", label: "Posts", Icon: PostsIcon },
       { id: "pages", label: "Pages", Icon: PagesIcon },
       { id: "publications", label: "Publications", Icon: PagesIcon },
+      { id: "news", label: "News", Icon: PagesIcon },
     ],
   },
   {
@@ -157,6 +159,7 @@ function SiteAdminContent() {
             />
           )}
           {activeTab === "publications" && <PublicationsPanel />}
+          {activeTab === "news" && <NewsPanel />}
           {activeTab === "config" && <ConfigPanel />}
           {activeTab === "routes" && <RoutesPanel />}
         </div>
