@@ -679,6 +679,43 @@ body[data-window-focused="true"] .sidebar-surface {
   flex-shrink: 0;
 }
 
+.site-admin-pill__profile-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.site-admin-pill__profile-add-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.site-admin-pill__profile-add-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.site-admin-pill__profile-add-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.site-admin-pill__profile-warn {
+  color: var(--color-warn);
+}
+
 .site-admin-pill__actions {
   display: flex;
   flex-wrap: wrap;
