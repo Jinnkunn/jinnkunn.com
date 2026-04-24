@@ -11,6 +11,7 @@ import { ConfigPanel } from "./ConfigPanel";
 import { MessageBar } from "./MessageBar";
 import { PagesPanel } from "./PagesPanel";
 import { PostsPanel } from "./PostsPanel";
+import { PublicationsPanel } from "./PublicationsPanel";
 import { RoutesPanel } from "./RoutesPanel";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
 import {
@@ -34,6 +35,7 @@ const SECTIONS: readonly SiteAdminSectionDef[] = [
     items: [
       { id: "posts", label: "Posts", Icon: PostsIcon },
       { id: "pages", label: "Pages", Icon: PagesIcon },
+      { id: "publications", label: "Publications", Icon: PagesIcon },
     ],
   },
   {
@@ -154,6 +156,7 @@ function SiteAdminContent() {
               onSelectedChange={setPagesSelected}
             />
           )}
+          {activeTab === "publications" && <PublicationsPanel />}
           {activeTab === "config" && <ConfigPanel />}
           {activeTab === "routes" && <RoutesPanel />}
         </div>

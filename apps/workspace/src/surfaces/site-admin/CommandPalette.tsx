@@ -119,6 +119,7 @@ export function CommandPalette({
       { id: "status", label: "Status" },
       { id: "posts", label: "Posts" },
       { id: "pages", label: "Pages" },
+      { id: "publications", label: "Publications" },
       { id: "config", label: "Settings & Navigation" },
       { id: "routes", label: "Routes" },
     ];
