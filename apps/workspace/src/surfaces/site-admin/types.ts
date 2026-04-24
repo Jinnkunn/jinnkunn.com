@@ -209,6 +209,32 @@ export interface NewsData {
   entries: NewsEntry[];
 }
 
+// --- Teaching (structured editor) ----------------------------------------
+
+export interface TeachingLink {
+  label: string;
+  href: string;
+}
+
+export interface TeachingEntry {
+  term: string;
+  period: string;
+  role: string;
+  courseCode: string;
+  courseName: string;
+  courseUrl?: string;
+  instructor?: string;
+}
+
+export interface TeachingData {
+  title: string;
+  description?: string;
+  intro?: string;
+  headerLinks: TeachingLink[];
+  entries: TeachingEntry[];
+  footerLinks: TeachingLink[];
+}
+
 // --- Assets ---------------------------------------------------------------
 
 export interface AssetUploadResponse {

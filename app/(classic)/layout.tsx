@@ -16,6 +16,7 @@ import "./lightbox.css";
 import "./publications.css";
 import "./blog-index.css";
 import "./news.css";
+import "./teaching.css";
 import "./posts-mdx.css";
 import "./page-overrides.css";
 import "./notion-blocks.css";
