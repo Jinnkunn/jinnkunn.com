@@ -8,6 +8,7 @@ export type SiteAdminTab =
   | "publications"
   | "news"
   | "teaching"
+  | "works"
   | "config"
   | "routes";
 
