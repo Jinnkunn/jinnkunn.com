@@ -1,31 +1,15 @@
 import "server-only";
 
+import {
+  emptyHomeData,
+  normalizeHomeData,
+} from "@/lib/site-admin/home-normalize";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
 
 const HOME_REL_PATH = "content/home.json";
 
-const EMPTY_DATA: SiteAdminHomeData = {
-  title: "Hi there!",
-  body: "",
-};
-
-export function normalizeHomeData(raw: unknown): SiteAdminHomeData {
-  if (!raw || typeof raw !== "object") return { ...EMPTY_DATA };
-  const r = raw as Record<string, unknown>;
-  const data: SiteAdminHomeData = {
-    title:
-      typeof r.title === "string" && r.title.trim() ? r.title : EMPTY_DATA.title,
-    body: typeof r.body === "string" ? r.body : "",
-  };
-  if (typeof r.profileImageUrl === "string" && r.profileImageUrl.trim()) {
-    data.profileImageUrl = r.profileImageUrl;
-  }
-  if (typeof r.profileImageAlt === "string" && r.profileImageAlt.trim()) {
-    data.profileImageAlt = r.profileImageAlt;
-  }
-  return data;
-}
+export { normalizeHomeData };
 
 export async function loadSiteAdminHomeData(): Promise<{
   data: SiteAdminHomeData;
@@ -34,7 +18,7 @@ export async function loadSiteAdminHomeData(): Promise<{
   const store = getSiteAdminSourceStore();
   const file = await store.readTextFile(HOME_REL_PATH);
   if (!file) {
-    return { data: { ...EMPTY_DATA }, sourceVersion: { fileSha: "" } };
+    return { data: emptyHomeData(), sourceVersion: { fileSha: "" } };
   }
   let parsed: unknown = null;
   try {
