@@ -25,6 +25,13 @@ on:
       - "v*.*.*"
   workflow_dispatch:
 
+# tauri-action creates / updates a GitHub Release and uploads .dmg +
+# latest.json to it. That requires `contents: write` on the runtime
+# GITHUB_TOKEN — the repo-default is `contents: read`, which lets the
+# Rust build succeed but fails the release-creation step.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
