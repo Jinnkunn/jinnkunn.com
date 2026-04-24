@@ -14,12 +14,13 @@ interface SidebarProps {
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
+const SURFACE_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.surfaceTrees.v1";
 
 type CollapseMap = Record<string, boolean>;
 
-function loadGroupCollapsed(): CollapseMap {
+function loadCollapseMap(storageKey: string): CollapseMap {
   try {
-    const raw = localStorage.getItem(GROUP_COLLAPSE_STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const out: CollapseMap = {};
@@ -32,9 +33,9 @@ function loadGroupCollapsed(): CollapseMap {
   }
 }
 
-function persistGroupCollapsed(state: CollapseMap): void {
+function persistCollapseMap(storageKey: string, state: CollapseMap): void {
   try {
-    localStorage.setItem(GROUP_COLLAPSE_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
     // ignore quota / private-mode errors; state stays in-memory
   }
@@ -80,15 +81,29 @@ export function Sidebar({
   onSelectNavItem,
 }: SidebarProps) {
   const [groupCollapsed, setGroupCollapsed] = useState<CollapseMap>(() =>
-    loadGroupCollapsed(),
+    loadCollapseMap(GROUP_COLLAPSE_STORAGE_KEY),
+  );
+  const [surfaceTreeCollapsed, setSurfaceTreeCollapsed] = useState<CollapseMap>(
+    () => loadCollapseMap(SURFACE_TREE_COLLAPSE_STORAGE_KEY),
   );
 
   useEffect(() => {
-    persistGroupCollapsed(groupCollapsed);
+    persistCollapseMap(GROUP_COLLAPSE_STORAGE_KEY, groupCollapsed);
   }, [groupCollapsed]);
+
+  useEffect(() => {
+    persistCollapseMap(SURFACE_TREE_COLLAPSE_STORAGE_KEY, surfaceTreeCollapsed);
+  }, [surfaceTreeCollapsed]);
 
   const toggleGroup = useCallback((key: string) => {
     setGroupCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const toggleSurfaceTree = useCallback((surfaceId: string) => {
+    setSurfaceTreeCollapsed((prev) => ({
+      ...prev,
+      [surfaceId]: !prev[surfaceId],
+    }));
   }, []);
 
   const groupKey = (surfaceId: string, groupId: string) =>
@@ -129,28 +144,54 @@ export function Sidebar({
             {surfaces.map((surface) => {
               const active = surface.id === activeSurfaceId;
               const hasTree = Boolean(surface.navGroups?.length);
+              const treeOpen =
+                active && hasTree && !surfaceTreeCollapsed[surface.id];
+              const treeId = `sidebar-surface-tree-${surface.id}`;
               return (
                 <div key={surface.id} className="sidebar-surface-row">
-                  <button
-                    type="button"
-                    aria-current={active ? "page" : undefined}
-                    className="sidebar-nav-item"
-                    onClick={() => onSelectSurface(surface.id)}
-                    disabled={surface.disabled}
-                    title={surface.description}
-                  >
-                    <span className="sidebar-nav-item-icon">{surface.icon}</span>
-                    <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {surface.title}
-                    </span>
-                    {surface.disabled && (
-                      <span className="text-[10px] uppercase tracking-wider text-text-muted">
-                        soon
+                  <div className="sidebar-surface-row__header">
+                    <button
+                      type="button"
+                      aria-current={active ? "page" : undefined}
+                      className="sidebar-nav-item sidebar-surface-row__select"
+                      onClick={() => onSelectSurface(surface.id)}
+                      disabled={surface.disabled}
+                      title={surface.description}
+                    >
+                      <span className="sidebar-nav-item-icon">{surface.icon}</span>
+                      <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {surface.title}
                       </span>
+                      {surface.disabled && (
+                        <span className="text-[10px] uppercase tracking-wider text-text-muted">
+                          soon
+                        </span>
+                      )}
+                    </button>
+                    {active && hasTree && (
+                      <button
+                        type="button"
+                        className="sidebar-surface-row__disclosure"
+                        onClick={() => toggleSurfaceTree(surface.id)}
+                        aria-expanded={treeOpen}
+                        aria-controls={treeId}
+                        aria-label={
+                          treeOpen
+                            ? `Collapse ${surface.title}`
+                            : `Expand ${surface.title}`
+                        }
+                        title={treeOpen ? "Collapse" : "Expand"}
+                      >
+                        <ChevronIcon open={treeOpen} />
+                      </button>
                     )}
-                  </button>
-                  {active && hasTree && (
-                    <div className="sidebar-tree" role="list">
+                  </div>
+                  {treeOpen && (
+                    <div
+                      id={treeId}
+                      className="sidebar-tree"
+                      role="list"
+                    >
                       {surface.navGroups!.map((group) => {
                         const open = isGroupOpen(surface.id, group, active);
                         return (

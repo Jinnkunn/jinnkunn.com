@@ -316,6 +316,48 @@ body[data-window-focused="true"] .sidebar-surface {
   gap: 1px;
 }
 
+.sidebar-surface-row__header {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sidebar-surface-row__select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tiny chevron button sitting flush-right of an active tree-bearing
+ * surface row. Stays quiet when idle (inherits the same muted stroke
+ * as the group carets); brightens on hover so it's discoverable. */
+.sidebar-surface-row__disclosure {
+  flex-shrink: 0;
+  width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.sidebar-surface-row__disclosure:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-primary);
+}
+
+.sidebar-surface-row__disclosure:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
 .sidebar-tree {
   display: flex;
   flex-direction: column;
