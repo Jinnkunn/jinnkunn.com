@@ -1,5 +1,9 @@
 import { CalendarSurface } from "./CalendarSurface";
 import { CalendarIcon, SiteAdminIcon } from "./icons";
+import {
+  SITE_ADMIN_DEFAULT_TAB,
+  SITE_ADMIN_NAV_GROUPS,
+} from "./site-admin/nav";
 import { SiteAdminSurface } from "./site-admin/SiteAdminSurface";
 import type { SurfaceDefinition } from "./types";
 
@@ -13,6 +17,8 @@ export const SURFACES: readonly SurfaceDefinition[] = [
     description: "Web publishing control plane",
     icon: <SiteAdminIcon />,
     Component: SiteAdminSurface,
+    navGroups: SITE_ADMIN_NAV_GROUPS,
+    defaultNavItemId: SITE_ADMIN_DEFAULT_TAB,
   },
   {
     id: "calendar",

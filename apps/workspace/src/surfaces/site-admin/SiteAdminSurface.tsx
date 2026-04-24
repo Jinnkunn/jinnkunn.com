@@ -1,73 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  ConfigIcon,
-  PagesIcon,
-  PostsIcon,
-  RoutesIcon,
-  StatusIcon,
-} from "../icons";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useSurfaceNav } from "../../shell/surface-nav-context";
 import { CommandPalette } from "./CommandPalette";
 import { ConfigPanel } from "./ConfigPanel";
+import { HomePanel } from "./HomePanel";
 import { MessageBar } from "./MessageBar";
+import {
+  SITE_ADMIN_DEFAULT_TAB,
+  SITE_ADMIN_NAV_GROUPS,
+  isSiteAdminTab,
+} from "./nav";
 import { NewsPanel } from "./NewsPanel";
 import { PagesPanel } from "./PagesPanel";
 import { PostsPanel } from "./PostsPanel";
 import { PublicationsPanel } from "./PublicationsPanel";
 import { RoutesPanel } from "./RoutesPanel";
-import { HomePanel } from "./HomePanel";
-import { TeachingPanel } from "./TeachingPanel";
-import { WorksPanel } from "./WorksPanel";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
-import {
-  SiteAdminSidebar,
-  type SiteAdminSectionDef,
-  type SiteAdminTab,
-} from "./SiteAdminSidebar";
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider } from "./state";
 import { StatusPanel } from "./StatusPanel";
-import type { ItemSelection } from "./types";
-
-// Grouped into three buckets so the sidebar communicates intent:
-//   Content → day-to-day authoring
-//   Site    → configuration that tunes the public site
-//   Ops     → runtime / deployment health
-const SECTIONS: readonly SiteAdminSectionDef[] = [
-  {
-    id: "content",
-    label: "Content",
-    items: [
-      { id: "home", label: "Home", Icon: PagesIcon },
-      { id: "posts", label: "Posts", Icon: PostsIcon },
-      { id: "pages", label: "Pages", Icon: PagesIcon },
-      { id: "publications", label: "Publications", Icon: PagesIcon },
-      { id: "news", label: "News", Icon: PagesIcon },
-      { id: "teaching", label: "Teaching", Icon: PagesIcon },
-      { id: "works", label: "Works", Icon: PagesIcon },
-    ],
-  },
-  {
-    id: "site",
-    label: "Site",
-    items: [
-      { id: "config", label: "Settings & Navigation", Icon: ConfigIcon },
-      { id: "routes", label: "Routes", Icon: RoutesIcon },
-    ],
-  },
-  {
-    id: "ops",
-    label: "Ops",
-    items: [{ id: "status", label: "Status", Icon: StatusIcon }],
-  },
-];
+import { TeachingPanel } from "./TeachingPanel";
+import { WorksPanel } from "./WorksPanel";
+import type { ItemSelection, SiteAdminTab } from "./types";
 
 function SiteAdminContent() {
-  const [activeTab, setActiveTab] = useState<SiteAdminTab>("status");
+  const { activeNavItemId, setActiveNavItemId } = useSurfaceNav();
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Selection state lives in the shell (not the panels) so the command
   // palette can deep-link straight into a specific post/page.
   const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
   const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
+
+  // Narrow the shell-provided id to our tab union. Defends against a
+  // persisted id that's valid in the shell (a plain string) but no
+  // longer maps to a panel here.
+  const activeTab: SiteAdminTab = useMemo(
+    () =>
+      isSiteAdminTab(activeNavItemId) ? activeNavItemId : SITE_ADMIN_DEFAULT_TAB,
+    [activeNavItemId],
+  );
+
+  const selectTab = useCallback(
+    (tab: SiteAdminTab) => setActiveNavItemId(tab),
+    [setActiveNavItemId],
+  );
 
   // Global keyboard shortcuts. CodeMirror binds a few modifiers (Mod-k,
   // Mod-b, Mod-i, Mod-`) at Prec.high inside the editor and stops
@@ -120,58 +96,56 @@ function SiteAdminContent() {
   }, [activeTab]);
 
   const closePalette = useCallback(() => setPaletteOpen(false), []);
-  const selectTab = useCallback((tab: SiteAdminTab) => setActiveTab(tab), []);
 
-  const openPost = useCallback((slug: string) => {
-    setActiveTab("posts");
-    setPostsSelected({ kind: "edit", slug });
-  }, []);
-  const openPage = useCallback((slug: string) => {
-    setActiveTab("pages");
-    setPagesSelected({ kind: "edit", slug });
-  }, []);
+  const openPost = useCallback(
+    (slug: string) => {
+      selectTab("posts");
+      setPostsSelected({ kind: "edit", slug });
+    },
+    [selectTab],
+  );
+  const openPage = useCallback(
+    (slug: string) => {
+      selectTab("pages");
+      setPagesSelected({ kind: "edit", slug });
+    },
+    [selectTab],
+  );
   const newPost = useCallback(() => {
-    setActiveTab("posts");
+    selectTab("posts");
     setPostsSelected({ kind: "new" });
-  }, []);
+  }, [selectTab]);
   const newPage = useCallback(() => {
-    setActiveTab("pages");
+    selectTab("pages");
     setPagesSelected({ kind: "new" });
-  }, []);
+  }, [selectTab]);
 
   return (
     <div className="site-admin-shell">
-      <SiteAdminTopBar sections={SECTIONS} activeTab={activeTab} />
-      <div className="site-admin-layout">
-        <SiteAdminSidebar
-          sections={SECTIONS}
-          activeTab={activeTab}
-          onSelect={setActiveTab}
-        />
-        <div className="site-admin-layout__main">
-          <MessageBar />
+      <SiteAdminTopBar sections={SITE_ADMIN_NAV_GROUPS} activeTab={activeTab} />
+      <div className="site-admin-layout__main">
+        <MessageBar />
 
-          {activeTab === "status" && <StatusPanel />}
-          {activeTab === "home" && <HomePanel />}
-          {activeTab === "posts" && (
-            <PostsPanel
-              selected={postsSelected}
-              onSelectedChange={setPostsSelected}
-            />
-          )}
-          {activeTab === "pages" && (
-            <PagesPanel
-              selected={pagesSelected}
-              onSelectedChange={setPagesSelected}
-            />
-          )}
-          {activeTab === "publications" && <PublicationsPanel />}
-          {activeTab === "news" && <NewsPanel />}
-          {activeTab === "teaching" && <TeachingPanel />}
-          {activeTab === "works" && <WorksPanel />}
-          {activeTab === "config" && <ConfigPanel />}
-          {activeTab === "routes" && <RoutesPanel />}
-        </div>
+        {activeTab === "status" && <StatusPanel />}
+        {activeTab === "home" && <HomePanel />}
+        {activeTab === "posts" && (
+          <PostsPanel
+            selected={postsSelected}
+            onSelectedChange={setPostsSelected}
+          />
+        )}
+        {activeTab === "pages" && (
+          <PagesPanel
+            selected={pagesSelected}
+            onSelectedChange={setPagesSelected}
+          />
+        )}
+        {activeTab === "publications" && <PublicationsPanel />}
+        {activeTab === "news" && <NewsPanel />}
+        {activeTab === "teaching" && <TeachingPanel />}
+        {activeTab === "works" && <WorksPanel />}
+        {activeTab === "config" && <ConfigPanel />}
+        {activeTab === "routes" && <RoutesPanel />}
       </div>
       <SiteAdminDevDrawer />
       <CommandPalette

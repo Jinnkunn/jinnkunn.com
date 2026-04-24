@@ -1,5 +1,23 @@
 import type { ComponentType, ReactNode } from "react";
 
+/** One leaf nav item inside a surface's nested tree. Rendered as an
+ * indented row under its group in the shell sidebar. */
+export interface SurfaceNavItem {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  badge?: ReactNode;
+}
+
+/** A collapsible group of nav items shown under the active surface in
+ * the shell sidebar. Modelled after the old inline site-admin sections
+ * (Content / Site / Ops). */
+export interface SurfaceNavGroup {
+  id: string;
+  label: string;
+  items: readonly SurfaceNavItem[];
+}
+
 /** One feature surface (site-admin, calendar, settings, etc.).
  *
  * Surfaces are the unit of extensibility — adding a new tool means
@@ -25,4 +43,11 @@ export interface SurfaceDefinition {
   /** Disabled surfaces render as greyed-out sidebar items. Use for
    * placeholders (e.g. "Calendar — coming soon"). */
   disabled?: boolean;
+  /** Nested nav tree rendered under this surface in the shell sidebar
+   * when the surface is active. The surface reads/writes the active
+   * leaf id via `useSurfaceNav()`. Leave unset for a flat surface. */
+  navGroups?: readonly SurfaceNavGroup[];
+  /** Default nav item id used on first mount / when persisted value is
+   * stale. Required when `navGroups` is set. */
+  defaultNavItemId?: string;
 }

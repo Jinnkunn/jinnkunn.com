@@ -304,50 +304,37 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 /* ------------------------------------------------------------------ *
- * Site-admin two-pane layout + collapsible section sidebar
+ * Shell-sidebar nested nav tree
  *
- * Matches the Notion-style grouped navigation: a narrow left column of
- * sections whose items live under a collapsible caret, and a main
- * column for the active panel's content.
+ * A surface with `navGroups` renders collapsible sub-groups under its
+ * top-level row when active. Items nest one level and share the
+ * `.sidebar-nav-item` look with a lighter font weight + indent.
  * ------------------------------------------------------------------ */
-.site-admin-layout {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-  min-width: 0;
-}
-
-.site-admin-layout__main {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-
-.site-admin-sidebar {
-  position: sticky;
-  top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 6px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  background: var(--color-bg-surface);
-}
-
-.site-admin-sidebar__section {
+.sidebar-surface-row {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
-.site-admin-sidebar__section + .site-admin-sidebar__section {
-  margin-top: 4px;
+.sidebar-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px 0;
+  padding-left: 4px;
 }
 
-.site-admin-sidebar__section-header {
+.sidebar-tree__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-tree__group + .sidebar-tree__group {
+  margin-top: 3px;
+}
+
+.sidebar-tree__group-header {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -356,7 +343,7 @@ body[data-window-focused="true"] .sidebar-surface {
   background: transparent;
   color: var(--color-text-muted);
   font: inherit;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -369,44 +356,32 @@ body[data-window-focused="true"] .sidebar-surface {
     color 120ms ease;
 }
 
-.site-admin-sidebar__section-header:hover,
-.site-admin-sidebar__section-header:focus-visible {
+.sidebar-tree__group-header:hover,
+.sidebar-tree__group-header:focus-visible {
   background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
   color: var(--color-text-secondary);
 }
 
-.site-admin-sidebar__section-header:focus-visible {
+.sidebar-tree__group-header:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
-.site-admin-sidebar__section-header[data-active="true"] {
-  color: var(--color-text-primary);
-}
-
-.site-admin-sidebar__items {
+.sidebar-tree__items {
   display: flex;
   flex-direction: column;
   gap: 1px;
   margin: 0;
-  padding: 2px 0 2px 0;
+  padding: 2px 0;
   list-style: none;
 }
 
-.site-admin-sidebar__item {
-  padding-inline-start: 18px; /* align with chevron + indent under section */
-  font-size: 13px;
+.sidebar-tree__item {
+  padding-inline-start: 20px; /* align under chevron + indent under group */
+  font-size: 12.5px;
 }
 
-.site-admin-sidebar__item-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.site-admin-sidebar__badge {
+.sidebar-tree__badge {
   min-width: 18px;
   padding: 0 6px;
   height: 18px;
@@ -420,14 +395,14 @@ body[data-window-focused="true"] .sidebar-surface {
   border-radius: 999px;
 }
 
-@media (max-width: 880px) {
-  .site-admin-layout {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .site-admin-sidebar {
-    position: static;
-  }
+/* Single-column main layout — the Site Admin surface no longer has its
+ * own inline sidebar, so the main column just stretches. Kept as a
+ * named class so panels can still rely on the flex-column gap. */
+.site-admin-layout__main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
 }
 
 /* ------------------------------------------------------------------ *
