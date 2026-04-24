@@ -15,21 +15,15 @@ const nextConfig = {
   outputFileTracingRoot: path.resolve("."),
   // Don't advertise the runtime framework via a response header.
   poweredByHeader: false,
-  // Runtime content is sourced from generated artifacts only.
-  // Keep output tracing focused on `content/generated/**` so Worker bundles
-  // do not carry legacy `content/raw/**` payloads.
+  // Worker bundles only need the generated manifest JSON; MDX + structured
+  // JSON under `content/{posts,pages,*.json}` are imported directly.
   outputFileTracingIncludes: {
     "/**": ["content/generated/**"],
-  },
-  outputFileTracingExcludes: {
-    "/**": ["content/raw/**"],
   },
   turbopack: {
     root: path.resolve("."),
   },
 
-  // Most site imagery is pre-rendered raw HTML from the content source; when
-  // `<Image>` is used for dynamic URLs, prefer modern formats by default.
   images: {
     formats: ["image/avif", "image/webp"],
   },

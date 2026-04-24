@@ -16,25 +16,22 @@ function run(cmd, args, opts = {}) {
 }
 
 async function main() {
-  // A single command to keep the clone stable over time.
-  // Default sequence:
-  // 1) sync raw hydrated HTML from the live Super site
-  // 2) audit which Notion/Super block classes are in use
-  // 3) run E2E smoke checks for key interactions
-  // 4) run representative accessibility checks in light/dark themes
-  // 5) take UI snapshots for visual regression
+  // UI regression sequence:
+  // 1) E2E smoke checks for key interactions
+  // 2) representative accessibility checks in light/dark themes
+  // 3) UI snapshots for visual regression
   const skipSync = process.env.SKIP_SYNC === "1" || process.env.SKIP_SYNC === "true";
 
   if (!skipSync) {
     const hasNotion =
       Boolean(process.env.NOTION_TOKEN) && Boolean(process.env.NOTION_SITE_ADMIN_PAGE_ID);
-    const syncScript = hasNotion ? "sync:notion" : "sync:raw";
-    await run("npm", ["run", syncScript]);
+    if (hasNotion) {
+      await run("npm", ["run", "sync:notion"]);
+    }
   } else {
     console.log("[check:ui] SKIP_SYNC enabled; skipping content sync");
   }
 
-  await run("npm", ["run", "audit:notion"]);
   await run("npm", ["run", "smoke:ui"]);
   await run("npm", ["run", "check:a11y"]);
   await run("npm", ["run", "snapshot:ui"]);

@@ -9,10 +9,6 @@ import { getSiteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-static";
 
-// Hardcoded minimal blog-landing hero. Previously sourced from
-// content/raw/blog.html; the only structured data the page needs is the
-// title + a short list of intro links (RSS feed, etc.). Keeping it in
-// the route file is simpler than adding another JSON+admin surface.
 const BLOG_TITLE = "Blog";
 const BLOG_INTRO_LINKS: Array<{ label: string; href: string }> = [
   { label: "RSS Feed", href: "/blog.rss" },

@@ -100,14 +100,9 @@ npm run build
 `prebuild` is controlled by `CONTENT_SYNC_MODE`:
 
 - `stubs` (default): generate minimal `content/generated/*` stubs, no external sync dependency.
-- `raw`: run `npm run sync:raw` before build.
-- `notion`: run `npm run sync:notion` (requires `NOTION_TOKEN` + `NOTION_SITE_ADMIN_PAGE_ID`).
+- `notion` (legacy): run `npm run sync:notion` (requires `NOTION_TOKEN` + `NOTION_SITE_ADMIN_PAGE_ID`).
 
-Example:
-
-```bash
-CONTENT_SYNC_MODE=raw npm run build
-```
+Primary content now lives under `content/{posts,pages,home.json,news.json,publications.json,teaching.json,works.json}` and is edited via `/site-admin` (web) or the Tauri workspace app.
 
 ## Deploy API (Signed POST)
 
@@ -180,14 +175,6 @@ The admin UI includes a quick sanity-check page:
 It shows key build info, content sync metadata, search index stats, and a best-effort freshness indicator.
 
 Admin save/deploy/conflict audit logging can be enabled with D1 (`SITE_ADMIN_AUDIT_D1_DATABASE_ID`).
-
-## Legacy Content Sync (Clone Mode)
-
-This repo can also sync hydrated HTML from an existing Super site into `content/raw/`:
-
-```bash
-npm run sync:raw
-```
 
 ## UI Regression Snapshots
 
@@ -358,21 +345,10 @@ To skip syncing (offline / only validate current local content):
 SKIP_SYNC=1 npm run check:ui
 ```
 
-## Notion Block Audit
-
-This scans the current raw HTML and lists all `notion-*` and `super-*` classes in use. This is how we
-know which Notion/Super block styles we must support.
-
-```bash
-npm run audit:notion
-```
-
-Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-audit/latest.*`.
-
 ## GitHub Actions
 
 - `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **full-site axe a11y checks** + **performance budgets**.
-- `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
+- `UI Smoke`: manual only (workflow_dispatch). Runs build + E2E smoke checks against a local dev server.
 - `Production Quality`: manual only (workflow_dispatch). Runs Playwright smoke checks + sitemap/canonical/internal-link quality checks on the production origin.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.
