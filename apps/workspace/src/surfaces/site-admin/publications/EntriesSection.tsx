@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 
+import { useDragReorder } from "../shared/useDragReorder";
 import type { PublicationEntry } from "../types";
 
 export interface EntriesSectionProps {
@@ -82,6 +83,20 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
     [entries, onChange],
   );
 
+  const reorder = useCallback(
+    (from: number, to: number) => {
+      if (from === to || from < 0 || from >= entries.length) return;
+      if (to < 0 || to >= entries.length) return;
+      const next = entries.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      onChange(next);
+    },
+    [entries, onChange],
+  );
+
+  const { getRowProps, getHandleProps } = useDragReorder(entries.length, reorder);
+
   const remove = useCallback(
     (index: number) => onChange(entries.filter((_, i) => i !== index)),
     [entries, onChange],
@@ -112,8 +127,17 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
           <p className="empty-note">No publications yet. Click &ldquo;+ Add entry&rdquo; to start.</p>
         )}
         {entries.map((entry, index) => (
-          <div className="pubs-entry-card" key={index}>
+          <div className="pubs-entry-card" key={index} {...getRowProps(index)}>
             <div className="pubs-entry-header">
+              <button
+                type="button"
+                className="drag-handle"
+                title="Drag to reorder"
+                aria-label="Drag to reorder"
+                {...getHandleProps(index)}
+              >
+                ⋮⋮
+              </button>
               <span className="pubs-entry-index">#{index + 1}</span>
               <input
                 className="pubs-entry-title-input"
