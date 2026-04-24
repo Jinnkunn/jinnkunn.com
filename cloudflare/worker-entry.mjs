@@ -96,7 +96,12 @@ async function tryServeStaticShell(request, env) {
 const worker = {
   async fetch(request, env, ctx) {
     const method = String(request.method || "GET").toUpperCase();
-    if (method === "GET" || method === "HEAD") {
+    // When `STAGING_GATE=1`, skip the static-asset shortcut so every
+    // request flows through OpenNext and hits the Next.js middleware
+    // (which enforces sign-in for all non-bypass paths). Without this,
+    // pre-rendered HTML pages bypass middleware entirely.
+    const gateEnabled = String(env?.STAGING_GATE || "") === "1";
+    if (!gateEnabled && (method === "GET" || method === "HEAD")) {
       try {
         const staticRes = await tryServeStaticShell(request, env);
         if (staticRes) return staticRes;
