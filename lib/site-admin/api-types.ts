@@ -331,6 +331,47 @@ export type SiteAdminTeachingPostResult =
   | SiteAdminTeachingPostPayload
   | SiteAdminApiError;
 
+// --- Works (projects / experiences grid) ---------------------------------
+
+export type WorksCategory = "recent" | "passed";
+
+export type WorksEntryDTO = {
+  category: WorksCategory;
+  role: string;
+  affiliation?: string;
+  affiliationUrl?: string;
+  location?: string;
+  period: string;
+  description?: string; // markdown body
+};
+
+export type SiteAdminWorksData = {
+  title: string;
+  description?: string;
+  intro?: string;     // top quote (markdown)
+  note?: string;      // bottom disclaimer quote (markdown)
+  entries: WorksEntryDTO[];
+};
+
+export type SiteAdminWorksGetPayload = {
+  ok: true;
+  data: SiteAdminWorksData;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminWorksGetResult =
+  | SiteAdminWorksGetPayload
+  | SiteAdminApiError;
+
+export type SiteAdminWorksPostPayload = {
+  ok: true;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminWorksPostResult =
+  | SiteAdminWorksPostPayload
+  | SiteAdminApiError;
+
 export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;

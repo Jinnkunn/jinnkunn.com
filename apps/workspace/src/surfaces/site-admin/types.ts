@@ -235,6 +235,28 @@ export interface TeachingData {
   footerLinks: TeachingLink[];
 }
 
+// --- Works (structured editor) -------------------------------------------
+
+export type WorksCategoryClient = "recent" | "passed";
+
+export interface WorksEntry {
+  category: WorksCategoryClient;
+  role: string;
+  affiliation?: string;
+  affiliationUrl?: string;
+  location?: string;
+  period: string;
+  description?: string;
+}
+
+export interface WorksData {
+  title: string;
+  description?: string;
+  intro?: string;
+  note?: string;
+  entries: WorksEntry[];
+}
+
 // --- Assets ---------------------------------------------------------------
 
 export interface AssetUploadResponse {
