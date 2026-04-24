@@ -48,6 +48,12 @@ SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
 # GITHUB_SECRET are secrets set separately per-environment.
 NEXTAUTH_URL = "https://staging.jinkunchen.com"
 
+# Require a signed-in site admin for every route on staging (except
+# the login page and `/api/auth/*` OAuth callbacks). Replaces the
+# Cloudflare Access edge gate — the whole staging site sits behind
+# NextAuth instead.
+STAGING_GATE = "1"
+
 # Auth mode: legacy keeps the GitHub-OAuth-via-NextAuth + HMAC app-token
 # paths active and skips the Cloudflare Access JWT verification entirely.
 # Switch back to "both" or "cf-access" if/when we re-enable the CF Access
