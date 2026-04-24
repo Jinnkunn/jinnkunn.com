@@ -26,11 +26,15 @@ node_modules/
 
 # notion generated content/assets (synced at build time)
 /content/generated/*
-/public/notion-assets/
 
 # Allow committing a small stub config file so middleware/imports work even
 # when Notion sync hasn't run locally.
 !/content/generated/protected-routes.json
+
+# `public/notion-assets/` used to live here, but `content/generated/**`
+# hardcodes `/notion-assets/<sha>.png` paths in the baked HTML — if the
+# files aren't in the repo, prod 404s. Track them until the content
+# pipeline moves off hard-coded paths.
 
 # production
 /build
