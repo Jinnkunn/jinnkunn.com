@@ -4,11 +4,16 @@ export type ThemeMode = "light" | "dark" | "system";
 
 const STORAGE_KEY = "workspace.theme.v1";
 const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
+const THEME_CHANGE_EVENT = "workspace:theme-change";
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === "light" || value === "dark" || value === "system";
+}
 
 function readStoredMode(): ThemeMode {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === "light" || raw === "dark" || raw === "system") return raw;
+    if (isThemeMode(raw)) return raw;
   } catch {
     /* no-op — private-mode browsers, etc. */
   }
@@ -48,6 +53,35 @@ export function useTheme() {
     setResolved(resolveTheme(mode));
   }, [mode]);
 
+  // Keep separate hook instances in sync inside the same Tauri window.
+  // The browser `storage` event only fires across windows, so the toggle
+  // also dispatches a lightweight local event after writing localStorage.
+  useEffect(() => {
+    const syncMode = (next: ThemeMode) => {
+      setModeState(next);
+      applyTheme(next);
+      setResolved(resolveTheme(next));
+    };
+
+    const onThemeChange = (event: Event) => {
+      const detailMode = event instanceof CustomEvent
+        ? (event.detail as { mode?: unknown } | undefined)?.mode
+        : undefined;
+      syncMode(isThemeMode(detailMode) ? detailMode : readStoredMode());
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY) syncMode(readStoredMode());
+    };
+
+    window.addEventListener(THEME_CHANGE_EVENT, onThemeChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
   // In "system" mode, follow OS preference changes while the app is
   // open. In "light"/"dark" mode the listener is inert.
   useEffect(() => {
@@ -70,6 +104,7 @@ export function useTheme() {
     } catch {
       /* ignore — storage disabled */
     }
+    window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { mode: next } }));
   }, []);
 
   /** Cycle: system → light → dark → system. */

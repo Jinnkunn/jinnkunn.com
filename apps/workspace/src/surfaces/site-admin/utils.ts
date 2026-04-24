@@ -22,6 +22,13 @@ export function serializeJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+export function localDateIso(date = new Date()): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // Decode the JWT payload without verifying the signature — used only to
 // surface login + expiry metadata in the UI when the server doesn't
 // return them alongside the token. A malformed / non-JWT string just

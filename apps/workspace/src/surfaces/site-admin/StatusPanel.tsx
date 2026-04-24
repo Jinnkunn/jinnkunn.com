@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { formatPendingDeploy, normalizeString, serializeJson } from "./utils";
@@ -17,7 +17,10 @@ export function StatusPanel() {
   const [data, setData] = useState<StatusPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [confirmDeploy, setConfirmDeploy] = useState(false);
+  const [checkingDeploy, setCheckingDeploy] = useState(false);
   const [error, setError] = useState("");
+  const deployCheckTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -49,6 +52,11 @@ export function StatusPanel() {
   );
 
   const deploy = useCallback(async () => {
+    if (!confirmDeploy) {
+      setConfirmDeploy(true);
+      return;
+    }
+    setConfirmDeploy(false);
     setDeploying(true);
     const response = await request("/api/site-admin/deploy", "POST", {});
     setDeploying(false);
@@ -71,8 +79,31 @@ export function StatusPanel() {
         ? `Deploy triggered (${details}). Refresh status to verify convergence.`
         : "Deploy triggered. Refresh status to verify convergence.",
     );
-    await refresh({ silent: true });
-  }, [refresh, request, setMessage]);
+    if (deployCheckTimerRef.current !== null) {
+      window.clearTimeout(deployCheckTimerRef.current);
+    }
+    setCheckingDeploy(true);
+    deployCheckTimerRef.current = window.setTimeout(() => {
+      void refresh({ silent: true }).finally(() => {
+        setCheckingDeploy(false);
+        deployCheckTimerRef.current = null;
+      });
+    }, 2500);
+  }, [confirmDeploy, refresh, request, setMessage]);
+
+  useEffect(() => {
+    if (!confirmDeploy) return;
+    const timer = window.setTimeout(() => setConfirmDeploy(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDeploy]);
+
+  useEffect(() => {
+    return () => {
+      if (deployCheckTimerRef.current !== null) {
+        window.clearTimeout(deployCheckTimerRef.current);
+      }
+    };
+  }, []);
 
   const disableDeploy =
     loading ||
@@ -83,6 +114,7 @@ export function StatusPanel() {
   const notes: string[] = [];
   if (loading) notes.push("Loading status…");
   if (deploying) notes.push("Triggering deploy…");
+  if (checkingDeploy) notes.push("Checking deploy status…");
   if (error) notes.push(error);
   if (!notes.length && data?.source?.pendingDeploy === true) {
     notes.push(
@@ -111,12 +143,12 @@ export function StatusPanel() {
             Refresh
           </button>
           <button
-            className="btn btn--danger"
+            className={confirmDeploy ? "btn btn--danger" : "btn btn--secondary"}
             type="button"
             onClick={() => void deploy()}
             disabled={disableDeploy}
           >
-            Deploy
+            {deploying ? "Deploying…" : confirmDeploy ? "Confirm Deploy" : "Deploy"}
           </button>
         </div>
       </header>
