@@ -121,6 +121,7 @@ export function CommandPalette({
       { id: "pages", label: "Pages" },
       { id: "publications", label: "Publications" },
       { id: "news", label: "News" },
+      { id: "teaching", label: "Teaching" },
       { id: "config", label: "Settings & Navigation" },
       { id: "routes", label: "Routes" },
     ];

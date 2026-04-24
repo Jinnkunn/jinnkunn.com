@@ -286,6 +286,51 @@ export type SiteAdminNewsPostPayload = {
 
 export type SiteAdminNewsPostResult = SiteAdminNewsPostPayload | SiteAdminApiError;
 
+// --- Teaching (term + course list) --------------------------------------
+
+export type TeachingLinkDTO = {
+  label: string;
+  href: string;
+};
+
+export type TeachingEntryDTO = {
+  term: string;         // "2024/25 Winter Term"
+  period: string;       // "Jan 2025 - April 2025"
+  role: string;         // "Marker" / "Instructor" / "Teaching Assistant"
+  courseCode: string;   // "CSCI5408"
+  courseName: string;   // "Data Management, Warehousing, and Analytics"
+  courseUrl?: string;   // optional archived course page link
+  instructor?: string;  // "Dr. Gabriel Spadon"
+};
+
+export type SiteAdminTeachingData = {
+  title: string;
+  description?: string;
+  intro?: string;                // markdown (shown as pull-quote)
+  headerLinks: TeachingLinkDTO[];
+  entries: TeachingEntryDTO[];
+  footerLinks: TeachingLinkDTO[];
+};
+
+export type SiteAdminTeachingGetPayload = {
+  ok: true;
+  data: SiteAdminTeachingData;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminTeachingGetResult =
+  | SiteAdminTeachingGetPayload
+  | SiteAdminApiError;
+
+export type SiteAdminTeachingPostPayload = {
+  ok: true;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminTeachingPostResult =
+  | SiteAdminTeachingPostPayload
+  | SiteAdminApiError;
+
 export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;
