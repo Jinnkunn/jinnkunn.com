@@ -43,6 +43,11 @@ workers_dev = false
 SITE_ADMIN_STORAGE = "github"
 SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
 
+# NextAuth callback base URL. Public info (just the hostname), so it
+# lives here rather than in `wrangler secret put`. GITHUB_ID /
+# GITHUB_SECRET are secrets set separately per-environment.
+NEXTAUTH_URL = "https://staging.jinkunchen.com"
+
 # Auth mode: legacy keeps the GitHub-OAuth-via-NextAuth + HMAC app-token
 # paths active and skips the Cloudflare Access JWT verification entirely.
 # Switch back to "both" or "cf-access" if/when we re-enable the CF Access
@@ -77,6 +82,9 @@ name = "jinnkunn-site"
 [env.production.vars]
 SITE_ADMIN_STORAGE = "github"
 SITE_ADMIN_REPO_BRANCH = "main"
+
+# NextAuth callback base URL (see staging section above).
+NEXTAUTH_URL = "https://jinkunchen.com"
 
 # Auth mode: legacy (see staging section above for rationale). CF Access
 # config retained dormant for future re-enable.
