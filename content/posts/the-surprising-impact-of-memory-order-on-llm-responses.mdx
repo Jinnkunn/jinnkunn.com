@@ -1,0 +1,92 @@
+---
+title: "The Surprising Impact of Memory Order on LLM Responses"
+date: 2025-06-09
+description: "Why the sequence of information can quietly change how AI reasons"
+draft: false
+---
+
+*Why the sequence of information can quietly change how AI reasons*
+
+You ask an AI the same question twice, using the same information, but you get two different answers. Nothing obvious has changed, yet the response feels subtly off. This kind of inconsistency often surprises users, but it reveals something important about how AI systems reason.
+
+You can think of this like a human trying to solve a problem. If you recall background facts first and conclusions later, your reasoning may unfold differently than if you start from conclusions and work backward. AI systems can behave in a similar way when the same "memory" is presented in a different order.
+
+## **What We Discovered: LLMs Have "Path Dependence"**
+
+We've been experimenting with memory-augmented LLMs, and we stumbled upon something fascinating: the order in which we feed memory snippets to the model dramatically changes its output - even when the actual information is identical.
+
+I call this "path dependence" - the LLM's journey through information matters just as much as the information itself.
+
+![Semantic similarity heatmap showing how different memory paths affect output similarity](https://cdn.jinkunchen.com/blog/2/semantic_similarity_heatmap.png)
+
+Look at this heatmap above - it shows how responses vary when we change the order of memory slots. The darker areas show greater differences in outputs. Pretty striking, right?
+
+## **Our Experimental Setup**
+
+Here's how we tested this:
+
+1.  We created a set of memory slots containing factual information (e.g., about FDR's New Deal and Reagan's economic policies)
+2.  We arranged these slots in different sequences (paths)
+3.  We asked GPT-4 identical questions with these different memory paths
+4.  We measured the differences in outputs using embedding similarity
+
+For example, one of our memory slots looked like this:
+
+> \[Memory Slot\] FDR launched the New Deal to combat the Great Depression. It involved government intervention and public programs.
+
+And we'd change the order of 4-5 such slots to see how it affected the response to questions like "Compare FDR's New Deal with Reagan's economic policy."
+
+## **How We Measured This Effect**
+
+We tracked several metrics:
+
+1.  **Semantic differences** using sentence embeddings (all-MiniLM-L6-v2)
+2.  **Structural changes** including word count, sentence count, and average sentence length
+3.  **Quality scores** using GPT-4 to evaluate structure, reasoning, and conclusion clarity (0-10 scale)
+
+Check out this visualization of our results:
+
+![PCA style clusters showing different writing styles emerging from different memory paths](https://cdn.jinkunchen.com/blog/2/pca_style_clusters.png)
+
+Each dot represents an LLM response, clustered by writing style. Notice how they form distinct groups? Different memory paths actually pushed the LLM toward different writing styles!
+
+## **The Most Interesting Findings**
+
+Here's what jumped out at us:
+
+1.  **First impressions matter**: When we put FDR-related slots first, responses tended to frame comparisons from a government intervention perspective. When Reagan-related slots came first, responses emphasized market-based approaches.
+2.  **Style shifting**: Some memory paths consistently produced verbose responses (avg. 150+ words), while others led to more concise writing (avg. 100-120 words).
+3.  **Quality remained solid**: Despite variations, the responses maintained good quality scores (8-10 range) across different paths.
+4.  **Noise tolerance**: Adding irrelevant memory slots (like facts about the moon landing) increased variability but didn't completely derail responses.
+
+This scatter plot shows the relationship between similarity scores and structural features:
+
+![Scatter plot showing relationship between similarity scores and structural features](https://cdn.jinkunchen.com/blog/2/Structure_Score_vs_Similarity_to_A.png)
+
+## **Why This Matters**
+
+If you're building or using LLM systems, this has real implications:
+
+-   **Consistency challenges**: If you need reliable, predictable outputs, you need to think about memory ordering
+-   **Design opportunities**: This could be used creatively to generate diverse perspectives on the same information
+-   **User awareness**: Users should understand that the way they present information to LLMs affects what they get back
+
+## **What's Next?**
+
+We're exploring several directions:
+
+1.  Building memory routing systems that can provide more consistent outputs
+2.  Testing whether some models are more "path dependent" than others
+3.  Finding ways to use this property as a feature rather than a bug
+
+## **The Takeaway**
+
+The next time you interact with an LLM assistant, remember that the order of information matters - a lot! This isn't just an academic curiosity; it's a fundamental aspect of how these systems process information.
+
+As we continue to integrate LLMs into more aspects of our lives, understanding these quirks becomes increasingly important. Path dependence isn't just a technical issue - it's a reminder that LLMs, like humans, don't process information in a purely logical, order-independent way.
+
+## **What this means for everyday AI users**
+
+AI answers are shaped by internal processes, not just by what information is available. Small changes in the sequence of context can quietly shift the reasoning path, even when the facts are the same. A confident-sounding answer doesn't necessarily mean the model would stay consistent under a different ordering. If something feels inconsistent, try re-asking with the same key facts in a different order or asking a short follow-up question to probe what the model is relying on.
+
+What do you think? Have you noticed this effect in your interactions with LLMs?
