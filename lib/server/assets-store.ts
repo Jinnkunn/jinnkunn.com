@@ -54,6 +54,11 @@ export type AssetUploadResult = {
   sha: string; // ContentStore version
 };
 
+export type AssetListItem = AssetUploadResult & {
+  filename: string;
+  uploadedAt: string | null;
+};
+
 function sha256HexBytes(input: Uint8Array): string {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -75,6 +80,36 @@ function chooseExtension(mime: string, filename?: string): string {
     if (ext && /^[a-z0-9]{1,8}$/.test(ext)) return ext;
   }
   return "bin";
+}
+
+function mimeFromKey(key: string): string {
+  const ext = key.split(".").pop()?.toLowerCase() || "";
+  for (const [mime, knownExt] of Object.entries(EXTENSION_BY_MIME)) {
+    if (knownExt === ext) return mime;
+  }
+  return "application/octet-stream";
+}
+
+function publicUrlFromKey(key: string): string {
+  return key.replace(UPLOADS_PREFIX, PUBLIC_URL_PREFIX);
+}
+
+function uploadedAtFromKey(key: string): string | null {
+  const match = /^public\/uploads\/(\d{4})\/(\d{2})\//.exec(key);
+  if (!match) return null;
+  return `${match[1]}-${match[2]}-01T00:00:00.000Z`;
+}
+
+function validateAssetKey(key: string): string {
+  const normalized = key.replace(/^\/+/, "");
+  if (
+    !normalized.startsWith(`${UPLOADS_PREFIX}/`) ||
+    normalized.includes("..") ||
+    normalized.endsWith("/")
+  ) {
+    throw new AssetsValidationError("key", "invalid asset key");
+  }
+  return normalized;
 }
 
 export function validateAssetInput(input: {
@@ -140,11 +175,30 @@ export async function uploadAsset(input: {
   }
 }
 
+export async function listAssets(input?: {
+  store?: ContentStore;
+}): Promise<AssetListItem[]> {
+  const store = input?.store ?? getContentStore();
+  const entries = await store.listFiles(UPLOADS_PREFIX, { recursive: true });
+  return entries
+    .filter((entry) => entry.relPath.startsWith(`${UPLOADS_PREFIX}/`))
+    .map((entry) => ({
+      key: entry.relPath,
+      url: publicUrlFromKey(entry.relPath),
+      filename: entry.name,
+      size: entry.size,
+      contentType: mimeFromKey(entry.relPath),
+      sha: entry.sha,
+      uploadedAt: uploadedAtFromKey(entry.relPath),
+    }))
+    .sort((a, b) => b.key.localeCompare(a.key));
+}
+
 export async function deleteAsset(
   key: string,
   ifMatch: string,
   store?: ContentStore,
 ): Promise<void> {
   const backend = store ?? getContentStore();
-  await backend.deleteFile(key, { ifMatch });
+  await backend.deleteFile(validateAssetKey(key), { ifMatch });
 }

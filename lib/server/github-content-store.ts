@@ -99,32 +99,43 @@ export function createGithubContentStore(
   }
 
   return {
-    async listFiles(dirRel: string): Promise<ContentEntry[]> {
+    async listFiles(dirRel: string, opts?: { recursive?: boolean }): Promise<ContentEntry[]> {
       const normalized = normalizeRel(dirRel);
-      try {
+      const out: ContentEntry[] = [];
+
+      async function walk(dir: string): Promise<void> {
         const payload = await client.request<unknown>({
           method: "GET",
           apiPath: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
             repo,
           )}/contents/${encodeRepoPath(
-            `${rootDirInRepo}/${normalized}`,
+            `${rootDirInRepo}/${dir}`,
           )}?ref=${encodeURIComponent(branch)}`,
         });
-        if (!Array.isArray(payload)) return [];
-        const out: ContentEntry[] = [];
+        if (!Array.isArray(payload)) return;
         for (const raw of payload) {
           const node = asRecord(raw);
-          if (asString(node.type) !== "file") continue;
+          const type = asString(node.type);
           const name = asString(node.name);
           const sha = asString(node.sha);
-          if (!name || !sha) continue;
+          if (!name) continue;
+          const relPath = path.posix.join(dir, name);
+          if (type === "dir") {
+            if (opts?.recursive) await walk(relPath);
+            continue;
+          }
+          if (type !== "file" || !sha) continue;
           out.push({
             name,
-            relPath: path.posix.join(normalized, name),
+            relPath,
             sha,
             size: asNumber(node.size),
           });
         }
+      }
+
+      try {
+        await walk(normalized);
         out.sort((a, b) => a.name.localeCompare(b.name));
         return out;
       } catch (err) {
