@@ -196,6 +196,19 @@ export interface PublicationsData {
   entries: PublicationEntry[];
 }
 
+// --- News (structured editor) --------------------------------------------
+
+export interface NewsEntry {
+  dateIso: string; // YYYY-MM-DD
+  body: string;    // markdown
+}
+
+export interface NewsData {
+  title: string;
+  description?: string;
+  entries: NewsEntry[];
+}
+
 // --- Assets ---------------------------------------------------------------
 
 export interface AssetUploadResponse {

@@ -19,7 +19,8 @@ type SiteAdminAuditAction =
   | "pages.delete"
   | "assets.upload"
   | "assets.delete"
-  | "publications.save";
+  | "publications.save"
+  | "news.save";
 
 export type SiteAdminAuditEvent = {
   action: SiteAdminAuditAction;
