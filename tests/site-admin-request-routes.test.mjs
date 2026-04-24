@@ -8,6 +8,7 @@ test("site-admin-request routes: override normalizes route path", () => {
     kind: "override",
     pageId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     routePath: "news/latest/",
+    expectedSiteConfigSha: "site-sha",
   });
   assert.equal(parsed.ok, true);
   if (!parsed.ok) throw new Error("expected success");
@@ -15,6 +16,7 @@ test("site-admin-request routes: override normalizes route path", () => {
     kind: "override",
     pageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     routePath: "/news/latest",
+    expectedSiteConfigSha: "site-sha",
   });
 });
 
@@ -23,11 +25,13 @@ test("site-admin-request routes: override allows empty route path to disable ove
     kind: "override",
     pageId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     routePath: "   ",
+    expectedSiteConfigSha: "site-sha",
   });
   assert.equal(parsed.ok, true);
   if (!parsed.ok) throw new Error("expected success");
   assert.equal(parsed.value.kind, "override");
   assert.equal(parsed.value.routePath, "");
+  assert.equal(parsed.value.expectedSiteConfigSha, "site-sha");
 });
 
 test("site-admin-request routes: protected normalizes path and defaults to password auth", () => {
@@ -36,6 +40,7 @@ test("site-admin-request routes: protected normalizes path and defaults to passw
     pageId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
     path: "teaching/archive/",
     auth: "unknown",
+    expectedProtectedRoutesSha: "protected-sha",
   });
   assert.equal(parsed.ok, true);
   if (!parsed.ok) throw new Error("expected success");
@@ -45,6 +50,7 @@ test("site-admin-request routes: protected normalizes path and defaults to passw
     path: "/teaching/archive",
     authKind: "password",
     password: "",
+    expectedProtectedRoutesSha: "protected-sha",
   });
 });
 
@@ -55,6 +61,7 @@ test("site-admin-request routes: github/public auth rejects password payload", (
     path: "/works",
     auth: "github",
     password: "secret",
+    expectedProtectedRoutesSha: "protected-sha",
   });
   assert.deepEqual(github, {
     ok: false,
@@ -68,6 +75,7 @@ test("site-admin-request routes: github/public auth rejects password payload", (
     path: "/works",
     auth: "public",
     password: "secret",
+    expectedProtectedRoutesSha: "protected-sha",
   });
   assert.deepEqual(publicAuth, {
     ok: false,
@@ -81,6 +89,7 @@ test("site-admin-request routes: protected validates required fields", () => {
     kind: "protected",
     path: "/works",
     auth: "password",
+    expectedProtectedRoutesSha: "protected-sha",
   });
   assert.deepEqual(missingPageId, {
     ok: false,
@@ -93,6 +102,7 @@ test("site-admin-request routes: protected validates required fields", () => {
     pageId: "dddddddddddddddddddddddddddddddd",
     path: " ",
     auth: "password",
+    expectedProtectedRoutesSha: "protected-sha",
   });
   assert.deepEqual(missingPath, {
     ok: false,

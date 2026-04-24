@@ -7,6 +7,7 @@ import {
 } from "@/lib/shared/access";
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
 import type { RouteTreeItem } from "@/lib/site-admin/route-explorer-types";
+import type { SiteAdminRoutesSourceVersion } from "@/lib/site-admin/api-types";
 
 import { postAccess, postOverride } from "./api";
 
@@ -16,6 +17,8 @@ type MutationDeps = {
   setBusyId: (value: string) => void;
   setErr: (value: string) => void;
   setCfg: (value: AdminConfig | ((prev: AdminConfig) => AdminConfig)) => void;
+  getSourceVersion: () => SiteAdminRoutesSourceVersion | null;
+  setSourceVersion: (value: SiteAdminRoutesSourceVersion) => void;
 };
 
 export async function saveRouteOverride(
@@ -23,10 +26,20 @@ export async function saveRouteOverride(
   pageId: string,
   routePath: string,
 ): Promise<void> {
+  const sourceVersion = deps.getSourceVersion();
+  if (!sourceVersion?.siteConfigSha) {
+    deps.setErr("Missing sourceVersion. Reload latest and try again.");
+    return;
+  }
   deps.setBusyId(pageId);
   deps.setErr("");
   try {
-    await postOverride({ pageId, routePath });
+    const nextSourceVersion = await postOverride({
+      pageId,
+      routePath,
+      expectedSiteConfigSha: sourceVersion.siteConfigSha,
+    });
+    deps.setSourceVersion(nextSourceVersion);
     deps.setCfg((prev) => {
       const next = { ...prev, overrides: { ...prev.overrides } };
       const normalized = normalizeRoutePath(routePath);
@@ -57,10 +70,22 @@ export async function applyRouteAccess(
     trackBusy: boolean;
   },
 ): Promise<boolean> {
+  const sourceVersion = deps.getSourceVersion();
+  if (!sourceVersion?.protectedRoutesSha) {
+    deps.setErr("Missing sourceVersion. Reload latest and try again.");
+    return false;
+  }
   if (trackBusy) deps.setBusyId(pageId);
   deps.setErr("");
   try {
-    await postAccess({ pageId, path, access, password });
+    const nextSourceVersion = await postAccess({
+      pageId,
+      path,
+      access,
+      password,
+      expectedProtectedRoutesSha: sourceVersion.protectedRoutesSha,
+    });
+    deps.setSourceVersion(nextSourceVersion);
     deps.setCfg((prev) => {
       const next: AdminConfig = {
         overrides: prev.overrides,

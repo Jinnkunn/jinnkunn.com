@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import type { EffectiveAccess, OverrideConflict } from "@/lib/site-admin/route-explorer-model";
 
 import { LockIcon } from "./icons";
@@ -29,38 +30,38 @@ export function RouteRowBadges({
 
   return (
     <div className="routes-tree__badges">
-      <span
+      <Badge
         className={cn("routes-explorer__pill", navGroup ? "routes-explorer__pill--nav" : "")}
       >
         {navGroup ? `nav:${navGroup}` : kind}
-      </span>
+      </Badge>
       {overridden || overridePending ? (
-        <span className="routes-explorer__pill routes-explorer__pill--override">
+        <Badge className="routes-explorer__pill routes-explorer__pill--override">
           {overridePending ? "override (pending)" : "overridden"}
-        </span>
+        </Badge>
       ) : null}
       {overrideConflict ? (
-        <span
+        <Badge
           className="routes-explorer__pill routes-explorer__pill--error"
           title={`Conflicts on ${overrideConflict.path}`}
         >
           conflict
-        </span>
+        </Badge>
       ) : null}
       {directProtected ? (
-        <span className="routes-explorer__pill routes-explorer__pill--protected">
+        <Badge className="routes-explorer__pill routes-explorer__pill--protected">
           <LockIcon className="routes-explorer__pill-icon" />{" "}
           {match?.auth === "github" ? "GitHub" : "Password"}
-        </span>
+        </Badge>
       ) : inheritedProtected ? (
-        <span
+        <Badge
           className="routes-explorer__pill routes-explorer__pill--protected routes-explorer__pill--protected-inherited"
           title={protectedSource ? `Inherited from ${protectedSource}` : "Inherited from a protected parent route"}
         >
           <LockIcon className="routes-explorer__pill-icon" />{" "}
           {match?.auth === "github" ? "GitHub" : "Password"}{" "}
           <span className="routes-explorer__pill-suffix">inherited</span>
-        </span>
+        </Badge>
       ) : null}
     </div>
   );

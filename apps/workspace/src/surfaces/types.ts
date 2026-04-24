@@ -1,0 +1,53 @@
+import type { ComponentType, ReactNode } from "react";
+
+/** One leaf nav item inside a surface's nested tree. Rendered as an
+ * indented row under its group in the shell sidebar. */
+export interface SurfaceNavItem {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  badge?: ReactNode;
+}
+
+/** A collapsible group of nav items shown under the active surface in
+ * the shell sidebar. Modelled after the old inline site-admin sections
+ * (Content / Site / Ops). */
+export interface SurfaceNavGroup {
+  id: string;
+  label: string;
+  items: readonly SurfaceNavItem[];
+}
+
+/** One feature surface (site-admin, calendar, settings, etc.).
+ *
+ * Surfaces are the unit of extensibility — adding a new tool means
+ * writing a `Component` + dropping a `SurfaceDefinition` into
+ * `registry.ts`. The shell stays thin: it doesn't know what the surface
+ * does, only how to show it in the sidebar and mount it in the main pane.
+ *
+ * Each surface owns its own state, its own API layer, and (via
+ * `createNamespacedSecureStorage`) its own secure-storage namespace.
+ * Nothing site-admin-specific lives at the shell level. */
+export interface SurfaceDefinition {
+  /** Stable id — used as the URL fragment / localStorage key / secure
+   * storage namespace. Keep in kebab-case. */
+  id: string;
+  /** Human label shown in sidebar + titlebar breadcrumb. */
+  title: string;
+  /** Short one-liner shown as the sidebar item's title attribute. */
+  description?: string;
+  /** Sidebar item icon — inline SVG string or React node. */
+  icon?: ReactNode;
+  /** Component rendered in the main pane when this surface is active. */
+  Component: ComponentType;
+  /** Disabled surfaces render as greyed-out sidebar items. Use for
+   * placeholders (e.g. "Calendar — coming soon"). */
+  disabled?: boolean;
+  /** Nested nav tree rendered under this surface in the shell sidebar
+   * when the surface is active. The surface reads/writes the active
+   * leaf id via `useSurfaceNav()`. Leave unset for a flat surface. */
+  navGroups?: readonly SurfaceNavGroup[];
+  /** Default nav item id used on first mount / when persisted value is
+   * stale. Required when `navGroups` is set. */
+  defaultNavItemId?: string;
+}

@@ -1,20 +1,32 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import type { StatusViewCoreProps, StatusViewDerivedProps } from "@/components/site-admin/status/view-types";
 
-type SiteAdminBuildCardProps = StatusViewCoreProps & Pick<StatusViewDerivedProps, "vercelLink">;
+type SiteAdminBuildCardProps = StatusViewCoreProps & Pick<StatusViewDerivedProps, "deploymentLink">;
 
-export function SiteAdminBuildCard({ payload, vercelLink }: SiteAdminBuildCardProps) {
+export function SiteAdminBuildCard({ payload, deploymentLink }: SiteAdminBuildCardProps) {
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Build</div>
       <dl className="site-admin-kv">
         <div className="site-admin-kv__row">
           <dt>Environment</dt>
           <dd>
             <code className="code">{payload.env.nodeEnv || "unknown"}</code>{" "}
-            {payload.env.isVercel ? <StatusBadge ok>Vercel</StatusBadge> : <StatusBadge ok={false}>Local</StatusBadge>}
+            <StatusBadge ok={payload.env.runtimeProvider !== "unknown"}>
+              {payload.env.runtimeProvider}
+            </StatusBadge>
+          </dd>
+        </div>
+        <div className="site-admin-kv__row">
+          <dt>Provider</dt>
+          <dd>
+            <code className="code">{payload.build.provider}</code>
+            {payload.env.runtimeRegion ? (
+              <span className="site-admin-status__hint"> {payload.env.runtimeRegion}</span>
+            ) : null}
           </dd>
         </div>
         <div className="site-admin-kv__row">
@@ -28,16 +40,16 @@ export function SiteAdminBuildCard({ payload, vercelLink }: SiteAdminBuildCardPr
         <div className="site-admin-kv__row">
           <dt>Deployment</dt>
           <dd>
-            {vercelLink ? (
-              <a className="notion-link link" href={vercelLink} target="_blank" rel="noreferrer">
-                {payload.build.vercelUrl}
+            {deploymentLink ? (
+              <a className="notion-link link" href={deploymentLink} target="_blank" rel="noreferrer">
+                {payload.build.deploymentUrl || payload.build.deploymentId || deploymentLink}
               </a>
             ) : (
-              <span>—</span>
+              <span>{payload.build.deploymentId || "—"}</span>
             )}
           </dd>
         </div>
       </dl>
-    </div>
+    </Card>
   );
 }

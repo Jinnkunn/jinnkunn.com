@@ -3,6 +3,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
+import type { SiteAdminRoutesSourceVersion } from "@/lib/site-admin/api-types";
 import type { AccessMode } from "@/lib/shared/access";
 
 export const INITIAL_RENDER_LIMIT = 180;
@@ -14,6 +15,7 @@ export type RouteExplorerState = {
   q: string;
   filter: FilterKind;
   cfg: AdminConfig;
+  sourceVersion: SiteAdminRoutesSourceVersion | null;
   busyId: string;
   err: string;
   collapsed: Record<string, boolean>;
@@ -30,6 +32,7 @@ type Action =
   | { type: "set-q"; value: string }
   | { type: "set-filter"; value: FilterKind }
   | { type: "set-cfg"; value: AdminConfig | ((prev: AdminConfig) => AdminConfig) }
+  | { type: "set-source-version"; value: SiteAdminRoutesSourceVersion | null }
   | { type: "set-busy-id"; value: string }
   | { type: "set-err"; value: string }
   | {
@@ -71,6 +74,7 @@ export function createRouteExplorerInitialState(): RouteExplorerState {
       overrides: {},
       protectedByPageId: {},
     },
+    sourceVersion: null,
     busyId: "",
     err: "",
     collapsed: {},
@@ -95,6 +99,8 @@ export function routeExplorerStateReducer(
       return { ...state, filter: action.value };
     case "set-cfg":
       return { ...state, cfg: applyUpdater(state.cfg, action.value) };
+    case "set-source-version":
+      return { ...state, sourceVersion: action.value };
     case "set-busy-id":
       return { ...state, busyId: action.value };
     case "set-err":
@@ -124,6 +130,7 @@ export type RouteExplorerSetters = {
   setQ: (value: string) => void;
   setFilter: (value: FilterKind) => void;
   setCfg: (value: AdminConfig | ((prev: AdminConfig) => AdminConfig)) => void;
+  setSourceVersion: (value: SiteAdminRoutesSourceVersion | null) => void;
   setBusyId: (value: string) => void;
   setErr: (value: string) => void;
   setCollapsed: (
@@ -151,6 +158,7 @@ export function bindRouteExplorerSetters(
     setQ: (value) => dispatch({ type: "set-q", value }),
     setFilter: (value) => dispatch({ type: "set-filter", value }),
     setCfg: (value) => dispatch({ type: "set-cfg", value }),
+    setSourceVersion: (value) => dispatch({ type: "set-source-version", value }),
     setBusyId: (value) => dispatch({ type: "set-busy-id", value }),
     setErr: (value) => dispatch({ type: "set-err", value }),
     setCollapsed: (value) => dispatch({ type: "set-collapsed", value }),

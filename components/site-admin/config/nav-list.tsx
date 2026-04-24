@@ -1,5 +1,8 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { CheckboxRow, Field } from "@/components/ui/field";
 import { asNumber, asString, cn, copyToClipboard } from "./utils";
 import type { NavItemRow } from "./types";
 
@@ -78,20 +81,19 @@ export function SiteAdminNavList({
               </div>
 
               <div className="site-admin-nav__right">
-                <span className="routes-explorer__pill routes-explorer__pill--nav">#{order}</span>
-                <label className="site-admin-nav__switch">
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={(e) =>
-                      onUpdateNavDraftField(it.rowId, {
-                        enabled: e.target.checked,
-                      })
-                    }
-                    aria-label="Enabled"
-                  />
-                  <span>Enabled</span>
-                </label>
+                <Badge className="routes-explorer__pill routes-explorer__pill--nav">#{order}</Badge>
+                <CheckboxRow
+                  className="site-admin-nav__switch"
+                  checked={enabled}
+                  onChange={(e) =>
+                    onUpdateNavDraftField(it.rowId, {
+                      enabled: e.target.checked,
+                    })
+                  }
+                  aria-label="Enabled"
+                >
+                  Enabled
+                </CheckboxRow>
               </div>
             </div>
 
@@ -100,7 +102,7 @@ export function SiteAdminNavList({
                 <div className="site-admin-form site-admin-form--compact" role="group" aria-label="Edit item">
                   <div className="site-admin-form__row">
                     <label className="site-admin-form__label">Label</label>
-                    <input
+                    <Field
                       className="site-admin-form__input"
                       value={label}
                       onChange={(e) => onUpdateNavDraftField(it.rowId, { label: e.target.value })}
@@ -110,8 +112,9 @@ export function SiteAdminNavList({
 
                   <div className="site-admin-form__row">
                     <label className="site-admin-form__label">Href</label>
-                    <input
+                    <Field
                       className="site-admin-form__input site-admin-form__input--mono"
+                      mono
                       value={href}
                       onChange={(e) => onUpdateNavDraftField(it.rowId, { href: e.target.value })}
                       placeholder="/blog"
@@ -120,8 +123,9 @@ export function SiteAdminNavList({
 
                   <div className="site-admin-form__row">
                     <label className="site-admin-form__label">Order</label>
-                    <input
+                    <Field
                       className="site-admin-form__input site-admin-form__input--mono"
+                      mono
                       inputMode="numeric"
                       value={String(order)}
                       onChange={(e) => onUpdateNavDraftField(it.rowId, { order: asNumber(e.target.value) })}
@@ -129,7 +133,7 @@ export function SiteAdminNavList({
                   </div>
 
                   <div className="site-admin-form__actions">
-                    <button
+                    <Button
                       type="button"
                       className="site-admin-form__btn"
                       disabled={busy || !dirty}
@@ -137,24 +141,26 @@ export function SiteAdminNavList({
                       title={dirty ? "Save changes" : "No changes"}
                     >
                       Save
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
                       className={cn("site-admin-form__btn", dirty ? "" : "is-muted")}
                       disabled={busy || !dirty}
                       onClick={() => onClearNavDraft(it.rowId)}
                       title="Discard local edits"
                     >
                       Revert
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
                       className="site-admin-form__btn"
                       disabled={busy}
                       onClick={() => onToggleOpenNav(it.rowId)}
                     >
                       Close
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

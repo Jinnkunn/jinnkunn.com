@@ -1,21 +1,24 @@
 import type { NextRequest } from "next/server";
 
-import { apiPayloadOk, withSiteAdmin } from "@/lib/server/site-admin-api";
-import { buildSiteAdminDeployPreviewPayload } from "@/lib/server/site-admin-deploy-preview-service";
+import { apiError, apiPayloadOk, withSiteAdminContext } from "@/lib/server/site-admin-api";
+import { getSiteAdminDeployPreviewBackend } from "@/lib/server/site-admin-backend-service";
 import type { SiteAdminDeployPreviewPayload } from "@/lib/site-admin/api-types";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  return withSiteAdmin(
+  return withSiteAdminContext(
     req,
     async () => {
-      const payload = await buildSiteAdminDeployPreviewPayload();
+      const out = await getSiteAdminDeployPreviewBackend();
+      if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
+      const payload = out.data;
       return apiPayloadOk<Omit<SiteAdminDeployPreviewPayload, "ok">>(payload);
     },
     {
       requireAllowlist: true,
       requireAuthSecret: true,
+      rateLimit: { namespace: "site-admin-deploy-preview" },
     },
   );
 }

@@ -1,5 +1,11 @@
 "use client";
 
+import { useCallback } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatusNotice } from "@/components/ui/status-notice";
 import type { RouteManifestItem } from "@/lib/routes-manifest";
 import { normalizeAccessMode, type AccessMode } from "@/lib/shared/access";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
@@ -47,25 +53,48 @@ export default function RouteExplorer({
     isSearchActive,
   } = useRouteExplorerData(items);
 
+  // Hoist the per-row callbacks to stable parent-scoped closures so the
+  // memoized RouteRow only re-renders when its own row-scoped inputs
+  // actually change. Without this, every keystroke in the search box would
+  // rebuild each row's `onSetAccessChoice`/`onSaveOverride`/... closures
+  // and defeat `React.memo`.
+  const handleSetAccessChoice = useCallback(
+    (id: string, v: AccessMode) => {
+      setAccessChoice((prev) => ({ ...prev, [id]: v }));
+    },
+    [setAccessChoice],
+  );
+
+  const handleSaveOverride = useCallback(
+    (id: string, v: string) => void saveOverride(id, v),
+    [saveOverride],
+  );
+
+  const handleSaveAccess = useCallback(
+    (input: { pageId: string; path: string; access: AccessMode; password?: string }) =>
+      void saveAccess(input),
+    [saveAccess],
+  );
+
   return (
     <div className="routes-explorer">
       <div className="routes-explorer__header">
-        <div className="routes-explorer__title">
-          <h1 className="routes-explorer__h1">Routes</h1>
-          <p className="routes-explorer__sub">
-            Auto-generated from your content source on deploy. Edit overrides/protection here, then Deploy.
-          </p>
-        </div>
+        <SectionHeader
+          className="routes-explorer__title"
+          title="Routes"
+          description="Auto-generated from your content source on deploy. Edit overrides and protection here, then Deploy."
+        />
 
         <div className="routes-explorer__controls">
           <label className="routes-explorer__search">
             <span className="sr-only">Search</span>
-            <input
+            <Field
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search title, route, page id..."
               className="routes-explorer__input"
               inputMode="search"
+              type="search"
             />
           </label>
 
@@ -77,9 +106,11 @@ export default function RouteExplorer({
                 { id: "overrides", label: "Overrides" },
               ] as const
             ).map((it) => (
-              <button
+              <Button
                 key={it.id}
                 type="button"
+                variant="ghost"
+                size="sm"
                 className={cn(
                   "routes-explorer__filter-btn",
                   filter === it.id ? "is-active" : "",
@@ -87,13 +118,15 @@ export default function RouteExplorer({
                 onClick={() => setFilter(it.id)}
               >
                 {it.label}
-              </button>
+              </Button>
             ))}
           </div>
 
           <div className="routes-explorer__filter" role="group" aria-label="Tree controls">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               className="routes-explorer__filter-btn"
               onClick={expandAll}
               disabled={isSearchActive}
@@ -102,9 +135,11 @@ export default function RouteExplorer({
               }
             >
               Expand
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               className="routes-explorer__filter-btn"
               onClick={collapseAll}
               disabled={isSearchActive}
@@ -113,7 +148,7 @@ export default function RouteExplorer({
               }
             >
               Collapse
-            </button>
+            </Button>
           </div>
 
           <div className="routes-explorer__batch" role="group" aria-label="Batch access">
@@ -130,7 +165,7 @@ export default function RouteExplorer({
               <option value="github">Batch: github</option>
             </select>
             {batchAccess === "password" ? (
-              <input
+              <Field
                 className="routes-explorer__admin-input"
                 type="password"
                 value={batchPassword}
@@ -138,7 +173,7 @@ export default function RouteExplorer({
                 onChange={(e) => setBatchPassword(e.target.value)}
               />
             ) : null}
-            <button
+            <Button
               type="button"
               className="routes-explorer__admin-btn"
               disabled={batchBusy || filtered.length === 0 || (batchAccess === "password" && !batchPassword)}
@@ -146,12 +181,12 @@ export default function RouteExplorer({
               title="Apply to current filtered routes"
             >
               {batchBusy ? "Applying..." : `Apply (${filtered.length})`}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
-      {err ? <div className="routes-explorer__error">{err}</div> : null}
+      {err ? <StatusNotice className="routes-explorer__error" tone="danger">{err}</StatusNotice> : null}
 
       <div className="routes-explorer__meta">
         <span className="routes-explorer__count">{filtered.length}</span>
@@ -179,43 +214,31 @@ export default function RouteExplorer({
               key={it.id}
               it={it}
               cfg={cfg}
-              collapsed={collapsed}
+              isCollapsed={Boolean(collapsed[it.id])}
               adminOpen={adminOpen}
               busy={busyId === it.id}
-              accessChoice={accessChoice}
+              selectedAccessChoice={accessChoice[it.id]}
               effectiveAccess={match}
               inheritedProtected={inheritedProtected}
               directProtected={directProtected}
               overrideValue={overrideValue}
               overridePending={overridePending}
               overrideConflict={overrideConflict}
-              getOverrideConflict={(candidatePath) => findOverrideConflict(it.id, candidatePath)}
+              findOverrideConflict={findOverrideConflict}
               onToggleCollapsed={toggleCollapsed}
               onToggleAdmin={toggleOpenAdmin}
-              onSetAccessChoice={(id, v) =>
-                setAccessChoice((prev) => ({
-                  ...prev,
-                  [id]: v,
-                }))
-              }
-              onSaveOverride={(id, v) => void saveOverride(id, v)}
-              onSaveAccess={(input) =>
-                void saveAccess({
-                  pageId: input.pageId,
-                  path: input.path,
-                  access: input.access,
-                  password: input.password,
-                })
-              }
+              onSetAccessChoice={handleSetAccessChoice}
+              onSaveOverride={handleSaveOverride}
+              onSaveAccess={handleSaveAccess}
             />
           );
         })}
       </div>
       {hasMoreVisible ? (
         <div className="routes-explorer__more">
-          <button type="button" className="routes-explorer__filter-btn" onClick={showMoreVisible}>
+          <Button type="button" variant="ghost" size="sm" className="routes-explorer__filter-btn" onClick={showMoreVisible}>
             Load more ({visible.length - renderedVisible.length} remaining)
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

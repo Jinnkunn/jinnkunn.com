@@ -1,9 +1,9 @@
 /* Site Admin status panel: makes deploy/sync state verifiable (v1-consistent). */
 .site-admin-status {
   margin-top: 14px;
-  border: 1px solid rgba(55, 53, 47, 0.16);
+  border: 1px solid var(--ds-card-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ds-surface-panel);
   padding: 16px 16px 14px 16px;
 }
 
@@ -15,24 +15,15 @@
   flex-wrap: wrap;
 }
 
-.site-admin-status__refresh {
-  appearance: none;
-  height: 38px;
-  padding: 0 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(55, 53, 47, 0.18);
-  background: rgba(255, 255, 255, 0.86);
-  color: rgba(55, 53, 47, 0.9);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease;
+.site-admin-status__head .ds-section-header__title {
+  font-size: 20px;
+  letter-spacing: -0.01em;
 }
 
-.site-admin-status__refresh:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.96);
+.site-admin-status__refresh {
+  height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 
 .site-admin-status__refresh:disabled {
@@ -45,16 +36,16 @@
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(235, 87, 87, 0.25);
-  background: rgba(235, 87, 87, 0.06);
-  color: rgba(140, 32, 32, 0.95);
+  border: 1px solid var(--ds-danger-border);
+  background: var(--ds-danger-bg);
+  color: var(--ds-danger-text);
   font-size: 13px;
 }
 
 .site-admin-status__banner {
   margin-top: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(55, 53, 47, 0.16);
+  border: 1px solid var(--ds-card-border);
   padding: 12px 12px 10px 12px;
   display: flex;
   align-items: flex-start;
@@ -64,18 +55,18 @@
 }
 
 .site-admin-status__banner--ok {
-  background: rgba(46, 170, 220, 0.06);
-  border-color: rgba(46, 170, 220, 0.18);
+  background: var(--ds-info-bg);
+  border-color: var(--ds-info-border);
 }
 
 .site-admin-status__banner--warn {
-  background: rgba(235, 87, 87, 0.06);
-  border-color: rgba(235, 87, 87, 0.22);
+  background: var(--ds-warning-bg);
+  border-color: var(--ds-warning-border);
 }
 
 .site-admin-status__banner-title {
   font-weight: 750;
-  color: rgba(55, 53, 47, 0.92);
+  color: var(--ds-text-primary);
   font-size: 13px;
   letter-spacing: 0.01em;
 }
@@ -83,7 +74,7 @@
 .site-admin-status__banner-detail {
   flex: 1;
   min-width: 220px;
-  color: rgba(55, 53, 47, 0.72);
+  color: var(--ds-text-muted);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -95,26 +86,9 @@
 }
 
 .site-admin-status__banner-button {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   height: 32px;
   padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(55, 53, 47, 0.18);
-  background: rgba(255, 255, 255, 0.86);
-  color: rgba(55, 53, 47, 0.9);
   font-size: 12px;
-  font-weight: 700;
-  font-family: inherit;
-  transition: transform 140ms ease, background 140ms ease;
-  cursor: pointer;
-}
-
-.site-admin-status__banner-button:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.96);
 }
 
 .site-admin-status__banner-button:disabled {
@@ -132,15 +106,15 @@
 }
 
 .site-admin-status__banner-feedback--ok {
-  color: rgba(21, 118, 66, 0.95);
+  color: var(--ds-success-text);
 }
 
 .site-admin-status__banner-feedback--error {
-  color: rgba(140, 32, 32, 0.95);
+  color: var(--ds-danger-text);
 }
 
 .site-admin-status__hint {
-  color: rgba(55, 53, 47, 0.55);
+  color: var(--ds-text-faint);
   font-size: 12px;
   margin-left: 8px;
 }
@@ -159,9 +133,9 @@
 }
 
 .site-admin-card {
-  border: 1px solid rgba(55, 53, 47, 0.12);
+  border: 1px solid var(--ds-card-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--ds-surface-panel);
   padding: 12px 12px 10px 12px;
 }
 
@@ -169,7 +143,7 @@
   font-size: 13px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(55, 53, 47, 0.58);
+  color: var(--ds-text-faint);
   font-weight: 750;
   margin-bottom: 10px;
 }
@@ -190,51 +164,112 @@
 
 .site-admin-kv__row dt {
   font-size: 13px;
-  color: rgba(55, 53, 47, 0.68);
+  color: var(--ds-text-muted);
 }
 
 .site-admin-kv__row dd {
   margin: 0;
   font-size: 13px;
-  color: rgba(55, 53, 47, 0.92);
+  color: var(--ds-text-primary);
   min-width: 0;
 }
 
 .site-admin-kv__muted {
+  margin: 0;
   margin-left: 8px;
-  color: rgba(55, 53, 47, 0.6);
+  color: var(--ds-text-faint);
   font-size: 12px;
 }
 
-.site-admin-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
+/* Diagnostics card — renders the admin error ring-buffer tail so
+ * admins can see warn/error events without tailing Worker logs. */
+.site-admin-diagnostics__list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.site-admin-diagnostics__item {
+  display: grid;
+  grid-template-columns: 78px 50px auto 1fr;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--ds-surface-soft);
   font-size: 12px;
+  align-items: baseline;
+}
+
+.site-admin-diagnostics__item[data-severity="error"] {
+  background: var(--ds-danger-bg);
+}
+
+.site-admin-diagnostics__time {
+  font-family: var(--ds-font-mono);
+  color: var(--ds-text-faint);
+  font-size: 11px;
+}
+
+.site-admin-diagnostics__sev {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   font-weight: 700;
-  border: 1px solid rgba(55, 53, 47, 0.14);
-  background: rgba(55, 53, 47, 0.04);
-  color: rgba(55, 53, 47, 0.78);
+  padding: 2px 5px;
+  border-radius: 4px;
+  text-align: center;
+  align-self: start;
 }
 
-.site-admin-badge--ok {
-  background: rgba(46, 204, 113, 0.12);
-  border-color: rgba(46, 204, 113, 0.22);
-  color: rgba(21, 118, 66, 0.95);
+.site-admin-diagnostics__sev[data-severity="warn"] {
+  background: var(--ds-warning-bg);
+  color: var(--ds-warning-text);
 }
 
-.site-admin-badge--bad {
-  background: rgba(235, 87, 87, 0.1);
-  border-color: rgba(235, 87, 87, 0.22);
-  color: rgba(140, 32, 32, 0.95);
+.site-admin-diagnostics__sev[data-severity="error"] {
+  background: var(--ds-danger-bg);
+  color: var(--ds-danger-text);
+}
+
+.site-admin-diagnostics__source {
+  font-family: var(--ds-font-mono);
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.site-admin-diagnostics__message {
+  grid-column: 1 / -1;
+  color: var(--ds-text-primary);
+  margin-top: 2px;
+}
+
+.site-admin-diagnostics__detail {
+  grid-column: 1 / -1;
+  color: var(--ds-text-muted);
+  font-family: var(--ds-font-mono);
+  font-size: 11px;
+  word-break: break-word;
+}
+
+/* The deploy client wraps its preview panel + deploy button + result
+ * banner in a vertical flex stack. Previously an inline `style={{ display:
+ * flex, flexDirection: column, gap: 10 }}` — now expressed in CSS so the
+ * design-system linter has full visibility. */
+.site-admin-deploy-client {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
 }
 
 .site-admin-deploy-preview {
-  border: 1px solid rgba(55, 53, 47, 0.16);
+  border: 1px solid var(--ds-card-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ds-surface-panel);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -252,22 +287,15 @@
   font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(55, 53, 47, 0.62);
+  color: var(--ds-text-faint);
   font-weight: 700;
 }
 
 .site-admin-deploy-preview__refresh {
-  appearance: none;
-  border: 1px solid rgba(55, 53, 47, 0.16);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.86);
-  color: rgba(55, 53, 47, 0.9);
+  min-width: 0;
   height: 32px;
   padding: 0 11px;
-  font: inherit;
   font-size: 12px;
-  font-weight: 650;
-  cursor: pointer;
 }
 
 .site-admin-deploy-preview__refresh:disabled {
@@ -278,13 +306,13 @@
 .site-admin-deploy-preview__summary {
   margin: 0;
   font-size: 13px;
-  color: rgba(55, 53, 47, 0.84);
+  color: var(--ds-text-secondary);
 }
 
 .site-admin-deploy-preview__error {
   margin: 0;
   font-size: 13px;
-  color: rgba(140, 32, 32, 0.95);
+  color: var(--ds-danger-text);
 }
 
 .site-admin-deploy-preview__stats {
@@ -299,14 +327,14 @@
   height: 24px;
   padding: 0 9px;
   border-radius: 999px;
-  border: 1px solid rgba(55, 53, 47, 0.14);
-  background: rgba(55, 53, 47, 0.03);
+  border: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-soft);
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.78);
+  color: var(--ds-text-secondary);
 }
 
 .site-admin-deploy-preview__details {
-  border: 1px dashed rgba(55, 53, 47, 0.16);
+  border: 1px dashed var(--ds-border-strong);
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -314,7 +342,7 @@
 .site-admin-deploy-preview__details > summary {
   cursor: pointer;
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.84);
+  color: var(--ds-text-secondary);
   font-weight: 650;
 }
 
@@ -328,11 +356,11 @@
 
 .site-admin-deploy-preview__details li {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.86);
+  color: var(--ds-text-secondary);
   line-height: 1.35;
 }
 
 .site-admin-deploy-preview__muted {
-  color: rgba(55, 53, 47, 0.58);
+  color: var(--ds-text-faint);
   font-size: 12px;
 }

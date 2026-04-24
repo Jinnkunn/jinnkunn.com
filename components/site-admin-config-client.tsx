@@ -3,6 +3,8 @@
 import { SiteAdminNavSection } from "@/components/site-admin/config/nav-section";
 import { SiteAdminSettingsForm } from "@/components/site-admin/config/settings-form";
 import { useSiteAdminConfigData } from "@/components/site-admin/config/use-config-data";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatusNotice } from "@/components/ui/status-notice";
 
 export default function SiteAdminConfigClient() {
   const {
@@ -24,16 +26,16 @@ export default function SiteAdminConfigClient() {
   return (
     <div className="site-admin-config">
       <section>
-        <h2 className="notion-heading notion-semantic-string">Config</h2>
-        <p className="notion-text notion-text__content notion-semantic-string">
-          Edits here write to your site settings. Changes take effect after you click Deploy.
-        </p>
+        <SectionHeader
+          title="Config"
+          description="Edits here write to your site settings. Changes take effect after you click Deploy."
+        />
       </section>
 
-      {err ? <div className="routes-explorer__error">{err}</div> : null}
+      {err ? <StatusNotice className="routes-explorer__error" tone="danger">{err}</StatusNotice> : null}
 
       <section className="site-admin-config__section">
-        <h3 className="notion-heading notion-semantic-string">Site Settings</h3>
+        <SectionHeader title="Site Settings" />
         <SiteAdminSettingsForm
           draftSettings={draftSettings}
           busy={busy}
@@ -43,7 +45,7 @@ export default function SiteAdminConfigClient() {
       </section>
 
       <section className="site-admin-config__section">
-        <h3 className="notion-heading notion-semantic-string">Navigation</h3>
+        <SectionHeader title="Navigation" />
         <SiteAdminNavSection
           title="top"
           group="top"

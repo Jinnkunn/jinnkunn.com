@@ -27,7 +27,7 @@ export type BannerState = {
 };
 
 export type SiteAdminStatusDerived = {
-  vercelLink: string;
+  deploymentLink: string;
   stale: StatusFreshness;
   generated: GeneratedState;
   readiness: ReadinessState;
@@ -158,8 +158,8 @@ export function deriveReadinessState(payload: SiteAdminStatusPayload | null): Re
   if (env.githubAllowlistCount <= 0) parts.push("Empty GitHub allowlist");
   else okParts.push("GitHub allowlist");
 
-  if (!env.hasDeployHookUrl) parts.push("Missing deploy hook");
-  else okParts.push("Deploy hook");
+  if (!(env.hasDeployTarget || env.hasDeployHookUrl)) parts.push("Missing deploy target");
+  else okParts.push("Deploy target");
 
   if (!env.hasFlagsSecret) parts.push("Missing FLAGS_SECRET");
   else okParts.push("Flags secret");
@@ -179,6 +179,15 @@ export function deriveStatusBanner(
   if (!stale.ok) parts.push(stale.reason ? `Freshness: ${stale.reason}` : "Freshness: stale");
   if (!generated.ok) parts.push(generated.reason ? `Generated: ${generated.reason}` : "Generated: mismatch");
   if (!readiness.ok) parts.push(readiness.reason ? `Admin: ${readiness.reason}` : "Admin: needs setup");
+  if (payload.source.pendingDeploy === true) {
+    const head = payload.source.headSha ? payload.source.headSha.slice(0, 7) : "latest source";
+    parts.push(`Deploy: pending (${head})`);
+  } else if (payload.source.pendingDeploy === null && payload.source.pendingDeployReason) {
+    parts.push(`Deploy: status unavailable (${payload.source.pendingDeployReason})`);
+  }
+  if (payload.source.error) {
+    parts.push(`Source: ${payload.source.error}`);
+  }
   if (payload?.preflight) {
     const pre = payload.preflight;
     const preParts: string[] = [];
@@ -203,8 +212,8 @@ export function deriveStatusBanner(
   };
 }
 
-export function deriveVercelLink(payload: SiteAdminStatusPayload | null): string {
-  const url = payload?.build?.vercelUrl?.trim() || "";
+export function deriveDeploymentLink(payload: SiteAdminStatusPayload | null): string {
+  const url = payload?.build?.deploymentUrl?.trim() || payload?.build?.vercelUrl?.trim() || "";
   if (!url) return "";
   return url.startsWith("http") ? url : `https://${url}`;
 }
@@ -214,6 +223,6 @@ export function deriveSiteAdminStatus(payload: SiteAdminStatusPayload | null): S
   const generated = deriveGeneratedState(payload);
   const readiness = deriveReadinessState(payload);
   const banner = deriveStatusBanner(payload, stale, generated, readiness);
-  const vercelLink = deriveVercelLink(payload);
-  return { stale, generated, readiness, banner, vercelLink };
+  const deploymentLink = deriveDeploymentLink(payload);
+  return { stale, generated, readiness, banner, deploymentLink };
 }

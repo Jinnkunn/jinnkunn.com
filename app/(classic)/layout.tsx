@@ -9,10 +9,17 @@ import ViewportCssVars from "@/components/viewport-css-vars";
 // Next.js v16 no longer reliably applies `head.tsx` link tags in route groups,
 // so we import a tiny CSS shim that @imports the public Super/Notion styles.
 import "./classic.css";
+import "./design-system-bridge.css";
 import "./search.css";
 import "./toc.css";
 import "./lightbox.css";
 import "./publications.css";
+import "./blog-index.css";
+import "./news.css";
+import "./teaching.css";
+import "./works.css";
+import "./home.css";
+import "./posts-mdx.css";
 import "./page-overrides.css";
 import "./notion-blocks.css";
 import "./navigation.css";

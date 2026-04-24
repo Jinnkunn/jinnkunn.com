@@ -15,6 +15,9 @@ function makeValidPayload(overrides = {}) {
     ok: true,
     env: {
       nodeEnv: "production",
+      runtimeProvider: "cloudflare",
+      runtimeRegion: "iad",
+      hasDeployTarget: true,
       isVercel: true,
       vercelRegion: "iad1",
       hasNotionToken: true,
@@ -27,11 +30,13 @@ function makeValidPayload(overrides = {}) {
       contentGithubAllowlistCount: 3,
     },
     build: {
+      provider: "cloudflare",
       commitSha: "abc",
       commitShort: "abc1234",
       branch: "main",
       commitMessage: "msg",
       deploymentId: "dep",
+      deploymentUrl: "https://example.workers.dev",
       vercelUrl: "example.vercel.app",
     },
     content: {
@@ -62,6 +67,14 @@ function makeValidPayload(overrides = {}) {
       },
       rootPage: null,
     },
+    source: {
+      storeKind: "github",
+      repo: "acme/site",
+      branch: "main",
+      headSha: "0123456789abcdef0123456789abcdef01234567",
+      headCommitTime: "2026-02-01T00:00:00.000Z",
+      pendingDeploy: false,
+    },
     preflight: {
       generatedFiles: {
         ok: true,
@@ -90,6 +103,28 @@ function makeValidPayload(overrides = {}) {
       notionEditedMs: 99,
       generatedLatestMs: 101,
     },
+    diagnostics: {
+      total: 2,
+      warnCount: 2,
+      errorCount: 0,
+      oldestAt: "2026-04-23T00:00:00.000Z",
+      newestAt: "2026-04-23T00:05:00.000Z",
+      recent: [
+        {
+          at: "2026-04-23T00:00:00.000Z",
+          severity: "warn",
+          source: "site-admin-audit",
+          message: "D1 write failed, falling back to local file sink",
+          detail: "timeout",
+        },
+        {
+          at: "2026-04-23T00:05:00.000Z",
+          severity: "warn",
+          source: "site-admin-audit",
+          message: "D1 write failed, falling back to local file sink",
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -99,10 +134,44 @@ test("site-admin-status-contract: parses valid success payload", () => {
   assert.ok(parsed);
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminStatusOk(parsed)) throw new Error("Expected success payload");
+  assert.equal(parsed.env.runtimeProvider, "cloudflare");
+  assert.equal(parsed.env.hasDeployTarget, true);
   assert.equal(parsed.env.isVercel, true);
   assert.equal(parsed.content.nav.top, 4);
   assert.equal(parsed.files.notionSyncCache.count, 12);
   assert.equal(parsed.preflight?.generatedFiles.expected, 12);
+  assert.equal(parsed.diagnostics?.total, 2);
+  assert.equal(parsed.diagnostics?.warnCount, 2);
+  assert.equal(parsed.diagnostics?.errorCount, 0);
+  assert.equal(parsed.diagnostics?.recent.length, 2);
+  assert.equal(parsed.diagnostics?.recent[0]?.detail, "timeout");
+  // Second event had no detail — parser should leave the field off.
+  assert.equal(parsed.diagnostics?.recent[1]?.detail, undefined);
+});
+
+test("site-admin-status-contract: diagnostics is optional, payload parses without it", () => {
+  const payload = makeValidPayload();
+  delete payload.diagnostics;
+  const parsed = parseSiteAdminStatusResult(payload);
+  assert.ok(parsed);
+  if (!parsed || !isSiteAdminStatusOk(parsed)) throw new Error("Expected success payload");
+  assert.equal(parsed.diagnostics, undefined);
+});
+
+test("site-admin-status-contract: malformed diagnostics rejects the whole payload", () => {
+  const parsed = parseSiteAdminStatusResult(
+    makeValidPayload({
+      diagnostics: {
+        total: "oops",
+        warnCount: 0,
+        errorCount: 0,
+        oldestAt: null,
+        newestAt: null,
+        recent: [],
+      },
+    }),
+  );
+  assert.equal(parsed, null);
 });
 
 test("site-admin-status-contract: parses success payload in data envelope", () => {
@@ -115,15 +184,18 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
       content: payload.content,
       files: payload.files,
       notion: payload.notion,
+      source: payload.source,
       freshness: payload.freshness,
     },
   });
   assert.ok(parsed);
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminStatusOk(parsed)) throw new Error("Expected success payload");
+  assert.equal(parsed.env.runtimeProvider, "cloudflare");
   assert.equal(parsed.env.isVercel, true);
   assert.equal(parsed.content.nav.top, 4);
   assert.equal(parsed.files.notionSyncCache.count, 12);
+  assert.equal(parsed.source.storeKind, "github");
 });
 
 test("site-admin-status-contract: preserves api error payload", () => {
@@ -165,6 +237,15 @@ test("site-admin-status-contract: accepts nullable optional sections", () => {
           title: "Home",
         },
       },
+      source: {
+        storeKind: "local",
+        repo: null,
+        branch: null,
+        headSha: null,
+        headCommitTime: null,
+        pendingDeploy: null,
+        pendingDeployReason: "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE",
+      },
     }),
   );
   assert.ok(parsed);
@@ -173,4 +254,6 @@ test("site-admin-status-contract: accepts nullable optional sections", () => {
   assert.equal(parsed.content.syncMeta, null);
   assert.equal(parsed.notion.adminPage, null);
   assert.equal(parsed.notion.rootPage?.title, "Home");
+  assert.equal(parsed.env.hasDeployTarget, true);
+  assert.equal(parsed.source.pendingDeployReason, "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE");
 });

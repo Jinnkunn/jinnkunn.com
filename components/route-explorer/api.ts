@@ -1,46 +1,33 @@
 "use client";
 
 import type { RouteManifestItem } from "@/lib/routes-manifest";
-import { asApiAck } from "@/lib/client/api-guards";
-import { requestJsonOrThrow } from "@/lib/client/request-json";
+import { siteAdminBackend } from "@/lib/client/site-admin-backend";
 import type { AccessMode } from "@/lib/shared/access";
 import { parseAdminRoutesPayload, type AdminConfig } from "@/lib/site-admin/route-explorer-model";
-import {
-  isSiteAdminRoutesOk,
-  parseSiteAdminRoutesResult,
-} from "@/lib/site-admin/routes-contract";
+import type { SiteAdminRoutesSourceVersion } from "@/lib/site-admin/api-types";
 
-type ApiOk = { ok: true };
-
-function isApiOkResult(v: { ok: boolean }): v is ApiOk {
-  return v.ok;
+export async function fetchAdminConfig(
+  items: RouteManifestItem[],
+): Promise<{ config: AdminConfig; sourceVersion: SiteAdminRoutesSourceVersion }> {
+  const data = await siteAdminBackend.getRoutes();
+  return {
+    config: parseAdminRoutesPayload(data, items),
+    sourceVersion: data.sourceVersion,
+  };
 }
 
-export async function fetchAdminConfig(items: RouteManifestItem[]): Promise<AdminConfig> {
-  const data = await requestJsonOrThrow(
-    "/api/site-admin/routes",
-    { cache: "no-store" },
-    parseSiteAdminRoutesResult,
-    { isOk: isSiteAdminRoutesOk },
-  );
-  return parseAdminRoutesPayload(data, items);
-}
-
-export async function postOverride(input: { pageId: string; routePath: string }) {
-  await requestJsonOrThrow(
-    "/api/site-admin/routes",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "override",
-        pageId: input.pageId,
-        routePath: input.routePath.trim(),
-      }),
-    },
-    asApiAck,
-    { isOk: isApiOkResult },
-  );
+export async function postOverride(input: {
+  pageId: string;
+  routePath: string;
+  expectedSiteConfigSha: string;
+}): Promise<SiteAdminRoutesSourceVersion> {
+  const data = await siteAdminBackend.postRoutes({
+    kind: "override",
+    pageId: input.pageId,
+    routePath: input.routePath.trim(),
+    expectedSiteConfigSha: input.expectedSiteConfigSha,
+  });
+  return data.sourceVersion;
 }
 
 export async function postAccess(input: {
@@ -48,21 +35,15 @@ export async function postAccess(input: {
   path: string;
   access: AccessMode;
   password?: string;
-}) {
-  await requestJsonOrThrow(
-    "/api/site-admin/routes",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "protected",
-        pageId: input.pageId,
-        path: input.path,
-        auth: input.access,
-        password: String(input.password || "").trim(),
-      }),
-    },
-    asApiAck,
-    { isOk: isApiOkResult },
-  );
+  expectedProtectedRoutesSha: string;
+}): Promise<SiteAdminRoutesSourceVersion> {
+  const data = await siteAdminBackend.postRoutes({
+    kind: "protected",
+    pageId: input.pageId,
+    path: input.path,
+    auth: input.access,
+    password: String(input.password || "").trim(),
+    expectedProtectedRoutesSha: input.expectedProtectedRoutesSha,
+  });
+  return data.sourceVersion;
 }

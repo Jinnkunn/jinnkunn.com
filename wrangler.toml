@@ -1,0 +1,103 @@
+name = "jinnkunn-site"
+main = "cloudflare/worker-entry.mjs"
+compatibility_date = "2026-04-22"
+compatibility_flags = ["nodejs_compat"]
+find_additional_modules = true
+
+[[rules]]
+type = "Data"
+globs = [
+  "content/**/*.json",
+  ".open-next/server-functions/default/content/**/*.json",
+]
+fallthrough = true
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[[r2_buckets]]
+binding = "SITE_ASSETS"
+bucket_name = "jinnkunn-site-assets"
+preview_bucket_name = "jinnkunn-site-assets-staging"
+
+[vars]
+SITE_ADMIN_STORAGE = "github"
+
+[env.staging]
+name = "jinnkunn-site-staging"
+# Disabled so the worker is only reachable via `staging.jinkunchen.com`,
+# which is gated by Cloudflare Access (one-time PIN, allow list of one).
+# The `*.workers.dev` hostname would otherwise bypass Access entirely.
+workers_dev = false
+
+[env.staging.vars]
+SITE_ADMIN_STORAGE = "github"
+SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
+
+# NextAuth callback base URL. Public info (just the hostname), so it
+# lives here rather than in `wrangler secret put`. GITHUB_ID /
+# GITHUB_SECRET are secrets set separately per-environment.
+NEXTAUTH_URL = "https://staging.jinkunchen.com"
+
+# Require a signed-in site admin for every route on staging (except
+# the login page and `/api/auth/*` OAuth callbacks). Replaces the
+# Cloudflare Access edge gate — the whole staging site sits behind
+# NextAuth instead.
+STAGING_GATE = "1"
+
+# Auth mode: legacy keeps the GitHub-OAuth-via-NextAuth + HMAC app-token
+# paths active and skips the Cloudflare Access JWT verification entirely.
+# Switch back to "both" or "cf-access" if/when we re-enable the CF Access
+# integration (code + env below retained intentionally as dormant config).
+SITE_ADMIN_AUTH_MODE = "legacy"
+
+# Dormant Cloudflare Access env. Kept to avoid future re-setup; ignored
+# while SITE_ADMIN_AUTH_MODE=legacy.
+CF_ACCESS_TEAM_DOMAIN = "jinnkunn.cloudflareaccess.com"
+CF_ACCESS_AUD = "f30a77b414f5f37b27d6d3ec1acc4fddfff100810c7a1bd9933fe073f3a65cb2"
+SITE_ADMIN_EMAILS = "i@jinkunchen.com"
+SITE_ADMIN_SERVICE_TOKENS = "861cdfad2e676fb177cd85bef18351da.access"
+
+# Bind the staging worker to a stable hostname. `custom_domain = true`
+# tells wrangler to use the Workers Custom Domains API, which auto-
+# provisions both the DNS record in the `jinkunchen.com` zone AND the
+# TLS certificate — no manual DNS/cert setup needed. The default
+# `jinnkunn-site-staging.i-91d.workers.dev` URL keeps working in
+# parallel because `workers_dev = true` above.
+[[env.staging.routes]]
+pattern = "staging.jinkunchen.com"
+custom_domain = true
+
+[[env.staging.r2_buckets]]
+binding = "SITE_ASSETS"
+bucket_name = "jinnkunn-site-assets-staging"
+preview_bucket_name = "jinnkunn-site-assets-staging"
+
+[env.production]
+name = "jinnkunn-site"
+
+[env.production.vars]
+SITE_ADMIN_STORAGE = "github"
+SITE_ADMIN_REPO_BRANCH = "main"
+
+# NextAuth callback base URL (see staging section above).
+NEXTAUTH_URL = "https://jinkunchen.com"
+
+# Auth mode: legacy (see staging section above for rationale). CF Access
+# config retained dormant for future re-enable.
+SITE_ADMIN_AUTH_MODE = "legacy"
+
+CF_ACCESS_TEAM_DOMAIN = "jinnkunn.cloudflareaccess.com"
+CF_ACCESS_AUD = "7ea9df639c8025187658f2020e826a5db0dccd56366f209f7b5f02860802d383"
+SITE_ADMIN_EMAILS = "i@jinkunchen.com"
+SITE_ADMIN_SERVICE_TOKENS = "861cdfad2e676fb177cd85bef18351da.access"
+
+[[env.production.r2_buckets]]
+binding = "SITE_ASSETS"
+bucket_name = "jinnkunn-site-assets"
+preview_bucket_name = "jinnkunn-site-assets"
+
+[[env.production.routes]]
+pattern = "jinkunchen.com/*"
+zone_name = "jinkunchen.com"

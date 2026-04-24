@@ -19,6 +19,17 @@ import { chromium } from "playwright-core";
 
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "output", "ui-snapshots");
+const DEFAULT_TARGETS = [
+  "/",
+  "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities",
+  "/blog",
+  "/publications",
+  "/works",
+  "/site-admin",
+];
+const DEFAULT_THEMES = ["light", "dark"];
+const SCRIPT_NEXTAUTH_SECRET =
+  process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -75,24 +86,85 @@ function startNext(port) {
   const nextBin = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
   const child = spawn(process.execPath, [nextBin, "start", "-p", String(port)], {
     stdio: "inherit",
-    env: { ...process.env, PORT: String(port) },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+    },
   });
   return child;
 }
 
 function safeNameFromPath(p) {
-  if (p === "/") return "home";
-  return p.replace(/^\/+/, "").replace(/\/+$/, "").replaceAll("/", "__");
+  const url = new URL(p, "http://codex.local");
+  if (url.pathname === "/") return "home";
+  return url.pathname.replace(/^\/+/, "").replace(/\/+$/, "").replaceAll("/", "__");
 }
 
 function parseTargets(raw) {
-  const out = String(raw || "")
-    .split(/[,\s]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => (s.startsWith("/") ? s : `/${s}`))
-    .map((s) => (s === "/" ? s : s.replace(/\/+$/, "")));
-  return Array.from(new Set(out));
+  return Array.from(
+    new Set(
+      String(raw || "")
+        .split(/[,\s]+/g)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => (s.startsWith("/") ? s : `/${s}`))
+        .map((s) => (s === "/" ? s : s.replace(/\/+$/, ""))),
+    ),
+  );
+}
+
+function parseThemes(raw) {
+  return Array.from(
+    new Set(
+      String(raw || "")
+        .split(/[,\s]+/g)
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s === "light" || s === "dark"),
+    ),
+  );
+}
+
+function withTheme(pathname, theme) {
+  const url = new URL(pathname, "http://codex.local");
+  url.searchParams.set("theme", theme);
+  return `${url.pathname}${url.search}`;
+}
+
+async function gotoThemedPage(page, origin, pathname, theme) {
+  const url = `${origin}${withTheme(pathname, theme)}`;
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(
+    (expectedTheme) => document.documentElement.dataset.theme === expectedTheme,
+    theme,
+  );
+  return url;
+}
+
+async function captureSearchOverlay(page, runDir, theme, viewportName) {
+  try {
+    await page.click("#search-trigger");
+    await page.waitForSelector("#notion-search.open", { timeout: 4000 });
+    await page.fill("#notion-search-input", "drift");
+    await page.waitForTimeout(250);
+    const file = path.join(runDir, `blog__search-${theme}-${viewportName}.png`);
+    await page.screenshot({ path: file, fullPage: false });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+  } catch {
+    // ignore
+  }
+}
+
+function effectiveTargets() {
+  const targets = parseTargets(process.env.SNAPSHOT_TARGETS);
+  return targets.length > 0 ? targets : DEFAULT_TARGETS;
+}
+
+function effectiveThemes() {
+  const themes = parseThemes(process.env.SNAPSHOT_THEMES);
+  return themes.length > 0 ? themes : DEFAULT_THEMES;
 }
 
 async function launchBrowser() {
@@ -126,10 +198,8 @@ async function main() {
     });
     const page = await ctx.newPage();
 
-    const targets =
-      parseTargets(process.env.SNAPSHOT_TARGETS) ||
-      ["/", "/blog", "/publications", "/works", "/connect", "/sitemap"];
-    const effectiveTargets = targets.length > 0 ? targets : ["/", "/blog", "/publications", "/works", "/connect", "/sitemap"];
+    const targets = effectiveTargets();
+    const themes = effectiveThemes();
 
     const viewports = [
       { name: "desktop", width: 1280, height: 800 },
@@ -139,28 +209,17 @@ async function main() {
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
 
-      for (const p of effectiveTargets) {
-        const url = `${origin}${p}`;
-        await page.goto(url, { waitUntil: "domcontentloaded" });
-        // Give client-side behaviors (menus, toggles, TOC spy) time to attach.
-        await page.waitForTimeout(650);
+      for (const theme of themes) {
+        for (const target of targets) {
+          await gotoThemedPage(page, origin, target, theme);
+          // Give client-side behaviors (menus, toggles, TOC spy) time to attach.
+          await page.waitForTimeout(650);
 
-        const file = path.join(runDir, `${safeNameFromPath(p)}-${vp.name}.png`);
-        await page.screenshot({ path: file, fullPage: true });
+          const file = path.join(runDir, `${safeNameFromPath(target)}-${theme}-${vp.name}.png`);
+          await page.screenshot({ path: file, fullPage: true });
 
-        // Search overlay snapshot (helps catch regressions in focus/filters/styling).
-        if (p === "/blog") {
-          try {
-            await page.click("#search-trigger");
-            await page.waitForSelector("#notion-search.open", { timeout: 4000 });
-            await page.fill("#notion-search-input", "drift");
-            await page.waitForTimeout(250);
-            const f2 = path.join(runDir, `blog__search-${vp.name}.png`);
-            await page.screenshot({ path: f2, fullPage: false });
-            await page.keyboard.press("Escape");
-            await page.waitForTimeout(150);
-          } catch {
-            // ignore
+          if (target === "/blog") {
+            await captureSearchOverlay(page, runDir, theme, vp.name);
           }
         }
       }

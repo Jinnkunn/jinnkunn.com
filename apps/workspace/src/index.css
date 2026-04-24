@@ -1,0 +1,1915 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Theme tokens (Tailwind v4 `@theme` directive)
+ *
+ * Warm neutral palette + orange accent to mirror the website's Notion-
+ * esque style. Exposed as CSS custom properties + Tailwind utility
+ * classes (e.g. `bg-bg-sidebar`, `text-text-primary`, `rounded-xl-card`).
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Surface ladder: window (tablecloth) → sidebar card → surface card.
+   * `--bg-window-blend` is the semi-translucent tint painted over
+   * NSVisualEffectView on macOS (see src-tauri/main.rs). Fallback to the
+   * solid `--bg-window` on platforms without vibrancy. */
+  --color-bg-window: #ece9e2;
+  --color-bg-window-blend: rgba(236, 233, 226, 0.68);
+  --color-bg-sidebar: #ffffff;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-alt: #f7f4ed;
+  --color-bg-hover: rgba(55, 53, 47, 0.06);
+
+  --color-text-primary: #37352f;
+  --color-text-secondary: rgba(55, 53, 47, 0.82);
+  --color-text-muted: rgba(55, 53, 47, 0.62);
+  --color-text-inverse: #ffffff;
+
+  --color-border-subtle: rgba(55, 53, 47, 0.1);
+  --color-border-default: rgba(55, 53, 47, 0.16);
+  --color-border-strong: rgba(55, 53, 47, 0.24);
+
+  /* Notion `--color-orange` at 42% lightness so white-on-orange meets
+   * WCAG AA (~4.8:1). `--color-accent-strong` is the hover tier. */
+  --color-accent: hsl(30, 87%, 42%);
+  --color-accent-strong: hsl(30, 87%, 36%);
+
+  --color-danger: #b3261e;
+  --color-danger-strong: #8f1d17;
+  --color-warn: #b84a00;
+  --color-success: #1f7a34;
+
+  /* Layout */
+  --spacing-titlebar: 40px;
+  --spacing-sidebar: 248px;
+  --spacing-shell-gap: 8px;
+
+  --radius-card: 16px;
+
+  /* Tuned z-indices so sidebar card sits above titlebar (the card visually
+   * wraps the OS-rendered traffic lights via decorum). */
+  --z-titlebar: 30;
+  --z-sidebar-card: 32;
+}
+
+/* Dark mode is driven by `data-theme="dark"` on <html>, set by the
+ * useTheme hook (src/shell/useTheme.ts). Three user modes: "light",
+ * "dark", and "system". In "system" mode the hook mirrors the OS
+ * preference onto the attribute so this selector still drives the
+ * palette without any @media fallback in the CSS. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg-window: #120f0d;
+  --color-bg-window-blend: rgba(18, 15, 13, 0.65);
+  --color-bg-sidebar: #1b1816;
+  --color-bg-surface: #1b1816;
+  --color-bg-surface-alt: #25211d;
+  --color-bg-hover: rgba(242, 235, 223, 0.08);
+
+  --color-text-primary: #f2ebdf;
+  --color-text-secondary: rgba(242, 235, 223, 0.82);
+  --color-text-muted: rgba(242, 235, 223, 0.62);
+  --color-text-inverse: #171513;
+
+  --color-border-subtle: rgba(242, 235, 223, 0.08);
+  --color-border-default: rgba(242, 235, 223, 0.14);
+  --color-border-strong: rgba(242, 235, 223, 0.2);
+
+  --color-accent: hsl(30, 90%, 62%);
+  --color-accent-strong: hsl(30, 90%, 70%);
+  --color-danger: #ff8479;
+  --color-danger-strong: #ff9b91;
+  --color-warn: #f0a45a;
+  --color-success: #62cb7c;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ *
+ * Base reset
+ * ------------------------------------------------------------------ */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-window-blend);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ------------------------------------------------------------------ *
+ * Chrome shell — ported verbatim from personal-os `workspace-chrome.css`.
+ *
+ * Key layout: absolutely-positioned titlebar sits above a full-height
+ * flex-row body. Sidebar uses `margin: -32px 8px 8px 8px` to pull its top
+ * edge up into the titlebar's visual lane (so the rounded corners visually
+ * wrap the OS-rendered traffic lights repositioned by decorum).
+ * ------------------------------------------------------------------ */
+
+.app-shell {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.app-body {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  padding-top: var(--spacing-titlebar);
+}
+
+.titlebar-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--spacing-titlebar);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 14px;
+  background: transparent;
+  z-index: var(--z-titlebar);
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0.85;
+  transition:
+    opacity 150ms ease,
+    filter 170ms ease;
+}
+
+body[data-window-focused="true"] .titlebar-shell {
+  opacity: 1;
+}
+
+/* Theme toggle — compact ghost-style button pinned to the titlebar's
+ * right edge. Interactive, so it opts out of the parent's drag region.
+ * Size/padding match the breadcrumb text rhythm (~24px square). */
+.theme-toggle {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.theme-toggle:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  border-color: var(--color-border-subtle);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Reserve the sidebar's footprint on the titlebar so breadcrumb / actions
+ * render past the card's right edge. */
+.titlebar-leading-pad {
+  width: calc(var(--spacing-sidebar) + var(--spacing-shell-gap));
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.sidebar-surface {
+  position: relative;
+  z-index: var(--z-sidebar-card);
+  flex-shrink: 0;
+  width: var(--spacing-sidebar);
+  margin: -32px var(--spacing-shell-gap) var(--spacing-shell-gap) var(--spacing-shell-gap);
+  background: var(--color-bg-sidebar);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  backdrop-filter: none;
+  box-shadow:
+    0 1px 2px rgba(3, 8, 20, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: box-shadow 180ms ease;
+}
+
+body[data-window-focused="true"] .sidebar-surface {
+  box-shadow:
+    0 1px 3px rgba(3, 8, 20, 0.06),
+    0 0 0 0.5px rgba(3, 8, 20, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+:root[data-theme="dark"] .sidebar-surface {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+:root[data-theme="dark"] body[data-window-focused="true"] .sidebar-surface {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.45),
+    0 0 0 0.5px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* 52px drag strip. macOS traffic lights sit inside this via
+ * set_traffic_lights_inset(26, 28) — keep this height in sync. */
+.sidebar-header-strip {
+  display: flex;
+  align-items: stretch;
+  height: 52px;
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Sidebar nav items
+ * ------------------------------------------------------------------ */
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.sidebar-nav-item:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-primary);
+}
+
+.sidebar-nav-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.sidebar-nav-item[aria-current="page"] .sidebar-nav-item-icon {
+  color: var(--color-accent);
+}
+
+.sidebar-nav-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: var(--color-text-muted);
+}
+
+.sidebar-nav-item-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Shell-sidebar nested nav tree
+ *
+ * A surface with `navGroups` renders collapsible sub-groups under its
+ * top-level row when active. Items nest one level and share the
+ * `.sidebar-nav-item` look with a lighter font weight + indent.
+ * ------------------------------------------------------------------ */
+.sidebar-surface-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-surface-row__header {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sidebar-surface-row__select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tiny chevron button sitting flush-right of an active tree-bearing
+ * surface row. Stays quiet when idle (inherits the same muted stroke
+ * as the group carets); brightens on hover so it's discoverable. */
+.sidebar-surface-row__disclosure {
+  flex-shrink: 0;
+  width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.sidebar-surface-row__disclosure:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-primary);
+}
+
+.sidebar-surface-row__disclosure:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.sidebar-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px 0;
+  padding-left: 4px;
+}
+
+.sidebar-tree__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-tree__group + .sidebar-tree__group {
+  margin-top: 3px;
+}
+
+.sidebar-tree__group-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+  width: 100%;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sidebar-tree__group-header:hover,
+.sidebar-tree__group-header:focus-visible {
+  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  color: var(--color-text-secondary);
+}
+
+.sidebar-tree__group-header:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.sidebar-tree__items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+}
+
+.sidebar-tree__item {
+  padding-inline-start: 20px; /* align under chevron + indent under group */
+  font-size: 12.5px;
+}
+
+.sidebar-tree__badge {
+  min-width: 18px;
+  padding: 0 6px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  border-radius: 999px;
+}
+
+/* Single-column main layout — the Site Admin surface no longer has its
+ * own inline sidebar, so the main column just stretches. Kept as a
+ * named class so panels can still rely on the flex-column gap. */
+.site-admin-layout__main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Site admin shell: top bar, connection pill (popover), dev drawer.
+ *
+ * Layout: `.site-admin-shell` is a vertical stack — topbar on row 1,
+ * body (sidebar + main) on row 2, drawer docks below when open.
+ * ------------------------------------------------------------------ */
+.site-admin-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.site-admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+  min-width: 0;
+}
+
+.site-admin-topbar__crumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.site-admin-topbar__crumb-root {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.site-admin-topbar__crumb-sep {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.site-admin-topbar__crumb-section {
+  color: var(--color-text-secondary);
+}
+
+.site-admin-topbar__crumb-tab {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-admin-topbar__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.site-admin-topbar__drawer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.site-admin-topbar__drawer-btn:hover,
+.site-admin-topbar__drawer-btn:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.site-admin-topbar__drawer-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.site-admin-topbar__drawer-btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-surface));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border-default));
+  color: var(--color-accent-strong);
+}
+
+/* Connection pill ------------------------------------------------- */
+.site-admin-pill-root {
+  position: relative;
+}
+
+.site-admin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.site-admin-pill:hover,
+.site-admin-pill:focus-visible {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
+}
+
+.site-admin-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.site-admin-pill__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+}
+
+.site-admin-pill[data-tone="connected"] .site-admin-pill__dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 22%, transparent);
+}
+
+.site-admin-pill[data-tone="loading"] .site-admin-pill__dot {
+  background: var(--color-warn);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 22%, transparent);
+}
+
+.site-admin-pill[data-tone="disconnected"] .site-admin-pill__dot {
+  background: var(--color-border-strong);
+}
+
+.site-admin-pill__label {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+/* Popover ------------------------------------------------------- */
+.site-admin-pill__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  width: min(360px, 92vw);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+  box-shadow:
+    0 4px 12px rgba(15, 15, 15, 0.08),
+    0 18px 48px rgba(15, 15, 15, 0.18);
+}
+
+.site-admin-pill__popover-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.site-admin-pill__popover-header p {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.site-admin-pill__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+}
+
+.site-admin-pill__field input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.site-admin-pill__field input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.site-admin-pill__profile-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.site-admin-pill__profile-select {
+  flex: 1 1 140px;
+  min-width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.site-admin-pill__profile-select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.site-admin-pill__profile-btn {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+.site-admin-pill__profile-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.site-admin-pill__profile-add-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.site-admin-pill__profile-add-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.site-admin-pill__profile-add-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.site-admin-pill__profile-warn {
+  color: var(--color-warn);
+}
+
+.site-admin-pill__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.site-admin-pill__note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.site-admin-pill__links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+}
+
+.site-admin-pill__links a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.site-admin-pill__links a:hover {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+}
+
+.site-admin-pill__cf {
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 8px;
+}
+
+.site-admin-pill__cf summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.site-admin-pill__muted {
+  color: var(--color-text-muted);
+}
+
+.site-admin-pill__cf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.site-admin-pill__warn {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--color-warn);
+  background: color-mix(in srgb, var(--color-warn) 10%, transparent);
+  border-radius: 6px;
+}
+
+.site-admin-pill__warn code {
+  font-size: 10.5px;
+}
+
+.site-admin-pill__reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+/* Dev drawer ---------------------------------------------------- */
+.site-admin-dev-drawer {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  margin-top: 6px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  overflow: hidden;
+  box-shadow: 0 -6px 24px rgba(15, 15, 15, 0.08);
+}
+
+.site-admin-dev-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.site-admin-dev-drawer__header h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.site-admin-dev-drawer__close {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.site-admin-dev-drawer__close:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.site-admin-dev-drawer__body {
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+/* ------------------------------------------------------------------ *
+ * List + Detail layout (Posts, Pages)
+ *
+ * Side-by-side: sticky list column on the left, editor/empty-state on
+ * the right. Keeps the list visible while editing so jumping between
+ * entries is a single click.
+ * ------------------------------------------------------------------ */
+.list-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.list-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 2px;
+}
+
+.list-detail__titleblock {
+  min-width: 0;
+}
+
+.list-detail__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+.list-detail__description {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.list-detail__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.list-detail__error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-danger);
+  font-size: 12px;
+}
+
+.list-detail__grid {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+/* Left column ---------------------------------------------------- */
+.list-detail__list {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+  overflow: hidden;
+  max-height: calc(100vh - 160px);
+}
+
+.list-detail__list-header {
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 8px 10px;
+  background: var(--color-bg-surface-alt);
+}
+
+.list-detail__list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.list-detail__drafts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.list-detail__refresh {
+  font-size: 11.5px;
+  padding: 3px 8px;
+}
+
+.list-detail__list-body {
+  overflow: auto;
+  min-height: 0;
+}
+
+.list-detail__rows {
+  margin: 0;
+  padding: 4px 4px 6px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.list-detail__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: stretch;
+  text-align: left;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 100ms ease;
+}
+
+.list-detail__row:hover {
+  background: var(--color-bg-hover);
+}
+
+.list-detail__row[aria-current="true"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.list-detail__row[aria-current="true"] .list-detail__row-title {
+  color: var(--color-accent-strong);
+}
+
+.list-detail__row-title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-detail__row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.list-detail__draft-dot {
+  color: var(--color-warn);
+  font-size: 10px;
+}
+
+.list-detail__empty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+}
+
+/* Right column --------------------------------------------------- */
+.list-detail__detail {
+  min-width: 0;
+}
+
+.list-detail__empty-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 20px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 12px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.list-detail__empty-detail p {
+  margin: 0;
+  font-size: 13px;
+}
+
+@media (max-width: 960px) {
+  .list-detail__grid {
+    grid-template-columns: 1fr !important;
+  }
+  .list-detail__list {
+    position: static;
+    max-height: 360px;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Command palette (⌘K)
+ * ------------------------------------------------------------------ */
+.command-palette__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in srgb, #000 35%, transparent);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: min(14vh, 120px) 16px 16px;
+}
+
+.command-palette {
+  width: min(560px, 100%);
+  max-height: min(60vh, 480px);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  box-shadow:
+    0 10px 30px rgba(15, 15, 15, 0.18),
+    0 30px 80px rgba(15, 15, 15, 0.28);
+  overflow: hidden;
+}
+
+.command-palette__input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.command-palette__icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.command-palette__input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.command-palette__input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.command-palette__hint-key {
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-alt);
+  font-family: inherit;
+}
+
+.command-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.command-palette__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  transition: background-color 80ms ease;
+}
+
+.command-palette__row[aria-selected="true"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent-strong);
+}
+
+.command-palette__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette__hint {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+}
+
+.command-palette__empty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Draft restore banner (Post/PageEditor)
+ * ------------------------------------------------------------------ */
+.draft-restore {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-warn) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warn) 9%, transparent);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.draft-restore__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.draft-restore__btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Error boundary (crash card)
+ * ------------------------------------------------------------------ */
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 20px;
+}
+
+.error-boundary__card {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  background: var(--color-bg-surface);
+}
+
+.error-boundary__icon {
+  font-size: 28px;
+  line-height: 1;
+  color: var(--color-warn);
+}
+
+.error-boundary__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+.error-boundary__message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: 8px 10px;
+  background: var(--color-bg-surface-alt);
+  border-radius: 8px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  word-break: break-word;
+}
+
+.error-boundary__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error-boundary__details {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.error-boundary__details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.error-boundary__details pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+  overflow: auto;
+  max-height: 240px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* ------------------------------------------------------------------ *
+ * Markdown editor chrome: toolbar + wrapper
+ * ------------------------------------------------------------------ */
+.mdx-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+}
+
+.mdx-editor__cm {
+  min-width: 0;
+}
+
+.mdx-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-text-primary) 3%, var(--color-bg-surface));
+}
+
+.mdx-toolbar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mdx-toolbar__group + .mdx-toolbar__group {
+  margin-inline-start: 4px;
+  padding-inline-start: 4px;
+  border-inline-start: 1px solid var(--color-border-subtle);
+}
+
+.mdx-toolbar__btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  min-width: 28px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+
+.mdx-toolbar__btn:hover,
+.mdx-toolbar__btn:focus-visible {
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+}
+
+.mdx-toolbar__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.mdx-toolbar__btn code {
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.mdx-toolbar__hint {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.mdx-toolbar__hint kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  vertical-align: 1px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared primitives — buttons, inputs
+ *
+ * Flat selectors (no `button.btn`) so variant modifiers
+ * (.btn--secondary / .btn--ghost / .btn--danger) aren't overridden by
+ * the base rule. See old styles.css Dec-2025 fix notes.
+ * ------------------------------------------------------------------ */
+.btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.btn:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.btn.btn--secondary {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.btn.btn--secondary:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  border-color: var(--color-border-strong);
+}
+
+.btn.btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: transparent;
+  padding: 6px 10px;
+}
+
+.btn.btn--ghost:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  color: var(--color-text-primary);
+}
+
+.btn.btn--danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #ffffff;
+}
+
+.btn.btn--danger:hover {
+  background: var(--color-danger-strong);
+  border-color: var(--color-danger-strong);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Surface card + message banner
+ * ------------------------------------------------------------------ */
+.surface-card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.message-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface-alt);
+  padding: 10px 12px;
+  border-left: 4px solid var(--color-accent);
+}
+
+.message-bar.kind-success {
+  border-left-color: var(--color-success);
+}
+
+.message-bar.kind-error {
+  border-left-color: var(--color-danger);
+}
+
+.message-bar.kind-warn {
+  border-left-color: var(--color-warn);
+}
+
+.message-bar p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.message-bar__close {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+
+.message-bar__close:hover,
+.message-bar__close:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * KV pairs (Status surface)
+ * ------------------------------------------------------------------ */
+.key-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.key-values > div {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+  padding: 8px 10px;
+}
+
+.key-values dt {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.key-values dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ *
+ * Grid tables (nav + routes editors)
+ * ------------------------------------------------------------------ */
+.grid-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(180px, 2fr) minmax(100px, 0.8fr) minmax(80px, 0.7fr) minmax(90px, 0.7fr) auto;
+  align-items: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--color-bg-surface);
+}
+
+.grid-row.routes-override {
+  grid-template-columns: minmax(180px, 1.3fr) minmax(220px, 2fr) auto;
+}
+
+.grid-row.routes-protected {
+  grid-template-columns: minmax(170px, 1.2fr) minmax(220px, 1.8fr) minmax(120px, 0.9fr) minmax(180px, 1.2fr) auto;
+}
+
+.grid-row.pubs-profile-row {
+  grid-template-columns: minmax(140px, 1fr) minmax(260px, 3fr) auto;
+}
+
+/* Publications entry cards ------------------------------------------- */
+.pubs-entry-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.pubs-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pubs-entry-index {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  min-width: 28px;
+}
+
+.pubs-entry-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.pubs-entry-title-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.pubs-entry-grid {
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.pubs-entry-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+}
+
+.pubs-entry-label--wide {
+  grid-column: 1 / -1;
+}
+
+.pubs-entry-label input,
+.pubs-entry-label textarea {
+  padding: 5px 7px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.pubs-entry-label textarea {
+  resize: vertical;
+  min-height: 48px;
+}
+
+.pubs-entry-label input:focus-visible,
+.pubs-entry-label textarea:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.pubs-label-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.pubs-label-chip:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.pubs-label-chip--selected {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg-surface));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border-default));
+  color: var(--color-accent-strong);
+}
+
+/* News entry cards ---------------------------------------------------- */
+.news-entry-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.news-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.news-entry-date {
+  padding: 5px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.news-entry-date:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.news-entry-index {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.news-entry-body {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.55;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 72px;
+}
+
+.news-entry-body:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.grid-header {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+}
+
+.row-note {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.row-note.dirty {
+  color: var(--color-warn);
+}
+
+.row-note.clean {
+  color: var(--color-success);
+}
+
+.empty-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Drag-reorder primitive ------------------------------------------------ */
+/* Applied to the drag handle; the row itself gets `data-drag-state` via
+   useDragReorder for visual feedback. */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  border-radius: 4px;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.drag-handle:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.drag-handle:active,
+.drag-handle:focus-visible {
+  cursor: grabbing;
+  outline: none;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+[data-drag-state="dragging"] {
+  opacity: 0.45;
+}
+
+[data-drag-state="over"] {
+  box-shadow:
+    0 0 0 1px var(--color-accent) inset,
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* ------------------------------------------------------------------ *
+ * Debug response pane + details
+ * ------------------------------------------------------------------ */
+pre.debug-pane {
+  margin: 0;
+  min-height: 120px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+details.surface-details {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface-alt);
+  padding: 12px 14px;
+}
+
+details.surface-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--color-text-primary);
+  padding: 2px 0;
+}
+
+details.surface-details[open] > summary {
+  margin-bottom: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Responsive fallback — hide the sidebar card under a narrow breakpoint
+ * so the main column stays usable. Traffic lights stay native at their
+ * fallback position since there's no card to align to.
+ * ------------------------------------------------------------------ */
+@media (max-width: 840px) {
+  .sidebar-surface {
+    display: none;
+  }
+  .titlebar-leading-pad {
+    width: 78px; /* room for native traffic lights */
+  }
+}

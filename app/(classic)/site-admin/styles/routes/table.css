@@ -3,14 +3,14 @@
   display: grid;
   grid-template-columns: 1.15fr 0.85fr 1.4fr;
   gap: 0;
-  border-top: 1px solid rgba(55, 53, 47, 0.08);
+  border-top: 1px solid var(--ds-border-subtle);
   /* Ensure long admin controls don't get clipped; table becomes horizontally scrollable. */
   min-width: 1080px;
 }
 
 .routes-explorer__row--head {
   border-top: 0;
-  background: rgba(55, 53, 47, 0.03);
+  background: var(--ds-surface-soft);
   font-weight: 700;
 }
 
@@ -20,35 +20,35 @@
 }
 
 .routes-explorer__row:not(.routes-explorer__row--head):hover {
-  background: rgba(55, 53, 47, 0.03);
+  background: var(--ds-surface-soft);
 }
 
 /* Protection state: make it obvious when a page is password-protected. */
 .routes-explorer__row[data-protected="direct"],
 .routes-tree__row[data-protected="direct"] {
-  background: rgba(255, 236, 179, 0.24);
-  box-shadow: inset 3px 0 0 rgba(222, 120, 49, 0.35);
+  background: var(--ds-warning-bg);
+  box-shadow: inset 3px 0 0 var(--ds-warning-border);
 }
 
 .routes-explorer__row[data-protected="direct"]:hover,
 .routes-tree__row[data-protected="direct"] .routes-tree__row-top:hover {
-  background: rgba(255, 236, 179, 0.32);
+  background: var(--ds-warning-bg);
 }
 
 .routes-explorer__row[data-protected="direct"] .routes-explorer__code {
-  border-color: rgba(222, 120, 49, 0.28);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--ds-warning-border);
+  background: var(--ds-surface-panel);
 }
 
 .routes-explorer__row[data-protected="inherited"],
 .routes-tree__row[data-protected="inherited"] {
-  background: rgba(196, 224, 255, 0.14);
-  box-shadow: inset 3px 0 0 rgba(46, 170, 220, 0.24);
+  background: var(--ds-info-bg);
+  box-shadow: inset 3px 0 0 var(--ds-info-border);
 }
 
 .routes-explorer__row[data-protected="inherited"]:hover,
 .routes-tree__row[data-protected="inherited"] .routes-tree__row-top:hover {
-  background: rgba(196, 224, 255, 0.2);
+  background: var(--ds-info-bg);
 }
 
 .routes-explorer__title-main {
@@ -66,23 +66,33 @@
 
 .routes-explorer__expander {
   appearance: none;
-  border: 1px solid rgba(55, 53, 47, 0.14);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ds-surface-panel);
   width: 34px;
   height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: rgba(55, 53, 47, 0.86);
+  color: var(--ds-text-secondary);
   transition: transform 140ms ease, background 140ms ease;
+  flex: 0 0 auto;
+}
+
+/* Rendered when a row has no expandable children. Keeps the chevron
+ * column aligned without the button's visual weight. Width is
+ * intentionally smaller than the 34px expander so leaf rows read as
+ * "there is no control here" rather than "disabled control". */
+.routes-explorer__expander-spacer {
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
 }
 
 .routes-explorer__expander:hover {
   transform: translateY(-1px);
-  background: rgba(55, 53, 47, 0.04);
+  background: var(--ds-interactive-hover);
 }
 
 .routes-explorer__chev {
@@ -98,7 +108,7 @@
 
 .routes-explorer__id {
   font-size: 12px;
-  color: rgba(55, 53, 47, 0.6);
+  color: var(--ds-text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   white-space: nowrap;
@@ -118,10 +128,10 @@
     "Liberation Mono", "Courier New", monospace;
   font-size: 13px;
   padding: 5px 8px;
-  border: 1px solid rgba(55, 53, 47, 0.14);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  color: rgba(55, 53, 47, 0.86);
+  background: var(--ds-field-bg);
+  color: var(--ds-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -132,7 +142,7 @@
   appearance: none;
   border: 0;
   background: transparent;
-  color: rgba(55, 53, 47, 0.72);
+  color: var(--ds-text-muted);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -141,7 +151,7 @@
 }
 
 .routes-explorer__copy:hover {
-  color: rgba(55, 53, 47, 0.9);
+  color: var(--ds-text-primary);
 }
 
 .routes-explorer__pill {
@@ -153,9 +163,9 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  border: 1px solid rgba(55, 53, 47, 0.14);
-  background: rgba(55, 53, 47, 0.04);
-  color: rgba(55, 53, 47, 0.78);
+  border: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-soft);
+  color: var(--ds-text-secondary);
   white-space: nowrap;
 }
 
@@ -171,31 +181,31 @@
 }
 
 .routes-explorer__pill--nav {
-  background: rgba(46, 204, 113, 0.12);
-  border-color: rgba(46, 204, 113, 0.22);
-  color: rgba(21, 118, 66, 0.95);
+  background: var(--ds-success-bg);
+  border-color: var(--ds-success-border);
+  color: var(--ds-success-text);
 }
 
 .routes-explorer__pill--override {
-  background: rgba(222, 120, 49, 0.1);
-  border-color: rgba(222, 120, 49, 0.18);
-  color: rgba(130, 67, 18, 0.95);
+  background: var(--ds-warning-bg);
+  border-color: var(--ds-warning-border);
+  color: var(--ds-warning-text);
 }
 
 .routes-explorer__pill--protected {
-  background: rgba(255, 236, 179, 0.55);
-  border-color: rgba(222, 120, 49, 0.22);
-  color: rgba(110, 56, 14, 0.95);
+  background: var(--ds-warning-bg);
+  border-color: var(--ds-warning-border);
+  color: var(--ds-warning-text);
 }
 
 .routes-explorer__pill--protected-inherited {
-  background: rgba(196, 224, 255, 0.4);
-  border-color: rgba(46, 170, 220, 0.22);
-  color: rgba(18, 90, 120, 0.95);
+  background: var(--ds-info-bg);
+  border-color: var(--ds-info-border);
+  color: var(--ds-info-text);
 }
 
 .routes-explorer__pill--error {
-  background: rgba(235, 87, 87, 0.12);
-  border-color: rgba(235, 87, 87, 0.28);
-  color: rgba(140, 32, 32, 0.95);
+  background: var(--ds-danger-bg);
+  border-color: var(--ds-danger-border);
+  color: var(--ds-danger-text);
 }

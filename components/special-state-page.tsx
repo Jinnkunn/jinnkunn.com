@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Panel } from "@/components/ui/card";
 
 type SpecialStatePageProps = {
   badge: string;
@@ -22,7 +23,7 @@ export function SpecialStatePage({
   const isInline = layout === "inline";
   return (
     <main className={`page-state super-content page-state--${tone}`}>
-      <section className="page-state__panel" aria-live="polite">
+      <Panel className="page-state__panel" aria-live="polite">
         {isInline ? (
           <div className="page-state__inline" role="status" aria-label={`${badge}: ${title}`}>
             <div className="page-state__badge page-state__badge--inline">{badge}</div>
@@ -39,7 +40,7 @@ export function SpecialStatePage({
         {isInline && description ? <p className="page-state__desc">{description}</p> : null}
         {children ? <div className="page-state__body">{children}</div> : null}
         {actions ? <div className="page-state__actions">{actions}</div> : null}
-      </section>
+      </Panel>
     </main>
   );
 }

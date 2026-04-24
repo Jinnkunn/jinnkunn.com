@@ -1,0 +1,110 @@
+name: Deploy (auto)
+
+# Rebuild + deploy the Cloudflare Worker when main or site-admin-staging
+# picks up a change that affects the public site. Staging and production
+# share one workflow but pick the target via the branch name.
+#
+# Scope: anything outside `apps/**` (Tauri workspace), `tests/**`, `docs/**`,
+# unrelated `.github/workflows/*`, and markdown-only edits. Expressed as
+# `paths-ignore` so new top-level dirs default to "deployable" — safer than
+# a positive allow-list that silently drops renames.
+#
+# Required secrets:
+#   CLOUDFLARE_API_TOKEN
+#   CLOUDFLARE_ACCOUNT_ID
+# Optional:
+#   CLOUDFLARE_WORKER_NAME_STAGING / CLOUDFLARE_WORKER_NAME_PRODUCTION
+#     — only needed if the worker names diverge from the wrangler.toml
+#       declared names (jinnkunn-site / jinnkunn-site-staging).
+
+on:
+  push:
+    branches:
+      - main
+      - site-admin-staging
+    paths-ignore:
+      # Tauri desktop workspace — not part of the public site.
+      - "apps/**"
+      # Tests + docs — CI gates them, no runtime impact.
+      - "tests/**"
+      - "docs/**"
+      - "**/*.md"
+      - "**/README*"
+      # Other workflows — avoid meta-loops on CI-only edits.
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/workspace-release.yml"
+      - ".github/workflows/prod-smoke.yml"
+      - ".github/workflows/search-snapshots.yml"
+      - ".github/workflows/ui-compare.yml"
+      - ".github/workflows/ui-smoke.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target environment (staging or production)"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-on-content-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: |
+      ${{ github.event_name == 'workflow_dispatch' ||
+          github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/site-admin-staging' }}
+    env:
+      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch'
+        && inputs.target
+        || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Guard — required secrets present
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set to auto-deploy."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Build OpenNext bundle
+        run: npm run build:cf
+
+      - name: Deploy to Cloudflare (${{ env.TARGET_ENV }})
+        run: |
+          npx --yes wrangler@latest deploy --env "$TARGET_ENV" --message "auto deploy ${{ github.sha }}"
+
+      - name: Smoke ping
+        run: |
+          URL="https://staging.jinkunchen.com"
+          if [ "$TARGET_ENV" = "production" ]; then URL="https://jinkunchen.com"; fi
+          echo "Pinging $URL/robots.txt"
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL/robots.txt" || echo 000)
+            if [ "$CODE" = "200" ]; then echo "OK ($CODE)"; exit 0; fi
+            echo "try $i: $CODE"; sleep 6
+          done
+          echo "::error::smoke ping did not reach 200 after retries"
+          exit 1

@@ -1,29 +1,27 @@
 import type { SiteAdminDeployPayload, SiteAdminDeployResult } from "./api-types";
 
-import {
-  asApiAck,
-  isRecord,
-  readApiErrorCode,
-  readApiErrorMessage,
-  unwrapApiData,
-} from "../client/api-guards.ts";
+import { isRecord } from "../client/api-guards.ts";
+import { parseApiContract } from "./contract-helpers.ts";
 
 export function isSiteAdminDeployOk(v: SiteAdminDeployResult): v is SiteAdminDeployPayload {
   return v.ok;
 }
 
 export function parseSiteAdminDeployResult(x: unknown): SiteAdminDeployResult | null {
-  const ack = asApiAck(x);
-  if (!ack) return null;
-  if (!ack.ok) {
+  return parseApiContract<SiteAdminDeployResult>(x, (payload) => {
+    if (!isRecord(payload)) return null;
+    if (typeof payload.triggeredAt !== "string" || typeof payload.status !== "number") return null;
+    const provider = typeof payload.provider === "string" ? payload.provider.trim() : "";
+    const deploymentId =
+      typeof payload.deploymentId === "string" ? payload.deploymentId.trim() : "";
     return {
-      ok: false,
-      error: readApiErrorMessage(x) || ack.error || "Request failed",
-      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
+      ok: true,
+      triggeredAt: payload.triggeredAt,
+      status: payload.status,
+      ...(provider === "generic" || provider === "vercel" || provider === "cloudflare"
+        ? { provider }
+        : {}),
+      ...(deploymentId ? { deploymentId } : {}),
     };
-  }
-  const payload = unwrapApiData(x);
-  if (!isRecord(payload)) return null;
-  if (typeof payload.triggeredAt !== "string" || typeof payload.status !== "number") return null;
-  return { ok: true, triggeredAt: payload.triggeredAt, status: payload.status };
+  });
 }

@@ -1,13 +1,15 @@
 "use client";
 
 import { StatusBadge } from "@/components/site-admin/status/badge";
+import { Card } from "@/components/ui/card";
 import type { StatusViewCoreProps, StatusViewDerivedProps } from "@/components/site-admin/status/view-types";
 
 type SiteAdminRequirementsCardProps = StatusViewCoreProps & Pick<StatusViewDerivedProps, "readiness">;
 
 export function SiteAdminRequirementsCard({ payload, readiness }: SiteAdminRequirementsCardProps) {
+  const hasDeployTarget = payload.env.hasDeployTarget || payload.env.hasDeployHookUrl;
   return (
-    <div className="site-admin-card">
+    <Card className="site-admin-card">
       <div className="site-admin-card__title">Admin Requirements</div>
       <dl className="site-admin-kv">
         <div className="site-admin-kv__row">
@@ -38,10 +40,10 @@ export function SiteAdminRequirementsCard({ payload, readiness }: SiteAdminRequi
           </dd>
         </div>
         <div className="site-admin-kv__row">
-          <dt>Deploy Hook</dt>
+          <dt>Deploy Target</dt>
           <dd>
-            <StatusBadge ok={payload.env.hasDeployHookUrl}>
-              {payload.env.hasDeployHookUrl ? "configured" : "missing"}
+            <StatusBadge ok={hasDeployTarget}>
+              {hasDeployTarget ? "configured" : "missing"}
             </StatusBadge>
           </dd>
         </div>
@@ -54,6 +56,6 @@ export function SiteAdminRequirementsCard({ payload, readiness }: SiteAdminRequi
           </dd>
         </div>
       </dl>
-    </div>
+    </Card>
   );
 }

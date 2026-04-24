@@ -1,13 +1,8 @@
 import type { SiteAdminStat, SiteAdminStatusPayload, SiteAdminStatusResult } from "./api-types";
 
+import { isRecord } from "../client/api-guards.ts";
 import {
-  asApiAck,
-  isRecord,
-  readApiErrorCode,
-  readApiErrorMessage,
-  unwrapApiData,
-} from "../client/api-guards.ts";
-import {
+  parseApiContract,
   toBooleanOrNull,
   toNumberOrNull,
   toStringValue,
@@ -104,6 +99,47 @@ function parseStringList(value: unknown): string[] | null {
   return out;
 }
 
+function parseDiagnostics(
+  value: unknown,
+): SiteAdminStatusPayload["diagnostics"] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const total = toNumberOrNull(value.total);
+  const warnCount = toNumberOrNull(value.warnCount);
+  const errorCount = toNumberOrNull(value.errorCount);
+  if (total === null || warnCount === null || errorCount === null) return null;
+  const oldestAt = value.oldestAt === null ? null : toStringValue(value.oldestAt).trim() || null;
+  const newestAt = value.newestAt === null ? null : toStringValue(value.newestAt).trim() || null;
+  if (!Array.isArray(value.recent)) return null;
+  const recent: NonNullable<SiteAdminStatusPayload["diagnostics"]>["recent"] = [];
+  for (const item of value.recent) {
+    if (!isRecord(item)) return null;
+    const at = toStringValue(item.at).trim();
+    const severityRaw = toStringValue(item.severity).trim();
+    const severity =
+      severityRaw === "warn" || severityRaw === "error" ? severityRaw : null;
+    const source = toStringValue(item.source).trim();
+    const message = toStringValue(item.message);
+    if (!at || !severity || !source) return null;
+    const detail = toStringValue(item.detail).trim();
+    recent.push({
+      at,
+      severity,
+      source,
+      message,
+      ...(detail ? { detail } : {}),
+    });
+  }
+  return {
+    total,
+    warnCount,
+    errorCount,
+    oldestAt,
+    newestAt,
+    recent,
+  };
+}
+
 function parsePreflight(
   value: unknown,
 ): SiteAdminStatusPayload["preflight"] | undefined | null {
@@ -165,25 +201,86 @@ function parsePreflight(
   };
 }
 
+function parseNullableString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const out = toStringValue(value).trim();
+  return out || null;
+}
+
+function parseSource(
+  value: unknown,
+): SiteAdminStatusPayload["source"] | null {
+  if (!isRecord(value)) return null;
+  const storeKindRaw = toStringValue(value.storeKind).trim().toLowerCase();
+  const storeKind =
+    storeKindRaw === "github" ? "github" : storeKindRaw === "local" ? "local" : "";
+  if (!storeKind) return null;
+  const pendingDeploy =
+    value.pendingDeploy === null ? null : toBooleanOrNull(value.pendingDeploy);
+  if (pendingDeploy === null && value.pendingDeploy !== null) return null;
+  const out: SiteAdminStatusPayload["source"] = {
+    storeKind,
+    repo: parseNullableString(value.repo),
+    branch: parseNullableString(value.branch),
+    headSha: parseNullableString(value.headSha),
+    headCommitTime: parseNullableString(value.headCommitTime),
+    pendingDeploy,
+  };
+  if ("pendingDeployReason" in value) {
+    const pendingDeployReason = parseNullableString(value.pendingDeployReason);
+    if (pendingDeployReason !== null) {
+      out.pendingDeployReason = pendingDeployReason;
+    }
+  }
+  const error = toStringValue(value.error).trim();
+  if (error) out.error = error;
+  return out;
+}
+
 function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | null {
   if (!isRecord(value)) return null;
   if (!isRecord(value.env) || !isRecord(value.build) || !isRecord(value.content)) return null;
-  if (!isRecord(value.files) || !isRecord(value.notion)) return null;
+  if (!isRecord(value.files) || !isRecord(value.notion) || !isRecord(value.source)) return null;
+
+  const runtimeProviderRaw = toStringValue(value.env.runtimeProvider).trim().toLowerCase();
+  const runtimeProviderParsed =
+    runtimeProviderRaw === "local" ||
+    runtimeProviderRaw === "vercel" ||
+    runtimeProviderRaw === "cloudflare" ||
+    runtimeProviderRaw === "unknown"
+      ? runtimeProviderRaw
+      : "";
+  const runtimeProvider: SiteAdminStatusPayload["env"]["runtimeProvider"] =
+    runtimeProviderParsed ||
+    (toBooleanOrNull(value.env.isVercel) === true ? "vercel" : "local");
+
+  const hasDeployTarget =
+    value.env.hasDeployTarget === undefined
+      ? toBooleanOrNull(value.env.hasDeployHookUrl)
+      : toBooleanOrNull(value.env.hasDeployTarget);
 
   const env = {
+    runtimeProvider,
+    runtimeRegion:
+      toStringValue(value.env.runtimeRegion) || toStringValue(value.env.vercelRegion),
+    hasDeployTarget,
     nodeEnv: toStringValue(value.env.nodeEnv),
     isVercel: toBooleanOrNull(value.env.isVercel),
     vercelRegion: toStringValue(value.env.vercelRegion),
     hasNotionToken: toBooleanOrNull(value.env.hasNotionToken),
     hasNotionAdminPageId: toBooleanOrNull(value.env.hasNotionAdminPageId),
     notionVersion: toStringValue(value.env.notionVersion),
-    hasDeployHookUrl: toBooleanOrNull(value.env.hasDeployHookUrl),
+    hasDeployHookUrl:
+      value.env.hasDeployHookUrl === undefined
+        ? hasDeployTarget
+        : toBooleanOrNull(value.env.hasDeployHookUrl),
     hasNextAuthSecret: toBooleanOrNull(value.env.hasNextAuthSecret),
     hasFlagsSecret: toBooleanOrNull(value.env.hasFlagsSecret),
     githubAllowlistCount: toNumberOrNull(value.env.githubAllowlistCount),
     contentGithubAllowlistCount: toNumberOrNull(value.env.contentGithubAllowlistCount),
   };
   if (
+    env.hasDeployTarget === null ||
     env.isVercel === null ||
     env.hasNotionToken === null ||
     env.hasNotionAdminPageId === null ||
@@ -196,12 +293,24 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
     return null;
   }
 
+  const buildProviderRaw = toStringValue(value.build.provider).trim().toLowerCase();
+  const buildProvider: SiteAdminStatusPayload["build"]["provider"] =
+    buildProviderRaw === "local" ||
+    buildProviderRaw === "vercel" ||
+    buildProviderRaw === "cloudflare" ||
+    buildProviderRaw === "unknown"
+      ? buildProviderRaw
+      : env.runtimeProvider;
+
   const build = {
+    provider: buildProvider,
     commitSha: toStringValue(value.build.commitSha),
     commitShort: toStringValue(value.build.commitShort),
     branch: toStringValue(value.build.branch),
     commitMessage: toStringValue(value.build.commitMessage),
     deploymentId: toStringValue(value.build.deploymentId),
+    deploymentUrl:
+      toStringValue(value.build.deploymentUrl) || toStringValue(value.build.vercelUrl),
     vercelUrl: toStringValue(value.build.vercelUrl),
   };
 
@@ -238,16 +347,23 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
   const rootPage = parseNotionPage(value.notion.rootPage);
   if (adminPage === null && value.notion.adminPage !== null) return null;
   if (rootPage === null && value.notion.rootPage !== null) return null;
+  const source = parseSource(value.source);
+  if (!source) return null;
 
   const freshness = parseFreshness(value.freshness);
   if (freshness === null) return null;
   const preflight = parsePreflight(value.preflight);
   if (preflight === null) return null;
+  const diagnostics = parseDiagnostics(value.diagnostics);
+  if (diagnostics === null) return null;
 
   return {
     ok: true,
     env: {
       nodeEnv: env.nodeEnv,
+      runtimeProvider: env.runtimeProvider,
+      runtimeRegion: env.runtimeRegion,
+      hasDeployTarget: env.hasDeployTarget,
       isVercel: env.isVercel,
       vercelRegion: env.vercelRegion,
       hasNotionToken: env.hasNotionToken,
@@ -283,21 +399,13 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
       adminPage,
       rootPage,
     },
+    source,
     ...(preflight !== undefined ? { preflight } : {}),
     ...(freshness !== undefined ? { freshness } : {}),
+    ...(diagnostics !== undefined ? { diagnostics } : {}),
   };
 }
 
 export function parseSiteAdminStatusResult(x: unknown): SiteAdminStatusResult | null {
-  const ack = asApiAck(x);
-  if (!ack) return null;
-  if (!ack.ok) {
-    return {
-      ok: false,
-      error: readApiErrorMessage(x) || ack.error || "Request failed",
-      code: readApiErrorCode(x) || ack.code || "REQUEST_FAILED",
-    };
-  }
-  const payload = unwrapApiData(x);
-  return parseSiteAdminStatusPayload(payload);
+  return parseApiContract<SiteAdminStatusResult>(x, parseSiteAdminStatusPayload);
 }

@@ -1,17 +1,30 @@
+import homeData from "@/content/home.json";
+import { HomeView } from "@/components/home/home-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
-import RawHtml from "@/components/raw-html";
-import { loadRawMainHtml } from "@/lib/load-raw-main";
 import { buildHomeStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
+import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
+
+export const dynamic = "force-static";
+
+function readData(): SiteAdminHomeData {
+  const d = homeData as Partial<SiteAdminHomeData>;
+  return {
+    title: d.title || "Hi there!",
+    profileImageUrl: d.profileImageUrl,
+    profileImageAlt: d.profileImageAlt,
+    body: typeof d.body === "string" ? d.body : "",
+  };
+}
 
 export default async function Home() {
-  const html = await loadRawMainHtml("index");
   const cfg = getSiteConfig();
+  const data = readData();
   const jsonLd = buildHomeStructuredData(cfg);
   return (
     <>
       <JsonLdScript id="ld-home" data={jsonLd} />
-      <RawHtml html={html} />
+      <HomeView data={data} />
     </>
   );
 }

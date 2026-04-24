@@ -63,15 +63,7 @@ To auto-create and seed them from the existing JSON config:
 npm run provision:admin
 ```
 
-### 2) Notion Integration + Env Vars
-
-- Create a Notion internal integration, copy its secret token.
-- Share the `Site Admin` page with that integration.
-- Set env vars (see `.env.example` if present, otherwise use the list below).
-
-Required for Notion sync:
-- `NOTION_TOKEN`
-- `NOTION_SITE_ADMIN_PAGE_ID`
+### 2) Env Vars (Runtime + Admin)
 
 Required for `/site-admin` GitHub login:
 - `GITHUB_ID`
@@ -79,12 +71,18 @@ Required for `/site-admin` GitHub login:
 - `NEXTAUTH_SECRET` (or `AUTH_SECRET`)
 - `SITE_ADMIN_GITHUB_USERS` (comma-separated GitHub usernames, e.g. `jinnkunn,@someone`)
 
-Required for Vercel Flags SDK:
+Required for Flags SDK:
 - `FLAGS_SECRET` (32-byte base64url secret, e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`)
 
 Optional:
 - `CONTENT_GITHUB_USERS` (allowlist for viewing protected content)
-- `VERCEL_DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for signed deploy API / Site Admin deploy)
+- `DEPLOY_HOOK_URL` + `DEPLOY_TOKEN` (for signed deploy API / Site Admin deploy)
+- `SITE_ADMIN_APP_TOKEN_SECRET` (optional dedicated signer for desktop app bearer tokens; falls back to `NEXTAUTH_SECRET`)
+- `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_WORKER_NAME` (Cloudflare API deploy mode)
+- `SITE_ADMIN_AUDIT_D1_DATABASE_ID` (optional, writes admin save/deploy/conflict audit events to D1)
+- `DEPLOY_PROVIDER=cloudflare|vercel|generic` (optional override)
+- `VERCEL_DEPLOY_HOOK_URL` (legacy fallback only)
+- `GITHUB_APP_PRIVATE_KEY_FILE` (use PEM file path instead of inline `GITHUB_APP_PRIVATE_KEY`)
 - `DEPLOY_HOOK_TIMEOUT_MS` (default `10000`)
 - `DEPLOY_HOOK_MAX_ATTEMPTS` (default `3`)
 - `DEPLOY_HOOK_RETRY_BASE_DELAY_MS` (default `350`)
@@ -93,17 +91,18 @@ GitHub Actions (`CI`, `UI Smoke`, `UI Compare`, `Search Snapshots`, `Production 
 - `FLAGS_SECRET` from repo/org secret `FLAGS_SECRET`
 - `NEXTAUTH_SECRET` from secret `NEXTAUTH_SECRET` (if missing, workflow auto-generates an ephemeral CI-only value)
 
-### 3) Sync
+### 3) Content Sync Mode
 
 ```bash
-npm run sync:notion
+npm run build
 ```
 
-This generates:
-- `content/generated/site-config.json`
-- `content/generated/raw/<route>.html`
+`prebuild` is controlled by `CONTENT_SYNC_MODE`:
 
-`npm run build` will run Notion sync automatically via `prebuild` when `NOTION_*` env vars are set.
+- `stubs` (default): generate minimal `content/generated/*` stubs, no external sync dependency.
+- `notion` (legacy): run `npm run sync:notion` (requires `NOTION_TOKEN` + `NOTION_SITE_ADMIN_PAGE_ID`).
+
+Primary content now lives under `content/{posts,pages,home.json,news.json,publications.json,teaching.json,works.json}` and is edited via `/site-admin` (web) or the Tauri workspace app.
 
 ## Deploy API (Signed POST)
 
@@ -111,7 +110,9 @@ The site exposes `/api/deploy` and accepts only signed `POST` requests.
 
 Required env:
 - `DEPLOY_TOKEN`
-- `VERCEL_DEPLOY_HOOK_URL`
+- one deploy target:
+  - `DEPLOY_HOOK_URL` (primary), or
+  - Cloudflare API mode (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_WORKER_NAME`)
 
 Headers required:
 - `x-deploy-ts`: unix timestamp (seconds or milliseconds)
@@ -132,6 +133,39 @@ curl -X POST "https://<your-site-domain>/api/deploy" \
 
 `/site-admin` 页面里的 Deploy 按钮已使用服务端安全调用，无需手工签名。
 
+## Cloudflare (Workers-first)
+
+Cloudflare cutover baseline commands:
+
+```bash
+npm run build:cf
+npm run deploy:cf:staging
+npm run deploy:cf:prod
+```
+
+Wrangler baseline config is in `wrangler.toml` with `staging` and `production` env sections.
+
+`deploy:cf:*` now loads `.env` internally and overrides stale shell values to avoid token drift.
+If running `wrangler` directly, prefer:
+
+```bash
+set -a; source .env; set +a
+npx wrangler deploy --env production
+```
+
+## Workspace App (Tauri)
+
+Desktop app baseline is in `apps/workspace` and reuses `/api/site-admin/*`:
+
+```bash
+npm run workspace:tauri:dev
+```
+
+Desktop auth flow endpoint:
+- `GET /api/site-admin/app-auth/authorize?redirect_uri=http://127.0.0.1:<port>/callback&state=<nonce>`
+
+See `apps/workspace/README.md` for setup and scope.
+
 ## Site Admin Status
 
 The admin UI includes a quick sanity-check page:
@@ -140,13 +174,7 @@ The admin UI includes a quick sanity-check page:
 
 It shows key build info, content sync metadata, search index stats, and a best-effort freshness indicator.
 
-## Legacy Content Sync (Clone Mode)
-
-This repo can also sync hydrated HTML from an existing Super site into `content/raw/`:
-
-```bash
-npm run sync:raw
-```
+Admin save/deploy/conflict audit logging can be enabled with D1 (`SITE_ADMIN_AUDIT_D1_DATABASE_ID`).
 
 ## UI Regression Snapshots
 
@@ -317,21 +345,10 @@ To skip syncing (offline / only validate current local content):
 SKIP_SYNC=1 npm run check:ui
 ```
 
-## Notion Block Audit
-
-This scans the current raw HTML and lists all `notion-*` and `super-*` classes in use. This is how we
-know which Notion/Super block styles we must support.
-
-```bash
-npm run audit:notion
-```
-
-Outputs go to `output/notion-block-audit/<timestamp>/` and `output/notion-block-audit/latest.*`.
-
 ## GitHub Actions
 
 - `CI`: `npm ci` + `check:scripts` + `build` + `test` + **quick UI smoke** + **full-site axe a11y checks** + **performance budgets**.
-- `UI Smoke`: manual only (workflow_dispatch). Sync raw HTML from the live site + run E2E smoke checks.
+- `UI Smoke`: manual only (workflow_dispatch). Runs build + E2E smoke checks against a local dev server.
 - `Production Quality`: manual only (workflow_dispatch). Runs Playwright smoke checks + sitemap/canonical/internal-link quality checks on the production origin.
 - `UI Compare`: manual, captures screenshots from orig vs clone.
 - `Search Snapshots`: manual, captures search overlay screenshots from a deployment.
