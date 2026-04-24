@@ -7,14 +7,36 @@ import { compilePostMdx } from "@/lib/posts/compile";
 import { postMdxComponents } from "@/components/posts-mdx/components";
 import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
 
+/** Split markdown body on the first blank line so the opening paragraph
+ * can render in a column beside the profile image (Notion-like) and the
+ * remaining paragraphs flow full-width below. Input is trusted markdown
+ * from content/home.json — no need to handle HTML. */
+function splitIntroAndRest(body: string): { intro: string; rest: string } {
+  const trimmed = body.trim();
+  if (!trimmed) return { intro: "", rest: "" };
+  const match = trimmed.match(/\n\s*\n/);
+  if (!match || match.index === undefined) {
+    return { intro: trimmed, rest: "" };
+  }
+  return {
+    intro: trimmed.slice(0, match.index).trim(),
+    rest: trimmed.slice(match.index + match[0].length).trim(),
+  };
+}
+
 export async function HomeView({
   data,
 }: {
   data: SiteAdminHomeData;
 }): Promise<ReactElement> {
-  const { Content } = data.body.trim()
-    ? await compilePostMdx(data.body)
-    : { Content: null };
+  const { intro, rest } = splitIntroAndRest(data.body);
+
+  const IntroContent = intro
+    ? (await compilePostMdx(intro)).Content
+    : null;
+  const RestContent = rest
+    ? (await compilePostMdx(rest)).Content
+    : null;
 
   return (
     <main
@@ -30,9 +52,9 @@ export async function HomeView({
         </div>
       </div>
       <article className="notion-root max-width has-footer">
-        <div className="home-hero">
+        <div className="home-intro-row">
           {data.profileImageUrl && (
-            <div className="home-hero__image">
+            <div className="home-intro-row__image notion-image align-start">
               <Image
                 src={data.profileImageUrl}
                 alt={data.profileImageAlt || "Profile"}
@@ -40,14 +62,21 @@ export async function HomeView({
                 height={640}
                 priority
                 sizes="(max-width: 640px) 100vw, 33vw"
-                className="home-hero__img"
+                className="home-intro-row__img"
               />
             </div>
           )}
-          <div className="home-hero__body mdx-post__body">
-            {Content && <Content components={postMdxComponents} />}
-          </div>
+          {IntroContent && (
+            <div className="home-intro-row__body mdx-post__body">
+              <IntroContent components={postMdxComponents} />
+            </div>
+          )}
         </div>
+        {RestContent && (
+          <div className="home-body mdx-post__body">
+            <RestContent components={postMdxComponents} />
+          </div>
+        )}
       </article>
     </main>
   );
