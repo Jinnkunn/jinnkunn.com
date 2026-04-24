@@ -1,3 +1,4 @@
+import { useDragReorder } from "../shared/useDragReorder";
 import type { PublicationProfileLink } from "../types";
 
 export interface ProfileLinksSectionProps {
@@ -39,6 +40,17 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
     onChange(next);
   };
 
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    if (from >= links.length || to >= links.length) return;
+    const next = links.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
+  };
+
+  const { getRowProps, getHandleProps } = useDragReorder(links.length, reorder);
+
   const remove = (index: number) =>
     onChange(links.filter((_, i) => i !== index));
 
@@ -59,7 +71,11 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
               <span>Actions</span>
             </div>
             {links.map((link, index) => (
-              <div className="grid-row pubs-profile-row" key={index}>
+              <div
+                className="grid-row pubs-profile-row"
+                key={index}
+                {...getRowProps(index)}
+              >
                 <input
                   value={link.label}
                   placeholder="Google Scholar"
@@ -72,6 +88,15 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
                   spellCheck={false}
                 />
                 <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="drag-handle"
+                    title="Drag to reorder"
+                    aria-label="Drag to reorder"
+                    {...getHandleProps(index)}
+                  >
+                    ⋮⋮
+                  </button>
                   <button
                     type="button"
                     className="btn btn--ghost"

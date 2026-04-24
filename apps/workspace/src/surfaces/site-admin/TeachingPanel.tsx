@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import type {
   TeachingData,
@@ -53,6 +54,15 @@ function LinkList({
     [next[index], next[target]] = [next[target], next[index]];
     onChange(next);
   };
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    if (from >= links.length || to >= links.length) return;
+    const next = links.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
+  };
+  const { getRowProps, getHandleProps } = useDragReorder(links.length, reorder);
   const remove = (index: number) =>
     onChange(links.filter((_, i) => i !== index));
   const add = () => onChange([...links, { label: "", href: "" }]);
@@ -71,7 +81,11 @@ function LinkList({
               <span>Actions</span>
             </div>
             {links.map((link, index) => (
-              <div className="grid-row pubs-profile-row" key={index}>
+              <div
+                className="grid-row pubs-profile-row"
+                key={index}
+                {...getRowProps(index)}
+              >
                 <input
                   value={link.label}
                   placeholder={placeholderLabel}
@@ -84,6 +98,15 @@ function LinkList({
                   onChange={(e) => updateField(index, "href", e.target.value)}
                 />
                 <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="drag-handle"
+                    title="Drag to reorder"
+                    aria-label="Drag to reorder"
+                    {...getHandleProps(index)}
+                  >
+                    ⋮⋮
+                  </button>
                   <button
                     type="button"
                     className="btn btn--ghost"
@@ -240,6 +263,27 @@ export function TeachingPanel() {
     });
   }, []);
 
+  const reorderEntries = useCallback((from: number, to: number) => {
+    setDraft((d) => {
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= d.entries.length ||
+        to >= d.entries.length
+      ) {
+        return d;
+      }
+      const next = d.entries.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, entries: next };
+    });
+  }, []);
+
+  const { getRowProps: getEntryRowProps, getHandleProps: getEntryHandleProps } =
+    useDragReorder(draft.entries.length, reorderEntries);
+
   const removeEntry = useCallback((index: number) => {
     setDraft((d) => ({
       ...d,
@@ -347,8 +391,21 @@ export function TeachingPanel() {
             <p className="empty-note">No teaching entries yet.</p>
           )}
           {draft.entries.map((entry, index) => (
-            <div className="pubs-entry-card" key={index}>
+            <div
+              className="pubs-entry-card"
+              key={index}
+              {...getEntryRowProps(index)}
+            >
               <div className="pubs-entry-header">
+                <button
+                  type="button"
+                  className="drag-handle"
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder"
+                  {...getEntryHandleProps(index)}
+                >
+                  ⋮⋮
+                </button>
                 <span className="pubs-entry-index">#{index + 1}</span>
                 <input
                   className="pubs-entry-title-input"

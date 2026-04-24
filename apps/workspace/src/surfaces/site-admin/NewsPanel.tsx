@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import type { NewsData, NewsEntry } from "./types";
 
@@ -131,6 +132,29 @@ export function NewsPanel() {
     });
   }, []);
 
+  const reorder = useCallback((from: number, to: number) => {
+    setDraft((d) => {
+      if (
+        from < 0 ||
+        from >= d.entries.length ||
+        to < 0 ||
+        to >= d.entries.length ||
+        from === to
+      ) {
+        return d;
+      }
+      const next = d.entries.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, entries: next };
+    });
+  }, []);
+
+  const { getRowProps, getHandleProps } = useDragReorder(
+    draft.entries.length,
+    reorder,
+  );
+
   const remove = useCallback((index: number) => {
     setDraft((d) => ({
       ...d,
@@ -207,8 +231,17 @@ export function NewsPanel() {
           </p>
         ) : (
           draft.entries.map((entry, index) => (
-            <div className="news-entry-card" key={index}>
+            <div className="news-entry-card" key={index} {...getRowProps(index)}>
               <div className="news-entry-header">
+                <button
+                  type="button"
+                  className="drag-handle"
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder"
+                  {...getHandleProps(index)}
+                >
+                  ⋮⋮
+                </button>
                 <input
                   type="date"
                   value={entry.dateIso}

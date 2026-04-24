@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import type {
   WorksCategoryClient,
@@ -127,6 +128,29 @@ export function WorksPanel() {
     });
   }, []);
 
+  const reorder = useCallback((from: number, to: number) => {
+    setDraft((d) => {
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= d.entries.length ||
+        to >= d.entries.length
+      ) {
+        return d;
+      }
+      const next = d.entries.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, entries: next };
+    });
+  }, []);
+
+  const { getRowProps, getHandleProps } = useDragReorder(
+    draft.entries.length,
+    reorder,
+  );
+
   const remove = useCallback((index: number) => {
     setDraft((d) => ({
       ...d,
@@ -243,8 +267,17 @@ export function WorksPanel() {
           <p className="empty-note">No work entries yet.</p>
         ) : (
           draft.entries.map((entry, index) => (
-            <div className="pubs-entry-card" key={index}>
+            <div className="pubs-entry-card" key={index} {...getRowProps(index)}>
               <div className="pubs-entry-header">
+                <button
+                  type="button"
+                  className="drag-handle"
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder"
+                  {...getHandleProps(index)}
+                >
+                  ⋮⋮
+                </button>
                 <span className="pubs-entry-index">#{index + 1}</span>
                 <select
                   value={entry.category}
