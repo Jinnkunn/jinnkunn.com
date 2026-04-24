@@ -1,5 +1,20 @@
 // Shared types for the site-admin surface.
 
+/** Site-admin nav tab id — mirrors the leaf ids in `nav.ts` and the
+ * surface switches on this value to pick which panel to render. Keep
+ * the union in sync with `SECTIONS` when adding/removing tabs. */
+export type SiteAdminTab =
+  | "status"
+  | "home"
+  | "posts"
+  | "pages"
+  | "publications"
+  | "news"
+  | "teaching"
+  | "works"
+  | "config"
+  | "routes";
+
 export interface SiteSettings {
   rowId: string;
   siteName: string;

@@ -8,7 +8,7 @@ import {
 import type { JSX } from "react";
 import { useSiteAdmin } from "./state";
 import { stripTrailingSlash } from "./utils";
-import type { SiteAdminTab } from "./SiteAdminSidebar";
+import type { SiteAdminTab } from "./types";
 
 interface CommandItem {
   id: string;

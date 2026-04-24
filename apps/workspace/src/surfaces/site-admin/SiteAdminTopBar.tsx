@@ -1,14 +1,15 @@
+import type { SurfaceNavGroup } from "../types";
 import { useSiteAdmin } from "./state";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
-import type { SiteAdminSectionDef, SiteAdminTab } from "./SiteAdminSidebar";
+import type { SiteAdminTab } from "./types";
 
 interface TopBarProps {
-  sections: readonly SiteAdminSectionDef[];
+  sections: readonly SurfaceNavGroup[];
   activeTab: SiteAdminTab;
 }
 
 function findCrumbs(
-  sections: readonly SiteAdminSectionDef[],
+  sections: readonly SurfaceNavGroup[],
   activeTab: SiteAdminTab,
 ): { section: string; tab: string } | null {
   for (const section of sections) {
@@ -19,8 +20,10 @@ function findCrumbs(
 }
 
 /** Thin top bar — left: breadcrumb (Site admin › Section › Tab), right:
- * connection status pill + dev drawer toggle. Replaces the always-visible
- * ConnectionCard and makes the active surface recognizable at a glance. */
+ * connection status pill + dev drawer toggle. The breadcrumb still
+ * earns its keep even with the nested sidebar: when a user collapses
+ * the parent group, the sidebar stops telling them which tab they're
+ * on. */
 export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
   const { drawerOpen, toggleDrawer } = useSiteAdmin();
   const crumbs = findCrumbs(sections, activeTab);
