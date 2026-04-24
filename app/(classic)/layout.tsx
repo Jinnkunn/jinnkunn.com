@@ -18,6 +18,7 @@ import "./blog-index.css";
 import "./news.css";
 import "./teaching.css";
 import "./works.css";
+import "./home.css";
 import "./posts-mdx.css";
 import "./page-overrides.css";
 import "./notion-blocks.css";

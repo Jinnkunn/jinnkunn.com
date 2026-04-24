@@ -3,6 +3,7 @@ import type { JSX, ReactNode } from "react";
 
 export type SiteAdminTab =
   | "status"
+  | "home"
   | "posts"
   | "pages"
   | "publications"

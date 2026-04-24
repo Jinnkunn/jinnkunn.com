@@ -117,6 +117,7 @@ export function CommandPalette({
     // Tab switches
     const tabs: Array<{ id: SiteAdminTab; label: string }> = [
       { id: "status", label: "Status" },
+      { id: "home", label: "Home" },
       { id: "posts", label: "Posts" },
       { id: "pages", label: "Pages" },
       { id: "publications", label: "Publications" },
