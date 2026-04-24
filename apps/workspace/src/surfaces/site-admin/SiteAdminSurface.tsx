@@ -1,27 +1,58 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import { CommandPalette } from "./CommandPalette";
-import { ConfigPanel } from "./ConfigPanel";
-import { HomePanel } from "./HomePanel";
 import { MessageBar } from "./MessageBar";
 import {
   SITE_ADMIN_DEFAULT_TAB,
   SITE_ADMIN_NAV_GROUPS,
   isSiteAdminTab,
 } from "./nav";
-import { NewsPanel } from "./NewsPanel";
-import { PagesPanel } from "./PagesPanel";
-import { PostsPanel } from "./PostsPanel";
-import { PublicationsPanel } from "./PublicationsPanel";
-import { RoutesPanel } from "./RoutesPanel";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider } from "./state";
-import { StatusPanel } from "./StatusPanel";
-import { TeachingPanel } from "./TeachingPanel";
-import { WorksPanel } from "./WorksPanel";
 import type { ItemSelection, SiteAdminTab } from "./types";
+
+const ConfigPanel = lazy(() =>
+  import("./ConfigPanel").then((module) => ({ default: module.ConfigPanel })),
+);
+const HomePanel = lazy(() =>
+  import("./HomePanel").then((module) => ({ default: module.HomePanel })),
+);
+const NewsPanel = lazy(() =>
+  import("./NewsPanel").then((module) => ({ default: module.NewsPanel })),
+);
+const PagesPanel = lazy(() =>
+  import("./PagesPanel").then((module) => ({ default: module.PagesPanel })),
+);
+const PostsPanel = lazy(() =>
+  import("./PostsPanel").then((module) => ({ default: module.PostsPanel })),
+);
+const PublicationsPanel = lazy(() =>
+  import("./PublicationsPanel").then((module) => ({
+    default: module.PublicationsPanel,
+  })),
+);
+const RoutesPanel = lazy(() =>
+  import("./RoutesPanel").then((module) => ({ default: module.RoutesPanel })),
+);
+const StatusPanel = lazy(() =>
+  import("./StatusPanel").then((module) => ({ default: module.StatusPanel })),
+);
+const TeachingPanel = lazy(() =>
+  import("./TeachingPanel").then((module) => ({ default: module.TeachingPanel })),
+);
+const WorksPanel = lazy(() =>
+  import("./WorksPanel").then((module) => ({ default: module.WorksPanel })),
+);
+
+function PanelFallback() {
+  return (
+    <section className="surface-card panel-loading" role="status">
+      Loading panel…
+    </section>
+  );
+}
 
 function SiteAdminContent() {
   const { activeNavItemId, setActiveNavItemId } = useSurfaceNav();
@@ -126,26 +157,28 @@ function SiteAdminContent() {
       <div className="site-admin-layout__main">
         <MessageBar />
 
-        {activeTab === "status" && <StatusPanel />}
-        {activeTab === "home" && <HomePanel />}
-        {activeTab === "posts" && (
-          <PostsPanel
-            selected={postsSelected}
-            onSelectedChange={setPostsSelected}
-          />
-        )}
-        {activeTab === "pages" && (
-          <PagesPanel
-            selected={pagesSelected}
-            onSelectedChange={setPagesSelected}
-          />
-        )}
-        {activeTab === "publications" && <PublicationsPanel />}
-        {activeTab === "news" && <NewsPanel />}
-        {activeTab === "teaching" && <TeachingPanel />}
-        {activeTab === "works" && <WorksPanel />}
-        {activeTab === "config" && <ConfigPanel />}
-        {activeTab === "routes" && <RoutesPanel />}
+        <Suspense fallback={<PanelFallback />}>
+          {activeTab === "status" && <StatusPanel />}
+          {activeTab === "home" && <HomePanel />}
+          {activeTab === "posts" && (
+            <PostsPanel
+              selected={postsSelected}
+              onSelectedChange={setPostsSelected}
+            />
+          )}
+          {activeTab === "pages" && (
+            <PagesPanel
+              selected={pagesSelected}
+              onSelectedChange={setPagesSelected}
+            />
+          )}
+          {activeTab === "publications" && <PublicationsPanel />}
+          {activeTab === "news" && <NewsPanel />}
+          {activeTab === "teaching" && <TeachingPanel />}
+          {activeTab === "works" && <WorksPanel />}
+          {activeTab === "config" && <ConfigPanel />}
+          {activeTab === "routes" && <RoutesPanel />}
+        </Suspense>
       </div>
       <SiteAdminDevDrawer />
       <CommandPalette

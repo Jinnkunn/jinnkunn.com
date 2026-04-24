@@ -3,9 +3,15 @@ import type {
   TeachingEntryDTO,
   TeachingLinkDTO,
 } from "./api-types";
+import {
+  normalizeStructuredPageSections,
+  TEACHING_SECTIONS,
+} from "./page-sections.ts";
 
 const EMPTY_DATA: SiteAdminTeachingData = {
+  schemaVersion: 2,
   title: "Teaching",
+  sections: TEACHING_SECTIONS,
   headerLinks: [],
   entries: [],
   footerLinks: [],
@@ -58,9 +64,11 @@ export function normalizeTeachingData(raw: unknown): SiteAdminTeachingData {
   }
   const r = raw as Record<string, unknown>;
   return {
+    schemaVersion: 2,
     title:
       typeof r.title === "string" && r.title.trim() ? r.title : "Teaching",
     description: typeof r.description === "string" ? r.description : undefined,
+    sections: normalizeStructuredPageSections(r.sections, TEACHING_SECTIONS),
     intro: typeof r.intro === "string" && r.intro.trim() ? r.intro : undefined,
     headerLinks: coerceLinks(r.headerLinks),
     entries: coerceEntries(r.entries),

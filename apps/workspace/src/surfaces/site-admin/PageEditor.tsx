@@ -7,8 +7,10 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { MarkdownEditor, type MarkdownEditorApi } from "./MarkdownEditor";
+import type { MarkdownEditorApi } from "./MarkdownEditor";
+import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { useSiteAdmin } from "./state";
+import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { insertMarkdownImage, uploadImageFile } from "./assets-upload";
 import {
   buildPageSource,
@@ -44,6 +46,9 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
   const [slug, setSlug] = useState(initialSlug ?? "");
   const [form, setForm] = useState<PageFrontmatterForm>(BLANK_FORM);
   const [body, setBody] = useState(BLANK_BODY);
+  const [lastSavedSource, setLastSavedSource] = useState(() =>
+    buildPageSource(BLANK_FORM, BLANK_BODY),
+  );
   const [version, setVersion] = useState<string>("");
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
@@ -52,10 +57,13 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
   const [error, setError] = useState("");
   const [dragDepth, setDragDepth] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmBackSource, setConfirmBackSource] = useState("");
   const [previewOn, setPreviewOn] = useState(false);
   const editorApiRef = useRef<MarkdownEditorApi | null>(null);
 
   const previewSource = useMemo(() => buildPageSource(form, body), [form, body]);
+  const dirty = previewSource !== lastSavedSource || (mode === "create" && Boolean(slug.trim()));
+  const confirmBack = dirty && confirmBackSource === previewSource;
   const preview = usePreview(previewSource, previewOn, request);
 
   // See PostEditor for the keying rationale.
@@ -90,14 +98,27 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
       const source = typeof data.source === "string" ? data.source : "";
       const ver = normalizeString(data.version);
       const parsed = parsePageSource(source);
+      const nextBody = parsed.body.replace(/^\n+/, "");
       setForm(parsed.form);
-      setBody(parsed.body.replace(/^\n+/, ""));
+      setBody(nextBody);
+      setLastSavedSource(buildPageSource(parsed.form, nextBody));
       setVersion(ver);
     })();
     return () => {
       cancelled = true;
     };
   }, [initialSlug, mode, request, setMessage]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (saving || deleting) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [deleting, dirty, saving]);
 
   const onDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -125,6 +146,7 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
           setMessage("error", `Upload failed: ${result.error}`);
           continue;
         }
+        rememberRecentAsset(result.asset, result.filename);
         const alt = file.name.replace(/\.[^.]+$/, "");
         insertMarkdownImage(api, result.asset.url, alt);
         setMessage("success", `Uploaded ${result.filename} → ${result.asset.url}`);
@@ -158,6 +180,7 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
           setMessage("error", `Create page failed: ${response.code}: ${response.error}`);
           return;
         }
+        setLastSavedSource(source);
         clearDraft();
         setMessage("success", `Page created.`);
         onExit("saved", slug.trim());
@@ -178,6 +201,7 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
       const data = (response.data ?? {}) as Record<string, unknown>;
       const nextVersion = normalizeString(data.version);
       if (nextVersion) setVersion(nextVersion);
+      setLastSavedSource(source);
       clearDraft();
       setMessage("success", `Page saved.`);
       onExit("saved", currentSlug);
@@ -209,6 +233,14 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
     editorApiRef.current = api;
   }, []);
 
+  const leaveEditor = useCallback(() => {
+    if (dirty && !confirmBack) {
+      setConfirmBackSource(previewSource);
+      return;
+    }
+    onExit("cancel", initialSlug);
+  }, [confirmBack, dirty, initialSlug, onExit, previewSource]);
+
   const title = mode === "create" ? "New page" : `Edit page: ${initialSlug ?? ""}`;
 
   return (
@@ -218,9 +250,14 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
           <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
             {title}
           </h1>
-          <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Writes to <code>content/pages/{slug || "&lt;slug&gt;"}.mdx</code>.
-          </p>
+          <div className="editor-meta-row">
+            <p className="m-0 text-[12.5px] text-text-muted">
+              Writes to <code>content/pages/{slug || "&lt;slug&gt;"}.mdx</code>.
+            </p>
+            <span className={`editor-state ${dirty ? "editor-state--dirty" : "editor-state--clean"}`}>
+              {dirty ? "Unsaved changes" : "Saved"}
+            </span>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
@@ -234,16 +271,16 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
           </button>
           <button
             type="button"
-            className="btn btn--secondary"
-            onClick={() => onExit("cancel", initialSlug)}
+            className={confirmBack ? "btn btn--danger" : "btn btn--secondary"}
+            onClick={leaveEditor}
             disabled={saving || deleting}
           >
-            Back
+            {confirmBack ? "Discard changes" : "Back"}
           </button>
           {mode === "edit" && (
             <button
               type="button"
-              className="btn btn--danger"
+              className={confirmDelete ? "btn btn--danger btn--confirming" : "btn btn--danger"}
               onClick={() => {
                 if (confirmDelete) void remove();
                 else setConfirmDelete(true);
@@ -265,7 +302,7 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
       </header>
 
       {error && (
-        <p className="m-0 text-[12px] text-[color:var(--text-danger,#b02a37)]">{error}</p>
+        <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>
       )}
 
       {restorable && !loading && (
@@ -295,7 +332,10 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
       )}
 
       {loading ? (
-        <p className="m-0 text-[12.5px] text-text-muted">Loading page…</p>
+        <div className="loading-inline" role="status">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Loading page…</span>
+        </div>
       ) : (
         <form id="page-editor-form" onSubmit={save} className="flex flex-col gap-3">
           {mode === "create" && (
@@ -327,8 +367,8 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
               <input
                 className="ds-input"
                 value={form.updated}
+                type="date"
                 onChange={(event) => setForm((f) => ({ ...f, updated: event.target.value }))}
-                placeholder="2026-04-23"
               />
             </label>
           </div>
@@ -365,7 +405,8 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
                 : ""}
             </span>
             <div
-              className="flex gap-3"
+              className="editor-drop-zone flex gap-3"
+              data-drag-active={dragDepth > 0 ? "true" : undefined}
               onDragEnter={onDragEnter}
               onDragLeave={onDragLeave}
             >
@@ -394,6 +435,14 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
               Drop an image onto the editor to upload; a <code>![alt](/uploads/...)</code> tag is
               inserted at the cursor.
             </span>
+            <AssetLibraryPicker
+              onSelect={(asset) => {
+                const api = editorApiRef.current;
+                if (!api) return;
+                const alt = asset.alt || asset.filename || "image";
+                insertMarkdownImage(api, asset.url, alt.replace(/\.[^.]+$/, ""));
+              }}
+            />
           </div>
         </form>
       )}

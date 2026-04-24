@@ -19,6 +19,7 @@ type SiteAdminAuditAction =
   | "pages.delete"
   | "assets.upload"
   | "assets.delete"
+  | "versions.restore"
   | "publications.save"
   | "news.save"
   | "teaching.save"
@@ -187,4 +188,3 @@ export async function writeSiteAdminAuditLog(input: SiteAdminAuditEvent): Promis
     });
   }
 }
-
