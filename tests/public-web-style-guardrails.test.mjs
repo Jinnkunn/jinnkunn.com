@@ -140,3 +140,18 @@ test("public-web-style-guardrails: MDX long links cannot widen mobile pages", as
   assertIncludes(postsCss, "overflow-wrap: anywhere;", "MDX long link wrapping CSS");
   assertIncludes(postsCss, "word-break: break-word;", "MDX long link wrapping CSS");
 });
+
+test("public-web-style-guardrails: MDX toggles and code blocks keep Notion interactions", async () => {
+  const components = await read("components/posts-mdx/components.tsx");
+  const postsCss = await read("app/(classic)/posts-mdx.css");
+  const toggles = await read("lib/client/notion/toggles.ts");
+
+  assertIncludes(components, "function MdxPre", "MDX code copy component");
+  assertIncludes(components, 'className="notion-code no-wrap mdx-code"', "MDX code copy component");
+  assertIncludes(components, 'className="notion-code__copy-button"', "MDX code copy component");
+  assertIncludes(components, "pre: MdxPre", "MDX code copy component");
+  assertIncludes(postsCss, ".mdx-code .notion-code__copy-button", "MDX code copy component");
+  assertIncludes(postsCss, "pointer-events: all;", "MDX code copy component");
+  assertIncludes(toggles, "toggle instanceof HTMLDetailsElement", "MDX native details toggle support");
+  assertIncludes(toggles, "toggle.open = open;", "MDX native details toggle support");
+});
