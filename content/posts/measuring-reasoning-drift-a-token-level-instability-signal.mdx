@@ -144,11 +144,7 @@ What it is *not*:
 -   Not a stabilization method.
 -   Not an intervention that claims to improve accuracy.
 
-‣
-
-Implementation sketch (from logged top-k logprobs)
-
-Copy
+<Toggle title="Implementation sketch (from logged top-k logprobs)">
 
 ```python
 # Inputs: per-step top-k logprobs: logp[t] = {token: log_prob}
@@ -187,9 +183,9 @@ for t in range(T):
 S = max(I)
 ```
 
-‣
+</Toggle>
 
-中文摘要
+<Toggle title="中文摘要">
 
 我们常把 LLM 的错误当成“突然崩掉”，但推理其实是一个逐步演化的过程。
 
@@ -198,3 +194,5 @@ S = max(I)
 经验上，`S` 与失败风险相关，并且在只看前几十步时就已具备一定的 early-warning 区分能力。
 
 更关键的是：不稳定并不总是坏事。早期的不稳定可能对应“自我修正”（recoverable），晚期的不稳定更像“不可恢复的偏离”（irrecoverable）。
+
+</Toggle>
