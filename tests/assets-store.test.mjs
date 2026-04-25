@@ -17,6 +17,42 @@ async function makeRoot() {
   return mkdtemp(path.join(tmpdir(), "assets-store-"));
 }
 
+function makeR2Bucket() {
+  /** @type {Map<string, { key: string, size: number, uploaded: Date, customMetadata: Record<string, string>, httpMetadata: { contentType?: string, cacheControl?: string }, data: Uint8Array }>} */
+  const objects = new Map();
+  const bucket = {
+    async head(key) {
+      return objects.get(key) || null;
+    },
+    async put(key, value, options = {}) {
+      const data = value instanceof Uint8Array ? value : new Uint8Array(value);
+      const object = {
+        key,
+        size: data.byteLength,
+        uploaded: new Date("2026-04-25T00:00:00.000Z"),
+        customMetadata: options.customMetadata || {},
+        httpMetadata: options.httpMetadata || {},
+        data,
+      };
+      objects.set(key, object);
+      return object;
+    },
+    async list(options = {}) {
+      const prefix = options.prefix || "";
+      return {
+        objects: Array.from(objects.values()).filter((object) =>
+          object.key.startsWith(prefix),
+        ),
+        truncated: false,
+      };
+    },
+    async delete(key) {
+      objects.delete(key);
+    },
+  };
+  return { bucket, objects };
+}
+
 test("assets-store: rejects disallowed content types", () => {
   assert.throws(
     () =>
@@ -128,4 +164,71 @@ test("assets-store: rejects delete outside uploads prefix", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("assets-store: uploads to R2 bucket and returns CDN URL", async () => {
+  const { bucket, objects } = makeR2Bucket();
+  const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const result = await uploadAsset({
+    filename: "avatar.png",
+    contentType: "image/png",
+    data: bytes,
+    bucket,
+    publicBaseUrl: "https://cdn.jinkunchen.com",
+  });
+
+  assert.match(
+    result.key,
+    /^uploads\/\d{4}\/\d{2}\/[a-f0-9]{64}\.png$/,
+  );
+  assert.equal(result.url, `https://cdn.jinkunchen.com/${result.key}`);
+  assert.equal(result.size, bytes.byteLength);
+  assert.equal(result.contentType, "image/png");
+  assert.match(result.sha, /^[a-f0-9]{64}$/);
+  assert.equal(objects.get(result.key)?.httpMetadata.cacheControl, "public, max-age=31536000, immutable");
+});
+
+test("assets-store: R2 upload is idempotent by content hash", async () => {
+  const { bucket } = makeR2Bucket();
+  const bytes = new Uint8Array([9, 8, 7, 6]);
+  const first = await uploadAsset({
+    filename: "first.webp",
+    contentType: "image/webp",
+    data: bytes,
+    bucket,
+  });
+  const second = await uploadAsset({
+    filename: "second.webp",
+    contentType: "image/webp",
+    data: bytes,
+    bucket,
+  });
+
+  assert.equal(first.key, second.key);
+  assert.equal(first.url, second.url);
+  assert.equal(first.sha, second.sha);
+});
+
+test("assets-store: lists and deletes R2 assets with matching version", async () => {
+  const { bucket } = makeR2Bucket();
+  const uploaded = await uploadAsset({
+    filename: "asset.avif",
+    contentType: "image/avif",
+    data: new Uint8Array([1, 3, 5, 7]),
+    bucket,
+    publicBaseUrl: "https://cdn.example.com/",
+  });
+  const assets = await listAssets({ bucket, publicBaseUrl: "https://cdn.example.com/" });
+
+  assert.equal(assets.length, 1);
+  assert.equal(assets[0].key, uploaded.key);
+  assert.equal(assets[0].url, `https://cdn.example.com/${uploaded.key}`);
+  assert.equal(assets[0].contentType, "image/avif");
+
+  await assert.rejects(
+    () => deleteAsset(uploaded.key, "wrong-version", { bucket }),
+    AssetsValidationError,
+  );
+  await deleteAsset(uploaded.key, uploaded.sha, { bucket });
+  assert.deepEqual(await listAssets({ bucket }), []);
 });
