@@ -72,6 +72,10 @@ Expected:
 
 ## Tauri Editor Acceptance Checklist
 
+Use the full checklist in
+[`docs/runbooks/tauri-site-admin-qa.md`](./tauri-site-admin-qa.md). The summary
+below is the minimum manual pass before requesting production approval.
+
 Run this manually on staging before requesting production approval:
 
 - Home editor canvas:
