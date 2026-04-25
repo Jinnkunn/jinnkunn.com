@@ -1,10 +1,23 @@
-export type MdxBlockType = "paragraph" | "heading" | "image" | "quote" | "code";
+export type MdxBlockType =
+  | "paragraph"
+  | "heading"
+  | "image"
+  | "quote"
+  | "list"
+  | "divider"
+  | "callout"
+  | "code"
+  | "raw";
 
 export interface MdxBlock {
   alt?: string;
+  blankLinesBefore?: number;
+  caption?: string;
   id: string;
   language?: string;
   level?: 1 | 2 | 3;
+  listStyle?: "bulleted" | "numbered";
+  markers?: string[];
   text: string;
   type: MdxBlockType;
   url?: string;
@@ -18,10 +31,26 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
     return { id: `mdx-block-${idCounter}`, type, level: 2, text: "Heading" };
   }
   if (type === "image") {
-    return { id: `mdx-block-${idCounter}`, type, alt: "", text: "", url: "" };
+    return {
+      id: `mdx-block-${idCounter}`,
+      type,
+      alt: "",
+      caption: "",
+      text: "",
+      url: "",
+    };
   }
   if (type === "code") {
     return { id: `mdx-block-${idCounter}`, type, language: "", text: "" };
+  }
+  if (type === "list") {
+    return { id: `mdx-block-${idCounter}`, type, listStyle: "bulleted", text: "" };
+  }
+  if (type === "divider") {
+    return { id: `mdx-block-${idCounter}`, type, text: "" };
+  }
+  if (type === "callout") {
+    return { id: `mdx-block-${idCounter}`, type, text: "" };
   }
   return { id: `mdx-block-${idCounter}`, type, text: "" };
 }
@@ -30,16 +59,40 @@ function makeBlock(type: MdxBlockType, patch: Partial<MdxBlock> = {}): MdxBlock 
   return { ...createMdxBlock(type), ...patch };
 }
 
+function isRawMdxParagraph(lines: string[]): boolean {
+  return lines.some((line) => {
+    const trimmed = line.trim();
+    return (
+      trimmed.startsWith("|") ||
+      trimmed.startsWith("<") ||
+      trimmed.startsWith("</") ||
+      trimmed.startsWith("import ") ||
+      trimmed.startsWith("export ") ||
+      /^\{.*\}$/.test(trimmed)
+    );
+  });
+}
+
 export function parseMdxBlocks(source: string): MdxBlock[] {
   const blocks: MdxBlock[] = [];
   const lines = source.replace(/\r\n/g, "\n").split("\n");
   let index = 0;
+  let blankLinesBefore = 0;
+
+  const pushBlock = (block: MdxBlock) => {
+    blocks.push({
+      ...block,
+      blankLinesBefore: blocks.length === 0 ? 0 : blankLinesBefore,
+    });
+    blankLinesBefore = 0;
+  };
 
   while (index < lines.length) {
     const line = lines[index] ?? "";
     const trimmedLine = line.trim();
     if (!trimmedLine) {
       index += 1;
+      blankLinesBefore += 1;
       continue;
     }
 
@@ -52,7 +105,7 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
         index += 1;
       }
       if ((lines[index] ?? "").trim() === "```") index += 1;
-      blocks.push(makeBlock("code", { language, text: bodyLines.join("\n") }));
+      pushBlock(makeBlock("code", { language, text: bodyLines.join("\n") }));
       continue;
     }
 
@@ -63,9 +116,14 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
     }
     const paragraph = paragraphLines.join("\n").trim();
 
+    if (/^---+$/.test(paragraph)) {
+      pushBlock(makeBlock("divider"));
+      continue;
+    }
+
     const imageMatch = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(paragraph);
     if (imageMatch) {
-      blocks.push(
+      pushBlock(
         makeBlock("image", {
           alt: imageMatch[1],
           text: "",
@@ -75,9 +133,25 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
       continue;
     }
 
+    const htmlImageMatch =
+      /^<figure>\s*<img src="([^"]+)" alt="([^"]*)" \/>\s*<figcaption>([\s\S]*?)<\/figcaption>\s*<\/figure>$/.exec(
+        paragraph,
+      );
+    if (htmlImageMatch) {
+      pushBlock(
+        makeBlock("image", {
+          alt: htmlImageMatch[2],
+          caption: htmlImageMatch[3],
+          text: "",
+          url: htmlImageMatch[1],
+        }),
+      );
+      continue;
+    }
+
     const headingMatch = /^(#{1,3})\s+(.+)$/.exec(paragraph);
     if (headingMatch) {
-      blocks.push(
+      pushBlock(
         makeBlock("heading", {
           level: headingMatch[1].length as 1 | 2 | 3,
           text: headingMatch[2],
@@ -86,16 +160,53 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
       continue;
     }
 
+    const listMatches = paragraphLines.map((item) =>
+      /^(\s*(?:[-*]|\d+\.)(?:\s+))(.+)$/.exec(item),
+    );
+    if (listMatches.every(Boolean)) {
+      const firstMarker = listMatches[0]?.[1].trim() ?? "-";
+      const numbered = /^\d+\.$/.test(firstMarker);
+      const compatible = listMatches.every((match) =>
+        numbered
+          ? /^\d+\.$/.test(match?.[1].trim() ?? "")
+          : /^[-*]$/.test(match?.[1].trim() ?? ""),
+      );
+      if (compatible) {
+        pushBlock(
+          makeBlock("list", {
+            listStyle: numbered ? "numbered" : "bulleted",
+            markers: listMatches.map((match) => match?.[1] ?? "- "),
+            text: listMatches.map((match) => match?.[2] ?? "").join("\n"),
+          }),
+        );
+        continue;
+      }
+    }
+
     if (paragraphLines.every((item) => /^>\s?/.test(item))) {
-      blocks.push(
+      const quoteLines = paragraphLines.map((item) => item.replace(/^>\s?/, ""));
+      if (/^\[!NOTE\]\s*$/i.test(quoteLines[0] ?? "")) {
+        pushBlock(
+          makeBlock("callout", {
+            text: quoteLines.slice(1).join("\n"),
+          }),
+        );
+        continue;
+      }
+      pushBlock(
         makeBlock("quote", {
-          text: paragraphLines.map((item) => item.replace(/^>\s?/, "")).join("\n"),
+          text: quoteLines.join("\n"),
         }),
       );
       continue;
     }
 
-    blocks.push(makeBlock("paragraph", { text: paragraph }));
+    if (isRawMdxParagraph(paragraphLines)) {
+      pushBlock(makeBlock("raw", { text: paragraph }));
+      continue;
+    }
+
+    pushBlock(makeBlock("paragraph", { text: paragraph }));
   }
 
   return blocks.length > 0 ? blocks : [createMdxBlock("paragraph")];
@@ -110,7 +221,12 @@ function serializeBlock(block: MdxBlock): string {
   if (block.type === "image") {
     const url = (block.url ?? "").trim();
     if (!url) return "";
-    return `![${(block.alt ?? "").trim()}](${url})`;
+    const alt = (block.alt ?? "").trim();
+    const caption = (block.caption ?? "").trim();
+    if (caption) {
+      return `<figure><img src="${url}" alt="${alt}" /><figcaption>${caption}</figcaption></figure>`;
+    }
+    return `![${alt}](${url})`;
   }
   if (block.type === "quote") {
     if (!text) return "";
@@ -119,14 +235,45 @@ function serializeBlock(block: MdxBlock): string {
       .map((line) => `> ${line}`)
       .join("\n");
   }
+  if (block.type === "callout") {
+    if (!text) return "> [!NOTE]";
+    return ["> [!NOTE]", ...text.split("\n").map((line) => `> ${line}`)].join("\n");
+  }
+  if (block.type === "list") {
+    if (!text) return "";
+    return text
+      .split("\n")
+      .map((line, index) => {
+        const marker =
+          block.markers?.[index] ??
+          (block.listStyle === "numbered" ? `${index + 1}. ` : "- ");
+        return `${marker}${line}`;
+      })
+      .join("\n");
+  }
+  if (block.type === "divider") {
+    return "---";
+  }
   if (block.type === "code") {
     if (!block.text.trim()) return "";
     return `\`\`\`${(block.language ?? "").trim()}\n${block.text.replace(/\n+$/, "")}\n\`\`\``;
+  }
+  if (block.type === "raw") {
+    return block.text.trim();
   }
   return text;
 }
 
 export function serializeMdxBlocks(blocks: MdxBlock[]): string {
-  const source = blocks.map(serializeBlock).filter(Boolean).join("\n\n");
+  const parts: string[] = [];
+  for (const block of blocks) {
+    const serialized = serializeBlock(block);
+    if (!serialized) continue;
+    if (parts.length > 0) {
+      parts.push("\n".repeat((block.blankLinesBefore ?? 1) + 1));
+    }
+    parts.push(serialized);
+  }
+  const source = parts.join("");
   return source ? `${source}\n` : "";
 }

@@ -72,13 +72,19 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /parseMdxBlocks/);
   assert.match(documentEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
+  assert.match(documentEditor, /mdx-document-slash-menu/);
+  assert.match(documentEditor, /application\/x-mdx-block/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
+  assert.match(blocks, /type === "raw"/);
+  assert.match(blocks, /type === "callout"/);
+  assert.match(blocks, /type === "list"/);
   assert.match(controller, /useMdxImageUploadDrop/);
   assert.match(controller, /useUnsavedChangesBeforeUnload/);
   assert.match(controller, /useConfirmingBack/);
   assert.match(styles, /\.mdx-document-editor__layout/);
   assert.match(styles, /\.mdx-document-block/);
+  assert.match(styles, /\.mdx-document-slash-menu/);
 
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
