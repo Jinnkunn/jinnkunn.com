@@ -47,8 +47,9 @@ Observed on 2026-04-25:
 - Migrated Notion assets under
   `https://cdn.jinkunchen.com/notion-assets/...` return `200` and include
   `cache-control: public, max-age=31536000, immutable`.
-- The current response header showed `cf-cache-status: DYNAMIC`, so add a
-  cache rule before relying on CDN edge caching for all media objects.
+- The cache rule `R2 media cache for cdn.jinkunchen.com` should be present in
+  the `http_request_cache_settings` phase. It marks the CDN host eligible for
+  cache and sets one-year edge/browser TTLs for immutable media URLs.
 
 ## Target Architecture
 
@@ -108,6 +109,39 @@ lets the CDN cache aggressively without needing purges for normal updates.
    - asset upload returns `https://cdn.jinkunchen.com/uploads/...`
    - content validators allow the CDN host
    - staging authenticated QA verifies the homepage and bio images load
+
+## Verification
+
+Run the staging upload smoke after each media/backend release:
+
+```bash
+npm run smoke:site-admin:assets:staging
+```
+
+Expected:
+
+- `uploadedUrl` starts with `https://cdn.jinkunchen.com/uploads/`.
+- CDN `HEAD` returns `200`.
+- `cacheControl` includes `max-age=31536000` and `immutable`.
+- The temporary R2 object is deleted before the script exits.
+
+Manage the CDN cache rule with:
+
+```bash
+npm run cf:media-cache:dry-run
+npm run cf:media-cache:apply
+```
+
+The rule is intentionally scoped to `http.host eq "cdn.jinkunchen.com"`.
+The Cloudflare token used for these commands must be able to read the zone and
+edit zone rulesets/cache rules. If dry-run fails with an authentication error
+while normal Worker deploys still work, the deploy token is too narrow for
+cache-rule management.
+
+If a smoke run ever returns `/uploads/...`, the Worker did not see the
+`SITE_ASSETS` R2 binding and fell back to the Git/content-store backend. Fix the
+binding path before publishing more editor changes, then remove any accidental
+fallback files from the staging content branch.
 
 ## Do Not
 
