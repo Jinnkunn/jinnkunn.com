@@ -18,6 +18,10 @@ type HomeRenderOptions = {
   previewStaticImages?: boolean;
 };
 
+function isCdnMediaSrc(src: string): boolean {
+  return src.startsWith("https://cdn.jinkunchen.com/");
+}
+
 function HomeImage({
   src,
   alt,
@@ -53,6 +57,7 @@ function HomeImage({
       priority={priority}
       sizes={sizes}
       className={className}
+      unoptimized={isCdnMediaSrc(src)}
     />
   );
 }
