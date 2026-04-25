@@ -7,7 +7,7 @@ Cloudflare production Worker.
 
 Current protected production baseline:
 
-- Worker version: `cf65228b-cc8f-43cd-a927-c813c0e33258`
+- Worker version: `34ae93d5-e251-4277-9e49-42f535558677`
 - Do not replace it until the release owner explicitly approves production
   promotion.
 
@@ -30,8 +30,9 @@ git switch main
 git pull --ff-only
 git status --short
 npm run release:prod:dry-run
-VERIFY_CF_EXPECT_PRODUCTION_VERSION=cf65228b-cc8f-43cd-a927-c813c0e33258 npm run verify:cf:prod
+VERIFY_CF_EXPECT_PRODUCTION_VERSION=34ae93d5-e251-4277-9e49-42f535558677 npm run verify:cf:prod
 npm run verify:staging:authenticated
+npm run check:staging-visual
 ```
 
 Expected:
@@ -40,11 +41,14 @@ Expected:
 - `release:prod:dry-run` reports the checks/build/deploy/verify chain it
   would run and refuses real production deployment without confirmation vars.
 - `verify:cf:prod` confirms production is still on
-  `cf65228b-cc8f-43cd-a927-c813c0e33258`.
+  `34ae93d5-e251-4277-9e49-42f535558677`.
 - `verify:staging:authenticated` confirms authenticated staging public routes
   are `200`, use `x-static-shell: 1`, `/api/site-admin/status` has
   `pendingDeploy=false`, and `/api/site-admin/preview/home` returns real
   `/_next/static/css/*.css` assets.
+- `check:staging-visual` compares authenticated staging against production for
+  homepage layout, body text color/rhythm, link treatment, Notion list
+  structure, and mobile/desktop overflow.
 
 ## Release Notes Template
 
@@ -55,7 +59,7 @@ Use this as the PR/release body before asking for production approval:
 
 - Source SHA: `<git rev-parse HEAD>`
 - Source branch: `main`
-- Previous production version: `cf65228b-cc8f-43cd-a927-c813c0e33258`
+- Previous production version: `34ae93d5-e251-4277-9e49-42f535558677`
 
 ## Changes
 
@@ -68,8 +72,9 @@ Use this as the PR/release body before asking for production approval:
 ## Validation
 
 - `npm run release:prod:dry-run`
-- `VERIFY_CF_EXPECT_PRODUCTION_VERSION=cf65228b-cc8f-43cd-a927-c813c0e33258 npm run verify:cf:prod`
+- `VERIFY_CF_EXPECT_PRODUCTION_VERSION=34ae93d5-e251-4277-9e49-42f535558677 npm run verify:cf:prod`
 - `npm run verify:staging:authenticated`
+- `npm run check:staging-visual`
 - `npm run verify:cf:staging`
 - GitHub PR checks: `build`, `workspace-quality`, Vercel previews
 

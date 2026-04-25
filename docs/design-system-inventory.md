@@ -104,6 +104,19 @@ npm run snapshot:ui
 Design-system snapshot coverage includes `/site-admin/design-system` in both
 light and dark themes, desktop and mobile viewports.
 
+Minimum staging gate before production approval:
+
+```bash
+npm run verify:staging:authenticated
+npm run check:staging-visual
+npm run release:prod:dry-run
+VERIFY_CF_EXPECT_PRODUCTION_VERSION=<current-production-version> npm run verify:cf:prod
+```
+
+`check:staging-visual` uses authenticated staging and compares it to production
+for the classic public routes. It protects the current Notion link treatment,
+homepage intro layout, list-page Notion structure, and large-screen widths.
+
 ## Migration Rule
 
 Migrations should follow this order:

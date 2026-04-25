@@ -25,6 +25,11 @@ This repo now has a code-first design system built as a compatibility layer on t
 - New shared UI should use `Button`, `IconButton`, `Badge`, `Field`, `Textarea`, `CheckboxRow`, `Card`, `Panel`, `SectionHeader`, `StatusNotice`, or `NavItem` before adding feature-local primitives.
 - New repeated UI patterns should use `TextLink`, `EmptyState`, `ListRow`, `Toolbar`, `LoadingState`, or `DialogPanel` before adding feature-local pattern markup.
 - Route-scoped CSS may still exist, but it should consume design-system tokens instead of introducing new hard-coded colors.
+- Public classic pages are protected compatibility surfaces. Do not replace their
+  Notion/Super markup with shared admin primitives unless a visual migration is
+  explicitly approved and compared against production first.
+- Body links in public content must keep the `notion-link link` contract so
+  color, underline, highlight background, and homepage icon hooks stay stable.
 
 ## Theme Behavior
 
@@ -63,17 +68,25 @@ This repo now has a code-first design system built as a compatibility layer on t
 
 - Visual regression uses [`scripts/ui-snapshots.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/ui-snapshots.mjs) with a fixed light/dark matrix across:
   - home
-  - one representative content page
-  - `/blog`
+  - `/news`
   - `/publications`
-  - one state page
+  - `/works`
+  - `/teaching`
+  - `/blog`
+  - `/bio`
+  - `/connect`
+  - one representative blog post
   - `/site-admin`
+  - `/site-admin/design-system`
 - Interaction regression uses [`scripts/smoke-ui.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/smoke-ui.mjs) and must cover:
   - theme toggle
   - persisted theme after refresh
   - dark-mode navigation, search, mobile menu, and site-admin shell
 - Accessibility regression stays on [`scripts/a11y-check.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/a11y-check.mjs) and audits representative light/dark pages through the same theme contract.
 - Token leakage hard gate is [`scripts/check-design-system.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/check-design-system.mjs), exposed as `npm run check:design-system`.
+- Live staging visual parity is checked by `npm run check:staging-visual`, which
+  compares authenticated staging public pages against production using the same
+  typography, layout, link, and Notion structure contracts as local regression.
 
 ## Post-v1 Expansion Entry
 
@@ -81,6 +94,7 @@ This repo now has a code-first design system built as a compatibility layer on t
   - `npm run check:design-system`
   - `npm test`
   - `npm run build`
+  - `npm run check:staging-visual`
   - `SMOKE_UI_QUICK=1 SMOKE_UI_SKIP_BUILD=1 npm run smoke:ui`
   - `A11Y_SKIP_BUILD=1 A11Y_FULL_SITE=1 A11Y_FAIL_ALL=1 npm run check:a11y`
   - `npm run snapshot:ui`

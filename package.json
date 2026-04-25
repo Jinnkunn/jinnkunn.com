@@ -23,6 +23,7 @@
     "check:classic-css": "node scripts/classic-css-boundary-check.mjs",
     "check:classic-style": "node scripts/classic-style-contract.mjs",
     "check:production-style": "node scripts/production-style-regression.mjs",
+    "check:staging-visual": "node scripts/production-style-regression.mjs --skip-build --candidate-origin=https://staging.jinkunchen.com --candidate-auth",
     "check:public-web": "npm run check:classic-css && npm run check:design-system && npm run check:classic-style && npm run check:production-style -- --skip-build",
     "smoke:site-admin": "node scripts/site-admin-smoke.mjs",
     "smoke:site-admin:write:staging": "node scripts/site-admin-write-smoke.mjs --env=staging --conflict=1",

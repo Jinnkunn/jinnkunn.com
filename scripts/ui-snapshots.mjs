@@ -24,10 +24,14 @@ const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "output", "ui-snapshots");
 const DEFAULT_TARGETS = [
   "/",
-  "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities",
-  "/blog",
+  "/news",
   "/publications",
   "/works",
+  "/teaching",
+  "/blog",
+  "/bio",
+  "/connect",
+  "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities",
   "/site-admin",
   "/site-admin/design-system",
 ];

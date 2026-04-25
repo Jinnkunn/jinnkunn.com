@@ -11,9 +11,11 @@ import {
   waitForHttp,
 } from "./_lib/local-next.mjs";
 import { launchBrowser } from "./_lib/playwright.mjs";
+import { loadProjectEnv } from "./load-project-env.mjs";
 
 const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
+const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
 
 const ROUTES = [
   {
@@ -121,6 +123,17 @@ const MOBILE = { width: 390, height: 844, name: "mobile" };
 function parseArgs(argv = process.argv.slice(2)) {
   return {
     skipBuild: argv.includes("--skip-build"),
+    candidateAuth:
+      argv.includes("--candidate-auth") ||
+      ["1", "true", "yes", "on"].includes(
+        String(process.env.PRODUCTION_STYLE_CANDIDATE_AUTH || "").toLowerCase(),
+      ),
+    candidateOrigin:
+      argv
+        .find((arg) => arg.startsWith("--candidate-origin="))
+        ?.slice("--candidate-origin=".length) ||
+      process.env.PRODUCTION_STYLE_CANDIDATE_ORIGIN ||
+      "",
     productionOrigin:
       argv
         .find((arg) => arg.startsWith("--production-origin="))
@@ -133,6 +146,46 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 function normalizeOrigin(origin) {
   return String(origin || "").trim().replace(/\/+$/, "");
+}
+
+function normalizeGithubLogin(value) {
+  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
+}
+
+function firstAllowedGithubUser() {
+  for (const part of String(process.env.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
+    const login = normalizeGithubLogin(part);
+    if (login) return login;
+  }
+  return "";
+}
+
+async function createCandidateAuthCookies(candidateOrigin) {
+  loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
+  const secret = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
+  const login = firstAllowedGithubUser();
+  assert(secret, "NEXTAUTH_SECRET or AUTH_SECRET is required for candidate auth");
+  assert(login, "SITE_ADMIN_GITHUB_USERS must include a login for candidate auth");
+
+  const { encode } = await import("next-auth/jwt");
+  const token = await encode({
+    secret,
+    token: {
+      sub: `production-style-${login}`,
+      login,
+      name: login,
+    },
+    maxAge: 5 * 60,
+  });
+  const secure = normalizeOrigin(candidateOrigin).startsWith("https://");
+  return ["__Secure-next-auth.session-token", "next-auth.session-token"].map((name) => ({
+    name,
+    value: token,
+    url: candidateOrigin,
+    httpOnly: true,
+    sameSite: "Lax",
+    secure,
+  }));
 }
 
 function assert(condition, message, details = {}) {
@@ -487,7 +540,13 @@ function compareRoute(route, local, production, viewportName) {
   }
 }
 
-async function compareViewport({ browser, viewport, localOrigin, productionOrigin }) {
+async function compareViewport({
+  browser,
+  viewport,
+  localOrigin,
+  productionOrigin,
+  candidateAuthCookies = [],
+}) {
   const productionContext = await browser.newContext({
     viewport,
     colorScheme: "light",
@@ -498,6 +557,9 @@ async function compareViewport({ browser, viewport, localOrigin, productionOrigi
     colorScheme: "light",
     userAgent: "jinnkunn.com production-style-regression",
   });
+  if (candidateAuthCookies.length > 0) {
+    await localContext.addCookies(candidateAuthCookies);
+  }
 
   try {
     const productionPage = await productionContext.newPage();
@@ -519,30 +581,58 @@ async function compareViewport({ browser, viewport, localOrigin, productionOrigi
 }
 
 export async function main(options = parseArgs()) {
-  if (!options.skipBuild) ensureNextBuild(ROOT, { force: true });
-  const port = await findAvailablePort(options.port || process.env.PRODUCTION_STYLE_PORT);
-  const localOrigin = `http://127.0.0.1:${port}`;
+  const candidateOrigin = normalizeOrigin(
+    options.candidateOrigin ||
+      (options.candidateAuth ? DEFAULT_STAGING_ORIGIN : ""),
+  );
+  let localOrigin = candidateOrigin;
   const productionOrigin = normalizeOrigin(options.productionOrigin);
-  const server = startNextServer({ root: ROOT, port });
+  let server = null;
+  let candidateAuthCookies = [];
+
+  if (candidateOrigin) {
+    if (options.candidateAuth) {
+      candidateAuthCookies = await createCandidateAuthCookies(candidateOrigin);
+    }
+  } else {
+    if (!options.skipBuild) ensureNextBuild(ROOT, { force: true });
+    const port = await findAvailablePort(options.port || process.env.PRODUCTION_STYLE_PORT);
+    localOrigin = `http://127.0.0.1:${port}`;
+    server = startNextServer({ root: ROOT, port });
+  }
 
   try {
-    await waitForHttp(`${localOrigin}/`);
+    if (server) await waitForHttp(`${localOrigin}/`);
     const browser = await launchBrowser();
     try {
-      await compareViewport({ browser, viewport: DESKTOP, localOrigin, productionOrigin });
-      await compareViewport({ browser, viewport: MOBILE, localOrigin, productionOrigin });
+      await compareViewport({
+        browser,
+        viewport: DESKTOP,
+        localOrigin,
+        productionOrigin,
+        candidateAuthCookies,
+      });
+      await compareViewport({
+        browser,
+        viewport: MOBILE,
+        localOrigin,
+        productionOrigin,
+        candidateAuthCookies,
+      });
     } finally {
       await browser.close();
     }
     console.log(
-      `[production-style-regression] local public pages match production contracts (${productionOrigin})`,
+      `[production-style-regression] ${localOrigin} public pages match production contracts (${productionOrigin})`,
     );
   } catch (error) {
-    console.error(server.getLogs?.() || "");
+    if (server) console.error(server.getLogs?.() || "");
     throw error;
   } finally {
-    server.kill("SIGTERM");
-    await sleep(150);
+    if (server) {
+      server.kill("SIGTERM");
+      await sleep(150);
+    }
   }
 }
 
