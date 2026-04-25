@@ -260,10 +260,10 @@ export function Sidebar({
           </nav>
         </div>
       </div>
-      <footer className="px-3.5 py-3 border-t border-border-subtle bg-bg-sidebar">
+      <footer className="sidebar-footer px-3.5 py-3 border-t border-border-subtle bg-bg-sidebar">
         <p className="m-0 text-[12px] font-semibold text-text-primary">Jinnkunn Workspace</p>
         <p className="m-0 mt-0.5 text-[11px] text-text-muted">
-          Personal desktop · Tauri v2
+          Personal desktop
         </p>
       </footer>
     </aside>

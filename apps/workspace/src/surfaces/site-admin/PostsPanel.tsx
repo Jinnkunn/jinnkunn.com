@@ -112,7 +112,19 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
 
   const list =
     rows.length === 0 && !loadingList ? (
-      <p className="list-detail__empty">No posts found.</p>
+      <div className="list-detail__empty list-detail__empty--cta">
+        <span className="list-detail__empty-icon" aria-hidden="true">+</span>
+        <strong>No posts yet</strong>
+        <span>Create the first draft for the blog index.</span>
+        <button
+          className="btn btn--primary"
+          type="button"
+          onClick={() => onSelectedChange({ kind: "new" })}
+          disabled={!ready}
+        >
+          New post
+        </button>
+      </div>
     ) : (
       <ul className="list-detail__rows" role="list">
         {rows.map((row) => {

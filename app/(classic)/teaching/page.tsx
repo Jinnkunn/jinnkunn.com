@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import teachingData from "@/content/teaching.json";
 import { TeachingView } from "@/components/teaching/teaching-view";
+import { normalizeTeachingData } from "@/lib/site-admin/teaching-normalize";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 import type { SiteAdminTeachingData } from "@/lib/site-admin/api-types";
@@ -9,15 +10,7 @@ import type { SiteAdminTeachingData } from "@/lib/site-admin/api-types";
 export const dynamic = "force-static";
 
 function readData(): SiteAdminTeachingData {
-  const d = teachingData as Partial<SiteAdminTeachingData>;
-  return {
-    title: d.title || "Teaching",
-    description: d.description,
-    intro: d.intro,
-    headerLinks: Array.isArray(d.headerLinks) ? d.headerLinks : [],
-    entries: Array.isArray(d.entries) ? d.entries : [],
-    footerLinks: Array.isArray(d.footerLinks) ? d.footerLinks : [],
-  };
+  return normalizeTeachingData(teachingData);
 }
 
 export async function generateMetadata(): Promise<Metadata> {

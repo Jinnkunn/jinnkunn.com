@@ -127,7 +127,10 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Titlebar activeSurface={activeSurface} />
+      <Titlebar
+        activeSurface={activeSurface}
+        activeNavItemId={activeNavItemId}
+      />
       <div className="app-body">
         <Sidebar
           surfaces={SURFACES}
@@ -138,7 +141,7 @@ export function App() {
         />
         <main
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"
-          aria-labelledby="surface-label"
+          aria-label={activeSurface.title}
         >
           <ErrorBoundary label={activeSurface.title} key={activeSurface.id}>
             <SurfaceNavProvider value={navContextValue}>

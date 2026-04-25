@@ -3,6 +3,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 interface TitlebarProps {
   activeSurface: SurfaceDefinition;
+  activeNavItemId: string | null;
 }
 
 /** Titlebar — thin strip pinned to the top of the window. The leading pad
@@ -10,7 +11,13 @@ interface TitlebarProps {
  * card's right edge. Native macOS traffic lights are repositioned into
  * the sidebar header by `set_traffic_lights_inset` (see
  * src-tauri/src/main.rs), so nothing is rendered here for them. */
-export function Titlebar({ activeSurface }: TitlebarProps) {
+export function Titlebar({ activeSurface, activeNavItemId }: TitlebarProps) {
+  const activeNavLabel = activeNavItemId
+    ? activeSurface.navGroups
+      ?.flatMap((group) => group.items)
+      .find((item) => item.id === activeNavItemId)?.label
+    : null;
+
   return (
     <header className="titlebar-shell" data-tauri-drag-region>
       <div className="titlebar-leading-pad" aria-hidden="true" />
@@ -26,6 +33,17 @@ export function Titlebar({ activeSurface }: TitlebarProps) {
         >
           {activeSurface.title}
         </span>
+        {activeNavLabel && (
+          <>
+            <span className="opacity-45" aria-hidden="true">›</span>
+            <span
+              className="text-text-primary font-medium truncate"
+              aria-live="polite"
+            >
+              {activeNavLabel}
+            </span>
+          </>
+        )}
       </div>
       <ThemeToggle />
     </header>

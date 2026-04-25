@@ -3,9 +3,15 @@ import type {
   WorksCategory,
   WorksEntryDTO,
 } from "./api-types";
+import {
+  normalizeStructuredPageSections,
+  WORKS_SECTIONS,
+} from "./page-sections.ts";
 
 const EMPTY_DATA: SiteAdminWorksData = {
+  schemaVersion: 2,
   title: "Works",
+  sections: WORKS_SECTIONS,
   entries: [],
 };
 
@@ -50,8 +56,10 @@ export function normalizeWorksData(raw: unknown): SiteAdminWorksData {
   }
   const r = raw as Record<string, unknown>;
   return {
+    schemaVersion: 2,
     title: typeof r.title === "string" && r.title.trim() ? r.title : "Works",
     description: typeof r.description === "string" ? r.description : undefined,
+    sections: normalizeStructuredPageSections(r.sections, WORKS_SECTIONS),
     intro: typeof r.intro === "string" && r.intro.trim() ? r.intro : undefined,
     note: typeof r.note === "string" && r.note.trim() ? r.note : undefined,
     entries: coerceEntries(r.entries),

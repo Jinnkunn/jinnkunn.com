@@ -83,7 +83,7 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
                 />
                 <input
                   value={link.href}
-                  placeholder="https://scholar.google.com/..."
+                  placeholder="https://scholar.google.com/…"
                   onChange={(e) => updateField(index, "href", e.target.value)}
                   spellCheck={false}
                 />
@@ -103,6 +103,7 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
+                    aria-label="Move profile link up"
                     title="Move up"
                   >
                     ↑
@@ -113,6 +114,7 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, 1)}
                     disabled={index === links.length - 1}
+                    aria-label="Move profile link down"
                     title="Move down"
                   >
                     ↓
@@ -122,6 +124,7 @@ export function ProfileLinksSection({ links, onChange }: ProfileLinksSectionProp
                     className="btn btn--ghost"
                     style={{ padding: "3px 8px", fontSize: 11, color: "var(--color-danger)" }}
                     onClick={() => remove(index)}
+                    aria-label="Remove profile link"
                     title="Remove"
                   >
                     ×

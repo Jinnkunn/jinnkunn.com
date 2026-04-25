@@ -17,6 +17,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 
+import { stopProcessTree } from "./_lib/process-tree.mjs";
+
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "output", "ui-snapshots");
 const DEFAULT_TARGETS = [
@@ -86,6 +88,7 @@ function startNext(port) {
   const nextBin = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
   const child = spawn(process.execPath, [nextBin, "start", "-p", String(port)], {
     stdio: "inherit",
+    detached: process.platform !== "win32",
     env: {
       ...process.env,
       PORT: String(port),
@@ -227,7 +230,7 @@ async function main() {
 
     await browser.close();
   } finally {
-    server.kill("SIGTERM");
+    await stopProcessTree(server);
   }
 
   console.log(`Snapshots saved to: ${runDir}`);

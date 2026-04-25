@@ -7,6 +7,8 @@ import path from "node:path";
 import { createLocalContentStore } from "../lib/server/content-store.ts";
 import {
   AssetsValidationError,
+  deleteAsset,
+  listAssets,
   uploadAsset,
   validateAssetInput,
 } from "../lib/server/assets-store.ts";
@@ -87,6 +89,42 @@ test("assets-store: second upload of the same bytes is idempotent (same URL)", a
     });
     assert.equal(first.url, again.url);
     assert.equal(first.key, again.key);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("assets-store: lists uploaded assets and deletes with matching version", async () => {
+  const root = await makeRoot();
+  try {
+    const store = createLocalContentStore({ rootDir: root });
+    const bytes = new Uint8Array([1, 2, 3, 4, 5, 6]);
+    const uploaded = await uploadAsset({
+      filename: "asset.png",
+      contentType: "image/png",
+      data: bytes,
+      store,
+    });
+    const assets = await listAssets({ store });
+    assert.equal(assets.length, 1);
+    assert.equal(assets[0].key, uploaded.key);
+    assert.equal(assets[0].url, uploaded.url);
+    assert.equal(assets[0].contentType, "image/png");
+    await deleteAsset(uploaded.key, uploaded.sha, store);
+    assert.deepEqual(await listAssets({ store }), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("assets-store: rejects delete outside uploads prefix", async () => {
+  const root = await makeRoot();
+  try {
+    const store = createLocalContentStore({ rootDir: root });
+    await assert.rejects(
+      () => deleteAsset("content/home.json", "sha", store),
+      AssetsValidationError,
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -108,7 +108,19 @@ export function PagesPanel({ selected, onSelectedChange }: PagesPanelProps) {
 
   const list =
     rows.length === 0 && !loadingList ? (
-      <p className="list-detail__empty">No pages found.</p>
+      <div className="list-detail__empty list-detail__empty--cta">
+        <span className="list-detail__empty-icon" aria-hidden="true">+</span>
+        <strong>No pages yet</strong>
+        <span>Create the first standalone MDX page.</span>
+        <button
+          className="btn btn--primary"
+          type="button"
+          onClick={() => onSelectedChange({ kind: "new" })}
+          disabled={!ready}
+        >
+          New page
+        </button>
+      </div>
     ) : (
       <ul className="list-detail__rows" role="list">
         {rows.map((row) => {

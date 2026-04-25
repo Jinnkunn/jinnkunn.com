@@ -99,7 +99,10 @@ export function SiteAdminConnectionPill() {
       : hasCfService
         ? "CF Access"
         : "Not connected";
-  const pillLabel = `${profileLabel} · ${statusLabel}`;
+  const pillLabel = currentTone === "connected"
+    ? profileLabel
+    : `${profileLabel} · ${statusLabel}`;
+  const pillTitle = [profileLabel, statusLabel, trimmedBase].filter(Boolean).join(" · ");
 
   const disableLogin = connection.authLoading || !normalizeString(connection.baseUrl);
   const disableClear = connection.authLoading || !connection.authToken;
@@ -116,6 +119,7 @@ export function SiteAdminConnectionPill() {
         aria-expanded={open}
         aria-haspopup="dialog"
         data-tone={currentTone}
+        title={pillTitle}
       >
         <span className="site-admin-pill__dot" aria-hidden="true" />
         <span className="site-admin-pill__label">{pillLabel}</span>
@@ -147,7 +151,10 @@ export function SiteAdminConnectionPill() {
             <p>API endpoint + app-token (browser sign-in).</p>
           </header>
 
-          <div className="site-admin-pill__field">
+          <div
+            className="site-admin-pill__field site-admin-pill__profile-field"
+            data-profile-mode={profileMode}
+          >
             <span>Profile</span>
 
             {profileMode === "rename" ? (

@@ -1,9 +1,14 @@
 import {
   ConfigIcon,
+  HomeIcon,
+  NewsIcon,
   PagesIcon,
   PostsIcon,
+  PublicationsIcon,
   RoutesIcon,
   StatusIcon,
+  TeachingIcon,
+  WorksIcon,
 } from "../icons";
 import type { SurfaceNavGroup } from "../types";
 import type { SiteAdminTab } from "./types";
@@ -22,13 +27,13 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
     id: "content",
     label: "Content",
     items: [
-      { id: "home", label: "Home", icon: <PagesIcon /> },
+      { id: "home", label: "Home", icon: <HomeIcon /> },
       { id: "posts", label: "Posts", icon: <PostsIcon /> },
       { id: "pages", label: "Pages", icon: <PagesIcon /> },
-      { id: "publications", label: "Publications", icon: <PagesIcon /> },
-      { id: "news", label: "News", icon: <PagesIcon /> },
-      { id: "teaching", label: "Teaching", icon: <PagesIcon /> },
-      { id: "works", label: "Works", icon: <PagesIcon /> },
+      { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
+      { id: "news", label: "News", icon: <NewsIcon /> },
+      { id: "teaching", label: "Teaching", icon: <TeachingIcon /> },
+      { id: "works", label: "Works", icon: <WorksIcon /> },
     ],
   },
   {

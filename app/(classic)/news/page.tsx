@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import newsData from "@/content/news.json";
 import { NewsView } from "@/components/news/news-view";
+import { normalizeNewsData } from "@/lib/site-admin/news-normalize";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 import type { SiteAdminNewsData } from "@/lib/site-admin/api-types";
@@ -9,12 +10,7 @@ import type { SiteAdminNewsData } from "@/lib/site-admin/api-types";
 export const dynamic = "force-static";
 
 function readData(): SiteAdminNewsData {
-  const d = newsData as Partial<SiteAdminNewsData>;
-  return {
-    title: d.title || "News",
-    description: d.description,
-    entries: Array.isArray(d.entries) ? d.entries : [],
-  };
+  return normalizeNewsData(newsData);
 }
 
 export async function generateMetadata(): Promise<Metadata> {

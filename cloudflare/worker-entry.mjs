@@ -1,4 +1,5 @@
 import openNextWorker from "../.open-next/worker.js";
+import { isStagingStaticShellAuthorized } from "./staging-static-auth.mjs";
 
 const BYPASS_PREFIXES = [
   "/api/",
@@ -97,14 +98,16 @@ const worker = {
   async fetch(request, env, ctx) {
     const method = String(request.method || "GET").toUpperCase();
     // When `STAGING_GATE=1`, skip the static-asset shortcut so every
-    // request flows through OpenNext and hits the Next.js middleware
-    // (which enforces sign-in for all non-bypass paths). Without this,
-    // pre-rendered HTML pages bypass middleware entirely.
+    // anonymous request flows through OpenNext and hits the Next.js
+    // middleware. Authenticated public-page requests may still use the
+    // static shell to avoid the Worker Free runtime hot path.
     const gateEnabled = String(env?.STAGING_GATE || "") === "1";
-    if (!gateEnabled && (method === "GET" || method === "HEAD")) {
+    if (method === "GET" || method === "HEAD") {
       try {
-        const staticRes = await tryServeStaticShell(request, env);
-        if (staticRes) return staticRes;
+        if (!gateEnabled || (await isStagingStaticShellAuthorized(request, env))) {
+          const staticRes = await tryServeStaticShell(request, env);
+          if (staticRes) return staticRes;
+        }
       } catch {
         // Fall through to OpenNext runtime.
       }

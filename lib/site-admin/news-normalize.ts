@@ -1,6 +1,7 @@
 import type { NewsEntryDTO, SiteAdminNewsData } from "./api-types";
 
 const EMPTY_DATA: SiteAdminNewsData = {
+  schemaVersion: 1,
   title: "News",
   entries: [],
 };
@@ -30,6 +31,7 @@ export function normalizeNewsData(raw: unknown): SiteAdminNewsData {
   if (!raw || typeof raw !== "object") return { ...EMPTY_DATA, entries: [] };
   const r = raw as Record<string, unknown>;
   return {
+    schemaVersion: 1,
     title: typeof r.title === "string" && r.title.trim() ? r.title : "News",
     description: typeof r.description === "string" ? r.description : undefined,
     entries: coerceEntries(r.entries),

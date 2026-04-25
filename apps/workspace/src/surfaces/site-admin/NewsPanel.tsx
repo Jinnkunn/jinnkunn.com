@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
+import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import type { NewsData, NewsEntry } from "./types";
+import { useJsonDraft } from "./use-json-draft";
+import { localDateIso } from "./utils";
 
 const BLANK_DATA: NewsData = {
+  schemaVersion: 1,
   title: "News",
   entries: [],
 };
@@ -15,14 +20,6 @@ function clone(value: NewsData): NewsData {
 
 function sameData(a: NewsData, b: NewsData): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function todayIso(): string {
-  const d = new Date();
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function NewsPanel() {
@@ -37,6 +34,11 @@ export function NewsPanel() {
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
+  const { restorable, clearDraft, dismissRestore } = useJsonDraft<NewsData>(
+    "news",
+    draft,
+    dirty && !loading && !saving,
+  );
 
   const loadData = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -55,6 +57,7 @@ export function NewsPanel() {
       const payload = (data.data ?? {}) as Partial<NewsData>;
       const version = (data.sourceVersion ?? {}) as { fileSha?: string };
       const normalized: NewsData = {
+        schemaVersion: 1,
         title: payload.title || "News",
         description: payload.description,
         entries: Array.isArray(payload.entries) ? payload.entries : [],
@@ -107,8 +110,9 @@ export function NewsPanel() {
     setBaseData(clone(draft));
     setFileSha(version.fileSha || "");
     setConflict(false);
+    clearDraft();
     setMessage("success", "News saved.");
-  }, [ready, saving, request, draft, fileSha, setMessage]);
+  }, [ready, saving, request, draft, fileSha, clearDraft, setMessage]);
 
   const updateEntry = useCallback(
     (index: number, next: Partial<NewsEntry>) => {
@@ -165,7 +169,7 @@ export function NewsPanel() {
   const add = useCallback(() => {
     setDraft((d) => ({
       ...d,
-      entries: [{ dateIso: todayIso(), body: "" }, ...d.entries],
+      entries: [{ dateIso: localDateIso(), body: "" }, ...d.entries],
     }));
   }, []);
 
@@ -218,6 +222,17 @@ export function NewsPanel() {
         {draft.entries.length === 1 ? "y" : "ies"}
       </p>
 
+      {restorable && (
+        <JsonDraftRestoreBanner
+          savedAt={restorable.savedAt}
+          onDismiss={dismissRestore}
+          onRestore={() => {
+            setDraft(clone(restorable.value));
+            dismissRestore();
+          }}
+        />
+      )}
+
       <div className="flex gap-2">
         <button className="btn btn--primary" type="button" onClick={add}>
           + Add entry (newest)
@@ -256,6 +271,7 @@ export function NewsPanel() {
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
+                    aria-label="Move news entry up"
                     title="Move up (newer position)"
                   >
                     ↑
@@ -266,6 +282,7 @@ export function NewsPanel() {
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, 1)}
                     disabled={index === draft.entries.length - 1}
+                    aria-label="Move news entry down"
                     title="Move down (older position)"
                   >
                     ↓
@@ -279,19 +296,19 @@ export function NewsPanel() {
                       color: "var(--color-danger)",
                     }}
                     onClick={() => remove(index)}
+                    aria-label="Remove news entry"
                     title="Remove"
                   >
                     ×
                   </button>
                 </div>
               </div>
-              <textarea
+              <MarkdownEditor
                 value={entry.body}
-                onChange={(e) => updateEntry(index, { body: e.target.value })}
+                onChange={(next) => updateEntry(index, { body: next })}
                 placeholder="Body (markdown: **bold**, *italic*, [link](url))"
-                rows={4}
-                className="news-entry-body"
-                spellCheck={false}
+                minHeight={120}
+                showToolbar={false}
               />
             </div>
           ))

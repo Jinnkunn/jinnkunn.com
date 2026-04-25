@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import type {
   SiteAdminProtectedRoute,
@@ -32,6 +34,7 @@ const SITE_SETTINGS_ROW_ID = "00000000000000000000000000000001";
 const SOURCE_ADMIN_PAGE_ID = "filesystem-admin";
 const SOURCE_OVERRIDES_DB_ID = "filesystem-overrides";
 const SOURCE_PROTECTED_DB_ID = "filesystem-protected";
+const execFileAsync = promisify(execFile);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -92,6 +95,14 @@ export type SiteAdminSourceState = {
   headCommitTime: string | null;
 };
 
+export type SiteAdminFileHistoryEntry = {
+  commitSha: string;
+  commitShort: string;
+  committedAt: string | null;
+  authorName: string;
+  message: string;
+};
+
 export class SiteAdminSourceConflictError extends Error {
   readonly code = "SOURCE_CONFLICT";
   readonly expectedSha: string;
@@ -137,6 +148,14 @@ export interface SiteAdminSourceStore {
    * publications.json) that don't fit the SiteSettings / NavRows / Routes
    * schemas baked into the methods above. */
   readTextFile(relPath: string): Promise<{ content: string; sha: string } | null>;
+  listTextFileHistory(
+    relPath: string,
+    limit?: number,
+  ): Promise<SiteAdminFileHistoryEntry[]>;
+  readTextFileAtCommit(
+    relPath: string,
+    commitSha: string,
+  ): Promise<{ content: string; sha: string; commitSha: string } | null>;
   /** Write a UTF-8 file at the repo-root-relative path, creating the
    * commit on the configured branch. `expectedSha` (if provided) is
    * checked before write and a SOURCE_CONFLICT is raised on mismatch. */
@@ -542,6 +561,64 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     try {
       const content = fs.readFileSync(filePath, "utf8");
       return { content, sha: jsonSha(content) };
+    } catch {
+      return null;
+    }
+  }
+
+  async listTextFileHistory(
+    relPath: string,
+    limit = 12,
+  ): Promise<SiteAdminFileHistoryEntry[]> {
+    const maxCount = Math.max(1, Math.min(50, Math.floor(limit)));
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        [
+          "log",
+          `--max-count=${maxCount}`,
+          "--format=%H%x1f%h%x1f%ct%x1f%an%x1f%s",
+          "--",
+          relPath,
+        ],
+        { cwd: this.rootDir, maxBuffer: 1024 * 1024 },
+      );
+      return stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [commitSha, commitShort, epoch, authorName, ...messageParts] =
+            line.split("\x1f");
+          const timestampMs = Number(epoch) * 1000;
+          return {
+            commitSha: commitSha || "",
+            commitShort: commitShort || (commitSha || "").slice(0, 7),
+            committedAt: Number.isFinite(timestampMs)
+              ? new Date(timestampMs).toISOString()
+              : null,
+            authorName: authorName || "",
+            message: messageParts.join("\x1f") || "",
+          };
+        })
+        .filter((entry) => Boolean(entry.commitSha));
+    } catch {
+      return [];
+    }
+  }
+
+  async readTextFileAtCommit(
+    relPath: string,
+    commitSha: string,
+  ): Promise<{ content: string; sha: string; commitSha: string } | null> {
+    if (!/^[a-f0-9]{7,40}$/i.test(commitSha)) return null;
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["show", `${commitSha}:${relPath}`],
+        { cwd: this.rootDir, maxBuffer: 8 * 1024 * 1024 },
+      );
+      return { content: stdout, sha: jsonSha(stdout), commitSha };
     } catch {
       return null;
     }
@@ -987,6 +1064,48 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     return { content: file.content, sha: file.sha };
   }
 
+  async listTextFileHistory(
+    relPath: string,
+    limit = 12,
+  ): Promise<SiteAdminFileHistoryEntry[]> {
+    const perPage = Math.max(1, Math.min(50, Math.floor(limit)));
+    const payload = await this.githubJsonRequest<unknown>({
+      method: "GET",
+      apiPath: `/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(
+        this.repo,
+      )}/commits?sha=${encodeURIComponent(this.branch)}&path=${encodeURIComponent(
+        relPath,
+      )}&per_page=${perPage}`,
+    });
+    if (!Array.isArray(payload)) return [];
+    return payload
+      .map((raw): SiteAdminFileHistoryEntry | null => {
+        const node = asRecord(raw);
+        const commit = asRecord(node.commit);
+        const author = asRecord(commit.author);
+        const sha = asString(node.sha);
+        if (!sha) return null;
+        return {
+          commitSha: sha,
+          commitShort: sha.slice(0, 7),
+          committedAt: asString(author.date) || null,
+          authorName: asString(author.name),
+          message: asString(commit.message).split("\n")[0] || "",
+        };
+      })
+      .filter((entry): entry is SiteAdminFileHistoryEntry => Boolean(entry));
+  }
+
+  async readTextFileAtCommit(
+    relPath: string,
+    commitSha: string,
+  ): Promise<{ content: string; sha: string; commitSha: string } | null> {
+    if (!/^[a-f0-9]{7,40}$/i.test(commitSha)) return null;
+    const file = await this.getRepoFile(relPath, commitSha);
+    if (!file) return null;
+    return { content: file.content, sha: file.sha, commitSha };
+  }
+
   async writeTextFile(input: {
     relPath: string;
     content: string;
@@ -1058,13 +1177,14 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
 
   private async getRepoFile(
     repoPath: string,
+    ref = this.branch,
   ): Promise<{ sha: string; content: string } | null> {
     try {
       const payload = await this.githubJsonRequest<unknown>({
         method: "GET",
         apiPath: `/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(
           this.repo,
-        )}/contents/${encodeRepoPath(repoPath)}?ref=${encodeURIComponent(this.branch)}`,
+        )}/contents/${encodeRepoPath(repoPath)}?ref=${encodeURIComponent(ref)}`,
       });
       const data = asRecord(payload);
       const type = asString(data.type);

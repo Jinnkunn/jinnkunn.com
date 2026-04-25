@@ -233,8 +233,10 @@ export type PublicationEntryDTO = {
 };
 
 export type SiteAdminPublicationsData = {
+  schemaVersion?: number;
   title: string;
   description?: string;
+  sections?: SiteAdminStructuredPageSection[];
   profileLinks: PublicationProfileLinkDTO[];
   entries: PublicationEntryDTO[];
 };
@@ -266,6 +268,7 @@ export type NewsEntryDTO = {
 };
 
 export type SiteAdminNewsData = {
+  schemaVersion?: number;
   title: string;
   description?: string;
   entries: NewsEntryDTO[];
@@ -304,8 +307,10 @@ export type TeachingEntryDTO = {
 };
 
 export type SiteAdminTeachingData = {
+  schemaVersion?: number;
   title: string;
   description?: string;
+  sections?: SiteAdminStructuredPageSection[];
   intro?: string;                // markdown (shown as pull-quote)
   headerLinks: TeachingLinkDTO[];
   entries: TeachingEntryDTO[];
@@ -346,8 +351,10 @@ export type WorksEntryDTO = {
 };
 
 export type SiteAdminWorksData = {
+  schemaVersion?: number;
   title: string;
   description?: string;
+  sections?: SiteAdminStructuredPageSection[];
   intro?: string;     // top quote (markdown)
   note?: string;      // bottom disclaimer quote (markdown)
   entries: WorksEntryDTO[];
@@ -372,13 +379,149 @@ export type SiteAdminWorksPostResult =
   | SiteAdminWorksPostPayload
   | SiteAdminApiError;
 
-// --- Home (landing page hero) --------------------------------------------
+// --- Home (section-based landing page) -----------------------------------
 
-export type SiteAdminHomeData = {
+export type SiteAdminStructuredPageSectionType =
+  | "intro"
+  | "profileLinks"
+  | "entries"
+  | "recentWorks"
+  | "passedWorks"
+  | "note"
+  | "headerLinks"
+  | "footerLinks"
+  | "richText";
+
+export type SiteAdminStructuredPageSection = {
+  id: string;
+  type: SiteAdminStructuredPageSectionType;
+  enabled: boolean;
+  title?: string;
+  body?: string;
+  width: "narrow" | "standard" | "wide";
+};
+
+export type SiteAdminHomeSectionType =
+  | "hero"
+  | "richText"
+  | "linkList"
+  | "featuredPages"
+  | "layout";
+
+export type SiteAdminHomeSectionWidth = "narrow" | "standard" | "wide";
+
+export type SiteAdminHomeTextAlign = "left" | "center";
+
+export type SiteAdminHomeRichTextVariant = "standard" | "classicBody";
+
+export type SiteAdminHomeLayoutVariant = "standard" | "classicIntro";
+
+export type SiteAdminHomeLink = {
+  label: string;
+  href: string;
+  description?: string;
+};
+
+export type SiteAdminHomeLayoutBlockType = "markdown" | "image";
+
+export type SiteAdminHomeLayoutBlockBase = {
+  id: string;
+  type: SiteAdminHomeLayoutBlockType;
+  column: 1 | 2 | 3;
+};
+
+export type SiteAdminHomeMarkdownBlock = SiteAdminHomeLayoutBlockBase & {
+  type: "markdown";
+  title?: string;
+  body: string;
+  tone: "plain" | "panel" | "quote";
+  textAlign: SiteAdminHomeTextAlign;
+};
+
+export type SiteAdminHomeImageBlock = SiteAdminHomeLayoutBlockBase & {
+  type: "image";
+  url: string;
+  alt?: string;
+  caption?: string;
+  shape: "rounded" | "portrait" | "circle" | "square";
+  fit: "cover" | "contain";
+};
+
+export type SiteAdminHomeLayoutBlock =
+  | SiteAdminHomeMarkdownBlock
+  | SiteAdminHomeImageBlock;
+
+export type SiteAdminHomeHeroSection = {
+  id: string;
+  type: "hero";
+  enabled: boolean;
   title: string;
+  body: string;
   profileImageUrl?: string;
   profileImageAlt?: string;
-  body: string; // markdown intro
+  imagePosition: "left" | "right" | "top" | "none";
+  textAlign: SiteAdminHomeTextAlign;
+  width: SiteAdminHomeSectionWidth;
+};
+
+export type SiteAdminHomeRichTextSection = {
+  id: string;
+  type: "richText";
+  enabled: boolean;
+  title?: string;
+  body: string;
+  variant: SiteAdminHomeRichTextVariant;
+  tone: "plain" | "panel" | "quote";
+  textAlign: SiteAdminHomeTextAlign;
+  width: SiteAdminHomeSectionWidth;
+};
+
+export type SiteAdminHomeLinkListSection = {
+  id: string;
+  type: "linkList";
+  enabled: boolean;
+  title?: string;
+  body?: string;
+  layout: "stack" | "grid" | "inline";
+  links: SiteAdminHomeLink[];
+  width: SiteAdminHomeSectionWidth;
+};
+
+export type SiteAdminHomeFeaturedPagesSection = {
+  id: string;
+  type: "featuredPages";
+  enabled: boolean;
+  title?: string;
+  body?: string;
+  columns: 2 | 3;
+  items: SiteAdminHomeLink[];
+  width: SiteAdminHomeSectionWidth;
+};
+
+export type SiteAdminHomeLayoutSection = {
+  id: string;
+  type: "layout";
+  enabled: boolean;
+  title?: string;
+  variant: SiteAdminHomeLayoutVariant;
+  columns: 1 | 2 | 3;
+  gap: "compact" | "standard" | "loose";
+  verticalAlign: "start" | "center";
+  blocks: SiteAdminHomeLayoutBlock[];
+  width: SiteAdminHomeSectionWidth;
+};
+
+export type SiteAdminHomeSection =
+  | SiteAdminHomeHeroSection
+  | SiteAdminHomeRichTextSection
+  | SiteAdminHomeLinkListSection
+  | SiteAdminHomeFeaturedPagesSection
+  | SiteAdminHomeLayoutSection;
+
+export type SiteAdminHomeData = {
+  schemaVersion?: number;
+  title: string;
+  sections: SiteAdminHomeSection[];
 };
 
 export type SiteAdminHomeGetPayload = {
