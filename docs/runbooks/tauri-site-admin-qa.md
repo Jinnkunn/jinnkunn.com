@@ -1,0 +1,144 @@
+# Tauri Site Admin QA Runbook
+
+## Scope
+
+Use this runbook before requesting production promotion for changes that touch
+the Tauri workspace, Site Admin APIs, public preview rendering, editor flows, or
+asset uploads.
+
+This runbook is staging-first. Production must remain unchanged unless the
+release owner explicitly approves promotion.
+
+## Automated Preflight
+
+Run from a clean `main` checkout after the release candidate has been deployed
+to staging:
+
+```bash
+git switch main
+git pull --ff-only
+git status --short
+npm run qa:workspace:site-admin:local
+npm run qa:workspace:site-admin:staging
+```
+
+Expected:
+
+- `git status --short` prints nothing.
+- Local QA builds the workspace, runs workspace tests, and runs workspace UI
+  guardrails.
+- Staging QA verifies authenticated public routes, Site Admin read APIs, asset
+  upload smoke, and the production guard.
+- `/api/site-admin/status` returns `pendingDeploy=false` on staging.
+- `/api/site-admin/preview/home` returns real `/_next/static/css/*.css`
+  stylesheets.
+
+For one full local plus remote pass, use:
+
+```bash
+npm run qa:workspace:site-admin
+```
+
+## Manual Acceptance Checklist
+
+Run the desktop app against staging and record pass/fail notes for each item.
+
+### Connection And Shell
+
+- Confirm the connection pill shows the staging profile and signed-in state.
+- Switch between Site Admin tabs; titlebar breadcrumbs and sidebar selection
+  must stay aligned.
+- Toggle light/dark theme; editor panels and preview surfaces must remain
+  legible.
+- Open the command palette and confirm core Site Admin commands are discoverable.
+
+### Home WYSIWYG Editor
+
+- Open Home and confirm the default mode is canvas-first, not a cramped
+  three-column preview/editor layout.
+- Select each visible Home section and block; the inspector must edit the
+  selected item only.
+- Add a rich text block, image block, links block, featured pages block, and
+  layout section.
+- Reorder sections and layout blocks; preview order must update immediately.
+- Edit text inline in the canvas, then switch to source/structure escape hatches
+  if available; content must round-trip without loss.
+- Save, reload the app, and confirm the saved Home content still matches the
+  staging preview.
+
+### Post And Page Editors
+
+- Open one existing blog post and one existing page.
+- Edit title, description/frontmatter, and body content.
+- Use the shared MDX editor in Write mode, Source mode, and Preview mode.
+- Confirm unsupported raw MDX, code fences, tables, lists, callouts, and links
+  remain editable and serializable.
+- Drag an image into the editor; the drop target should show clear visual
+  feedback before upload.
+- Save, reload, and confirm the body content round-trips.
+
+### Asset Library
+
+- Upload a new image through the Asset Library.
+- Confirm the returned URL is on the configured CDN/R2 path, not bundled into
+  the site build.
+- Select a recent upload, set alt text and caption, save, reload, and confirm
+  preview still uses the saved asset URL.
+- Delete only a disposable test asset after confirming version conflict handling
+  works.
+
+### Drafts And Version History
+
+- Create a local draft, close or reload the app, restore it, then dismiss it.
+- Save a small change, open Version History, and confirm previous versions are
+  readable.
+- Restore only a disposable test revision; verify the app makes the restore
+  action explicit before writing.
+
+### Public Preview
+
+- Confirm Home preview typography, paragraph rhythm, links, and inline icons
+  match the current public Notion/classic style.
+- Confirm Post and Page preview heading links inherit heading color.
+- Confirm Home profile image loads from the CDN URL directly.
+- Confirm preview iframe styles are loaded from `/_next/static/css/*.css`.
+
+## Evidence Template
+
+```markdown
+## Tauri Site Admin QA
+
+- Source SHA:
+- Staging Worker version:
+- Tester:
+- Date:
+
+### Automated
+
+- `npm run qa:workspace:site-admin:local`:
+- `npm run qa:workspace:site-admin:staging`:
+
+### Manual
+
+- Connection and shell:
+- Home WYSIWYG editor:
+- Post and Page editors:
+- Asset Library:
+- Drafts and Version History:
+- Public Preview:
+
+### Notes / Follow-ups
+
+-
+```
+
+## Stop Conditions
+
+Do not request production promotion if any of these fail:
+
+- Home editor save/reload changes content unexpectedly.
+- Post/Page source mode drops unsupported MDX.
+- Asset uploads return local build-bundled paths for new media.
+- Staging public routes return non-`200` for authenticated checks.
+- `/api/site-admin/status` reports `pendingDeploy=true`.
+- Production guard reports a version different from the protected baseline.
