@@ -73,6 +73,11 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
   assert.match(documentEditor, /mdx-document-slash-menu/);
+  assert.match(documentEditor, /SLASH_COMMANDS/);
+  assert.match(documentEditor, /getMatchingSlashCommands/);
+  assert.match(documentEditor, /onInsertParagraphAfter/);
+  assert.match(documentEditor, /onRemoveEmpty/);
+  assert.match(documentEditor, /blockInputRefs/);
   assert.match(documentEditor, /application\/x-mdx-block/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
@@ -85,6 +90,8 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /\.mdx-document-editor__layout/);
   assert.match(styles, /\.mdx-document-block/);
   assert.match(styles, /\.mdx-document-slash-menu/);
+  assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*grid-template-columns: 38px minmax\(0, 1fr\);/);
+  assert.match(styles, /\.mdx-document-slash-menu\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(180px, 1fr\)\);/);
 
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
