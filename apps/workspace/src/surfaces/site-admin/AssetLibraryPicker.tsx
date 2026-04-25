@@ -247,6 +247,8 @@ export function AssetLibraryPicker({
                 onClick={() => onSelect(asset)}
               >
                 {asset.contentType?.startsWith("image/") ? (
+                  // Tauri/Vite surface, not a Next.js page; next/image is unavailable here.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={asset.url} alt={asset.alt || asset.filename || "Asset"} />
                 ) : (
                   <span className="asset-library__file">File</span>
