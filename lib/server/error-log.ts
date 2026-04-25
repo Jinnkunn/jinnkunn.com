@@ -9,8 +9,8 @@
  *
  * What it gives us:
  *   - Structured `console.warn` / `console.error` lines with a stable
- *     prefix and JSON payload, so anything tailing stderr (wrangler
- *     tail, Vercel logs) can grep/filter.
+ *     prefix and JSON payload, so anything tailing stderr can
+ *     grep/filter it.
  *   - A bounded ring that the admin status endpoint reads to surface
  *     "there were N warnings in the last hour, here's the tail".
  *

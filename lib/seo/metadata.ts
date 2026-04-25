@@ -32,7 +32,6 @@ export function detectSiteOrigin(env: NodeJS.ProcessEnv = process.env): string {
   const candidates = [
     env.NEXT_PUBLIC_SITE_URL,
     env.SITE_URL,
-    env.VERCEL_PROJECT_PRODUCTION_URL,
   ];
   for (const c of candidates) {
     const n = normalizeSiteOrigin(String(c || ""));

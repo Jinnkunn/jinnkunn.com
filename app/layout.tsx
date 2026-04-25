@@ -4,8 +4,6 @@ import { designViewportThemeColors } from "@/lib/design-system/tokens";
 import { getDesignThemeInitScript } from "@/lib/design-system/theme";
 import { getSiteConfig } from "@/lib/site-config";
 import { buildRootMetadata } from "@/lib/seo/metadata";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import { Analytics } from "@vercel/analytics/react";
 import Providers from "@/components/providers";
 import "./design-system.css";
 import "./globals.css";
@@ -27,7 +25,6 @@ export default function RootLayout({
 }>) {
   const cfg = getSiteConfig();
   const gaId = cfg.integrations?.googleAnalyticsId?.trim() || "";
-  const enableVercelRuntimeInsights = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   return (
     <html lang={cfg.lang || "en"} dir="ltr" data-theme="light" className="theme-light">
       <body>
@@ -35,12 +32,6 @@ export default function RootLayout({
           {getDesignThemeInitScript()}
         </Script>
         <Providers>{children}</Providers>
-        {enableVercelRuntimeInsights ? (
-          <>
-            <SpeedInsights />
-            <Analytics />
-          </>
-        ) : null}
         {gaId ? (
           <>
             <Script

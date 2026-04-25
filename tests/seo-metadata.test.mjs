@@ -34,15 +34,13 @@ test("seo-metadata: detectSiteOrigin respects precedence", () => {
     detectSiteOrigin({
       NEXT_PUBLIC_SITE_URL: "https://a.example",
       SITE_URL: "https://b.example",
-      VERCEL_PROJECT_PRODUCTION_URL: "c.example",
     }),
     "https://a.example",
   );
   assert.equal(
     detectSiteOrigin({
       NEXT_PUBLIC_SITE_URL: "",
-      SITE_URL: "",
-      VERCEL_PROJECT_PRODUCTION_URL: "prod.example",
+      SITE_URL: "prod.example",
     }),
     "https://prod.example",
   );

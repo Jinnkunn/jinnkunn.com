@@ -115,7 +115,19 @@ Use this as the PR/release body before asking for production approval:
 - `npm run verify:staging:authenticated`
 - `npm run check:staging-visual`
 - `npm run verify:cf:staging`
-- GitHub PR checks: `build`, `workspace-quality`, Vercel previews
+- GitHub PR checks: `build`, `workspace-quality`
+
+## Vercel Decommission Note
+
+Production and staging are deployed through Cloudflare. If GitHub still sends
+emails from `vercel` bot, the Vercel GitHub App is still connected to this
+repository and is creating preview deployments/status checks outside this
+repository's GitHub Actions workflows.
+
+To stop Vercel preview emails and comments, disconnect this repository from
+the Vercel projects `jinnkunn-com` and `jinnkunn-com-staging`, or remove the
+repository from the Vercel GitHub App installation. Code changes alone cannot
+disable an external GitHub App integration.
 
 ## Rollback
 
