@@ -76,10 +76,17 @@ function main() {
   assertIncludes(documentEditor, "BodyBlockCanvas", "MdxDocumentEditor");
   assertIncludes(documentEditor, "parseMdxBlocks", "MdxDocumentEditor");
   assertIncludes(documentEditor, "serializeMdxBlocks", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "mdx-document-slash-menu", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "application/x-mdx-block", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useMdxImageUploadDrop", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useUnsavedChangesBeforeUnload", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useConfirmingBack", "MdxDocumentEditor");
   assertIncludes(documentEditor, "usePersistentUiState", "MdxDocumentEditor");
+
+  const mdxBlocks = read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");
+  assertIncludes(mdxBlocks, 'type === "raw"', "mdx-blocks");
+  assertIncludes(mdxBlocks, 'type === "callout"', "mdx-blocks");
+  assertIncludes(mdxBlocks, 'type === "list"', "mdx-blocks");
 
   assertExcludes(
     read("components/works/works-view.tsx"),

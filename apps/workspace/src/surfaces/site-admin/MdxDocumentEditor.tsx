@@ -55,7 +55,11 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   heading: "Heading",
   image: "Image",
   quote: "Quote",
+  list: "List",
+  divider: "Divider",
+  callout: "Callout",
   code: "Code",
+  raw: "Raw MDX",
 };
 
 function isDocumentEditorMode(value: unknown): value is DocumentEditorMode {
@@ -106,7 +110,11 @@ function readSlashCommand(value: string): MdxBlockType | null {
   }
   if (command === "/image") return "image";
   if (command === "/quote") return "quote";
+  if (command === "/list" || command === "/bullet" || command === "/bulleted") return "list";
+  if (command === "/divider" || command === "/hr") return "divider";
+  if (command === "/callout" || command === "/note") return "callout";
   if (command === "/code") return "code";
+  if (command === "/raw" || command === "/mdx") return "raw";
   return null;
 }
 
@@ -125,9 +133,18 @@ function blockFromSlashCommand(value: string): MdxBlock | null {
 function replaceBlockType(block: MdxBlock, type: MdxBlockType): MdxBlock {
   if (block.type === type) return block;
   const next = createMdxBlock(type);
-  if (type === "paragraph" || type === "heading" || type === "quote" || type === "code") {
+  if (
+    type === "paragraph" ||
+    type === "heading" ||
+    type === "quote" ||
+    type === "list" ||
+    type === "callout" ||
+    type === "code" ||
+    type === "raw"
+  ) {
     return { ...next, text: block.text };
   }
+  if (type === "divider") return next;
   return { ...next, alt: block.text.slice(0, 80), text: "" };
 }
 
@@ -146,6 +163,8 @@ function BodyBlockCanvas({
 }) {
   const [blocks, setBlocks] = useState<MdxBlock[]>(() => parseMdxBlocks(body));
   const [dragDepth, setDragDepth] = useState(0);
+  const [draggingBlockId, setDraggingBlockId] = useState("");
+  const [dragOverBlockId, setDragOverBlockId] = useState("");
   const [uploadingId, setUploadingId] = useState("");
   const lastEmittedBodyRef = useRef(body);
 
@@ -257,6 +276,20 @@ function BodyBlockCanvas({
     [blocks, commitBlocks],
   );
 
+  const moveBlockTo = useCallback(
+    (draggedId: string, targetId: string) => {
+      if (!draggedId || draggedId === targetId) return;
+      const from = blocks.findIndex((block) => block.id === draggedId);
+      const to = blocks.findIndex((block) => block.id === targetId);
+      if (from < 0 || to < 0) return;
+      const next = blocks.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      commitBlocks(next);
+    },
+    [blocks, commitBlocks],
+  );
+
   const removeBlock = useCallback(
     (id: string) => {
       const next = blocks.filter((block) => block.id !== id);
@@ -270,11 +303,13 @@ function BodyBlockCanvas({
       className="mdx-document-blocks"
       data-drag-active={dragDepth > 0 ? "true" : undefined}
       onDragEnter={(event: DragEvent<HTMLDivElement>) => {
+        if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
         event.preventDefault();
         setDragDepth((depth) => depth + 1);
       }}
       onDragLeave={() => setDragDepth((depth) => Math.max(0, depth - 1))}
       onDrop={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
         event.preventDefault();
         setDragDepth(0);
         const files = Array.from(event.dataTransfer?.files ?? []);
@@ -290,8 +325,43 @@ function BodyBlockCanvas({
       </div>
 
       {blocks.map((block, index) => (
-        <div className="mdx-document-block" key={block.id}>
+        <div
+          className="mdx-document-block"
+          data-drag-over={dragOverBlockId === block.id ? "true" : undefined}
+          key={block.id}
+          onDragOver={(event) => {
+            if (!Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
+            event.preventDefault();
+            setDragOverBlockId(block.id);
+          }}
+          onDrop={(event) => {
+            const draggedId = event.dataTransfer.getData("application/x-mdx-block");
+            if (!draggedId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setDragOverBlockId("");
+            moveBlockTo(draggedId, block.id);
+          }}
+        >
           <div className="mdx-document-block__toolbar">
+            <button
+              type="button"
+              className="mdx-document-block__drag"
+              draggable
+              onDragStart={(event) => {
+                setDraggingBlockId(block.id);
+                event.dataTransfer.setData("application/x-mdx-block", block.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={() => {
+                setDraggingBlockId("");
+                setDragOverBlockId("");
+              }}
+              aria-label="Drag block to reorder"
+              title={draggingBlockId === block.id ? "Dragging" : "Drag to reorder"}
+            >
+              ⋮⋮
+            </button>
             <select
               aria-label="Block type"
               value={block.type}
@@ -341,6 +411,9 @@ function BodyBlockCanvas({
               if (next) patchBlock(block.id, () => next);
               return Boolean(next);
             }}
+            onConvertType={(type) =>
+              patchBlock(block.id, () => createMdxBlock(type))
+            }
             onUploadImage={(file) => void uploadImageIntoBlock(block.id, file)}
           />
 
@@ -365,17 +438,21 @@ function BodyBlockCanvas({
 
 function EditableBlock({
   block,
+  onConvertType,
   onPatch,
   onSlashCommand,
   onUploadImage,
   uploading,
 }: {
   block: MdxBlock;
+  onConvertType: (type: MdxBlockType) => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onSlashCommand: (value: string) => boolean;
   onUploadImage: (file: File | null) => void;
   uploading: boolean;
 }) {
+  const showSlashMenu = block.type === "paragraph" && block.text.trim().startsWith("/");
+
   if (block.type === "image") {
     return (
       <div className="mdx-document-image-block">
@@ -414,6 +491,14 @@ function EditableBlock({
               onPatch((current) => ({ ...current, alt: event.target.value }))
             }
           />
+          <input
+            aria-label="Image caption"
+            value={block.caption || ""}
+            placeholder="Caption"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, caption: event.target.value }))
+            }
+          />
         </div>
       </div>
     );
@@ -449,29 +534,89 @@ function EditableBlock({
     );
   }
 
+  if (block.type === "divider") {
+    return (
+      <div className="mdx-document-divider-block" aria-label="Divider block">
+        <span />
+      </div>
+    );
+  }
+
+  if (block.type === "list") {
+    return (
+      <div className="mdx-document-list-block">
+        <select
+          aria-label="List style"
+          value={block.listStyle ?? "bulleted"}
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              markers: undefined,
+              listStyle: event.target.value as "bulleted" | "numbered",
+            }))
+          }
+        >
+          <option value="bulleted">Bulleted</option>
+          <option value="numbered">Numbered</option>
+        </select>
+        <textarea
+          aria-label="List items"
+          className="mdx-document-text-block mdx-document-text-block--list"
+          rows={Math.max(3, block.text.split("\n").length + 1)}
+          value={block.text}
+          placeholder="One item per line"
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              markers: undefined,
+              text: event.target.value,
+            }))
+          }
+        />
+      </div>
+    );
+  }
+
   return (
-    <textarea
-      aria-label={`${BLOCK_TYPE_LABELS[block.type]} block`}
-      className={`mdx-document-text-block mdx-document-text-block--${block.type}`}
-      rows={block.type === "code" ? 6 : Math.max(3, block.text.split("\n").length + 1)}
-      value={block.text}
-      placeholder={
-        block.type === "code"
-          ? "Code"
-          : block.type === "quote"
-            ? "Quote"
-            : "Type / for blocks, or start writing…"
-      }
-      onChange={(event) =>
-        onPatch((current) => ({ ...current, text: event.target.value }))
-      }
-      onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
-        const value = event.currentTarget.value;
-        if (!value.trim().startsWith("/")) return;
-        if (onSlashCommand(value)) event.preventDefault();
-      }}
-    />
+    <div className="mdx-document-text-block-shell">
+      <textarea
+        aria-label={`${BLOCK_TYPE_LABELS[block.type]} block`}
+        className={`mdx-document-text-block mdx-document-text-block--${block.type}`}
+        rows={block.type === "code" || block.type === "raw" ? 6 : Math.max(3, block.text.split("\n").length + 1)}
+        value={block.text}
+        placeholder={
+          block.type === "code"
+            ? "Code"
+            : block.type === "raw"
+              ? "Raw MDX"
+              : block.type === "callout"
+                ? "Callout"
+                : block.type === "quote"
+                  ? "Quote"
+                  : "Type / for blocks, or start writing…"
+        }
+        onChange={(event) =>
+          onPatch((current) => ({ ...current, text: event.target.value }))
+        }
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          const value = event.currentTarget.value;
+          if (!value.trim().startsWith("/")) return;
+          if (onSlashCommand(value)) event.preventDefault();
+        }}
+      />
+      {showSlashMenu ? (
+        <div className="mdx-document-slash-menu" aria-label="Block shortcuts">
+          {(Object.keys(BLOCK_TYPE_LABELS) as MdxBlockType[])
+            .filter((type) => type !== "raw")
+            .map((type) => (
+              <button type="button" key={type} onClick={() => onConvertType(type)}>
+                {BLOCK_TYPE_LABELS[type]}
+              </button>
+            ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
