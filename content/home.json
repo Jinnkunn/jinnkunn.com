@@ -16,7 +16,7 @@
           "id": "classic-intro-image",
           "type": "image",
           "column": 1,
-          "url": "/notion-assets/17140d70fdf5805f8936f05797866cba.png",
+          "url": "https://cdn.jinkunchen.com/notion-assets/17140d70fdf5805f8936f05797866cba.png",
           "alt": "Jinkun Chen",
           "shape": "portrait",
           "fit": "contain"

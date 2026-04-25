@@ -23,13 +23,12 @@ The public bundle currently contains mixed asset classes:
 - `public/web_image/*.svg` contains small link/profile icons and seal assets
   used by the classic Notion-style pages.
 - Blog post figures already mostly use `https://cdn.jinkunchen.com/blog/...`.
-- Site Admin uploads currently write to the GitHub-backed content store under
-  `public/uploads/<yyyy>/<mm>/<hash>.<ext>` and return `/uploads/...` URLs.
-  That means newly uploaded media still enters the source branch and next
-  Cloudflare build.
-- `wrangler.toml` binds `SITE_ASSETS` to `jinnkunn-site-assets` and
-  `jinnkunn-site-assets-staging`, but the current upload service does not use
-  that R2 binding yet.
+- Site Admin uploads write to the `SITE_ASSETS` R2 binding when running on
+  Cloudflare and return `https://cdn.jinkunchen.com/uploads/...` URLs.
+- Local development and tests fall back to the GitHub-compatible content store
+  under `public/uploads/<yyyy>/<mm>/<hash>.<ext>`.
+- `wrangler.toml` binds `SITE_ASSETS` to the existing `jinnkunn` bucket for
+  both staging and production.
 
 The older media bucket/domain is:
 
@@ -44,6 +43,9 @@ Observed on 2026-04-25:
 - Public `r2.dev` access is disabled.
 - Existing blog media such as
   `https://cdn.jinkunchen.com/blog/1/axiom_comparison.png` returns `200`.
+- Migrated Notion assets under
+  `https://cdn.jinkunchen.com/notion-assets/...` return `200` and include
+  `cache-control: public, max-age=31536000, immutable`.
 - The current response header showed `cf-cache-status: DYNAMIC`, so add a
   cache rule before relying on CDN edge caching for all media objects.
 
@@ -97,18 +99,11 @@ lets the CDN cache aggressively without needing purges for normal updates.
    - cache eligible media by default
    - use long browser/edge TTLs for content-hash URLs
    - keep purge paths available for any legacy mutable URLs
-4. Change `lib/server/assets-store.ts` so production/staging uploads write to
-   R2 and return CDN URLs, while local development can continue using the
-   filesystem.
-5. Add a migration script that uploads existing `public/notion-assets/*` and
-   any `public/uploads/*` files to R2.
-6. Rewrite content references from local public paths to CDN URLs:
-   - `content/home.json`
-   - `content/pages/*.mdx`
-   - `content/posts/*.mdx`
-7. Keep the current local assets for one release as a compatibility fallback,
+4. Keep the current local assets for one release as a compatibility fallback,
    then remove migrated user media from `public/`.
-8. Update tests and smoke checks:
+5. Add a migration script for any future local media that appears under
+   `public/notion-assets/*` or `public/uploads/*`.
+6. Update smoke checks:
    - asset upload returns `https://cdn.jinkunchen.com/uploads/...`
    - content validators allow the CDN host
    - staging authenticated QA verifies the homepage and bio images load
