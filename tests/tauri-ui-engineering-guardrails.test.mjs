@@ -49,15 +49,28 @@ test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async 
   assert.match(homePanel, /home-builder__outline-drawer/);
   assert.match(homePanel, /home-builder__settings-drawer/);
   assert.match(homePanel, /InlineMarkdownEditor/);
+  assert.match(homePanel, /HomeInsertMenu/);
+  assert.match(homePanel, /HomeSectionCommandOptions/);
+  assert.match(homePanel, /BlockEditorCommandMenu/);
+  assert.match(homePanel, /getMatchingBlockEditorCommands/);
+  assert.match(homePanel, /HOME_SECTION_COMMANDS/);
+  assert.match(homePanel, /onSlashCommand/);
+  assert.match(homePanel, /onEnterAtEnd/);
   assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: 1fr;/s);
   assert.match(styles, /\.home-builder\[data-mode="structure"\]\s*\{\s*grid-template-columns: minmax\(300px, 0\.85fr\) minmax\(360px, 1fr\);/s);
   assert.match(styles, /\.home-canvas__section-toolbar/);
-  assert.match(styles, /\.home-canvas__insert-row/);
+  assert.match(styles, /\.home-canvas__insert-menu/);
+  assert.match(styles, /\.home-canvas__insert-popover/);
+  assert.match(styles, /\.home-canvas__command-options/);
+  assert.match(styles, /\.home-canvas__slash-popover/);
   assert.match(styles, /\.home-canvas__markdown-preview/);
   assert.match(styles, /\.home-preview__stage/);
 });
 
 test("tauri-ui-engineering: Post and Page editors share one MDX document editor", async () => {
+  const blockEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/block-editor.tsx",
+  );
   const documentEditor = await read(
     "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
   );
@@ -73,6 +86,13 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
   assert.match(documentEditor, /mdx-document-slash-menu/);
+  assert.match(documentEditor, /SLASH_COMMANDS/);
+  assert.match(documentEditor, /getMatchingSlashCommands/);
+  assert.match(documentEditor, /BlockEditorCommandMenu/);
+  assert.match(documentEditor, /getMatchingBlockEditorCommands/);
+  assert.match(documentEditor, /onInsertParagraphAfter/);
+  assert.match(documentEditor, /onRemoveEmpty/);
+  assert.match(documentEditor, /blockInputRefs/);
   assert.match(documentEditor, /application\/x-mdx-block/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
@@ -85,6 +105,11 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /\.mdx-document-editor__layout/);
   assert.match(styles, /\.mdx-document-block/);
   assert.match(styles, /\.mdx-document-slash-menu/);
+  assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*grid-template-columns: 38px minmax\(0, 1fr\);/);
+  assert.match(styles, /\.mdx-document-slash-menu\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(180px, 1fr\)\);/);
+  assert.match(blockEditor, /export interface BlockEditorCommand/);
+  assert.match(blockEditor, /export function getMatchingBlockEditorCommands/);
+  assert.match(blockEditor, /export function BlockEditorCommandMenu/);
 
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
