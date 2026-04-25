@@ -50,7 +50,7 @@ function WorksToggle({
 
   return (
     <div className="notion-toggle closed works-toggle">
-      <div className="notion-toggle__summary" role="button" tabIndex={0} aria-expanded="false">
+      <div className="notion-toggle__summary">
         <div className="notion-toggle__trigger">
           <div className="notion-toggle__trigger_icon">
             <span>‣</span>
