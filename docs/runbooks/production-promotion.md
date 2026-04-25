@@ -13,17 +13,26 @@ Current protected production baseline:
 
 Current staging release candidate:
 
-- Source SHA: `9549157199f2c781f8eb792648ea69de0c647c99`
-- PR: `#5` (`codex/home-editor-canvas-layout`)
-- Staging Worker version: `d556441f-d59e-44d4-b17b-61cbd73e9f7f`
-- Staging deployment: `ce7a6c76-91a4-499b-9735-1def82cffeb2`
+- Source SHA: `d42b8dcaa4c1087f8a2f3692cd1ee9941bac6cda`
+- PRs:
+  - `#5` (`codex/home-editor-canvas-layout`)
+  - `#6` (`codex/release-acceptance-guardrails`)
+  - `#7` (`codex/decommission-vercel-integration`)
+- Staging Worker version: `de852536-e0e5-41a5-9a99-4dd402299485`
+- Staging deployment: `c70ee213-43a2-4313-b33e-68694bdf6c51`
 - Scope: Tauri Home canvas editor, unified Post/Page MDX editor, MDX block
-  hardening, and staging/public-site guardrail checks.
+  hardening, staging/public-site guardrail checks, production acceptance
+  guardrails, and Vercel deployment decommission cleanup.
 
 ## Guardrails
 
 - Pushes to `main` must not auto-deploy production.
 - Push-triggered deploys are staging-only via `site-admin-staging`.
+- `main` is protected by GitHub branch protection:
+  - required checks: `build`, `workspace-quality`
+  - strict status checks: enabled
+  - force pushes and branch deletion: disabled
+  - Vercel status contexts are intentionally not required.
 - Production promotion requires explicit approval and one of:
   - local guarded release: `npm run release:prod`
   - manual GitHub Actions `workflow_dispatch` with `target=production`
@@ -97,7 +106,7 @@ Use this as the PR/release body before asking for production approval:
 - Source SHA: `<git rev-parse HEAD>`
 - Source branch: `main`
 - Previous production version: `34ae93d5-e251-4277-9e49-42f535558677`
-- Staging version: `d556441f-d59e-44d4-b17b-61cbd73e9f7f`
+- Staging version: `de852536-e0e5-41a5-9a99-4dd402299485`
 
 ## Changes
 
@@ -107,6 +116,8 @@ Use this as the PR/release body before asking for production approval:
 - MDX block parsing preserves current posts/pages and unsupported raw MDX.
 - Staging QA now validates public static shell routes, preview CSS assets, and
   Site Admin read API payloads.
+- Vercel deployment code and GitHub workflow dependencies have been removed;
+  Cloudflare is the only deployment target in this repository.
 
 ## Validation
 
@@ -119,15 +130,16 @@ Use this as the PR/release body before asking for production approval:
 
 ## Vercel Decommission Note
 
-Production and staging are deployed through Cloudflare. If GitHub still sends
-emails from `vercel` bot, the Vercel GitHub App is still connected to this
-repository and is creating preview deployments/status checks outside this
-repository's GitHub Actions workflows.
+Production and staging are deployed through Cloudflare. The Vercel projects
+`jinnkunn-com` and `jinnkunn-com-staging` had their Git integration
+disconnected on 2026-04-25.
 
-To stop Vercel preview emails and comments, disconnect this repository from
-the Vercel projects `jinnkunn-com` and `jinnkunn-com-staging`, or remove the
-repository from the Vercel GitHub App installation. Code changes alone cannot
-disable an external GitHub App integration.
+Historical commits and PRs can still show old Vercel status contexts because
+GitHub keeps previous commit statuses. New PRs should only require GitHub
+Actions checks (`build`, `workspace-quality`). If GitHub sends new mail from
+the `vercel` bot after the integration disconnect, check the Vercel GitHub App
+installation and project webhooks; code changes in this repository cannot stop
+an external GitHub App from posting statuses.
 
 ## Rollback
 
