@@ -23,6 +23,7 @@ import {
   wrapSelection,
 } from "./markdown-editor-commands";
 import { MarkdownEditorToolbar } from "./MarkdownEditorToolbar";
+import { useTheme } from "../../shell/useTheme";
 
 export interface MarkdownEditorProps {
   value: string;
@@ -57,6 +58,40 @@ function lineSliceUpToPos(state: EditorState, pos: number): string {
   return line.text.slice(0, pos - line.from);
 }
 
+const markdownLightTheme = EditorView.theme(
+  {
+    "&": {
+      backgroundColor: "var(--color-bg-surface)",
+      color: "var(--color-text-primary)",
+    },
+    ".cm-content": {
+      caretColor: "var(--color-accent)",
+    },
+    ".cm-cursor": {
+      borderLeftColor: "var(--color-accent)",
+    },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+      backgroundColor: "color-mix(in srgb, var(--color-accent) 24%, transparent)",
+    },
+    ".cm-gutters": {
+      backgroundColor: "var(--color-bg-surface-alt)",
+      color: "var(--color-text-muted)",
+      borderRight: "1px solid var(--color-border-subtle)",
+    },
+    ".cm-activeLine": {
+      backgroundColor: "color-mix(in srgb, var(--color-accent) 7%, transparent)",
+    },
+    ".cm-activeLineGutter": {
+      backgroundColor: "color-mix(in srgb, var(--color-accent) 9%, transparent)",
+      color: "var(--color-text-primary)",
+    },
+    ".cm-placeholder": {
+      color: "var(--color-text-muted)",
+    },
+  },
+  { dark: false },
+);
+
 export function MarkdownEditor({
   value,
   onChange,
@@ -67,6 +102,7 @@ export function MarkdownEditor({
   showToolbar = true,
   onReady,
 }: MarkdownEditorProps) {
+  const { resolved } = useTheme();
   const cmRef = useRef<ReactCodeMirrorRef | null>(null);
   const apiRef = useRef<MarkdownEditorApi | null>(null);
 
@@ -249,7 +285,7 @@ export function MarkdownEditor({
           value={value}
           onChange={onChange}
           extensions={extensions}
-          theme={oneDark}
+          theme={resolved === "dark" ? oneDark : markdownLightTheme}
           placeholder={placeholder}
           readOnly={disabled}
           basicSetup={{
@@ -259,6 +295,9 @@ export function MarkdownEditor({
             bracketMatching: false,
             foldGutter: false,
             autocompletion: false, // we supply our own above
+            // Search keeps CodeMirror's defaults. The editor's high-priority
+            // `Mod-k` binding inserts links while the shell palette handles
+            // `Mod-k` outside focused editor instances.
             searchKeymap: true,
           }}
           onCreateEditor={handleCreateEditor}

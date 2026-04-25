@@ -1,136 +1,199 @@
-"use client";
+import type {
+  PublicationAuthor,
+  PublicationStructuredEntry,
+  PublicationVenue,
+} from "@/lib/seo/publications-items";
 
-import { useId, useMemo, useState } from "react";
-
-import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
-
-import { PublicationCard, classifyLabel, type LabelKind } from "./publication-card";
-
-type TypeFilter = "all" | LabelKind;
-
-const TYPE_OPTIONS: Array<{ value: TypeFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "conference", label: "Conference" },
-  { value: "journal", label: "Journal" },
-  { value: "arxiv", label: "arXiv" },
-  { value: "workshop", label: "Workshop" },
-];
+import { classifyLabel, type LabelKind } from "./publication-card";
 
 function orderYearKey(year: string): number {
   const m = /\d{4}/.exec(year);
   return m ? Number(m[0]) : -1;
 }
 
-function entryMatches(
-  entry: PublicationStructuredEntry,
-  type: TypeFilter,
-  query: string,
-): boolean {
-  if (type !== "all") {
-    const kinds = new Set((entry.labels ?? []).map(classifyLabel));
-    if (!kinds.has(type)) return false;
+function groupsByYear(entries: PublicationStructuredEntry[]) {
+  const map = new Map<string, PublicationStructuredEntry[]>();
+  for (const entry of entries) {
+    const year = entry.year || "Unknown";
+    const arr = map.get(year) ?? [];
+    arr.push(entry);
+    map.set(year, arr);
   }
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  if (entry.title.toLowerCase().includes(q)) return true;
-  if ((entry.authors ?? []).some((a) => a.toLowerCase().includes(q))) return true;
-  if ((entry.venues ?? []).some((v) => v.text.toLowerCase().includes(q))) return true;
-  if ((entry.venue ?? "").toLowerCase().includes(q)) return true;
-  return false;
+  return Array.from(map.entries()).sort(
+    (a, b) => orderYearKey(b[0]) - orderYearKey(a[0]),
+  );
+}
+
+function tagTone(kind: LabelKind): {
+  color: string;
+  background: string;
+} {
+  if (kind === "conference") return { color: "color-red", background: "bg-red" };
+  if (kind === "journal") return { color: "color-orange", background: "bg-orange" };
+  if (kind === "arxiv") return { color: "color-purple", background: "bg-purple" };
+  if (kind === "workshop") return { color: "color-blue", background: "bg-blue" };
+  return { color: "color-gray", background: "bg-gray" };
+}
+
+function PublicationTag({ label }: { label: string }) {
+  const tone = tagTone(classifyLabel(label));
+  return (
+    <em>
+      <span className={`highlighted-color ${tone.color}`}>
+        <span className={`highlighted-background ${tone.background}`}>
+          <code className="code">
+            <strong>{label}</strong>
+          </code>
+        </span>
+      </span>
+    </em>
+  );
+}
+
+function AuthorsLine({ authors }: { authors: PublicationAuthor[] }) {
+  if (authors.length === 0) return null;
+  return (
+    <>
+      {authors.map((author, index) => (
+        <span
+          key={`${author.name}-${index}`}
+          className={
+            author.isSelf
+              ? "highlighted-color color-default"
+              : "highlighted-color color-gray"
+          }
+        >
+          {author.isSelf ? (
+            <span className="highlighted-background bg-default">
+              <strong>
+                <u>{author.name}</u>
+              </strong>
+            </span>
+          ) : (
+            author.name
+          )}
+          {index < authors.length - 1 ? ", " : ""}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function venueLabel(venue: PublicationVenue): string {
+  return venue.type || "source";
+}
+
+function VenueLine({ venue }: { venue: PublicationVenue }) {
+  return (
+    <>
+      <PublicationTag label={venueLabel(venue)} />
+      <span className="pub-tag-colon">
+        <strong>: </strong>
+      </span>
+      <span className="highlighted-color color-gray">
+        {venue.url ? (
+          <a
+            className="notion-link link"
+            href={venue.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {venue.text}
+          </a>
+        ) : (
+          venue.text
+        )}
+      </span>
+    </>
+  );
+}
+
+function fallbackVenues(entry: PublicationStructuredEntry): PublicationVenue[] {
+  const venues = entry.venues ?? [];
+  const usedUrls = new Set(venues.map((v) => v.url).filter(Boolean) as string[]);
+  const out = [...venues];
+  if (entry.doiUrl && !usedUrls.has(entry.doiUrl)) {
+    out.push({ type: "DOI", text: entry.doiUrl, url: entry.doiUrl });
+  }
+  if (entry.arxivUrl && !usedUrls.has(entry.arxivUrl)) {
+    out.push({ type: "arXiv.org", text: entry.arxivUrl, url: entry.arxivUrl });
+  }
+  return out;
+}
+
+function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
+  const authors =
+    entry.authorsRich ?? (entry.authors ?? []).map((name) => ({ name, isSelf: false }));
+  const venues = fallbackVenues(entry);
+  const labels = entry.labels ?? [];
+  const highlights = entry.highlights ?? [];
+
+  return (
+    <div className="notion-toggle closed publication-toggle">
+      <div className="notion-toggle__summary" role="button" tabIndex={0} aria-expanded="false">
+        <div className="notion-toggle__trigger">
+          <div className="notion-toggle__trigger_icon">
+            <span>‣</span>
+          </div>
+        </div>
+        <span className="notion-semantic-string">
+          <strong>{entry.title} </strong>
+          {highlights.map((highlight) => (
+            <span key={highlight} className="highlighted-color color-red">
+              <strong>[{highlight}]</strong>
+            </span>
+          ))}
+          {labels.length > 0 && (
+            <>
+              <br />
+              {labels.map((label) => (
+                <span key={label} className="pub-tag-prefix">
+                  <PublicationTag label={label} />{" "}
+                </span>
+              ))}
+            </>
+          )}
+        </span>
+      </div>
+      <div className="notion-toggle__content" hidden aria-hidden="true">
+        {(authors.length > 0 || venues.length > 0) && (
+          <blockquote className="notion-quote">
+            <span className="notion-semantic-string">
+              <AuthorsLine authors={authors} />
+              {authors.length > 0 && venues.length > 0 && (
+                <>
+                  <br />
+                  <br />
+                </>
+              )}
+              {venues.map((venue, index) => (
+                <span key={`${venue.type}-${index}`}>
+                  {index > 0 && <br />}
+                  <VenueLine venue={venue} />
+                </span>
+              ))}
+            </span>
+          </blockquote>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function PublicationList({ entries }: { entries: PublicationStructuredEntry[] }) {
-  const [type, setType] = useState<TypeFilter>("all");
-  const [query, setQuery] = useState("");
-  const searchId = useId();
-
-  const availableKinds = useMemo(() => {
-    const set = new Set<LabelKind>();
-    for (const e of entries) {
-      for (const label of e.labels ?? []) set.add(classifyLabel(label));
-    }
-    return set;
-  }, [entries]);
-
-  const filtered = useMemo(
-    () => entries.filter((e) => entryMatches(e, type, query)),
-    [entries, type, query],
-  );
-
-  const groups = useMemo(() => {
-    const map = new Map<string, PublicationStructuredEntry[]>();
-    for (const entry of filtered) {
-      const year = entry.year || "Unknown";
-      const arr = map.get(year) ?? [];
-      arr.push(entry);
-      map.set(year, arr);
-    }
-    return Array.from(map.entries()).sort(
-      (a, b) => orderYearKey(b[0]) - orderYearKey(a[0]),
-    );
-  }, [filtered]);
-
-  const total = entries.length;
-  const visible = filtered.length;
+  const groups = groupsByYear(entries);
 
   return (
-    <div className="pub-list" data-total={total}>
-      <div className="pub-list__toolbar" role="search">
-        <div className="pub-list__search">
-          <label className="pub-list__search-label" htmlFor={searchId}>
-            Search publications
-          </label>
-          <input
-            id={searchId}
-            type="search"
-            className="pub-list__search-input"
-            placeholder="Title, author, or venue…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-        <div className="pub-list__filters" role="tablist" aria-label="Filter by type">
-          {TYPE_OPTIONS.map((option) => {
-            if (option.value !== "all" && !availableKinds.has(option.value)) return null;
-            const active = type === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                className={active ? "pub-list__filter is-active" : "pub-list__filter"}
-                onClick={() => setType(option.value)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <p className="pub-list__counts" aria-live="polite">
-        {visible === total
-          ? `${total} publication${total === 1 ? "" : "s"}`
-          : `${visible} of ${total} publication${total === 1 ? "" : "s"}`}
-      </p>
-
-      {groups.length === 0 ? (
-        <p className="pub-list__empty">No publications match your filters.</p>
-      ) : (
-        groups.map(([year, items]) => (
-          <section key={year} className="pub-list__group" aria-label={`Publications from ${year}`}>
-            <h2 className="pub-list__year">{year}</h2>
-            <ul className="pub-list__items">
-              {items.map((entry, index) => (
-                <li key={`${year}-${index}-${entry.title}`}>
-                  <PublicationCard entry={entry} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
-    </div>
+    <>
+      {groups.map(([year, items]) => (
+        <section key={year} className="publication-year">
+          <span className="notion-heading__anchor" />
+          <h2 className="notion-heading notion-semantic-string">{year}</h2>
+          {items.map((entry, index) => (
+            <PublicationToggle key={`${year}-${index}-${entry.title}`} entry={entry} />
+          ))}
+        </section>
+      ))}
+    </>
   );
 }

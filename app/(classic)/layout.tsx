@@ -41,7 +41,7 @@ export default function ClassicLayout({
         <ViewportCssVars />
         {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
         <NotionBlockBehavior />
-        <div id="main-content" className="super-content-wrapper">
+        <div id="content-wrapper" className="super-content-wrapper">
           {children}
         </div>
         <SiteFooter />

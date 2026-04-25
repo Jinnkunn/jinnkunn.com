@@ -39,6 +39,7 @@ function ensureGeneratedStubs() {
   writeIfMissing("routes-manifest.json", []);
   writeIfMissing("search-index.json", []);
   writeIfMissing("protected-routes.json", []);
+  writeIfMissing("classic-css-assets.json", { source: "", stylesheets: [] });
   writeIfMissing("site-config.json", DEFAULT_SITE_CONFIG);
 }
 

@@ -7,8 +7,10 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { MarkdownEditor, type MarkdownEditorApi } from "./MarkdownEditor";
+import type { MarkdownEditorApi } from "./MarkdownEditor";
+import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { useSiteAdmin } from "./state";
+import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { insertMarkdownImage, uploadImageFile } from "./assets-upload";
 import {
   buildPostSource,
@@ -16,7 +18,7 @@ import {
   type PostFrontmatterForm,
 } from "./mdx-source";
 import { formatDraftAge, useEditorDraft } from "./use-editor-draft";
-import { normalizeString } from "./utils";
+import { localDateIso, normalizeString } from "./utils";
 import { usePreview } from "./use-preview";
 
 export type PostEditorMode = "create" | "edit";
@@ -30,13 +32,15 @@ export interface PostEditorProps {
 const SLUG_HINT =
   "1–60 chars, lowercase letters / digits / hyphens, no leading or trailing dash";
 
-const BLANK_FORM: PostFrontmatterForm = {
-  title: "",
-  dateIso: new Date().toISOString().slice(0, 10),
-  description: "",
-  draft: true,
-  tags: [],
-};
+function blankForm(): PostFrontmatterForm {
+  return {
+    title: "",
+    dateIso: localDateIso(),
+    description: "",
+    draft: true,
+    tags: [],
+  };
+}
 
 const BLANK_BODY = `# Title\n\nStart writing here.\n`;
 
@@ -54,8 +58,11 @@ function tagsFromInput(raw: string): string[] {
 export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps) {
   const { request, setMessage } = useSiteAdmin();
   const [slug, setSlug] = useState(initialSlug ?? "");
-  const [form, setForm] = useState<PostFrontmatterForm>(BLANK_FORM);
+  const [form, setForm] = useState<PostFrontmatterForm>(() => blankForm());
   const [body, setBody] = useState(BLANK_BODY);
+  const [lastSavedSource, setLastSavedSource] = useState(() =>
+    buildPostSource(blankForm(), BLANK_BODY),
+  );
   const [version, setVersion] = useState<string>("");
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
@@ -64,10 +71,13 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
   const [error, setError] = useState("");
   const [dragDepth, setDragDepth] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmBackSource, setConfirmBackSource] = useState("");
   const [previewOn, setPreviewOn] = useState(false);
   const editorApiRef = useRef<MarkdownEditorApi | null>(null);
 
   const previewSource = useMemo(() => buildPostSource(form, body), [form, body]);
+  const dirty = previewSource !== lastSavedSource || (mode === "create" && Boolean(slug.trim()));
+  const confirmBack = dirty && confirmBackSource === previewSource;
   const preview = usePreview(previewSource, previewOn, request);
 
   // In create mode the draft lives under a shared `__new__` key so typing
@@ -105,20 +115,34 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
       const source = typeof data.source === "string" ? data.source : "";
       const ver = normalizeString(data.version);
       const parsed = parsePostSource(source);
-      setForm({
+      const nextForm = {
         title: parsed.form.title,
         dateIso: parsed.form.dateIso,
         description: parsed.form.description,
         draft: parsed.form.draft,
         tags: parsed.form.tags,
-      });
-      setBody(parsed.body.replace(/^\n+/, ""));
+      };
+      const nextBody = parsed.body.replace(/^\n+/, "");
+      setForm(nextForm);
+      setBody(nextBody);
+      setLastSavedSource(buildPostSource(nextForm, nextBody));
       setVersion(ver);
     })();
     return () => {
       cancelled = true;
     };
   }, [initialSlug, mode, request, setMessage]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (saving || deleting) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [deleting, dirty, saving]);
 
   const onDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -146,6 +170,7 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
           setMessage("error", `Upload failed: ${result.error}`);
           continue;
         }
+        rememberRecentAsset(result.asset, result.filename);
         const alt = file.name.replace(/\.[^.]+$/, "");
         insertMarkdownImage(api, result.asset.url, alt);
         setMessage("success", `Uploaded ${result.filename} → ${result.asset.url}`);
@@ -180,6 +205,7 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
           setMessage("error", `Create post failed: ${response.code}: ${response.error}`);
           return;
         }
+        setLastSavedSource(source);
         clearDraft();
         setMessage("success", `Post created.`);
         onExit("saved", slug.trim());
@@ -200,6 +226,7 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
       const data = (response.data ?? {}) as Record<string, unknown>;
       const nextVersion = normalizeString(data.version);
       if (nextVersion) setVersion(nextVersion);
+      setLastSavedSource(source);
       clearDraft();
       setMessage("success", `Post saved.`);
       onExit("saved", currentSlug);
@@ -231,6 +258,14 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
     editorApiRef.current = api;
   }, []);
 
+  const leaveEditor = useCallback(() => {
+    if (dirty && !confirmBack) {
+      setConfirmBackSource(previewSource);
+      return;
+    }
+    onExit("cancel", initialSlug);
+  }, [confirmBack, dirty, initialSlug, onExit, previewSource]);
+
   const title = mode === "create" ? "New post" : `Edit post: ${initialSlug ?? ""}`;
 
   return (
@@ -240,9 +275,14 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
           <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
             {title}
           </h1>
-          <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Writes to <code>content/posts/{slug || "&lt;slug&gt;"}.mdx</code>.
-          </p>
+          <div className="editor-meta-row">
+            <p className="m-0 text-[12.5px] text-text-muted">
+              Writes to <code>content/posts/{slug || "&lt;slug&gt;"}.mdx</code>.
+            </p>
+            <span className={`editor-state ${dirty ? "editor-state--dirty" : "editor-state--clean"}`}>
+              {dirty ? "Unsaved changes" : "Saved"}
+            </span>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
@@ -256,16 +296,16 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
           </button>
           <button
             type="button"
-            className="btn btn--secondary"
-            onClick={() => onExit("cancel", initialSlug)}
+            className={confirmBack ? "btn btn--danger" : "btn btn--secondary"}
+            onClick={leaveEditor}
             disabled={saving || deleting}
           >
-            Back
+            {confirmBack ? "Discard changes" : "Back"}
           </button>
           {mode === "edit" && (
             <button
               type="button"
-              className="btn btn--danger"
+              className={confirmDelete ? "btn btn--danger btn--confirming" : "btn btn--danger"}
               onClick={() => {
                 if (confirmDelete) void remove();
                 else setConfirmDelete(true);
@@ -287,7 +327,7 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
       </header>
 
       {error && (
-        <p className="m-0 text-[12px] text-[color:var(--text-danger,#b02a37)]">{error}</p>
+        <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>
       )}
 
       {restorable && !loading && (
@@ -317,7 +357,10 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
       )}
 
       {loading ? (
-        <p className="m-0 text-[12.5px] text-text-muted">Loading post…</p>
+        <div className="loading-inline" role="status">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Loading post…</span>
+        </div>
       ) : (
         <form id="post-editor-form" onSubmit={save} className="flex flex-col gap-3">
           {mode === "create" && (
@@ -349,8 +392,8 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
               <input
                 className="ds-input"
                 value={form.dateIso}
+                type="date"
                 onChange={(event) => setForm((f) => ({ ...f, dateIso: event.target.value }))}
-                placeholder="2026-04-23"
                 required
               />
             </label>
@@ -400,7 +443,8 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
                 : ""}
             </span>
             <div
-              className="flex gap-3"
+              className="editor-drop-zone flex gap-3"
+              data-drag-active={dragDepth > 0 ? "true" : undefined}
               onDragEnter={onDragEnter}
               onDragLeave={onDragLeave}
             >
@@ -429,6 +473,14 @@ export function PostEditor({ mode, slug: initialSlug, onExit }: PostEditorProps)
               Drop an image onto the editor to upload; a <code>![alt](/uploads/...)</code> tag is
               inserted at the cursor.
             </span>
+            <AssetLibraryPicker
+              onSelect={(asset) => {
+                const api = editorApiRef.current;
+                if (!api) return;
+                const alt = asset.alt || asset.filename || "image";
+                insertMarkdownImage(api, asset.url, alt.replace(/\.[^.]+$/, ""));
+              }}
+            />
           </div>
         </form>
       )}

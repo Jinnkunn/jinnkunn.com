@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
+import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
+import { StructuredPageSectionsEditor } from "./StructuredPageSectionsEditor";
+import {
+  normalizeStructuredPageSections,
+  TEACHING_SECTIONS,
+} from "./structured-page-sections";
 import type {
   TeachingData,
   TeachingEntry,
   TeachingLink,
 } from "./types";
+import { useJsonDraft } from "./use-json-draft";
 
 const BLANK_DATA: TeachingData = {
+  schemaVersion: 2,
   title: "Teaching",
+  sections: TEACHING_SECTIONS,
   headerLinks: [],
   entries: [],
   footerLinks: [],
@@ -113,6 +123,7 @@ function LinkList({
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
+                    aria-label={`Move ${label} link up`}
                   >
                     ↑
                   </button>
@@ -122,6 +133,7 @@ function LinkList({
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, 1)}
                     disabled={index === links.length - 1}
+                    aria-label={`Move ${label} link down`}
                   >
                     ↓
                   </button>
@@ -134,6 +146,7 @@ function LinkList({
                       color: "var(--color-danger)",
                     }}
                     onClick={() => remove(index)}
+                    aria-label={`Remove ${label} link`}
                   >
                     ×
                   </button>
@@ -164,6 +177,11 @@ export function TeachingPanel() {
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
+  const { restorable, clearDraft, dismissRestore } = useJsonDraft<TeachingData>(
+    "teaching",
+    draft,
+    dirty && !loading && !saving,
+  );
 
   const loadData = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -183,8 +201,10 @@ export function TeachingPanel() {
       const payload = (data.data ?? {}) as Partial<TeachingData>;
       const version = (data.sourceVersion ?? {}) as { fileSha?: string };
       const normalized: TeachingData = {
+        schemaVersion: 2,
         title: payload.title || "Teaching",
         description: payload.description,
+        sections: normalizeStructuredPageSections(payload.sections, TEACHING_SECTIONS),
         intro: payload.intro,
         headerLinks: Array.isArray(payload.headerLinks) ? payload.headerLinks : [],
         entries: Array.isArray(payload.entries) ? payload.entries : [],
@@ -238,8 +258,9 @@ export function TeachingPanel() {
     setBaseData(clone(draft));
     setFileSha(version.fileSha || "");
     setConflict(false);
+    clearDraft();
     setMessage("success", "Teaching saved.");
-  }, [ready, saving, request, draft, fileSha, setMessage]);
+  }, [ready, saving, request, draft, fileSha, clearDraft, setMessage]);
 
   const updateEntry = useCallback(
     (index: number, next: Partial<TeachingEntry>) => {
@@ -355,14 +376,30 @@ export function TeachingPanel() {
         {draft.entries.length === 1 ? "y" : "ies"}
       </p>
 
+      {restorable && (
+        <JsonDraftRestoreBanner
+          savedAt={restorable.savedAt}
+          onDismiss={dismissRestore}
+          onRestore={() => {
+            setDraft(clone(restorable.value));
+            dismissRestore();
+          }}
+        />
+      )}
+
+      <StructuredPageSectionsEditor
+        sections={draft.sections || TEACHING_SECTIONS}
+        onChange={(next) => setDraft((d) => ({ ...d, sections: next }))}
+      />
+
       <label className="flex flex-col gap-1 text-[12.5px]">
         <span className="text-text-muted">Intro (markdown)</span>
-        <textarea
-          className="news-entry-body"
-          rows={2}
+        <MarkdownEditor
           value={draft.intro || ""}
-          onChange={(e) => setDraft((d) => ({ ...d, intro: e.target.value || undefined }))}
+          onChange={(next) => setDraft((d) => ({ ...d, intro: next || undefined }))}
           placeholder="e.g. For the moment, only Dalhousie University activities are listed."
+          minHeight={112}
+          showToolbar={false}
         />
       </label>
 
@@ -420,6 +457,7 @@ export function TeachingPanel() {
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => moveEntry(index, -1)}
                     disabled={index === 0}
+                    aria-label="Move teaching entry up"
                   >
                     ↑
                   </button>
@@ -429,6 +467,7 @@ export function TeachingPanel() {
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => moveEntry(index, 1)}
                     disabled={index === draft.entries.length - 1}
+                    aria-label="Move teaching entry down"
                   >
                     ↓
                   </button>
@@ -441,6 +480,7 @@ export function TeachingPanel() {
                       color: "var(--color-danger)",
                     }}
                     onClick={() => removeEntry(index)}
+                    aria-label="Remove teaching entry"
                   >
                     ×
                   </button>

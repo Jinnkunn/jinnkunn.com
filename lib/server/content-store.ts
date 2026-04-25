@@ -44,7 +44,7 @@ export type ContentEntry = {
 };
 
 export interface ContentStore {
-  listFiles(dirRel: string): Promise<ContentEntry[]>;
+  listFiles(dirRel: string, opts?: { recursive?: boolean }): Promise<ContentEntry[]>;
   readFile(relPath: string): Promise<{ content: string; sha: ContentVersion } | null>;
   writeFile(
     relPath: string,
@@ -106,30 +106,40 @@ export function createLocalContentStore(opts?: { rootDir?: string }): ContentSto
   }
 
   return {
-    async listFiles(dirRel: string): Promise<ContentEntry[]> {
+    async listFiles(dirRel: string, opts?: { recursive?: boolean }): Promise<ContentEntry[]> {
       const normalized = normalizeRel(dirRel);
-      const dirFull = path.join(root, normalized);
-      let names: string[];
-      try {
-        names = await fs.readdir(dirFull);
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === "ENOENT") return [];
-        throw err;
-      }
       const out: ContentEntry[] = [];
-      for (const name of names) {
-        const full = path.join(dirFull, name);
-        const stat = await fs.stat(full);
-        if (!stat.isFile()) continue;
-        const content = await fs.readFile(full, "utf8");
-        out.push({
-          name,
-          relPath: path.posix.join(normalized, name),
-          sha: sha1Hex(content),
-          size: Buffer.byteLength(content, "utf8"),
-        });
+
+      async function walk(dir: string): Promise<void> {
+        const dirFull = path.join(root, dir);
+        let names: string[];
+        try {
+          names = await fs.readdir(dirFull);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") return;
+          throw err;
+        }
+        for (const name of names) {
+          const relPath = path.posix.join(dir, name);
+          const full = path.join(dirFull, name);
+          const stat = await fs.stat(full);
+          if (stat.isDirectory()) {
+            if (opts?.recursive) await walk(relPath);
+            continue;
+          }
+          if (!stat.isFile()) continue;
+          const bytes = await fs.readFile(full);
+          out.push({
+            name,
+            relPath,
+            sha: sha1HexBytes(bytes),
+            size: bytes.byteLength,
+          });
+        }
       }
+
+      await walk(normalized);
       out.sort((a, b) => a.name.localeCompare(b.name));
       return out;
     },

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import worksData from "@/content/works.json";
 import { WorksView } from "@/components/works/works-view";
+import { normalizeWorksData } from "@/lib/site-admin/works-normalize";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 import type { SiteAdminWorksData } from "@/lib/site-admin/api-types";
@@ -9,14 +10,7 @@ import type { SiteAdminWorksData } from "@/lib/site-admin/api-types";
 export const dynamic = "force-static";
 
 function readData(): SiteAdminWorksData {
-  const d = worksData as Partial<SiteAdminWorksData>;
-  return {
-    title: d.title || "Works",
-    description: d.description,
-    intro: d.intro,
-    note: d.note,
-    entries: Array.isArray(d.entries) ? d.entries : [],
-  };
+  return normalizeWorksData(worksData);
 }
 
 export async function generateMetadata(): Promise<Metadata> {

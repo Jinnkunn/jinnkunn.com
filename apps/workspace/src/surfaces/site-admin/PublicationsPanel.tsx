@@ -2,11 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EntriesSection } from "./publications/EntriesSection";
 import { ProfileLinksSection } from "./publications/ProfileLinksSection";
+import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
 import { useSiteAdmin } from "./state";
+import { StructuredPageSectionsEditor } from "./StructuredPageSectionsEditor";
+import {
+  normalizeStructuredPageSections,
+  PUBLICATIONS_SECTIONS,
+} from "./structured-page-sections";
 import type { PublicationsData } from "./types";
+import { useJsonDraft } from "./use-json-draft";
 
 const BLANK_DATA: PublicationsData = {
+  schemaVersion: 2,
   title: "Publications",
+  sections: PUBLICATIONS_SECTIONS,
   profileLinks: [],
   entries: [],
 };
@@ -31,6 +40,11 @@ export function PublicationsPanel() {
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const dirty = useMemo(() => !shallowEqual(baseData, draft), [baseData, draft]);
+  const { restorable, clearDraft, dismissRestore } = useJsonDraft<PublicationsData>(
+    "publications",
+    draft,
+    dirty && !loading && !saving,
+  );
 
   const loadData = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -51,8 +65,13 @@ export function PublicationsPanel() {
       const payload = (data.data ?? {}) as PublicationsData;
       const version = (data.sourceVersion ?? {}) as { fileSha?: string };
       const normalized: PublicationsData = {
+        schemaVersion: 2,
         title: payload.title || "Publications",
         description: payload.description,
+        sections: normalizeStructuredPageSections(
+          payload.sections,
+          PUBLICATIONS_SECTIONS,
+        ),
         profileLinks: Array.isArray(payload.profileLinks)
           ? payload.profileLinks
           : [],
@@ -106,8 +125,9 @@ export function PublicationsPanel() {
     setBaseData(clone(draft));
     setFileSha(version.fileSha || "");
     setConflict(false);
+    clearDraft();
     setMessage("success", "Publications saved.");
-  }, [ready, saving, request, draft, fileSha, setMessage]);
+  }, [ready, saving, request, draft, fileSha, clearDraft, setMessage]);
 
   const stateNote = loading
     ? "Loading…"
@@ -155,6 +175,21 @@ export function PublicationsPanel() {
       )}
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
+      {restorable && (
+        <JsonDraftRestoreBanner
+          savedAt={restorable.savedAt}
+          onDismiss={dismissRestore}
+          onRestore={() => {
+            setDraft(clone(restorable.value));
+            dismissRestore();
+          }}
+        />
+      )}
+
+      <StructuredPageSectionsEditor
+        sections={draft.sections || PUBLICATIONS_SECTIONS}
+        onChange={(next) => setDraft((d) => ({ ...d, sections: next }))}
+      />
       <ProfileLinksSection
         links={draft.profileLinks}
         onChange={(next) => setDraft((d) => ({ ...d, profileLinks: next }))}
