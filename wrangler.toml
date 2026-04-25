@@ -18,11 +18,13 @@ binding = "ASSETS"
 
 [[r2_buckets]]
 binding = "SITE_ASSETS"
-bucket_name = "jinnkunn-site-assets"
-preview_bucket_name = "jinnkunn-site-assets-staging"
+# Canonical public media bucket served from https://cdn.jinkunchen.com.
+bucket_name = "jinnkunn"
+preview_bucket_name = "jinnkunn"
 
 [vars]
 SITE_ADMIN_STORAGE = "github"
+MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
 [env.staging]
 name = "jinnkunn-site-staging"
@@ -34,6 +36,7 @@ workers_dev = false
 [env.staging.vars]
 SITE_ADMIN_STORAGE = "github"
 SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
+MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
 # NextAuth callback base URL. Public info (just the hostname), so it
 # lives here rather than in `wrangler secret put`. GITHUB_ID /
@@ -71,8 +74,8 @@ custom_domain = true
 
 [[env.staging.r2_buckets]]
 binding = "SITE_ASSETS"
-bucket_name = "jinnkunn-site-assets-staging"
-preview_bucket_name = "jinnkunn-site-assets-staging"
+bucket_name = "jinnkunn"
+preview_bucket_name = "jinnkunn"
 
 [env.production]
 name = "jinnkunn-site"
@@ -80,6 +83,7 @@ name = "jinnkunn-site"
 [env.production.vars]
 SITE_ADMIN_STORAGE = "github"
 SITE_ADMIN_REPO_BRANCH = "main"
+MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
 # NextAuth callback base URL (see staging section above).
 NEXTAUTH_URL = "https://jinkunchen.com"
@@ -95,8 +99,8 @@ SITE_ADMIN_SERVICE_TOKENS = "861cdfad2e676fb177cd85bef18351da.access"
 
 [[env.production.r2_buckets]]
 binding = "SITE_ASSETS"
-bucket_name = "jinnkunn-site-assets"
-preview_bucket_name = "jinnkunn-site-assets"
+bucket_name = "jinnkunn"
+preview_bucket_name = "jinnkunn"
 
 [[env.production.routes]]
 pattern = "jinkunchen.com/*"
