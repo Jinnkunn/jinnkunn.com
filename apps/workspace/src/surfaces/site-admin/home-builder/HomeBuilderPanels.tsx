@@ -7,26 +7,54 @@ import type { HomeData, HomeSection, HomeSectionType } from "../types";
 import { Button, IconButton } from "../ui";
 
 type DragReorderApi = ReturnType<typeof useDragReorder>;
+export type HomePreviewViewport = "desktop" | "tablet" | "mobile";
+
+const VIEWPORT_LABELS: Record<HomePreviewViewport, string> = {
+  desktop: "Desktop",
+  tablet: "Tablet",
+  mobile: "Mobile",
+};
 
 export function HomeSectionRail({
   addSection,
   getHandleProps,
   getRowProps,
   moveSection,
+  onClose,
   sections,
   selectedSectionId,
   setSelectedId,
+  title = "Page outline",
+  variant = "panel",
 }: {
   addSection: (type: HomeSectionType) => void;
   getHandleProps: DragReorderApi["getHandleProps"];
   getRowProps: DragReorderApi["getRowProps"];
   moveSection: (index: number, direction: -1 | 1) => void;
+  onClose?: () => void;
   sections: HomeSection[];
   selectedSectionId: string;
   setSelectedId: (id: string) => void;
+  title?: string;
+  variant?: "drawer" | "panel";
 }) {
   return (
-    <aside className="home-builder__rail" aria-label="Home sections">
+    <aside
+      className={`home-builder__rail home-builder__rail--${variant}`}
+      aria-label="Home sections"
+    >
+      <div className="home-builder__rail-head">
+        <div>
+          <span className="home-builder__eyebrow">Structure</span>
+          <strong>{title}</strong>
+        </div>
+        {onClose ? (
+          <IconButton aria-label="Close outline" onClick={onClose} title="Close" tone="ghost">
+            ×
+          </IconButton>
+        ) : null}
+      </div>
+
       <div className="home-builder__add">
         {(Object.keys(SECTION_LABELS) as HomeSectionType[]).map((type) => (
           <Button
@@ -115,6 +143,7 @@ export function HomePreviewPane({
   selectedSectionId,
   setSelectedId,
   stylesheets,
+  viewport,
 }: {
   baseUrl: string;
   draft: HomeData;
@@ -127,13 +156,20 @@ export function HomePreviewPane({
   selectedSectionId: string;
   setSelectedId: (id: string) => void;
   stylesheets: string[];
+  viewport: HomePreviewViewport;
 }) {
   return (
-    <main className="home-builder__preview" aria-label="Home preview">
+    <main
+      className="home-builder__preview"
+      aria-label="Home preview"
+      data-viewport={viewport}
+    >
       <div className="home-preview__chrome">
-        <span />
-        <span />
-        <span />
+        <div className="home-preview__lights" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
         <strong>
           {loading
             ? "Rendering preview…"
@@ -141,40 +177,43 @@ export function HomePreviewPane({
               ? `Preview error: ${previewError}`
               : "Live front-end preview"}
         </strong>
+        <em>{VIEWPORT_LABELS[viewport]}</em>
       </div>
-      {html ? (
-        <iframe
-          ref={frameRef}
-          className="home-preview__iframe"
-          title="Rendered home preview"
-          srcDoc={buildHomePreviewDocument(html, baseUrl, stylesheets)}
-          onLoad={onFrameLoad}
-        />
-      ) : (
-        <div className="home-preview__page">
-          <h2 className="home-preview__title">{draft.title}</h2>
-          {draft.sections
-            .filter((section) => section.enabled)
-            .map((section) => (
-              <div
-                className={[
-                  "home-preview__section",
-                  `home-preview__section--${section.type}`,
-                  selectedSectionId === section.id ? "is-selected" : "",
-                ].join(" ")}
-                key={section.id}
-              >
-                <button
-                  type="button"
-                  className="home-preview__section-button"
-                  onClick={() => setSelectedId(section.id)}
+      <div className="home-preview__stage">
+        {html ? (
+          <iframe
+            ref={frameRef}
+            className="home-preview__iframe"
+            title="Rendered home preview"
+            srcDoc={buildHomePreviewDocument(html, baseUrl, stylesheets)}
+            onLoad={onFrameLoad}
+          />
+        ) : (
+          <div className="home-preview__page">
+            <h2 className="home-preview__title">{draft.title}</h2>
+            {draft.sections
+              .filter((section) => section.enabled)
+              .map((section) => (
+                <div
+                  className={[
+                    "home-preview__section",
+                    `home-preview__section--${section.type}`,
+                    selectedSectionId === section.id ? "is-selected" : "",
+                  ].join(" ")}
+                  key={section.id}
                 >
-                  {renderSection(section)}
-                </button>
-              </div>
-            ))}
-        </div>
-      )}
+                  <button
+                    type="button"
+                    className="home-preview__section-button"
+                    onClick={() => setSelectedId(section.id)}
+                  >
+                    {renderSection(section)}
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

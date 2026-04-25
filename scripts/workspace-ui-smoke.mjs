@@ -42,6 +42,9 @@ function main() {
   assertIncludes(homePanel, "HomePreviewPane", "HomePanel");
   assertIncludes(homePanel, "HomeInspectorShell", "HomePanel");
   assertIncludes(homePanel, "usePersistentUiState", "HomePanel");
+  assertIncludes(homePanel, "HOME_EDITOR_MODES", "HomePanel");
+  assertIncludes(homePanel, "HOME_PREVIEW_VIEWPORTS", "HomePanel");
+  assertIncludes(homePanel, "home-builder__outline-drawer", "HomePanel");
 
   const homePanels = read(
     "apps/workspace/src/surfaces/site-admin/home-builder/HomeBuilderPanels.tsx",
@@ -49,6 +52,7 @@ function main() {
   assertIncludes(homePanels, "export function HomeSectionRail", "HomeBuilderPanels");
   assertIncludes(homePanels, "export function HomePreviewPane", "HomeBuilderPanels");
   assertIncludes(homePanels, "export function HomeInspectorShell", "HomeBuilderPanels");
+  assertIncludes(homePanels, "HomePreviewViewport", "HomeBuilderPanels");
   assertIncludes(homePanels, "IconButton", "HomeBuilderPanels");
 
   for (const relPath of [
