@@ -49,6 +49,7 @@
     "check:perf": "node scripts/perf-budget.mjs",
     "check:design-system": "node scripts/check-design-system.mjs",
     "check:workspace-ui": "node scripts/workspace-ui-smoke.mjs",
+    "qa:workspace:site-admin": "node scripts/workspace-site-admin-qa.mjs",
     "check:home-style": "node scripts/home-style-contract.mjs",
     "check:ui": "node scripts/check-ui.mjs",
     "workspace:tauri:dev": "cd apps/workspace && npm run tauri:dev",

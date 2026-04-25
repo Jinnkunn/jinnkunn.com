@@ -133,4 +133,8 @@ test("tauri-ui-engineering: static Notion toggles do not expose fake buttons", a
 test("tauri-ui-engineering: root package exposes workspace UI smoke", async () => {
   const pkg = JSON.parse(await read("package.json"));
   assert.equal(pkg.scripts["check:workspace-ui"], "node scripts/workspace-ui-smoke.mjs");
+  assert.equal(
+    pkg.scripts["qa:workspace:site-admin"],
+    "node scripts/workspace-site-admin-qa.mjs",
+  );
 });
