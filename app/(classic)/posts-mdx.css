@@ -101,17 +101,31 @@
   color: var(--color-text-default);
   font-size: 16px;
   line-height: 1.5;
+  overflow-wrap: break-word;
 }
 
-.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a.notion-link.link {
+.mdx-post__body a {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a {
   color: inherit;
   padding: 0;
   background-image: none;
+  text-decoration: none;
   text-decoration-color: currentColor;
 }
 
-.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a.notion-link.link:hover {
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a:hover {
   background-size: 0 0, 0 0;
+  text-decoration-color: currentColor;
+}
+
+.mdx-post__body .notion-heading__anchor-link {
+  color: inherit;
+  text-decoration: none;
   text-decoration-color: currentColor;
 }
 
