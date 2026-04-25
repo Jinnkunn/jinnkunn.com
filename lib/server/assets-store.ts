@@ -201,12 +201,12 @@ function isR2BucketLike(value: unknown): value is R2BucketLike {
   );
 }
 
-function boundR2Bucket(): R2BucketLike | null {
+async function boundR2Bucket(): Promise<R2BucketLike | null> {
   if (String(process.env.SITE_ADMIN_ASSET_BACKEND || "").trim() === "content") {
     return null;
   }
   try {
-    const { env } = getCloudflareContext();
+    const { env } = await getCloudflareContext({ async: true });
     const bucket = (env as Record<string, unknown>).SITE_ASSETS;
     return isR2BucketLike(bucket) ? bucket : null;
   } catch {
@@ -214,7 +214,9 @@ function boundR2Bucket(): R2BucketLike | null {
   }
 }
 
-function resolveR2Bucket(options?: AssetBackendOptions): R2BucketLike | null {
+async function resolveR2Bucket(
+  options?: AssetBackendOptions,
+): Promise<R2BucketLike | null> {
   if (options?.store) return null;
   if (options?.bucket !== undefined) return options.bucket;
   return boundR2Bucket();
@@ -358,7 +360,7 @@ export async function uploadAsset(input: {
   publicBaseUrl?: string;
 }): Promise<AssetUploadResult> {
   validateAssetInput({ contentType: input.contentType, data: input.data });
-  const bucket = resolveR2Bucket(input);
+  const bucket = await resolveR2Bucket(input);
   if (bucket) {
     return uploadR2Asset({
       filename: input.filename,
@@ -409,7 +411,7 @@ export async function listAssets(input?: {
   bucket?: R2BucketLike | null;
   publicBaseUrl?: string;
 }): Promise<AssetListItem[]> {
-  const bucket = resolveR2Bucket(input);
+  const bucket = await resolveR2Bucket(input);
   if (bucket) {
     return listR2Assets({ bucket, publicBaseUrl: input?.publicBaseUrl });
   }
@@ -436,7 +438,7 @@ export async function deleteAsset(
   input?: ContentStore | AssetBackendOptions,
 ): Promise<void> {
   const options = normalizeDeleteOptions(input);
-  const bucket = resolveR2Bucket(options);
+  const bucket = await resolveR2Bucket(options);
   if (bucket) {
     await deleteR2Asset(key, ifMatch, bucket);
     return;
