@@ -7,13 +7,14 @@ import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
 import { useSiteAdmin } from "./state";
 import { useJsonDraft } from "./use-json-draft";
-import { isString, usePersistentUiState } from "./use-persistent-ui-state";
+import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
 import { uploadImageFile } from "./assets-upload";
 import {
   HomeInspectorShell,
   HomePreviewPane,
   HomeSectionRail,
 } from "./home-builder/HomeBuilderPanels";
+import type { HomePreviewViewport } from "./home-builder/HomeBuilderPanels";
 import {
   BLANK_HOME_DATA,
   clone,
@@ -45,6 +46,30 @@ function PreviewText({ children }: { children?: string }) {
   return <p className="home-preview__body">{children}</p>;
 }
 
+const HOME_EDITOR_MODES = ["edit", "structure", "preview"] as const;
+type HomeEditorMode = (typeof HOME_EDITOR_MODES)[number];
+
+const HOME_EDITOR_MODE_LABELS: Record<HomeEditorMode, string> = {
+  edit: "Edit",
+  structure: "Structure",
+  preview: "Preview",
+};
+
+const HOME_PREVIEW_VIEWPORTS = ["desktop", "tablet", "mobile"] as const;
+const HOME_PREVIEW_VIEWPORT_LABELS: Record<HomePreviewViewport, string> = {
+  desktop: "Desktop",
+  tablet: "Tablet",
+  mobile: "Mobile",
+};
+
+function isHomeEditorMode(value: unknown): value is HomeEditorMode {
+  return isString(value) && HOME_EDITOR_MODES.includes(value as HomeEditorMode);
+}
+
+function isHomePreviewViewport(value: unknown): value is HomePreviewViewport {
+  return isString(value) && HOME_PREVIEW_VIEWPORTS.includes(value as HomePreviewViewport);
+}
+
 export function HomePanel() {
   const { connection, request, setMessage } = useSiteAdmin();
   const [baseData, setBaseData] = useState<HomeData>(BLANK_HOME_DATA);
@@ -59,6 +84,22 @@ export function HomePanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
+  const [editorMode, setEditorMode] = usePersistentUiState<HomeEditorMode>(
+    "workspace.site-admin.home.editor-mode.v1",
+    "edit",
+    isHomeEditorMode,
+  );
+  const [outlineOpen, setOutlineOpen] = usePersistentUiState(
+    "workspace.site-admin.home.outline-open.v1",
+    false,
+    isBoolean,
+  );
+  const [previewViewport, setPreviewViewport] =
+    usePersistentUiState<HomePreviewViewport>(
+      "workspace.site-admin.home.preview-viewport.v1",
+      "desktop",
+      isHomePreviewViewport,
+    );
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
@@ -410,6 +451,69 @@ export function HomePanel() {
       : dirty
         ? "Unsaved changes."
         : "In sync.";
+  const outlineDrawerOpen = editorMode === "edit" && outlineOpen;
+  const sectionRailProps = {
+    addSection,
+    getHandleProps,
+    getRowProps,
+    moveSection,
+    sections: draft.sections,
+    selectedSectionId,
+    setSelectedId,
+  };
+  const inspectorPanel = (
+    <HomeInspectorShell
+      duplicateSection={duplicateSection}
+      patchEnabled={(id, enabled) =>
+        patchSection(id, (section) => ({ ...section, enabled }))
+      }
+      removeSection={removeSection}
+      selectedSection={selectedSection}
+      totalSections={draft.sections.length}
+    >
+      {selectedSection && (
+        <>
+          <SharedLayoutFields section={selectedSection} patchSection={patchSection} />
+          {selectedSection.type === "hero" && (
+            <HeroFields section={selectedSection} patchSection={patchSection} />
+          )}
+          {selectedSection.type === "richText" && (
+            <RichTextFields section={selectedSection} patchSection={patchSection} />
+          )}
+          {selectedSection.type === "linkList" && (
+            <LinkListFields
+              section={selectedSection}
+              patchSection={patchSection}
+              updateLink={updateLink}
+              addLink={addLink}
+              removeLink={removeLink}
+              moveLink={moveLink}
+            />
+          )}
+          {selectedSection.type === "featuredPages" && (
+            <FeaturedPagesFields
+              section={selectedSection}
+              patchSection={patchSection}
+              updateLink={updateLink}
+              addLink={addLink}
+              removeLink={removeLink}
+              moveLink={moveLink}
+            />
+          )}
+          {selectedSection.type === "layout" && (
+            <LayoutFields
+              section={selectedSection}
+              patchSection={patchSection}
+              patchLayoutBlock={patchLayoutBlock}
+              addLayoutBlock={addLayoutBlock}
+              removeLayoutBlock={removeLayoutBlock}
+              moveLayoutBlock={moveLayoutBlock}
+            />
+          )}
+        </>
+      )}
+    </HomeInspectorShell>
+  );
 
   return (
     <section className="surface-card home-builder-card">
@@ -490,82 +594,97 @@ export function HomePanel() {
         />
       )}
 
-      <div className="home-builder">
-        <HomeSectionRail
-          addSection={addSection}
-          getHandleProps={getHandleProps}
-          getRowProps={getRowProps}
-          moveSection={moveSection}
-          sections={draft.sections}
-          selectedSectionId={selectedSectionId}
-          setSelectedId={setSelectedId}
-        />
+      <div className="home-builder__workspace">
+        <div className="home-builder__toolbar" aria-label="Home editor view controls">
+          <div className="home-builder__segmented" aria-label="Editor mode">
+            {HOME_EDITOR_MODES.map((mode) => (
+              <button
+                aria-pressed={editorMode === mode}
+                data-active={editorMode === mode ? "true" : undefined}
+                key={mode}
+                onClick={() => {
+                  setEditorMode(mode);
+                  if (mode !== "edit") setOutlineOpen(false);
+                }}
+                type="button"
+              >
+                {HOME_EDITOR_MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
 
-        <HomePreviewPane
-          baseUrl={connection.baseUrl}
-          draft={draft}
-          frameRef={homePreview.frameRef}
-          html={homePreview.html}
-          loading={homePreview.loading}
-          onFrameLoad={homePreview.onFrameLoad}
-          previewError={homePreview.error}
-          renderSection={renderPreviewSection}
-          selectedSectionId={selectedSectionId}
-          setSelectedId={setSelectedId}
-          stylesheets={homePreview.stylesheets}
-        />
+          <button
+            aria-expanded={outlineDrawerOpen}
+            className="btn btn--secondary home-builder__outline-toggle"
+            disabled={editorMode !== "edit"}
+            onClick={() => setOutlineOpen((open) => !open)}
+            type="button"
+          >
+            Outline
+          </button>
 
-        <HomeInspectorShell
-          duplicateSection={duplicateSection}
-          patchEnabled={(id, enabled) =>
-            patchSection(id, (section) => ({ ...section, enabled }))
-          }
-          removeSection={removeSection}
-          selectedSection={selectedSection}
-          totalSections={draft.sections.length}
+          {editorMode !== "structure" ? (
+            <div
+              className="home-builder__segmented home-builder__segmented--viewport"
+              aria-label="Preview viewport"
+            >
+              {HOME_PREVIEW_VIEWPORTS.map((viewport) => (
+                <button
+                  aria-pressed={previewViewport === viewport}
+                  data-active={previewViewport === viewport ? "true" : undefined}
+                  key={viewport}
+                  onClick={() => setPreviewViewport(viewport)}
+                  type="button"
+                >
+                  {HOME_PREVIEW_VIEWPORT_LABELS[viewport]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          className="home-builder"
+          data-mode={editorMode}
+          data-outline-open={outlineDrawerOpen ? "true" : undefined}
         >
-          {selectedSection && (
+          {editorMode === "structure" ? (
             <>
-              <SharedLayoutFields section={selectedSection} patchSection={patchSection} />
-              {selectedSection.type === "hero" && (
-                <HeroFields section={selectedSection} patchSection={patchSection} />
-              )}
-              {selectedSection.type === "richText" && (
-                <RichTextFields section={selectedSection} patchSection={patchSection} />
-              )}
-              {selectedSection.type === "linkList" && (
-                <LinkListFields
-                  section={selectedSection}
-                  patchSection={patchSection}
-                  updateLink={updateLink}
-                  addLink={addLink}
-                  removeLink={removeLink}
-                  moveLink={moveLink}
+              <HomeSectionRail {...sectionRailProps} title="Page structure" />
+              {inspectorPanel}
+            </>
+          ) : (
+            <>
+              <div className="home-builder__canvas-stack">
+                {outlineDrawerOpen ? (
+                  <div className="home-builder__outline-drawer">
+                    <HomeSectionRail
+                      {...sectionRailProps}
+                      onClose={() => setOutlineOpen(false)}
+                      title="Page outline"
+                      variant="drawer"
+                    />
+                  </div>
+                ) : null}
+                <HomePreviewPane
+                  baseUrl={connection.baseUrl}
+                  draft={draft}
+                  frameRef={homePreview.frameRef}
+                  html={homePreview.html}
+                  loading={homePreview.loading}
+                  onFrameLoad={homePreview.onFrameLoad}
+                  previewError={homePreview.error}
+                  renderSection={renderPreviewSection}
+                  selectedSectionId={selectedSectionId}
+                  setSelectedId={setSelectedId}
+                  stylesheets={homePreview.stylesheets}
+                  viewport={previewViewport}
                 />
-              )}
-              {selectedSection.type === "featuredPages" && (
-                <FeaturedPagesFields
-                  section={selectedSection}
-                  patchSection={patchSection}
-                  updateLink={updateLink}
-                  addLink={addLink}
-                  removeLink={removeLink}
-                  moveLink={moveLink}
-                />
-              )}
-              {selectedSection.type === "layout" && (
-                <LayoutFields
-                  section={selectedSection}
-                  patchSection={patchSection}
-                  patchLayoutBlock={patchLayoutBlock}
-                  addLayoutBlock={addLayoutBlock}
-                  removeLayoutBlock={removeLayoutBlock}
-                  moveLayoutBlock={moveLayoutBlock}
-                />
-              )}
+              </div>
+              {editorMode === "edit" ? inspectorPanel : null}
             </>
           )}
-        </HomeInspectorShell>
+        </div>
       </div>
     </section>
   );

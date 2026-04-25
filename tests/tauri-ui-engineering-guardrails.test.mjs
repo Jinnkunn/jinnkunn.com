@@ -24,6 +24,8 @@ test("tauri-ui-engineering: Home builder is split into maintainable panels", asy
     "HomeInspectorShell",
     "useHomePreview",
     "usePersistentUiState",
+    "HOME_EDITOR_MODES",
+    "HOME_PREVIEW_VIEWPORTS",
   ]) {
     assert.match(homePanel, new RegExp(symbol), `HomePanel should use ${symbol}`);
   }
@@ -31,7 +33,20 @@ test("tauri-ui-engineering: Home builder is split into maintainable panels", asy
   assert.match(panels, /export function HomeSectionRail/);
   assert.match(panels, /export function HomePreviewPane/);
   assert.match(panels, /export function HomeInspectorShell/);
+  assert.match(panels, /HomePreviewViewport/);
   assert.match(previewHook, /api\/site-admin\/preview\/home/);
+});
+
+test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async () => {
+  const homePanel = await read("apps/workspace/src/surfaces/site-admin/HomePanel.tsx");
+  const styles = await read("apps/workspace/src/index.css");
+
+  assert.match(homePanel, /data-mode=\{editorMode\}/);
+  assert.match(homePanel, /data-outline-open=\{outlineDrawerOpen/);
+  assert.match(homePanel, /home-builder__outline-drawer/);
+  assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: minmax\(0, 1fr\) minmax\(340px, 390px\)/s);
+  assert.match(styles, /\.home-builder\[data-mode="preview"\]\s*\{\s*grid-template-columns: 1fr;/s);
+  assert.match(styles, /\.home-preview__stage/);
 });
 
 test("tauri-ui-engineering: Post and Page editors share MDX controller primitives", async () => {
