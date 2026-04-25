@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { useDragReorder } from "./shared/useDragReorder";
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
@@ -48,6 +48,83 @@ function PreviewText({ children }: { children?: string }) {
   return <p className="home-preview__body">{children}</p>;
 }
 
+function HomeInsertMenu({
+  afterSectionId,
+  onInsert,
+}: {
+  afterSectionId: string | null;
+  onInsert: (afterSectionId: string | null, type: HomeSectionType) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const commands = getHomeSectionCommands(query);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+  }, []);
+
+  const choose = useCallback(
+    (type: HomeSectionType) => {
+      onInsert(afterSectionId, type);
+      close();
+    },
+    [afterSectionId, close, onInsert],
+  );
+
+  return (
+    <div className="home-canvas__insert-menu" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className="home-canvas__insert-trigger"
+        aria-expanded={open}
+        aria-label="Insert home section"
+        onClick={() => setOpen((value) => !value)}
+      >
+        +
+      </button>
+      {open ? (
+        <div className="home-canvas__insert-popover" role="menu">
+          <input
+            autoFocus
+            aria-label="Search home sections"
+            value={query}
+            placeholder="Type /text, /layout, /links..."
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                close();
+              }
+              if (event.key === "Enter" && commands[0]) {
+                event.preventDefault();
+                choose(commands[0].type);
+              }
+            }}
+          />
+          <div className="home-canvas__insert-options">
+            {commands.length ? (
+              commands.map((command) => (
+                <button
+                  type="button"
+                  role="menuitem"
+                  key={command.type}
+                  onClick={() => choose(command.type)}
+                >
+                  <strong>{command.label}</strong>
+                  <span>{command.description}</span>
+                </button>
+              ))
+            ) : (
+              <p>No sections found.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const HOME_EDITOR_MODES = ["edit", "structure", "preview"] as const;
 type HomeEditorMode = (typeof HOME_EDITOR_MODES)[number];
 
@@ -64,13 +141,62 @@ const HOME_PREVIEW_VIEWPORT_LABELS: Record<HomePreviewViewport, string> = {
   mobile: "Mobile",
 };
 
-const HOME_EDITOR_INSERT_LABELS: Record<HomeSectionType, string> = {
-  hero: "Hero",
-  richText: "Text",
-  linkList: "Links",
-  featuredPages: "Featured",
-  layout: "Layout",
-};
+interface HomeSectionCommand {
+  description: string;
+  keywords: string[];
+  label: string;
+  type: HomeSectionType;
+}
+
+const HOME_SECTION_COMMANDS: HomeSectionCommand[] = [
+  {
+    type: "hero",
+    label: "Hero",
+    description: "Intro block with title, copy, and image",
+    keywords: ["hero", "intro", "profile"],
+  },
+  {
+    type: "richText",
+    label: "Text",
+    description: "Markdown section for long-form copy",
+    keywords: ["text", "paragraph", "body", "rich"],
+  },
+  {
+    type: "layout",
+    label: "Layout",
+    description: "Custom columns with images and text",
+    keywords: ["layout", "columns", "image", "split"],
+  },
+  {
+    type: "linkList",
+    label: "Links",
+    description: "Link list or inline navigation",
+    keywords: ["links", "nav", "buttons"],
+  },
+  {
+    type: "featuredPages",
+    label: "Featured pages",
+    description: "Cards linking to major site sections",
+    keywords: ["featured", "pages", "cards"],
+  },
+];
+
+function normalizeHomeSectionCommandQuery(value: string) {
+  return value.trim().toLowerCase().replace(/^\//, "").replace(/\s+/g, "");
+}
+
+function getHomeSectionCommands(query: string) {
+  const normalized = normalizeHomeSectionCommandQuery(query);
+  if (!normalized) return HOME_SECTION_COMMANDS;
+  return HOME_SECTION_COMMANDS.filter((command) => {
+    const label = normalizeHomeSectionCommandQuery(command.label);
+    return (
+      label.includes(normalized) ||
+      command.type.toLowerCase().includes(normalized) ||
+      command.keywords.some((keyword) => keyword.includes(normalized))
+    );
+  });
+}
 
 function isHomeEditorMode(value: unknown): value is HomeEditorMode {
   return isString(value) && HOME_EDITOR_MODES.includes(value as HomeEditorMode);
@@ -682,18 +808,7 @@ export function HomePanel() {
 
   const renderInsertControls = useCallback(
     (afterSectionId: string | null) => (
-      <div className="home-canvas__insert-row" onClick={(event) => event.stopPropagation()}>
-        <span>+</span>
-        {(Object.keys(HOME_EDITOR_INSERT_LABELS) as HomeSectionType[]).map((type) => (
-          <button
-            type="button"
-            key={type}
-            onClick={() => insertSectionAfter(afterSectionId, type)}
-          >
-            {HOME_EDITOR_INSERT_LABELS[type]}
-          </button>
-        ))}
-      </div>
+      <HomeInsertMenu afterSectionId={afterSectionId} onInsert={insertSectionAfter} />
     ),
     [insertSectionAfter],
   );
