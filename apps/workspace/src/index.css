@@ -1530,8 +1530,9 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-blocks {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   border-radius: 12px;
+  padding: 6px 0;
   transition:
     background-color 130ms ease,
     box-shadow 130ms ease;
@@ -1553,16 +1554,26 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .mdx-document-blocks__quick-add {
   justify-content: center;
-  margin-bottom: 4px;
+  margin: 0 0 6px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.mdx-document-blocks:hover .mdx-document-blocks__quick-add,
+.mdx-document-blocks:focus-within .mdx-document-blocks__quick-add {
   opacity: 0.72;
+  transform: translateY(0);
 }
 
 .mdx-document-block {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
   gap: 6px;
-  padding: 8px;
+  padding: 3px 8px 3px 0;
   border: 1px solid transparent;
   border-radius: 10px;
   transition:
@@ -1583,17 +1594,26 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-block__toolbar {
+  position: sticky;
+  top: 0;
+  align-self: start;
   justify-content: flex-end;
-  opacity: 0.45;
-  transition: opacity 120ms ease;
+  padding-top: 6px;
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  transform: translateX(-2px);
 }
 
 .mdx-document-block:hover .mdx-document-block__toolbar,
 .mdx-document-block:focus-within .mdx-document-block__toolbar {
   opacity: 1;
+  transform: translateX(0);
 }
 
 .mdx-document-block__insert {
+  grid-column: 2;
   justify-content: center;
   opacity: 0;
   transition: opacity 120ms ease;
@@ -1617,6 +1637,17 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-secondary);
   font-size: 11.5px;
   font-weight: 650;
+}
+
+.mdx-document-block__toolbar select {
+  width: 28px;
+  color: transparent;
+}
+
+.mdx-document-block__toolbar select:focus,
+.mdx-document-block__toolbar select:hover {
+  width: auto;
+  color: var(--color-text-primary);
 }
 
 .mdx-document-block__toolbar button {
@@ -1669,9 +1700,9 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-text-block {
-  min-height: 86px;
-  padding: 8px 10px;
-  resize: vertical;
+  min-height: 40px;
+  padding: 7px 8px;
+  resize: none;
   font-size: 13.5px;
   line-height: 1.6;
 }
@@ -1767,9 +1798,9 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-heading-block__input:focus,
 .mdx-document-image-block__fields input:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 46%, var(--color-border-default));
-  background: var(--color-bg-surface);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
+  box-shadow: none;
 }
 
 .mdx-document-image-block {
@@ -1827,10 +1858,12 @@ body[data-window-focused="true"] .sidebar-surface {
   z-index: 3;
   top: calc(100% + 4px);
   left: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-width: min(520px, calc(100% - 16px));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 3px;
+  width: min(520px, calc(100% - 16px));
+  max-height: 300px;
+  overflow: auto;
   padding: 6px;
   border: 1px solid var(--color-border-subtle);
   border-radius: 9px;
@@ -1839,14 +1872,36 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-slash-menu button {
-  min-height: 26px;
-  border: 1px solid var(--color-border-subtle);
+  display: flex;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 1px solid transparent;
   border-radius: 7px;
-  padding: 3px 8px;
-  background: var(--color-bg-surface-alt);
+  padding: 7px 9px;
+  background: transparent;
   color: var(--color-text-secondary);
-  font-size: 11.5px;
-  font-weight: 650;
+  text-align: left;
+}
+
+.mdx-document-slash-menu button:hover,
+.mdx-document-slash-menu button:focus-visible {
+  outline: none;
+  border-color: var(--color-border-subtle);
+  background: var(--color-bg-hover);
+}
+
+.mdx-document-slash-menu button strong {
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.mdx-document-slash-menu button span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 /* ------------------------------------------------------------------ *

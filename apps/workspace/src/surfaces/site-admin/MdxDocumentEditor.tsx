@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type DragEvent,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -62,6 +63,94 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   raw: "Raw MDX",
 };
 
+const BLOCK_INSERT_TYPES: MdxBlockType[] = [
+  "paragraph",
+  "heading",
+  "image",
+  "quote",
+  "list",
+  "divider",
+  "callout",
+  "code",
+  "raw",
+];
+
+interface SlashCommand {
+  description: string;
+  keywords: string[];
+  label: string;
+  makeBlock: () => MdxBlock;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  {
+    description: "Plain paragraph text",
+    keywords: ["text", "paragraph", "plain"],
+    label: "Text",
+    makeBlock: () => createMdxBlock("paragraph"),
+  },
+  {
+    description: "Large section heading",
+    keywords: ["h1", "heading1", "title"],
+    label: "Heading 1",
+    makeBlock: () => ({ ...createMdxBlock("heading"), level: 1, text: "" }),
+  },
+  {
+    description: "Medium section heading",
+    keywords: ["h2", "heading", "heading2"],
+    label: "Heading 2",
+    makeBlock: () => ({ ...createMdxBlock("heading"), level: 2, text: "" }),
+  },
+  {
+    description: "Small section heading",
+    keywords: ["h3", "heading3", "subheading"],
+    label: "Heading 3",
+    makeBlock: () => ({ ...createMdxBlock("heading"), level: 3, text: "" }),
+  },
+  {
+    description: "Upload or paste an image",
+    keywords: ["image", "img", "photo", "media"],
+    label: "Image",
+    makeBlock: () => createMdxBlock("image"),
+  },
+  {
+    description: "Quote or excerpt",
+    keywords: ["quote", "blockquote"],
+    label: "Quote",
+    makeBlock: () => createMdxBlock("quote"),
+  },
+  {
+    description: "Bulleted or numbered list",
+    keywords: ["list", "bullet", "bulleted", "numbered"],
+    label: "List",
+    makeBlock: () => createMdxBlock("list"),
+  },
+  {
+    description: "Visual separator",
+    keywords: ["divider", "hr", "line"],
+    label: "Divider",
+    makeBlock: () => createMdxBlock("divider"),
+  },
+  {
+    description: "Highlighted note",
+    keywords: ["callout", "note", "tip"],
+    label: "Callout",
+    makeBlock: () => createMdxBlock("callout"),
+  },
+  {
+    description: "Fenced code block",
+    keywords: ["code", "snippet"],
+    label: "Code",
+    makeBlock: () => createMdxBlock("code"),
+  },
+  {
+    description: "Advanced MDX",
+    keywords: ["raw", "mdx", "html"],
+    label: "Raw MDX",
+    makeBlock: () => createMdxBlock("raw"),
+  },
+];
+
 function isDocumentEditorMode(value: unknown): value is DocumentEditorMode {
   return isString(value) && DOCUMENT_EDITOR_MODES.includes(value as DocumentEditorMode);
 }
@@ -102,32 +191,25 @@ export interface MdxDocumentEditorProps<TForm> {
   slug?: string;
 }
 
-function readSlashCommand(value: string): MdxBlockType | null {
-  const command = value.trim().toLowerCase();
-  if (command === "/text" || command === "/paragraph") return "paragraph";
-  if (command === "/h1" || command === "/h2" || command === "/h3" || command === "/heading") {
-    return "heading";
-  }
-  if (command === "/image") return "image";
-  if (command === "/quote") return "quote";
-  if (command === "/list" || command === "/bullet" || command === "/bulleted") return "list";
-  if (command === "/divider" || command === "/hr") return "divider";
-  if (command === "/callout" || command === "/note") return "callout";
-  if (command === "/code") return "code";
-  if (command === "/raw" || command === "/mdx") return "raw";
-  return null;
+function normalizeSlashQuery(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed.startsWith("/")) return null;
+  return trimmed.slice(1).replace(/\s+/g, "");
+}
+
+function getMatchingSlashCommands(value: string): SlashCommand[] {
+  const query = normalizeSlashQuery(value);
+  if (query === null) return [];
+  if (!query) return SLASH_COMMANDS;
+  return SLASH_COMMANDS.filter(
+    (command) =>
+      command.label.toLowerCase().replace(/\s+/g, "").includes(query) ||
+      command.keywords.some((keyword) => keyword.includes(query)),
+  );
 }
 
 function blockFromSlashCommand(value: string): MdxBlock | null {
-  const type = readSlashCommand(value);
-  if (!type) return null;
-  const block = createMdxBlock(type);
-  if (type === "heading") {
-    const command = value.trim().toLowerCase();
-    if (command === "/h1") return { ...block, level: 1, text: "Heading" };
-    if (command === "/h3") return { ...block, level: 3, text: "Heading" };
-  }
-  return block;
+  return getMatchingSlashCommands(value)[0]?.makeBlock() ?? null;
 }
 
 function replaceBlockType(block: MdxBlock, type: MdxBlockType): MdxBlock {
@@ -148,6 +230,18 @@ function replaceBlockType(block: MdxBlock, type: MdxBlockType): MdxBlock {
   return { ...next, alt: block.text.slice(0, 80), text: "" };
 }
 
+function isTextEditableBlock(block: MdxBlock): boolean {
+  return (
+    block.type === "paragraph" ||
+    block.type === "heading" ||
+    block.type === "quote" ||
+    block.type === "list" ||
+    block.type === "callout" ||
+    block.type === "code" ||
+    block.type === "raw"
+  );
+}
+
 function BodyBlockCanvas({
   body,
   onChange,
@@ -166,7 +260,33 @@ function BodyBlockCanvas({
   const [draggingBlockId, setDraggingBlockId] = useState("");
   const [dragOverBlockId, setDragOverBlockId] = useState("");
   const [uploadingId, setUploadingId] = useState("");
+  const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
   const lastEmittedBodyRef = useRef(body);
+  const blockInputRefs = useRef(new Map<string, HTMLInputElement | HTMLTextAreaElement>());
+  const focusSeqRef = useRef(0);
+
+  const registerBlockInput = useCallback(
+    (blockId: string, node: HTMLInputElement | HTMLTextAreaElement | null) => {
+      if (node) blockInputRefs.current.set(blockId, node);
+      else blockInputRefs.current.delete(blockId);
+    },
+    [],
+  );
+
+  const requestBlockFocus = useCallback((id: string) => {
+    if (!id) return;
+    focusSeqRef.current += 1;
+    setFocusRequest({ id, seq: focusSeqRef.current });
+  }, []);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const node = blockInputRefs.current.get(focusRequest.id);
+    if (!node) return;
+    node.focus();
+    const length = node.value.length;
+    node.setSelectionRange(length, length);
+  }, [blocks, focusRequest]);
 
   useEffect(() => {
     if (body === lastEmittedBodyRef.current) return;
@@ -197,11 +317,32 @@ function BodyBlockCanvas({
 
   const insertBlock = useCallback(
     (afterIndex: number, type: MdxBlockType) => {
+      const block = createMdxBlock(type);
       const next = blocks.slice();
-      next.splice(afterIndex + 1, 0, createMdxBlock(type));
+      next.splice(afterIndex + 1, 0, block);
       commitBlocks(next);
+      requestBlockFocus(block.id);
     },
-    [blocks, commitBlocks],
+    [blocks, commitBlocks, requestBlockFocus],
+  );
+
+  const replaceBlock = useCallback(
+    (id: string, nextBlock: MdxBlock) => {
+      commitBlocks(blocks.map((block) => (block.id === id ? nextBlock : block)));
+      requestBlockFocus(nextBlock.id);
+    },
+    [blocks, commitBlocks, requestBlockFocus],
+  );
+
+  const insertParagraphAfter = useCallback(
+    (index: number) => {
+      const block = createMdxBlock("paragraph");
+      const next = blocks.slice();
+      next.splice(index + 1, 0, block);
+      commitBlocks(next);
+      requestBlockFocus(block.id);
+    },
+    [blocks, commitBlocks, requestBlockFocus],
   );
 
   const appendImageBlock = useCallback(
@@ -298,6 +439,17 @@ function BodyBlockCanvas({
     [blocks, commitBlocks],
   );
 
+  const removeEmptyBlock = useCallback(
+    (id: string, index: number) => {
+      if (blocks.length <= 1) return;
+      const next = blocks.filter((block) => block.id !== id);
+      const focusIndex = Math.max(0, Math.min(index - 1, next.length - 1));
+      commitBlocks(next);
+      requestBlockFocus(next[focusIndex]?.id ?? "");
+    },
+    [blocks, commitBlocks, requestBlockFocus],
+  );
+
   return (
     <div
       className="mdx-document-blocks"
@@ -317,7 +469,7 @@ function BodyBlockCanvas({
       }}
     >
       <div className="mdx-document-blocks__quick-add" aria-label="Add first block">
-        {(Object.keys(BLOCK_TYPE_LABELS) as MdxBlockType[]).map((type) => (
+        {BLOCK_INSERT_TYPES.map((type) => (
           <button type="button" key={type} onClick={() => insertBlock(-1, type)}>
             + {BLOCK_TYPE_LABELS[type]}
           </button>
@@ -408,17 +560,19 @@ function BodyBlockCanvas({
             onPatch={(patcher) => patchBlock(block.id, patcher)}
             onSlashCommand={(value) => {
               const next = blockFromSlashCommand(value);
-              if (next) patchBlock(block.id, () => next);
+              if (next) replaceBlock(block.id, next);
               return Boolean(next);
             }}
-            onConvertType={(type) =>
-              patchBlock(block.id, () => createMdxBlock(type))
-            }
+            onChooseSlashCommand={(command) => replaceBlock(block.id, command.makeBlock())}
+            onConvertType={(type) => replaceBlock(block.id, createMdxBlock(type))}
+            onFocusInput={(node) => registerBlockInput(block.id, node)}
+            onInsertParagraphAfter={() => insertParagraphAfter(index)}
+            onRemoveEmpty={() => removeEmptyBlock(block.id, index)}
             onUploadImage={(file) => void uploadImageIntoBlock(block.id, file)}
           />
 
           <div className="mdx-document-block__insert" aria-label="Add block">
-            {(Object.keys(BLOCK_TYPE_LABELS) as MdxBlockType[]).map((type) => (
+            {BLOCK_INSERT_TYPES.map((type) => (
               <button type="button" key={type} onClick={() => insertBlock(index, type)}>
                 + {BLOCK_TYPE_LABELS[type]}
               </button>
@@ -438,20 +592,59 @@ function BodyBlockCanvas({
 
 function EditableBlock({
   block,
+  onChooseSlashCommand,
   onConvertType,
+  onFocusInput,
+  onInsertParagraphAfter,
   onPatch,
+  onRemoveEmpty,
   onSlashCommand,
   onUploadImage,
   uploading,
 }: {
   block: MdxBlock;
+  onChooseSlashCommand: (command: SlashCommand) => void;
   onConvertType: (type: MdxBlockType) => void;
+  onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
+  onInsertParagraphAfter: () => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  onRemoveEmpty: () => void;
   onSlashCommand: (value: string) => boolean;
   onUploadImage: (file: File | null) => void;
   uploading: boolean;
 }) {
-  const showSlashMenu = block.type === "paragraph" && block.text.trim().startsWith("/");
+  const slashCommands =
+    block.type === "paragraph" ? getMatchingSlashCommands(block.text) : [];
+  const showSlashMenu = slashCommands.length > 0;
+
+  const onTextKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const value = event.currentTarget.value;
+    if (event.key === "Enter" && value.trim().startsWith("/")) {
+      if (onSlashCommand(value)) event.preventDefault();
+      return;
+    }
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      block.type !== "code" &&
+      block.type !== "raw" &&
+      block.type !== "list"
+    ) {
+      event.preventDefault();
+      onInsertParagraphAfter();
+      return;
+    }
+    if (
+      event.key === "Backspace" &&
+      isTextEditableBlock(block) &&
+      !value.trim() &&
+      event.currentTarget.selectionStart === 0 &&
+      event.currentTarget.selectionEnd === 0
+    ) {
+      event.preventDefault();
+      onRemoveEmpty();
+    }
+  };
 
   if (block.type === "image") {
     return (
@@ -524,11 +717,13 @@ function EditableBlock({
         <input
           aria-label="Heading text"
           className={`mdx-document-heading-block__input mdx-document-heading-block__input--h${block.level ?? 2}`}
+          ref={onFocusInput}
           value={block.text}
           placeholder="Heading"
           onChange={(event) =>
             onPatch((current) => ({ ...current, text: event.target.value }))
           }
+          onKeyDown={onTextKeyDown}
         />
       </div>
     );
@@ -562,6 +757,7 @@ function EditableBlock({
         <textarea
           aria-label="List items"
           className="mdx-document-text-block mdx-document-text-block--list"
+          ref={onFocusInput}
           rows={Math.max(3, block.text.split("\n").length + 1)}
           value={block.text}
           placeholder="One item per line"
@@ -572,6 +768,7 @@ function EditableBlock({
               text: event.target.value,
             }))
           }
+          onKeyDown={onTextKeyDown}
         />
       </div>
     );
@@ -582,6 +779,7 @@ function EditableBlock({
       <textarea
         aria-label={`${BLOCK_TYPE_LABELS[block.type]} block`}
         className={`mdx-document-text-block mdx-document-text-block--${block.type}`}
+        ref={onFocusInput}
         rows={block.type === "code" || block.type === "raw" ? 6 : Math.max(3, block.text.split("\n").length + 1)}
         value={block.text}
         placeholder={
@@ -598,23 +796,41 @@ function EditableBlock({
         onChange={(event) =>
           onPatch((current) => ({ ...current, text: event.target.value }))
         }
-        onKeyDown={(event) => {
-          if (event.key !== "Enter") return;
-          const value = event.currentTarget.value;
-          if (!value.trim().startsWith("/")) return;
-          if (onSlashCommand(value)) event.preventDefault();
-        }}
+        onKeyDown={onTextKeyDown}
       />
       {showSlashMenu ? (
-        <div className="mdx-document-slash-menu" aria-label="Block shortcuts">
-          {(Object.keys(BLOCK_TYPE_LABELS) as MdxBlockType[])
-            .filter((type) => type !== "raw")
-            .map((type) => (
-              <button type="button" key={type} onClick={() => onConvertType(type)}>
-                {BLOCK_TYPE_LABELS[type]}
-              </button>
-            ))}
-        </div>
+        <SlashCommandMenu
+          commands={slashCommands}
+          onChoose={onChooseSlashCommand}
+          onConvertType={onConvertType}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SlashCommandMenu({
+  commands,
+  onChoose,
+  onConvertType,
+}: {
+  commands: SlashCommand[];
+  onChoose: (command: SlashCommand) => void;
+  onConvertType: (type: MdxBlockType) => void;
+}) {
+  return (
+    <div className="mdx-document-slash-menu" aria-label="Block shortcuts">
+      {commands.map((command) => (
+        <button type="button" key={command.label} onClick={() => onChoose(command)}>
+          <strong>{command.label}</strong>
+          <span>{command.description}</span>
+        </button>
+      ))}
+      {commands.length === 0 ? (
+        <button type="button" onClick={() => onConvertType("paragraph")}>
+          <strong>Text</strong>
+          <span>Start with a plain paragraph</span>
+        </button>
       ) : null}
     </div>
   );
