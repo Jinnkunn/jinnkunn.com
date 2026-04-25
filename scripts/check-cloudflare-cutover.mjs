@@ -48,13 +48,13 @@ function main() {
   const deployProvider = process.env.DEPLOY_PROVIDER || "(auto)";
   console.log(`INFO  DEPLOY_PROVIDER=${deployProvider}`);
 
-  const hasHookTarget = hasAny(["DEPLOY_HOOK_URL", "VERCEL_DEPLOY_HOOK_URL"]);
+  const hasHookTarget = hasAny(["DEPLOY_HOOK_URL"]);
   const hasCloudflareApiTarget =
     hasAny(["CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"]) &&
     hasAny(["CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"]) &&
     isSet("CLOUDFLARE_WORKER_NAME");
 
-  printStatus("DEPLOY_HOOK_URL or VERCEL_DEPLOY_HOOK_URL", hasHookTarget);
+  printStatus("DEPLOY_HOOK_URL", hasHookTarget);
   printStatus("Cloudflare API deploy triple", hasCloudflareApiTarget);
   if (!hasHookTarget && !hasCloudflareApiTarget) fail = true;
 

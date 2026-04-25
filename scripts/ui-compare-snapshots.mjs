@@ -5,7 +5,7 @@
  *
  * Env:
  *   ORIG_ORIGIN  (default: https://jinkunchen.com)
- *   CLONE_ORIGIN (default: https://jinnkunn-com.vercel.app)
+ *   CLONE_ORIGIN (default: https://staging.jinkunchen.com)
  *   SNAPSHOT_COMPARE_MAX_DIFF_PERCENT   (default: 8)
  *   SNAPSHOT_COMPARE_PIXEL_THRESHOLD    (default: 0.12)
  *   SNAPSHOT_COMPARE_FAIL_ON_DIFF       (default: 1)
@@ -187,7 +187,7 @@ async function diffSet({
 async function main() {
   const origOrigin = normalizeOrigin(process.env.ORIG_ORIGIN || "https://jinkunchen.com");
   const cloneOrigin = normalizeOrigin(
-    process.env.CLONE_ORIGIN || "https://jinnkunn-com.vercel.app",
+    process.env.CLONE_ORIGIN || "https://staging.jinkunchen.com",
   );
   const maxDiffPercent = Math.max(0, envNumber("SNAPSHOT_COMPARE_MAX_DIFF_PERCENT", 8));
   const pixelThreshold = Math.min(1, Math.max(0, envNumber("SNAPSHOT_COMPARE_PIXEL_THRESHOLD", 0.12)));
