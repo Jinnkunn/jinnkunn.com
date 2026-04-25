@@ -188,14 +188,18 @@ async function main() {
 
   console.log(`[release-cloudflare] deploying ${args.env}`);
   const deployScript = args.env === "production" ? "deploy:cf:prod" : "deploy:cf:staging";
+  const deployEnv =
+    args.env === "production"
+      ? {
+          DEPLOY_SOURCE_SHA: git.sha,
+          DEPLOY_SOURCE_BRANCH: git.branch,
+          DEPLOY_SOURCE_DIRTY: git.dirty ? "1" : "0",
+        }
+      : {};
   const deployOutput = run("npm", ["run", deployScript], {
     capture: true,
     label: deployScript,
-    env: {
-      DEPLOY_SOURCE_SHA: git.sha,
-      DEPLOY_SOURCE_BRANCH: git.branch,
-      DEPLOY_SOURCE_DIRTY: git.dirty ? "1" : "0",
-    },
+    env: deployEnv,
   });
   const deployment = parseDeployJson(deployOutput);
 
