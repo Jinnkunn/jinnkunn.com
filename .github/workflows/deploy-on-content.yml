@@ -1,8 +1,9 @@
 name: Deploy (auto)
 
-# Rebuild + deploy the Cloudflare Worker when main or site-admin-staging
-# picks up a change that affects the public site. Staging and production
-# share one workflow but pick the target via the branch name.
+# Rebuild + deploy the Cloudflare Worker when site-admin-staging picks up a
+# change that affects the public site. Push-triggered deploys are staging-only;
+# production requires explicit approval via workflow_dispatch or the local
+# release guardrails.
 #
 # Scope: anything outside `apps/**` (Tauri workspace), `tests/**`, `docs/**`,
 # unrelated `.github/workflows/*`, and markdown-only edits. Expressed as
@@ -20,7 +21,6 @@ name: Deploy (auto)
 on:
   push:
     branches:
-      - main
       - site-admin-staging
     paths-ignore:
       # Tauri desktop workspace — not part of the public site.
@@ -61,12 +61,11 @@ jobs:
     timeout-minutes: 20
     if: |
       ${{ github.event_name == 'workflow_dispatch' ||
-          github.ref == 'refs/heads/main' ||
           github.ref == 'refs/heads/site-admin-staging' }}
     env:
       TARGET_ENV: ${{ github.event_name == 'workflow_dispatch'
         && inputs.target
-        || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+        || 'staging' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
