@@ -2499,10 +2499,26 @@ select:focus-visible,
 }
 
 .home-preview__section:hover,
-.home-preview__section:focus-visible {
+.home-preview__section:focus-within {
   outline: none;
   border-color: var(--color-border-default);
   background: color-mix(in srgb, var(--color-text-primary) 3%, transparent);
+}
+
+.home-preview__section-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.home-preview__section-button:focus-visible {
+  outline: none;
 }
 
 .home-preview__section.is-selected {
