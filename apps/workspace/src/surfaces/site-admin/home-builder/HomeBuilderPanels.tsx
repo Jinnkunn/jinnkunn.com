@@ -218,6 +218,77 @@ export function HomePreviewPane({
   );
 }
 
+export function HomeEditableCanvasPane({
+  draft,
+  onTitleChange,
+  renderInsertControls,
+  renderSection,
+  renderSectionToolbar,
+  selectedSectionId,
+  setSelectedId,
+  viewport,
+}: {
+  draft: HomeData;
+  onTitleChange: (title: string) => void;
+  renderInsertControls: (afterSectionId: string | null) => ReactNode;
+  renderSection: (section: HomeSection) => ReactNode;
+  renderSectionToolbar: (section: HomeSection, index: number) => ReactNode;
+  selectedSectionId: string;
+  setSelectedId: (id: string) => void;
+  viewport: HomePreviewViewport;
+}) {
+  return (
+    <main
+      className="home-builder__preview home-builder__preview--editable"
+      aria-label="Home editable canvas"
+      data-viewport={viewport}
+    >
+      <div className="home-preview__chrome">
+        <div className="home-preview__lights" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <strong>Editable page canvas</strong>
+        <em>{VIEWPORT_LABELS[viewport]}</em>
+      </div>
+      <div className="home-preview__stage">
+        <div className="home-preview__page home-canvas__page">
+          <input
+            aria-label="Home page title"
+            className="home-canvas__title-input"
+            value={draft.title}
+            onChange={(event) => onTitleChange(event.target.value)}
+          />
+
+          {draft.sections.map((section, index) => {
+            const active = section.id === selectedSectionId;
+            return (
+              <div className="home-canvas__section-frame" key={section.id}>
+                {renderInsertControls(index === 0 ? null : draft.sections[index - 1].id)}
+                <section
+                  className={[
+                    "home-preview__section",
+                    "home-canvas__section",
+                    `home-preview__section--${section.type}`,
+                    active ? "is-selected" : "",
+                  ].join(" ")}
+                  data-disabled={section.enabled ? undefined : "true"}
+                  onClick={() => setSelectedId(section.id)}
+                >
+                  {active ? renderSectionToolbar(section, index) : null}
+                  {renderSection(section)}
+                </section>
+              </div>
+            );
+          })}
+          {renderInsertControls(draft.sections[draft.sections.length - 1]?.id ?? null)}
+        </div>
+      </div>
+    </main>
+  );
+}
+
 export function HomeInspectorShell({
   children,
   duplicateSection,

@@ -21,6 +21,7 @@ test("tauri-ui-engineering: Home builder is split into maintainable panels", asy
   for (const symbol of [
     "HomeSectionRail",
     "HomePreviewPane",
+    "HomeEditableCanvasPane",
     "HomeInspectorShell",
     "useHomePreview",
     "usePersistentUiState",
@@ -32,6 +33,7 @@ test("tauri-ui-engineering: Home builder is split into maintainable panels", asy
 
   assert.match(panels, /export function HomeSectionRail/);
   assert.match(panels, /export function HomePreviewPane/);
+  assert.match(panels, /export function HomeEditableCanvasPane/);
   assert.match(panels, /export function HomeInspectorShell/);
   assert.match(panels, /HomePreviewViewport/);
   assert.match(previewHook, /api\/site-admin\/preview\/home/);
@@ -43,9 +45,15 @@ test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async 
 
   assert.match(homePanel, /data-mode=\{editorMode\}/);
   assert.match(homePanel, /data-outline-open=\{outlineDrawerOpen/);
+  assert.match(homePanel, /data-settings-open=\{settingsDrawerOpen/);
   assert.match(homePanel, /home-builder__outline-drawer/);
-  assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: minmax\(0, 1fr\) minmax\(340px, 390px\)/s);
-  assert.match(styles, /\.home-builder\[data-mode="preview"\]\s*\{\s*grid-template-columns: 1fr;/s);
+  assert.match(homePanel, /home-builder__settings-drawer/);
+  assert.match(homePanel, /InlineMarkdownEditor/);
+  assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: 1fr;/s);
+  assert.match(styles, /\.home-builder\[data-mode="structure"\]\s*\{\s*grid-template-columns: minmax\(300px, 0\.85fr\) minmax\(360px, 1fr\);/s);
+  assert.match(styles, /\.home-canvas__section-toolbar/);
+  assert.match(styles, /\.home-canvas__insert-row/);
+  assert.match(styles, /\.home-canvas__markdown-preview/);
   assert.match(styles, /\.home-preview__stage/);
 });
 
