@@ -38,7 +38,7 @@ export function SiteAdminStatusBanner({
             onClick={onDeploy}
             disabled={deployBusy}
           >
-            {deployBusy ? "Deploying..." : "Deploy"}
+            {deployBusy ? "Deploying…" : "Deploy"}
           </Button>
           {deployRes ? (
             <span

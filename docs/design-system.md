@@ -15,12 +15,15 @@ This repo now has a code-first design system built as a compatibility layer on t
 - Global design system CSS: [`app/design-system.css`](/Users/jinnkunn/Desktop/jinnkunn.com/app/design-system.css)
 - Classic compatibility bridge: [`app/(classic)/design-system-bridge.css`](</Users/jinnkunn/Desktop/jinnkunn.com/app/(classic)/design-system-bridge.css>)
 - Shared primitives: [`components/ui`](/Users/jinnkunn/Desktop/jinnkunn.com/components/ui)
+- Inventory and migration rules: [`docs/design-system-inventory.md`](/Users/jinnkunn/Desktop/jinnkunn.com/docs/design-system-inventory.md)
+- Visual gallery: `/site-admin/design-system`
 
 ## Rules
 
 - New visual decisions should be expressed through `--ds-*` tokens first.
 - Legacy `--color-*` and `--navbar-*` variables are bridge output only.
 - New shared UI should use `Button`, `IconButton`, `Badge`, `Field`, `Textarea`, `CheckboxRow`, `Card`, `Panel`, `SectionHeader`, `StatusNotice`, or `NavItem` before adding feature-local primitives.
+- New repeated UI patterns should use `TextLink`, `EmptyState`, `ListRow`, `Toolbar`, `LoadingState`, or `DialogPanel` before adding feature-local pattern markup.
 - Route-scoped CSS may still exist, but it should consume design-system tokens instead of introducing new hard-coded colors.
 
 ## Theme Behavior
@@ -82,6 +85,7 @@ This repo now has a code-first design system built as a compatibility layer on t
   - `A11Y_SKIP_BUILD=1 A11Y_FULL_SITE=1 A11Y_FAIL_ALL=1 npm run check:a11y`
   - `npm run snapshot:ui`
 - CI must keep these gates for UI-impacting changes, including light/dark snapshot generation.
+- The snapshot matrix includes `/site-admin/design-system` so primitive changes have a dedicated visual review surface.
 - Once those gates stay green, phase D can focus on long-tail `app/(classic)/notion-blocks.css` parity only:
   - fix blocker-level dark-mode contrast/accessibility issues
   - avoid broad visual rework in raw content rendering

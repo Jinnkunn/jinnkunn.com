@@ -10,6 +10,7 @@ import {
   CONTAINER_DEFAULTS,
   CONTAINER_SURFACES,
   DESIGN_DENSITIES,
+  DESIGN_PATTERNS,
   DESIGN_SIZES,
   DESIGN_TONES,
   DESIGN_VARIANTS,
@@ -27,6 +28,14 @@ test("design-system-contract: shared dimensions remain stable", () => {
   assert.deepEqual([...DESIGN_DENSITIES], ["compact", "default"]);
   assert.deepEqual([...BUTTON_SURFACES], ["default", "inverse"]);
   assert.deepEqual([...CONTAINER_SURFACES], ["default", "elevated", "soft"]);
+  assert.deepEqual([...DESIGN_PATTERNS], [
+    "textLink",
+    "emptyState",
+    "listRow",
+    "toolbar",
+    "loadingState",
+    "dialogPanel",
+  ]);
 });
 
 test("design-system-contract: primitive defaults stay within the shared contract", () => {
@@ -64,14 +73,53 @@ test("design-system-contract: core primitives import the shared contract module"
     "components/ui/field.tsx",
     "components/ui/card.tsx",
     "components/ui/status-notice.tsx",
+    "components/ui/text-link.tsx",
+    "components/ui/empty-state.tsx",
+    "components/ui/list-row.tsx",
+    "components/ui/toolbar.tsx",
+    "components/ui/loading-state.tsx",
+    "components/ui/dialog-panel.tsx",
   ];
 
   for (const relFile of files) {
     const source = await fs.readFile(path.join(ROOT, relFile), "utf8");
-    assert.match(
-      source,
-      /@\/lib\/design-system\/primitives/,
-      `${relFile} should import shared primitive contract`,
-    );
+    if (relFile === "components/ui/cn.ts") continue;
+    if (
+      [
+        "components/ui/text-link.tsx",
+        "components/ui/empty-state.tsx",
+        "components/ui/list-row.tsx",
+        "components/ui/toolbar.tsx",
+        "components/ui/loading-state.tsx",
+        "components/ui/dialog-panel.tsx",
+      ].includes(relFile)
+    ) {
+      assert.match(source, /ds-[a-z-]+/, `${relFile} should emit ds-* classes`);
+      continue;
+    }
+    assert.match(source, /@\/lib\/design-system\/primitives/, `${relFile} should import shared primitive contract`);
   }
+});
+
+test("design-system-contract: gallery route documents all shared patterns", async () => {
+  const source = await fs.readFile(
+    path.join(ROOT, "app/(classic)/site-admin/design-system/page.tsx"),
+    "utf8",
+  );
+
+  const patternComponents = [
+    "TextLink",
+    "EmptyState",
+    "ListRow",
+    "Toolbar",
+    "LoadingState",
+    "DialogPanel",
+  ];
+
+  assert.match(source, /DESIGN_PATTERNS/, "gallery should render the shared pattern registry");
+  for (const componentName of patternComponents) {
+    assert.match(source, new RegExp(componentName), `gallery should render ${componentName}`);
+  }
+
+  assert.match(source, /aria-label=/, "gallery should keep icon/toolbar examples labelled");
 });
