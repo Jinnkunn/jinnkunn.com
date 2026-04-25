@@ -6,10 +6,10 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
+  # Required branch-protection checks must run on every PR. If docs-only PRs
+  # are ignored here, GitHub never creates `build` / `workspace-quality`
+  # statuses and the protected `main` branch becomes impossible to merge into.
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
 
 permissions:
   contents: read
