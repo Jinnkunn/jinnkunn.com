@@ -13,8 +13,29 @@ import {
   validateAssetInput,
 } from "../lib/server/assets-store.ts";
 
+const CLOUDFLARE_CONTEXT_SYMBOL = Symbol.for("__cloudflare-context__");
+
 async function makeRoot() {
   return mkdtemp(path.join(tmpdir(), "assets-store-"));
+}
+
+async function withCloudflareContext(context, fn) {
+  const globalObj = globalThis;
+  const hadContext = Object.prototype.hasOwnProperty.call(
+    globalObj,
+    CLOUDFLARE_CONTEXT_SYMBOL,
+  );
+  const previousContext = globalObj[CLOUDFLARE_CONTEXT_SYMBOL];
+  globalObj[CLOUDFLARE_CONTEXT_SYMBOL] = context;
+  try {
+    return await fn();
+  } finally {
+    if (hadContext) {
+      globalObj[CLOUDFLARE_CONTEXT_SYMBOL] = previousContext;
+    } else {
+      delete globalObj[CLOUDFLARE_CONTEXT_SYMBOL];
+    }
+  }
 }
 
 function makeR2Bucket() {
@@ -186,6 +207,42 @@ test("assets-store: uploads to R2 bucket and returns CDN URL", async () => {
   assert.equal(result.contentType, "image/png");
   assert.match(result.sha, /^[a-f0-9]{64}$/);
   assert.equal(objects.get(result.key)?.httpMetadata.cacheControl, "public, max-age=31536000, immutable");
+});
+
+test("assets-store: uses bound Cloudflare R2 bucket by default", async () => {
+  const { bucket } = makeR2Bucket();
+  const previousBackend = process.env.SITE_ADMIN_ASSET_BACKEND;
+  const previousBaseUrl = process.env.MEDIA_PUBLIC_BASE_URL;
+  delete process.env.SITE_ADMIN_ASSET_BACKEND;
+  process.env.MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com";
+
+  try {
+    await withCloudflareContext(
+      { env: { SITE_ASSETS: bucket }, cf: undefined, ctx: {} },
+      async () => {
+        const uploaded = await uploadAsset({
+          filename: "bound.png",
+          contentType: "image/png",
+          data: new Uint8Array([4, 3, 2, 1]),
+        });
+        assert.match(
+          uploaded.url,
+          /^https:\/\/cdn\.jinkunchen\.com\/uploads\/\d{4}\/\d{2}\/[a-f0-9]{64}\.png$/,
+        );
+      },
+    );
+  } finally {
+    if (previousBackend === undefined) {
+      delete process.env.SITE_ADMIN_ASSET_BACKEND;
+    } else {
+      process.env.SITE_ADMIN_ASSET_BACKEND = previousBackend;
+    }
+    if (previousBaseUrl === undefined) {
+      delete process.env.MEDIA_PUBLIC_BASE_URL;
+    } else {
+      process.env.MEDIA_PUBLIC_BASE_URL = previousBaseUrl;
+    }
+  }
 });
 
 test("assets-store: R2 upload is idempotent by content hash", async () => {
