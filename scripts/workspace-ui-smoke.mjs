@@ -40,15 +40,24 @@ function main() {
   assertIncludes(homePanel, "useHomePreview", "HomePanel");
   assertIncludes(homePanel, "HomeSectionRail", "HomePanel");
   assertIncludes(homePanel, "HomePreviewPane", "HomePanel");
+  assertIncludes(homePanel, "HomeEditableCanvasPane", "HomePanel");
   assertIncludes(homePanel, "HomeInspectorShell", "HomePanel");
   assertIncludes(homePanel, "usePersistentUiState", "HomePanel");
+  assertIncludes(homePanel, "HOME_EDITOR_MODES", "HomePanel");
+  assertIncludes(homePanel, "HOME_PREVIEW_VIEWPORTS", "HomePanel");
+  assertIncludes(homePanel, "home-builder__outline-drawer", "HomePanel");
+  assertIncludes(homePanel, "home-builder__settings-drawer", "HomePanel");
+  assertIncludes(homePanel, "InlineMarkdownEditor", "HomePanel");
+  assertIncludes(homePanel, "EditableHeroSection", "HomePanel");
 
   const homePanels = read(
     "apps/workspace/src/surfaces/site-admin/home-builder/HomeBuilderPanels.tsx",
   );
   assertIncludes(homePanels, "export function HomeSectionRail", "HomeBuilderPanels");
   assertIncludes(homePanels, "export function HomePreviewPane", "HomeBuilderPanels");
+  assertIncludes(homePanels, "export function HomeEditableCanvasPane", "HomeBuilderPanels");
   assertIncludes(homePanels, "export function HomeInspectorShell", "HomeBuilderPanels");
+  assertIncludes(homePanels, "HomePreviewViewport", "HomeBuilderPanels");
   assertIncludes(homePanels, "IconButton", "HomeBuilderPanels");
 
   for (const relPath of [
@@ -56,13 +65,28 @@ function main() {
     "apps/workspace/src/surfaces/site-admin/PageEditor.tsx",
   ]) {
     const source = read(relPath);
-    assertIncludes(source, "useMdxImageUploadDrop", relPath);
-    assertIncludes(source, "useUnsavedChangesBeforeUnload", relPath);
-    assertIncludes(source, "useConfirmingBack", relPath);
-    assertIncludes(source, "usePersistentUiState", relPath);
+    assertIncludes(source, "MdxDocumentEditor", relPath);
+    assertIncludes(source, "MdxDocumentEditorAdapter", relPath);
+    assertIncludes(source, "renderProperties", relPath);
     assertExcludes(source, "uploadImageFile", relPath);
     assertExcludes(source, "insertMarkdownImage", relPath);
   }
+
+  const documentEditor = read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx");
+  assertIncludes(documentEditor, "BodyBlockCanvas", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "parseMdxBlocks", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "serializeMdxBlocks", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "mdx-document-slash-menu", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "application/x-mdx-block", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "useMdxImageUploadDrop", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "useUnsavedChangesBeforeUnload", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "useConfirmingBack", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "usePersistentUiState", "MdxDocumentEditor");
+
+  const mdxBlocks = read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");
+  assertIncludes(mdxBlocks, 'type === "raw"', "mdx-blocks");
+  assertIncludes(mdxBlocks, 'type === "callout"', "mdx-blocks");
+  assertIncludes(mdxBlocks, 'type === "list"', "mdx-blocks");
 
   assertExcludes(
     read("components/works/works-view.tsx"),
@@ -78,6 +102,7 @@ function main() {
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/HomePanel.tsx",
     "apps/workspace/src/surfaces/site-admin/home-builder/HomeBuilderPanels.tsx",
+    "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
     "apps/workspace/src/surfaces/site-admin/PageEditor.tsx",
   ]) {
