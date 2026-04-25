@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useDragReorder } from "./shared/useDragReorder";
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
@@ -7,20 +7,23 @@ import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
 import { useSiteAdmin } from "./state";
 import { useJsonDraft } from "./use-json-draft";
+import { isString, usePersistentUiState } from "./use-persistent-ui-state";
 import { uploadImageFile } from "./assets-upload";
-import { buildHomePreviewDocument } from "./home-builder/preview-document";
+import {
+  HomeInspectorShell,
+  HomePreviewPane,
+  HomeSectionRail,
+} from "./home-builder/HomeBuilderPanels";
 import {
   BLANK_HOME_DATA,
-  SECTION_LABELS,
   clone,
   createId,
   createSection,
   normalizeHomeData,
   prepareHomeDataForSave,
   sameData,
-  sectionSummary,
-  sectionTitle,
 } from "./home-builder/schema";
+import { useHomePreview } from "./home-builder/useHomePreview";
 import type {
   HomeData,
   HomeFeaturedPagesSection,
@@ -46,18 +49,16 @@ export function HomePanel() {
   const { connection, request, setMessage } = useSiteAdmin();
   const [baseData, setBaseData] = useState<HomeData>(BLANK_HOME_DATA);
   const [draft, setDraft] = useState<HomeData>(BLANK_HOME_DATA);
-  const [selectedId, setSelectedId] = useState(BLANK_HOME_DATA.sections[0]?.id || "");
+  const [selectedId, setSelectedId] = usePersistentUiState(
+    "workspace.site-admin.home.selected-section.v1",
+    BLANK_HOME_DATA.sections[0]?.id || "",
+    isString,
+  );
   const [fileSha, setFileSha] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState("");
-  const [previewStylesheets, setPreviewStylesheets] = useState<string[]>([]);
-  const [previewError, setPreviewError] = useState("");
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const previewTimerRef = useRef<number | null>(null);
-  const previewFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
@@ -73,6 +74,13 @@ export function HomePanel() {
     [draft.sections, selectedId],
   );
   const selectedSectionId = selectedSection?.id || "";
+  const homePreview = useHomePreview({
+    draft,
+    onSelectSection: setSelectedId,
+    ready,
+    request,
+    selectedSectionId,
+  });
 
   const loadData = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -98,7 +106,7 @@ export function HomePanel() {
       setConflict(false);
       if (!options.silent) setMessage("success", "Home loaded.");
     },
-    [ready, request, setMessage],
+    [ready, request, setMessage, setSelectedId],
   );
 
   useEffect(() => {
@@ -106,62 +114,6 @@ export function HomePanel() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData({ silent: true });
   }, [ready, loadData]);
-
-  useEffect(() => {
-    if (!ready) return;
-    if (previewTimerRef.current !== null) {
-      window.clearTimeout(previewTimerRef.current);
-    }
-    previewTimerRef.current = window.setTimeout(async () => {
-      setPreviewLoading(true);
-      setPreviewError("");
-      const response = await request("/api/site-admin/preview/home", "POST", {
-        data: prepareHomeDataForSave(draft),
-      });
-      setPreviewLoading(false);
-      if (!response.ok) {
-        setPreviewHtml("");
-        setPreviewStylesheets([]);
-        setPreviewError(`${response.code}: ${response.error}`);
-        return;
-      }
-      const data = (response.data ?? {}) as Record<string, unknown>;
-      setPreviewHtml(typeof data.html === "string" ? data.html : "");
-      setPreviewStylesheets(
-        Array.isArray(data.stylesheets)
-          ? data.stylesheets.filter((href): href is string => typeof href === "string")
-          : [],
-      );
-    }, 650);
-    return () => {
-      if (previewTimerRef.current !== null) {
-        window.clearTimeout(previewTimerRef.current);
-        previewTimerRef.current = null;
-      }
-    };
-  }, [draft, ready, request]);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== previewFrameRef.current?.contentWindow) return;
-      const data = event.data as Record<string, unknown> | null;
-      if (!data || data.type !== "site-admin:home-section-select") return;
-      const id = typeof data.id === "string" ? data.id : "";
-      if (draft.sections.some((section) => section.id === id)) {
-        setSelectedId(id);
-      }
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [draft.sections]);
-
-  useEffect(() => {
-    const frame = previewFrameRef.current;
-    frame?.contentWindow?.postMessage(
-      { type: "site-admin:home-section-highlight", id: selectedSectionId },
-      "*",
-    );
-  }, [previewHtml, selectedSectionId]);
 
   const patchSections = useCallback(
     (mapper: (sections: HomeSection[]) => HomeSection[]) => {
@@ -218,7 +170,7 @@ export function HomePanel() {
       patchSections((sections) => [...sections, section]);
       setSelectedId(section.id);
     },
-    [patchSections],
+    [patchSections, setSelectedId],
   );
 
   const duplicateSection = useCallback(
@@ -233,7 +185,7 @@ export function HomePanel() {
       });
       setSelectedId(next.id);
     },
-    [patchSections],
+    [patchSections, setSelectedId],
   );
 
   const removeSection = useCallback(
@@ -440,6 +392,17 @@ export function HomePanel() {
     [patchSection],
   );
 
+  const renderPreviewSection = useCallback((section: HomeSection) => {
+    if (section.type === "hero") return <HeroPreview section={section} />;
+    if (section.type === "richText") return <RichTextPreview section={section} />;
+    if (section.type === "linkList") return <LinkListPreview section={section} />;
+    if (section.type === "featuredPages") {
+      return <FeaturedPagesPreview section={section} />;
+    }
+    if (section.type === "layout") return <LayoutPreview section={section} />;
+    return null;
+  }, []);
+
   const stateNote = loading
     ? "Loading…"
     : conflict
@@ -528,177 +491,42 @@ export function HomePanel() {
       )}
 
       <div className="home-builder">
-        <aside className="home-builder__rail" aria-label="Home sections">
-          <div className="home-builder__add">
-            {(Object.keys(SECTION_LABELS) as HomeSectionType[]).map((type) => (
-              <button
-                className="btn btn--secondary home-builder__add-btn"
-                key={type}
-                type="button"
-                onClick={() => addSection(type)}
-              >
-                + {SECTION_LABELS[type]}
-              </button>
-            ))}
-          </div>
+        <HomeSectionRail
+          addSection={addSection}
+          getHandleProps={getHandleProps}
+          getRowProps={getRowProps}
+          moveSection={moveSection}
+          sections={draft.sections}
+          selectedSectionId={selectedSectionId}
+          setSelectedId={setSelectedId}
+        />
 
-          <div className="home-builder__section-list">
-            {draft.sections.map((section, index) => {
-              const active = section.id === selectedSectionId;
-              return (
-                <div
-                  className="home-builder__block-row"
-                  data-active={active ? "true" : undefined}
-                  data-disabled={section.enabled ? undefined : "true"}
-                  key={section.id}
-                  {...getRowProps(index)}
-                >
-                  <button
-                    type="button"
-                    className="drag-handle"
-                    title="Drag to reorder"
-                    aria-label="Drag section to reorder"
-                    {...getHandleProps(index)}
-                  >
-                    ⋮⋮
-                  </button>
-                  <button
-                    type="button"
-                    className="home-builder__block-main"
-                    onClick={() => setSelectedId(section.id)}
-                    aria-current={active ? "true" : undefined}
-                  >
-                    <span className="home-builder__block-type">
-                      {SECTION_LABELS[section.type]}
-                    </span>
-                    <span className="home-builder__block-title">
-                      {sectionTitle(section)}
-                    </span>
-                    <span className="home-builder__block-summary">
-                      {sectionSummary(section)}
-                    </span>
-                  </button>
-                  <div className="home-builder__block-actions">
-                    <button
-                      type="button"
-                      className="btn btn--ghost"
-                      onClick={() => moveSection(index, -1)}
-                      disabled={index === 0}
-                      aria-label="Move section up"
-                      title="Move up"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost"
-                      onClick={() => moveSection(index, 1)}
-                      disabled={index === draft.sections.length - 1}
-                      aria-label="Move section down"
-                      title="Move down"
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </aside>
+        <HomePreviewPane
+          baseUrl={connection.baseUrl}
+          draft={draft}
+          frameRef={homePreview.frameRef}
+          html={homePreview.html}
+          loading={homePreview.loading}
+          onFrameLoad={homePreview.onFrameLoad}
+          previewError={homePreview.error}
+          renderSection={renderPreviewSection}
+          selectedSectionId={selectedSectionId}
+          setSelectedId={setSelectedId}
+          stylesheets={homePreview.stylesheets}
+        />
 
-        <main className="home-builder__preview" aria-label="Home preview">
-          <div className="home-preview__chrome">
-            <span />
-            <span />
-            <span />
-            <strong>
-              {previewLoading
-                ? "Rendering preview…"
-                : previewError
-                  ? `Preview error: ${previewError}`
-                  : "Live front-end preview"}
-            </strong>
-          </div>
-          {previewHtml ? (
-            <iframe
-              ref={previewFrameRef}
-              className="home-preview__iframe"
-              title="Rendered home preview"
-              srcDoc={buildHomePreviewDocument(
-                previewHtml,
-                connection.baseUrl,
-                previewStylesheets,
-              )}
-              onLoad={() =>
-                previewFrameRef.current?.contentWindow?.postMessage(
-                  { type: "site-admin:home-section-highlight", id: selectedSectionId },
-                  "*",
-                )
-              }
-            />
-          ) : (
-            <div className="home-preview__page">
-              <h2 className="home-preview__title">{draft.title}</h2>
-              {draft.sections
-                .filter((section) => section.enabled)
-                .map((section) => (
-                  <div
-                    className={[
-                      "home-preview__section",
-                      `home-preview__section--${section.type}`,
-                      selectedSectionId === section.id ? "is-selected" : "",
-                    ].join(" ")}
-                    key={section.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedId(section.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setSelectedId(section.id);
-                      }
-                    }}
-                  >
-                    {section.type === "hero" && <HeroPreview section={section} />}
-                    {section.type === "richText" && <RichTextPreview section={section} />}
-                    {section.type === "linkList" && <LinkListPreview section={section} />}
-                    {section.type === "featuredPages" && (
-                      <FeaturedPagesPreview section={section} />
-                    )}
-                    {section.type === "layout" && <LayoutPreview section={section} />}
-                  </div>
-                ))}
-            </div>
-          )}
-        </main>
-
-        <aside className="home-builder__inspector" aria-label="Section properties">
-          {selectedSection ? (
+        <HomeInspectorShell
+          duplicateSection={duplicateSection}
+          patchEnabled={(id, enabled) =>
+            patchSection(id, (section) => ({ ...section, enabled }))
+          }
+          removeSection={removeSection}
+          selectedSection={selectedSection}
+          totalSections={draft.sections.length}
+        >
+          {selectedSection && (
             <>
-              <div className="home-builder__inspector-head">
-                <div>
-                  <p className="home-builder__eyebrow">
-                    {SECTION_LABELS[selectedSection.type]}
-                  </p>
-                  <h2>{sectionTitle(selectedSection)}</h2>
-                </div>
-                <label className="home-builder__toggle">
-                  <input
-                    type="checkbox"
-                    checked={selectedSection.enabled}
-                    onChange={(event) =>
-                      patchSection(selectedSection.id, (section) => ({
-                        ...section,
-                        enabled: event.target.checked,
-                      }))
-                    }
-                  />
-                  Enabled
-                </label>
-              </div>
-
               <SharedLayoutFields section={selectedSection} patchSection={patchSection} />
-
               {selectedSection.type === "hero" && (
                 <HeroFields section={selectedSection} patchSection={patchSection} />
               )}
@@ -735,29 +563,9 @@ export function HomePanel() {
                   moveLayoutBlock={moveLayoutBlock}
                 />
               )}
-
-              <div className="home-builder__danger-zone">
-                <button
-                  type="button"
-                  className="btn btn--secondary"
-                  onClick={() => duplicateSection(selectedSection)}
-                >
-                  Duplicate
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--danger"
-                  onClick={() => removeSection(selectedSection.id)}
-                  disabled={draft.sections.length <= 1}
-                >
-                  Remove
-                </button>
-              </div>
             </>
-          ) : (
-            <p className="empty-note">Select a section to edit its properties.</p>
           )}
-        </aside>
+        </HomeInspectorShell>
       </div>
     </section>
   );
