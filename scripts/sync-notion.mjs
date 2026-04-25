@@ -52,7 +52,7 @@ const OUT_RAW_DIR = path.join(OUT_DIR, "raw");
 const OUT_PUBLIC_ASSETS_DIR = path.join(ROOT, "public", "notion-assets");
 
 // Best-effort build cache:
-// - On Vercel, `.next/cache` is cached between builds, so this can dramatically reduce sync time.
+// - `.next/cache` is reused by local and CI builds when available, so this can dramatically reduce sync time.
 // - Cache is always validated using Notion `last_edited_time` (page/database), so it's safe to reuse.
 const CACHE_DIR = path.join(ROOT, ".next", "cache", "notion-sync");
 const CACHE_ENABLED = !["0", "false", "no"].includes(

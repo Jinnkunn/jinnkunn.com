@@ -33,7 +33,6 @@
   - deploy target:
     - `DEPLOY_HOOK_URL` (primary hook mode), or
     - `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_WORKER_NAME`
-  - optional compatibility fallback: `VERCEL_DEPLOY_HOOK_URL`
   - optional admin audit sink:
     - `SITE_ADMIN_AUDIT_D1_DATABASE_ID` (with `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`)
 - Branch binding:

@@ -10,7 +10,7 @@ on:
       clone_origin:
         description: "Clone site origin"
         required: false
-        default: "https://jinnkunn-com.vercel.app"
+        default: "https://staging.jinkunchen.com"
       max_diff_percent:
         description: "Fail threshold (% mismatched pixels)"
         required: false
@@ -32,7 +32,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      FLAGS_SECRET: ${{ secrets.FLAGS_SECRET }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET != '' && secrets.NEXTAUTH_SECRET || format('ci-nextauth-{0}-{1}', github.run_id, github.run_attempt) }}
     steps:
       - name: Checkout
