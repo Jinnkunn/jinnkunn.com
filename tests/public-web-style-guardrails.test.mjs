@@ -109,3 +109,24 @@ test("public-web-style-guardrails: homepage classic link icons stay part of the 
     assertIncludes(iconContract, href, "Classic link icon runtime contract");
   }
 });
+
+test("public-web-style-guardrails: CDN home media bypasses Next image optimizer", async () => {
+  const homeView = await read("components/home/home-view.tsx");
+
+  assertIncludes(homeView, "function isCdnMediaSrc", "HomeView CDN media guard");
+  assertIncludes(homeView, 'src.startsWith("https://cdn.jinkunchen.com/")', "HomeView CDN media guard");
+  assertIncludes(homeView, "unoptimized={isCdnMediaSrc(src)}", "HomeView CDN media guard");
+});
+
+test("public-web-style-guardrails: MDX heading links inherit heading color", async () => {
+  const postsCss = await read("app/(classic)/posts-mdx.css");
+
+  assertIncludes(
+    postsCss,
+    ".mdx-post__body :is(h1, h2, h3, h4, h5, h6) a.notion-link.link",
+    "MDX heading link CSS",
+  );
+  assertIncludes(postsCss, "color: inherit;", "MDX heading link CSS");
+  assertIncludes(postsCss, "background-image: none;", "MDX heading link CSS");
+  assertIncludes(postsCss, "text-decoration-color: currentColor;", "MDX heading link CSS");
+});

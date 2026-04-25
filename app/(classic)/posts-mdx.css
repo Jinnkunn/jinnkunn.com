@@ -103,6 +103,18 @@
   line-height: 1.5;
 }
 
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a.notion-link.link {
+  color: inherit;
+  padding: 0;
+  background-image: none;
+  text-decoration-color: currentColor;
+}
+
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a.notion-link.link:hover {
+  background-size: 0 0, 0 0;
+  text-decoration-color: currentColor;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mdx-toggle .notion-toggle__trigger_icon {
     transition: none;
