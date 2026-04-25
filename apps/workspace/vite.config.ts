@@ -9,6 +9,21 @@ import tailwindcss from "@tailwindcss/vite";
 // Tauri's webview never silently points at a stale server.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "codemirror",
+              test: /node_modules[\\/](@codemirror|@lezer|@uiw[\\/]react-codemirror|crelt|style-mod|w3c-keyname)[\\/]/,
+              maxSize: 380 * 1024,
+            },
+          ],
+        },
+      },
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: 1420,
