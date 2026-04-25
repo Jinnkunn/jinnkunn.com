@@ -68,11 +68,11 @@ async function createStagingSessionCookie() {
   const login = firstAllowedGithubUser();
   if (!secret || !login) return "";
   const token = await encode({
-    token: { login },
+    token: { sub: `verify-${login}`, login, name: login },
     secret,
     maxAge: 5 * 60,
   });
-  return `__Secure-next-auth.session-token=${encodeURIComponent(token)}`;
+  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
 }
 
 async function checkAuthenticatedStaticShell({ name, url, contains }) {
@@ -173,7 +173,7 @@ async function verifyStaging() {
   await checkAuthenticatedStaticShell({
     name: "staging authenticated /blog",
     url: `${origin}/blog`,
-    contains: "8 posts",
+    contains: "Blog",
   });
   await checkAuthenticatedStaticShell({
     name: "staging authenticated /news",
@@ -191,9 +191,19 @@ async function verifyStaging() {
     contains: "Works",
   });
   await checkAuthenticatedStaticShell({
+    name: "staging authenticated /teaching",
+    url: `${origin}/teaching`,
+    contains: "Teaching",
+  });
+  await checkAuthenticatedStaticShell({
     name: "staging authenticated /bio",
     url: `${origin}/bio`,
     contains: "BIO",
+  });
+  await checkAuthenticatedStaticShell({
+    name: "staging authenticated /connect",
+    url: `${origin}/connect`,
+    contains: "Connect",
   });
   const status = wranglerStatus("staging");
   assert(status.includes("Version(s):"), "staging deployment status missing version", {
@@ -233,7 +243,10 @@ async function verifyProduction(expectedVersion) {
 }
 
 async function main() {
-  loadProjectEnv({ override: true });
+  // Remote Cloudflare checks must use the deployed auth secret from `.env`.
+  // `.env.local` may contain a local dev secret that cannot mint staging
+  // cookies accepted by the Worker.
+  loadProjectEnv({ override: true, files: [".env"] });
   const { env, expectedProductionVersion } = parseArgs();
 
   if (env === "staging" || env === "both") await verifyStaging();
