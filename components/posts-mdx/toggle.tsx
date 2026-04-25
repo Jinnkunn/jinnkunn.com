@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 
-// Render as a native <details> element so it works without client JS and still
-// inherits any existing Notion-toggle CSS tweaks. We intentionally use the same
-// "notion-toggle" class family so styling stays consistent across old and new
-// posts.
+// Render the same structural contract as the legacy Notion export. The global
+// Notion behavior script owns the open/closed state for this markup, which keeps
+// migrated Notion toggles and authored MDX toggles consistent.
 export function Toggle({
   title,
   open = false,
@@ -13,9 +12,10 @@ export function Toggle({
   open?: boolean;
   children: ReactNode;
 }) {
+  const stateClass = open ? "open" : "closed";
   return (
-    <details className="notion-toggle mdx-toggle" open={open}>
-      <summary className="notion-toggle__summary">
+    <div className={`notion-toggle mdx-toggle ${stateClass}`}>
+      <div className="notion-toggle__summary">
         <span className="notion-toggle__trigger">
           <span className="notion-toggle__trigger_icon">
             <span>‣</span>
@@ -24,8 +24,10 @@ export function Toggle({
         <span className="notion-semantic-string">
           <strong>{title}</strong>
         </span>
-      </summary>
-      <div className="notion-toggle__content">{children}</div>
-    </details>
+      </div>
+      <div className="notion-toggle__content" hidden={!open} aria-hidden={open ? "false" : "true"}>
+        {children}
+      </div>
+    </div>
   );
 }

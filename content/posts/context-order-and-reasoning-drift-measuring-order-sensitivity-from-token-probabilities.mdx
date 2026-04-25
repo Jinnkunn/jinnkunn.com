@@ -124,11 +124,7 @@ If you have access to full vocabulary logits, compute entropy and divergence on 
 
 If you only have top $k$ logging, renormalize on the logged support and treat the metric as a consistent approximation.
 
-‣
-
-Implementation sketch
-
-Copy
+<Toggle title="Implementation sketch">
 
 ```python
 # Inputs: per step top k logprobs: logp[t] = {token: log_prob}
@@ -160,3 +156,5 @@ for t in range(T):
 
 S = max(I)
 ```
+
+</Toggle>

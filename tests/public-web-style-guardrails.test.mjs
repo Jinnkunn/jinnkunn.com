@@ -150,8 +150,41 @@ test("public-web-style-guardrails: MDX toggles and code blocks keep Notion inter
   assertIncludes(components, 'className="notion-code no-wrap mdx-code"', "MDX code copy component");
   assertIncludes(components, 'className="notion-code__copy-button"', "MDX code copy component");
   assertIncludes(components, "pre: MdxPre", "MDX code copy component");
+  assertIncludes(
+    await read("components/posts-mdx/toggle.tsx"),
+    "notion-toggle mdx-toggle",
+    "MDX toggle legacy Notion markup",
+  );
   assertIncludes(postsCss, ".mdx-code .notion-code__copy-button", "MDX code copy component");
   assertIncludes(postsCss, "pointer-events: all;", "MDX code copy component");
   assertIncludes(toggles, "toggle instanceof HTMLDetailsElement", "MDX native details toggle support");
   assertIncludes(toggles, "toggle.open = open;", "MDX native details toggle support");
+});
+
+test("public-web-style-guardrails: migrated MDX keeps Notion toggles semantic", async () => {
+  const postsDir = path.join(ROOT, "content/posts");
+  const files = (await fs.readdir(postsDir)).filter((file) => file.endsWith(".mdx"));
+
+  for (const file of files) {
+    const source = await fs.readFile(path.join(postsDir, file), "utf8");
+    assert.doesNotMatch(
+      source,
+      /(?:^|\n)\s*‣\s*(?:\n|$)/,
+      `${file} should not contain orphan Notion toggle markers`,
+    );
+    assert.doesNotMatch(
+      source,
+      /(?:^|\n)\s*Copy\s*\n+```/,
+      `${file} should not contain copied Notion code-button text before code fences`,
+    );
+  }
+
+  const orderSensitivity = await read(
+    "content/posts/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities.mdx",
+  );
+  assertIncludes(
+    orderSensitivity,
+    '<Toggle title="Implementation sketch">',
+    "Order-sensitivity implementation sketch toggle",
+  );
 });
