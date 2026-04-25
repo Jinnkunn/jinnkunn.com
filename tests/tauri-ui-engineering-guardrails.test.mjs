@@ -57,28 +57,38 @@ test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async 
   assert.match(styles, /\.home-preview__stage/);
 });
 
-test("tauri-ui-engineering: Post and Page editors share MDX controller primitives", async () => {
+test("tauri-ui-engineering: Post and Page editors share one MDX document editor", async () => {
+  const documentEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
+  );
+  const blocks = await read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");
   const controller = await read(
     "apps/workspace/src/surfaces/site-admin/use-mdx-editor-controller.ts",
   );
+  const styles = await read("apps/workspace/src/index.css");
+
+  assert.match(documentEditor, /export function MdxDocumentEditor/);
+  assert.match(documentEditor, /function BodyBlockCanvas/);
+  assert.match(documentEditor, /parseMdxBlocks/);
+  assert.match(documentEditor, /serializeMdxBlocks/);
+  assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
+  assert.match(blocks, /export function parseMdxBlocks/);
+  assert.match(blocks, /export function serializeMdxBlocks/);
   assert.match(controller, /useMdxImageUploadDrop/);
   assert.match(controller, /useUnsavedChangesBeforeUnload/);
   assert.match(controller, /useConfirmingBack/);
+  assert.match(styles, /\.mdx-document-editor__layout/);
+  assert.match(styles, /\.mdx-document-block/);
 
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
     "apps/workspace/src/surfaces/site-admin/PageEditor.tsx",
   ]) {
     const source = await read(relPath);
-    assert.match(source, /useMdxImageUploadDrop/, `${relPath} should share upload/drop`);
-    assert.match(
-      source,
-      /useUnsavedChangesBeforeUnload/,
-      `${relPath} should share beforeunload guard`,
-    );
-    assert.match(source, /useConfirmingBack/, `${relPath} should share exit guard`);
-    assert.match(source, /usePersistentUiState/, `${relPath} should persist preview mode`);
+    assert.match(source, /MdxDocumentEditor/, `${relPath} should use shared editor`);
+    assert.match(source, /MdxDocumentEditorAdapter/, `${relPath} should use an adapter`);
     assert.doesNotMatch(source, /uploadImageFile/, `${relPath} should not own upload flow`);
+    assert.doesNotMatch(source, /MarkdownEditor/, `${relPath} should not own source editor`);
     assert.doesNotMatch(
       source,
       /insertMarkdownImage/,

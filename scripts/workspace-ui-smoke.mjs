@@ -65,13 +65,21 @@ function main() {
     "apps/workspace/src/surfaces/site-admin/PageEditor.tsx",
   ]) {
     const source = read(relPath);
-    assertIncludes(source, "useMdxImageUploadDrop", relPath);
-    assertIncludes(source, "useUnsavedChangesBeforeUnload", relPath);
-    assertIncludes(source, "useConfirmingBack", relPath);
-    assertIncludes(source, "usePersistentUiState", relPath);
+    assertIncludes(source, "MdxDocumentEditor", relPath);
+    assertIncludes(source, "MdxDocumentEditorAdapter", relPath);
+    assertIncludes(source, "renderProperties", relPath);
     assertExcludes(source, "uploadImageFile", relPath);
     assertExcludes(source, "insertMarkdownImage", relPath);
   }
+
+  const documentEditor = read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx");
+  assertIncludes(documentEditor, "BodyBlockCanvas", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "parseMdxBlocks", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "serializeMdxBlocks", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "useMdxImageUploadDrop", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "useUnsavedChangesBeforeUnload", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "useConfirmingBack", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "usePersistentUiState", "MdxDocumentEditor");
 
   assertExcludes(
     read("components/works/works-view.tsx"),
@@ -87,6 +95,7 @@ function main() {
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/HomePanel.tsx",
     "apps/workspace/src/surfaces/site-admin/home-builder/HomeBuilderPanels.tsx",
+    "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
     "apps/workspace/src/surfaces/site-admin/PageEditor.tsx",
   ]) {
