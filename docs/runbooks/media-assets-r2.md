@@ -12,11 +12,12 @@ CSS assets that must ship with a release.
 
 ## Current State
 
-The public bundle currently contains mixed asset classes:
+The public bundle currently contains only shell and compatibility asset
+classes:
 
-- `public/notion-assets/*.png` is about 2.5 MB and is referenced by:
-  - `content/home.json`
-  - `content/pages/bio.mdx`
+- The former `public/notion-assets/*.png` images have been migrated to
+  `https://cdn.jinkunchen.com/notion-assets/...` and removed from the build
+  bundle.
 - `public/assets/profile.png`, `public/assets/logo.png`, and
   `public/assets/favicon.png` are small compatibility assets used by the
   classic public site, metadata, and favicon routes.
@@ -99,8 +100,8 @@ lets the CDN cache aggressively without needing purges for normal updates.
    - cache eligible media by default
    - use long browser/edge TTLs for content-hash URLs
    - keep purge paths available for any legacy mutable URLs
-4. Keep the current local assets for one release as a compatibility fallback,
-   then remove migrated user media from `public/`.
+4. Remove migrated user media from `public/` once content references use CDN
+   URLs.
 5. Add a migration script for any future local media that appears under
    `public/notion-assets/*` or `public/uploads/*`.
 6. Update smoke checks:
