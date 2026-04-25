@@ -3436,6 +3436,11 @@ select:focus-visible,
   margin-top: 7px;
 }
 
+.home-canvas__command-options {
+  display: grid;
+  gap: 3px;
+}
+
 .home-canvas__insert-options button,
 .home-canvas__slash-popover button {
   display: grid;
