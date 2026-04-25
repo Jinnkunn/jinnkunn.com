@@ -59,6 +59,8 @@ function cloneStaticRequest(original, targetUrl) {
 async function fetchStaticAssetWithRedirects(request, env, assetPath) {
   const originUrl = new URL(request.url);
   originUrl.pathname = assetPath;
+  // Static shell asset keys do not include route query params such as ?theme=light.
+  originUrl.search = "";
 
   let currentUrl = originUrl;
   let response = await env.ASSETS.fetch(cloneStaticRequest(request, currentUrl));
