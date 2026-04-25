@@ -3436,7 +3436,8 @@ select:focus-visible,
   margin-top: 7px;
 }
 
-.home-canvas__insert-options button {
+.home-canvas__insert-options button,
+.home-canvas__slash-popover button {
   display: grid;
   gap: 2px;
   width: 100%;
@@ -3449,17 +3450,21 @@ select:focus-visible,
   cursor: pointer;
 }
 
-.home-canvas__insert-options button:hover {
+.home-canvas__insert-options button:hover,
+.home-canvas__slash-popover button:hover {
   background: var(--color-bg-hover);
 }
 
-.home-canvas__insert-options strong {
+.home-canvas__insert-options strong,
+.home-canvas__slash-popover strong {
   font-size: 12.5px;
   font-weight: 720;
 }
 
 .home-canvas__insert-options span,
-.home-canvas__insert-options p {
+.home-canvas__insert-options p,
+.home-canvas__slash-popover span,
+.home-canvas__slash-popover p {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 11.5px;
@@ -3499,6 +3504,10 @@ select:focus-visible,
   margin-top: 8px;
 }
 
+.home-canvas__markdown-field {
+  position: relative;
+}
+
 .home-canvas__markdown-editor {
   min-height: 96px;
   padding: 8px 9px;
@@ -3506,6 +3515,19 @@ select:focus-visible,
   color: var(--color-text-secondary);
   font-size: 12.5px;
   line-height: 1.58;
+}
+
+.home-canvas__slash-popover {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 4px);
+  left: 0;
+  width: min(320px, 100%);
+  padding: 7px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 11px;
+  background: var(--color-bg-surface);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--color-text-primary) 14%, transparent);
 }
 
 .home-canvas__mock-link {

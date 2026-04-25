@@ -103,25 +103,37 @@ function HomeInsertMenu({
             }}
           />
           <div className="home-canvas__insert-options">
-            {commands.length ? (
-              commands.map((command) => (
-                <button
-                  type="button"
-                  role="menuitem"
-                  key={command.type}
-                  onClick={() => choose(command.type)}
-                >
-                  <strong>{command.label}</strong>
-                  <span>{command.description}</span>
-                </button>
-              ))
-            ) : (
-              <p>No sections found.</p>
-            )}
+            <HomeSectionCommandOptions commands={commands} onChoose={choose} />
           </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function HomeSectionCommandOptions({
+  commands,
+  onChoose,
+}: {
+  commands: HomeSectionCommand[];
+  onChoose: (type: HomeSectionType) => void;
+}) {
+  if (!commands.length) return <p>No sections found.</p>;
+  return (
+    <>
+      {commands.map((command) => (
+        <button
+          type="button"
+          role="menuitem"
+          key={command.type}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onChoose(command.type)}
+        >
+          <strong>{command.label}</strong>
+          <span>{command.description}</span>
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -536,15 +548,16 @@ export function HomePanel() {
   );
 
   const addLayoutBlock = useCallback(
-    (sectionId: string, type: HomeLayoutBlockType) => {
+    (sectionId: string, type: HomeLayoutBlockType, column?: number) => {
       patchSection(sectionId, (section) => {
         if (section.type !== "layout") return section;
+        const targetColumn = Math.max(1, Math.min(section.columns, column || 1)) as 1 | 2 | 3;
         const block =
           type === "image"
             ? ({
                 id: createId(type),
                 type,
-                column: section.columns === 1 ? 1 : 2,
+                column: column ? targetColumn : section.columns === 1 ? 1 : 2,
                 url: "",
                 alt: "",
                 caption: "",
@@ -554,7 +567,7 @@ export function HomePanel() {
             : ({
                 id: createId(type),
                 type,
-                column: 1,
+                column: targetColumn,
                 title: "Text block",
                 body: "",
                 tone: "plain",
@@ -677,12 +690,19 @@ export function HomePanel() {
             uploading={canvasUploadingId === section.id}
             resolveAssetUrl={resolveCanvasAssetUrl}
             onUploadImage={(file) => void uploadCanvasHeroImage(section, file)}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
             patchSection={patchSection}
           />
         );
       }
       if (section.type === "richText") {
-        return <EditableRichTextSection section={section} patchSection={patchSection} />;
+        return (
+          <EditableRichTextSection
+            section={section}
+            patchSection={patchSection}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
+          />
+        );
       }
       if (section.type === "linkList") {
         return (
@@ -693,6 +713,7 @@ export function HomePanel() {
             addLink={addLink}
             removeLink={removeLink}
             moveLink={moveLink}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -705,6 +726,7 @@ export function HomePanel() {
             addLink={addLink}
             removeLink={removeLink}
             moveLink={moveLink}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -719,6 +741,7 @@ export function HomePanel() {
             addLayoutBlock={addLayoutBlock}
             removeLayoutBlock={removeLayoutBlock}
             moveLayoutBlock={moveLayoutBlock}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
             uploadLayoutImage={(block, file) =>
               void uploadCanvasLayoutImage(section.id, block, file)
             }
@@ -731,6 +754,7 @@ export function HomePanel() {
       addLayoutBlock,
       addLink,
       canvasUploadingId,
+      insertSectionAfter,
       moveLayoutBlock,
       moveLink,
       patchLayoutBlock,
@@ -1558,7 +1582,7 @@ function LayoutFields({
     blockId: string,
     mapper: (block: HomeLayoutBlock) => HomeLayoutBlock,
   ) => void;
-  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType) => void;
+  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType, column?: number) => void;
   removeLayoutBlock: (sectionId: string, blockId: string) => void;
   moveLayoutBlock: (sectionId: string, index: number, direction: -1 | 1) => void;
 }) {
@@ -2194,30 +2218,71 @@ function MarkdownPreviewBody({
 
 function InlineMarkdownEditor({
   ariaLabel,
+  onEnterAtEnd,
   onChange,
+  onSlashCommand,
   placeholder,
   value,
 }: {
   ariaLabel: string;
+  onEnterAtEnd?: () => void;
   onChange: (value: string) => void;
+  onSlashCommand?: (type: HomeSectionType) => void;
   placeholder?: string;
   value: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const slashCommands =
+    editing && onSlashCommand && value.trim().startsWith("/")
+      ? getHomeSectionCommands(value.trim())
+      : [];
+  const chooseSlashCommand = useCallback(
+    (type: HomeSectionType) => {
+      if (!onSlashCommand) return;
+      onChange("");
+      onSlashCommand(type);
+      setEditing(false);
+    },
+    [onChange, onSlashCommand],
+  );
+
   if (editing) {
     const rows = Math.max(3, Math.min(12, value.split("\n").length + 2));
     return (
-      <textarea
-        autoFocus
-        aria-label={ariaLabel}
-        className="home-canvas__markdown-editor"
-        rows={rows}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={() => setEditing(false)}
-        onClick={(event) => event.stopPropagation()}
-      />
+      <div className="home-canvas__markdown-field" onClick={(event) => event.stopPropagation()}>
+        <textarea
+          autoFocus
+          aria-label={ariaLabel}
+          className="home-canvas__markdown-editor"
+          rows={rows}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={() => setEditing(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && slashCommands[0]) {
+              event.preventDefault();
+              chooseSlashCommand(slashCommands[0].type);
+              return;
+            }
+            if (event.key !== "Enter" || event.shiftKey || !onEnterAtEnd) return;
+            const target = event.currentTarget;
+            if (target.selectionStart !== value.length || target.selectionEnd !== value.length) {
+              return;
+            }
+            event.preventDefault();
+            onEnterAtEnd();
+          }}
+        />
+        {slashCommands.length ? (
+          <div className="home-canvas__slash-popover" role="menu">
+            <HomeSectionCommandOptions
+              commands={slashCommands}
+              onChoose={chooseSlashCommand}
+            />
+          </div>
+        ) : null}
+      </div>
     );
   }
   return (
@@ -2314,12 +2379,14 @@ function EditableImageCanvas({
 }
 
 function EditableHeroSection({
+  onSlashCommand,
   onUploadImage,
   patchSection,
   resolveAssetUrl,
   section,
   uploading,
 }: {
+  onSlashCommand: (type: HomeSectionType) => void;
   onUploadImage: (file: File | null) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   resolveAssetUrl: (url: string | undefined) => string;
@@ -2369,6 +2436,7 @@ function EditableHeroSection({
           ariaLabel="Hero body"
           value={section.body}
           placeholder="Click to write hero copy…"
+          onSlashCommand={onSlashCommand}
           onChange={(value) =>
             patchSection(section.id, (current) =>
               current.type === "hero" ? { ...current, body: value } : current,
@@ -2381,9 +2449,11 @@ function EditableHeroSection({
 }
 
 function EditableRichTextSection({
+  onSlashCommand,
   patchSection,
   section,
 }: {
+  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   section: HomeRichTextSection;
 }) {
@@ -2414,6 +2484,7 @@ function EditableRichTextSection({
         ariaLabel="Section body"
         value={section.body}
         placeholder="Click to write section body…"
+        onSlashCommand={onSlashCommand}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "richText" ? { ...current, body: value } : current,
@@ -2427,6 +2498,7 @@ function EditableRichTextSection({
 function EditableLinkListSection({
   addLink,
   moveLink,
+  onSlashCommand,
   patchSection,
   removeLink,
   section,
@@ -2434,6 +2506,7 @@ function EditableLinkListSection({
 }: {
   addLink: (sectionId: string) => void;
   moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
+  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   removeLink: (sectionId: string, index: number) => void;
   section: HomeLinkListSection;
@@ -2458,6 +2531,7 @@ function EditableLinkListSection({
         ariaLabel="Links intro"
         value={section.body || ""}
         placeholder="Click to write intro…"
+        onSlashCommand={onSlashCommand}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "linkList"
@@ -2528,6 +2602,7 @@ function EditableLinkListSection({
 function EditableFeaturedPagesSection({
   addLink,
   moveLink,
+  onSlashCommand,
   patchSection,
   removeLink,
   section,
@@ -2535,6 +2610,7 @@ function EditableFeaturedPagesSection({
 }: {
   addLink: (sectionId: string) => void;
   moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
+  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   removeLink: (sectionId: string, index: number) => void;
   section: HomeFeaturedPagesSection;
@@ -2559,6 +2635,7 @@ function EditableFeaturedPagesSection({
         ariaLabel="Featured pages intro"
         value={section.body || ""}
         placeholder="Click to write intro…"
+        onSlashCommand={onSlashCommand}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "featuredPages"
@@ -2641,6 +2718,7 @@ function EditableFeaturedPagesSection({
 function EditableLayoutSection({
   addLayoutBlock,
   moveLayoutBlock,
+  onSlashCommand,
   patchLayoutBlock,
   patchSection,
   removeLayoutBlock,
@@ -2649,8 +2727,9 @@ function EditableLayoutSection({
   uploadLayoutImage,
   uploadingId,
 }: {
-  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType) => void;
+  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType, column?: number) => void;
   moveLayoutBlock: (sectionId: string, index: number, direction: -1 | 1) => void;
+  onSlashCommand: (type: HomeSectionType) => void;
   patchLayoutBlock: (
     sectionId: string,
     blockId: string,
@@ -2752,6 +2831,8 @@ function EditableLayoutSection({
                       ariaLabel="Block body"
                       value={block.body}
                       placeholder="Click to write text…"
+                      onEnterAtEnd={() => addLayoutBlock(section.id, "markdown", column)}
+                      onSlashCommand={onSlashCommand}
                       onChange={(value) =>
                         patchLayoutBlock(section.id, block.id, (current) =>
                           current.type === "markdown" ? { ...current, body: value } : current,
@@ -2762,10 +2843,10 @@ function EditableLayoutSection({
                 ),
               )}
             <div className="home-canvas__column-add">
-              <button type="button" onClick={() => addLayoutBlock(section.id, "markdown")}>
+              <button type="button" onClick={() => addLayoutBlock(section.id, "markdown", column)}>
                 + Text
               </button>
-              <button type="button" onClick={() => addLayoutBlock(section.id, "image")}>
+              <button type="button" onClick={() => addLayoutBlock(section.id, "image", column)}>
                 + Image
               </button>
             </div>

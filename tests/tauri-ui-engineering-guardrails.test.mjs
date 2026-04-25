@@ -50,12 +50,16 @@ test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async 
   assert.match(homePanel, /home-builder__settings-drawer/);
   assert.match(homePanel, /InlineMarkdownEditor/);
   assert.match(homePanel, /HomeInsertMenu/);
+  assert.match(homePanel, /HomeSectionCommandOptions/);
   assert.match(homePanel, /HOME_SECTION_COMMANDS/);
+  assert.match(homePanel, /onSlashCommand/);
+  assert.match(homePanel, /onEnterAtEnd/);
   assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: 1fr;/s);
   assert.match(styles, /\.home-builder\[data-mode="structure"\]\s*\{\s*grid-template-columns: minmax\(300px, 0\.85fr\) minmax\(360px, 1fr\);/s);
   assert.match(styles, /\.home-canvas__section-toolbar/);
   assert.match(styles, /\.home-canvas__insert-menu/);
   assert.match(styles, /\.home-canvas__insert-popover/);
+  assert.match(styles, /\.home-canvas__slash-popover/);
   assert.match(styles, /\.home-canvas__markdown-preview/);
   assert.match(styles, /\.home-preview__stage/);
 });
