@@ -4,8 +4,14 @@ import { spawn, spawnSync } from "node:child_process";
 
 import { ensureOutputDir, envFlag, isoStampForPath } from "./_lib/fs.mjs";
 import { launchBrowser } from "./_lib/playwright.mjs";
+import { stopProcessTree } from "./_lib/process-tree.mjs";
 
 const OUT_ROOT = path.join(process.cwd(), "output", "ui-smoke");
+const DEFAULT_SCRIPT_TIMEOUT_MS = envFlag("SMOKE_UI_QUICK") ? 120_000 : 300_000;
+const SCRIPT_TIMEOUT_MS = Number.parseInt(
+  String(process.env.SMOKE_UI_TIMEOUT_MS || DEFAULT_SCRIPT_TIMEOUT_MS),
+  10,
+);
 const BLOG_THEME_PROBE_PATH = "/blog";
 const BLOG_STABLE_POST =
   "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities";
@@ -78,6 +84,7 @@ function ensureBuild() {
 function startServer(port) {
   const child = spawn("npm", ["run", "start", "--", "-p", String(port)], {
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
     env: {
       ...process.env,
       PORT: String(port),
@@ -296,7 +303,8 @@ async function main() {
     }
 
     // Notion behaviors on a content page that includes toggles + code blocks.
-    {
+    // These are content-dependent and belong to the full/manual smoke profile.
+    if (!quick) {
       const context = await browser.newContext({
         viewport: { width: 1200, height: 800 },
       });
@@ -486,11 +494,30 @@ async function main() {
     }
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (server) server.kill("SIGTERM");
+    if (server) await stopProcessTree(server);
   }
 }
 
-main().catch((err) => {
+async function run() {
+  if (!Number.isFinite(SCRIPT_TIMEOUT_MS) || SCRIPT_TIMEOUT_MS <= 0) {
+    await main();
+    return;
+  }
+
+  let timeout = null;
+  await Promise.race([
+    main(),
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`UI smoke timed out after ${SCRIPT_TIMEOUT_MS}ms.`));
+      }, SCRIPT_TIMEOUT_MS);
+    }),
+  ]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
+run().catch((err) => {
   console.error(err?.stack || String(err));
   process.exit(1);
 });
