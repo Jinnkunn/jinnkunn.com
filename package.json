@@ -50,6 +50,8 @@
     "check:design-system": "node scripts/check-design-system.mjs",
     "check:workspace-ui": "node scripts/workspace-ui-smoke.mjs",
     "qa:workspace:site-admin": "node scripts/workspace-site-admin-qa.mjs",
+    "qa:workspace:site-admin:local": "node scripts/workspace-site-admin-qa.mjs --local-only",
+    "qa:workspace:site-admin:staging": "node scripts/workspace-site-admin-qa.mjs --skip-workspace-build --skip-workspace-tests --skip-workspace-ui",
     "check:home-style": "node scripts/home-style-contract.mjs",
     "check:ui": "node scripts/check-ui.mjs",
     "workspace:tauri:dev": "cd apps/workspace && npm run tauri:dev",

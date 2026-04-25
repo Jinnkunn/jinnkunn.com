@@ -137,4 +137,29 @@ test("tauri-ui-engineering: root package exposes workspace UI smoke", async () =
     pkg.scripts["qa:workspace:site-admin"],
     "node scripts/workspace-site-admin-qa.mjs",
   );
+  assert.equal(
+    pkg.scripts["qa:workspace:site-admin:local"],
+    "node scripts/workspace-site-admin-qa.mjs --local-only",
+  );
+  assert.equal(
+    pkg.scripts["qa:workspace:site-admin:staging"],
+    "node scripts/workspace-site-admin-qa.mjs --skip-workspace-build --skip-workspace-tests --skip-workspace-ui",
+  );
+});
+
+test("tauri-ui-engineering: manual QA runbook covers release-critical editor flows", async () => {
+  const runbook = await read("docs/runbooks/tauri-site-admin-qa.md");
+
+  for (const phrase of [
+    "Home WYSIWYG Editor",
+    "Post And Page Editors",
+    "Asset Library",
+    "Drafts And Version History",
+    "Public Preview",
+    "Stop Conditions",
+    "qa:workspace:site-admin:local",
+    "qa:workspace:site-admin:staging",
+  ]) {
+    assert.match(runbook, new RegExp(phrase));
+  }
 });
