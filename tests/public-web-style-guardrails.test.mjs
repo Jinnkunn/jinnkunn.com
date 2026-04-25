@@ -123,10 +123,20 @@ test("public-web-style-guardrails: MDX heading links inherit heading color", asy
 
   assertIncludes(
     postsCss,
-    ".mdx-post__body :is(h1, h2, h3, h4, h5, h6) a.notion-link.link",
+    ".mdx-post__body :is(h1, h2, h3, h4, h5, h6) a",
     "MDX heading link CSS",
   );
+  assertIncludes(postsCss, ".mdx-post__body .notion-heading__anchor-link", "MDX heading link CSS");
   assertIncludes(postsCss, "color: inherit;", "MDX heading link CSS");
   assertIncludes(postsCss, "background-image: none;", "MDX heading link CSS");
+  assertIncludes(postsCss, "text-decoration: none;", "MDX heading link CSS");
   assertIncludes(postsCss, "text-decoration-color: currentColor;", "MDX heading link CSS");
+});
+
+test("public-web-style-guardrails: MDX long links cannot widen mobile pages", async () => {
+  const postsCss = await read("app/(classic)/posts-mdx.css");
+
+  assertIncludes(postsCss, ".mdx-post__body a", "MDX long link wrapping CSS");
+  assertIncludes(postsCss, "overflow-wrap: anywhere;", "MDX long link wrapping CSS");
+  assertIncludes(postsCss, "word-break: break-word;", "MDX long link wrapping CSS");
 });
