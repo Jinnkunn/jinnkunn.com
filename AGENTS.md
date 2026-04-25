@@ -29,6 +29,11 @@ CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT" npx wrangle
   - `npm run deploy:cf:prod`
 - These paths annotate deployments with `source=<sha> branch=<name>`.
 - Avoid direct `wrangler deploy` without `--message`, because missing source metadata makes `/api/site-admin/status` fall back to `pendingDeploy=null`.
+- Push-triggered GitHub deploys are staging-only. `main` pushes must not auto-deploy production.
+- Production promotion is manual only. Prefer the guarded path in `docs/runbooks/production-promotion.md`:
+  - `npm run release:prod:dry-run`
+  - explicit approval
+  - `CONFIRM_PRODUCTION_DEPLOY=1 CONFIRM_PRODUCTION_SHA=<main-sha> npm run release:prod`
 
 ## Minimum Cloudflare Token Scope (Deploy Path)
 
@@ -45,6 +50,7 @@ CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT" npx wrangle
 curl -sS -o /dev/null -w '%{http_code}\n' https://jinkunchen.com/
 curl -sS -o /dev/null -w '%{http_code}\n' https://jinkunchen.com/blog
 curl -sS -o /dev/null -w '%{http_code}\n' https://jinkunchen.com/api/site-admin/status
+npm run verify:staging:authenticated
 ```
 
 - Expected:
