@@ -17,6 +17,86 @@ const DEFAULT_ROUTES = [
   { path: "/connect", contains: "Connect" },
 ];
 
+const API_READ_CHECKS = [
+  {
+    label: "home",
+    path: "/api/site-admin/home",
+    summarize(payload) {
+      const data = requireRecord(payload.data, "home data");
+      requireSourceVersion(payload.sourceVersion, "home");
+      const sections = requireArray(data.sections, "home sections");
+      return `sections=${sections.length}`;
+    },
+  },
+  {
+    label: "posts",
+    path: "/api/site-admin/posts?drafts=1",
+    summarize(payload) {
+      const posts = requireArray(payload.posts, "posts");
+      const count = requireNumber(payload.count, "posts count");
+      assert(count === posts.length, "posts count does not match list length", {
+        count,
+        listLength: posts.length,
+      });
+      return `count=${count}`;
+    },
+  },
+  {
+    label: "pages",
+    path: "/api/site-admin/pages?drafts=1",
+    summarize(payload) {
+      const pages = requireArray(payload.pages, "pages");
+      const count = requireNumber(payload.count, "pages count");
+      assert(count === pages.length, "pages count does not match list length", {
+        count,
+        listLength: pages.length,
+      });
+      return `count=${count}`;
+    },
+  },
+  {
+    label: "news",
+    path: "/api/site-admin/news",
+    summarize(payload) {
+      const data = requireRecord(payload.data, "news data");
+      requireSourceVersion(payload.sourceVersion, "news");
+      const entries = requireArray(data.entries, "news entries");
+      return `entries=${entries.length}`;
+    },
+  },
+  {
+    label: "publications",
+    path: "/api/site-admin/publications",
+    summarize(payload) {
+      const data = requireRecord(payload.data, "publications data");
+      requireSourceVersion(payload.sourceVersion, "publications");
+      const entries = requireArray(data.entries, "publications entries");
+      const profileLinks = requireArray(data.profileLinks, "publications profile links");
+      return `entries=${entries.length} profileLinks=${profileLinks.length}`;
+    },
+  },
+  {
+    label: "works",
+    path: "/api/site-admin/works",
+    summarize(payload) {
+      const data = requireRecord(payload.data, "works data");
+      requireSourceVersion(payload.sourceVersion, "works");
+      const entries = requireArray(data.entries, "works entries");
+      return `entries=${entries.length}`;
+    },
+  },
+  {
+    label: "teaching",
+    path: "/api/site-admin/teaching",
+    summarize(payload) {
+      const data = requireRecord(payload.data, "teaching data");
+      requireSourceVersion(payload.sourceVersion, "teaching");
+      const entries = requireArray(data.entries, "teaching entries");
+      return `entries=${entries.length}`;
+    },
+  },
+];
+
 function argValue(name) {
   const prefix = `--${name}=`;
   return process.argv.find((item) => item.startsWith(prefix))?.slice(prefix.length) || "";
@@ -46,6 +126,37 @@ function assert(condition, message, details = {}) {
     ? `\n${JSON.stringify(details, null, 2)}`
     : "";
   throw new Error(`${message}${suffix}`);
+}
+
+function isRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireRecord(value, label) {
+  assert(isRecord(value), `${label} is not an object`, { value });
+  return value;
+}
+
+function requireArray(value, label) {
+  assert(Array.isArray(value), `${label} is not an array`, { value });
+  return value;
+}
+
+function requireNumber(value, label) {
+  assert(Number.isFinite(value), `${label} is not a number`, { value });
+  return value;
+}
+
+function requireSourceVersion(value, label) {
+  const sourceVersion = requireRecord(value, `${label} sourceVersion`);
+  assert(
+    typeof sourceVersion.fileSha === "string" ||
+      typeof sourceVersion.branchSha === "string" ||
+      typeof sourceVersion.siteConfigSha === "string",
+    `${label} sourceVersion does not include a known sha field`,
+    { sourceVersion },
+  );
+  return sourceVersion;
 }
 
 async function createSessionCookie() {
@@ -101,6 +212,29 @@ async function checkStatus({ origin, cookie }) {
   assert(res.status === 200, "status endpoint returned wrong status", { status: res.status, raw });
   assert(source && typeof source === "object", "status payload missing source", { raw });
   assert(source.pendingDeploy === false, "staging source is pending deploy", { source });
+}
+
+async function fetchApiPayload({ origin, cookie, path }) {
+  const res = await fetch(`${origin}${path}`, {
+    cache: "no-store",
+    headers: { cookie },
+  });
+  const raw = await res.json().catch(() => null);
+  assert(res.status === 200, "api endpoint returned wrong status", {
+    path,
+    status: res.status,
+    raw,
+  });
+  assert(raw?.ok === true, "api endpoint returned non-ok payload", { path, raw });
+  return requireRecord(raw.data, `${path} payload`);
+}
+
+async function checkSiteAdminReadApis({ origin, cookie }) {
+  for (const check of API_READ_CHECKS) {
+    const payload = await fetchApiPayload({ origin, cookie, path: check.path });
+    const summary = check.summarize(payload);
+    console.log(`[staging-authenticated-qa] api/${check.label}: 200 ${summary}`);
+  }
 }
 
 function normalizeStylesheets(raw) {
@@ -162,6 +296,7 @@ async function main() {
     await checkStaticRoute({ origin, cookie, ...route });
   }
   await checkStatus({ origin, cookie });
+  await checkSiteAdminReadApis({ origin, cookie });
   await checkHomePreview({ origin, cookie });
 
   console.log("[staging-authenticated-qa] passed");
