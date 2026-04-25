@@ -130,7 +130,7 @@ export async function ensureDeploySection({ adminPageId, blocks }) {
   const deployHeading = findHeadingBlock(blocks, { level: 2, includes: "Deploy" });
   const deployBase =
     String(process.env.DEPLOY_BASE_URL || "").trim().replace(/\/+$/, "") ||
-    "https://jinnkunn-com.vercel.app";
+    "https://jinkunchen.com";
   const deployUrl = `${deployBase}/site-admin`;
   const deployCalloutBlock = {
     object: "block",

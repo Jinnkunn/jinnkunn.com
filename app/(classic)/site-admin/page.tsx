@@ -38,7 +38,7 @@ export default async function SiteAdminHome() {
           <section>
             <h2 className="notion-heading notion-semantic-string">Deploy</h2>
             <p className="notion-text notion-text__content notion-semantic-string">
-              Triggers a Vercel deploy (which will re-sync content during build).
+              Promotes the Cloudflare Worker for the current source branch.
             </p>
             <SiteAdminDeployClient />
           </section>

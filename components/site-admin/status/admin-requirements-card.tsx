@@ -48,11 +48,9 @@ export function SiteAdminRequirementsCard({ payload, readiness }: SiteAdminRequi
           </dd>
         </div>
         <div className="site-admin-kv__row">
-          <dt>FLAGS_SECRET</dt>
+          <dt>Feature flags</dt>
           <dd>
-            <StatusBadge ok={payload.env.hasFlagsSecret}>
-              {payload.env.hasFlagsSecret ? "configured" : "missing"}
-            </StatusBadge>
+            <StatusBadge ok={payload.env.hasFlagsSecret}>env based</StatusBadge>
           </dd>
         </div>
       </dl>

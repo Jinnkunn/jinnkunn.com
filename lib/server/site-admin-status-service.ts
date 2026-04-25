@@ -98,7 +98,6 @@ function pickDeploymentUrl(): string {
 
 function hasDeployTargetConfigured(): boolean {
   if (String(process.env.DEPLOY_HOOK_URL || "").trim()) return true;
-  if (String(process.env.VERCEL_DEPLOY_HOOK_URL || "").trim()) return true;
   if (hasCloudflareApiDeployConfig(process.env)) {
     return true;
   }
@@ -205,13 +204,6 @@ function maxFinite(nums: number[]): number {
     if (!Number.isFinite(best) || n > best) best = n;
   }
   return best;
-}
-
-function hasEffectiveFlagsSecret(): boolean {
-  const explicit = String(process.env.FLAGS_SECRET || "").trim();
-  if (explicit) return true;
-  const fallback = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
-  return Boolean(fallback);
 }
 
 function normalizeGeneratedFileMtime(
@@ -478,11 +470,9 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       hasNotionToken: false,
       hasNotionAdminPageId: false,
       notionVersion: "",
-      hasDeployHookUrl: Boolean(
-        (process.env.DEPLOY_HOOK_URL || process.env.VERCEL_DEPLOY_HOOK_URL || "").trim(),
-      ),
+      hasDeployHookUrl: Boolean((process.env.DEPLOY_HOOK_URL || "").trim()),
       hasNextAuthSecret: Boolean((process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim()),
-      hasFlagsSecret: hasEffectiveFlagsSecret(),
+      hasFlagsSecret: true,
       githubAllowlistCount: allow.size,
       contentGithubAllowlistCount: allowContent.size,
     },
