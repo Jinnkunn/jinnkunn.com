@@ -156,3 +156,9 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+.mdx-code .notion-code__copy-button {
+  z-index: 3;
+  opacity: 1;
+  pointer-events: all;
+}
