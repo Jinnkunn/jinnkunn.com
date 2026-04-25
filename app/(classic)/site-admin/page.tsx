@@ -59,6 +59,12 @@ export default async function SiteAdminHome() {
                   </Link>{" "}
                   (inspect discovered routes)
                 </li>
+                <li>
+                  <Link href="/site-admin/design-system" className="notion-link link">
+                    Design System
+                  </Link>{" "}
+                  (tokens, primitives, and UI regression gallery)
+                </li>
               </ul>
             </div>
           </section>

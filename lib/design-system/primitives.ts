@@ -13,6 +13,14 @@ export const DESIGN_DENSITIES = ["compact", "default"] as const;
 export const BUTTON_SURFACES = ["default", "inverse"] as const;
 export const CONTAINER_SURFACES = ["default", "elevated", "soft"] as const;
 export const BADGE_VARIANTS = ["soft", "outline"] as const;
+export const DESIGN_PATTERNS = [
+  "textLink",
+  "emptyState",
+  "listRow",
+  "toolbar",
+  "loadingState",
+  "dialogPanel",
+] as const;
 
 export type DesignVariant = (typeof DESIGN_VARIANTS)[number];
 export type DesignTone = (typeof DESIGN_TONES)[number];
@@ -22,6 +30,7 @@ export type DesignDensity = (typeof DESIGN_DENSITIES)[number];
 export type ButtonSurface = (typeof BUTTON_SURFACES)[number];
 export type ContainerSurface = (typeof CONTAINER_SURFACES)[number];
 export type BadgeVariant = (typeof BADGE_VARIANTS)[number];
+export type DesignPattern = (typeof DESIGN_PATTERNS)[number];
 
 export const BUTTON_DEFAULTS = {
   variant: "solid",

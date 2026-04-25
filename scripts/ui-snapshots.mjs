@@ -17,6 +17,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 
+import { loadProjectEnv } from "./load-project-env.mjs";
 import { stopProcessTree } from "./_lib/process-tree.mjs";
 
 const ROOT = process.cwd();
@@ -28,10 +29,12 @@ const DEFAULT_TARGETS = [
   "/publications",
   "/works",
   "/site-admin",
+  "/site-admin/design-system",
 ];
 const DEFAULT_THEMES = ["light", "dark"];
 const SCRIPT_NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
+const FALLBACK_ADMIN_LOGIN = "jinnkunn";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -94,9 +97,18 @@ function startNext(port) {
       PORT: String(port),
       NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
       NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+      SITE_ADMIN_GITHUB_USERS: process.env.SITE_ADMIN_GITHUB_USERS || FALLBACK_ADMIN_LOGIN,
     },
   });
   return child;
+}
+
+function firstGithubUserFromCsv(raw) {
+  const users = String(raw || "")
+    .split(/[,\n]/)
+    .map((item) => item.trim().replace(/^@+/, "").toLowerCase())
+    .filter(Boolean);
+  return users[0] || FALLBACK_ADMIN_LOGIN;
 }
 
 function safeNameFromPath(p) {
@@ -179,7 +191,23 @@ async function launchBrowser() {
   }
 }
 
+async function createSnapshotAdminToken() {
+  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS);
+  const { encode } = await import("next-auth/jwt");
+  return await encode({
+    secret: SCRIPT_NEXTAUTH_SECRET,
+    token: {
+      sub: `ui-snapshot-${login}`,
+      login,
+      name: login,
+    },
+    maxAge: 60 * 30,
+  });
+}
+
 async function main() {
+  loadProjectEnv({ override: false });
+
   if (!hasBuild()) {
     await run("npm", ["run", "build"], { cwd: ROOT });
   }
@@ -199,6 +227,16 @@ async function main() {
     const ctx = await browser.newContext({
       userAgent: "jinnkunn.com ui-snapshots",
     });
+    const adminToken = await createSnapshotAdminToken();
+    await ctx.addCookies([
+      {
+        name: "next-auth.session-token",
+        value: adminToken,
+        url: origin,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     const page = await ctx.newPage();
 
     const targets = effectiveTargets();

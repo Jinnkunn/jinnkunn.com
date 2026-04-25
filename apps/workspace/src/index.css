@@ -87,6 +87,45 @@
   color-scheme: light;
 }
 
+/* Shared design-system aliases.
+ *
+ * The desktop app keeps its Tailwind v4 `--color-*` tokens for utilities, but
+ * exposes the same semantic `--ds-*` contract as the public web surface. These
+ * aliases are intentionally non-visual: they let future Tauri components and
+ * docs speak the same language without changing the current macOS-style UI.
+ */
+:root {
+  --ds-font-body: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  --ds-font-heading: var(--ds-font-body);
+  --ds-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace;
+
+  --ds-surface-page: var(--color-bg-window);
+  --ds-surface-panel: var(--color-bg-surface);
+  --ds-surface-elevated: var(--color-bg-sidebar);
+  --ds-surface-soft: var(--color-bg-surface-alt);
+  --ds-surface-overlay: var(--color-bg-window-blend);
+
+  --ds-text-primary: var(--color-text-primary);
+  --ds-text-secondary: var(--color-text-secondary);
+  --ds-text-muted: var(--color-text-muted);
+  --ds-text-inverse: var(--color-text-inverse);
+
+  --ds-border-subtle: var(--color-border-subtle);
+  --ds-border-strong: var(--color-border-default);
+  --ds-border-emphasis: var(--color-border-strong);
+
+  --ds-interactive-hover: var(--color-bg-hover);
+  --ds-accent: var(--color-accent);
+  --ds-danger: var(--color-danger);
+  --ds-warning: var(--color-warn);
+  --ds-success: var(--color-success);
+
+  --ds-radius-sm: 10px;
+  --ds-radius-md: 12px;
+  --ds-radius-lg: var(--radius-card);
+  --ds-radius-pill: 999px;
+}
+
 /* ------------------------------------------------------------------ *
  * Base reset
  * ------------------------------------------------------------------ */
