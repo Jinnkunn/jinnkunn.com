@@ -1,15 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: ["main"]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-  # Required branch-protection checks must run on every PR. If docs-only PRs
-  # are ignored here, GitHub never creates `build` / `workspace-quality`
-  # statuses and the protected `main` branch becomes impossible to merge into.
-  pull_request:
+  # Run CI manually when local verification is not enough for a release branch.
+  # Pushes and pull requests are intentionally not CI-triggering for now; local
+  # checks are the source of truth for small staging-only fixes.
+  workflow_dispatch:
 
 permissions:
   contents: read

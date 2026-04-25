@@ -77,17 +77,12 @@
   color: var(--ds-text-primary);
 }
 
-/* MDX toggle: native <details>, keeps the Notion-toggle cursor-pointer feel. */
-.mdx-toggle > summary {
+/* MDX toggle: mirrors the legacy Notion export and uses the shared behavior runtime. */
+.mdx-toggle > .notion-toggle__summary {
   cursor: pointer;
-  list-style: none;
 }
 
-.mdx-toggle > summary::-webkit-details-marker {
-  display: none;
-}
-
-.mdx-toggle[open] > .notion-toggle__summary .notion-toggle__trigger_icon {
+.mdx-toggle.open > .notion-toggle__summary .notion-toggle__trigger_icon {
   transform: rotate(90deg);
 }
 
