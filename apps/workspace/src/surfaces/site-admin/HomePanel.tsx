@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import { useDragReorder } from "./shared/useDragReorder";
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
@@ -10,6 +11,7 @@ import { useJsonDraft } from "./use-json-draft";
 import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
 import { uploadImageFile } from "./assets-upload";
 import {
+  HomeEditableCanvasPane,
   HomeInspectorShell,
   HomePreviewPane,
   HomeSectionRail,
@@ -62,6 +64,14 @@ const HOME_PREVIEW_VIEWPORT_LABELS: Record<HomePreviewViewport, string> = {
   mobile: "Mobile",
 };
 
+const HOME_EDITOR_INSERT_LABELS: Record<HomeSectionType, string> = {
+  hero: "Hero",
+  richText: "Text",
+  linkList: "Links",
+  featuredPages: "Featured",
+  layout: "Layout",
+};
+
 function isHomeEditorMode(value: unknown): value is HomeEditorMode {
   return isString(value) && HOME_EDITOR_MODES.includes(value as HomeEditorMode);
 }
@@ -84,6 +94,7 @@ export function HomePanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
+  const [canvasUploadingId, setCanvasUploadingId] = useState("");
   const [editorMode, setEditorMode] = usePersistentUiState<HomeEditorMode>(
     "workspace.site-admin.home.editor-mode.v1",
     "edit",
@@ -91,6 +102,11 @@ export function HomePanel() {
   );
   const [outlineOpen, setOutlineOpen] = usePersistentUiState(
     "workspace.site-admin.home.outline-open.v1",
+    false,
+    isBoolean,
+  );
+  const [settingsOpen, setSettingsOpen] = usePersistentUiState(
+    "workspace.site-admin.home.settings-open.v1",
     false,
     isBoolean,
   );
@@ -209,6 +225,22 @@ export function HomePanel() {
     (type: HomeSectionType) => {
       const section = createSection(type);
       patchSections((sections) => [...sections, section]);
+      setSelectedId(section.id);
+    },
+    [patchSections, setSelectedId],
+  );
+
+  const insertSectionAfter = useCallback(
+    (afterId: string | null, type: HomeSectionType) => {
+      const section = createSection(type);
+      patchSections((sections) => {
+        if (!afterId) return [section, ...sections];
+        const index = sections.findIndex((item) => item.id === afterId);
+        if (index < 0) return [...sections, section];
+        const copy = sections.slice();
+        copy.splice(index + 1, 0, section);
+        return copy;
+      });
       setSelectedId(section.id);
     },
     [patchSections, setSelectedId],
@@ -444,6 +476,228 @@ export function HomePanel() {
     return null;
   }, []);
 
+  const resolveCanvasAssetUrl = useCallback(
+    (url: string | undefined) => {
+      const raw = String(url || "").trim();
+      if (!raw) return "";
+      if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+      try {
+        return new URL(raw, connection.baseUrl || window.location.origin).toString();
+      } catch {
+        return raw;
+      }
+    },
+    [connection.baseUrl],
+  );
+
+  const uploadCanvasHeroImage = useCallback(
+    async (section: HomeHeroSection, file: File | null) => {
+      if (!file || canvasUploadingId) return;
+      setCanvasUploadingId(section.id);
+      const result = await uploadImageFile({ file, request });
+      setCanvasUploadingId("");
+      if (!result.ok) {
+        setMessage("error", `Image upload failed: ${result.error}`);
+        return;
+      }
+      rememberRecentAsset(result.asset, result.filename);
+      patchSection(section.id, (current) =>
+        current.type === "hero"
+          ? {
+              ...current,
+              profileImageUrl: result.asset.url,
+              profileImageAlt: current.profileImageAlt || result.filename,
+              imagePosition:
+                current.imagePosition === "none" ? "left" : current.imagePosition,
+            }
+          : current,
+      );
+      setMessage("success", "Hero image uploaded.");
+    },
+    [canvasUploadingId, patchSection, request, setMessage],
+  );
+
+  const uploadCanvasLayoutImage = useCallback(
+    async (sectionId: string, block: HomeImageBlock, file: File | null) => {
+      if (!file || canvasUploadingId) return;
+      setCanvasUploadingId(block.id);
+      const result = await uploadImageFile({ file, request });
+      setCanvasUploadingId("");
+      if (!result.ok) {
+        setMessage("error", `Image upload failed: ${result.error}`);
+        return;
+      }
+      rememberRecentAsset(result.asset, result.filename);
+      patchLayoutBlock(sectionId, block.id, (current) =>
+        current.type === "image"
+          ? {
+              ...current,
+              url: result.asset.url,
+              alt: current.alt || result.filename,
+            }
+          : current,
+      );
+      setMessage("success", "Image uploaded.");
+    },
+    [canvasUploadingId, patchLayoutBlock, request, setMessage],
+  );
+
+  const renderEditableSection = useCallback(
+    (section: HomeSection) => {
+      if (section.type === "hero") {
+        return (
+          <EditableHeroSection
+            section={section}
+            uploading={canvasUploadingId === section.id}
+            resolveAssetUrl={resolveCanvasAssetUrl}
+            onUploadImage={(file) => void uploadCanvasHeroImage(section, file)}
+            patchSection={patchSection}
+          />
+        );
+      }
+      if (section.type === "richText") {
+        return <EditableRichTextSection section={section} patchSection={patchSection} />;
+      }
+      if (section.type === "linkList") {
+        return (
+          <EditableLinkListSection
+            section={section}
+            patchSection={patchSection}
+            updateLink={updateLink}
+            addLink={addLink}
+            removeLink={removeLink}
+            moveLink={moveLink}
+          />
+        );
+      }
+      if (section.type === "featuredPages") {
+        return (
+          <EditableFeaturedPagesSection
+            section={section}
+            patchSection={patchSection}
+            updateLink={updateLink}
+            addLink={addLink}
+            removeLink={removeLink}
+            moveLink={moveLink}
+          />
+        );
+      }
+      if (section.type === "layout") {
+        return (
+          <EditableLayoutSection
+            section={section}
+            resolveAssetUrl={resolveCanvasAssetUrl}
+            uploadingId={canvasUploadingId}
+            patchSection={patchSection}
+            patchLayoutBlock={patchLayoutBlock}
+            addLayoutBlock={addLayoutBlock}
+            removeLayoutBlock={removeLayoutBlock}
+            moveLayoutBlock={moveLayoutBlock}
+            uploadLayoutImage={(block, file) =>
+              void uploadCanvasLayoutImage(section.id, block, file)
+            }
+          />
+        );
+      }
+      return null;
+    },
+    [
+      addLayoutBlock,
+      addLink,
+      canvasUploadingId,
+      moveLayoutBlock,
+      moveLink,
+      patchLayoutBlock,
+      patchSection,
+      removeLayoutBlock,
+      removeLink,
+      resolveCanvasAssetUrl,
+      updateLink,
+      uploadCanvasHeroImage,
+      uploadCanvasLayoutImage,
+    ],
+  );
+
+  const renderCanvasSectionToolbar = useCallback(
+    (section: HomeSection, index: number) => (
+      <div className="home-canvas__section-toolbar" onClick={(event) => event.stopPropagation()}>
+        <span>{HOME_EDITOR_MODE_LABELS.edit}</span>
+        <button
+          type="button"
+          onClick={() => moveSection(index, -1)}
+          disabled={index === 0}
+          aria-label="Move section up"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={() => moveSection(index, 1)}
+          disabled={index === draft.sections.length - 1}
+          aria-label="Move section down"
+        >
+          ↓
+        </button>
+        <button type="button" onClick={() => duplicateSection(section)}>
+          Duplicate
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            patchSection(section.id, (current) => ({
+              ...current,
+              enabled: !current.enabled,
+            }))
+          }
+        >
+          {section.enabled ? "Hide" : "Show"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Open section settings"
+        >
+          Settings
+        </button>
+        <button
+          type="button"
+          onClick={() => removeSection(section.id)}
+          disabled={draft.sections.length <= 1}
+          aria-label="Remove section"
+          className="home-canvas__danger-action"
+        >
+          Delete
+        </button>
+      </div>
+    ),
+    [
+      draft.sections.length,
+      duplicateSection,
+      moveSection,
+      patchSection,
+      removeSection,
+      setSettingsOpen,
+    ],
+  );
+
+  const renderInsertControls = useCallback(
+    (afterSectionId: string | null) => (
+      <div className="home-canvas__insert-row" onClick={(event) => event.stopPropagation()}>
+        <span>+</span>
+        {(Object.keys(HOME_EDITOR_INSERT_LABELS) as HomeSectionType[]).map((type) => (
+          <button
+            type="button"
+            key={type}
+            onClick={() => insertSectionAfter(afterSectionId, type)}
+          >
+            {HOME_EDITOR_INSERT_LABELS[type]}
+          </button>
+        ))}
+      </div>
+    ),
+    [insertSectionAfter],
+  );
+
   const stateNote = loading
     ? "Loading…"
     : conflict
@@ -452,6 +706,7 @@ export function HomePanel() {
         ? "Unsaved changes."
         : "In sync.";
   const outlineDrawerOpen = editorMode === "edit" && outlineOpen;
+  const settingsDrawerOpen = editorMode === "edit" && settingsOpen;
   const sectionRailProps = {
     addSection,
     getHandleProps,
@@ -604,7 +859,10 @@ export function HomePanel() {
                 key={mode}
                 onClick={() => {
                   setEditorMode(mode);
-                  if (mode !== "edit") setOutlineOpen(false);
+                  if (mode !== "edit") {
+                    setOutlineOpen(false);
+                    setSettingsOpen(false);
+                  }
                 }}
                 type="button"
               >
@@ -621,6 +879,16 @@ export function HomePanel() {
             type="button"
           >
             Outline
+          </button>
+
+          <button
+            aria-expanded={settingsDrawerOpen}
+            className="btn btn--secondary home-builder__outline-toggle"
+            disabled={editorMode !== "edit"}
+            onClick={() => setSettingsOpen((open) => !open)}
+            type="button"
+          >
+            Settings
           </button>
 
           {editorMode !== "structure" ? (
@@ -647,6 +915,7 @@ export function HomePanel() {
           className="home-builder"
           data-mode={editorMode}
           data-outline-open={outlineDrawerOpen ? "true" : undefined}
+          data-settings-open={settingsDrawerOpen ? "true" : undefined}
         >
           {editorMode === "structure" ? (
             <>
@@ -666,22 +935,39 @@ export function HomePanel() {
                     />
                   </div>
                 ) : null}
-                <HomePreviewPane
-                  baseUrl={connection.baseUrl}
-                  draft={draft}
-                  frameRef={homePreview.frameRef}
-                  html={homePreview.html}
-                  loading={homePreview.loading}
-                  onFrameLoad={homePreview.onFrameLoad}
-                  previewError={homePreview.error}
-                  renderSection={renderPreviewSection}
-                  selectedSectionId={selectedSectionId}
-                  setSelectedId={setSelectedId}
-                  stylesheets={homePreview.stylesheets}
-                  viewport={previewViewport}
-                />
+                {settingsDrawerOpen ? (
+                  <div className="home-builder__settings-drawer">
+                    {inspectorPanel}
+                  </div>
+                ) : null}
+                {editorMode === "edit" ? (
+                  <HomeEditableCanvasPane
+                    draft={draft}
+                    onTitleChange={(title) => setDraft((current) => ({ ...current, title }))}
+                    renderInsertControls={renderInsertControls}
+                    renderSection={renderEditableSection}
+                    renderSectionToolbar={renderCanvasSectionToolbar}
+                    selectedSectionId={selectedSectionId}
+                    setSelectedId={setSelectedId}
+                    viewport={previewViewport}
+                  />
+                ) : (
+                  <HomePreviewPane
+                    baseUrl={connection.baseUrl}
+                    draft={draft}
+                    frameRef={homePreview.frameRef}
+                    html={homePreview.html}
+                    loading={homePreview.loading}
+                    onFrameLoad={homePreview.onFrameLoad}
+                    previewError={homePreview.error}
+                    renderSection={renderPreviewSection}
+                    selectedSectionId={selectedSectionId}
+                    setSelectedId={setSelectedId}
+                    stylesheets={homePreview.stylesheets}
+                    viewport={previewViewport}
+                  />
+                )}
               </div>
-              {editorMode === "edit" ? inspectorPanel : null}
             </>
           )}
         </div>
@@ -1695,6 +1981,718 @@ function LinkRows({
           </label>
         </div>
       ))}
+    </div>
+  );
+}
+
+function InlineTextInput({
+  ariaLabel,
+  className = "",
+  onChange,
+  placeholder,
+  value,
+}: {
+  ariaLabel: string;
+  className?: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  return (
+    <input
+      aria-label={ariaLabel}
+      className={`home-canvas__inline-input ${className}`.trim()}
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+    />
+  );
+}
+
+function renderInlineMarkdown(source: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)|\*([^*]+)\*)/g;
+  let lastIndex = 0;
+  let index = 0;
+  for (const match of source.matchAll(pattern)) {
+    const matchIndex = match.index ?? 0;
+    if (matchIndex > lastIndex) {
+      nodes.push(source.slice(lastIndex, matchIndex));
+    }
+    if (match[2]) {
+      nodes.push(<strong key={`${keyPrefix}-strong-${index}`}>{match[2]}</strong>);
+    } else if (match[3]) {
+      nodes.push(
+        <span className="home-canvas__mock-link" key={`${keyPrefix}-link-${index}`}>
+          {match[3]}
+        </span>,
+      );
+    } else if (match[5]) {
+      nodes.push(<em key={`${keyPrefix}-em-${index}`}>{match[5]}</em>);
+    }
+    lastIndex = matchIndex + match[0].length;
+    index += 1;
+  }
+  if (lastIndex < source.length) nodes.push(source.slice(lastIndex));
+  return nodes;
+}
+
+function MarkdownPreviewBody({
+  inline = false,
+  placeholder = "Click to write…",
+  source,
+}: {
+  inline?: boolean;
+  placeholder?: string;
+  source: string;
+}) {
+  const trimmed = source.trim();
+  if (!trimmed) {
+    return inline ? (
+      <span className="home-preview__muted">{placeholder}</span>
+    ) : (
+      <p className="home-preview__muted">{placeholder}</p>
+    );
+  }
+  if (inline) {
+    return (
+      <>
+        {trimmed.split(/\n{2,}/).map((paragraph, index) => (
+          <span className="home-preview__body" key={`${index}-${paragraph.slice(0, 12)}`}>
+            {renderInlineMarkdown(paragraph.replace(/\n/g, " "), `p-${index}`)}
+          </span>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      {trimmed.split(/\n{2,}/).map((paragraph, index) => (
+        <p className="home-preview__body" key={`${index}-${paragraph.slice(0, 12)}`}>
+          {renderInlineMarkdown(paragraph.replace(/\n/g, " "), `p-${index}`)}
+        </p>
+      ))}
+    </>
+  );
+}
+
+function InlineMarkdownEditor({
+  ariaLabel,
+  onChange,
+  placeholder,
+  value,
+}: {
+  ariaLabel: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    const rows = Math.max(3, Math.min(12, value.split("\n").length + 2));
+    return (
+      <textarea
+        autoFocus
+        aria-label={ariaLabel}
+        className="home-canvas__markdown-editor"
+        rows={rows}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={() => setEditing(false)}
+        onClick={(event) => event.stopPropagation()}
+      />
+    );
+  }
+  return (
+    <button
+      className="home-canvas__markdown-preview"
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        setEditing(true);
+      }}
+    >
+      <MarkdownPreviewBody source={value} placeholder={placeholder} inline />
+    </button>
+  );
+}
+
+function EditableImageCanvas({
+  alt,
+  caption,
+  className,
+  emptyLabel = "Choose image",
+  fit = "cover",
+  onAltChange,
+  onCaptionChange,
+  onUpload,
+  shape,
+  src,
+  uploading,
+}: {
+  alt: string;
+  caption?: string;
+  className: string;
+  emptyLabel?: string;
+  fit?: "cover" | "contain";
+  onAltChange?: (value: string) => void;
+  onCaptionChange?: (value: string) => void;
+  onUpload: (file: File | null) => void;
+  shape?: string;
+  src: string;
+  uploading: boolean;
+}) {
+  return (
+    <div
+      className={[
+        className,
+        "home-canvas__image",
+        shape ? `home-canvas__image--${shape}` : "",
+      ].join(" ")}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <label className="home-canvas__image-picker">
+        {src ? (
+          // Tauri workspace renders local/admin-uploaded assets, not Next public pages.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            alt={alt || emptyLabel}
+            src={src}
+            style={{ objectFit: fit }}
+            draggable={false}
+          />
+        ) : (
+          <span>{uploading ? "Uploading…" : emptyLabel}</span>
+        )}
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif"
+          disabled={uploading}
+          onChange={(event) => {
+            onUpload(event.target.files?.[0] ?? null);
+            event.currentTarget.value = "";
+          }}
+        />
+      </label>
+      {onAltChange ? (
+        <input
+          aria-label="Image alt text"
+          className="home-canvas__caption-input"
+          value={alt}
+          placeholder="Alt text"
+          onChange={(event) => onAltChange(event.target.value)}
+        />
+      ) : null}
+      {onCaptionChange ? (
+        <input
+          aria-label="Image caption"
+          className="home-canvas__caption-input"
+          value={caption || ""}
+          placeholder="Caption"
+          onChange={(event) => onCaptionChange(event.target.value)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function EditableHeroSection({
+  onUploadImage,
+  patchSection,
+  resolveAssetUrl,
+  section,
+  uploading,
+}: {
+  onUploadImage: (file: File | null) => void;
+  patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
+  resolveAssetUrl: (url: string | undefined) => string;
+  section: HomeHeroSection;
+  uploading: boolean;
+}) {
+  const showImage = section.imagePosition !== "none";
+  return (
+    <div
+      className={[
+        "home-preview-hero",
+        "home-canvas__editable-section",
+        `home-preview-hero--${showImage ? section.imagePosition : "none"}`,
+        `home-preview--align-${section.textAlign}`,
+      ].join(" ")}
+    >
+      {showImage ? (
+        <EditableImageCanvas
+          alt={section.profileImageAlt || ""}
+          className="home-preview-hero__image"
+          emptyLabel="Hero image"
+          src={resolveAssetUrl(section.profileImageUrl)}
+          uploading={uploading}
+          onUpload={onUploadImage}
+          onAltChange={(value) =>
+            patchSection(section.id, (current) =>
+              current.type === "hero"
+                ? { ...current, profileImageAlt: value || undefined }
+                : current,
+            )
+          }
+        />
+      ) : null}
+      <div className="home-canvas__text-stack">
+        <InlineTextInput
+          ariaLabel="Hero title"
+          className="home-canvas__heading-input home-canvas__heading-input--hero"
+          value={section.title}
+          placeholder="Hero title"
+          onChange={(value) =>
+            patchSection(section.id, (current) =>
+              current.type === "hero" ? { ...current, title: value } : current,
+            )
+          }
+        />
+        <InlineMarkdownEditor
+          ariaLabel="Hero body"
+          value={section.body}
+          placeholder="Click to write hero copy…"
+          onChange={(value) =>
+            patchSection(section.id, (current) =>
+              current.type === "hero" ? { ...current, body: value } : current,
+            )
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function EditableRichTextSection({
+  patchSection,
+  section,
+}: {
+  patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
+  section: HomeRichTextSection;
+}) {
+  return (
+    <div
+      className={[
+        "home-preview-rich",
+        "home-canvas__editable-section",
+        `home-preview-rich--${section.tone}`,
+        `home-preview-rich--variant-${section.variant}`,
+        `home-preview--align-${section.textAlign}`,
+      ].join(" ")}
+    >
+      <InlineTextInput
+        ariaLabel="Section title"
+        className="home-canvas__heading-input"
+        value={section.title || ""}
+        placeholder="Section title"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "richText"
+              ? { ...current, title: value || undefined }
+              : current,
+          )
+        }
+      />
+      <InlineMarkdownEditor
+        ariaLabel="Section body"
+        value={section.body}
+        placeholder="Click to write section body…"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "richText" ? { ...current, body: value } : current,
+          )
+        }
+      />
+    </div>
+  );
+}
+
+function EditableLinkListSection({
+  addLink,
+  moveLink,
+  patchSection,
+  removeLink,
+  section,
+  updateLink,
+}: {
+  addLink: (sectionId: string) => void;
+  moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
+  patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
+  removeLink: (sectionId: string, index: number) => void;
+  section: HomeLinkListSection;
+  updateLink: (sectionId: string, index: number, patch: Partial<HomeLink>) => void;
+}) {
+  return (
+    <div className={`home-preview-links home-preview-links--${section.layout}`}>
+      <InlineTextInput
+        ariaLabel="Links title"
+        className="home-canvas__heading-input"
+        value={section.title || ""}
+        placeholder="Links title"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "linkList"
+              ? { ...current, title: value || undefined }
+              : current,
+          )
+        }
+      />
+      <InlineMarkdownEditor
+        ariaLabel="Links intro"
+        value={section.body || ""}
+        placeholder="Click to write intro…"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "linkList"
+              ? { ...current, body: value || undefined }
+              : current,
+          )
+        }
+      />
+      <div className="home-preview-links__items home-canvas__editable-links">
+        {section.links.map((link, index) => (
+          <div className="home-canvas__editable-link" key={`${section.id}-${index}`}>
+            <input
+              aria-label="Link label"
+              value={link.label}
+              placeholder="Label"
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => updateLink(section.id, index, { label: event.target.value })}
+            />
+            <input
+              aria-label="Link URL"
+              value={link.href}
+              placeholder="/path or https://"
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => updateLink(section.id, index, { href: event.target.value })}
+            />
+            <div
+              className="home-canvas__mini-actions"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                disabled={index === 0}
+                onClick={() => moveLink(section.id, index, -1)}
+                aria-label="Move link up"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                disabled={index === section.links.length - 1}
+                onClick={() => moveLink(section.id, index, 1)}
+                aria-label="Move link down"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                onClick={() => removeLink(section.id, index)}
+                aria-label="Remove link"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ))}
+        <button
+          className="home-canvas__add-card"
+          type="button"
+          onClick={() => addLink(section.id)}
+        >
+          + Link
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditableFeaturedPagesSection({
+  addLink,
+  moveLink,
+  patchSection,
+  removeLink,
+  section,
+  updateLink,
+}: {
+  addLink: (sectionId: string) => void;
+  moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
+  patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
+  removeLink: (sectionId: string, index: number) => void;
+  section: HomeFeaturedPagesSection;
+  updateLink: (sectionId: string, index: number, patch: Partial<HomeLink>) => void;
+}) {
+  return (
+    <div className={`home-preview-featured home-preview-featured--cols-${section.columns}`}>
+      <InlineTextInput
+        ariaLabel="Featured pages title"
+        className="home-canvas__heading-input"
+        value={section.title || ""}
+        placeholder="Featured pages title"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "featuredPages"
+              ? { ...current, title: value || undefined }
+              : current,
+          )
+        }
+      />
+      <InlineMarkdownEditor
+        ariaLabel="Featured pages intro"
+        value={section.body || ""}
+        placeholder="Click to write intro…"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "featuredPages"
+              ? { ...current, body: value || undefined }
+              : current,
+          )
+        }
+      />
+      <div className="home-preview-featured__items home-canvas__editable-links">
+        {section.items.map((item, index) => (
+          <article className="home-canvas__editable-link" key={`${section.id}-${index}`}>
+            <input
+              aria-label="Featured page label"
+              value={item.label}
+              placeholder="Label"
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => updateLink(section.id, index, { label: event.target.value })}
+            />
+            <input
+              aria-label="Featured page URL"
+              value={item.href}
+              placeholder="/path"
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => updateLink(section.id, index, { href: event.target.value })}
+            />
+            <textarea
+              aria-label="Featured page description"
+              rows={2}
+              value={item.description || ""}
+              placeholder="Description"
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) =>
+                updateLink(section.id, index, {
+                  description: event.target.value || undefined,
+                })
+              }
+            />
+            <div
+              className="home-canvas__mini-actions"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                disabled={index === 0}
+                onClick={() => moveLink(section.id, index, -1)}
+                aria-label="Move featured page up"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                disabled={index === section.items.length - 1}
+                onClick={() => moveLink(section.id, index, 1)}
+                aria-label="Move featured page down"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                onClick={() => removeLink(section.id, index)}
+                aria-label="Remove featured page"
+              >
+                ×
+              </button>
+            </div>
+          </article>
+        ))}
+        <button
+          className="home-canvas__add-card"
+          type="button"
+          onClick={() => addLink(section.id)}
+        >
+          + Page
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditableLayoutSection({
+  addLayoutBlock,
+  moveLayoutBlock,
+  patchLayoutBlock,
+  patchSection,
+  removeLayoutBlock,
+  resolveAssetUrl,
+  section,
+  uploadLayoutImage,
+  uploadingId,
+}: {
+  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType) => void;
+  moveLayoutBlock: (sectionId: string, index: number, direction: -1 | 1) => void;
+  patchLayoutBlock: (
+    sectionId: string,
+    blockId: string,
+    mapper: (block: HomeLayoutBlock) => HomeLayoutBlock,
+  ) => void;
+  patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
+  removeLayoutBlock: (sectionId: string, blockId: string) => void;
+  resolveAssetUrl: (url: string | undefined) => string;
+  section: HomeLayoutSection;
+  uploadLayoutImage: (block: HomeImageBlock, file: File | null) => void;
+  uploadingId: string;
+}) {
+  const columns = Array.from({ length: section.columns }, (_, index) => index + 1);
+  return (
+    <div
+      className={[
+        "home-preview-layout",
+        "home-canvas__editable-section",
+        `home-preview-layout--variant-${section.variant}`,
+        `home-preview-layout--cols-${section.columns}`,
+        `home-preview-layout--gap-${section.gap}`,
+        `home-preview-layout--align-${section.verticalAlign}`,
+      ].join(" ")}
+    >
+      <InlineTextInput
+        ariaLabel="Layout title"
+        className="home-canvas__heading-input"
+        value={section.title || ""}
+        placeholder="Layout title"
+        onChange={(value) =>
+          patchSection(section.id, (current) =>
+            current.type === "layout" ? { ...current, title: value } : current,
+          )
+        }
+      />
+      <div className="home-preview-layout__grid">
+        {columns.map((column) => (
+          <div className="home-preview-layout__column home-canvas__layout-column" key={column}>
+            {section.blocks
+              .map((block, index) => ({ block, index }))
+              .filter(({ block }) => block.column === column)
+              .map(({ block, index }) =>
+                block.type === "image" ? (
+                  <div className="home-canvas__editable-block" key={block.id}>
+                    <BlockCanvasToolbar
+                      index={index}
+                      total={section.blocks.length}
+                      onMove={(direction) => moveLayoutBlock(section.id, index, direction)}
+                      onRemove={() => removeLayoutBlock(section.id, block.id)}
+                    />
+                    <EditableImageCanvas
+                      alt={block.alt || ""}
+                      caption={block.caption}
+                      className={`home-preview-layout__image home-preview-layout__image--${block.shape}`}
+                      fit={block.fit}
+                      shape={block.shape}
+                      src={resolveAssetUrl(block.url)}
+                      uploading={uploadingId === block.id}
+                      onUpload={(file) => uploadLayoutImage(block, file)}
+                      onAltChange={(value) =>
+                        patchLayoutBlock(section.id, block.id, (current) =>
+                          current.type === "image" ? { ...current, alt: value } : current,
+                        )
+                      }
+                      onCaptionChange={(value) =>
+                        patchLayoutBlock(section.id, block.id, (current) =>
+                          current.type === "image"
+                            ? { ...current, caption: value || undefined }
+                            : current,
+                        )
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className={`home-canvas__editable-block home-preview-layout__markdown home-preview-rich--${block.tone}`}
+                    key={block.id}
+                  >
+                    <BlockCanvasToolbar
+                      index={index}
+                      total={section.blocks.length}
+                      onMove={(direction) => moveLayoutBlock(section.id, index, direction)}
+                      onRemove={() => removeLayoutBlock(section.id, block.id)}
+                    />
+                    <InlineTextInput
+                      ariaLabel="Block title"
+                      className="home-canvas__subheading-input"
+                      value={block.title || ""}
+                      placeholder="Block title"
+                      onChange={(value) =>
+                        patchLayoutBlock(section.id, block.id, (current) =>
+                          current.type === "markdown"
+                            ? { ...current, title: value || undefined }
+                            : current,
+                        )
+                      }
+                    />
+                    <InlineMarkdownEditor
+                      ariaLabel="Block body"
+                      value={block.body}
+                      placeholder="Click to write text…"
+                      onChange={(value) =>
+                        patchLayoutBlock(section.id, block.id, (current) =>
+                          current.type === "markdown" ? { ...current, body: value } : current,
+                        )
+                      }
+                    />
+                  </div>
+                ),
+              )}
+            <div className="home-canvas__column-add">
+              <button type="button" onClick={() => addLayoutBlock(section.id, "markdown")}>
+                + Text
+              </button>
+              <button type="button" onClick={() => addLayoutBlock(section.id, "image")}>
+                + Image
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BlockCanvasToolbar({
+  index,
+  onMove,
+  onRemove,
+  total,
+}: {
+  index: number;
+  onMove: (direction: -1 | 1) => void;
+  onRemove: () => void;
+  total: number;
+}) {
+  return (
+    <div className="home-canvas__block-toolbar" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        disabled={index === 0}
+        onClick={() => onMove(-1)}
+        aria-label="Move block up"
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        disabled={index === total - 1}
+        onClick={() => onMove(1)}
+        aria-label="Move block down"
+      >
+        ↓
+      </button>
+      <button type="button" onClick={onRemove} aria-label="Remove block">
+        ×
+      </button>
     </div>
   );
 }

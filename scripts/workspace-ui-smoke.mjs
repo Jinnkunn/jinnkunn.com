@@ -40,17 +40,22 @@ function main() {
   assertIncludes(homePanel, "useHomePreview", "HomePanel");
   assertIncludes(homePanel, "HomeSectionRail", "HomePanel");
   assertIncludes(homePanel, "HomePreviewPane", "HomePanel");
+  assertIncludes(homePanel, "HomeEditableCanvasPane", "HomePanel");
   assertIncludes(homePanel, "HomeInspectorShell", "HomePanel");
   assertIncludes(homePanel, "usePersistentUiState", "HomePanel");
   assertIncludes(homePanel, "HOME_EDITOR_MODES", "HomePanel");
   assertIncludes(homePanel, "HOME_PREVIEW_VIEWPORTS", "HomePanel");
   assertIncludes(homePanel, "home-builder__outline-drawer", "HomePanel");
+  assertIncludes(homePanel, "home-builder__settings-drawer", "HomePanel");
+  assertIncludes(homePanel, "InlineMarkdownEditor", "HomePanel");
+  assertIncludes(homePanel, "EditableHeroSection", "HomePanel");
 
   const homePanels = read(
     "apps/workspace/src/surfaces/site-admin/home-builder/HomeBuilderPanels.tsx",
   );
   assertIncludes(homePanels, "export function HomeSectionRail", "HomeBuilderPanels");
   assertIncludes(homePanels, "export function HomePreviewPane", "HomeBuilderPanels");
+  assertIncludes(homePanels, "export function HomeEditableCanvasPane", "HomeBuilderPanels");
   assertIncludes(homePanels, "export function HomeInspectorShell", "HomeBuilderPanels");
   assertIncludes(homePanels, "HomePreviewViewport", "HomeBuilderPanels");
   assertIncludes(homePanels, "IconButton", "HomeBuilderPanels");
