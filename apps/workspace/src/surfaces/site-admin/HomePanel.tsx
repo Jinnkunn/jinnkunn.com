@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { useDragReorder } from "./shared/useDragReorder";
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
 import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
+import {
+  BlockEditorCommandMenu,
+  getMatchingBlockEditorCommands,
+  type BlockEditorCommand,
+} from "./block-editor";
 import { useSiteAdmin } from "./state";
 import { useJsonDraft } from "./use-json-draft";
 import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
@@ -48,6 +53,87 @@ function PreviewText({ children }: { children?: string }) {
   return <p className="home-preview__body">{children}</p>;
 }
 
+function HomeInsertMenu({
+  afterSectionId,
+  onInsert,
+}: {
+  afterSectionId: string | null;
+  onInsert: (afterSectionId: string | null, type: HomeSectionType) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const commands = getHomeSectionCommands(query);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+  }, []);
+
+  const choose = useCallback(
+    (type: HomeSectionType) => {
+      onInsert(afterSectionId, type);
+      close();
+    },
+    [afterSectionId, close, onInsert],
+  );
+
+  return (
+    <div className="home-canvas__insert-menu" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className="home-canvas__insert-trigger"
+        aria-expanded={open}
+        aria-label="Insert home section"
+        onClick={() => setOpen((value) => !value)}
+      >
+        +
+      </button>
+      {open ? (
+        <div className="home-canvas__insert-popover">
+          <input
+            autoFocus
+            aria-label="Search home sections"
+            value={query}
+            placeholder="Type /text, /layout, /links..."
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                close();
+              }
+              if (event.key === "Enter" && commands[0]) {
+                event.preventDefault();
+                choose(commands[0].type);
+              }
+            }}
+          />
+          <div className="home-canvas__insert-options">
+            <HomeSectionCommandOptions commands={commands} onChoose={choose} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HomeSectionCommandOptions({
+  commands,
+  onChoose,
+}: {
+  commands: HomeSectionCommand[];
+  onChoose: (type: HomeSectionType) => void;
+}) {
+  return (
+    <BlockEditorCommandMenu
+      ariaLabel="Home section shortcuts"
+      className="home-canvas__command-options"
+      commands={commands}
+      empty={<p>No sections found.</p>}
+      onChoose={(command) => onChoose(command.type)}
+    />
+  );
+}
+
 const HOME_EDITOR_MODES = ["edit", "structure", "preview"] as const;
 type HomeEditorMode = (typeof HOME_EDITOR_MODES)[number];
 
@@ -64,13 +150,51 @@ const HOME_PREVIEW_VIEWPORT_LABELS: Record<HomePreviewViewport, string> = {
   mobile: "Mobile",
 };
 
-const HOME_EDITOR_INSERT_LABELS: Record<HomeSectionType, string> = {
-  hero: "Hero",
-  richText: "Text",
-  linkList: "Links",
-  featuredPages: "Featured",
-  layout: "Layout",
-};
+interface HomeSectionCommand extends BlockEditorCommand {
+  type: HomeSectionType;
+}
+
+const HOME_SECTION_COMMANDS: HomeSectionCommand[] = [
+  {
+    type: "hero",
+    id: "hero",
+    label: "Hero",
+    description: "Intro block with title, copy, and image",
+    keywords: ["hero", "intro", "profile"],
+  },
+  {
+    type: "richText",
+    id: "richText",
+    label: "Text",
+    description: "Markdown section for long-form copy",
+    keywords: ["text", "paragraph", "body", "rich"],
+  },
+  {
+    type: "layout",
+    id: "layout",
+    label: "Layout",
+    description: "Custom columns with images and text",
+    keywords: ["layout", "columns", "image", "split"],
+  },
+  {
+    type: "linkList",
+    id: "linkList",
+    label: "Links",
+    description: "Link list or inline navigation",
+    keywords: ["links", "nav", "buttons"],
+  },
+  {
+    type: "featuredPages",
+    id: "featuredPages",
+    label: "Featured pages",
+    description: "Cards linking to major site sections",
+    keywords: ["featured", "pages", "cards"],
+  },
+];
+
+function getHomeSectionCommands(query: string) {
+  return getMatchingBlockEditorCommands(query, HOME_SECTION_COMMANDS);
+}
 
 function isHomeEditorMode(value: unknown): value is HomeEditorMode {
   return isString(value) && HOME_EDITOR_MODES.includes(value as HomeEditorMode);
@@ -410,15 +534,16 @@ export function HomePanel() {
   );
 
   const addLayoutBlock = useCallback(
-    (sectionId: string, type: HomeLayoutBlockType) => {
+    (sectionId: string, type: HomeLayoutBlockType, column?: number) => {
       patchSection(sectionId, (section) => {
         if (section.type !== "layout") return section;
+        const targetColumn = Math.max(1, Math.min(section.columns, column || 1)) as 1 | 2 | 3;
         const block =
           type === "image"
             ? ({
                 id: createId(type),
                 type,
-                column: section.columns === 1 ? 1 : 2,
+                column: column ? targetColumn : section.columns === 1 ? 1 : 2,
                 url: "",
                 alt: "",
                 caption: "",
@@ -428,7 +553,7 @@ export function HomePanel() {
             : ({
                 id: createId(type),
                 type,
-                column: 1,
+                column: targetColumn,
                 title: "Text block",
                 body: "",
                 tone: "plain",
@@ -551,12 +676,19 @@ export function HomePanel() {
             uploading={canvasUploadingId === section.id}
             resolveAssetUrl={resolveCanvasAssetUrl}
             onUploadImage={(file) => void uploadCanvasHeroImage(section, file)}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
             patchSection={patchSection}
           />
         );
       }
       if (section.type === "richText") {
-        return <EditableRichTextSection section={section} patchSection={patchSection} />;
+        return (
+          <EditableRichTextSection
+            section={section}
+            patchSection={patchSection}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
+          />
+        );
       }
       if (section.type === "linkList") {
         return (
@@ -567,6 +699,7 @@ export function HomePanel() {
             addLink={addLink}
             removeLink={removeLink}
             moveLink={moveLink}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -579,6 +712,7 @@ export function HomePanel() {
             addLink={addLink}
             removeLink={removeLink}
             moveLink={moveLink}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -593,6 +727,7 @@ export function HomePanel() {
             addLayoutBlock={addLayoutBlock}
             removeLayoutBlock={removeLayoutBlock}
             moveLayoutBlock={moveLayoutBlock}
+            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
             uploadLayoutImage={(block, file) =>
               void uploadCanvasLayoutImage(section.id, block, file)
             }
@@ -605,6 +740,7 @@ export function HomePanel() {
       addLayoutBlock,
       addLink,
       canvasUploadingId,
+      insertSectionAfter,
       moveLayoutBlock,
       moveLink,
       patchLayoutBlock,
@@ -682,18 +818,7 @@ export function HomePanel() {
 
   const renderInsertControls = useCallback(
     (afterSectionId: string | null) => (
-      <div className="home-canvas__insert-row" onClick={(event) => event.stopPropagation()}>
-        <span>+</span>
-        {(Object.keys(HOME_EDITOR_INSERT_LABELS) as HomeSectionType[]).map((type) => (
-          <button
-            type="button"
-            key={type}
-            onClick={() => insertSectionAfter(afterSectionId, type)}
-          >
-            {HOME_EDITOR_INSERT_LABELS[type]}
-          </button>
-        ))}
-      </div>
+      <HomeInsertMenu afterSectionId={afterSectionId} onInsert={insertSectionAfter} />
     ),
     [insertSectionAfter],
   );
@@ -1443,7 +1568,7 @@ function LayoutFields({
     blockId: string,
     mapper: (block: HomeLayoutBlock) => HomeLayoutBlock,
   ) => void;
-  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType) => void;
+  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType, column?: number) => void;
   removeLayoutBlock: (sectionId: string, blockId: string) => void;
   moveLayoutBlock: (sectionId: string, index: number, direction: -1 | 1) => void;
 }) {
@@ -2079,30 +2204,71 @@ function MarkdownPreviewBody({
 
 function InlineMarkdownEditor({
   ariaLabel,
+  onEnterAtEnd,
   onChange,
+  onSlashCommand,
   placeholder,
   value,
 }: {
   ariaLabel: string;
+  onEnterAtEnd?: () => void;
   onChange: (value: string) => void;
+  onSlashCommand?: (type: HomeSectionType) => void;
   placeholder?: string;
   value: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const slashCommands =
+    editing && onSlashCommand && value.trim().startsWith("/")
+      ? getHomeSectionCommands(value.trim())
+      : [];
+  const chooseSlashCommand = useCallback(
+    (type: HomeSectionType) => {
+      if (!onSlashCommand) return;
+      onChange("");
+      onSlashCommand(type);
+      setEditing(false);
+    },
+    [onChange, onSlashCommand],
+  );
+
   if (editing) {
     const rows = Math.max(3, Math.min(12, value.split("\n").length + 2));
     return (
-      <textarea
-        autoFocus
-        aria-label={ariaLabel}
-        className="home-canvas__markdown-editor"
-        rows={rows}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={() => setEditing(false)}
-        onClick={(event) => event.stopPropagation()}
-      />
+      <div className="home-canvas__markdown-field" onClick={(event) => event.stopPropagation()}>
+        <textarea
+          autoFocus
+          aria-label={ariaLabel}
+          className="home-canvas__markdown-editor"
+          rows={rows}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={() => setEditing(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && slashCommands[0]) {
+              event.preventDefault();
+              chooseSlashCommand(slashCommands[0].type);
+              return;
+            }
+            if (event.key !== "Enter" || event.shiftKey || !onEnterAtEnd) return;
+            const target = event.currentTarget;
+            if (target.selectionStart !== value.length || target.selectionEnd !== value.length) {
+              return;
+            }
+            event.preventDefault();
+            onEnterAtEnd();
+          }}
+        />
+        {slashCommands.length ? (
+          <div className="home-canvas__slash-popover">
+            <HomeSectionCommandOptions
+              commands={slashCommands}
+              onChoose={chooseSlashCommand}
+            />
+          </div>
+        ) : null}
+      </div>
     );
   }
   return (
@@ -2199,12 +2365,14 @@ function EditableImageCanvas({
 }
 
 function EditableHeroSection({
+  onSlashCommand,
   onUploadImage,
   patchSection,
   resolveAssetUrl,
   section,
   uploading,
 }: {
+  onSlashCommand: (type: HomeSectionType) => void;
   onUploadImage: (file: File | null) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   resolveAssetUrl: (url: string | undefined) => string;
@@ -2254,6 +2422,7 @@ function EditableHeroSection({
           ariaLabel="Hero body"
           value={section.body}
           placeholder="Click to write hero copy…"
+          onSlashCommand={onSlashCommand}
           onChange={(value) =>
             patchSection(section.id, (current) =>
               current.type === "hero" ? { ...current, body: value } : current,
@@ -2266,9 +2435,11 @@ function EditableHeroSection({
 }
 
 function EditableRichTextSection({
+  onSlashCommand,
   patchSection,
   section,
 }: {
+  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   section: HomeRichTextSection;
 }) {
@@ -2299,6 +2470,7 @@ function EditableRichTextSection({
         ariaLabel="Section body"
         value={section.body}
         placeholder="Click to write section body…"
+        onSlashCommand={onSlashCommand}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "richText" ? { ...current, body: value } : current,
@@ -2312,6 +2484,7 @@ function EditableRichTextSection({
 function EditableLinkListSection({
   addLink,
   moveLink,
+  onSlashCommand,
   patchSection,
   removeLink,
   section,
@@ -2319,6 +2492,7 @@ function EditableLinkListSection({
 }: {
   addLink: (sectionId: string) => void;
   moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
+  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   removeLink: (sectionId: string, index: number) => void;
   section: HomeLinkListSection;
@@ -2343,6 +2517,7 @@ function EditableLinkListSection({
         ariaLabel="Links intro"
         value={section.body || ""}
         placeholder="Click to write intro…"
+        onSlashCommand={onSlashCommand}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "linkList"
@@ -2413,6 +2588,7 @@ function EditableLinkListSection({
 function EditableFeaturedPagesSection({
   addLink,
   moveLink,
+  onSlashCommand,
   patchSection,
   removeLink,
   section,
@@ -2420,6 +2596,7 @@ function EditableFeaturedPagesSection({
 }: {
   addLink: (sectionId: string) => void;
   moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
+  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   removeLink: (sectionId: string, index: number) => void;
   section: HomeFeaturedPagesSection;
@@ -2444,6 +2621,7 @@ function EditableFeaturedPagesSection({
         ariaLabel="Featured pages intro"
         value={section.body || ""}
         placeholder="Click to write intro…"
+        onSlashCommand={onSlashCommand}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "featuredPages"
@@ -2526,6 +2704,7 @@ function EditableFeaturedPagesSection({
 function EditableLayoutSection({
   addLayoutBlock,
   moveLayoutBlock,
+  onSlashCommand,
   patchLayoutBlock,
   patchSection,
   removeLayoutBlock,
@@ -2534,8 +2713,9 @@ function EditableLayoutSection({
   uploadLayoutImage,
   uploadingId,
 }: {
-  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType) => void;
+  addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType, column?: number) => void;
   moveLayoutBlock: (sectionId: string, index: number, direction: -1 | 1) => void;
+  onSlashCommand: (type: HomeSectionType) => void;
   patchLayoutBlock: (
     sectionId: string,
     blockId: string,
@@ -2637,6 +2817,8 @@ function EditableLayoutSection({
                       ariaLabel="Block body"
                       value={block.body}
                       placeholder="Click to write text…"
+                      onEnterAtEnd={() => addLayoutBlock(section.id, "markdown", column)}
+                      onSlashCommand={onSlashCommand}
                       onChange={(value) =>
                         patchLayoutBlock(section.id, block.id, (current) =>
                           current.type === "markdown" ? { ...current, body: value } : current,
@@ -2647,10 +2829,10 @@ function EditableLayoutSection({
                 ),
               )}
             <div className="home-canvas__column-add">
-              <button type="button" onClick={() => addLayoutBlock(section.id, "markdown")}>
+              <button type="button" onClick={() => addLayoutBlock(section.id, "markdown", column)}>
                 + Text
               </button>
-              <button type="button" onClick={() => addLayoutBlock(section.id, "image")}>
+              <button type="button" onClick={() => addLayoutBlock(section.id, "image", column)}>
                 + Image
               </button>
             </div>
