@@ -2,22 +2,24 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  type DragEvent,
   type FormEvent,
 } from "react";
-import type { MarkdownEditorApi } from "./MarkdownEditor";
 import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { useSiteAdmin } from "./state";
-import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
-import { insertMarkdownImage, uploadImageFile } from "./assets-upload";
+import { AssetLibraryPicker } from "./AssetLibraryPicker";
 import {
   buildPageSource,
   parsePageSource,
   type PageFrontmatterForm,
 } from "./mdx-source";
 import { formatDraftAge, useEditorDraft } from "./use-editor-draft";
+import {
+  useConfirmingBack,
+  useMdxImageUploadDrop,
+  useUnsavedChangesBeforeUnload,
+} from "./use-mdx-editor-controller";
+import { isBoolean, usePersistentUiState } from "./use-persistent-ui-state";
 import { normalizeString } from "./utils";
 import { usePreview } from "./use-preview";
 
@@ -53,18 +55,24 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [dragDepth, setDragDepth] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmBackSource, setConfirmBackSource] = useState("");
-  const [previewOn, setPreviewOn] = useState(false);
-  const editorApiRef = useRef<MarkdownEditorApi | null>(null);
+  const [previewOn, setPreviewOn] = usePersistentUiState(
+    "workspace.site-admin.page-editor.preview.v1",
+    false,
+    isBoolean,
+  );
 
   const previewSource = useMemo(() => buildPageSource(form, body), [form, body]);
   const dirty = previewSource !== lastSavedSource || (mode === "create" && Boolean(slug.trim()));
-  const confirmBack = dirty && confirmBackSource === previewSource;
   const preview = usePreview(previewSource, previewOn, request);
+  const imageDrop = useMdxImageUploadDrop({ request, setError, setMessage });
+  const { confirmBack, leaveEditor } = useConfirmingBack({
+    dirty,
+    initialSlug,
+    onExit,
+    source: previewSource,
+  });
 
   // See PostEditor for the keying rationale.
   const draftKeySlug = mode === "create" ? "" : (initialSlug ?? "");
@@ -109,51 +117,7 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
     };
   }, [initialSlug, mode, request, setMessage]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (saving || deleting) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [deleting, dirty, saving]);
-
-  const onDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setDragDepth((depth) => depth + 1);
-  }, []);
-
-  const onDragLeave = useCallback(() => {
-    setDragDepth((depth) => Math.max(0, depth - 1));
-  }, []);
-
-  const handleDrop = useCallback(
-    async (event: DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setDragDepth(0);
-      const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length === 0) return;
-      const api = editorApiRef.current;
-      if (!api) return;
-      for (const file of files) {
-        setUploading(true);
-        const result = await uploadImageFile({ file, request });
-        setUploading(false);
-        if (!result.ok) {
-          setError(result.error);
-          setMessage("error", `Upload failed: ${result.error}`);
-          continue;
-        }
-        rememberRecentAsset(result.asset, result.filename);
-        const alt = file.name.replace(/\.[^.]+$/, "");
-        insertMarkdownImage(api, result.asset.url, alt);
-        setMessage("success", `Uploaded ${result.filename} → ${result.asset.url}`);
-      }
-    },
-    [request, setMessage],
-  );
+  useUnsavedChangesBeforeUnload(dirty, saving, deleting);
 
   const canSave = useMemo(() => {
     if (!form.title.trim()) return false;
@@ -229,18 +193,6 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
     onExit("deleted", initialSlug);
   }, [clearDraft, initialSlug, mode, onExit, request, setMessage, version]);
 
-  const onEditorReady = useCallback((api: MarkdownEditorApi) => {
-    editorApiRef.current = api;
-  }, []);
-
-  const leaveEditor = useCallback(() => {
-    if (dirty && !confirmBack) {
-      setConfirmBackSource(previewSource);
-      return;
-    }
-    onExit("cancel", initialSlug);
-  }, [confirmBack, dirty, initialSlug, onExit, previewSource]);
-
   const title = mode === "create" ? "New page" : `Edit page: ${initialSlug ?? ""}`;
 
   return (
@@ -294,7 +246,7 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
             type="submit"
             form="page-editor-form"
             className="btn btn--primary"
-            disabled={!canSave || saving || loading || uploading}
+            disabled={!canSave || saving || loading || imageDrop.uploading}
           >
             {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
           </button>
@@ -394,8 +346,8 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
           <div className="flex flex-col gap-1 text-[12.5px]">
             <span className="text-text-muted">
               Body (MDX)
-              {uploading ? " — uploading image…" : ""}
-              {dragDepth > 0 ? " — drop to upload" : ""}
+              {imageDrop.uploading ? " — uploading image…" : ""}
+              {imageDrop.dragDepth > 0 ? " — drop to upload" : ""}
               {previewOn
                 ? preview.loading
                   ? " — rendering preview…"
@@ -406,16 +358,16 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
             </span>
             <div
               className="editor-drop-zone flex gap-3"
-              data-drag-active={dragDepth > 0 ? "true" : undefined}
-              onDragEnter={onDragEnter}
-              onDragLeave={onDragLeave}
+              data-drag-active={imageDrop.dragDepth > 0 ? "true" : undefined}
+              onDragEnter={imageDrop.onDragEnter}
+              onDragLeave={imageDrop.onDragLeave}
             >
               <div className={previewOn ? "flex-1 min-w-0" : "w-full"}>
                 <MarkdownEditor
                   value={body}
                   onChange={setBody}
-                  onDrop={handleDrop}
-                  onReady={onEditorReady}
+                  onDrop={imageDrop.handleDrop}
+                  onReady={imageDrop.onEditorReady}
                   minHeight={360}
                 />
               </div>
@@ -437,10 +389,8 @@ export function PageEditor({ mode, slug: initialSlug, onExit }: PageEditorProps)
             </span>
             <AssetLibraryPicker
               onSelect={(asset) => {
-                const api = editorApiRef.current;
-                if (!api) return;
                 const alt = asset.alt || asset.filename || "image";
-                insertMarkdownImage(api, asset.url, alt.replace(/\.[^.]+$/, ""));
+                imageDrop.insertAssetImage(asset.url, alt);
               }}
             />
           </div>
