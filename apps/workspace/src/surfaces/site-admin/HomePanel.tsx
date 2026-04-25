@@ -6,6 +6,11 @@ import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
 import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
+import {
+  BlockEditorCommandMenu,
+  getMatchingBlockEditorCommands,
+  type BlockEditorCommand,
+} from "./block-editor";
 import { useSiteAdmin } from "./state";
 import { useJsonDraft } from "./use-json-draft";
 import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
@@ -84,7 +89,7 @@ function HomeInsertMenu({
         +
       </button>
       {open ? (
-        <div className="home-canvas__insert-popover" role="menu">
+        <div className="home-canvas__insert-popover">
           <input
             autoFocus
             aria-label="Search home sections"
@@ -118,22 +123,14 @@ function HomeSectionCommandOptions({
   commands: HomeSectionCommand[];
   onChoose: (type: HomeSectionType) => void;
 }) {
-  if (!commands.length) return <p>No sections found.</p>;
   return (
-    <>
-      {commands.map((command) => (
-        <button
-          type="button"
-          role="menuitem"
-          key={command.type}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onChoose(command.type)}
-        >
-          <strong>{command.label}</strong>
-          <span>{command.description}</span>
-        </button>
-      ))}
-    </>
+    <BlockEditorCommandMenu
+      ariaLabel="Home section shortcuts"
+      className="home-canvas__command-options"
+      commands={commands}
+      empty={<p>No sections found.</p>}
+      onChoose={(command) => onChoose(command.type)}
+    />
   );
 }
 
@@ -153,61 +150,50 @@ const HOME_PREVIEW_VIEWPORT_LABELS: Record<HomePreviewViewport, string> = {
   mobile: "Mobile",
 };
 
-interface HomeSectionCommand {
-  description: string;
-  keywords: string[];
-  label: string;
+interface HomeSectionCommand extends BlockEditorCommand {
   type: HomeSectionType;
 }
 
 const HOME_SECTION_COMMANDS: HomeSectionCommand[] = [
   {
     type: "hero",
+    id: "hero",
     label: "Hero",
     description: "Intro block with title, copy, and image",
     keywords: ["hero", "intro", "profile"],
   },
   {
     type: "richText",
+    id: "richText",
     label: "Text",
     description: "Markdown section for long-form copy",
     keywords: ["text", "paragraph", "body", "rich"],
   },
   {
     type: "layout",
+    id: "layout",
     label: "Layout",
     description: "Custom columns with images and text",
     keywords: ["layout", "columns", "image", "split"],
   },
   {
     type: "linkList",
+    id: "linkList",
     label: "Links",
     description: "Link list or inline navigation",
     keywords: ["links", "nav", "buttons"],
   },
   {
     type: "featuredPages",
+    id: "featuredPages",
     label: "Featured pages",
     description: "Cards linking to major site sections",
     keywords: ["featured", "pages", "cards"],
   },
 ];
 
-function normalizeHomeSectionCommandQuery(value: string) {
-  return value.trim().toLowerCase().replace(/^\//, "").replace(/\s+/g, "");
-}
-
 function getHomeSectionCommands(query: string) {
-  const normalized = normalizeHomeSectionCommandQuery(query);
-  if (!normalized) return HOME_SECTION_COMMANDS;
-  return HOME_SECTION_COMMANDS.filter((command) => {
-    const label = normalizeHomeSectionCommandQuery(command.label);
-    return (
-      label.includes(normalized) ||
-      command.type.toLowerCase().includes(normalized) ||
-      command.keywords.some((keyword) => keyword.includes(normalized))
-    );
-  });
+  return getMatchingBlockEditorCommands(query, HOME_SECTION_COMMANDS);
 }
 
 function isHomeEditorMode(value: unknown): value is HomeEditorMode {
@@ -2275,7 +2261,7 @@ function InlineMarkdownEditor({
           }}
         />
         {slashCommands.length ? (
-          <div className="home-canvas__slash-popover" role="menu">
+          <div className="home-canvas__slash-popover">
             <HomeSectionCommandOptions
               commands={slashCommands}
               onChoose={chooseSlashCommand}

@@ -16,6 +16,11 @@ import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { uploadImageFile } from "./assets-upload";
 import {
+  BlockEditorCommandMenu,
+  getMatchingBlockEditorCommands,
+  type BlockEditorCommand,
+} from "./block-editor";
+import {
   createMdxBlock,
   parseMdxBlocks,
   serializeMdxBlocks,
@@ -75,76 +80,84 @@ const BLOCK_INSERT_TYPES: MdxBlockType[] = [
   "raw",
 ];
 
-interface SlashCommand {
-  description: string;
-  keywords: string[];
-  label: string;
+interface SlashCommand extends BlockEditorCommand {
   makeBlock: () => MdxBlock;
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Plain paragraph text",
+    id: "text",
     keywords: ["text", "paragraph", "plain"],
     label: "Text",
     makeBlock: () => createMdxBlock("paragraph"),
   },
   {
     description: "Large section heading",
+    id: "heading1",
     keywords: ["h1", "heading1", "title"],
     label: "Heading 1",
     makeBlock: () => ({ ...createMdxBlock("heading"), level: 1, text: "" }),
   },
   {
     description: "Medium section heading",
+    id: "heading2",
     keywords: ["h2", "heading", "heading2"],
     label: "Heading 2",
     makeBlock: () => ({ ...createMdxBlock("heading"), level: 2, text: "" }),
   },
   {
     description: "Small section heading",
+    id: "heading3",
     keywords: ["h3", "heading3", "subheading"],
     label: "Heading 3",
     makeBlock: () => ({ ...createMdxBlock("heading"), level: 3, text: "" }),
   },
   {
     description: "Upload or paste an image",
+    id: "image",
     keywords: ["image", "img", "photo", "media"],
     label: "Image",
     makeBlock: () => createMdxBlock("image"),
   },
   {
     description: "Quote or excerpt",
+    id: "quote",
     keywords: ["quote", "blockquote"],
     label: "Quote",
     makeBlock: () => createMdxBlock("quote"),
   },
   {
     description: "Bulleted or numbered list",
+    id: "list",
     keywords: ["list", "bullet", "bulleted", "numbered"],
     label: "List",
     makeBlock: () => createMdxBlock("list"),
   },
   {
     description: "Visual separator",
+    id: "divider",
     keywords: ["divider", "hr", "line"],
     label: "Divider",
     makeBlock: () => createMdxBlock("divider"),
   },
   {
     description: "Highlighted note",
+    id: "callout",
     keywords: ["callout", "note", "tip"],
     label: "Callout",
     makeBlock: () => createMdxBlock("callout"),
   },
   {
     description: "Fenced code block",
+    id: "code",
     keywords: ["code", "snippet"],
     label: "Code",
     makeBlock: () => createMdxBlock("code"),
   },
   {
     description: "Advanced MDX",
+    id: "raw",
     keywords: ["raw", "mdx", "html"],
     label: "Raw MDX",
     makeBlock: () => createMdxBlock("raw"),
@@ -191,21 +204,8 @@ export interface MdxDocumentEditorProps<TForm> {
   slug?: string;
 }
 
-function normalizeSlashQuery(value: string): string | null {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed.startsWith("/")) return null;
-  return trimmed.slice(1).replace(/\s+/g, "");
-}
-
 function getMatchingSlashCommands(value: string): SlashCommand[] {
-  const query = normalizeSlashQuery(value);
-  if (query === null) return [];
-  if (!query) return SLASH_COMMANDS;
-  return SLASH_COMMANDS.filter(
-    (command) =>
-      command.label.toLowerCase().replace(/\s+/g, "").includes(query) ||
-      command.keywords.some((keyword) => keyword.includes(query)),
-  );
+  return getMatchingBlockEditorCommands(value, SLASH_COMMANDS, { requireSlash: true });
 }
 
 function blockFromSlashCommand(value: string): MdxBlock | null {
@@ -564,7 +564,6 @@ function BodyBlockCanvas({
               return Boolean(next);
             }}
             onChooseSlashCommand={(command) => replaceBlock(block.id, command.makeBlock())}
-            onConvertType={(type) => replaceBlock(block.id, createMdxBlock(type))}
             onFocusInput={(node) => registerBlockInput(block.id, node)}
             onInsertParagraphAfter={() => insertParagraphAfter(index)}
             onRemoveEmpty={() => removeEmptyBlock(block.id, index)}
@@ -593,7 +592,6 @@ function BodyBlockCanvas({
 function EditableBlock({
   block,
   onChooseSlashCommand,
-  onConvertType,
   onFocusInput,
   onInsertParagraphAfter,
   onPatch,
@@ -604,7 +602,6 @@ function EditableBlock({
 }: {
   block: MdxBlock;
   onChooseSlashCommand: (command: SlashCommand) => void;
-  onConvertType: (type: MdxBlockType) => void;
   onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
   onInsertParagraphAfter: () => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
@@ -799,38 +796,11 @@ function EditableBlock({
         onKeyDown={onTextKeyDown}
       />
       {showSlashMenu ? (
-        <SlashCommandMenu
+        <BlockEditorCommandMenu
+          className="mdx-document-slash-menu"
           commands={slashCommands}
           onChoose={onChooseSlashCommand}
-          onConvertType={onConvertType}
         />
-      ) : null}
-    </div>
-  );
-}
-
-function SlashCommandMenu({
-  commands,
-  onChoose,
-  onConvertType,
-}: {
-  commands: SlashCommand[];
-  onChoose: (command: SlashCommand) => void;
-  onConvertType: (type: MdxBlockType) => void;
-}) {
-  return (
-    <div className="mdx-document-slash-menu" aria-label="Block shortcuts">
-      {commands.map((command) => (
-        <button type="button" key={command.label} onClick={() => onChoose(command)}>
-          <strong>{command.label}</strong>
-          <span>{command.description}</span>
-        </button>
-      ))}
-      {commands.length === 0 ? (
-        <button type="button" onClick={() => onConvertType("paragraph")}>
-          <strong>Text</strong>
-          <span>Start with a plain paragraph</span>
-        </button>
       ) : null}
     </div>
   );
