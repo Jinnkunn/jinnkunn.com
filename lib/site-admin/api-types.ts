@@ -401,131 +401,16 @@ export type SiteAdminStructuredPageSection = {
   width: "narrow" | "standard" | "wide";
 };
 
-export type SiteAdminHomeSectionType =
-  | "hero"
-  | "richText"
-  | "linkList"
-  | "featuredPages"
-  | "layout";
-
-export type SiteAdminHomeSectionWidth = "narrow" | "standard" | "wide";
-
-export type SiteAdminHomeTextAlign = "left" | "center";
-
-export type SiteAdminHomeRichTextVariant = "standard" | "classicBody";
-
-export type SiteAdminHomeLayoutVariant = "standard" | "classicIntro";
-
-export type SiteAdminHomeLink = {
-  label: string;
-  href: string;
-  description?: string;
-};
-
-export type SiteAdminHomeLayoutBlockType = "markdown" | "image";
-
-export type SiteAdminHomeLayoutBlockBase = {
-  id: string;
-  type: SiteAdminHomeLayoutBlockType;
-  column: 1 | 2 | 3;
-};
-
-export type SiteAdminHomeMarkdownBlock = SiteAdminHomeLayoutBlockBase & {
-  type: "markdown";
-  title?: string;
-  body: string;
-  tone: "plain" | "panel" | "quote";
-  textAlign: SiteAdminHomeTextAlign;
-};
-
-export type SiteAdminHomeImageBlock = SiteAdminHomeLayoutBlockBase & {
-  type: "image";
-  url: string;
-  alt?: string;
-  caption?: string;
-  shape: "rounded" | "portrait" | "circle" | "square";
-  fit: "cover" | "contain";
-};
-
-export type SiteAdminHomeLayoutBlock =
-  | SiteAdminHomeMarkdownBlock
-  | SiteAdminHomeImageBlock;
-
-export type SiteAdminHomeHeroSection = {
-  id: string;
-  type: "hero";
-  enabled: boolean;
-  title: string;
-  body: string;
-  profileImageUrl?: string;
-  profileImageAlt?: string;
-  imagePosition: "left" | "right" | "top" | "none";
-  textAlign: SiteAdminHomeTextAlign;
-  width: SiteAdminHomeSectionWidth;
-};
-
-export type SiteAdminHomeRichTextSection = {
-  id: string;
-  type: "richText";
-  enabled: boolean;
-  title?: string;
-  body: string;
-  variant: SiteAdminHomeRichTextVariant;
-  tone: "plain" | "panel" | "quote";
-  textAlign: SiteAdminHomeTextAlign;
-  width: SiteAdminHomeSectionWidth;
-};
-
-export type SiteAdminHomeLinkListSection = {
-  id: string;
-  type: "linkList";
-  enabled: boolean;
-  title?: string;
-  body?: string;
-  layout: "stack" | "grid" | "inline";
-  links: SiteAdminHomeLink[];
-  width: SiteAdminHomeSectionWidth;
-};
-
-export type SiteAdminHomeFeaturedPagesSection = {
-  id: string;
-  type: "featuredPages";
-  enabled: boolean;
-  title?: string;
-  body?: string;
-  columns: 2 | 3;
-  items: SiteAdminHomeLink[];
-  width: SiteAdminHomeSectionWidth;
-};
-
-export type SiteAdminHomeLayoutSection = {
-  id: string;
-  type: "layout";
-  enabled: boolean;
-  title?: string;
-  variant: SiteAdminHomeLayoutVariant;
-  columns: 1 | 2 | 3;
-  gap: "compact" | "standard" | "loose";
-  verticalAlign: "start" | "center";
-  blocks: SiteAdminHomeLayoutBlock[];
-  width: SiteAdminHomeSectionWidth;
-};
-
-export type SiteAdminHomeSection =
-  | SiteAdminHomeHeroSection
-  | SiteAdminHomeRichTextSection
-  | SiteAdminHomeLinkListSection
-  | SiteAdminHomeFeaturedPagesSection
-  | SiteAdminHomeLayoutSection;
-
+/** Home is now a single Notion-style MDX document — `bodyMdx` is the
+ * only content source. The legacy section types
+ * (SiteAdminHomeHeroSection, SiteAdminHomeLinkListSection, …) were
+ * removed when the Notion-mode editor replaced the section-builder UI.
+ * Any blocks the public site renders now flow through the shared MDX
+ * components (HeroBlock / Columns / LinkListBlock / FeaturedPagesBlock /
+ * paragraphs / headings / …) — same primitives every other page uses. */
 export type SiteAdminHomeData = {
   schemaVersion?: number;
   title: string;
-  sections: SiteAdminHomeSection[];
-  /** Optional Notion-style MDX body. When non-empty, the public Home
-   * page renders this through the shared MDX components instead of
-   * iterating sections. Lets the user author Home as a block-editor
-   * document. */
   bodyMdx?: string;
 };
 

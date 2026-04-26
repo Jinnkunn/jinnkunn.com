@@ -12,12 +12,7 @@ export type SiteAdminTab =
   | "news"
   | "teaching"
   | "works"
-  | "settings"
-  // Retained for back-compat with persisted UI state from before the
-  // Settings surface absorbed both — directly visiting either still
-  // works if some old localStorage value points here.
-  | "config"
-  | "routes";
+  | "settings";
 
 export interface SiteSettings {
   rowId: string;
@@ -305,129 +300,16 @@ export interface StructuredPageSection {
   width: "narrow" | "standard" | "wide";
 }
 
-export type HomeSectionType =
-  | "hero"
-  | "richText"
-  | "linkList"
-  | "featuredPages"
-  | "layout";
-
-export type HomeSectionWidth = "narrow" | "standard" | "wide";
-
-export type HomeTextAlign = "left" | "center";
-
-export type HomeRichTextVariant = "standard" | "classicBody";
-
-export type HomeLayoutVariant = "standard" | "classicIntro";
-
-export interface HomeLink {
-  label: string;
-  href: string;
-  description?: string;
-}
-
-export type HomeLayoutBlockType = "markdown" | "image";
-
-export interface HomeLayoutBlockBase {
-  id: string;
-  type: HomeLayoutBlockType;
-  column: 1 | 2 | 3;
-}
-
-export interface HomeMarkdownBlock extends HomeLayoutBlockBase {
-  type: "markdown";
-  title?: string;
-  body: string;
-  tone: "plain" | "panel" | "quote";
-  textAlign: HomeTextAlign;
-}
-
-export interface HomeImageBlock extends HomeLayoutBlockBase {
-  type: "image";
-  url: string;
-  alt?: string;
-  caption?: string;
-  shape: "rounded" | "portrait" | "circle" | "square";
-  fit: "cover" | "contain";
-}
-
-export type HomeLayoutBlock = HomeMarkdownBlock | HomeImageBlock;
-
-export interface HomeHeroSection {
-  id: string;
-  type: "hero";
-  enabled: boolean;
-  title: string;
-  body: string;
-  profileImageUrl?: string;
-  profileImageAlt?: string;
-  imagePosition: "left" | "right" | "top" | "none";
-  textAlign: HomeTextAlign;
-  width: HomeSectionWidth;
-}
-
-export interface HomeRichTextSection {
-  id: string;
-  type: "richText";
-  enabled: boolean;
-  title?: string;
-  body: string;
-  variant: HomeRichTextVariant;
-  tone: "plain" | "panel" | "quote";
-  textAlign: HomeTextAlign;
-  width: HomeSectionWidth;
-}
-
-export interface HomeLinkListSection {
-  id: string;
-  type: "linkList";
-  enabled: boolean;
-  title?: string;
-  body?: string;
-  layout: "stack" | "grid" | "inline";
-  links: HomeLink[];
-  width: HomeSectionWidth;
-}
-
-export interface HomeFeaturedPagesSection {
-  id: string;
-  type: "featuredPages";
-  enabled: boolean;
-  title?: string;
-  body?: string;
-  columns: 2 | 3;
-  items: HomeLink[];
-  width: HomeSectionWidth;
-}
-
-export interface HomeLayoutSection {
-  id: string;
-  type: "layout";
-  enabled: boolean;
-  title?: string;
-  variant: HomeLayoutVariant;
-  columns: 1 | 2 | 3;
-  gap: "compact" | "standard" | "loose";
-  verticalAlign: "start" | "center";
-  blocks: HomeLayoutBlock[];
-  width: HomeSectionWidth;
-}
-
-export type HomeSection =
-  | HomeHeroSection
-  | HomeRichTextSection
-  | HomeLinkListSection
-  | HomeFeaturedPagesSection
-  | HomeLayoutSection;
-
+/** Home is now a single MDX document — `bodyMdx` is the only content
+ * source. The legacy section-builder schema (HomeHeroSection,
+ * HomeLinkListSection, HomeLayoutSection, …) was removed once the
+ * Notion-mode editor replaced the section-builder UI; the public site
+ * renders bodyMdx through `postMdxComponents`, with the same
+ * HeroBlock / LinkListBlock / FeaturedPagesBlock / Columns primitives
+ * available on every other page. */
 export interface HomeData {
   schemaVersion?: number;
   title: string;
-  sections: HomeSection[];
-  /** Optional Notion-style MDX body. When non-empty, the public Home
-   * page renders this through postMdxComponents and ignores `sections`,
-   * letting the user author Home as a block-editor document with the
-   * shared HeroBlock / LinkListBlock / FeaturedPagesBlock primitives. */
   bodyMdx?: string;
 }
 

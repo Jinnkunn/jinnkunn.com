@@ -9,62 +9,53 @@ async function read(relPath) {
   return await fs.readFile(path.join(ROOT, relPath), "utf8");
 }
 
-test("tauri-ui-engineering: Home builder is split into maintainable panels", async () => {
+test("tauri-ui-engineering: Home is a minimal Notion-mode editor", async () => {
+  // Section-builder UI (HomeSectionRail / HomePreviewPane /
+  // HomeEditableCanvasPane / HomeInspectorShell / useHomePreview / the
+  // edit / structure / preview modes) was retired once the Notion-mode
+  // editor became the only Home authoring surface. HomePanel is now a
+  // thin wrapper that loads bodyMdx → BlocksEditor → save.
   const homePanel = await read("apps/workspace/src/surfaces/site-admin/HomePanel.tsx");
-  const panels = await read(
-    "apps/workspace/src/surfaces/site-admin/home-builder/HomeBuilderPanels.tsx",
-  );
-  const previewHook = await read(
-    "apps/workspace/src/surfaces/site-admin/home-builder/useHomePreview.ts",
+  const schema = await read(
+    "apps/workspace/src/surfaces/site-admin/home-builder/schema.ts",
   );
 
+  // What HomePanel SHOULD use: the shared BlocksEditor + the slimmed
+  // schema helpers (clone / sameData / normalizeHomeData).
   for (const symbol of [
+    "BlocksEditor",
+    "useJsonDraft",
+    "normalizeHomeData",
+    "useSiteAdmin",
+  ]) {
+    assert.match(homePanel, new RegExp(symbol), `HomePanel should use ${symbol}`);
+  }
+
+  // What HomePanel must NOT reference anymore (the deleted
+  // section-builder primitives). These would all `import` from files
+  // that no longer exist, so even compile would fail — but assert
+  // explicitly so a future revival is caught here first.
+  for (const banned of [
     "HomeSectionRail",
     "HomePreviewPane",
     "HomeEditableCanvasPane",
     "HomeInspectorShell",
     "useHomePreview",
-    "usePersistentUiState",
+    "HomeInsertMenu",
     "HOME_EDITOR_MODES",
     "HOME_PREVIEW_VIEWPORTS",
   ]) {
-    assert.match(homePanel, new RegExp(symbol), `HomePanel should use ${symbol}`);
+    assert.doesNotMatch(
+      homePanel,
+      new RegExp(banned),
+      `HomePanel should no longer reference ${banned}`,
+    );
   }
 
-  assert.match(panels, /export function HomeSectionRail/);
-  assert.match(panels, /export function HomePreviewPane/);
-  assert.match(panels, /export function HomeEditableCanvasPane/);
-  assert.match(panels, /export function HomeInspectorShell/);
-  assert.match(panels, /HomePreviewViewport/);
-  assert.match(previewHook, /api\/site-admin\/preview\/home/);
-});
-
-test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async () => {
-  const homePanel = await read("apps/workspace/src/surfaces/site-admin/HomePanel.tsx");
-  const styles = await read("apps/workspace/src/index.css");
-
-  assert.match(homePanel, /data-mode=\{editorMode\}/);
-  assert.match(homePanel, /data-outline-open=\{outlineDrawerOpen/);
-  assert.match(homePanel, /data-settings-open=\{settingsDrawerOpen/);
-  assert.match(homePanel, /home-builder__outline-drawer/);
-  assert.match(homePanel, /home-builder__settings-drawer/);
-  // Body editing in the home canvas now uses the shared BlocksEditor
-  // (Notion-style WYSIWYG) instead of the older InlineMarkdownEditor
-  // textarea-with-preview wrapper. Section creation is still driven by
-  // the explicit HomeInsertMenu + slash command palette below.
-  assert.match(homePanel, /BlocksEditor/);
-  assert.match(homePanel, /HomeInsertMenu/);
-  assert.match(homePanel, /HomeSectionCommandOptions/);
-  assert.match(homePanel, /BlockEditorCommandMenu/);
-  assert.match(homePanel, /getMatchingBlockEditorCommands/);
-  assert.match(homePanel, /HOME_SECTION_COMMANDS/);
-  assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: 1fr;/s);
-  assert.match(styles, /\.home-builder\[data-mode="structure"\]\s*\{\s*grid-template-columns: minmax\(300px, 0\.85fr\) minmax\(360px, 1fr\);/s);
-  assert.match(styles, /\.home-canvas__section-toolbar/);
-  assert.match(styles, /\.home-canvas__insert-menu/);
-  assert.match(styles, /\.home-canvas__insert-popover/);
-  assert.match(styles, /\.home-canvas__command-options/);
-  assert.match(styles, /\.home-preview__stage/);
+  // Schema is the slimmed `{ title, bodyMdx }` shape.
+  assert.match(schema, /export function normalizeHomeData/);
+  assert.match(schema, /export function prepareHomeDataForSave/);
+  assert.doesNotMatch(schema, /HomeSectionType|createSection|sectionTitle/);
 });
 
 test("tauri-ui-engineering: Post and Page editors share one MDX document editor", async () => {

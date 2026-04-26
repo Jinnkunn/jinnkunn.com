@@ -114,11 +114,14 @@ test("public-web-style-guardrails: homepage classic link icons stay part of the 
 });
 
 test("public-web-style-guardrails: CDN home media bypasses Next image optimizer", async () => {
-  const homeView = await read("components/home/home-view.tsx");
+  // Home rendering moved to a single MDX document — the CDN-bypass
+  // guard moved with the profile image into HeroBlock, which is the
+  // component that actually mounts <Image> on the public Home now.
+  const heroBlock = await read("components/posts-mdx/hero-block.tsx");
 
-  assertIncludes(homeView, "function isCdnMediaSrc", "HomeView CDN media guard");
-  assertIncludes(homeView, 'src.startsWith("https://cdn.jinkunchen.com/")', "HomeView CDN media guard");
-  assertIncludes(homeView, "unoptimized={isCdnMediaSrc(src)}", "HomeView CDN media guard");
+  assertIncludes(heroBlock, "function isCdnMediaSrc", "HeroBlock CDN media guard");
+  assertIncludes(heroBlock, 'src.startsWith("https://cdn.jinkunchen.com/")', "HeroBlock CDN media guard");
+  assertIncludes(heroBlock, "unoptimized={isCdnMediaSrc(imageUrl)}", "HeroBlock CDN media guard");
 });
 
 test("public-web-style-guardrails: classic body copy keeps production gray tone", async () => {
