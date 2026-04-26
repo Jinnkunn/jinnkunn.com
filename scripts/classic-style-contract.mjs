@@ -38,25 +38,25 @@ const CLASSIC_ROUTES = [
   },
   {
     path: "/news",
-    pageClass: "page__news",
+    pageClass: "page__mdx-page",
     titleIncludes: "News",
     expectedLinks: 0,
   },
   {
     path: "/publications",
-    pageClass: "page__publications",
+    pageClass: "page__mdx-page",
     titleIncludes: "Publications",
     expectedLinks: 3,
   },
   {
     path: "/teaching",
-    pageClass: "page__teaching",
+    pageClass: "page__mdx-page",
     titleIncludes: "Teaching",
     expectedLinks: 1,
   },
   {
     path: "/works",
-    pageClass: "page__works",
+    pageClass: "page__mdx-page",
     titleIncludes: "Works",
     expectedLinks: 1,
   },
@@ -188,13 +188,17 @@ async function readHomeContract(page) {
     };
     return {
       classicIntro: rectOf(".home-layout--variant-classicIntro"),
-      introImage: rectOf(".home-layout--variant-classicIntro .home-layout__block--image"),
-      introText: rectOf(".home-layout--variant-classicIntro .home-layout__block--markdown"),
+      introImage: rectOf(
+        ".home-layout--variant-classicIntro .home-layout__column:first-child img",
+      ),
+      introText: rectOf(
+        ".home-layout--variant-classicIntro .home-layout__column:nth-child(2)",
+      ),
       introParagraph: styleOf(
-        ".home-layout--variant-classicIntro .home-section__body p",
+        ".home-layout--variant-classicIntro .home-layout__column:nth-child(2) p",
       ),
       bodyParagraph: styleOf(
-        ".home-rich-text--variant-classicBody .home-section__body > p",
+        ".page__index .mdx-post__body > p",
       ),
     };
   });
@@ -209,8 +213,12 @@ async function readMobileHomeContract(page) {
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     };
     return {
-      image: rectOf(".home-layout--variant-classicIntro .home-layout__block--image"),
-      text: rectOf(".home-layout--variant-classicIntro .home-layout__block--markdown"),
+      image: rectOf(
+        ".home-layout--variant-classicIntro .home-layout__column:first-child img",
+      ),
+      text: rectOf(
+        ".home-layout--variant-classicIntro .home-layout__column:nth-child(2)",
+      ),
     };
   });
 }
@@ -341,8 +349,8 @@ function assertMobileRoute(route, contract) {
 function assertMobileHome(contract) {
   assertBetween(
     contract.image?.width ?? 0,
-    218,
-    222,
+    340,
+    344,
     "Homepage classic intro image width drifted on mobile",
   );
   assert(
