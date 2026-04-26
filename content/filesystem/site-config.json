@@ -12,8 +12,7 @@
       "maxDepthBySection": {
         "teaching": 5
       }
-    },
-    "sitemapExcludes": []
+    }
   },
   "integrations": {
     "googleAnalyticsId": ""
