@@ -2448,6 +2448,43 @@ body[data-window-focused="true"] .sidebar-surface {
   display: contents;
 }
 
+/* Hero block editor card. Inline-config block (no JSON data source);
+   reuses the dashed-card styling from the data blocks for visual
+   consistency, with a 2-column grid for the form fields. */
+.mdx-document-hero-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-hero-block__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 12px;
+}
+
+.mdx-document-hero-block__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.mdx-document-hero-block__field input,
+.mdx-document-hero-block__field select {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
 /* Per-page routing & protection panel inside PageEditor's properties.
    Sits below the regular frontmatter form; each section is a collapsed
    <details> using the existing surface-details style, with extra spacing

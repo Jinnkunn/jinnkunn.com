@@ -880,3 +880,117 @@ export function DataBlockEditableBlock({
     </div>
   );
 }
+
+// ---------- Hero block ----------
+// Inline-config block (no external data source). Lifted from the Home
+// builder's hero section so a hero can be inserted into any page —
+// e.g. a custom landing page that wraps marketing copy. All fields
+// live on the tag itself; the public component renders into the same
+// `home-hero` markup as the Home page so existing styles apply.
+
+const HERO_IMAGE_POSITIONS = ["right", "left", "top", "none"] as const;
+const HERO_TEXT_ALIGNS = ["left", "center", "right"] as const;
+
+export interface HeroBlockEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+export function HeroBlockEditableBlock({
+  block,
+  onPatch,
+}: HeroBlockEditableBlockProps) {
+  const imagePosition = block.imagePosition ?? "right";
+  const textAlign = block.textAlign ?? "left";
+  return (
+    <div className="mdx-document-hero-block">
+      <div className="mdx-document-data-block__head">
+        <span className="mdx-document-data-block__icon" aria-hidden="true">
+          ✶
+        </span>
+        <div className="mdx-document-data-block__heading">
+          <strong>Hero</strong>
+          <span>Profile image + headline. Renders with the home-hero CSS.</span>
+        </div>
+      </div>
+      <div className="mdx-document-hero-block__grid">
+        <label className="mdx-document-hero-block__field">
+          <span>Title</span>
+          <input
+            value={block.title ?? ""}
+            placeholder="Welcome"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, title: event.target.value }))
+            }
+          />
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Subtitle</span>
+          <input
+            value={block.subtitle ?? ""}
+            placeholder="Optional one-liner under the title"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, subtitle: event.target.value }))
+            }
+          />
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Image URL</span>
+          <input
+            value={block.url ?? ""}
+            placeholder="/uploads/profile.jpg"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, url: event.target.value }))
+            }
+          />
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Image alt</span>
+          <input
+            value={block.alt ?? ""}
+            placeholder="Profile photo"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, alt: event.target.value }))
+            }
+          />
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Image position</span>
+          <select
+            value={imagePosition}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                imagePosition: event.target.value as MdxBlock["imagePosition"],
+              }))
+            }
+          >
+            {HERO_IMAGE_POSITIONS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Text align</span>
+          <select
+            value={textAlign}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                textAlign: event.target.value as MdxBlock["textAlign"],
+              }))
+            }
+          >
+            {HERO_TEXT_ALIGNS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}

@@ -30,6 +30,7 @@ import {
   DataBlockEditableBlock,
   EmbedEditableBlock,
   FileEditableBlock,
+  HeroBlockEditableBlock,
   PageLinkEditableBlock,
   TableEditableBlock,
   TodoEditableBlock,
@@ -91,6 +92,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "publications-block": "Publications",
   "works-block": "Works",
   "teaching-block": "Teaching",
+  "hero-block": "Hero",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -289,6 +291,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
     makeBlock: () => createMdxBlock("teaching-block"),
   },
   // Layout — structural blocks and advanced.
+  {
+    description: "Profile image + headline (home-hero CSS)",
+    group: "Layout",
+    icon: "✶",
+    id: "hero-block",
+    keywords: ["hero", "intro", "profile", "headline", "landing"],
+    label: "Hero",
+    makeBlock: () => createMdxBlock("hero-block"),
+  },
   {
     description: "Markdown table",
     group: "Layout",
@@ -1574,6 +1585,10 @@ function EditableBlock({
         description="Teaching activities from content/teaching.json"
       />
     );
+  }
+
+  if (block.type === "hero-block") {
+    return <HeroBlockEditableBlock block={block} onPatch={onPatch} />;
   }
 
   const isParagraph = block.type === "paragraph";
