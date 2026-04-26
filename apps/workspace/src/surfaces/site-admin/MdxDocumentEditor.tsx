@@ -35,6 +35,7 @@ import {
   TableEditableBlock,
   TodoEditableBlock,
   ToggleEditableBlock,
+  WorksEntryEditableBlock,
 } from "./mdx-block-renderers";
 import { RichTextEditableBlock } from "./rich-text-editable-block";
 import {
@@ -99,6 +100,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   columns: "Columns",
   column: "Column",
   "news-entry": "News entry",
+  "works-entry": "Works entry",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -288,13 +290,22 @@ const SLASH_COMMANDS: SlashCommand[] = [
     makeBlock: () => createMdxBlock("publications-block"),
   },
   {
-    description: "Recent + past work entries from content/works.json",
+    description: "Recent + past work entries from content/pages/works.mdx",
     group: "Data",
     icon: "💼",
     id: "works-block",
     keywords: ["works", "experience", "jobs", "projects", "career"],
     label: "Works",
     makeBlock: () => createMdxBlock("works-block"),
+  },
+  {
+    description: "A single role / position inside the works page",
+    group: "Data",
+    icon: "🧑‍💼",
+    id: "works-entry",
+    keywords: ["works", "entry", "role", "job", "position"],
+    label: "Works entry",
+    makeBlock: () => createMdxBlock("works-entry"),
   },
   {
     description: "Teaching activities from content/teaching.json",
@@ -1449,6 +1460,26 @@ function EditableBlock({
   if (block.type === "news-entry") {
     return (
       <NewsEntryEditableBlock
+        block={block}
+        depth={depth}
+        onPatch={onPatch}
+        renderChildren={(props) => (
+          <EditableBlocksList
+            blocks={props.blocks}
+            depth={props.depth}
+            onBlocksChange={props.onBlocksChange}
+            request={request}
+            setError={setError}
+            setMessage={setMessage}
+          />
+        )}
+      />
+    );
+  }
+
+  if (block.type === "works-entry") {
+    return (
+      <WorksEntryEditableBlock
         block={block}
         depth={depth}
         onPatch={onPatch}

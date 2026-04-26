@@ -1546,6 +1546,125 @@ export function ColumnEditableBlock({
   );
 }
 
+// ---------- Works entry ----------
+
+// One role / position on the works page. Mirrors the legacy
+// WorksEntry DTO field-by-field; description body is recursive
+// children edited via the injected `renderChildren`.
+export interface WorksEntryEditableBlockProps {
+  block: MdxBlock;
+  depth: number;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
+}
+
+export function WorksEntryEditableBlock({
+  block,
+  depth,
+  onPatch,
+  renderChildren,
+}: WorksEntryEditableBlockProps) {
+  const category = block.worksCategory ?? "recent";
+  const role = block.worksRole ?? "";
+  const period = block.worksPeriod ?? "";
+  const affiliation = block.worksAffiliation ?? "";
+  const affiliationUrl = block.worksAffiliationUrl ?? "";
+  const location = block.worksLocation ?? "";
+
+  return (
+    <div className="mdx-document-data-entry-block">
+      <div className="mdx-document-data-entry-block__head">
+        <label className="mdx-document-data-entry-block__field mdx-document-data-entry-block__field--small">
+          <span>Category</span>
+          <select
+            value={category}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                worksCategory: event.target.value as "recent" | "passed",
+              }))
+            }
+          >
+            <option value="recent">Recent</option>
+            <option value="passed">Past</option>
+          </select>
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Role</span>
+          <input
+            value={role}
+            placeholder="e.g. Research Assistant"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, worksRole: event.target.value }))
+            }
+            aria-invalid={!role.trim() || undefined}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Period</span>
+          <input
+            value={period}
+            placeholder="e.g. Sep 2024 - Now"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, worksPeriod: event.target.value }))
+            }
+            aria-invalid={!period.trim() || undefined}
+          />
+        </label>
+      </div>
+      <div className="mdx-document-data-entry-block__head">
+        <label className="mdx-document-data-entry-block__field">
+          <span>Affiliation</span>
+          <input
+            value={affiliation}
+            placeholder="e.g. Dalhousie University"
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                worksAffiliation: event.target.value || undefined,
+              }))
+            }
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Affiliation URL</span>
+          <input
+            value={affiliationUrl}
+            placeholder="https://example.org"
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                worksAffiliationUrl: event.target.value || undefined,
+              }))
+            }
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Location</span>
+          <input
+            value={location}
+            placeholder="e.g. Halifax, NS"
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                worksLocation: event.target.value || undefined,
+              }))
+            }
+          />
+        </label>
+      </div>
+      <div className="mdx-document-news-entry-block__body">
+        {renderChildren({
+          blocks: block.children ?? [],
+          depth: depth + 1,
+          onBlocksChange: (next) =>
+            onPatch((current) => ({ ...current, children: next })),
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---------- News entry ----------
 
 // One dated entry on the news page. Same recursive-children shape as

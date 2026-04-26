@@ -167,19 +167,3 @@ export const TeachingIcon = () => (
   </svg>
 );
 
-export const WorksIcon = () => (
-  <svg
-    viewBox="0 0 16 16"
-    width="14"
-    height="14"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
-    <path d="M4.75 10.75 7 8.5l1.75 1.75L10.5 8l2.25 2.75" />
-    <circle cx="6" cy="6" r="1" />
-  </svg>
-);
