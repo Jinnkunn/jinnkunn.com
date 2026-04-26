@@ -2294,32 +2294,67 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-primary);
 }
 
-/* Inline color span as it shows up inside the contenteditable. Mirrors
- * the public-site rules in app/(classic)/notion-blocks.css so the WYSIWYG
- * preview matches what readers see post-publish. Independent text vs bg
- * axes: any combination of color / bg / both is supported. */
-.mdx-document-text-block.ProseMirror span[data-color="gray"] { color: var(--color-text-gray); }
-.mdx-document-text-block.ProseMirror span[data-color="brown"] { color: var(--color-text-brown); }
-.mdx-document-text-block.ProseMirror span[data-color="orange"] { color: var(--color-text-orange); }
-.mdx-document-text-block.ProseMirror span[data-color="yellow"] { color: var(--color-text-yellow); }
-.mdx-document-text-block.ProseMirror span[data-color="green"] { color: var(--color-text-green); }
-.mdx-document-text-block.ProseMirror span[data-color="blue"] { color: var(--color-text-blue); }
-.mdx-document-text-block.ProseMirror span[data-color="purple"] { color: var(--color-text-purple); }
-.mdx-document-text-block.ProseMirror span[data-color="pink"] { color: var(--color-text-pink); }
-.mdx-document-text-block.ProseMirror span[data-color="red"] { color: var(--color-text-red); }
-.mdx-document-text-block.ProseMirror span[data-bg] {
+/* Block-level `<Color bg="...">` wrapper — emitted by the MdxBlock
+ * serializer when a block carries a non-default `block.color`. The
+ * compiled MDX renders as `<div class="notion-color" data-color="X">`,
+ * and the editor's Preview tab needs the matching tint to look the
+ * same as the published site. Selectors mirror app/(classic)/notion-
+ * blocks.css verbatim — token names differ (`--color-bg-X` vs.
+ * `--ds-color-bg-X`) but resolve to identical values. */
+.notion-color {
+  padding: 4px 12px;
+  border-radius: 6px;
+  margin: 0.6em 0;
+}
+
+.notion-color[data-color="default"] {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.notion-color[data-color="gray"] { background: var(--color-bg-gray); }
+.notion-color[data-color="brown"] { background: var(--color-bg-brown); }
+.notion-color[data-color="orange"] { background: var(--color-bg-orange); }
+.notion-color[data-color="yellow"] { background: var(--color-bg-yellow); }
+.notion-color[data-color="green"] { background: var(--color-bg-green); }
+.notion-color[data-color="blue"] { background: var(--color-bg-blue); }
+.notion-color[data-color="purple"] { background: var(--color-bg-purple); }
+.notion-color[data-color="pink"] { background: var(--color-bg-pink); }
+.notion-color[data-color="red"] { background: var(--color-bg-red); }
+
+/* Inline color spans — `<span data-color="X" data-bg="X">word</span>`
+ * emitted by the editor's selection toolbar. Selectors mirror the
+ * public-site rules in app/(classic)/notion-blocks.css verbatim
+ * (un-scoped global `span[data-...]`) so the contenteditable, the
+ * Preview tab's compiled `.mdx-post__body` HTML, and any future
+ * MDX-rendering surface inside the workspace all paint identically.
+ * Token names are the workspace-local `--color-text-X` / `--color-bg-X`
+ * but resolve to the same hex/rgba values the public site's
+ * `--ds-color-text-X` / `--ds-color-bg-X` resolve to. */
+span[data-color="gray"] { color: var(--color-text-gray); }
+span[data-color="brown"] { color: var(--color-text-brown); }
+span[data-color="orange"] { color: var(--color-text-orange); }
+span[data-color="yellow"] { color: var(--color-text-yellow); }
+span[data-color="green"] { color: var(--color-text-green); }
+span[data-color="blue"] { color: var(--color-text-blue); }
+span[data-color="purple"] { color: var(--color-text-purple); }
+span[data-color="pink"] { color: var(--color-text-pink); }
+span[data-color="red"] { color: var(--color-text-red); }
+
+span[data-bg] {
   padding: 0 3px;
   border-radius: 3px;
 }
-.mdx-document-text-block.ProseMirror span[data-bg="gray"] { background: var(--color-bg-gray); }
-.mdx-document-text-block.ProseMirror span[data-bg="brown"] { background: var(--color-bg-brown); }
-.mdx-document-text-block.ProseMirror span[data-bg="orange"] { background: var(--color-bg-orange); }
-.mdx-document-text-block.ProseMirror span[data-bg="yellow"] { background: var(--color-bg-yellow); }
-.mdx-document-text-block.ProseMirror span[data-bg="green"] { background: var(--color-bg-green); }
-.mdx-document-text-block.ProseMirror span[data-bg="blue"] { background: var(--color-bg-blue); }
-.mdx-document-text-block.ProseMirror span[data-bg="purple"] { background: var(--color-bg-purple); }
-.mdx-document-text-block.ProseMirror span[data-bg="pink"] { background: var(--color-bg-pink); }
-.mdx-document-text-block.ProseMirror span[data-bg="red"] { background: var(--color-bg-red); }
+span[data-bg="gray"] { background: var(--color-bg-gray); }
+span[data-bg="brown"] { background: var(--color-bg-brown); }
+span[data-bg="orange"] { background: var(--color-bg-orange); }
+span[data-bg="yellow"] { background: var(--color-bg-yellow); }
+span[data-bg="green"] { background: var(--color-bg-green); }
+span[data-bg="blue"] { background: var(--color-bg-blue); }
+span[data-bg="purple"] { background: var(--color-bg-purple); }
+span[data-bg="pink"] { background: var(--color-bg-pink); }
+span[data-bg="red"] { background: var(--color-bg-red); }
 
 /* Color picker — opens beneath the toolbar's "A▾" button. Two rows
  * (text / bg) of swatches, each row showing the named-color palette.
