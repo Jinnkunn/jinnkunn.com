@@ -19,10 +19,9 @@ const RATE_LIMIT = { namespace: "site-admin-versions", maxRequests: 40 };
 
 const STRUCTURED_CONTENT = new Set([
   "content/home.json",
-  // News + Works + Teaching migrated to
-  // `content/pages/{news,works,teaching}.mdx`; the regex below picks
-  // them up via the page-mdx pattern so version-tracking still works.
-  "content/publications.json",
+  // News + Works + Teaching + Publications all migrated to
+  // `content/pages/{...}.mdx`; the regex below picks them up via the
+  // page-mdx pattern so version-tracking still works.
 ]);
 
 function normalizeVersionPath(raw: unknown): string {
