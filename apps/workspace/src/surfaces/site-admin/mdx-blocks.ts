@@ -28,7 +28,8 @@ export type MdxBlockType =
   // Inline-config (no external data source); all fields live on the
   // tag itself.
   | "hero-block"
-  | "link-list-block";
+  | "link-list-block"
+  | "featured-pages-block";
 
 /** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
 export interface MdxLinkItem {
@@ -87,6 +88,8 @@ export interface MdxBlock {
   image?: string;
   language?: string;
   level?: 1 | 2 | 3;
+  // For FeaturedPagesBlock: how many cards to show per row.
+  columns?: 2 | 3;
   // For HeroBlock: position of the profile image relative to the body.
   imagePosition?: "left" | "right" | "top" | "none";
   // For data-source blocks (news-block, …): cap the number of entries
@@ -201,6 +204,16 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       text: "",
       title: "",
       linkLayout: "stack",
+      linkItems: [],
+    };
+  }
+  if (type === "featured-pages-block") {
+    return {
+      id,
+      type,
+      text: "",
+      title: "",
+      columns: 2,
       linkItems: [],
     };
   }
@@ -756,6 +769,18 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "FeaturedPagesBlock") {
+        const cols = Number(attrs.columns);
+        pushBlock(
+          makeBlock("featured-pages-block", {
+            text: "",
+            title: attrs.title,
+            columns: cols === 3 ? 3 : 2,
+            linkItems: parseLinkItems(attrs.items),
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -954,6 +979,17 @@ function serializeBlock(block: MdxBlock, depth: number): string {
       ["items", items ? jsonAttr(items) : undefined],
     ]);
     return attrs ? `<LinkListBlock ${attrs} />` : "<LinkListBlock />";
+  }
+  if (block.type === "featured-pages-block") {
+    // Skip default columns=2.
+    const columns = block.columns && block.columns !== 2 ? block.columns : undefined;
+    const items = block.linkItems && block.linkItems.length > 0 ? block.linkItems : undefined;
+    const attrs = serializeAttrs([
+      ["title", block.title],
+      ["columns", columns],
+      ["items", items ? jsonAttr(items) : undefined],
+    ]);
+    return attrs ? `<FeaturedPagesBlock ${attrs} />` : "<FeaturedPagesBlock />";
   }
   return text;
 }

@@ -6,6 +6,7 @@ import { Bookmark } from "./bookmark";
 import { Callout } from "./callout";
 import { Color } from "./color";
 import { Embed } from "./embed";
+import { FeaturedPagesBlock } from "./featured-pages-block";
 import { Figure } from "./figure";
 import { FileLink } from "./file-link";
 import { HeroBlock } from "./hero-block";
@@ -78,6 +79,7 @@ export const postMdxComponents: MDXComponents = {
   Callout,
   Color,
   Embed,
+  FeaturedPagesBlock,
   Figure,
   FileLink,
   HeroBlock,

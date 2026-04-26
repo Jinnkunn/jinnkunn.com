@@ -1162,3 +1162,169 @@ export function LinkListBlockEditableBlock({
     </div>
   );
 }
+
+// ---------- Featured pages block ----------
+// Same item-array pattern as LinkListBlock with two extra dimensions:
+// each item carries an optional description (rendered as a card body)
+// and the layout has a fixed columns count (2 or 3) instead of a free
+// layout string.
+
+const FEATURED_COLUMNS = [2, 3] as const;
+
+export interface FeaturedPagesBlockEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+export function FeaturedPagesBlockEditableBlock({
+  block,
+  onPatch,
+}: FeaturedPagesBlockEditableBlockProps) {
+  const items = block.linkItems ?? [];
+  const columns = block.columns ?? 2;
+
+  const addItem = () =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: [...(current.linkItems ?? []), { label: "", href: "" }],
+    }));
+
+  const removeItem = (index: number) =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: (current.linkItems ?? []).filter((_, i) => i !== index),
+    }));
+
+  const moveItem = (index: number, direction: -1 | 1) =>
+    onPatch((current) => {
+      const list = (current.linkItems ?? []).slice();
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return current;
+      [list[index], list[target]] = [list[target], list[index]];
+      return { ...current, linkItems: list };
+    });
+
+  const updateItem = (index: number, patch: Partial<MdxLinkItem>) =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: patchItems(current.linkItems, index, patch),
+    }));
+
+  return (
+    <div className="mdx-document-link-list-block">
+      <div className="mdx-document-data-block__head">
+        <span className="mdx-document-data-block__icon" aria-hidden="true">
+          🗂
+        </span>
+        <div className="mdx-document-data-block__heading">
+          <strong>Featured pages</strong>
+          <span>Card grid linking to other pages on the site.</span>
+        </div>
+      </div>
+      <div className="mdx-document-link-list-block__row">
+        <label className="mdx-document-hero-block__field">
+          <span>Title</span>
+          <input
+            value={block.title ?? ""}
+            placeholder="Optional heading"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, title: event.target.value }))
+            }
+          />
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Columns</span>
+          <select
+            value={String(columns)}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                columns: Number(event.target.value) as 2 | 3,
+              }))
+            }
+          >
+            {FEATURED_COLUMNS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <ul className="mdx-document-link-list-block__items" role="list">
+        {items.length === 0 ? (
+          <li className="mdx-document-link-list-block__empty">
+            No cards yet. Click &ldquo;Add card&rdquo; below.
+          </li>
+        ) : (
+          items.map((item, index) => (
+            <li key={index} className="mdx-document-link-list-block__item mdx-document-link-list-block__item--featured">
+              <input
+                aria-label={`Card ${index + 1} label`}
+                value={item.label}
+                placeholder="Title"
+                onChange={(event) =>
+                  updateItem(index, { label: event.target.value })
+                }
+              />
+              <input
+                aria-label={`Card ${index + 1} URL`}
+                value={item.href}
+                placeholder="/path or https://"
+                onChange={(event) =>
+                  updateItem(index, { href: event.target.value })
+                }
+              />
+              <input
+                aria-label={`Card ${index + 1} description`}
+                value={item.description ?? ""}
+                placeholder="Optional description"
+                onChange={(event) =>
+                  updateItem(index, {
+                    description: event.target.value || undefined,
+                  })
+                }
+              />
+              <div className="mdx-document-link-list-block__item-actions">
+                <button
+                  type="button"
+                  aria-label="Move up"
+                  disabled={index === 0}
+                  onClick={() => moveItem(index, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move down"
+                  disabled={index === items.length - 1}
+                  onClick={() => moveItem(index, 1)}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  aria-label="Remove card"
+                  onClick={() => removeItem(index)}
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          ))
+        )}
+      </ul>
+
+      <div>
+        <button
+          type="button"
+          className="btn btn--secondary"
+          onClick={addItem}
+        >
+          + Add card
+        </button>
+      </div>
+    </div>
+  );
+}
