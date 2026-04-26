@@ -210,3 +210,43 @@ describe("block color wrappers", () => {
     expect(serializeMdxBlocks(blocks)).toBe(source);
   });
 });
+
+describe("data-source blocks", () => {
+  it("round-trips a NewsBlock without limit", () => {
+    const source = "<NewsBlock />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("news-block");
+    expect(blocks[0].limit).toBeUndefined();
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("round-trips a NewsBlock with limit", () => {
+    const source = "<NewsBlock limit={5} />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("news-block");
+    expect(blocks[0].limit).toBe(5);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("ignores invalid limit values during parse", () => {
+    // Numeric attributes use {N} braces; a quoted string is not a valid
+    // number per our parser, so the block falls back to "no cap".
+    const source = '<NewsBlock limit="bad" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("news-block");
+    expect(blocks[0].limit).toBeUndefined();
+  });
+
+  it("coexists with surrounding paragraphs", () => {
+    const source = "Intro paragraph.\n\n<NewsBlock limit={3} />\n\nOutro line.\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks.map((b) => b.type)).toEqual([
+      "paragraph",
+      "news-block",
+      "paragraph",
+    ]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+});

@@ -29,6 +29,7 @@ import {
   BookmarkEditableBlock,
   EmbedEditableBlock,
   FileEditableBlock,
+  NewsBlockEditableBlock,
   PageLinkEditableBlock,
   TableEditableBlock,
   TodoEditableBlock,
@@ -86,6 +87,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   embed: "Embed",
   file: "File",
   "page-link": "Page link",
+  "news-block": "News",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -243,6 +245,18 @@ const SLASH_COMMANDS: SlashCommand[] = [
     keywords: ["page", "link", "internal"],
     label: "Page link",
     makeBlock: () => createMdxBlock("page-link"),
+  },
+  // Data — typed JSON sources (news, publications, …) embedded as views.
+  // Configure the query inline; entries live in their canonical content/*.json
+  // and render via matching server components.
+  {
+    description: "Latest news entries from content/news.json",
+    group: "Data",
+    icon: "📰",
+    id: "news-block",
+    keywords: ["news", "updates", "feed"],
+    label: "News",
+    makeBlock: () => createMdxBlock("news-block"),
   },
   // Layout — structural blocks and advanced.
   {
@@ -1482,6 +1496,10 @@ function EditableBlock({
     return (
       <PageLinkEditableBlock block={block} onPatch={onPatch} request={request} />
     );
+  }
+
+  if (block.type === "news-block") {
+    return <NewsBlockEditableBlock block={block} onPatch={onPatch} />;
   }
 
   const isParagraph = block.type === "paragraph";
