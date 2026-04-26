@@ -35,9 +35,6 @@ const SettingsPanel = lazy(() =>
 const StatusPanel = lazy(() =>
   import("./StatusPanel").then((module) => ({ default: module.StatusPanel })),
 );
-const TeachingPanel = lazy(() =>
-  import("./TeachingPanel").then((module) => ({ default: module.TeachingPanel })),
-);
 
 function PanelFallback() {
   return (
@@ -651,7 +648,6 @@ function SiteAdminContent() {
                 />
               )}
               {activeTab === "publications" && <PublicationsPanel />}
-              {activeTab === "teaching" && <TeachingPanel />}
               {activeTab === "settings" && <SettingsPanel />}
             </>
           )}

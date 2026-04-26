@@ -17,6 +17,8 @@ import { NewsEntry } from "./news-entry";
 import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
 import { TeachingBlock } from "./teaching-block";
+import { TeachingEntry } from "./teaching-entry";
+import { TeachingLinks } from "./teaching-links";
 import { Toggle } from "./toggle";
 import { Video } from "./video";
 import { WorksBlock } from "./works-block";
@@ -94,6 +96,8 @@ export const postMdxComponents: MDXComponents = {
   PageLink,
   PublicationsBlock,
   TeachingBlock,
+  TeachingEntry,
+  TeachingLinks,
   Toggle,
   Video,
   WorksBlock,
