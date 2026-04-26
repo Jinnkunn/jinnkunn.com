@@ -27,6 +27,8 @@ import { MentionPicker, type MentionTarget } from "./mention-picker";
 import { getTextareaCaretCoords } from "./textarea-caret";
 import {
   BookmarkEditableBlock,
+  ColumnEditableBlock,
+  ColumnsEditableBlock,
   DataBlockEditableBlock,
   EmbedEditableBlock,
   FeaturedPagesBlockEditableBlock,
@@ -97,6 +99,8 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "hero-block": "Hero",
   "link-list-block": "Link list",
   "featured-pages-block": "Featured pages",
+  columns: "Columns",
+  column: "Column",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -295,6 +299,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
     makeBlock: () => createMdxBlock("teaching-block"),
   },
   // Layout — structural blocks and advanced.
+  {
+    description: "Side-by-side columns (Notion-style)",
+    group: "Layout",
+    icon: "▥",
+    id: "columns",
+    keywords: ["columns", "column", "split", "side", "grid", "two", "three"],
+    label: "Columns",
+    makeBlock: () => createMdxBlock("columns"),
+  },
   {
     description: "Profile image + headline (home-hero CSS)",
     group: "Layout",
@@ -1510,6 +1523,49 @@ function EditableBlock({
         onFocusInput={onFocusInput}
         onPatch={onPatch}
         onRemoveEmpty={onRemoveEmpty}
+        renderChildren={(props) => (
+          <EditableBlocksList
+            blocks={props.blocks}
+            depth={props.depth}
+            onBlocksChange={props.onBlocksChange}
+            request={request}
+            setError={setError}
+            setMessage={setMessage}
+          />
+        )}
+      />
+    );
+  }
+
+  if (block.type === "columns") {
+    return (
+      <ColumnsEditableBlock
+        block={block}
+        depth={depth}
+        onPatch={onPatch}
+        renderChildren={(props) => (
+          <EditableBlocksList
+            blocks={props.blocks}
+            depth={props.depth}
+            onBlocksChange={props.onBlocksChange}
+            request={request}
+            setError={setError}
+            setMessage={setMessage}
+          />
+        )}
+      />
+    );
+  }
+
+  if (block.type === "column") {
+    // Columns parents render their `<Column>` children inline. This branch
+    // only fires if a stray `<Column>` reaches the top level — defensive
+    // fallback so the user can still edit (and re-wrap from the slash menu).
+    return (
+      <ColumnEditableBlock
+        block={block}
+        depth={depth}
+        onPatch={onPatch}
         renderChildren={(props) => (
           <EditableBlocksList
             blocks={props.blocks}
