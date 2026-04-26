@@ -9,24 +9,27 @@ async function read(relPath) {
   return await fs.readFile(path.join(ROOT, relPath), "utf8");
 }
 
-test("tauri-ui-engineering: Home is a minimal Notion-mode editor", async () => {
+test("tauri-ui-engineering: Home uses the shared MDX document editor", async () => {
   // Section-builder UI (HomeSectionRail / HomePreviewPane /
   // HomeEditableCanvasPane / HomeInspectorShell / useHomePreview / the
   // edit / structure / preview modes) was retired once the Notion-mode
   // editor became the only Home authoring surface. HomePanel is now a
-  // thin wrapper that loads bodyMdx → BlocksEditor → save.
+  // thin adapter over the shared MdxDocumentEditor; the compatibility
+  // storage remains content/home.json with { title, bodyMdx }.
   const homePanel = await read("apps/workspace/src/surfaces/site-admin/HomePanel.tsx");
   const schema = await read(
     "apps/workspace/src/surfaces/site-admin/home-builder/schema.ts",
   );
 
-  // What HomePanel SHOULD use: the shared BlocksEditor + the slimmed
-  // schema helpers (clone / sameData / normalizeHomeData).
+  // What HomePanel SHOULD use: the shared document editor and the
+  // frontmatter helpers that translate title/bodyMdx to an editor source.
   for (const symbol of [
-    "BlocksEditor",
-    "useJsonDraft",
-    "normalizeHomeData",
-    "useSiteAdmin",
+    "MdxDocumentEditor",
+    "MdxDocumentEditorAdapter",
+    "buildHomeSource",
+    "parseHomeSource",
+    "/api/site-admin/home",
+    "content/home.json",
   ]) {
     assert.match(homePanel, new RegExp(symbol), `HomePanel should use ${symbol}`);
   }

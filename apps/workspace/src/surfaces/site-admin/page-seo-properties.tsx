@@ -115,9 +115,11 @@ export function PageSeoProperties({ pathname }: PageSeoPropertiesProps) {
     setHasOverride(entry !== null);
   }, [pathname, request, setMessage]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- SEO override state is initialized from the admin config API for this pathname. */
   useEffect(() => {
     void load();
   }, [load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const save = useCallback(async () => {
     if (!pathname || !siteConfigSha) return;

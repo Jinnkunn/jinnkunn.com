@@ -103,6 +103,7 @@ export function BlockPopover({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [style, setStyle] = useState<CSSProperties>({});
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Popover positioning is layout synchronization against measured DOM geometry. */
   useLayoutEffect(() => {
     if (!open || !anchor) return;
     // Step 1 — initial position from the anchor + placement rule.
@@ -141,6 +142,7 @@ export function BlockPopover({
     });
     return () => cancelAnimationFrame(raf);
   }, [anchor, open, placement]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!open || !anchor) return;

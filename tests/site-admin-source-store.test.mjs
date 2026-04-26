@@ -94,3 +94,32 @@ test("site-admin-source-store: stale expected sha returns SOURCE_CONFLICT", asyn
     },
   );
 });
+
+test("site-admin-source-store: empty expected sha means file must not exist", async () => {
+  const root = createFixtureRoot();
+  const store = createLocalSiteAdminSourceStore({ rootDir: root });
+
+  await store.writeTextFile({
+    relPath: "content/example.json",
+    content: "{}\n",
+    expectedSha: "",
+  });
+
+  await assert.rejects(
+    () =>
+      store.writeTextFile({
+        relPath: "content/example.json",
+        content: "{\"changed\":true}\n",
+        expectedSha: "",
+      }),
+    (err) => {
+      assert.equal(isSiteAdminSourceConflictError(err), true);
+      if (isSiteAdminSourceConflictError(err)) {
+        assert.equal(err.code, "SOURCE_CONFLICT");
+        assert.equal(err.expectedSha, "");
+        assert.ok(err.currentSha);
+      }
+      return true;
+    },
+  );
+});

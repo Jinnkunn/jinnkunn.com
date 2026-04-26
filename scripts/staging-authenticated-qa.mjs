@@ -24,8 +24,20 @@ const API_READ_CHECKS = [
     summarize(payload) {
       const data = requireRecord(payload.data, "home data");
       requireSourceVersion(payload.sourceVersion, "home");
-      const sections = requireArray(data.sections, "home sections");
-      return `sections=${sections.length}`;
+      assert(typeof data.title === "string", "home title is not a string", { data });
+      if (data.bodyMdx !== undefined) {
+        assert(typeof data.bodyMdx === "string", "home bodyMdx is not a string", { data });
+      }
+      return `title=${data.title}`;
+    },
+  },
+  {
+    label: "page-tree",
+    path: "/api/site-admin/pages/tree",
+    summarize(payload) {
+      const slugs = requireArray(payload.slugs, "page tree slugs");
+      requireSourceVersion(payload.sourceVersion, "page-tree");
+      return `slugs=${slugs.length}`;
     },
   },
   {
