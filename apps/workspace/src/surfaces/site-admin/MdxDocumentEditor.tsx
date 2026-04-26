@@ -8,7 +8,6 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -17,14 +16,10 @@ import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { MarkdownEditor } from "./LazyMarkdownEditor";
 import { uploadImageFile } from "./assets-upload";
 import {
-  BlockEditorCommandMenu,
   getMatchingBlockEditorCommands,
   type BlockEditorCommand,
 } from "./block-editor";
-import { BlockPopover, type BlockPopoverAnchor } from "./block-popover";
-import { applyLink, toggleWrap } from "./format-helpers";
-import { MentionPicker, type MentionTarget } from "./mention-picker";
-import { getTextareaCaretCoords } from "./textarea-caret";
+import { BlockPopover } from "./block-popover";
 import {
   BookmarkEditableBlock,
   ColumnEditableBlock,
@@ -1205,9 +1200,12 @@ function EditableBlock({
   setMessage: (kind: "error" | "success", text: string) => void;
   uploading: boolean;
 }) {
+  // RichTextEditableBlock renders the slash menu internally when this list
+  // is non-empty. Computed only for paragraph; heading / quote / callout /
+  // list intentionally don't trigger the slash matcher even if their text
+  // happens to start with "/".
   const slashCommands =
     block.type === "paragraph" ? getMatchingSlashCommands(block.text) : [];
-  const showSlashMenu = slashCommands.length > 0;
 
   // Text-bearing blocks (paragraph, heading, quote, callout, list) render
   // through the TipTap-based WYSIWYG path so that **bold**, *italic*,
@@ -1241,90 +1239,14 @@ function EditableBlock({
     );
   }
 
+  // The textarea path now only serves `code` / `raw` blocks (verbatim text
+  // with no inline marks) plus a defensive catch-all for any future block
+  // type that lacks a dedicated renderer. All formattable blocks
+  // (paragraph, heading, quote, callout, list) and per-item containers
+  // (todo, toggle) live in TipTap-backed components — the inline format
+  // toolbar, mention picker, slash menu, mirror-div caret coords, and
+  // toggle-wrap helpers all moved with them.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [selection, setSelection] = useState<{ end: number; start: number } | null>(
-    null,
-  );
-  // mention.atOffset is the position of the literal "@" character; the
-  // picker lives until the user dismisses or selects a target.
-  const [mention, setMention] = useState<{ atOffset: number } | null>(null);
-  // The remaining textarea path now serves only `code` / `raw` (verbatim
-  // text — no inline format marks) and the catch-all default for any
-  // future block type that lacks a dedicated component. None of those
-  // need the selection-anchored inline format toolbar, so the predicate
-  // is permanently false. Kept rather than fully torn out so the
-  // textarea-path infrastructure (selection sync, mention picker,
-  // mirror-div caret coords) compiles cleanly while it lives — the next
-  // cleanup PR can rip it once nothing relies on those dormant paths.
-  const isFormattableBlock = false;
-
-  // Re-read the current textarea selection after every keystroke / mouse drag
-  // so the inline format toolbar shows up only when there's a real range.
-  useEffect(() => {
-    if (!isFormattableBlock) return;
-    const node = textareaRef.current;
-    if (!node) return;
-    const sync = () => {
-      if (document.activeElement !== node) {
-        setSelection(null);
-        return;
-      }
-      const { selectionStart, selectionEnd } = node;
-      if (selectionStart == null || selectionEnd == null) return;
-      if (selectionStart === selectionEnd) {
-        setSelection(null);
-      } else {
-        setSelection({ start: selectionStart, end: selectionEnd });
-      }
-    };
-    document.addEventListener("selectionchange", sync);
-    node.addEventListener("blur", sync);
-    return () => {
-      document.removeEventListener("selectionchange", sync);
-      node.removeEventListener("blur", sync);
-    };
-  }, [block.id, isFormattableBlock]);
-
-  const applyToggleWrap = useCallback(
-    (prefix: string, suffix?: string) => {
-      const node = textareaRef.current;
-      if (!node) return;
-      const start = node.selectionStart ?? 0;
-      const end = node.selectionEnd ?? start;
-      const result = toggleWrap(node.value, start, end, prefix, suffix ?? prefix);
-      onPatch((current) => ({ ...current, text: result.text }));
-      requestAnimationFrame(() => {
-        const fresh = textareaRef.current;
-        if (!fresh) return;
-        fresh.focus();
-        fresh.setSelectionRange(result.selectionStart, result.selectionEnd);
-        setSelection(
-          result.selectionStart === result.selectionEnd
-            ? null
-            : { start: result.selectionStart, end: result.selectionEnd },
-        );
-      });
-    },
-    [onPatch],
-  );
-
-  const applyLinkWrap = useCallback(() => {
-    const node = textareaRef.current;
-    if (!node) return;
-    const url =
-      typeof window !== "undefined" ? window.prompt("Link URL", "https://") : null;
-    if (!url) return;
-    const start = node.selectionStart ?? 0;
-    const end = node.selectionEnd ?? start;
-    const result = applyLink(node.value, start, end, url);
-    onPatch((current) => ({ ...current, text: result.text }));
-    requestAnimationFrame(() => {
-      const fresh = textareaRef.current;
-      if (!fresh) return;
-      fresh.focus();
-      fresh.setSelectionRange(result.selectionStart, result.selectionEnd);
-    });
-  }, [onPatch]);
 
   const setRefs = useCallback(
     (node: HTMLTextAreaElement | null) => {
@@ -1334,23 +1256,12 @@ function EditableBlock({
     [onFocusInput],
   );
 
+  // Verbatim-text keyboard contract: block-level navigation + a
+  // Backspace-at-empty short-circuit. Inline format shortcuts and Enter-
+  // to-new-block are intentionally absent — code / raw shouldn't auto-wrap
+  // markdown chars and Enter should insert a literal newline.
   const onTextKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const value = event.currentTarget.value;
     const meta = event.metaKey || event.ctrlKey;
-    // @-mention trigger: typed "@" in a formattable block opens the page
-    // picker. The "@" still gets typed; the picker reads the offset of
-    // the just-typed character on the next render via selectionStart.
-    if (
-      event.key === "@" &&
-      !meta &&
-      isFormattableBlock &&
-      block.type !== "code" &&
-      block.type !== "raw"
-    ) {
-      const offset = event.currentTarget.selectionStart ?? 0;
-      // Schedule on the next tick so the "@" lands in the textarea first.
-      requestAnimationFrame(() => setMention({ atOffset: offset }));
-    }
     if (meta && event.shiftKey && event.key === "ArrowUp") {
       event.preventDefault();
       onMoveUp();
@@ -1366,65 +1277,15 @@ function EditableBlock({
       onTurnInto("heading", Number(event.key) as 1 | 2 | 3);
       return;
     }
-    if (meta && !event.shiftKey && !event.altKey) {
-      const lowered = event.key.toLowerCase();
-      // Cmd+D: duplicate current block. Always available regardless of
-      // whether the block is text-formattable.
-      if (lowered === "d") {
-        event.preventDefault();
-        onDuplicate();
-        return;
-      }
-      // Cmd+/: open the slash menu without typing a "/". Replaces the
-      // paragraph text with "/" so the matcher fires; only meaningful for
-      // paragraph blocks (other types ignore the shortcut).
-      if (event.key === "/" && block.type === "paragraph") {
-        event.preventDefault();
-        onPatch((current) => ({ ...current, text: "/" }));
-        return;
-      }
-      if (isFormattableBlock) {
-        if (lowered === "b") {
-          event.preventDefault();
-          applyToggleWrap("**");
-          return;
-        }
-        if (lowered === "i") {
-          event.preventDefault();
-          applyToggleWrap("*");
-          return;
-        }
-        if (lowered === "e") {
-          event.preventDefault();
-          applyToggleWrap("`");
-          return;
-        }
-        if (lowered === "k") {
-          event.preventDefault();
-          applyLinkWrap();
-          return;
-        }
-      }
-    }
-    if (event.key === "Enter" && value.trim().startsWith("/")) {
-      if (onSlashCommand(value)) event.preventDefault();
-      return;
-    }
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      block.type !== "code" &&
-      block.type !== "raw" &&
-      block.type !== "list"
-    ) {
+    if (meta && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
       event.preventDefault();
-      onInsertParagraphAfter();
+      onDuplicate();
       return;
     }
     if (
       event.key === "Backspace" &&
       isTextEditableBlock(block) &&
-      !value.trim() &&
+      !event.currentTarget.value.trim() &&
       event.currentTarget.selectionStart === 0 &&
       event.currentTarget.selectionEnd === 0
     ) {
@@ -1671,77 +1532,11 @@ function EditableBlock({
     return <FeaturedPagesBlockEditableBlock block={block} onPatch={onPatch} />;
   }
 
-  // Paragraph is handled above. The textarea-overlay placeholder it used
-  // to drive (only visible while focused, Notion-style) lives entirely in
-  // ParagraphRichTextBlock now.
-  const nativePlaceholder =
-    block.type === "code"
-      ? "Code"
-      : block.type === "raw"
-        ? "Raw MDX"
-        : block.type === "callout"
-          ? "Callout"
-          : block.type === "quote"
-            ? "Quote"
-            : "";
-  const showOverlayPlaceholder = false;
-  // Anchor the inline format toolbar above the start of the actual selection
-  // (Notion-style), not the textarea top-left. The mirror-div helper computes
-  // pixel coords for any caret offset; recompute only when the selection
-  // changes to keep the popover position stable across unrelated re-renders.
-  const inlineAnchor = useMemo<BlockPopoverAnchor>(() => {
-    if (!isFormattableBlock || !selection || !textareaRef.current) return null;
-    const coords = getTextareaCaretCoords(textareaRef.current, selection.start);
-    return { top: coords.top, left: coords.left, width: 0, height: coords.height };
-  }, [isFormattableBlock, selection]);
-  const showInlineToolbar = inlineAnchor !== null;
-
-  const mentionAnchor = useMemo<BlockPopoverAnchor>(() => {
-    if (!mention || !textareaRef.current) return null;
-    const coords = getTextareaCaretCoords(textareaRef.current, mention.atOffset);
-    return {
-      top: coords.top + coords.height,
-      left: coords.left,
-      width: 0,
-      height: 0,
-    };
-  }, [mention]);
-
-  const insertMention = (target: MentionTarget) => {
-    if (!mention || !textareaRef.current) return;
-    const link = `[${target.title}](/pages/${target.slug})`;
-    const node = textareaRef.current;
-    const value = node.value;
-    // Replace the literal "@" + any partial query the user typed before
-    // selecting. We bound the query to a single line / no whitespace so
-    // @-mentions can't swallow paragraph content if the picker is left
-    // open.
-    let queryEnd = mention.atOffset + 1;
-    while (queryEnd < value.length && /[^\s\n]/.test(value.charAt(queryEnd))) {
-      queryEnd += 1;
-    }
-    const before = value.slice(0, mention.atOffset);
-    const after = value.slice(queryEnd);
-    const next = `${before}${link}${after}`;
-    onPatch((current) => ({ ...current, text: next }));
-    setMention(null);
-    requestAnimationFrame(() => {
-      const fresh = textareaRef.current;
-      if (!fresh) return;
-      fresh.focus();
-      const caret = before.length + link.length;
-      fresh.setSelectionRange(caret, caret);
-    });
-  };
-
-  const mentionInitialQuery = useMemo(() => {
-    if (!mention) return "";
-    const value = textareaRef.current?.value ?? "";
-    let end = mention.atOffset + 1;
-    while (end < value.length && /[^\s\n]/.test(value.charAt(end))) end += 1;
-    return value.slice(mention.atOffset + 1, end);
-  }, [mention, block.text]);
-
+  // Catch-all textarea render for `code` / `raw` and any future
+  // unhandled block type. Verbatim text only — no slash menu / mention
+  // picker / inline format toolbar; all of those moved to the TipTap
+  // path with the formattable block types.
+  const nativePlaceholder = block.type === "code" ? "Code" : block.type === "raw" ? "Raw MDX" : "";
   return (
     <div className="mdx-document-text-block-shell">
       <textarea
@@ -1756,154 +1551,9 @@ function EditableBlock({
         }
         onKeyDown={onTextKeyDown}
       />
-      {showOverlayPlaceholder ? (
-        <span className="mdx-document-block__placeholder" aria-hidden="true">
-          Type &apos;/&apos; for commands
-        </span>
-      ) : null}
-      {showSlashMenu ? (
-        <BlockEditorCommandMenu
-          className="mdx-document-slash-menu"
-          commands={slashCommands}
-          onChoose={onChooseSlashCommand}
-        />
-      ) : null}
-      {showInlineToolbar && inlineAnchor ? (
-        <InlineFormatPopover
-          anchor={inlineAnchor}
-          blockType={block.type}
-          onBold={() => applyToggleWrap("**")}
-          onClose={() => setSelection(null)}
-          onCode={() => applyToggleWrap("`")}
-          onItalic={() => applyToggleWrap("*")}
-          onLink={applyLinkWrap}
-          onStrike={() => applyToggleWrap("~~")}
-          onTurnInto={onTurnInto}
-        />
-      ) : null}
-      {mention && mentionAnchor ? (
-        <MentionPicker
-          anchor={mentionAnchor}
-          initialQuery={mentionInitialQuery}
-          onClose={() => setMention(null)}
-          onPick={insertMention}
-          request={request}
-        />
-      ) : null}
     </div>
   );
 }
-
-interface InlineFormatPopoverProps {
-  anchor: BlockPopoverAnchor;
-  blockType: MdxBlockType;
-  onBold: () => void;
-  onClose: () => void;
-  onCode: () => void;
-  onItalic: () => void;
-  onLink: () => void;
-  onStrike: () => void;
-  onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
-}
-
-function InlineFormatPopover({
-  anchor,
-  blockType,
-  onBold,
-  onClose,
-  onCode,
-  onItalic,
-  onLink,
-  onStrike,
-  onTurnInto,
-}: InlineFormatPopoverProps) {
-  // mousedown on a button would normally steal focus from the textarea and
-  // collapse the selection before the click handler runs. Preventing default
-  // on mousedown keeps the textarea selection intact.
-  const preserveSelection = (event: ReactMouseEvent) => {
-    event.preventDefault();
-  };
-
-  return (
-    <BlockPopover
-      anchor={anchor}
-      ariaLabel="Inline format"
-      className="block-popover--inline"
-      onClose={onClose}
-      open={true}
-      placement="top-start"
-    >
-      <div className="block-popover__inline" role="toolbar" aria-label="Inline format">
-        <button
-          type="button"
-          className="block-popover__inline-btn"
-          aria-label="Bold (⌘B)"
-          title="Bold (⌘B)"
-          onMouseDown={preserveSelection}
-          onClick={onBold}
-        >
-          <strong>B</strong>
-        </button>
-        <button
-          type="button"
-          className="block-popover__inline-btn"
-          aria-label="Italic (⌘I)"
-          title="Italic (⌘I)"
-          onMouseDown={preserveSelection}
-          onClick={onItalic}
-        >
-          <em>I</em>
-        </button>
-        <button
-          type="button"
-          className="block-popover__inline-btn"
-          aria-label="Strikethrough"
-          title="Strikethrough"
-          onMouseDown={preserveSelection}
-          onClick={onStrike}
-        >
-          <s>S</s>
-        </button>
-        <button
-          type="button"
-          className="block-popover__inline-btn block-popover__inline-btn--mono"
-          aria-label="Inline code (⌘E)"
-          title="Inline code (⌘E)"
-          onMouseDown={preserveSelection}
-          onClick={onCode}
-        >
-          {"<>"}
-        </button>
-        <button
-          type="button"
-          className="block-popover__inline-btn"
-          aria-label="Link (⌘K)"
-          title="Link (⌘K)"
-          onMouseDown={preserveSelection}
-          onClick={onLink}
-        >
-          ⎇
-        </button>
-        <span className="block-popover__inline-divider" aria-hidden="true" />
-        {([1, 2, 3] as const).map((level) => (
-          <button
-            key={`h${level}`}
-            type="button"
-            className="block-popover__inline-btn"
-            aria-label={`Heading ${level} (⌘⌥${level})`}
-            title={`Heading ${level} (⌘⌥${level})`}
-            aria-pressed={blockType === "heading" ? "true" : undefined}
-            onMouseDown={preserveSelection}
-            onClick={() => onTurnInto("heading", level)}
-          >
-            H{level}
-          </button>
-        ))}
-      </div>
-    </BlockPopover>
-  );
-}
-
 
 export function MdxDocumentEditor<TForm>({
   adapter,
