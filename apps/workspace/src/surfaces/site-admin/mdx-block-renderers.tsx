@@ -1665,6 +1665,186 @@ export function WorksEntryEditableBlock({
   );
 }
 
+// ---------- Publications entry ----------
+
+interface PubEntryData {
+  title?: string;
+  year?: string;
+  url?: string;
+  doiUrl?: string;
+  arxivUrl?: string;
+  labels?: string[];
+  authorsRich?: { name: string; isSelf?: boolean }[];
+  venues?: { type?: string; text?: string; url?: string }[];
+  highlights?: string[];
+  externalUrls?: string[];
+}
+
+function parsePubData(raw: string | undefined): PubEntryData {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") return parsed as PubEntryData;
+  } catch {
+    // fall through
+  }
+  return {};
+}
+
+// One publication. Schema is rich enough that fields go through a
+// JSON-encoded `pubData` attr — the editor card decodes / re-encodes
+// it on every keystroke.
+export interface PublicationsEntryEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+export function PublicationsEntryEditableBlock({
+  block,
+  onPatch,
+}: PublicationsEntryEditableBlockProps) {
+  const data = parsePubData(block.pubData);
+  const setData = (next: PubEntryData) => {
+    const json = JSON.stringify(next);
+    onPatch((current) => ({ ...current, pubData: json }));
+  };
+
+  return (
+    <div className="mdx-document-data-entry-block">
+      <div className="mdx-document-data-entry-block__head">
+        <label className="mdx-document-data-entry-block__field">
+          <span>Title</span>
+          <input
+            value={data.title ?? ""}
+            placeholder="Paper title"
+            onChange={(event) => setData({ ...data, title: event.target.value })}
+            aria-invalid={!data.title?.trim() || undefined}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field mdx-document-data-entry-block__field--small">
+          <span>Year</span>
+          <input
+            value={data.year ?? ""}
+            placeholder="2026"
+            onChange={(event) => setData({ ...data, year: event.target.value })}
+            aria-invalid={!data.year?.trim() || undefined}
+          />
+        </label>
+      </div>
+      <div className="mdx-document-data-entry-block__head">
+        <label className="mdx-document-data-entry-block__field">
+          <span>Paper URL</span>
+          <input
+            value={data.url ?? ""}
+            placeholder="https://..."
+            onChange={(event) =>
+              setData({ ...data, url: event.target.value || undefined })
+            }
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>DOI URL</span>
+          <input
+            value={data.doiUrl ?? ""}
+            placeholder="https://doi.org/..."
+            onChange={(event) =>
+              setData({ ...data, doiUrl: event.target.value || undefined })
+            }
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>arXiv URL</span>
+          <input
+            value={data.arxivUrl ?? ""}
+            placeholder="https://arxiv.org/abs/..."
+            onChange={(event) =>
+              setData({ ...data, arxivUrl: event.target.value || undefined })
+            }
+          />
+        </label>
+      </div>
+      <details className="mdx-document-data-entry-block__advanced">
+        <summary>Advanced (labels / authors / venues / highlights, JSON)</summary>
+        <label className="mdx-document-data-entry-block__field">
+          <span>labels (JSON array of strings)</span>
+          <textarea
+            rows={2}
+            value={JSON.stringify(data.labels ?? [])}
+            onChange={(event) => {
+              try {
+                const next = JSON.parse(event.target.value);
+                if (Array.isArray(next)) setData({ ...data, labels: next });
+              } catch {
+                // ignore invalid JSON until user finishes typing
+              }
+            }}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>authorsRich (JSON [{`{name,isSelf?}`}])</span>
+          <textarea
+            rows={3}
+            value={JSON.stringify(data.authorsRich ?? [])}
+            onChange={(event) => {
+              try {
+                const next = JSON.parse(event.target.value);
+                if (Array.isArray(next)) setData({ ...data, authorsRich: next });
+              } catch {
+                // ignore
+              }
+            }}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>venues (JSON [{`{type,text,url?}`}])</span>
+          <textarea
+            rows={3}
+            value={JSON.stringify(data.venues ?? [])}
+            onChange={(event) => {
+              try {
+                const next = JSON.parse(event.target.value);
+                if (Array.isArray(next)) setData({ ...data, venues: next });
+              } catch {
+                // ignore
+              }
+            }}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>highlights (JSON array of strings)</span>
+          <textarea
+            rows={2}
+            value={JSON.stringify(data.highlights ?? [])}
+            onChange={(event) => {
+              try {
+                const next = JSON.parse(event.target.value);
+                if (Array.isArray(next)) setData({ ...data, highlights: next });
+              } catch {
+                // ignore
+              }
+            }}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>externalUrls (JSON array of strings)</span>
+          <textarea
+            rows={2}
+            value={JSON.stringify(data.externalUrls ?? [])}
+            onChange={(event) => {
+              try {
+                const next = JSON.parse(event.target.value);
+                if (Array.isArray(next)) setData({ ...data, externalUrls: next });
+              } catch {
+                // ignore
+              }
+            }}
+          />
+        </label>
+      </details>
+    </div>
+  );
+}
+
 // ---------- Teaching entry ----------
 
 // One row on the teaching page. Atomic (no body content) — every field

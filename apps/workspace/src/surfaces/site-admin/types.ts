@@ -8,7 +8,6 @@ export type SiteAdminTab =
   | "home"
   | "posts"
   | "pages"
-  | "publications"
   | "settings";
 
 export interface SiteSettings {
@@ -180,34 +179,10 @@ export type ItemSelection =
   | { kind: "new"; initialSlug?: string }
   | { kind: "edit"; slug: string };
 
-// --- Publications (structured editor) ------------------------------------
-
-export interface PublicationProfileLink {
-  label: string;
-  href: string;
-  hostname?: string;
-}
-
-export interface PublicationEntry {
-  title: string;
-  year: string;
-  url: string;
-  labels: string[];
-  authors?: string[];
-  doiUrl?: string;
-  arxivUrl?: string;
-  venue?: string;
-  externalUrls?: string[];
-}
-
-export interface PublicationsData {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  sections?: StructuredPageSection[];
-  profileLinks: PublicationProfileLink[];
-  entries: PublicationEntry[];
-}
+// Publications migrated to inline `<PublicationsEntry data='...' />`
+// blocks inside `content/pages/publications.mdx`. Profile links live as
+// a sibling `<PublicationsProfileLinks links='...' />` block. Block-
+// level fields live on MdxBlock (`pubData`).
 
 // Teaching migrated to inline `<TeachingEntry>` blocks inside
 // `content/pages/teaching.mdx`. Fields live on MdxBlock (`teachingTerm`,

@@ -24,11 +24,6 @@ const PagesPanel = lazy(() =>
 const PostsPanel = lazy(() =>
   import("./PostsPanel").then((module) => ({ default: module.PostsPanel })),
 );
-const PublicationsPanel = lazy(() =>
-  import("./PublicationsPanel").then((module) => ({
-    default: module.PublicationsPanel,
-  })),
-);
 const SettingsPanel = lazy(() =>
   import("./SettingsPanel").then((module) => ({ default: module.SettingsPanel })),
 );
@@ -647,7 +642,6 @@ function SiteAdminContent() {
                   onSelectedChange={setPagesSelected}
                 />
               )}
-              {activeTab === "publications" && <PublicationsPanel />}
               {activeTab === "settings" && <SettingsPanel />}
             </>
           )}
