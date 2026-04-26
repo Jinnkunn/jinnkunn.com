@@ -379,32 +379,48 @@ function isTextEditableBlock(block: MdxBlock): boolean {
   );
 }
 
-function BodyBlockCanvas({
-  body,
-  onChange,
-  request,
-  setError,
-  setMessage,
-}: {
-  body: string;
-  onChange: (value: string) => void;
-  request: RequestFn;
-  setError: (error: string) => void;
-  setMessage: (kind: "error" | "success", text: string) => void;
-}) {
-  const [blocks, setBlocks] = useState<MdxBlock[]>(() => parseMdxBlocks(body));
+export interface BlocksEditorProps {
+  /** Markdown body. The block editor parses this into blocks for editing
+   * and serializes back on every change. */
+  value: string;
+  onChange: (next: string) => void;
+  /** Min height for the canvas (matches MarkdownEditor's prop for swap-compat). */
+  minHeight?: number;
+  /** Optional inline placeholder shown when the body is empty. (Future
+   * enhancement — not yet wired into the canvas paint.) */
+  placeholder?: string;
+}
+
+/** Standalone Notion-style block editor. Same canvas used by
+ * `MdxDocumentEditor` in "blocks" mode, but consumable on its own:
+ * pass `value` (markdown) and `onChange`, and we own the rest
+ * (block parsing/serialization, slash menu, drag-reorder, image
+ * upload). Errors surface through the global site-admin message
+ * banner, so callers don't need to plumb them. */
+export function BlocksEditor({ value, onChange, minHeight }: BlocksEditorProps) {
+  const { request, setMessage } = useSiteAdmin();
+  // Local error sink — block-internal helpers expect a setError callback,
+  // but inline use cases don't have a document-level error banner. Funnel
+  // these through the global message banner instead so users still see them.
+  const setError = useCallback(
+    (error: string) => {
+      if (error) setMessage("error", error);
+    },
+    [setMessage],
+  );
+  const [blocks, setBlocks] = useState<MdxBlock[]>(() => parseMdxBlocks(value));
   const [dragDepth, setDragDepth] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const lastEmittedBodyRef = useRef(body);
+  const lastEmittedBodyRef = useRef(value);
 
   useEffect(() => {
-    if (body === lastEmittedBodyRef.current) return;
-    lastEmittedBodyRef.current = body;
+    if (value === lastEmittedBodyRef.current) return;
+    lastEmittedBodyRef.current = value;
     // External body updates come from draft restore/source mode; the block
     // canvas keeps local IDs so focused blocks do not remount on every keystroke.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBlocks(parseMdxBlocks(body));
-  }, [body]);
+    setBlocks(parseMdxBlocks(value));
+  }, [value]);
 
   const handleBlocksChange = useCallback(
     (nextBlocks: MdxBlock[]) => {
@@ -461,6 +477,7 @@ function BodyBlockCanvas({
       className="mdx-document-blocks"
       data-drag-active={dragDepth > 0 ? "true" : undefined}
       data-uploading={uploading ? "true" : undefined}
+      style={minHeight ? { minHeight } : undefined}
       onDragEnter={(event: DragEvent<HTMLDivElement>) => {
         if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
         event.preventDefault();
@@ -2046,13 +2063,7 @@ export function MdxDocumentEditor<TForm>({
               />
 
               {editorMode === "blocks" ? (
-                <BodyBlockCanvas
-                  body={body}
-                  onChange={setBody}
-                  request={request}
-                  setError={setError}
-                  setMessage={setMessage}
-                />
+                <BlocksEditor value={body} onChange={setBody} />
               ) : editorMode === "source" ? (
                 <div
                   className="editor-drop-zone mdx-document-editor__source"

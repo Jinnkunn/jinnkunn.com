@@ -48,22 +48,22 @@ test("tauri-ui-engineering: Home builder defaults to canvas-first modes", async 
   assert.match(homePanel, /data-settings-open=\{settingsDrawerOpen/);
   assert.match(homePanel, /home-builder__outline-drawer/);
   assert.match(homePanel, /home-builder__settings-drawer/);
-  assert.match(homePanel, /InlineMarkdownEditor/);
+  // Body editing in the home canvas now uses the shared BlocksEditor
+  // (Notion-style WYSIWYG) instead of the older InlineMarkdownEditor
+  // textarea-with-preview wrapper. Section creation is still driven by
+  // the explicit HomeInsertMenu + slash command palette below.
+  assert.match(homePanel, /BlocksEditor/);
   assert.match(homePanel, /HomeInsertMenu/);
   assert.match(homePanel, /HomeSectionCommandOptions/);
   assert.match(homePanel, /BlockEditorCommandMenu/);
   assert.match(homePanel, /getMatchingBlockEditorCommands/);
   assert.match(homePanel, /HOME_SECTION_COMMANDS/);
-  assert.match(homePanel, /onSlashCommand/);
-  assert.match(homePanel, /onEnterAtEnd/);
   assert.match(styles, /\.home-builder\s*\{\s*display: grid;\s*grid-template-columns: 1fr;/s);
   assert.match(styles, /\.home-builder\[data-mode="structure"\]\s*\{\s*grid-template-columns: minmax\(300px, 0\.85fr\) minmax\(360px, 1fr\);/s);
   assert.match(styles, /\.home-canvas__section-toolbar/);
   assert.match(styles, /\.home-canvas__insert-menu/);
   assert.match(styles, /\.home-canvas__insert-popover/);
   assert.match(styles, /\.home-canvas__command-options/);
-  assert.match(styles, /\.home-canvas__slash-popover/);
-  assert.match(styles, /\.home-canvas__markdown-preview/);
   assert.match(styles, /\.home-preview__stage/);
 });
 
@@ -81,7 +81,10 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const styles = await read("apps/workspace/src/index.css");
 
   assert.match(documentEditor, /export function MdxDocumentEditor/);
-  assert.match(documentEditor, /function BodyBlockCanvas/);
+  // BlocksEditor is the standalone block-editing canvas, exported so other
+  // panels (Home, News, Teaching, Works, …) can render Notion-style blocks
+  // without dragging the full document chrome.
+  assert.match(documentEditor, /export function BlocksEditor/);
   assert.match(documentEditor, /parseMdxBlocks/);
   assert.match(documentEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);

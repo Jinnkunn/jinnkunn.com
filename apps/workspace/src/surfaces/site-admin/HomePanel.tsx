@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent } from "react";
 
 import { useDragReorder } from "./shared/useDragReorder";
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
-import { MarkdownEditor } from "./LazyMarkdownEditor";
+import { BlocksEditor } from "./LazyBlocksEditor";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
 import {
   BlockEditorCommandMenu,
@@ -676,7 +676,6 @@ export function HomePanel() {
             uploading={canvasUploadingId === section.id}
             resolveAssetUrl={resolveCanvasAssetUrl}
             onUploadImage={(file) => void uploadCanvasHeroImage(section, file)}
-            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
             patchSection={patchSection}
           />
         );
@@ -686,7 +685,6 @@ export function HomePanel() {
           <EditableRichTextSection
             section={section}
             patchSection={patchSection}
-            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -699,7 +697,6 @@ export function HomePanel() {
             addLink={addLink}
             removeLink={removeLink}
             moveLink={moveLink}
-            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -712,7 +709,6 @@ export function HomePanel() {
             addLink={addLink}
             removeLink={removeLink}
             moveLink={moveLink}
-            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
           />
         );
       }
@@ -727,7 +723,6 @@ export function HomePanel() {
             addLayoutBlock={addLayoutBlock}
             removeLayoutBlock={removeLayoutBlock}
             moveLayoutBlock={moveLayoutBlock}
-            onSlashCommand={(type) => insertSectionAfter(section.id, type)}
             uploadLayoutImage={(block, file) =>
               void uploadCanvasLayoutImage(section.id, block, file)
             }
@@ -1178,8 +1173,8 @@ function HeroFields({
         />
       </label>
       <label className="home-builder__field">
-        <span>Hero body (markdown)</span>
-        <MarkdownEditor
+        <span>Hero body</span>
+        <BlocksEditor
           value={section.body}
           onChange={(event) =>
             patchSection(section.id, (current) =>
@@ -1321,8 +1316,8 @@ function RichTextFields({
         />
       </label>
       <label className="home-builder__field">
-        <span>Body (markdown)</span>
-        <MarkdownEditor
+        <span>Body</span>
+        <BlocksEditor
           value={section.body}
           onChange={(event) =>
             patchSection(section.id, (current) =>
@@ -1431,8 +1426,8 @@ function LinkListFields({
         />
       </label>
       <label className="home-builder__field">
-        <span>Intro (markdown)</span>
-        <MarkdownEditor
+        <span>Intro</span>
+        <BlocksEditor
           value={section.body || ""}
           onChange={(event) =>
             patchSection(section.id, (current) =>
@@ -1442,7 +1437,6 @@ function LinkListFields({
             )
           }
           minHeight={112}
-          showToolbar={false}
         />
       </label>
       <label className="home-builder__field">
@@ -1508,8 +1502,8 @@ function FeaturedPagesFields({
         />
       </label>
       <label className="home-builder__field">
-        <span>Intro (markdown)</span>
-        <MarkdownEditor
+        <span>Intro</span>
+        <BlocksEditor
           value={section.body || ""}
           onChange={(event) =>
             patchSection(section.id, (current) =>
@@ -1519,7 +1513,6 @@ function FeaturedPagesFields({
             )
           }
           minHeight={112}
-          showToolbar={false}
         />
       </label>
       <label className="home-builder__field">
@@ -1825,8 +1818,8 @@ function MarkdownBlockFields({
         />
       </label>
       <label className="home-builder__field">
-        <span>Body (markdown)</span>
-        <MarkdownEditor
+        <span>Body</span>
+        <BlocksEditor
           value={block.body}
           onChange={(value) =>
             patchLayoutBlock(sectionId, block.id, (current) =>
@@ -1834,7 +1827,6 @@ function MarkdownBlockFields({
             )
           }
           minHeight={126}
-          showToolbar={false}
         />
       </label>
       <div className="home-builder__field-grid">
@@ -2135,156 +2127,6 @@ function InlineTextInput({
   );
 }
 
-function renderInlineMarkdown(source: string, keyPrefix: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /(\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)|\*([^*]+)\*)/g;
-  let lastIndex = 0;
-  let index = 0;
-  for (const match of source.matchAll(pattern)) {
-    const matchIndex = match.index ?? 0;
-    if (matchIndex > lastIndex) {
-      nodes.push(source.slice(lastIndex, matchIndex));
-    }
-    if (match[2]) {
-      nodes.push(<strong key={`${keyPrefix}-strong-${index}`}>{match[2]}</strong>);
-    } else if (match[3]) {
-      nodes.push(
-        <span className="home-canvas__mock-link" key={`${keyPrefix}-link-${index}`}>
-          {match[3]}
-        </span>,
-      );
-    } else if (match[5]) {
-      nodes.push(<em key={`${keyPrefix}-em-${index}`}>{match[5]}</em>);
-    }
-    lastIndex = matchIndex + match[0].length;
-    index += 1;
-  }
-  if (lastIndex < source.length) nodes.push(source.slice(lastIndex));
-  return nodes;
-}
-
-function MarkdownPreviewBody({
-  inline = false,
-  placeholder = "Click to write…",
-  source,
-}: {
-  inline?: boolean;
-  placeholder?: string;
-  source: string;
-}) {
-  const trimmed = source.trim();
-  if (!trimmed) {
-    return inline ? (
-      <span className="home-preview__muted">{placeholder}</span>
-    ) : (
-      <p className="home-preview__muted">{placeholder}</p>
-    );
-  }
-  if (inline) {
-    return (
-      <>
-        {trimmed.split(/\n{2,}/).map((paragraph, index) => (
-          <span className="home-preview__body" key={`${index}-${paragraph.slice(0, 12)}`}>
-            {renderInlineMarkdown(paragraph.replace(/\n/g, " "), `p-${index}`)}
-          </span>
-        ))}
-      </>
-    );
-  }
-  return (
-    <>
-      {trimmed.split(/\n{2,}/).map((paragraph, index) => (
-        <p className="home-preview__body" key={`${index}-${paragraph.slice(0, 12)}`}>
-          {renderInlineMarkdown(paragraph.replace(/\n/g, " "), `p-${index}`)}
-        </p>
-      ))}
-    </>
-  );
-}
-
-function InlineMarkdownEditor({
-  ariaLabel,
-  onEnterAtEnd,
-  onChange,
-  onSlashCommand,
-  placeholder,
-  value,
-}: {
-  ariaLabel: string;
-  onEnterAtEnd?: () => void;
-  onChange: (value: string) => void;
-  onSlashCommand?: (type: HomeSectionType) => void;
-  placeholder?: string;
-  value: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const slashCommands =
-    editing && onSlashCommand && value.trim().startsWith("/")
-      ? getHomeSectionCommands(value.trim())
-      : [];
-  const chooseSlashCommand = useCallback(
-    (type: HomeSectionType) => {
-      if (!onSlashCommand) return;
-      onChange("");
-      onSlashCommand(type);
-      setEditing(false);
-    },
-    [onChange, onSlashCommand],
-  );
-
-  if (editing) {
-    const rows = Math.max(3, Math.min(12, value.split("\n").length + 2));
-    return (
-      <div className="home-canvas__markdown-field" onClick={(event) => event.stopPropagation()}>
-        <textarea
-          autoFocus
-          aria-label={ariaLabel}
-          className="home-canvas__markdown-editor"
-          rows={rows}
-          value={value}
-          placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={() => setEditing(false)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && slashCommands[0]) {
-              event.preventDefault();
-              chooseSlashCommand(slashCommands[0].type);
-              return;
-            }
-            if (event.key !== "Enter" || event.shiftKey || !onEnterAtEnd) return;
-            const target = event.currentTarget;
-            if (target.selectionStart !== value.length || target.selectionEnd !== value.length) {
-              return;
-            }
-            event.preventDefault();
-            onEnterAtEnd();
-          }}
-        />
-        {slashCommands.length ? (
-          <div className="home-canvas__slash-popover">
-            <HomeSectionCommandOptions
-              commands={slashCommands}
-              onChoose={chooseSlashCommand}
-            />
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <button
-      className="home-canvas__markdown-preview"
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        setEditing(true);
-      }}
-    >
-      <MarkdownPreviewBody source={value} placeholder={placeholder} inline />
-    </button>
-  );
-}
-
 function EditableImageCanvas({
   alt,
   caption,
@@ -2365,14 +2207,12 @@ function EditableImageCanvas({
 }
 
 function EditableHeroSection({
-  onSlashCommand,
   onUploadImage,
   patchSection,
   resolveAssetUrl,
   section,
   uploading,
 }: {
-  onSlashCommand: (type: HomeSectionType) => void;
   onUploadImage: (file: File | null) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   resolveAssetUrl: (url: string | undefined) => string;
@@ -2418,11 +2258,10 @@ function EditableHeroSection({
             )
           }
         />
-        <InlineMarkdownEditor
-          ariaLabel="Hero body"
+        <BlocksEditor
           value={section.body}
-          placeholder="Click to write hero copy…"
-          onSlashCommand={onSlashCommand}
+          placeholder="Hero copy"
+          minHeight={120}
           onChange={(value) =>
             patchSection(section.id, (current) =>
               current.type === "hero" ? { ...current, body: value } : current,
@@ -2435,11 +2274,9 @@ function EditableHeroSection({
 }
 
 function EditableRichTextSection({
-  onSlashCommand,
   patchSection,
   section,
 }: {
-  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   section: HomeRichTextSection;
 }) {
@@ -2466,11 +2303,10 @@ function EditableRichTextSection({
           )
         }
       />
-      <InlineMarkdownEditor
-        ariaLabel="Section body"
+      <BlocksEditor
         value={section.body}
-        placeholder="Click to write section body…"
-        onSlashCommand={onSlashCommand}
+        placeholder="Section body"
+        minHeight={120}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "richText" ? { ...current, body: value } : current,
@@ -2484,7 +2320,6 @@ function EditableRichTextSection({
 function EditableLinkListSection({
   addLink,
   moveLink,
-  onSlashCommand,
   patchSection,
   removeLink,
   section,
@@ -2492,7 +2327,6 @@ function EditableLinkListSection({
 }: {
   addLink: (sectionId: string) => void;
   moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
-  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   removeLink: (sectionId: string, index: number) => void;
   section: HomeLinkListSection;
@@ -2513,11 +2347,10 @@ function EditableLinkListSection({
           )
         }
       />
-      <InlineMarkdownEditor
-        ariaLabel="Links intro"
+      <BlocksEditor
         value={section.body || ""}
-        placeholder="Click to write intro…"
-        onSlashCommand={onSlashCommand}
+        placeholder="Intro"
+        minHeight={96}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "linkList"
@@ -2588,7 +2421,6 @@ function EditableLinkListSection({
 function EditableFeaturedPagesSection({
   addLink,
   moveLink,
-  onSlashCommand,
   patchSection,
   removeLink,
   section,
@@ -2596,7 +2428,6 @@ function EditableFeaturedPagesSection({
 }: {
   addLink: (sectionId: string) => void;
   moveLink: (sectionId: string, index: number, direction: -1 | 1) => void;
-  onSlashCommand: (type: HomeSectionType) => void;
   patchSection: (id: string, mapper: (section: HomeSection) => HomeSection) => void;
   removeLink: (sectionId: string, index: number) => void;
   section: HomeFeaturedPagesSection;
@@ -2617,11 +2448,10 @@ function EditableFeaturedPagesSection({
           )
         }
       />
-      <InlineMarkdownEditor
-        ariaLabel="Featured pages intro"
+      <BlocksEditor
         value={section.body || ""}
-        placeholder="Click to write intro…"
-        onSlashCommand={onSlashCommand}
+        placeholder="Intro"
+        minHeight={96}
         onChange={(value) =>
           patchSection(section.id, (current) =>
             current.type === "featuredPages"
@@ -2704,7 +2534,6 @@ function EditableFeaturedPagesSection({
 function EditableLayoutSection({
   addLayoutBlock,
   moveLayoutBlock,
-  onSlashCommand,
   patchLayoutBlock,
   patchSection,
   removeLayoutBlock,
@@ -2715,7 +2544,6 @@ function EditableLayoutSection({
 }: {
   addLayoutBlock: (sectionId: string, type: HomeLayoutBlockType, column?: number) => void;
   moveLayoutBlock: (sectionId: string, index: number, direction: -1 | 1) => void;
-  onSlashCommand: (type: HomeSectionType) => void;
   patchLayoutBlock: (
     sectionId: string,
     blockId: string,
@@ -2813,12 +2641,10 @@ function EditableLayoutSection({
                         )
                       }
                     />
-                    <InlineMarkdownEditor
-                      ariaLabel="Block body"
+                    <BlocksEditor
                       value={block.body}
-                      placeholder="Click to write text…"
-                      onEnterAtEnd={() => addLayoutBlock(section.id, "markdown", column)}
-                      onSlashCommand={onSlashCommand}
+                      placeholder="Text"
+                      minHeight={96}
                       onChange={(value) =>
                         patchLayoutBlock(section.id, block.id, (current) =>
                           current.type === "markdown" ? { ...current, body: value } : current,

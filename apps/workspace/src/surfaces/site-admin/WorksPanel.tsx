@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
-import { MarkdownEditor } from "./LazyMarkdownEditor";
+import { BlocksEditor } from "./LazyBlocksEditor";
 import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import { StructuredPageSectionsEditor } from "./StructuredPageSectionsEditor";
@@ -254,28 +254,26 @@ export function WorksPanel() {
       />
 
       <label className="flex flex-col gap-1 text-[12.5px]">
-        <span className="text-text-muted">Intro (markdown, optional)</span>
-        <MarkdownEditor
+        <span className="text-text-muted">Intro (optional)</span>
+        <BlocksEditor
           value={draft.intro || ""}
           onChange={(next) =>
             setDraft((d) => ({ ...d, intro: next || undefined }))
           }
           placeholder="Shown as a pull-quote at the top of the page."
           minHeight={112}
-          showToolbar={false}
         />
       </label>
 
       <label className="flex flex-col gap-1 text-[12.5px]">
-        <span className="text-text-muted">Footer note (markdown, optional)</span>
-        <MarkdownEditor
+        <span className="text-text-muted">Footer note (optional)</span>
+        <BlocksEditor
           value={draft.note || ""}
           onChange={(next) =>
             setDraft((d) => ({ ...d, note: next || undefined }))
           }
           placeholder="e.g. This list is not exhaustive, and maybe not up-to-date."
           minHeight={112}
-          showToolbar={false}
         />
       </label>
 
@@ -415,17 +413,16 @@ export function WorksPanel() {
                   />
                 </label>
                 <label className="pubs-entry-label pubs-entry-label--wide">
-                  Description (markdown)
-                  <MarkdownEditor
+                  Description
+                  <BlocksEditor
                     value={entry.description || ""}
                     onChange={(next) =>
                       updateEntry(index, {
                         description: next || undefined,
                       })
                     }
-                    placeholder="Optional rich body. Supports links, bold, etc."
+                    placeholder="Optional rich body — type / for blocks"
                     minHeight={120}
-                    showToolbar={false}
                   />
                 </label>
               </div>

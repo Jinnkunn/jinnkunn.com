@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
-import { MarkdownEditor } from "./LazyMarkdownEditor";
+import { BlocksEditor } from "./LazyBlocksEditor";
 import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import { StructuredPageSectionsEditor } from "./StructuredPageSectionsEditor";
@@ -393,13 +393,12 @@ export function TeachingPanel() {
       />
 
       <label className="flex flex-col gap-1 text-[12.5px]">
-        <span className="text-text-muted">Intro (markdown)</span>
-        <MarkdownEditor
+        <span className="text-text-muted">Intro</span>
+        <BlocksEditor
           value={draft.intro || ""}
           onChange={(next) => setDraft((d) => ({ ...d, intro: next || undefined }))}
           placeholder="e.g. For the moment, only Dalhousie University activities are listed."
           minHeight={112}
-          showToolbar={false}
         />
       </label>
 
