@@ -36,6 +36,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 
+import { InlineColor } from "./inline-color-mark";
 import { inlineMarkdownToHtml, tiptapDocToMarkdown } from "./markdown-inline";
 
 export interface RichTextInputHandle {
@@ -109,6 +110,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         // bundle — markdown has no `**`-style syntax for it, so we
         // round-trip via literal `<u>` HTML tags in the markdown source.
         Underline,
+        // Inline color (foreground + background tint), matching the
+        // Notion selection-toolbar "Color" entry. Round-trips via
+        // `<span data-color="..." data-bg="...">` inline HTML.
+        InlineColor,
         // The extension adds an `is-editor-empty` class on the empty <p>
         // node when the doc has no content; CSS keys off it to render the
         // placeholder string we pass in via the `placeholder` prop.

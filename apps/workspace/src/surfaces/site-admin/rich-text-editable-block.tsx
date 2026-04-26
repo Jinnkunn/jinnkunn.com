@@ -474,6 +474,25 @@ interface InlineFormatToolbarProps {
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
 }
 
+// Notion's named-color palette, mirrored on the public site as
+// --ds-color-{text,bg}-{name} CSS variables. "default" means no color
+// (renders as the surrounding text/background); selecting it from the
+// picker clears the corresponding axis.
+const COLOR_PALETTE = [
+  "default",
+  "gray",
+  "brown",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+  "red",
+] as const;
+
+type ColorValue = (typeof COLOR_PALETTE)[number];
+
 function InlineFormatToolbar({
   anchor,
   editor,
@@ -486,6 +505,7 @@ function InlineFormatToolbar({
   const preserve = (event: ReactMouseEvent) => {
     event.preventDefault();
   };
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
   if (!editor) return null;
 
@@ -506,6 +526,38 @@ function InlineFormatToolbar({
       return;
     }
     editor.chain().focus().setLink({ href: url }).run();
+  };
+
+  // Read the current color attrs so the picker shows what's already
+  // applied to the selection. Empty string when no inlineColor mark
+  // is set on the cursor / range.
+  const activeAttrs = editor.getAttributes("inlineColor") as {
+    color?: string | null;
+    bg?: string | null;
+  };
+  const activeColor: ColorValue =
+    (typeof activeAttrs.color === "string" && (COLOR_PALETTE as readonly string[]).includes(
+      activeAttrs.color,
+    )
+      ? (activeAttrs.color as ColorValue)
+      : "default");
+  const activeBg: ColorValue =
+    (typeof activeAttrs.bg === "string" && (COLOR_PALETTE as readonly string[]).includes(
+      activeAttrs.bg,
+    )
+      ? (activeAttrs.bg as ColorValue)
+      : "default");
+
+  const applyColor = (axis: "color" | "bg", value: ColorValue) => {
+    const next = value === "default" ? "" : value;
+    editor
+      .chain()
+      .focus()
+      .setInlineColor({
+        color: axis === "color" ? next : activeColor === "default" ? "" : activeColor,
+        bg: axis === "bg" ? next : activeBg === "default" ? "" : activeBg,
+      })
+      .run();
   };
 
   return (
@@ -585,6 +637,42 @@ function InlineFormatToolbar({
           🔗
         </button>
         <span className="block-popover__inline-divider" aria-hidden="true" />
+        {/* Color picker — opens a small palette popover below the toolbar
+         * with separate rows for text color and background color. The
+         * outer button shows the active foreground tint as a colored "A"
+         * (Notion-style affordance). */}
+        <button
+          type="button"
+          className="block-popover__inline-btn block-popover__inline-color-btn"
+          aria-label="Text color"
+          title="Text color"
+          aria-haspopup="true"
+          aria-expanded={colorPickerOpen}
+          onMouseDown={preserve}
+          onClick={() => setColorPickerOpen((open) => !open)}
+          data-active={
+            (activeColor !== "default" || activeBg !== "default") || undefined
+          }
+        >
+          <span
+            className="block-popover__inline-color-letter"
+            data-color={activeColor === "default" ? undefined : activeColor}
+            data-bg={activeBg === "default" ? undefined : activeBg}
+          >
+            A
+          </span>
+          <span aria-hidden="true">▾</span>
+        </button>
+        {colorPickerOpen ? (
+          <ColorPickerPanel
+            activeColor={activeColor}
+            activeBg={activeBg}
+            onPick={applyColor}
+            onClose={() => setColorPickerOpen(false)}
+            preserveSelection={preserve}
+          />
+        ) : null}
+        <span className="block-popover__inline-divider" aria-hidden="true" />
         {/* Turn-into shortcuts — replace the current block (paragraph or
          * heading) with a heading at the chosen level, or convert back to
          * paragraph. The buttons mirror Cmd+Alt+1/2/3 already wired in the
@@ -614,5 +702,82 @@ function InlineFormatToolbar({
         ))}
       </div>
     </BlockPopover>
+  );
+}
+
+interface ColorPickerPanelProps {
+  activeColor: ColorValue;
+  activeBg: ColorValue;
+  onPick: (axis: "color" | "bg", value: ColorValue) => void;
+  onClose: () => void;
+  preserveSelection: (event: ReactMouseEvent) => void;
+}
+
+/** Two-row palette under the toolbar's "A▾" button — text colors above,
+ * background tints below. Click a swatch to apply that tint to the
+ * corresponding axis; click the active swatch (or the "default" cell) to
+ * clear it. The panel is keyboard-dismissable via Esc. */
+function ColorPickerPanel({
+  activeColor,
+  activeBg,
+  onPick,
+  onClose,
+  preserveSelection,
+}: ColorPickerPanelProps) {
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="mdx-document-color-picker"
+      role="dialog"
+      aria-label="Color"
+      onMouseDown={preserveSelection}
+    >
+      <div className="mdx-document-color-picker__row" role="group" aria-label="Text color">
+        <span className="mdx-document-color-picker__label">Text</span>
+        {COLOR_PALETTE.map((value) => (
+          <button
+            key={`text-${value}`}
+            type="button"
+            className="mdx-document-color-picker__swatch mdx-document-color-picker__swatch--text"
+            data-color={value === "default" ? undefined : value}
+            aria-label={`Text color ${value}`}
+            aria-pressed={activeColor === value || undefined}
+            data-active={activeColor === value || undefined}
+            onMouseDown={preserveSelection}
+            onClick={() => onPick("color", value)}
+          >
+            A
+          </button>
+        ))}
+      </div>
+      <div className="mdx-document-color-picker__row" role="group" aria-label="Background color">
+        <span className="mdx-document-color-picker__label">BG</span>
+        {COLOR_PALETTE.map((value) => (
+          <button
+            key={`bg-${value}`}
+            type="button"
+            className="mdx-document-color-picker__swatch mdx-document-color-picker__swatch--bg"
+            data-bg={value === "default" ? undefined : value}
+            aria-label={`Background color ${value}`}
+            aria-pressed={activeBg === value || undefined}
+            data-active={activeBg === value || undefined}
+            onMouseDown={preserveSelection}
+            onClick={() => onPick("bg", value)}
+          >
+            A
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
