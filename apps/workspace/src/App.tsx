@@ -160,18 +160,38 @@ export function App() {
     [],
   );
 
+  // Same pattern for inline rename — Sidebar fires (surfaceId, itemId,
+  // newSlug); App routes to the active surface's registered handler.
+  const renameHandlerRef = useRef<
+    ((itemId: string, newSlug: string) => void) | null
+  >(null);
+  const setRenameNavItemHandler = useCallback(
+    (handler: ((itemId: string, newSlug: string) => void) | null) => {
+      renameHandlerRef.current = handler;
+    },
+    [],
+  );
+  const handleRenameNavItem = useCallback(
+    (_surfaceId: string, itemId: string, newSlug: string) => {
+      renameHandlerRef.current?.(itemId, newSlug);
+    },
+    [],
+  );
+
   const navContextValue = useMemo(
     () => ({
       activeNavItemId,
       setActiveNavItemId,
       setNavItemChildren,
       setMoveNavItemHandler,
+      setRenameNavItemHandler,
     }),
     [
       activeNavItemId,
       setActiveNavItemId,
       setNavItemChildren,
       setMoveNavItemHandler,
+      setRenameNavItemHandler,
     ],
   );
 
@@ -242,6 +262,7 @@ export function App() {
           onToggleFavorite={toggleFavorite}
           isFavorite={isFavorite}
           onMoveNavItem={handleMoveNavItem}
+          onRenameNavItem={handleRenameNavItem}
         />
         <main
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"

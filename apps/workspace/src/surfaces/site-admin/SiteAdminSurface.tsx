@@ -141,6 +141,7 @@ interface SidebarPostRow {
   title: string;
   draft: boolean;
   dateIso: string;
+  version: string;
 }
 
 // Apply the current sidebar grouping to a flat post list. "all" returns
@@ -162,6 +163,10 @@ function buildPostsTree(
     return filtered.map((r) => ({
       id: `posts:${r.slug}`,
       label: r.title || r.slug,
+      // Posts are draggable so the rename ✎ shows up. Drag-reparent is
+      // not meaningful for posts (they're flat), but the inline rename
+      // affordance is — Sidebar gates ✎ on `draggable`.
+      draggable: true,
     }));
   }
   // "by-year": group by 4-digit year extracted from dateIso. Years sort
@@ -186,6 +191,7 @@ function buildPostsTree(
       .map((r) => ({
         id: `posts:${r.slug}`,
         label: r.title || r.slug,
+        draggable: true,
       }));
     return {
       id: `posts-year:${year}`,
@@ -201,6 +207,7 @@ function SiteAdminContent() {
     setActiveNavItemId,
     setNavItemChildren,
     setMoveNavItemHandler,
+    setRenameNavItemHandler,
   } = useSurfaceNav();
   const {
     bumpContentRevision,
@@ -317,7 +324,8 @@ function SiteAdminContent() {
           const title = typeof obj.title === "string" ? obj.title : slug;
           const draft = obj.draft === true;
           const dateIso = typeof obj.dateIso === "string" ? obj.dateIso : "";
-          out.push({ slug, title, draft, dateIso });
+          const version = typeof obj.version === "string" ? obj.version : "";
+          out.push({ slug, title, draft, dateIso, version });
         }
         setSidebarPostRows(out);
       }
@@ -420,6 +428,68 @@ function SiteAdminContent() {
     setActiveNavItemId,
     setMessage,
     setMoveNavItemHandler,
+  ]);
+
+  // Inline rename handler. Decodes the row id ("posts:hello" or
+  // "pages:docs/intro") and POSTs the corresponding /move endpoint.
+  // The user typed the new slug verbatim; the server validates.
+  useEffect(() => {
+    setRenameNavItemHandler(async (itemId, newSlug) => {
+      const cleaned = newSlug.trim();
+      if (!cleaned) return;
+      if (itemId.startsWith("posts:")) {
+        const fromSlug = itemId.slice("posts:".length);
+        if (fromSlug === cleaned) return;
+        const row = sidebarPostRows.find((r) => r.slug === fromSlug);
+        if (!row) {
+          setMessage("error", `Couldn't find post metadata for ${fromSlug}.`);
+          return;
+        }
+        const response = await request("/api/site-admin/posts/move", "POST", {
+          fromSlug,
+          toSlug: cleaned,
+          version: row.version,
+        });
+        if (!response.ok) {
+          setMessage("error", `Rename failed: ${response.code}: ${response.error}`);
+          return;
+        }
+        setMessage("success", `Renamed ${fromSlug} → ${cleaned}`);
+        bumpContentRevision();
+        setActiveNavItemId(`posts:${cleaned}`);
+        return;
+      }
+      if (itemId.startsWith("pages:")) {
+        const fromSlug = itemId.slice("pages:".length);
+        if (fromSlug === cleaned) return;
+        const row = pageRows.find((r) => r.slug === fromSlug);
+        if (!row) {
+          setMessage("error", `Couldn't find page metadata for ${fromSlug}.`);
+          return;
+        }
+        const response = await request("/api/site-admin/pages/move", "POST", {
+          fromSlug,
+          toSlug: cleaned,
+          version: row.version,
+        });
+        if (!response.ok) {
+          setMessage("error", `Rename failed: ${response.code}: ${response.error}`);
+          return;
+        }
+        setMessage("success", `Renamed ${fromSlug} → ${cleaned}`);
+        bumpContentRevision();
+        setActiveNavItemId(`pages:${cleaned}`);
+      }
+    });
+    return () => setRenameNavItemHandler(null);
+  }, [
+    bumpContentRevision,
+    pageRows,
+    request,
+    setActiveNavItemId,
+    setMessage,
+    setRenameNavItemHandler,
+    sidebarPostRows,
   ]);
 
   const selectTab = useCallback(

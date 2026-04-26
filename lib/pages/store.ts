@@ -7,6 +7,7 @@ import {
   type ContentVersion,
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
+import { appendRedirect } from "@/lib/redirects";
 import { parsePageFile } from "./meta";
 import { assertValidPageSlug } from "./slug";
 import type { PageEntry } from "./types";
@@ -143,6 +144,15 @@ export async function movePage(
     ifMatch: null,
   });
   await store.deleteFile(pageRelPath(fromSlug), { ifMatch: existing.sha });
+  // Persist the rename in the redirects manifest so old URLs keep
+  // resolving (next.config.mjs reads this at build time and emits 308s).
+  // Failures here don't undo the move — the page already lives at the
+  // new slug; we just lose the redirect, which is recoverable later.
+  try {
+    await appendRedirect("pages", fromSlug, toSlug);
+  } catch {
+    // ignore — see comment above
+  }
   const { entry } = parsePageFile(toSlug, existing.content);
   return { entry, version: sha, source: existing.content };
 }

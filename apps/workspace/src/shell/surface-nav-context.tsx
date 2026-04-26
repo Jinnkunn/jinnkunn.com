@@ -25,6 +25,12 @@ interface SurfaceNavContextValue {
   setMoveNavItemHandler: (
     handler: ((fromId: string, toId: string) => void) | null,
   ) => void;
+  /** Surfaces register a callback here to handle inline rename. Sidebar
+   * fires onRenameNavItem with the row id and the new slug; the surface
+   * decides what API call to make. Pass `null` to clear. */
+  setRenameNavItemHandler: (
+    handler: ((itemId: string, newSlug: string) => void) | null,
+  ) => void;
 }
 
 const SurfaceNavContext = createContext<SurfaceNavContextValue | null>(null);
