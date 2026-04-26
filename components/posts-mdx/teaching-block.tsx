@@ -22,7 +22,10 @@ interface TeachingEntryRecord {
   instructor?: string;
 }
 
-const TEACHING_PAGE_PATH = resolve(process.cwd(), "content/pages/teaching.mdx");
+const TEACHING_SOURCE_PATH = resolve(
+  process.cwd(),
+  "content/components/teaching.mdx",
+);
 
 // Same self-closing-JSX pattern as the editor's mdx-blocks.ts parser.
 const TEACHING_ENTRY_RE = /<TeachingEntry\b([\s\S]*?)\/>/g;
@@ -39,7 +42,7 @@ function parseAttrs(raw: string): Record<string, string> {
 async function loadEntries(): Promise<TeachingEntryRecord[]> {
   let raw = "";
   try {
-    raw = await readFile(TEACHING_PAGE_PATH, "utf8");
+    raw = await readFile(TEACHING_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
@@ -61,13 +64,14 @@ async function loadEntries(): Promise<TeachingEntryRecord[]> {
   return out;
 }
 
-/** Embeddable view over content/pages/teaching.mdx. The /teaching
- * route itself renders via the pages catch-all so this component is
- * only the entries-list slice (no intro / header-links / footer-links
- * chrome — those live as raw blocks on the page). Mirrors the
+/** Embeddable view over content/components/teaching.mdx — the
+ * dedicated component file edited via the admin Components → Teaching
+ * panel. The /teaching public route renders intro / header-links /
+ * footer-links from `content/pages/teaching.mdx` and embeds this
+ * block to render the entries list. Mirrors the
  * `<ul className="notion-bulleted-list teaching-list">` markup the
- * legacy TeachingBlock used so the embed visually matches one
- * section of the full page. */
+ * legacy inline-entries layout used so the embed visually matches
+ * the original. */
 export async function TeachingBlock({
   limit,
 }: TeachingBlockProps): Promise<ReactElement> {

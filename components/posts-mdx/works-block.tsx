@@ -25,7 +25,10 @@ interface WorksEntryRecord {
   body: string;
 }
 
-const WORKS_PAGE_PATH = resolve(process.cwd(), "content/pages/works.mdx");
+const WORKS_SOURCE_PATH = resolve(
+  process.cwd(),
+  "content/components/works.mdx",
+);
 
 // Match `<WorksEntry ...>...</WorksEntry>` blocks. Same parsing the
 // editor's mdx-blocks.ts does, but inline here to avoid importing
@@ -45,7 +48,7 @@ function parseAttrs(raw: string): Record<string, string> {
 async function loadEntries(): Promise<WorksEntryRecord[]> {
   let raw = "";
   try {
-    raw = await readFile(WORKS_PAGE_PATH, "utf8");
+    raw = await readFile(WORKS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
@@ -73,13 +76,14 @@ function NotionSpacer() {
   return <div className="notion-text" aria-hidden="true" />;
 }
 
-/** Embeddable view over content/pages/works.mdx — the /works route
- * itself is rendered by the pages catch-all so this component is the
- * "feed" surface (e.g. homepage Recent Works snippet). Mirrors the
- * legacy section-iterated rendering: optional intro/note pulled from
- * the page's frontmatter is intentionally NOT shown here (the
- * embed is just the entries); only the dedicated works page renders
- * those wrappers via its MDX content. */
+/** Embeddable view over content/components/works.mdx — the dedicated
+ * component file edited via the admin Components → Works panel. The
+ * /works public route renders intro / note blockquotes from
+ * `content/pages/works.mdx` and embeds this block for the
+ * categorized entry list. Mirrors the legacy section-iterated
+ * rendering with explicit "Recent Works" / "Past Works" headings
+ * emitted by the block itself, so the embed always reproduces those
+ * section dividers regardless of which page hosts it. */
 export async function WorksBlock({ limit }: WorksBlockProps): Promise<ReactElement> {
   const entries = await loadEntries();
   const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
