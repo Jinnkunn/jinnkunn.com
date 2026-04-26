@@ -45,13 +45,13 @@ test("public-web-style-guardrails: classic list pages keep production Notion mar
     // since `content/pages/news.mdx` is the source of truth — `<NewsBlock />`
     // re-uses the same entry component for embeds (e.g. Home top-N).
     news: await read("components/posts-mdx/news-entry.tsx"),
-    works: await read("components/posts-mdx/works-block.tsx"),
+    works: await read("components/posts-mdx/works-entry.tsx"),
     publications: await read("components/publications/publication-list.tsx"),
     blog: await read("components/blog-index/blog-index-list.tsx"),
   };
 
   assertIncludes(sources.news, "news-entry__body mdx-post__body", "News entry");
-  assertIncludes(sources.works, "notion-toggle closed works-toggle", "Works page");
+  assertIncludes(sources.works, "notion-toggle closed works-toggle", "Works entry");
   assertIncludes(
     sources.publications,
     "notion-toggle closed publication-toggle",
