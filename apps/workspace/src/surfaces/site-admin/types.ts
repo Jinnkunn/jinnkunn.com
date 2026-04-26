@@ -12,6 +12,10 @@ export type SiteAdminTab =
   | "news"
   | "teaching"
   | "works"
+  | "settings"
+  // Retained for back-compat with persisted UI state from before the
+  // Settings surface absorbed both — directly visiting either still
+  // works if some old localStorage value points here.
   | "config"
   | "routes";
 
