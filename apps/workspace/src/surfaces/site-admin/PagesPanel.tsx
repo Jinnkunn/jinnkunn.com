@@ -5,6 +5,7 @@ import { useSiteAdmin } from "./state";
 import type { ItemSelection } from "./types";
 
 export interface PagesPanelProps {
+  onPageMutation?: (action: "saved" | "deleted", slug?: string) => void;
   selected: ItemSelection;
   onSelectedChange: (next: ItemSelection) => void;
 }
@@ -12,16 +13,23 @@ export interface PagesPanelProps {
 /** Pages panel — Phase 2 dropped the left list column. The sidebar
  * tree (Home → page leaves + nested folders) drives selection;
  * this panel just renders the editor for `selected`. */
-export function PagesPanel({ selected, onSelectedChange }: PagesPanelProps) {
+export function PagesPanel({
+  onPageMutation,
+  selected,
+  onSelectedChange,
+}: PagesPanelProps) {
   const { bumpContentRevision, connection } = useSiteAdmin();
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
 
   const onEditorExit = useCallback(
-    (action: "saved" | "deleted" | "cancel") => {
+    (action: "saved" | "deleted" | "cancel", slug?: string) => {
       onSelectedChange(null);
-      if (action !== "cancel") bumpContentRevision();
+      if (action !== "cancel") {
+        onPageMutation?.(action, slug);
+        bumpContentRevision();
+      }
     },
-    [onSelectedChange, bumpContentRevision],
+    [onSelectedChange, onPageMutation, bumpContentRevision],
   );
 
   let body: React.ReactNode;

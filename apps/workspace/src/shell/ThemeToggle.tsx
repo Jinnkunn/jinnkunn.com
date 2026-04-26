@@ -73,6 +73,7 @@ export function ThemeToggle() {
     <button
       type="button"
       className="theme-toggle"
+      data-window-drag-exclude
       onClick={cycle}
       title={`Theme: ${MODE_LABEL[mode]} — click for ${MODE_LABEL[nextMode]}`}
       aria-label={`Theme: ${MODE_LABEL[mode]} (click to cycle)`}

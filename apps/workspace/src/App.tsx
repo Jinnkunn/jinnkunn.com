@@ -160,6 +160,22 @@ export function App() {
     [],
   );
 
+  const reorderHandlerRef = useRef<
+    ((itemId: string, direction: "up" | "down") => void) | null
+  >(null);
+  const setReorderNavItemHandler = useCallback(
+    (handler: ((itemId: string, direction: "up" | "down") => void) | null) => {
+      reorderHandlerRef.current = handler;
+    },
+    [],
+  );
+  const handleReorderNavItem = useCallback(
+    (_surfaceId: string, itemId: string, direction: "up" | "down") => {
+      reorderHandlerRef.current?.(itemId, direction);
+    },
+    [],
+  );
+
   // Same pattern for inline rename — Sidebar fires (surfaceId, itemId,
   // newSlug); App routes to the active surface's registered handler.
   const renameHandlerRef = useRef<
@@ -204,6 +220,7 @@ export function App() {
       setActiveNavItemId,
       setNavItemChildren,
       setMoveNavItemHandler,
+      setReorderNavItemHandler,
       setRenameNavItemHandler,
       setRenameValidator,
     }),
@@ -212,6 +229,7 @@ export function App() {
       setActiveNavItemId,
       setNavItemChildren,
       setMoveNavItemHandler,
+      setReorderNavItemHandler,
       setRenameNavItemHandler,
       setRenameValidator,
     ],
@@ -284,6 +302,7 @@ export function App() {
           onToggleFavorite={toggleFavorite}
           isFavorite={isFavorite}
           onMoveNavItem={handleMoveNavItem}
+          onReorderNavItem={handleReorderNavItem}
           onRenameNavItem={handleRenameNavItem}
           validateRenameNavItem={validateRenameNavItem}
         />

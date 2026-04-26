@@ -28,12 +28,12 @@ const ROUTES = [
     linkColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".home-layout--variant-classicIntro", 1],
-      [".home-rich-text--variant-classicBody", 1],
+      [".page__index .mdx-post__body", 1],
     ],
   },
   {
     path: "/news",
-    pageClass: "page__news",
+    pageClass: "page__mdx-page",
     titleIncludes: "News",
     readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
@@ -45,8 +45,9 @@ const ROUTES = [
   },
   {
     path: "/publications",
-    pageClass: "page__publications",
+    pageClass: "page__mdx-page",
     titleIncludes: "Publications",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.publication-toggle", 1],
@@ -56,7 +57,7 @@ const ROUTES = [
   },
   {
     path: "/works",
-    pageClass: "page__works",
+    pageClass: "page__mdx-page",
     titleIncludes: "Works",
     readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
@@ -68,7 +69,7 @@ const ROUTES = [
   },
   {
     path: "/teaching",
-    pageClass: "page__teaching",
+    pageClass: "page__mdx-page",
     titleIncludes: "Teaching",
     readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
@@ -385,16 +386,28 @@ async function readSnapshot(page, route, origin, viewportName) {
         home: {
           intro: rectOf(".home-layout--variant-classicIntro"),
           introImage: rectOf(
-            ".home-layout--variant-classicIntro .home-layout__block--image",
+            [
+              ".home-layout--variant-classicIntro .home-layout__block--image",
+              ".home-layout--variant-classicIntro .home-layout__column:first-child img",
+            ].join(", "),
           ),
           introText: rectOf(
-            ".home-layout--variant-classicIntro .home-layout__block--markdown",
+            [
+              ".home-layout--variant-classicIntro .home-layout__block--markdown",
+              ".home-layout--variant-classicIntro .home-layout__column:nth-child(2)",
+            ].join(", "),
           ),
           introParagraphStyle: styleOf(
-            ".home-layout--variant-classicIntro .home-section__body p",
+            [
+              ".home-layout--variant-classicIntro .home-section__body p",
+              ".home-layout--variant-classicIntro .home-layout__column:nth-child(2) p",
+            ].join(", "),
           ),
           bodyParagraphStyle: styleOf(
-            ".home-rich-text--variant-classicBody .home-section__body > p",
+            [
+              ".home-rich-text--variant-classicBody .home-section__body > p",
+              ".page__index .mdx-post__body > p",
+            ].join(", "),
           ),
         },
         counts: Object.fromEntries(required.map(([selector]) => [selector, countOf(selector)])),

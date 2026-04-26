@@ -20,9 +20,10 @@ Current staging release candidate:
   - `#7` (`codex/decommission-vercel-integration`)
 - Staging Worker version: `de852536-e0e5-41a5-9a99-4dd402299485`
 - Staging deployment: `c70ee213-43a2-4313-b33e-68694bdf6c51`
-- Scope: Tauri Home canvas editor, unified Post/Page MDX editor, MDX block
-  hardening, staging/public-site guardrail checks, production acceptance
-  guardrails, and Vercel deployment decommission cleanup.
+- Scope: Tauri Home shared MDX document editor, persistent page-tree order,
+  unified Post/Page MDX editor, MDX block hardening, staging/public-site
+  guardrail checks, production acceptance guardrails, and Vercel deployment
+  decommission cleanup.
 
 ## Guardrails
 
@@ -78,12 +79,16 @@ below is the minimum manual pass before requesting production approval.
 
 Run this manually on staging before requesting production approval:
 
-- Home editor canvas:
-  - Select each block type and confirm the inspector edits the same selected
-    block.
-  - Move sections/blocks up and down; confirm preview ordering updates.
-  - Add text, image, links, and layout sections; save; reload; confirm content
-    round-trips.
+- Home editor:
+  - Confirm Home uses the shared MDX document editor with Write, Source, and
+    Preview modes.
+  - Move blocks up and down; confirm preview ordering updates.
+  - Add text, image, Hero, Link list, Featured pages, and Columns blocks; save;
+    reload; confirm content round-trips through `content/home.json`.
+- Page tree:
+  - Confirm sidebar page order persists through `content/page-tree.json`.
+  - Rename/reparent a disposable page and confirm reload preserves the updated
+    tree.
 - Unified Post/Page MDX editor:
   - Open an existing post and an existing page.
   - Edit in the canvas, switch to Source, then back to Write without losing
@@ -114,7 +119,8 @@ Use this as the PR/release body before asking for production approval:
 
 ## Changes
 
-- Tauri Home editor now uses a canvas-first editing surface.
+- Tauri Home editor now uses the shared MDX document editor.
+- Page tree ordering is persisted in `content/page-tree.json`.
 - Post and Page editors share one MDX block editor with Source/Preview escape
   hatches.
 - MDX block parsing preserves current posts/pages and unsupported raw MDX.

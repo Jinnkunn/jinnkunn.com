@@ -4,6 +4,10 @@ import path from "node:path";
 
 import generatedClassicCssAssets from "@/content/generated/classic-css-assets.json";
 import { HomeView } from "@/components/home/home-view";
+import {
+  isMdxRuntimeCodeGenerationError,
+  renderHomePreviewShellHtml,
+} from "@/lib/site-admin/mdx-preview-render";
 import { normalizeHomeData } from "@/lib/site-admin/home-normalize";
 import { findContentFile, readJsonFile } from "@/lib/server/content-files";
 import {
@@ -104,8 +108,8 @@ export async function POST(req: NextRequest) {
     async () => {
       const parsed = await readSiteAdminJsonCommand(req, parseCommand);
       if (!parsed.ok) return parsed.res;
+      const data = normalizeHomeData(parsed.value.data);
       try {
-        const data = normalizeHomeData(parsed.value.data);
         // The post-cleanup HomeView renders bodyMdx through next/mdx
         // directly — no more `previewStaticImages` knob since the
         // section-builder image-rendering path is gone.
@@ -114,6 +118,13 @@ export async function POST(req: NextRequest) {
         const html = renderToStaticMarkup(element);
         return apiPayloadOk({ html, stylesheets: readClassicPageStylesheets() });
       } catch (err: unknown) {
+        if (isMdxRuntimeCodeGenerationError(err)) {
+          return apiPayloadOk({
+            html: renderHomePreviewShellHtml(data),
+            renderer: "static-mdx-preview",
+            stylesheets: readClassicPageStylesheets(),
+          });
+        }
         const msg = err instanceof Error ? err.message : String(err);
         return apiError(msg, { status: 500, code: "PREVIEW_FAILED" });
       }

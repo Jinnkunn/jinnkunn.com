@@ -1995,7 +1995,7 @@ export function NewsEntryEditableBlock({
             role="status"
             aria-live="polite"
           >
-            Pick a date (YYYY-MM-DD) — empty entries don't sort correctly on the
+            Pick a date (YYYY-MM-DD) — empty entries do not sort correctly on the
             published page.
           </span>
         ) : null}

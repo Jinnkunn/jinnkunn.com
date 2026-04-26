@@ -12,7 +12,7 @@ export interface DraftEnvelope<TForm> {
   version: 1;
 }
 
-export type EditorKind = "post" | "page" | "component";
+export type EditorKind = "post" | "page" | "component" | "home";
 
 const DRAFT_PREFIX = "workspace.site-admin.drafts";
 

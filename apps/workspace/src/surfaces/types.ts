@@ -25,6 +25,10 @@ export interface SurfaceNavItem {
    * during drag-over and fires `onMoveNavItem` when something is
    * dropped on it. */
   droppable?: boolean;
+  /** Shows explicit sibling-order controls. Sidebar fires
+   * `onReorderNavItem` with up/down; the surface decides how to persist
+   * the order. */
+  orderable?: boolean;
 }
 
 /** A collapsible group of nav items shown under the active surface in
