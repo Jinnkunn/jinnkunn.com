@@ -13,6 +13,39 @@ export const runtime = "nodejs";
 const RATE_LIMIT = { namespace: "site-admin-og-fetch", maxRequests: 60 };
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_BYTES = 512 * 1024;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_MAX_ENTRIES = 256;
+
+interface CachedOg {
+  expires: number;
+  payload: { title: string; description: string; image: string; provider: string };
+}
+
+// Process-local cache. Survives between requests on the same instance but
+// not across cold starts or horizontal scale-out — acceptable for an
+// admin-only endpoint where the worst case is one extra fetch per URL per
+// instance per day.
+const ogCache = new Map<string, CachedOg>();
+
+function cacheGet(url: string): CachedOg["payload"] | null {
+  const entry = ogCache.get(url);
+  if (!entry) return null;
+  if (entry.expires < Date.now()) {
+    ogCache.delete(url);
+    return null;
+  }
+  return entry.payload;
+}
+
+function cacheSet(url: string, payload: CachedOg["payload"]) {
+  if (ogCache.size >= CACHE_MAX_ENTRIES) {
+    // Drop the oldest insertion to keep memory bounded. Map iteration order
+    // is insertion order, so the first key is the oldest.
+    const firstKey = ogCache.keys().next().value;
+    if (firstKey !== undefined) ogCache.delete(firstKey);
+  }
+  ogCache.set(url, { expires: Date.now() + CACHE_TTL_MS, payload });
+}
 
 interface OgCommand {
   url: string;
@@ -94,6 +127,10 @@ export async function POST(req: NextRequest) {
       const parsed = await readSiteAdminJsonCommand(req, parseCommand);
       if (!parsed.ok) return parsed.res;
       const { url } = parsed.value;
+      const cached = cacheGet(url);
+      if (cached) {
+        return apiPayloadOk({ ...cached, cached: true });
+      }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
       try {
@@ -147,16 +184,16 @@ export async function POST(req: NextRequest) {
             return undefined;
           }
         })();
-        return apiPayloadOk({
+        const payload = {
           title: pickTitle(html) ?? "",
-          description: pickMeta(html, [
-            "og:description",
-            "twitter:description",
-            "description",
-          ]) ?? "",
+          description:
+            pickMeta(html, ["og:description", "twitter:description", "description"]) ??
+            "",
           image: pickMeta(html, ["og:image", "twitter:image"]) ?? "",
           provider: pickMeta(html, ["og:site_name"]) ?? provider ?? "",
-        });
+        };
+        cacheSet(url, payload);
+        return apiPayloadOk({ ...payload, cached: false });
       } catch (err) {
         clearTimeout(timer);
         const message =

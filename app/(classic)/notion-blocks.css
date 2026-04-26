@@ -380,3 +380,26 @@
   border-radius: 6px;
   background: black;
 }
+
+/* Block color tints — applied via <Color bg="..."> wrapper. */
+.notion-color {
+  padding: 4px 12px;
+  border-radius: 6px;
+  margin: 0.6em 0;
+}
+
+.notion-color[data-color="default"] {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.notion-color[data-color="gray"] { background: var(--ds-color-bg-gray); }
+.notion-color[data-color="brown"] { background: var(--ds-color-bg-brown); }
+.notion-color[data-color="orange"] { background: var(--ds-color-bg-orange); }
+.notion-color[data-color="yellow"] { background: var(--ds-color-bg-yellow); }
+.notion-color[data-color="green"] { background: var(--ds-color-bg-green); }
+.notion-color[data-color="blue"] { background: var(--ds-color-bg-blue); }
+.notion-color[data-color="purple"] { background: var(--ds-color-bg-purple); }
+.notion-color[data-color="pink"] { background: var(--ds-color-bg-pink); }
+.notion-color[data-color="red"] { background: var(--ds-color-bg-red); }

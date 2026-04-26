@@ -4,6 +4,7 @@ import type { MDXComponents } from "mdx/types";
 import { ClassicLink } from "@/components/classic/classic-link";
 import { Bookmark } from "./bookmark";
 import { Callout } from "./callout";
+import { Color } from "./color";
 import { Embed } from "./embed";
 import { Figure } from "./figure";
 import { FileLink } from "./file-link";
@@ -69,6 +70,7 @@ export const postMdxComponents: MDXComponents = {
   pre: MdxPre,
   Bookmark,
   Callout,
+  Color,
   Embed,
   Figure,
   FileLink,
