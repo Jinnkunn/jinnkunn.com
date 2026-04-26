@@ -2249,6 +2249,101 @@ body[data-window-focused="true"] .sidebar-surface {
   border-left: 1px solid var(--color-border-subtle);
 }
 
+/* Columns block — Notion-style multi-column layout, side-by-side in the
+ * editor canvas so the WYSIWYG arrangement matches what the public site
+ * renders via <Columns>/<Column>. */
+.mdx-document-columns-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-columns-block__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.mdx-document-columns-block__toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-columns-block__toolbar select {
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.mdx-document-columns-block__grid {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+
+.mdx-document-columns-block[data-cols="2"] .mdx-document-columns-block__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mdx-document-columns-block[data-cols="3"] .mdx-document-columns-block__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mdx-document-columns-block[data-gap="compact"] .mdx-document-columns-block__grid {
+  gap: 8px;
+}
+
+.mdx-document-columns-block[data-gap="loose"] .mdx-document-columns-block__grid {
+  gap: 26px;
+}
+
+.mdx-document-columns-block[data-align="center"] .mdx-document-columns-block__grid {
+  align-items: center;
+}
+
+.mdx-document-columns-block__column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+}
+
+/* Stack columns on narrow editor panes (Tauri preview, sidebar). */
+@media (max-width: 720px) {
+  .mdx-document-columns-block[data-cols="2"] .mdx-document-columns-block__grid,
+  .mdx-document-columns-block[data-cols="3"] .mdx-document-columns-block__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Defensive fallback for stray <Column> blocks at the top level. Same
+ * column-card chrome so the user recognises it; the slash menu lets
+ * them re-wrap in a fresh Columns block. */
+.mdx-document-column-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+}
+
 /* Empty nested blocks list (e.g. an empty toggle body). Renders a small
  * affordance so the user can seed the first child. */
 .mdx-document-blocks-empty {

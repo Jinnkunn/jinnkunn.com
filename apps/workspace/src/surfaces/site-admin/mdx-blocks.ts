@@ -29,7 +29,14 @@ export type MdxBlockType =
   // tag itself.
   | "hero-block"
   | "link-list-block"
-  | "featured-pages-block";
+  | "featured-pages-block"
+  // Notion-style multi-column layout. `columns` is the parent (always
+  // children-of-`column` only); `column` is the child wrapper whose
+  // own `children` carry the actual blocks. Renders as a side-by-side
+  // grid in both editor and public site (`<Columns>`/`<Column>` MDX
+  // components).
+  | "columns"
+  | "column";
 
 /** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
 export interface MdxLinkItem {
@@ -89,7 +96,18 @@ export interface MdxBlock {
   language?: string;
   level?: 1 | 2 | 3;
   // For FeaturedPagesBlock: how many cards to show per row.
+  // Also reused by `columns` block for the column count.
+  // (FeaturedPages uses 2|3, Columns uses 2|3 — Notion-style)
   columns?: 2 | 3;
+  // For `columns` block: gap between columns.
+  columnsGap?: "compact" | "standard" | "loose";
+  // For `columns` block: vertical alignment of the column tracks within
+  // the grid. Maps to `align-items: start | center` on the grid.
+  columnsAlign?: "start" | "center";
+  // For `columns` block: optional variant key (currently only
+  // `classicIntro` exists, applies the home-layout--variant-classicIntro
+  // CSS used by the classic-intro hero).
+  columnsVariant?: "classicIntro";
   // For HeroBlock: position of the profile image relative to the body.
   imagePosition?: "left" | "right" | "top" | "none";
   // For data-source blocks (news-block, …): cap the number of entries
@@ -217,6 +235,28 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       linkItems: [],
     };
   }
+  if (type === "columns") {
+    // Default to a 2-column layout with one empty paragraph per column
+    // so a freshly inserted Columns block has somewhere to type into.
+    return {
+      id,
+      type,
+      text: "",
+      columns: 2,
+      children: [
+        createMdxBlock("column"),
+        createMdxBlock("column"),
+      ],
+    };
+  }
+  if (type === "column") {
+    return {
+      id,
+      type,
+      text: "",
+      children: [createMdxBlock("paragraph")],
+    };
+  }
   return { id, type, text: "" };
 }
 
@@ -266,6 +306,11 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
 const DETAILS_OPEN_RE = /^<details(\s+open)?>$/;
 const SUMMARY_RE = /^<summary>([\s\S]*?)<\/summary>$/;
 const COLOR_OPEN_RE = /^<Color\s+bg="(\w+)">$/;
+// `<Columns count={N} variant="…" gap="…" align="…">` opener (attrs all
+// optional). Captures the attribute list verbatim for `parseAttrs`.
+const COLUMNS_OPEN_RE = /^<Columns\b([\s\S]*?)>$/;
+const COLUMN_OPEN_RE = /^<Column>$/;
+const COLUMN_CLOSE_RE = /^<\/Column>$/;
 // Allow tabs / spaces around the marker to support indented checklists nested
 // inside toggle bodies.
 const TODO_LINE_RE = /^(?:\s*)- \[([ xX])\]\s*(.*)$/;
@@ -489,6 +534,95 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
           children,
           open: isOpen,
           text: summaryText,
+        }),
+      );
+      continue;
+    }
+
+    // Multi-column layout: `<Columns count={N} variant="…" gap="…"
+    // align="…">` … `<Column>` … `</Column>` … `</Columns>`. Top-level
+    // only (depth === 0); nested Columns falls through to raw. Each
+    // <Column>'s body is recursively parsed at depth + 2 so its blocks
+    // can use the same primitives as the root canvas.
+    const columnsMatch = depth === 0 ? COLUMNS_OPEN_RE.exec(trimmedLine) : null;
+    if (columnsMatch) {
+      const attrs = parseAttrs(columnsMatch[1] ?? "");
+      const innerLines: string[] = [];
+      index += 1;
+      let foundClose = false;
+      while (index < lines.length) {
+        const probe = (lines[index] ?? "").trim();
+        if (probe === "</Columns>") {
+          foundClose = true;
+          index += 1;
+          break;
+        }
+        innerLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (!foundClose) {
+        // Unclosed <Columns>: treat as raw to keep round-tripping safe.
+        pushBlock(
+          makeBlock("raw", {
+            text: [trimmedLine, ...innerLines].join("\n"),
+          }),
+        );
+        continue;
+      }
+      // Walk inner lines and split into per-Column block ranges. Lines
+      // outside any <Column> open/close pair are silently dropped (we
+      // emit them tightly on serialize so this only happens for
+      // hand-edited MDX).
+      const columnBodies: string[][] = [];
+      let currentColumn: string[] | null = null;
+      for (const innerLine of innerLines) {
+        const innerTrim = innerLine.trim();
+        if (COLUMN_OPEN_RE.test(innerTrim)) {
+          currentColumn = [];
+          columnBodies.push(currentColumn);
+          continue;
+        }
+        if (COLUMN_CLOSE_RE.test(innerTrim)) {
+          currentColumn = null;
+          continue;
+        }
+        if (currentColumn) currentColumn.push(innerLine);
+      }
+      const columnChildren = columnBodies.map((bodyLines) => {
+        const bodySource = bodyLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+        const innerBlocks = bodySource
+          ? parseBlocksAtDepth(bodySource, depth + 2)
+          : [createMdxBlock("paragraph")];
+        return makeBlock("column", { children: innerBlocks });
+      });
+      // Default to 2 columns if the source omitted `count` or had no
+      // nested <Column> tags. Clamp to 2|3 (the Columns component's
+      // declared range); a stray `count={1}` falls back to 2.
+      const declaredCount = Number(attrs.count);
+      const fromAttr = Number.isFinite(declaredCount) ? Math.trunc(declaredCount) : 0;
+      const fromBodies = columnChildren.length;
+      const candidate = fromAttr > 0 ? fromAttr : fromBodies || 2;
+      const finalCount: 2 | 3 = candidate >= 3 ? 3 : 2;
+      // Pad / truncate so the children array length matches `count`.
+      while (columnChildren.length < finalCount) {
+        columnChildren.push(makeBlock("column"));
+      }
+      const gap = attrs.gap;
+      const align = attrs.align;
+      const variant = attrs.variant;
+      pushBlock(
+        makeBlock("columns", {
+          columns: finalCount,
+          children: columnChildren.slice(0, finalCount),
+          columnsGap:
+            gap === "compact" || gap === "standard" || gap === "loose"
+              ? (gap as "compact" | "standard" | "loose")
+              : undefined,
+          columnsAlign:
+            align === "start" || align === "center"
+              ? (align as "start" | "center")
+              : undefined,
+          columnsVariant: variant === "classicIntro" ? "classicIntro" : undefined,
         }),
       );
       continue;
@@ -872,6 +1006,46 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     return [opener, `<summary>${summary}</summary>`, "", inner, "", "</details>"].join(
       "\n",
     );
+  }
+  if (block.type === "columns") {
+    const declared = block.columns ?? (block.children?.length ?? 2);
+    const count: 2 | 3 = declared >= 3 ? 3 : 2;
+    const variant = block.columnsVariant;
+    const gap = block.columnsGap;
+    const align = block.columnsAlign;
+    const attrs = serializeAttrs([
+      ["count", count],
+      ["variant", variant],
+      ["gap", gap && gap !== "standard" ? gap : undefined],
+      ["align", align && align !== "start" ? align : undefined],
+    ]);
+    const opener = attrs ? `<Columns ${attrs}>` : `<Columns>`;
+    const childColumns = (block.children ?? []).slice(0, count);
+    const columnLines: string[] = [];
+    for (const col of childColumns) {
+      const inner = col.children?.length
+        ? serializeBlocksWithDepth(col.children, depth + 2).replace(/\n+$/, "")
+        : "";
+      columnLines.push("<Column>");
+      if (inner) {
+        columnLines.push("");
+        columnLines.push(inner);
+        columnLines.push("");
+      }
+      columnLines.push("</Column>");
+    }
+    return [opener, ...columnLines, "</Columns>"].join("\n");
+  }
+  if (block.type === "column") {
+    // Bare `<Column>` blocks should never round-trip outside a `columns`
+    // parent — but if they leak (defensive), emit a minimal wrapper so
+    // the public site still parses cleanly.
+    const inner = block.children?.length
+      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
+      : "";
+    return inner
+      ? ["<Column>", "", inner, "", "</Column>"].join("\n")
+      : "<Column>\n</Column>";
   }
   if (block.type === "table") {
     const data = block.tableData;
