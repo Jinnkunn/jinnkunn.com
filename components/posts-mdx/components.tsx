@@ -13,6 +13,7 @@ import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
 import { Toggle } from "./toggle";
 import { Video } from "./video";
+import { WorksBlock } from "./works-block";
 
 function joinClassNames(...classNames: (string | undefined)[]): string {
   return classNames.filter(Boolean).join(" ");
@@ -81,4 +82,5 @@ export const postMdxComponents: MDXComponents = {
   PublicationsBlock,
   Toggle,
   Video,
+  WorksBlock,
 };

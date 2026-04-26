@@ -89,7 +89,7 @@ function main() {
   assertIncludes(mdxBlocks, 'type === "list"', "mdx-blocks");
 
   assertExcludes(
-    read("components/works/works-view.tsx"),
+    read("components/posts-mdx/works-block.tsx"),
     'role="button"',
     "works static Notion toggle",
   );

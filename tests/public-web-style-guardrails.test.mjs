@@ -45,7 +45,7 @@ test("public-web-style-guardrails: classic list pages keep production Notion mar
     // can be embedded into any page; the dedicated /news route now wraps
     // the same component with a ClassicPageShell.
     news: await read("components/posts-mdx/news-block.tsx"),
-    works: await read("components/works/works-view.tsx"),
+    works: await read("components/posts-mdx/works-block.tsx"),
     publications: await read("components/publications/publication-list.tsx"),
     blog: await read("components/blog-index/blog-index-list.tsx"),
   };
