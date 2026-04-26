@@ -89,6 +89,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "page-link": "Page link",
   "news-block": "News",
   "publications-block": "Publications",
+  "works-block": "Works",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -267,6 +268,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
     keywords: ["publications", "papers", "research", "academic"],
     label: "Publications",
     makeBlock: () => createMdxBlock("publications-block"),
+  },
+  {
+    description: "Recent + past work entries from content/works.json",
+    group: "Data",
+    icon: "💼",
+    id: "works-block",
+    keywords: ["works", "experience", "jobs", "projects", "career"],
+    label: "Works",
+    makeBlock: () => createMdxBlock("works-block"),
   },
   // Layout — structural blocks and advanced.
   {
@@ -1528,6 +1538,18 @@ function EditableBlock({
         label="Publications"
         icon="📚"
         description="Publication list from content/publications.json"
+      />
+    );
+  }
+
+  if (block.type === "works-block") {
+    return (
+      <DataBlockEditableBlock
+        block={block}
+        onPatch={onPatch}
+        label="Works"
+        icon="💼"
+        description="Work entries from content/works.json"
       />
     );
   }

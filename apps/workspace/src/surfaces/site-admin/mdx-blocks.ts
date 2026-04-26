@@ -20,7 +20,8 @@ export type MdxBlockType =
   // entries live in their canonical JSON file and are rendered by a
   // matching server component on the public site.
   | "news-block"
-  | "publications-block";
+  | "publications-block"
+  | "works-block";
 
 export type MdxEmbedKind = "youtube" | "vimeo" | "iframe" | "video";
 
@@ -148,7 +149,11 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
   if (type === "page-link") {
     return { id, type, text: "", pageSlug: "" };
   }
-  if (type === "news-block" || type === "publications-block") {
+  if (
+    type === "news-block" ||
+    type === "publications-block" ||
+    type === "works-block"
+  ) {
     return { id, type, text: "" };
   }
   return { id, type, text: "" };
@@ -598,6 +603,16 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "WorksBlock") {
+        const limitNum = attrs.limit ? Number(attrs.limit) : undefined;
+        pushBlock(
+          makeBlock("works-block", {
+            limit: Number.isFinite(limitNum) && limitNum! > 0 ? limitNum : undefined,
+            text: "",
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -757,6 +772,10 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   if (block.type === "publications-block") {
     const attrs = serializeAttrs([["limit", block.limit]]);
     return attrs ? `<PublicationsBlock ${attrs} />` : "<PublicationsBlock />";
+  }
+  if (block.type === "works-block") {
+    const attrs = serializeAttrs([["limit", block.limit]]);
+    return attrs ? `<WorksBlock ${attrs} />` : "<WorksBlock />";
   }
   return text;
 }

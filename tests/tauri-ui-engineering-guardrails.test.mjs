@@ -151,8 +151,10 @@ test("tauri-ui-engineering: workspace primitives exist for future UI migration",
 });
 
 test("tauri-ui-engineering: static Notion toggles do not expose fake buttons", async () => {
+  // works rendering moved to a generic MDX block; the markup that used
+  // to live in works-view.tsx is now in works-block.tsx.
   for (const relPath of [
-    "components/works/works-view.tsx",
+    "components/posts-mdx/works-block.tsx",
     "components/publications/publication-list.tsx",
   ]) {
     const source = await read(relPath);
