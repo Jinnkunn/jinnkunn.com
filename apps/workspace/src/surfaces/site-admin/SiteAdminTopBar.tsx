@@ -19,11 +19,12 @@ function findCrumbs(
   return null;
 }
 
-/** Thin top bar — left: breadcrumb (Site admin › Section › Tab), right:
- * connection status pill + dev drawer toggle. The breadcrumb still
- * earns its keep even with the nested sidebar: when a user collapses
- * the parent group, the sidebar stops telling them which tab they're
- * on. */
+/** Thin top bar — left: breadcrumb (Section › Tab), right: connection
+ * status pill + dev drawer toggle. The window titlebar already shows
+ * "Workspace › Site Admin", so this row drops the "Site admin" prefix
+ * and starts at the section. The breadcrumb still earns its keep when
+ * a user collapses the parent group in the sidebar (the active item
+ * stops being visible there). */
 export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
   const { drawerOpen, toggleDrawer } = useSiteAdmin();
   const crumbs = findCrumbs(sections, activeTab);
@@ -31,12 +32,8 @@ export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
   return (
     <header className="site-admin-topbar" role="banner">
       <nav className="site-admin-topbar__crumbs" aria-label="Breadcrumb">
-        <span className="site-admin-topbar__crumb-root">Site admin</span>
-        {crumbs && (
+        {crumbs ? (
           <>
-            <span className="site-admin-topbar__crumb-sep" aria-hidden="true">
-              ›
-            </span>
             <span className="site-admin-topbar__crumb-section">
               {crumbs.section}
             </span>
@@ -45,6 +42,8 @@ export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
             </span>
             <span className="site-admin-topbar__crumb-tab">{crumbs.tab}</span>
           </>
+        ) : (
+          <span className="site-admin-topbar__crumb-tab">Site admin</span>
         )}
       </nav>
 
