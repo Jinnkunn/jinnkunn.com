@@ -1583,7 +1583,7 @@ function EditableBlock({
         onPatch={onPatch}
         label="Publications"
         icon="📚"
-        description="Publication list from content/publications.json"
+        description="Publication list from content/pages/publications.mdx"
       />
     );
   }
@@ -1595,7 +1595,7 @@ function EditableBlock({
         onPatch={onPatch}
         label="Works"
         icon="💼"
-        description="Work entries from content/works.json"
+        description="Work entries from content/pages/works.mdx"
       />
     );
   }
