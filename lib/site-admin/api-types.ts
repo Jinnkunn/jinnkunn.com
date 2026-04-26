@@ -338,46 +338,11 @@ export type SiteAdminTeachingPostResult =
 
 // --- Works (projects / experiences grid) ---------------------------------
 
-export type WorksCategory = "recent" | "passed";
-
-export type WorksEntryDTO = {
-  category: WorksCategory;
-  role: string;
-  affiliation?: string;
-  affiliationUrl?: string;
-  location?: string;
-  period: string;
-  description?: string; // markdown body
-};
-
-export type SiteAdminWorksData = {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  sections?: SiteAdminStructuredPageSection[];
-  intro?: string;     // top quote (markdown)
-  note?: string;      // bottom disclaimer quote (markdown)
-  entries: WorksEntryDTO[];
-};
-
-export type SiteAdminWorksGetPayload = {
-  ok: true;
-  data: SiteAdminWorksData;
-  sourceVersion: { fileSha: string };
-};
-
-export type SiteAdminWorksGetResult =
-  | SiteAdminWorksGetPayload
-  | SiteAdminApiError;
-
-export type SiteAdminWorksPostPayload = {
-  ok: true;
-  sourceVersion: { fileSha: string };
-};
-
-export type SiteAdminWorksPostResult =
-  | SiteAdminWorksPostPayload
-  | SiteAdminApiError;
+// Works migrated to inline `<WorksEntry>` blocks in
+// `content/pages/works.mdx`. The legacy DTO types (WorksEntryDTO,
+// SiteAdminWorksData, get/post payloads) and `/api/site-admin/works`
+// route are gone — entries now ride the same MDX page-edit pipeline
+// posts/pages already use.
 
 // --- Home (section-based landing page) -----------------------------------
 

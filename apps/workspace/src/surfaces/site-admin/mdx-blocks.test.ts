@@ -215,6 +215,52 @@ describe("news-entry blocks", () => {
   });
 });
 
+describe("works-entry blocks", () => {
+  it("round-trips a recent entry with role + period + body", () => {
+    const source =
+      '<WorksEntry category="recent" role="Intern" period="Nov 2025 - Now">\n\nA short description.\n\n</WorksEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("works-entry");
+    expect(blocks[0].worksCategory).toBe("recent");
+    expect(blocks[0].worksRole).toBe("Intern");
+    expect(blocks[0].worksPeriod).toBe("Nov 2025 - Now");
+    expect(blocks[0].children?.[0].text).toBe("A short description.");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("round-trips affiliation, affiliationUrl, and location attrs", () => {
+    const source =
+      '<WorksEntry category="passed" role="Research Assistant" affiliation="Dalhousie" affiliationUrl="https://dal.ca" location="Halifax, NS" period="Feb 2021 - Mar 2023">\n\nDetails.\n\n</WorksEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].worksAffiliation).toBe("Dalhousie");
+    expect(blocks[0].worksAffiliationUrl).toBe("https://dal.ca");
+    expect(blocks[0].worksLocation).toBe("Halifax, NS");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("defaults category to recent when missing or unknown", () => {
+    const source =
+      '<WorksEntry role="X" period="2024 - Now">\n\nBody.\n\n</WorksEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].worksCategory).toBe("recent");
+  });
+
+  it("supports an empty body (header-only entry)", () => {
+    const source =
+      '<WorksEntry category="recent" role="X" period="2024 - Now">\n</WorksEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].children).toHaveLength(0);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("falls back to raw when WorksEntry is unclosed", () => {
+    const source = '<WorksEntry role="X" period="2024">\n\nBody.\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("raw");
+  });
+});
+
 describe("table blocks", () => {
   it("round-trips a 2x2 table with column alignment", () => {
     const source =

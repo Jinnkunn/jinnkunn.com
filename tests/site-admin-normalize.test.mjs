@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { normalizeHomeData } from "../lib/site-admin/home-normalize.ts";
 import { normalizePublicationsData } from "../lib/site-admin/publications-normalize.ts";
 import { normalizeTeachingData } from "../lib/site-admin/teaching-normalize.ts";
-import { normalizeWorksData } from "../lib/site-admin/works-normalize.ts";
 
 // ----------------------------------------------------------------------------
 // Home — single Notion-style MDX document. The legacy section-based
@@ -270,81 +269,7 @@ test("normalizeTeachingData: keeps intro only when non-whitespace string", () =>
 });
 
 // ----------------------------------------------------------------------------
-// Works
-// ----------------------------------------------------------------------------
-
-test("normalizeWorksData: empty template for non-object input", () => {
-  const out = normalizeWorksData(null);
-  assert.equal(out.title, "Works");
-  assert.deepEqual(out.entries, []);
-});
-
-test("normalizeWorksData: drops entries without a role", () => {
-  const out = normalizeWorksData({
-    entries: [
-      { category: "recent", role: "Research Assistant", period: "2025-" },
-      { category: "passed", role: "   ", period: "2024" },
-      { role: "" },
-      null,
-    ],
-  });
-  assert.equal(out.entries.length, 1);
-  assert.equal(out.entries[0].role, "Research Assistant");
-});
-
-test("normalizeWorksData: coerces category to 'recent' or 'passed' (defaults to passed)", () => {
-  const out = normalizeWorksData({
-    entries: [
-      { category: "Recent", role: "A", period: "" },
-      { category: "passed", role: "B", period: "" },
-      { category: "unknown", role: "C", period: "" },
-      { role: "D", period: "" }, // missing category
-    ],
-  });
-  assert.deepEqual(
-    out.entries.map((e) => e.category),
-    ["recent", "passed", "passed", "passed"],
-  );
-});
-
-test("normalizeWorksData: keeps affiliation/location/description only when non-empty", () => {
-  const out = normalizeWorksData({
-    entries: [
-      {
-        category: "recent",
-        role: "A",
-        period: "",
-        affiliation: "Dalhousie",
-        affiliationUrl: "https://dal.ca",
-        location: "Halifax",
-        description: "Body text",
-      },
-      {
-        category: "passed",
-        role: "B",
-        period: "",
-        affiliation: "   ",
-        affiliationUrl: "",
-        location: "",
-        description: "",
-      },
-    ],
-  });
-  assert.equal(out.entries[0].affiliation, "Dalhousie");
-  assert.equal(out.entries[0].affiliationUrl, "https://dal.ca");
-  assert.equal(out.entries[0].location, "Halifax");
-  assert.equal(out.entries[0].description, "Body text");
-  assert.equal(out.entries[1].affiliation, undefined);
-  assert.equal(out.entries[1].affiliationUrl, undefined);
-  assert.equal(out.entries[1].location, undefined);
-  assert.equal(out.entries[1].description, undefined);
-});
-
-test("normalizeWorksData: keeps intro + note only when non-whitespace", () => {
-  const out = normalizeWorksData({
-    intro: "Hello",
-    note: "   ",
-  });
-  assert.equal(out.intro, "Hello");
-  assert.equal(out.note, undefined);
-});
+// Works migrated to inline `<WorksEntry>` blocks inside
+// `content/pages/works.mdx`. Equivalent invariants live in the
+// works-entry round-trip tests in
+// apps/workspace/src/surfaces/site-admin/mdx-blocks.test.ts.
