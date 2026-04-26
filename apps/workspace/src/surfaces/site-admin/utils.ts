@@ -1,6 +1,8 @@
 import type {
   NavRow,
   OverrideRow,
+  PageListRow,
+  PostListRow,
   ProtectedRow,
   SiteSettings,
 } from "./types";
@@ -217,4 +219,59 @@ export function formatPendingDeploy(source: {
   if (source.pendingDeploy === false) return "No";
   const reason = normalizeString(source.pendingDeployReason);
   return reason ? `Unknown (${reason})` : "Unknown";
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function asInteger(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** Parse one row from `/api/site-admin/posts.posts[]`. Returns null if
+ * the row is missing the required slug, otherwise a strongly-typed
+ * `PostListRow` with sensible fallbacks for optional fields. Used by
+ * the eager-fetch in SiteAdminContent (which feeds the sidebar tree
+ * + command palette index) and historically by the now-defunct
+ * Posts panel list. */
+export function normalizePostListRow(raw: unknown): PostListRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const slug = normalizeString(r.slug);
+  if (!slug) return null;
+  return {
+    slug,
+    href: normalizeString(r.href) || `/blog/${slug}`,
+    title: normalizeString(r.title) || slug,
+    dateIso: (r.dateIso as string | null) ?? null,
+    dateText: (r.dateText as string | null) ?? null,
+    description: (r.description as string | null) ?? null,
+    draft: asBoolean(r.draft),
+    tags: Array.isArray(r.tags)
+      ? r.tags.filter((t): t is string => typeof t === "string")
+      : [],
+    wordCount: asInteger(r.wordCount),
+    readingMinutes: asInteger(r.readingMinutes),
+    version: normalizeString(r.version),
+  };
+}
+
+/** Same shape as `normalizePostListRow` but for the pages endpoint. */
+export function normalizePageListRow(raw: unknown): PageListRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const slug = normalizeString(r.slug);
+  if (!slug) return null;
+  return {
+    slug,
+    href: normalizeString(r.href) || `/pages/${slug}`,
+    title: normalizeString(r.title) || slug,
+    description: (r.description as string | null) ?? null,
+    updatedIso: (r.updatedIso as string | null) ?? null,
+    draft: asBoolean(r.draft),
+    wordCount: asInteger(r.wordCount),
+    readingMinutes: asInteger(r.readingMinutes),
+    version: normalizeString(r.version),
+  };
 }
