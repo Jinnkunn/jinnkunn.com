@@ -26,6 +26,12 @@ describe("inlineMarkdownToHtml", () => {
       .toBe('<p><strong>foo</strong> <em>bar</em> <code>baz</code> <s>qux</s> <a href="https://x">text</a></p>');
   });
 
+  it("preserves <u> tags so the Underline mark round-trips", () => {
+    expect(inlineMarkdownToHtml("normal <u>under</u>")).toBe("<p>normal <u>under</u></p>");
+    expect(inlineMarkdownToHtml("<u>**bold + under**</u>"))
+      .toBe("<p><u><strong>bold + under</strong></u></p>");
+  });
+
   it("preserves underscores in mid-word identifiers (no italic)", () => {
     expect(inlineMarkdownToHtml("foo_bar_baz")).toBe("<p>foo_bar_baz</p>");
   });
@@ -84,6 +90,11 @@ describe("tiptapDocToMarkdown", () => {
   it("code wraps innermost so bold + code prints **`x`**", () => {
     const doc = makeDoc(makeText("x", [{ type: "code" }, { type: "bold" }]));
     expect(tiptapDocToMarkdown(doc)).toBe("**`x`**");
+  });
+
+  it("underline wraps in <u>...</u> outside the markdown-char marks", () => {
+    const doc = makeDoc(makeText("y", [{ type: "underline" }, { type: "bold" }]));
+    expect(tiptapDocToMarkdown(doc)).toBe("<u>**y**</u>");
   });
 });
 
