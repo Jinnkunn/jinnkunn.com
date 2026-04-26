@@ -335,3 +335,49 @@ describe("hero block (inline-config)", () => {
     expect(blocks[0].textAlign).toBe("left");
   });
 });
+
+describe("link-list block (inline-config with item array)", () => {
+  it("round-trips a LinkListBlock with title + grid layout + items", () => {
+    const source =
+      `<LinkListBlock title="Find me" layout="grid" items='[{"label":"GitHub","href":"https://github.com/x"},{"label":"Email","href":"mailto:x@example.com"}]' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("link-list-block");
+    expect(blocks[0].title).toBe("Find me");
+    expect(blocks[0].linkLayout).toBe("grid");
+    expect(blocks[0].linkItems).toEqual([
+      { label: "GitHub", href: "https://github.com/x" },
+      { label: "Email", href: "mailto:x@example.com" },
+    ]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("omits empty items + default stack layout on serialize", () => {
+    const source = "<LinkListBlock />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].linkLayout).toBe("stack");
+    expect(blocks[0].linkItems).toEqual([]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("silently drops malformed items in the JSON attribute", () => {
+    // First entry is missing href; second is the wrong type entirely.
+    // The parser should keep what it can recover (here: nothing usable).
+    const source = `<LinkListBlock items='[{"label":"x"},42,"bad"]' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("link-list-block");
+    // The first entry has a label but no href — `parseLinkItems` keeps
+    // it because at least one of label/href is present.
+    expect(blocks[0].linkItems).toEqual([{ label: "x", href: "" }]);
+  });
+
+  it("preserves description on items that have it", () => {
+    const source =
+      `<LinkListBlock items='[{"label":"X","href":"/x","description":"A note"}]' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].linkItems).toEqual([
+      { label: "X", href: "/x", description: "A note" },
+    ]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+});

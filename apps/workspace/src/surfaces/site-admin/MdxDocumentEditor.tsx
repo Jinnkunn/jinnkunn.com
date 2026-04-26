@@ -31,6 +31,7 @@ import {
   EmbedEditableBlock,
   FileEditableBlock,
   HeroBlockEditableBlock,
+  LinkListBlockEditableBlock,
   PageLinkEditableBlock,
   TableEditableBlock,
   TodoEditableBlock,
@@ -93,6 +94,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "works-block": "Works",
   "teaching-block": "Teaching",
   "hero-block": "Hero",
+  "link-list-block": "Link list",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -299,6 +301,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
     keywords: ["hero", "intro", "profile", "headline", "landing"],
     label: "Hero",
     makeBlock: () => createMdxBlock("hero-block"),
+  },
+  {
+    description: "Stack, grid, or inline row of links",
+    group: "Layout",
+    icon: "🔗",
+    id: "link-list-block",
+    keywords: ["links", "list", "buttons", "navigation"],
+    label: "Link list",
+    makeBlock: () => createMdxBlock("link-list-block"),
   },
   {
     description: "Markdown table",
@@ -1589,6 +1600,10 @@ function EditableBlock({
 
   if (block.type === "hero-block") {
     return <HeroBlockEditableBlock block={block} onPatch={onPatch} />;
+  }
+
+  if (block.type === "link-list-block") {
+    return <LinkListBlockEditableBlock block={block} onPatch={onPatch} />;
   }
 
   const isParagraph = block.type === "paragraph";
