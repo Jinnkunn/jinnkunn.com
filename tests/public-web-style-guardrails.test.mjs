@@ -118,6 +118,44 @@ test("public-web-style-guardrails: CDN home media bypasses Next image optimizer"
   assertIncludes(homeView, "unoptimized={isCdnMediaSrc(src)}", "HomeView CDN media guard");
 });
 
+test("public-web-style-guardrails: classic body copy keeps production gray tone", async () => {
+  const bridgeCss = await read("app/(classic)/design-system-bridge.css");
+  const homeCss = await read("app/(classic)/home.css");
+  const mdxCss = await read("app/(classic)/posts-mdx.css");
+  const newsCss = await read("app/(classic)/news.css");
+  const worksCss = await read("app/(classic)/works.css");
+  const teachingCss = await read("app/(classic)/teaching.css");
+
+  assertIncludes(
+    bridgeCss,
+    "--color-text-gray: var(--ds-text-faint)",
+    "Classic design-system bridge",
+  );
+  assertIncludes(
+    homeCss,
+    ".page__index .home-layout--variant-classicIntro .home-section__body,\n.page__index .home-rich-text--variant-classicBody .home-section__body {\n  color: var(--color-text-default-light);",
+    "Homepage classic copy",
+  );
+  assertIncludes(
+    homeCss,
+    ".page__index .home-layout--variant-classicIntro .home-section__body strong,\n.page__index .home-rich-text--variant-classicBody .home-section__body strong {\n  color: var(--color-text-default);",
+    "Homepage emphasized copy",
+  );
+  assertIncludes(
+    mdxCss,
+    "color: var(--color-text-default-light);",
+    "MDX body copy",
+  );
+  assertIncludes(
+    mdxCss,
+    ".mdx-post__body strong,",
+    "MDX emphasized copy",
+  );
+  assertIncludes(newsCss, "color: var(--color-text-default-light);", "News copy");
+  assertIncludes(worksCss, "color: var(--color-text-default-light);", "Works copy");
+  assertIncludes(teachingCss, "color: var(--color-text-default-light);", "Teaching copy");
+});
+
 test("public-web-style-guardrails: MDX heading links inherit heading color", async () => {
   const postsCss = await read("app/(classic)/posts-mdx.css");
 

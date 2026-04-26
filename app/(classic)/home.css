@@ -142,7 +142,7 @@
 
 .page__index .home-layout--variant-classicIntro .home-section__body,
 .page__index .home-rich-text--variant-classicBody .home-section__body {
-  color: var(--color-text-default);
+  color: var(--color-text-default-light);
 }
 
 .page__index .home-layout--variant-classicIntro .home-section__body strong,
