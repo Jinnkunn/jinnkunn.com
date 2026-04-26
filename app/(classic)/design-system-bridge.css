@@ -2,6 +2,8 @@ html[data-theme],
 :root {
   --color-text-default: var(--ds-text-primary);
   --color-text-default-light: var(--ds-text-faint);
+  --color-text-gray: var(--ds-text-faint);
+  --color-text-gray-light: var(--ds-text-subtle);
   --color-bg-default: var(--ds-surface-page);
   --color-border-default: var(--ds-border-subtle);
   --color-border-dark: var(--ds-border-subtle);

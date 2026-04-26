@@ -16,6 +16,7 @@ import { loadProjectEnv } from "./load-project-env.mjs";
 const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
+const CLASSIC_MUTED_TEXT_COLOR = "rgba(55, 53, 47, 0.56)";
 
 const ROUTES = [
   {
@@ -23,6 +24,8 @@ const ROUTES = [
     pageClass: "page__index",
     titleIncludes: "Hi there!",
     kind: "home",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    linkColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".home-layout--variant-classicIntro", 1],
       [".home-rich-text--variant-classicBody", 1],
@@ -32,6 +35,7 @@ const ROUTES = [
     path: "/news",
     pageClass: "page__news",
     titleIncludes: "News",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-heading", 1],
@@ -54,6 +58,7 @@ const ROUTES = [
     path: "/works",
     pageClass: "page__works",
     titleIncludes: "Works",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.works-toggle", 1],
@@ -65,6 +70,7 @@ const ROUTES = [
     path: "/teaching",
     pageClass: "page__teaching",
     titleIncludes: "Teaching",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-bulleted-list .notion-list-item", 1],
@@ -86,6 +92,7 @@ const ROUTES = [
     path: "/bio",
     pageClass: "page__mdx-page",
     titleIncludes: "BIO",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
@@ -95,6 +102,7 @@ const ROUTES = [
     path: "/connect",
     pageClass: "page__mdx-page",
     titleIncludes: "Connect",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
@@ -104,6 +112,7 @@ const ROUTES = [
     path: "/chen",
     pageClass: "page__mdx-page",
     titleIncludes: "Yimen Chen",
+    readableColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
@@ -217,7 +226,7 @@ function comparableLineHeight(value) {
   return Number.isFinite(numeric) ? String(Math.round(numeric)) : normalized;
 }
 
-function compareTextStyle(local, production, label) {
+function compareTextStyle(local, production, label, options = {}) {
   if (!local || !production) return;
   assert(
     normalizeStyleValue(local.fontSize) === normalizeStyleValue(production.fontSize),
@@ -229,19 +238,25 @@ function compareTextStyle(local, production, label) {
     `${label} line height drifted from production`,
     { local, production },
   );
+  const expectedColor = options.expectedColor || production.color;
   assert(
-    normalizeStyleValue(local.color) === normalizeStyleValue(production.color),
-    `${label} text color drifted from production`,
-    { local, production },
+    normalizeStyleValue(local.color) === normalizeStyleValue(expectedColor),
+    options.expectedColor
+      ? `${label} text color drifted from the classic muted-text contract`
+      : `${label} text color drifted from production`,
+    { local, production, expectedColor },
   );
 }
 
-function compareLinkStyle(local, production, label) {
+function compareLinkStyle(local, production, label, options = {}) {
   if (!local || !production) return;
+  const expectedColor = options.expectedColor || production.color;
   assert(
-    normalizeStyleValue(local.color) === normalizeStyleValue(production.color),
-    `${label} link color drifted from production`,
-    { local, production },
+    normalizeStyleValue(local.color) === normalizeStyleValue(expectedColor),
+    options.expectedColor
+      ? `${label} link color drifted from the classic muted-text contract`
+      : `${label} link color drifted from production`,
+    { local, production, expectedColor },
   );
   assert(
     normalizeStyleValue(local.textDecorationLine) ===
@@ -329,7 +344,13 @@ async function readSnapshot(page, route, origin, viewportName) {
           ) || null
         );
       }, null);
-      const firstLink = document.querySelector(".notion-root a.notion-link.link");
+      const firstLink = document.querySelector(
+        [
+          ".notion-root .home-section__body a.notion-link.link",
+          ".notion-root .mdx-post__body a.notion-link.link",
+          ".notion-root .notion-text__content a.notion-link.link",
+        ].join(", "),
+      );
 
       return {
         pathname: window.location.pathname,
@@ -465,8 +486,14 @@ function compareRoute(route, local, production, viewportName) {
     },
   );
 
-  compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path);
-  compareLinkStyle(local.firstLinkStyle, production.firstLinkStyle, route.path);
+  compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path, {
+    expectedColor: route.readableColor,
+  });
+  if (!route.readableColor || route.linkColor) {
+    compareLinkStyle(local.firstLinkStyle, production.firstLinkStyle, route.path, {
+      expectedColor: route.linkColor,
+    });
+  }
 
   for (const [selector, min] of route.required || []) {
     const localCount = local.counts[selector] || 0;
@@ -531,11 +558,13 @@ function compareRoute(route, local, production, viewportName) {
       local.home.introParagraphStyle,
       production.home.introParagraphStyle || production.firstReadableStyle,
       "Homepage intro paragraph",
+      { expectedColor: route.readableColor },
     );
     compareTextStyle(
       local.home.bodyParagraphStyle,
       production.home.bodyParagraphStyle || production.firstReadableStyle,
       "Homepage body paragraph",
+      { expectedColor: route.readableColor },
     );
   }
 }
