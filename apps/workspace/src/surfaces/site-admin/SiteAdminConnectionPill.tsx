@@ -4,6 +4,28 @@ import { normalizeString, stripTrailingSlash } from "./utils";
 
 type PillTone = "connected" | "loading" | "disconnected";
 
+interface ExpiryInfo {
+  label: string;
+  tone: "ok" | "warn" | "danger";
+}
+
+// Render the auth-token expiry as a relative-time hint that matches what
+// users care about ("expires in 28 days") instead of a raw ISO string.
+// Tone shifts to warn/danger as the token nears or passes expiry so the
+// CTA next to it can change accordingly.
+function formatExpiresIn(iso: string): ExpiryInfo {
+  if (!iso) return { label: "", tone: "ok" };
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return { label: "", tone: "ok" };
+  if (ms <= 0) return { label: "Token expired", tone: "danger" };
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  if (days >= 7) return { label: `Expires in ${days} days`, tone: "ok" };
+  if (days >= 2) return { label: `Expires in ${days} days`, tone: "warn" };
+  if (days === 1) return { label: "Expires tomorrow", tone: "warn" };
+  const hours = Math.max(1, Math.floor(ms / (1000 * 60 * 60)));
+  return { label: `Expires in ${hours}h`, tone: hours < 6 ? "danger" : "warn" };
+}
+
 function tone(
   authLoading: boolean,
   hasToken: boolean,
@@ -338,7 +360,7 @@ export function SiteAdminConnectionPill() {
               onClick={() => void signInWithBrowser()}
               disabled={disableLogin}
             >
-              Sign in with browser
+              {hasToken ? "Refresh sign-in" : "Sign in with browser"}
             </button>
             <button
               className="btn btn--ghost"
@@ -353,15 +375,26 @@ export function SiteAdminConnectionPill() {
               onClick={() => void clearAuth()}
               disabled={disableClear}
             >
-              Clear
+              Sign out
             </button>
           </div>
 
-          {connection.authExpiresAt && (
-            <p className="site-admin-pill__note">
-              Token expires {connection.authExpiresAt}
-            </p>
-          )}
+          {connection.authExpiresAt && hasToken && (() => {
+            const expiry = formatExpiresIn(connection.authExpiresAt);
+            return expiry.label ? (
+              <p
+                className="site-admin-pill__note"
+                data-tone={expiry.tone}
+              >
+                {expiry.label}
+                {expiry.tone === "ok"
+                  ? null
+                  : expiry.tone === "danger"
+                    ? " — Refresh sign-in above to renew."
+                    : " — Refresh sign-in to extend."}
+              </p>
+            ) : null;
+          })()}
 
           <div className="site-admin-pill__links">
             <a href={`${trimmedBase}/site-admin`} target="_blank" rel="noreferrer">

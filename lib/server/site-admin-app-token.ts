@@ -17,7 +17,12 @@ export type SiteAdminAppTokenVerifyResult =
   | { ok: true; login: string; expiresAt: string }
   | { ok: false; error: string };
 
-const DEFAULT_TOKEN_TTL_SECONDS = 60 * 60;
+// 30-day TTL — desktop-app friendly. The token lives only inside the Tauri
+// keyring on a single machine and the server can revoke individual tokens
+// out-of-band (rotate SITE_ADMIN_APP_TOKEN_SECRET / NEXTAUTH_SECRET to
+// invalidate everything immediately). Web-context callers that want a
+// shorter window should pass `ttlSeconds` explicitly.
+const DEFAULT_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 function base64UrlEncode(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");

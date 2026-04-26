@@ -12,8 +12,18 @@ function normalizeStatus(data: unknown): StatusPayload | null {
   return obj as unknown as StatusPayload;
 }
 
+// Treat a token as "needs renewal" when fewer than 5 minutes remain.
+// Wider than just `< 0` so the deploy precheck also catches the case
+// where the token expires mid-deploy.
+function tokenNeedsRenewal(iso: string): boolean {
+  if (!iso) return false;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return false;
+  return ms < 5 * 60 * 1000;
+}
+
 export function StatusPanel() {
-  const { connection, request, setMessage } = useSiteAdmin();
+  const { connection, request, setMessage, signInWithBrowser } = useSiteAdmin();
   const [data, setData] = useState<StatusPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [deploying, setDeploying] = useState(false);
@@ -53,6 +63,16 @@ export function StatusPanel() {
 
   const deploy = useCallback(async () => {
     if (!confirmDeploy) {
+      // Precheck: deploy is the most expensive POST in the app and runs
+      // without further confirmation once started. If our locally-known
+      // token expiry is past or imminent, renew up-front so the actual
+      // deploy POST doesn't trigger a mid-flight browser sign-in. (The
+      // global `request` wrapper would also auto-retry on 401, but for
+      // this one button we'd rather front-load the auth dance.)
+      if (!connection.authToken || tokenNeedsRenewal(connection.authExpiresAt)) {
+        const newToken = await signInWithBrowser();
+        if (!newToken) return;
+      }
       setConfirmDeploy(true);
       return;
     }
@@ -89,7 +109,15 @@ export function StatusPanel() {
         deployCheckTimerRef.current = null;
       });
     }, 2500);
-  }, [confirmDeploy, refresh, request, setMessage]);
+  }, [
+    confirmDeploy,
+    connection.authToken,
+    connection.authExpiresAt,
+    refresh,
+    request,
+    setMessage,
+    signInWithBrowser,
+  ]);
 
   useEffect(() => {
     if (!confirmDeploy) return;
