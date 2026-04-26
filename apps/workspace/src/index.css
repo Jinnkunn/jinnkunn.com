@@ -1879,24 +1879,6 @@ body[data-window-focused="true"] .sidebar-surface {
   cursor: grabbing;
 }
 
-/* Empty-paragraph placeholder overlay. Fades in only when the textarea is
- * focused (via :focus-within on the shell) so empty rows aren't noisy. */
-.mdx-document-block__placeholder {
-  position: absolute;
-  top: 7px;
-  left: 8px;
-  pointer-events: none;
-  color: var(--mdx-placeholder-color);
-  font-size: 13.5px;
-  line-height: 1.6;
-  opacity: 0;
-  transition: opacity 100ms ease;
-}
-
-.mdx-document-text-block-shell:focus-within .mdx-document-block__placeholder {
-  opacity: 1;
-}
-
 /* Action menu items (rendered inside .block-popover via BlockPopover). */
 .block-popover__section {
   display: flex;
