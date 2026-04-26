@@ -424,6 +424,11 @@ export interface HomeData {
   schemaVersion?: number;
   title: string;
   sections: HomeSection[];
+  /** Optional Notion-style MDX body. When non-empty, the public Home
+   * page renders this through postMdxComponents and ignores `sections`,
+   * letting the user author Home as a block-editor document with the
+   * shared HeroBlock / LinkListBlock / FeaturedPagesBlock primitives. */
+  bodyMdx?: string;
 }
 
 // --- Assets ---------------------------------------------------------------

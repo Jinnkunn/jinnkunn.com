@@ -110,6 +110,28 @@ test("normalizeHomeData: falls back to an empty section when sections are missin
   ]);
 });
 
+test("normalizeHomeData: preserves a non-empty bodyMdx string", () => {
+  const result = normalizeHomeData({
+    title: "T",
+    bodyMdx: "# Hi\n\n<HeroBlock title=\"Welcome\" />\n",
+  });
+  assert.equal(
+    result.bodyMdx,
+    "# Hi\n\n<HeroBlock title=\"Welcome\" />\n",
+  );
+});
+
+test("normalizeHomeData: drops blank / whitespace-only bodyMdx", () => {
+  for (const value of ["", "   \n  ", undefined, null, 42]) {
+    const result = normalizeHomeData({ title: "T", bodyMdx: value });
+    assert.equal(
+      result.bodyMdx,
+      undefined,
+      `expected undefined bodyMdx for ${JSON.stringify(value)}`,
+    );
+  }
+});
+
 test("normalizeHomeData: preserves normalized home sections", () => {
   const result = normalizeHomeData({
     title: "Legacy",

@@ -2448,6 +2448,30 @@ body[data-window-focused="true"] .sidebar-surface {
   display: contents;
 }
 
+/* HomePanel "Notion" mode wraps the shared BlocksEditor in a single
+   centred column. Hint above explains the takeover semantics — non-
+   empty bodyMdx wins over the section list. */
+.home-builder__notion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  max-width: 840px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.home-builder__notion-hint {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-alt);
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
 /* Hero block editor card. Inline-config block (no JSON data source);
    reuses the dashed-card styling from the data blocks for visual
    consistency, with a 2-column grid for the form fields. */

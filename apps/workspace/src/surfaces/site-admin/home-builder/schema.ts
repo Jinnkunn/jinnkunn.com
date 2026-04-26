@@ -365,10 +365,12 @@ export function normalizeHomeData(raw: unknown): HomeData {
         .map((section, index) => normalizeSection(section, index))
         .filter((section): section is HomeSection => Boolean(section))
     : [];
+  const bodyMdx = typeof r.bodyMdx === "string" ? r.bodyMdx : undefined;
   return {
     schemaVersion: SCHEMA_VERSION,
     title: text(r.title).trim() || "Hi there!",
     sections: sections.length ? sections : [emptyRichTextSection()],
+    bodyMdx: bodyMdx && bodyMdx.trim() ? bodyMdx : undefined,
   };
 }
 

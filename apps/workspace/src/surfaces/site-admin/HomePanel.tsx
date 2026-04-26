@@ -134,10 +134,17 @@ function HomeSectionCommandOptions({
   );
 }
 
-const HOME_EDITOR_MODES = ["edit", "structure", "preview"] as const;
+// "notion" is the new Notion-style block-editor mode. It edits `bodyMdx`
+// (an additive field on home.json) and, when populated, supersedes the
+// sections-iteration on the public Home page. Authoring through this
+// mode lets the user build Home from the same HeroBlock /
+// LinkListBlock / FeaturedPagesBlock primitives that work on every
+// other page.
+const HOME_EDITOR_MODES = ["notion", "edit", "structure", "preview"] as const;
 type HomeEditorMode = (typeof HOME_EDITOR_MODES)[number];
 
 const HOME_EDITOR_MODE_LABELS: Record<HomeEditorMode, string> = {
+  notion: "Notion",
   edit: "Edit",
   structure: "Structure",
   preview: "Preview",
@@ -1011,7 +1018,7 @@ export function HomePanel() {
             Settings
           </button>
 
-          {editorMode !== "structure" ? (
+          {editorMode !== "structure" && editorMode !== "notion" ? (
             <div
               className="home-builder__segmented home-builder__segmented--viewport"
               aria-label="Preview viewport"
@@ -1037,7 +1044,27 @@ export function HomePanel() {
           data-outline-open={outlineDrawerOpen ? "true" : undefined}
           data-settings-open={settingsDrawerOpen ? "true" : undefined}
         >
-          {editorMode === "structure" ? (
+          {editorMode === "notion" ? (
+            <div className="home-builder__notion">
+              <p className="home-builder__notion-hint">
+                When non-empty, this body replaces the section list on
+                the public Home page. Use <code>/</code> for blocks —
+                Hero, Link list, and Featured pages cover everything the
+                section builder does, plus regular paragraphs / headings
+                / images / etc.
+              </p>
+              <BlocksEditor
+                value={draft.bodyMdx ?? ""}
+                onChange={(next) =>
+                  setDraft((current) => ({
+                    ...current,
+                    bodyMdx: next.trim() ? next : undefined,
+                  }))
+                }
+                minHeight={520}
+              />
+            </div>
+          ) : editorMode === "structure" ? (
             <>
               <HomeSectionRail {...sectionRailProps} title="Page structure" />
               {inspectorPanel}
