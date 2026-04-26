@@ -221,26 +221,6 @@ export type SiteAdminConfigPostResult = SiteAdminConfigPostPayload | SiteAdminAp
 
 // --- Home (section-based landing page) -----------------------------------
 
-export type SiteAdminStructuredPageSectionType =
-  | "intro"
-  | "profileLinks"
-  | "entries"
-  | "recentWorks"
-  | "passedWorks"
-  | "note"
-  | "headerLinks"
-  | "footerLinks"
-  | "richText";
-
-export type SiteAdminStructuredPageSection = {
-  id: string;
-  type: SiteAdminStructuredPageSectionType;
-  enabled: boolean;
-  title?: string;
-  body?: string;
-  width: "narrow" | "standard" | "wide";
-};
-
 /** Home is now a single Notion-style MDX document — `bodyMdx` is the
  * only content source. The legacy section types
  * (SiteAdminHomeHeroSection, SiteAdminHomeLinkListSection, …) were
