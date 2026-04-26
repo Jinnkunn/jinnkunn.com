@@ -72,6 +72,185 @@ test("public-web-style-guardrails: classic list pages keep production Notion mar
   }
 });
 
+test("public-web-style-guardrails: data-page entry components keep legacy Notion markup", async () => {
+  // After the news / works / teaching / publications panel-to-MDX
+  // migration, each row on those pages renders through a per-entry
+  // server component. The component source is the contract the
+  // existing CSS in app/(classic)/{news,works,teaching,publications}.css
+  // hangs off — keep the class strings load-bearing so a future
+  // refactor that drops one breaks here, not in production.
+  const newsEntry = await read("components/posts-mdx/news-entry.tsx");
+  assertIncludes(
+    newsEntry,
+    'className="notion-heading notion-semantic-string"',
+    "NewsEntry heading",
+  );
+  assertIncludes(
+    newsEntry,
+    'className="news-entry__body mdx-post__body"',
+    "NewsEntry body wrapper",
+  );
+
+  const worksEntry = await read("components/posts-mdx/works-entry.tsx");
+  assertIncludes(
+    worksEntry,
+    'className="notion-toggle closed works-toggle"',
+    "WorksEntry toggle wrapper",
+  );
+  assertIncludes(
+    worksEntry,
+    'className="mdx-post__body works-toggle__body"',
+    "WorksEntry body class",
+  );
+  assertIncludes(
+    worksEntry,
+    'className="highlighted-background bg-yellow"',
+    "WorksEntry affiliation highlight",
+  );
+
+  const teachingEntry = await read("components/posts-mdx/teaching-entry.tsx");
+  assertIncludes(
+    teachingEntry,
+    'className="notion-list-item notion-semantic-string teaching-item"',
+    "TeachingEntry list item",
+  );
+  assertIncludes(
+    teachingEntry,
+    'className="highlighted-color color-gray"',
+    "TeachingEntry muted spans",
+  );
+
+  const teachingLinks = await read("components/posts-mdx/teaching-links.tsx");
+  assertIncludes(
+    teachingLinks,
+    'className="teaching-link-divider"',
+    "TeachingLinks divider class",
+  );
+  assertIncludes(
+    teachingLinks,
+    'className="notion-text notion-text__content notion-semantic-string teaching-footer-links"',
+    "TeachingLinks footer wrapper",
+  );
+
+  const publicationsEntry = await read("components/posts-mdx/publications-entry.tsx");
+  assertIncludes(
+    publicationsEntry,
+    'className="notion-toggle closed publication-toggle"',
+    "PublicationsEntry toggle wrapper",
+  );
+  assertIncludes(
+    publicationsEntry,
+    'className="pub-tag-prefix"',
+    "PublicationsEntry tag prefix",
+  );
+  assertIncludes(
+    publicationsEntry,
+    'className="pub-tag-colon"',
+    "PublicationsEntry tag colon",
+  );
+
+  const profileLinks = await read("components/posts-mdx/publications-profile-links.tsx");
+  assertIncludes(
+    profileLinks,
+    'className="highlighted-background bg-yellow"',
+    "PublicationsProfileLinks highlight",
+  );
+  assertIncludes(
+    profileLinks,
+    'className="teaching-link-divider"',
+    "PublicationsProfileLinks divider (shared with teaching)",
+  );
+});
+
+test("public-web-style-guardrails: data-page entry components are registered for MDX use", async () => {
+  // The page MDX (`content/pages/{news,works,teaching,publications}.mdx`)
+  // can only render `<NewsEntry>` etc. if the matching component is
+  // exposed via postMdxComponents; otherwise MDX falls through to the
+  // raw HTML element name and we lose all the per-entry rendering.
+  const components = await read("components/posts-mdx/components.tsx");
+  for (const symbol of [
+    "NewsEntry",
+    "WorksEntry",
+    "TeachingEntry",
+    "TeachingLinks",
+    "PublicationsEntry",
+    "PublicationsProfileLinks",
+  ]) {
+    assertIncludes(
+      components,
+      `import { ${symbol} }`,
+      `postMdxComponents imports ${symbol}`,
+    );
+    // The literal string `\n  Foo,` is how the component is registered
+    // in the exported map (one symbol per line, two-space indent).
+    assertIncludes(components, `\n  ${symbol},`, `postMdxComponents registers ${symbol}`);
+  }
+});
+
+test("public-web-style-guardrails: data-page MDX files exist and use the expected blocks", async () => {
+  // Belt-and-suspenders: the migration writes each page once, but we
+  // want CI to scream if someone accidentally deletes the file or
+  // mass-replaces the entry tag in a refactor.
+  const news = await read("content/pages/news.mdx");
+  assertIncludes(news, "<NewsEntry date=", "news.mdx contains NewsEntry blocks");
+  assertIncludes(news, 'title: "News"', "news.mdx frontmatter title");
+
+  const works = await read("content/pages/works.mdx");
+  assertIncludes(works, "<WorksEntry category=", "works.mdx contains WorksEntry blocks");
+  assertIncludes(works, "Recent Works", "works.mdx Recent Works heading");
+  assertIncludes(works, "Past Works", "works.mdx Past Works heading");
+
+  const teaching = await read("content/pages/teaching.mdx");
+  assertIncludes(
+    teaching,
+    "<TeachingEntry term=",
+    "teaching.mdx contains TeachingEntry blocks",
+  );
+  assertIncludes(
+    teaching,
+    'className="notion-bulleted-list teaching-list"',
+    "teaching.mdx wraps entries in the legacy <ul>",
+  );
+
+  const publications = await read("content/pages/publications.mdx");
+  assertIncludes(
+    publications,
+    "<PublicationsEntry data=",
+    "publications.mdx contains PublicationsEntry blocks",
+  );
+  assertIncludes(
+    publications,
+    "<PublicationsProfileLinks links=",
+    "publications.mdx contains profile links block",
+  );
+});
+
+test("public-web-style-guardrails: data-page embed blocks read from page MDX, not legacy JSON", async () => {
+  // The four `<NewsBlock />` / `<WorksBlock />` / `<TeachingBlock />` /
+  // `<PublicationsBlock />` MDX components used to read from
+  // content/{name}.json. After the migration they read from the
+  // matching content/pages/{name}.mdx page so the source of truth is
+  // single. Catch any regression that re-imports the deleted JSON.
+  const blocks = {
+    news: await read("components/posts-mdx/news-block.tsx"),
+    works: await read("components/posts-mdx/works-block.tsx"),
+    teaching: await read("components/posts-mdx/teaching-block.tsx"),
+    publications: await read("components/posts-mdx/publications-block.tsx"),
+  };
+  for (const [name, source] of Object.entries(blocks)) {
+    assertIncludes(
+      source,
+      `content/pages/${name}.mdx`,
+      `${name}-block reads from content/pages/${name}.mdx`,
+    );
+    assertExcludes(
+      source,
+      `@/content/${name}.json`,
+      `${name}-block must not import the deleted JSON`,
+    );
+  }
+});
+
 test("public-web-style-guardrails: classic list page CSS does not reintroduce card borders", async () => {
   const cssFiles = [
     "app/(classic)/news.css",
