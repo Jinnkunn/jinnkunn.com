@@ -7,56 +7,135 @@ export type MdxBlockType =
   | "divider"
   | "callout"
   | "code"
-  | "raw";
+  | "raw"
+  | "todo"
+  | "toggle"
+  | "table"
+  | "bookmark"
+  | "embed"
+  | "file"
+  | "page-link";
+
+export type MdxEmbedKind = "youtube" | "vimeo" | "iframe" | "video";
+
+export interface MdxTableData {
+  align?: ("left" | "center" | "right")[];
+  headerRow?: boolean;
+  rows: string[][];
+}
 
 export interface MdxBlock {
   alt?: string;
   blankLinesBefore?: number;
   caption?: string;
+  checkedLines?: number[];
+  children?: MdxBlock[];
+  description?: string;
+  embedKind?: MdxEmbedKind;
+  filename?: string;
   id: string;
+  image?: string;
   language?: string;
   level?: 1 | 2 | 3;
   listStyle?: "bulleted" | "numbered";
   markers?: string[];
+  mimeType?: string;
+  open?: boolean;
+  pageSlug?: string;
+  provider?: string;
+  size?: number;
+  tableData?: MdxTableData;
   text: string;
+  title?: string;
   type: MdxBlockType;
   url?: string;
 }
 
-let idCounter = 0;
+function nextBlockId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `mdx-block-${crypto.randomUUID()}`;
+  }
+  return `mdx-block-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
 
 export function createMdxBlock(type: MdxBlockType): MdxBlock {
-  idCounter += 1;
+  const id = nextBlockId();
   if (type === "heading") {
-    return { id: `mdx-block-${idCounter}`, type, level: 2, text: "Heading" };
+    return { id, type, level: 2, text: "Heading" };
   }
   if (type === "image") {
-    return {
-      id: `mdx-block-${idCounter}`,
-      type,
-      alt: "",
-      caption: "",
-      text: "",
-      url: "",
-    };
+    return { id, type, alt: "", caption: "", text: "", url: "" };
   }
   if (type === "code") {
-    return { id: `mdx-block-${idCounter}`, type, language: "", text: "" };
+    return { id, type, language: "", text: "" };
   }
   if (type === "list") {
-    return { id: `mdx-block-${idCounter}`, type, listStyle: "bulleted", text: "" };
+    return { id, type, listStyle: "bulleted", text: "" };
   }
   if (type === "divider") {
-    return { id: `mdx-block-${idCounter}`, type, text: "" };
+    return { id, type, text: "" };
   }
   if (type === "callout") {
-    return { id: `mdx-block-${idCounter}`, type, text: "" };
+    return { id, type, text: "" };
   }
-  return { id: `mdx-block-${idCounter}`, type, text: "" };
+  if (type === "todo") {
+    return { id, type, text: "", checkedLines: [] };
+  }
+  if (type === "toggle") {
+    return { id, type, text: "Toggle", open: false, children: [] };
+  }
+  if (type === "table") {
+    return {
+      id,
+      type,
+      text: "",
+      tableData: {
+        headerRow: true,
+        rows: [
+          ["", ""],
+          ["", ""],
+        ],
+      },
+    };
+  }
+  if (type === "bookmark") {
+    return { id, type, text: "", url: "" };
+  }
+  if (type === "embed") {
+    return { id, type, text: "", url: "", embedKind: "iframe" };
+  }
+  if (type === "file") {
+    return { id, type, text: "", url: "", filename: "" };
+  }
+  if (type === "page-link") {
+    return { id, type, text: "", pageSlug: "" };
+  }
+  return { id, type, text: "" };
 }
 
 function makeBlock(type: MdxBlockType, patch: Partial<MdxBlock> = {}): MdxBlock {
   return { ...createMdxBlock(type), ...patch };
+}
+
+export function duplicateMdxBlock(block: MdxBlock): MdxBlock {
+  const copy: MdxBlock = { ...block, id: nextBlockId() };
+  if (block.children) {
+    copy.children = block.children.map((child) => duplicateMdxBlock(child));
+  }
+  if (block.markers) {
+    copy.markers = [...block.markers];
+  }
+  if (block.checkedLines) {
+    copy.checkedLines = [...block.checkedLines];
+  }
+  if (block.tableData) {
+    copy.tableData = {
+      ...block.tableData,
+      align: block.tableData.align ? [...block.tableData.align] : undefined,
+      rows: block.tableData.rows.map((row) => [...row]),
+    };
+  }
+  return copy;
 }
 
 function isRawMdxParagraph(lines: string[]): boolean {
@@ -74,6 +153,56 @@ function isRawMdxParagraph(lines: string[]): boolean {
 }
 
 export function parseMdxBlocks(source: string): MdxBlock[] {
+  return parseBlocksAtDepth(source, 0);
+}
+
+const DETAILS_OPEN_RE = /^<details(\s+open)?>$/;
+const SUMMARY_RE = /^<summary>([\s\S]*?)<\/summary>$/;
+// Allow tabs / spaces around the marker to support indented checklists nested
+// inside toggle bodies.
+const TODO_LINE_RE = /^(?:\s*)- \[([ xX])\]\s*(.*)$/;
+const TABLE_DIVIDER_RE = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|\s*$/;
+const SELF_CLOSING_TAG_RE = /^<(\w+)([\s\S]*?)\/>$/;
+const ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|\{(\d+)\})/g;
+
+function parseAttrs(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const match of raw.matchAll(ATTR_RE)) {
+    const name = match[1];
+    out[name] = match[2] ?? match[3] ?? "";
+  }
+  return out;
+}
+
+function parseTableCells(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function parseTableAlign(divider: string): ("left" | "center" | "right")[] {
+  return parseTableCells(divider).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    return "left";
+  });
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/"/g, "&quot;");
+}
+
+function serializeAttrs(entries: Array<[string, string | number | undefined]>): string {
+  return entries
+    .filter(([, value]) => value !== undefined && value !== "" && value !== null)
+    .map(([key, value]) =>
+      typeof value === "number" ? `${key}={${value}}` : `${key}="${escapeAttr(String(value))}"`,
+    )
+    .join(" ");
+}
+
+function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
   const blocks: MdxBlock[] = [];
   const lines = source.replace(/\r\n/g, "\n").split("\n");
   let index = 0;
@@ -106,6 +235,63 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
       }
       if ((lines[index] ?? "").trim() === "```") index += 1;
       pushBlock(makeBlock("code", { language, text: bodyLines.join("\n") }));
+      continue;
+    }
+
+    // Toggle: <details>...</details>. Only recognized at the top level
+    // (depth === 0). Nested <details> falls through to the raw paragraph
+    // handler so the data model never exceeds depth 1.
+    const detailsMatch = depth === 0 ? DETAILS_OPEN_RE.exec(trimmedLine) : null;
+    if (detailsMatch) {
+      const isOpen = Boolean(detailsMatch[1]);
+      const innerLines: string[] = [];
+      index += 1;
+      let foundClose = false;
+      while (index < lines.length) {
+        const probe = (lines[index] ?? "").trim();
+        if (probe === "</details>") {
+          foundClose = true;
+          index += 1;
+          break;
+        }
+        innerLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (!foundClose) {
+        // Unclosed <details>: treat the consumed lines as raw to avoid
+        // silently swallowing arbitrary markdown.
+        pushBlock(
+          makeBlock("raw", {
+            text: [trimmedLine, ...innerLines].join("\n"),
+          }),
+        );
+        continue;
+      }
+      // Strip a leading <summary>…</summary> line, then drop the blank
+      // separator line MDX needs after the JSX summary tag.
+      let summaryText = "";
+      let bodyStart = 0;
+      while (bodyStart < innerLines.length && !innerLines[bodyStart]?.trim()) {
+        bodyStart += 1;
+      }
+      const firstInner = innerLines[bodyStart]?.trim() ?? "";
+      const summaryMatch = SUMMARY_RE.exec(firstInner);
+      if (summaryMatch) {
+        summaryText = summaryMatch[1];
+        bodyStart += 1;
+        while (bodyStart < innerLines.length && !innerLines[bodyStart]?.trim()) {
+          bodyStart += 1;
+        }
+      }
+      const bodySource = innerLines.slice(bodyStart).join("\n").replace(/\n+$/, "");
+      const children = bodySource ? parseBlocksAtDepth(bodySource, depth + 1) : [];
+      pushBlock(
+        makeBlock("toggle", {
+          children,
+          open: isOpen,
+          text: summaryText,
+        }),
+      );
       continue;
     }
 
@@ -160,6 +346,26 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
       continue;
     }
 
+    // Todo MUST be checked before the generic list parser, since "- [ ] foo"
+    // also matches the bullet pattern.
+    const todoMatches = paragraphLines.map((item) => TODO_LINE_RE.exec(item));
+    if (todoMatches.every(Boolean)) {
+      const items = todoMatches.map((match) => ({
+        checked: (match?.[1] ?? "").toLowerCase() === "x",
+        text: match?.[2] ?? "",
+      }));
+      const checkedLines = items
+        .map((item, idx) => (item.checked ? idx : -1))
+        .filter((idx) => idx >= 0);
+      pushBlock(
+        makeBlock("todo", {
+          checkedLines,
+          text: items.map((item) => item.text).join("\n"),
+        }),
+      );
+      continue;
+    }
+
     const listMatches = paragraphLines.map((item) =>
       /^(\s*(?:[-*]|\d+\.)(?:\s+))(.+)$/.exec(item),
     );
@@ -201,6 +407,101 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
       continue;
     }
 
+    // GFM table: every line starts with `|` and the second line is a
+    // dashes-and-pipes divider. Must precede the raw-paragraph fallback.
+    if (
+      paragraphLines.length >= 2 &&
+      paragraphLines.every((line) => line.trim().startsWith("|")) &&
+      TABLE_DIVIDER_RE.test(paragraphLines[1] ?? "")
+    ) {
+      const headerCells = parseTableCells(paragraphLines[0] ?? "");
+      const align = parseTableAlign(paragraphLines[1] ?? "");
+      const bodyRows = paragraphLines.slice(2).map((line) => {
+        const cells = parseTableCells(line);
+        // Pad / trim to header column count for a rectangular table model.
+        while (cells.length < headerCells.length) cells.push("");
+        return cells.slice(0, headerCells.length);
+      });
+      pushBlock(
+        makeBlock("table", {
+          tableData: {
+            align: align.slice(0, headerCells.length),
+            headerRow: true,
+            rows: [headerCells, ...bodyRows],
+          },
+        }),
+      );
+      continue;
+    }
+
+    // Self-closing JSX components (Bookmark, Video, Embed, FileLink,
+    // PageLink). Single-line tags only. Multi-line / non-self-closing JSX
+    // falls through to the raw paragraph handler.
+    const jsxMatch = paragraphLines.length === 1 ? SELF_CLOSING_TAG_RE.exec(paragraph) : null;
+    if (jsxMatch) {
+      const tagName = jsxMatch[1];
+      const attrs = parseAttrs(jsxMatch[2] ?? "");
+      if (tagName === "Bookmark") {
+        pushBlock(
+          makeBlock("bookmark", {
+            description: attrs.description,
+            image: attrs.image,
+            provider: attrs.provider,
+            text: "",
+            title: attrs.title,
+            url: attrs.url,
+          }),
+        );
+        continue;
+      }
+      if (tagName === "Video") {
+        const kind =
+          attrs.kind === "youtube" || attrs.kind === "vimeo" || attrs.kind === "video"
+            ? (attrs.kind as MdxEmbedKind)
+            : "iframe";
+        pushBlock(
+          makeBlock("embed", {
+            embedKind: kind,
+            text: "",
+            url: attrs.url,
+          }),
+        );
+        continue;
+      }
+      if (tagName === "Embed") {
+        pushBlock(
+          makeBlock("embed", {
+            embedKind: "iframe",
+            text: "",
+            title: attrs.title,
+            url: attrs.src,
+          }),
+        );
+        continue;
+      }
+      if (tagName === "FileLink") {
+        const sizeNum = attrs.size ? Number(attrs.size) : undefined;
+        pushBlock(
+          makeBlock("file", {
+            filename: attrs.filename,
+            size: Number.isFinite(sizeNum) ? sizeNum : undefined,
+            text: "",
+            url: attrs.href,
+          }),
+        );
+        continue;
+      }
+      if (tagName === "PageLink") {
+        pushBlock(
+          makeBlock("page-link", {
+            pageSlug: attrs.slug,
+            text: "",
+          }),
+        );
+        continue;
+      }
+    }
+
     if (isRawMdxParagraph(paragraphLines)) {
       pushBlock(makeBlock("raw", { text: paragraph }));
       continue;
@@ -209,10 +510,13 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
     pushBlock(makeBlock("paragraph", { text: paragraph }));
   }
 
-  return blocks.length > 0 ? blocks : [createMdxBlock("paragraph")];
+  if (blocks.length > 0) return blocks;
+  // The root canvas needs at least one editable block; nested levels can be
+  // empty (an empty toggle body, etc).
+  return depth === 0 ? [createMdxBlock("paragraph")] : [];
 }
 
-function serializeBlock(block: MdxBlock): string {
+function serializeBlock(block: MdxBlock, depth: number): string {
   const text = block.text.trim();
   if (block.type === "heading") {
     if (!text) return "";
@@ -261,13 +565,100 @@ function serializeBlock(block: MdxBlock): string {
   if (block.type === "raw") {
     return block.text.trim();
   }
+  if (block.type === "todo") {
+    const lines = block.text.split("\n");
+    const checked = new Set(block.checkedLines ?? []);
+    return lines
+      .map((line, idx) => `- [${checked.has(idx) ? "x" : " "}] ${line}`)
+      .join("\n");
+  }
+  if (block.type === "toggle") {
+    const summary = block.text.trim() || "Toggle";
+    const inner = block.children?.length
+      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
+      : "";
+    const opener = `<details${block.open ? " open" : ""}>`;
+    if (!inner) {
+      return `${opener}\n<summary>${summary}</summary>\n</details>`;
+    }
+    return [opener, `<summary>${summary}</summary>`, "", inner, "", "</details>"].join(
+      "\n",
+    );
+  }
+  if (block.type === "table") {
+    const data = block.tableData;
+    if (!data || !data.rows.length) return "";
+    const colCount = data.rows[0].length;
+    const align = (data.align ?? []).slice(0, colCount);
+    const dividerCells: string[] = [];
+    for (let i = 0; i < colCount; i += 1) {
+      const a = align[i] ?? "left";
+      if (a === "center") dividerCells.push(":---:");
+      else if (a === "right") dividerCells.push("---:");
+      else dividerCells.push("---");
+    }
+    const lines: string[] = [];
+    data.rows.forEach((row, idx) => {
+      const cells = row.slice(0, colCount);
+      while (cells.length < colCount) cells.push("");
+      lines.push(`| ${cells.join(" | ")} |`);
+      if (idx === 0) {
+        lines.push(`| ${dividerCells.join(" | ")} |`);
+      }
+    });
+    return lines.join("\n");
+  }
+  if (block.type === "bookmark") {
+    const url = (block.url ?? "").trim();
+    if (!url) return "";
+    const attrs = serializeAttrs([
+      ["url", url],
+      ["title", block.title],
+      ["description", block.description],
+      ["image", block.image],
+      ["provider", block.provider],
+    ]);
+    return `<Bookmark ${attrs} />`;
+  }
+  if (block.type === "embed") {
+    const url = (block.url ?? "").trim();
+    if (!url) return "";
+    const kind = block.embedKind ?? "iframe";
+    if (kind === "iframe") {
+      const attrs = serializeAttrs([
+        ["src", url],
+        ["title", block.title || "Embedded content"],
+      ]);
+      return `<Embed ${attrs} />`;
+    }
+    const attrs = serializeAttrs([
+      ["kind", kind],
+      ["url", url],
+    ]);
+    return `<Video ${attrs} />`;
+  }
+  if (block.type === "file") {
+    const url = (block.url ?? "").trim();
+    if (!url) return "";
+    const attrs = serializeAttrs([
+      ["href", url],
+      ["filename", block.filename],
+      ["size", block.size],
+    ]);
+    return `<FileLink ${attrs} />`;
+  }
+  if (block.type === "page-link") {
+    const slug = (block.pageSlug ?? "").trim();
+    if (!slug) return "";
+    return `<PageLink ${serializeAttrs([["slug", slug]])} />`;
+  }
   return text;
 }
 
-export function serializeMdxBlocks(blocks: MdxBlock[]): string {
+function serializeBlocksWithDepth(blocks: MdxBlock[], depth: number): string {
   const parts: string[] = [];
   for (const block of blocks) {
-    const serialized = serializeBlock(block);
+    const serialized = serializeBlock(block, depth);
     if (!serialized) continue;
     if (parts.length > 0) {
       parts.push("\n".repeat((block.blankLinesBefore ?? 1) + 1));
@@ -275,5 +666,10 @@ export function serializeMdxBlocks(blocks: MdxBlock[]): string {
     parts.push(serialized);
   }
   const source = parts.join("");
-  return source ? `${source}\n` : "";
+  if (!source) return "";
+  return depth === 0 ? `${source}\n` : source;
+}
+
+export function serializeMdxBlocks(blocks: MdxBlock[]): string {
+  return serializeBlocksWithDepth(blocks, 0);
 }

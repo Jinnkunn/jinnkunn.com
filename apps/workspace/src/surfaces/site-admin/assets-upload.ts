@@ -7,6 +7,7 @@ import type { AssetUploadResponse } from "./types";
 import { normalizeString } from "./utils";
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export const ALLOWED_IMAGE_TYPES = new Set<string>([
   "image/png",
@@ -15,6 +16,27 @@ export const ALLOWED_IMAGE_TYPES = new Set<string>([
   "image/gif",
   "image/svg+xml",
   "image/avif",
+]);
+
+// Generic-file upload allowlist (audio, video, archives, common docs). Image
+// uploads still go through `uploadImageFile` for the stricter alt-text flow.
+export const ALLOWED_FILE_TYPES = new Set<string>([
+  "application/pdf",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/json",
+  "application/x-tar",
+  "application/gzip",
+  "application/octet-stream",
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
 ]);
 
 type RequestFn = (
@@ -55,6 +77,45 @@ export async function uploadImageFile(
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     return { ok: false, error: `file too large (>${MAX_UPLOAD_BYTES} bytes)` };
+  }
+  let base64 = "";
+  try {
+    base64 = await fileToBase64(file);
+  } catch (err) {
+    return { ok: false, error: `could not read file: ${String(err)}` };
+  }
+  const response = await request("/api/site-admin/assets", "POST", {
+    filename: file.name,
+    contentType,
+    base64,
+  });
+  if (!response.ok) {
+    return { ok: false, error: `${response.code}: ${response.error}` };
+  }
+  const data = response.data as Record<string, unknown>;
+  const asset: AssetUploadResponse = {
+    key: normalizeString(data.key),
+    url: normalizeString(data.url),
+    size: typeof data.size === "number" ? data.size : 0,
+    contentType: normalizeString(data.contentType) || contentType,
+    version: normalizeString(data.version),
+  };
+  if (!asset.url) return { ok: false, error: "upload response missing url" };
+  return { ok: true, asset, filename: file.name };
+}
+
+// Generic-file uploader for the File block. Mirrors uploadImageFile but
+// targets the broader ALLOWED_FILE_TYPES allowlist and a larger size cap.
+export async function uploadGenericFile(
+  input: UploadImageFileInput,
+): Promise<UploadImageResult> {
+  const { file, request } = input;
+  const contentType = normalizeString(file.type) || "application/octet-stream";
+  if (!ALLOWED_FILE_TYPES.has(contentType)) {
+    return { ok: false, error: `unsupported file type: ${contentType}` };
+  }
+  if (file.size > MAX_FILE_UPLOAD_BYTES) {
+    return { ok: false, error: `file too large (>${MAX_FILE_UPLOAD_BYTES} bytes)` };
   }
   let base64 = "";
   try {
