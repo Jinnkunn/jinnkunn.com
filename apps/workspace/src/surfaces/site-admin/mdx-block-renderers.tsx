@@ -819,33 +819,49 @@ export function PageLinkEditableBlock({
   );
 }
 
-// ---------- News block ----------
-// Insertable view over `content/news.json`. The block carries only the
-// query (limit). Entries themselves live in news.json and are rendered
-// by the matching server component on the public site.
+// ---------- Data-source blocks ----------
+// Insertable views over the typed JSON files in `content/`. Each block
+// carries only the query (currently just `limit`); entries themselves
+// live in their canonical JSON file and render through a matching
+// server component on the public site.
 
-export interface NewsBlockEditableBlockProps {
+export interface DataBlockEditableBlockProps {
   block: MdxBlock;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  /** Display label for the card (e.g. "News", "Publications"). */
+  label: string;
+  /** Single emoji / glyph shown next to the label. */
+  icon: string;
+  /** One-line description shown under the label, naming the data source. */
+  description: string;
+  /** Aria label for the limit input — defaults to `${label} block limit`. */
+  limitAriaLabel?: string;
 }
 
-export function NewsBlockEditableBlock({ block, onPatch }: NewsBlockEditableBlockProps) {
+export function DataBlockEditableBlock({
+  block,
+  onPatch,
+  label,
+  icon,
+  description,
+  limitAriaLabel,
+}: DataBlockEditableBlockProps) {
   const limitValue = block.limit !== undefined ? String(block.limit) : "";
   return (
     <div className="mdx-document-data-block">
       <div className="mdx-document-data-block__head">
         <span className="mdx-document-data-block__icon" aria-hidden="true">
-          📰
+          {icon}
         </span>
         <div className="mdx-document-data-block__heading">
-          <strong>News</strong>
-          <span>Latest entries from content/news.json</span>
+          <strong>{label}</strong>
+          <span>{description}</span>
         </div>
       </div>
       <label className="mdx-document-data-block__row">
         <span>Limit</span>
         <input
-          aria-label="News block limit"
+          aria-label={limitAriaLabel ?? `${label} block limit`}
           type="number"
           min={1}
           step={1}

@@ -27,9 +27,9 @@ import { MentionPicker, type MentionTarget } from "./mention-picker";
 import { getTextareaCaretCoords } from "./textarea-caret";
 import {
   BookmarkEditableBlock,
+  DataBlockEditableBlock,
   EmbedEditableBlock,
   FileEditableBlock,
-  NewsBlockEditableBlock,
   PageLinkEditableBlock,
   TableEditableBlock,
   TodoEditableBlock,
@@ -88,6 +88,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   file: "File",
   "page-link": "Page link",
   "news-block": "News",
+  "publications-block": "Publications",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -257,6 +258,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
     keywords: ["news", "updates", "feed"],
     label: "News",
     makeBlock: () => createMdxBlock("news-block"),
+  },
+  {
+    description: "Publication list from content/publications.json",
+    group: "Data",
+    icon: "📚",
+    id: "publications-block",
+    keywords: ["publications", "papers", "research", "academic"],
+    label: "Publications",
+    makeBlock: () => createMdxBlock("publications-block"),
   },
   // Layout — structural blocks and advanced.
   {
@@ -1499,7 +1509,27 @@ function EditableBlock({
   }
 
   if (block.type === "news-block") {
-    return <NewsBlockEditableBlock block={block} onPatch={onPatch} />;
+    return (
+      <DataBlockEditableBlock
+        block={block}
+        onPatch={onPatch}
+        label="News"
+        icon="📰"
+        description="Latest entries from content/news.json"
+      />
+    );
+  }
+
+  if (block.type === "publications-block") {
+    return (
+      <DataBlockEditableBlock
+        block={block}
+        onPatch={onPatch}
+        label="Publications"
+        icon="📚"
+        description="Publication list from content/publications.json"
+      />
+    );
   }
 
   const isParagraph = block.type === "paragraph";

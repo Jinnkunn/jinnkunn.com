@@ -10,6 +10,7 @@ import { Figure } from "./figure";
 import { FileLink } from "./file-link";
 import { NewsBlock } from "./news-block";
 import { PageLink } from "./page-link";
+import { PublicationsBlock } from "./publications-block";
 import { Toggle } from "./toggle";
 import { Video } from "./video";
 
@@ -77,6 +78,7 @@ export const postMdxComponents: MDXComponents = {
   FileLink,
   NewsBlock,
   PageLink,
+  PublicationsBlock,
   Toggle,
   Video,
 };
