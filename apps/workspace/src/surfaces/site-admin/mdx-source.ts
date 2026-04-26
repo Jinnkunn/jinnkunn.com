@@ -17,6 +17,15 @@ export interface PageFrontmatterForm {
   updated: string; // ISO date or empty
 }
 
+/** Frontmatter for the four reusable MDX components edited via the
+ * Components admin panel (News / Teaching / Publications / Works).
+ * The component file has no public URL, so the form is just the
+ * display title — kept as a field for round-trip fidelity with the
+ * existing `title:` line each component MDX already carries. */
+export interface ComponentFrontmatterForm {
+  title: string;
+}
+
 function escapeYamlString(value: string): string {
   // Always emit double-quoted to sidestep YAML's tricky scalar rules.
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
@@ -115,6 +124,33 @@ export function parsePostSource(source: string): {
     else if (key === "date") form.dateIso = parseScalar(value);
     else if (key === "description") form.description = parseScalar(value);
     else if (key === "draft") form.draft = /true/i.test(parseScalar(value));
+  }
+  return { form, body };
+}
+
+export function buildComponentSource(
+  form: ComponentFrontmatterForm,
+  body: string,
+): string {
+  const lines: string[] = ["---"];
+  lines.push(`title: ${escapeYamlString(form.title)}`);
+  lines.push("---", "");
+  return `${lines.join("\n")}\n${body.trimStart()}`;
+}
+
+export function parseComponentSource(source: string): {
+  form: ComponentFrontmatterForm;
+  body: string;
+} {
+  const { raw, body } = splitFrontmatter(source);
+  const form: ComponentFrontmatterForm = { title: "" };
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const kv = /^(\w+)\s*:\s*(.*)$/.exec(line);
+    if (!kv) continue;
+    const key = kv[1].toLowerCase();
+    const value = kv[2];
+    if (key === "title") form.title = parseScalar(value);
   }
   return { form, body };
 }

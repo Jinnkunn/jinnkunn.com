@@ -342,7 +342,7 @@ function renderNavItem({
             )}
           </button>
         )}
-        {hasChildren && (
+        {hasChildren ? (
           <button
             type="button"
             className="sidebar-tree__item-disclosure"
@@ -354,6 +354,13 @@ function renderNavItem({
           >
             <ChevronIcon open={treeOpen} />
           </button>
+        ) : (
+          // Reserve the chevron column even on leaf rows so labels stay
+          // vertically aligned with their parent's. Without this, a
+          // nested child without children renders flush-left of its
+          // parent (parent has chevron + icon, child has neither) and
+          // the hierarchy stops reading as a tree.
+          <span className="sidebar-tree__item-disclosure-placeholder" aria-hidden="true" />
         )}
         {item.canAddChild && !isRenaming && (
           <button
