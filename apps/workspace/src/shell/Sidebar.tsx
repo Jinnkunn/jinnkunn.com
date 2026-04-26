@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   SurfaceDefinition,
   SurfaceNavGroup,
+  SurfaceNavItem,
 } from "../surfaces/types";
 
 interface SidebarProps {
@@ -15,6 +16,7 @@ interface SidebarProps {
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
 const SURFACE_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.surfaceTrees.v1";
+const ITEM_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.itemTrees.v1";
 
 type CollapseMap = Record<string, boolean>;
 
@@ -73,6 +75,119 @@ function ChevronIcon({ open }: { open: boolean }) {
  *
  * Flat surfaces (no navGroups) render as a single row, identical to
  * the pre-nesting behaviour. */
+// Walks a SurfaceNavItem tree and returns true if any descendant matches
+// the active nav id. Used to keep ancestor trees forced-open so the
+// active row is always visible after a collapse.
+function itemContainsActive(
+  item: SurfaceNavItem,
+  activeNavItemId: string | null,
+): boolean {
+  if (!activeNavItemId) return false;
+  if (item.id === activeNavItemId) return true;
+  return Boolean(
+    item.children?.some((child) => itemContainsActive(child, activeNavItemId)),
+  );
+}
+
+interface RenderNavItemArgs {
+  activeNavItemId: string | null;
+  depth: number;
+  item: SurfaceNavItem;
+  itemTreeCollapsed: CollapseMap;
+  onSelectNavItem: (surfaceId: string, navItemId: string) => void;
+  surfaceId: string;
+  toggleItemTree: (key: string) => void;
+  itemKey: (surfaceId: string, itemId: string) => string;
+}
+
+// Recursive renderer for one nav row + its descendants. Indent doubles
+// per depth via the `--depth` CSS variable; the parent row stays clickable
+// and the chevron is a separate hit target. Children that include the
+// active id are force-opened so the user can always see what's selected.
+function renderNavItem({
+  activeNavItemId,
+  depth,
+  item,
+  itemTreeCollapsed,
+  onSelectNavItem,
+  surfaceId,
+  toggleItemTree,
+  itemKey,
+}: RenderNavItemArgs) {
+  const selected = activeNavItemId === item.id;
+  const hasChildren = Boolean(item.children?.length);
+  const containsActive = hasChildren
+    ? Boolean(
+        item.children?.some((child) =>
+          itemContainsActive(child, activeNavItemId),
+        ),
+      )
+    : false;
+  const treeKey = itemKey(surfaceId, item.id);
+  const treeOpen = hasChildren
+    ? containsActive || !itemTreeCollapsed[treeKey]
+    : false;
+  const treeId = `sidebar-item-tree-${surfaceId}-${item.id.replace(/[^a-z0-9-]/gi, "_")}`;
+  return (
+    <li key={item.id}>
+      <div
+        className="sidebar-tree__item-row"
+        style={{ ["--sidebar-depth" as string]: depth }}
+      >
+        <button
+          type="button"
+          className="sidebar-nav-item sidebar-tree__item"
+          onClick={() => onSelectNavItem(surfaceId, item.id)}
+          aria-current={selected ? "page" : undefined}
+        >
+          {item.icon && (
+            <span className="sidebar-nav-item-icon">{item.icon}</span>
+          )}
+          <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+            {item.label}
+          </span>
+          {item.badge !== undefined && item.badge !== null && (
+            <span className="sidebar-tree__badge">{item.badge}</span>
+          )}
+        </button>
+        {hasChildren && (
+          <button
+            type="button"
+            className="sidebar-tree__item-disclosure"
+            onClick={() => toggleItemTree(treeKey)}
+            aria-expanded={treeOpen}
+            aria-controls={treeId}
+            aria-label={treeOpen ? `Collapse ${item.label}` : `Expand ${item.label}`}
+            title={treeOpen ? "Collapse" : "Expand"}
+          >
+            <ChevronIcon open={treeOpen} />
+          </button>
+        )}
+      </div>
+      {hasChildren && treeOpen && (
+        <ul
+          id={treeId}
+          className="sidebar-tree__items sidebar-tree__items--nested"
+          role="list"
+        >
+          {item.children!.map((child) =>
+            renderNavItem({
+              activeNavItemId,
+              depth: depth + 1,
+              item: child,
+              itemTreeCollapsed,
+              onSelectNavItem,
+              surfaceId,
+              toggleItemTree,
+              itemKey,
+            }),
+          )}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 export function Sidebar({
   surfaces,
   activeSurfaceId,
@@ -86,6 +201,9 @@ export function Sidebar({
   const [surfaceTreeCollapsed, setSurfaceTreeCollapsed] = useState<CollapseMap>(
     () => loadCollapseMap(SURFACE_TREE_COLLAPSE_STORAGE_KEY),
   );
+  const [itemTreeCollapsed, setItemTreeCollapsed] = useState<CollapseMap>(() =>
+    loadCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY),
+  );
 
   useEffect(() => {
     persistCollapseMap(GROUP_COLLAPSE_STORAGE_KEY, groupCollapsed);
@@ -94,6 +212,10 @@ export function Sidebar({
   useEffect(() => {
     persistCollapseMap(SURFACE_TREE_COLLAPSE_STORAGE_KEY, surfaceTreeCollapsed);
   }, [surfaceTreeCollapsed]);
+
+  useEffect(() => {
+    persistCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY, itemTreeCollapsed);
+  }, [itemTreeCollapsed]);
 
   const toggleGroup = useCallback((key: string) => {
     setGroupCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -106,8 +228,14 @@ export function Sidebar({
     }));
   }, []);
 
+  const toggleItemTree = useCallback((key: string) => {
+    setItemTreeCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
   const groupKey = (surfaceId: string, groupId: string) =>
     `${surfaceId}:${groupId}`;
+  const itemKey = (surfaceId: string, itemId: string) =>
+    `${surfaceId}:::${itemId}`;
 
   const isGroupOpen = (
     surfaceId: string,
@@ -214,39 +342,18 @@ export function Sidebar({
                                 className="sidebar-tree__items"
                                 role="list"
                               >
-                                {group.items.map((item) => {
-                                  const selected =
-                                    activeNavItemId === item.id;
-                                  return (
-                                    <li key={item.id}>
-                                      <button
-                                        type="button"
-                                        className="sidebar-nav-item sidebar-tree__item"
-                                        onClick={() =>
-                                          onSelectNavItem(surface.id, item.id)
-                                        }
-                                        aria-current={
-                                          selected ? "page" : undefined
-                                        }
-                                      >
-                                        {item.icon && (
-                                          <span className="sidebar-nav-item-icon">
-                                            {item.icon}
-                                          </span>
-                                        )}
-                                        <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                                          {item.label}
-                                        </span>
-                                        {item.badge !== undefined &&
-                                          item.badge !== null && (
-                                            <span className="sidebar-tree__badge">
-                                              {item.badge}
-                                            </span>
-                                          )}
-                                      </button>
-                                    </li>
-                                  );
-                                })}
+                                {group.items.map((item) =>
+                                  renderNavItem({
+                                    activeNavItemId,
+                                    depth: 0,
+                                    item,
+                                    itemTreeCollapsed,
+                                    onSelectNavItem,
+                                    surfaceId: surface.id,
+                                    toggleItemTree,
+                                    itemKey,
+                                  }),
+                                )}
                               </ul>
                             )}
                           </div>

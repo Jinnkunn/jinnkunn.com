@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
+import type { SurfaceNavItem } from "../types";
 import { CommandPalette } from "./CommandPalette";
 import { DisconnectedNotice } from "./DisconnectedNotice";
 import { MessageBar } from "./MessageBar";
@@ -55,24 +56,174 @@ function PanelFallback() {
   );
 }
 
+// Decode an active nav item id of the form "posts:my-slug" into a tab +
+// slug pair. Plain ids (no colon) decode to null. Used both to derive
+// the active tab when the sidebar deep-links into an editor and to
+// trigger the corresponding `setSelected({kind:"edit", slug})`.
+function decodeNavItemId(
+  id: string | null,
+): { tab: "posts" | "pages"; slug: string } | null {
+  if (!id) return null;
+  const colon = id.indexOf(":");
+  if (colon < 0) return null;
+  const prefix = id.slice(0, colon);
+  if (prefix !== "posts" && prefix !== "pages") return null;
+  const slug = id.slice(colon + 1);
+  if (!slug) return null;
+  return { tab: prefix, slug };
+}
+
+interface SidebarPageRow {
+  slug: string;
+  title: string;
+}
+
+// Group flat slug rows like ["docs/intro", "docs/api/auth"] into a
+// nested SurfaceNavItem tree. Intermediate path segments without their
+// own page just appear as folder rows; the leaf row carries the real
+// title.
+function buildPagesTree(rows: SidebarPageRow[]): SurfaceNavItem[] {
+  type Node = {
+    id: string;
+    label: string;
+    children: Map<string, Node>;
+  };
+  const root = new Map<string, Node>();
+  const sorted = rows
+    .filter((r) => r.slug)
+    .slice()
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+  for (const { slug, title } of sorted) {
+    const parts = slug.split("/");
+    let level = root;
+    let path = "";
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      path = path ? `${path}/${part}` : part;
+      const isLeaf = i === parts.length - 1;
+      let node = level.get(part);
+      if (!node) {
+        node = {
+          id: `pages:${path}`,
+          label: isLeaf ? title || part : part,
+          children: new Map(),
+        };
+        level.set(part, node);
+      } else if (isLeaf) {
+        node.label = title || node.label;
+      }
+      level = node.children;
+    }
+  }
+  function toItems(level: Map<string, Node>): SurfaceNavItem[] {
+    return Array.from(level.values()).map((n) => ({
+      id: n.id,
+      label: n.label,
+      children: n.children.size > 0 ? toItems(n.children) : undefined,
+    }));
+  }
+  return toItems(root);
+}
+
 function SiteAdminContent() {
-  const { activeNavItemId, setActiveNavItemId } = useSurfaceNav();
-  const { connection } = useSiteAdmin();
+  const { activeNavItemId, setActiveNavItemId, setNavItemChildren } =
+    useSurfaceNav();
+  const { connection, request } = useSiteAdmin();
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Selection state lives in the shell (not the panels) so the command
   // palette can deep-link straight into a specific post/page.
   const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
   const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
+  const [postsTree, setPostsTree] = useState<readonly SurfaceNavItem[]>([]);
+  const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
 
-  // Narrow the shell-provided id to our tab union. Defends against a
-  // persisted id that's valid in the shell (a plain string) but no
-  // longer maps to a panel here.
-  const activeTab: SiteAdminTab = useMemo(
-    () =>
-      isSiteAdminTab(activeNavItemId) ? activeNavItemId : SITE_ADMIN_DEFAULT_TAB,
+  const decodedItem = useMemo(
+    () => decodeNavItemId(activeNavItemId),
     [activeNavItemId],
   );
+
+  // Narrow the shell-provided id to our tab union. Sidebar children use
+  // encoded ids ("posts:my-slug"); decode the prefix into the parent
+  // tab so the right panel mounts. Plain ids fall through unchanged.
+  const activeTab: SiteAdminTab = useMemo(() => {
+    if (decodedItem) return decodedItem.tab;
+    return isSiteAdminTab(activeNavItemId)
+      ? activeNavItemId
+      : SITE_ADMIN_DEFAULT_TAB;
+  }, [activeNavItemId, decodedItem]);
+
+  // When the user clicks a sidebar child (posts:slug / pages:slug),
+  // open the editor for that slug. The activeNavItemId is what the
+  // shell persists; the *Selected state is what the panel renders.
+  useEffect(() => {
+    if (!decodedItem) return;
+    if (decodedItem.tab === "posts") {
+      setPostsSelected({ kind: "edit", slug: decodedItem.slug });
+    } else if (decodedItem.tab === "pages") {
+      setPagesSelected({ kind: "edit", slug: decodedItem.slug });
+    }
+  }, [decodedItem]);
+
+  // Eager-fetch the posts + pages indexes once we have credentials so
+  // the sidebar tree shows up without first visiting the Posts/Pages
+  // tabs. Two parallel calls — failures are silent (the sidebar just
+  // stays collapsed).
+  useEffect(() => {
+    if (!ready) {
+      setPostsTree([]);
+      setPagesTree([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const [postsResp, pagesResp] = await Promise.all([
+        request("/api/site-admin/posts?drafts=1", "GET"),
+        request("/api/site-admin/pages?drafts=1", "GET"),
+      ]);
+      if (cancelled) return;
+      if (postsResp.ok) {
+        const data = (postsResp.data ?? {}) as Record<string, unknown>;
+        const rows = Array.isArray(data.posts) ? data.posts : [];
+        const items: SurfaceNavItem[] = [];
+        for (const raw of rows) {
+          if (!raw || typeof raw !== "object") continue;
+          const obj = raw as Record<string, unknown>;
+          const slug = typeof obj.slug === "string" ? obj.slug : "";
+          if (!slug) continue;
+          const title = typeof obj.title === "string" ? obj.title : slug;
+          items.push({ id: `posts:${slug}`, label: title });
+        }
+        setPostsTree(items);
+      }
+      if (pagesResp.ok) {
+        const data = (pagesResp.data ?? {}) as Record<string, unknown>;
+        const rows = Array.isArray(data.pages) ? data.pages : [];
+        const flat: SidebarPageRow[] = [];
+        for (const raw of rows) {
+          if (!raw || typeof raw !== "object") continue;
+          const obj = raw as Record<string, unknown>;
+          const slug = typeof obj.slug === "string" ? obj.slug : "";
+          if (!slug) continue;
+          const title = typeof obj.title === "string" ? obj.title : slug;
+          flat.push({ slug, title });
+        }
+        setPagesTree(buildPagesTree(flat));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, request]);
+
+  // Push trees up to the App-level nav state so Sidebar can render
+  // them under the static "Posts" / "Pages" rows.
+  useEffect(() => {
+    setNavItemChildren("posts", postsTree.length > 0 ? postsTree : null);
+  }, [postsTree, setNavItemChildren]);
+  useEffect(() => {
+    setNavItemChildren("pages", pagesTree.length > 0 ? pagesTree : null);
+  }, [pagesTree, setNavItemChildren]);
 
   const selectTab = useCallback(
     (tab: SiteAdminTab) => setActiveNavItemId(tab),
