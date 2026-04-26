@@ -5,13 +5,17 @@ import type {
   SurfaceNavGroup,
   SurfaceNavItem,
 } from "../surfaces/types";
+import type { SidebarFavorite } from "./favorites";
 
 interface SidebarProps {
   surfaces: readonly SurfaceDefinition[];
   activeSurfaceId: string;
   activeNavItemId: string | null;
+  favorites: readonly SidebarFavorite[];
   onSelectSurface: (id: string) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
+  onToggleFavorite: (entry: SidebarFavorite) => void;
+  isFavorite: (surfaceId: string, itemId: string) => boolean;
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
@@ -92,12 +96,32 @@ function itemContainsActive(
 interface RenderNavItemArgs {
   activeNavItemId: string | null;
   depth: number;
+  isFavorite: (surfaceId: string, itemId: string) => boolean;
   item: SurfaceNavItem;
   itemTreeCollapsed: CollapseMap;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
+  onToggleFavorite: (entry: SidebarFavorite) => void;
   surfaceId: string;
   toggleItemTree: (key: string) => void;
   itemKey: (surfaceId: string, itemId: string) => string;
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2l1.85 3.75 4.15.6-3 2.93.7 4.13L8 11.5l-3.7 1.91.7-4.13-3-2.93 4.15-.6L8 2z" />
+    </svg>
+  );
 }
 
 // Recursive renderer for one nav row + its descendants. Indent doubles
@@ -107,9 +131,11 @@ interface RenderNavItemArgs {
 function renderNavItem({
   activeNavItemId,
   depth,
+  isFavorite,
   item,
   itemTreeCollapsed,
   onSelectNavItem,
+  onToggleFavorite,
   surfaceId,
   toggleItemTree,
   itemKey,
@@ -163,6 +189,39 @@ function renderNavItem({
             <ChevronIcon open={treeOpen} />
           </button>
         )}
+        {item.canAddChild && (
+          <button
+            type="button"
+            className="sidebar-tree__item-add"
+            onClick={() => onSelectNavItem(surfaceId, `add:${item.id}`)}
+            aria-label={`Add under ${item.label}`}
+            title={`Add under ${item.label}`}
+          >
+            +
+          </button>
+        )}
+        <button
+          type="button"
+          className="sidebar-tree__item-star"
+          data-active={isFavorite(surfaceId, item.id) ? "true" : undefined}
+          onClick={() =>
+            onToggleFavorite({
+              surfaceId,
+              itemId: item.id,
+              label: item.label,
+            })
+          }
+          aria-label={
+            isFavorite(surfaceId, item.id)
+              ? `Unpin ${item.label} from favorites`
+              : `Pin ${item.label} to favorites`
+          }
+          title={
+            isFavorite(surfaceId, item.id) ? "Unpin from favorites" : "Pin to favorites"
+          }
+        >
+          <StarIcon filled={isFavorite(surfaceId, item.id)} />
+        </button>
       </div>
       {hasChildren && treeOpen && (
         <ul
@@ -174,9 +233,11 @@ function renderNavItem({
             renderNavItem({
               activeNavItemId,
               depth: depth + 1,
+              isFavorite,
               item: child,
               itemTreeCollapsed,
               onSelectNavItem,
+              onToggleFavorite,
               surfaceId,
               toggleItemTree,
               itemKey,
@@ -192,8 +253,11 @@ export function Sidebar({
   surfaces,
   activeSurfaceId,
   activeNavItemId,
+  favorites,
   onSelectSurface,
   onSelectNavItem,
+  onToggleFavorite,
+  isFavorite,
 }: SidebarProps) {
   const [groupCollapsed, setGroupCollapsed] = useState<CollapseMap>(() =>
     loadCollapseMap(GROUP_COLLAPSE_STORAGE_KEY),
@@ -264,6 +328,51 @@ export function Sidebar({
         aria-hidden="true"
       />
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-2 pb-3 flex flex-col gap-4">
+        {favorites.length > 0 && (
+          <div>
+            <p className="m-0 mb-1.5 px-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-text-muted">
+              Favorites
+            </p>
+            <ul className="sidebar-favorites" role="list">
+              {favorites.map((fav) => {
+                const selected =
+                  activeSurfaceId === fav.surfaceId &&
+                  activeNavItemId === fav.itemId;
+                return (
+                  <li key={`${fav.surfaceId}:${fav.itemId}`}>
+                    <div className="sidebar-tree__item-row">
+                      <button
+                        type="button"
+                        className="sidebar-nav-item sidebar-tree__item"
+                        onClick={() =>
+                          onSelectNavItem(fav.surfaceId, fav.itemId)
+                        }
+                        aria-current={selected ? "page" : undefined}
+                      >
+                        <span className="sidebar-favorites__star" aria-hidden="true">
+                          <StarIcon filled />
+                        </span>
+                        <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                          {fav.label}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="sidebar-tree__item-star"
+                        data-active="true"
+                        onClick={() => onToggleFavorite(fav)}
+                        aria-label={`Unpin ${fav.label} from favorites`}
+                        title="Unpin from favorites"
+                      >
+                        <StarIcon filled />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         <div>
           <p className="m-0 mb-1.5 px-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-text-muted">
             Workspace
@@ -346,9 +455,11 @@ export function Sidebar({
                                   renderNavItem({
                                     activeNavItemId,
                                     depth: 0,
+                                    isFavorite,
                                     item,
                                     itemTreeCollapsed,
                                     onSelectNavItem,
+                                    onToggleFavorite,
                                     surfaceId: surface.id,
                                     toggleItemTree,
                                     itemKey,

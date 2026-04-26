@@ -1708,7 +1708,7 @@ export function MdxDocumentEditor<TForm>({
   onExit,
   slug: initialSlug,
 }: MdxDocumentEditorProps<TForm>) {
-  const { request, setMessage } = useSiteAdmin();
+  const { bumpContentRevision, request, setMessage } = useSiteAdmin();
   const [slug, setSlug] = useState(initialSlug ?? "");
   const [form, setForm] = useState<TForm>(() => adapter.createBlankForm());
   const [body, setBody] = useState(adapter.defaultBody);
@@ -1815,6 +1815,7 @@ export function MdxDocumentEditor<TForm>({
         setLastSavedSource(nextSource);
         clearDraft();
         setMessage("success", `${adapter.titleNoun} created.`);
+        bumpContentRevision();
         onExit("saved", slug.trim());
         return;
       }
@@ -1840,11 +1841,13 @@ export function MdxDocumentEditor<TForm>({
       setLastSavedSource(nextSource);
       clearDraft();
       setMessage("success", `${adapter.titleNoun} saved.`);
+      bumpContentRevision();
       onExit("saved", currentSlug);
     },
     [
       adapter,
       body,
+      bumpContentRevision,
       canSave,
       clearDraft,
       form,
@@ -1879,8 +1882,19 @@ export function MdxDocumentEditor<TForm>({
     }
     clearDraft();
     setMessage("success", `${adapter.titleNoun} deleted.`);
+    bumpContentRevision();
     onExit("deleted", initialSlug);
-  }, [adapter, clearDraft, initialSlug, mode, onExit, request, setMessage, version]);
+  }, [
+    adapter,
+    bumpContentRevision,
+    clearDraft,
+    initialSlug,
+    mode,
+    onExit,
+    request,
+    setMessage,
+    version,
+  ]);
 
   const title = mode === "create"
     ? `New ${adapter.titleNoun}`

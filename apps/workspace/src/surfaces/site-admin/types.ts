@@ -181,7 +181,7 @@ export interface PageDetail extends PageListRow {
  * command palette so ⌘K can deep-link into a specific entry. */
 export type ItemSelection =
   | null
-  | { kind: "new" }
+  | { kind: "new"; initialSlug?: string }
   | { kind: "edit"; slug: string };
 
 // --- Publications (structured editor) ------------------------------------

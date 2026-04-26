@@ -167,7 +167,15 @@ export function PagesPanel({ selected, onSelectedChange }: PagesPanelProps) {
       </div>
     );
   } else if (selected.kind === "new") {
-    detail = <PageEditor mode="create" onExit={onEditorExit} />;
+    // initialSlug lets the sidebar's "+ on a folder" affordance prefill
+    // the slug field with the parent path (e.g. "docs/").
+    detail = (
+      <PageEditor
+        mode="create"
+        slug={selected.initialSlug}
+        onExit={onEditorExit}
+      />
+    );
   } else {
     detail = (
       <PageEditor

@@ -28,8 +28,8 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
     label: "Content",
     items: [
       { id: "home", label: "Home", icon: <HomeIcon /> },
-      { id: "posts", label: "Posts", icon: <PostsIcon /> },
-      { id: "pages", label: "Pages", icon: <PagesIcon /> },
+      { id: "posts", label: "Posts", icon: <PostsIcon />, canAddChild: true },
+      { id: "pages", label: "Pages", icon: <PagesIcon />, canAddChild: true },
       { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
       { id: "news", label: "News", icon: <NewsIcon /> },
       { id: "teaching", label: "Teaching", icon: <TeachingIcon /> },

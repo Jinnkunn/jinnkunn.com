@@ -11,6 +11,12 @@ export interface SurfaceNavItem {
   icon?: ReactNode;
   badge?: ReactNode;
   children?: readonly SurfaceNavItem[];
+  /** When true the row gets a hover-revealed "+" affordance next to its
+   * disclosure chevron. Clicking it fires `onSelectNavItem` with the
+   * synthetic id `add:<itemId>`, which surfaces decode into a "create
+   * new child" action (e.g. site-admin opens a fresh PageEditor with
+   * the slug prefilled to the parent path). */
+  canAddChild?: boolean;
 }
 
 /** A collapsible group of nav items shown under the active surface in

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import type { SurfaceNavItem } from "../types";
@@ -12,7 +12,7 @@ import {
 } from "./nav";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
-import { SiteAdminProvider, useSiteAdmin } from "./state";
+import { SiteAdminProvider, useSiteAdmin, type PostsGrouping } from "./state";
 import type { ItemSelection, SiteAdminTab } from "./types";
 
 const ConfigPanel = lazy(() =>
@@ -119,24 +119,95 @@ function buildPagesTree(rows: SidebarPageRow[]): SurfaceNavItem[] {
     return Array.from(level.values()).map((n) => ({
       id: n.id,
       label: n.label,
+      // Folders (intermediate path segments) get the "+" affordance so
+      // users can create a sub-page under that prefix; leaves don't —
+      // pages don't nest beyond a single slug-derived hierarchy.
+      canAddChild: n.children.size > 0,
       children: n.children.size > 0 ? toItems(n.children) : undefined,
     }));
   }
   return toItems(root);
 }
 
+interface SidebarPostRow {
+  slug: string;
+  title: string;
+  draft: boolean;
+  dateIso: string;
+}
+
+// Apply the current sidebar grouping to a flat post list. "all" returns
+// a flat tree (one row per post). "drafts" / "published" filter by the
+// draft flag but stay flat. "by-year" extracts the year from dateIso
+// (or "Undated" when missing) and produces one folder per year newest
+// first; posts within each year are date-desc.
+function buildPostsTree(
+  rows: SidebarPostRow[],
+  grouping: PostsGrouping,
+): SurfaceNavItem[] {
+  const filtered =
+    grouping === "drafts"
+      ? rows.filter((r) => r.draft)
+      : grouping === "published"
+        ? rows.filter((r) => !r.draft)
+        : rows.slice();
+  if (grouping !== "by-year") {
+    return filtered.map((r) => ({
+      id: `posts:${r.slug}`,
+      label: r.title || r.slug,
+    }));
+  }
+  // "by-year": group by 4-digit year extracted from dateIso. Years sort
+  // newest first; posts inside each year sort newest first within their
+  // year too.
+  const buckets = new Map<string, SidebarPostRow[]>();
+  for (const row of filtered) {
+    const yearMatch = /^(\d{4})/.exec(row.dateIso);
+    const year = yearMatch ? yearMatch[1] : "Undated";
+    const arr = buckets.get(year);
+    if (arr) arr.push(row);
+    else buckets.set(year, [row]);
+  }
+  const orderedYears = Array.from(buckets.keys()).sort((a, b) => {
+    if (a === "Undated") return 1;
+    if (b === "Undated") return -1;
+    return b.localeCompare(a);
+  });
+  return orderedYears.map((year) => {
+    const items = (buckets.get(year) ?? [])
+      .sort((a, b) => b.dateIso.localeCompare(a.dateIso))
+      .map((r) => ({
+        id: `posts:${r.slug}`,
+        label: r.title || r.slug,
+      }));
+    return {
+      id: `posts-year:${year}`,
+      label: year,
+      children: items,
+    };
+  });
+}
+
 function SiteAdminContent() {
   const { activeNavItemId, setActiveNavItemId, setNavItemChildren } =
     useSurfaceNav();
-  const { connection, request } = useSiteAdmin();
+  const { connection, contentRevision, postsGrouping, request } = useSiteAdmin();
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Selection state lives in the shell (not the panels) so the command
   // palette can deep-link straight into a specific post/page.
   const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
   const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
-  const [postsTree, setPostsTree] = useState<readonly SurfaceNavItem[]>([]);
+  const [sidebarPostRows, setSidebarPostRows] = useState<SidebarPostRow[]>([]);
   const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
+
+  // Derived tree applies the current grouping setting to the cached
+  // post rows. Cheap enough to recompute on every grouping change; no
+  // need to refetch.
+  const postsTree = useMemo(
+    () => buildPostsTree(sidebarPostRows, postsGrouping),
+    [sidebarPostRows, postsGrouping],
+  );
 
   const decodedItem = useMemo(
     () => decodeNavItemId(activeNavItemId),
@@ -165,13 +236,45 @@ function SiteAdminContent() {
     }
   }, [decodedItem]);
 
+  // Synthetic "add:<itemId>" ids fired by the sidebar's "+" button.
+  // Decode and dispatch to the appropriate New flow, then bounce the
+  // active id back to the parent tab so the magic id doesn't stick in
+  // localStorage. A ref prevents the effect from re-firing on the
+  // bounce-back.
+  const lastHandledAddRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeNavItemId?.startsWith("add:")) return;
+    if (lastHandledAddRef.current === activeNavItemId) return;
+    lastHandledAddRef.current = activeNavItemId;
+    const target = activeNavItemId.slice("add:".length);
+    if (target === "posts") {
+      setActiveNavItemId("posts");
+      setPostsSelected({ kind: "new" });
+      return;
+    }
+    if (target === "pages") {
+      setActiveNavItemId("pages");
+      setPagesSelected({ kind: "new" });
+      return;
+    }
+    if (target.startsWith("pages:")) {
+      const prefix = target.slice("pages:".length);
+      setActiveNavItemId("pages");
+      setPagesSelected({
+        kind: "new",
+        initialSlug: prefix ? `${prefix}/` : undefined,
+      });
+      return;
+    }
+  }, [activeNavItemId, setActiveNavItemId]);
+
   // Eager-fetch the posts + pages indexes once we have credentials so
   // the sidebar tree shows up without first visiting the Posts/Pages
   // tabs. Two parallel calls — failures are silent (the sidebar just
   // stays collapsed).
   useEffect(() => {
     if (!ready) {
-      setPostsTree([]);
+      setSidebarPostRows([]);
       setPagesTree([]);
       return;
     }
@@ -185,16 +288,18 @@ function SiteAdminContent() {
       if (postsResp.ok) {
         const data = (postsResp.data ?? {}) as Record<string, unknown>;
         const rows = Array.isArray(data.posts) ? data.posts : [];
-        const items: SurfaceNavItem[] = [];
+        const out: SidebarPostRow[] = [];
         for (const raw of rows) {
           if (!raw || typeof raw !== "object") continue;
           const obj = raw as Record<string, unknown>;
           const slug = typeof obj.slug === "string" ? obj.slug : "";
           if (!slug) continue;
           const title = typeof obj.title === "string" ? obj.title : slug;
-          items.push({ id: `posts:${slug}`, label: title });
+          const draft = obj.draft === true;
+          const dateIso = typeof obj.dateIso === "string" ? obj.dateIso : "";
+          out.push({ slug, title, draft, dateIso });
         }
-        setPostsTree(items);
+        setSidebarPostRows(out);
       }
       if (pagesResp.ok) {
         const data = (pagesResp.data ?? {}) as Record<string, unknown>;
@@ -214,7 +319,7 @@ function SiteAdminContent() {
     return () => {
       cancelled = true;
     };
-  }, [ready, request]);
+  }, [ready, request, contentRevision]);
 
   // Push trees up to the App-level nav state so Sidebar can render
   // them under the static "Posts" / "Pages" rows.

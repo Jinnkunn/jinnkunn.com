@@ -1,5 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
+import {
+  addFavorite,
+  favoritesContain,
+  loadFavorites,
+  persistFavorites,
+  removeFavorite,
+  type SidebarFavorite,
+} from "./shell/favorites";
 import { Sidebar } from "./shell/Sidebar";
 import { SurfaceNavProvider } from "./shell/surface-nav-context";
 import { Titlebar } from "./shell/Titlebar";
@@ -138,6 +146,30 @@ export function App() {
     [activeNavItemId, setActiveNavItemId, setNavItemChildren],
   );
 
+  const [favorites, setFavoritesState] = useState<SidebarFavorite[]>(() =>
+    loadFavorites(),
+  );
+  useEffect(() => {
+    persistFavorites(favorites);
+  }, [favorites]);
+
+  const toggleFavorite = useCallback(
+    (entry: SidebarFavorite) => {
+      setFavoritesState((prev) =>
+        favoritesContain(prev, entry.surfaceId, entry.itemId)
+          ? removeFavorite(prev, entry.surfaceId, entry.itemId)
+          : addFavorite(prev, entry),
+      );
+    },
+    [],
+  );
+
+  const isFavorite = useCallback(
+    (surfaceId: string, itemId: string) =>
+      favoritesContain(favorites, surfaceId, itemId),
+    [favorites],
+  );
+
   const derivedSurfaces = useMemo(() => {
     if (Object.keys(navItemChildren).length === 0) return SURFACES;
     return SURFACES.map((surface) => {
@@ -175,8 +207,11 @@ export function App() {
           surfaces={derivedSurfaces}
           activeSurfaceId={activeSurface.id}
           activeNavItemId={activeNavItemId}
+          favorites={favorites}
           onSelectSurface={selectSurface}
           onSelectNavItem={selectNavItem}
+          onToggleFavorite={toggleFavorite}
+          isFavorite={isFavorite}
         />
         <main
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"
