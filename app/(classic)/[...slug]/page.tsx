@@ -13,9 +13,11 @@ export async function generateStaticParams(): Promise<Array<{ slug: string[] }>>
   // Every route that the catch-all serves now lives as an MDX file
   // under `content/pages/*.mdx`. The legacy Notion raw-HTML pipeline
   // was retired — dedicated routes (home, blog, publications, news,
-  // teaching, works) handle the rest.
+  // teaching, works) handle the rest. Page slugs can be hierarchical
+  // (e.g. "docs/intro"); split on "/" so the array form matches what
+  // Next.js gives back from the catch-all.
   const pageSlugs = await getPageSlugs();
-  return pageSlugs.map((slug) => ({ slug: [slug] }));
+  return pageSlugs.map((slug) => ({ slug: slug.split("/") }));
 }
 
 export async function generateMetadata({
@@ -27,18 +29,17 @@ export async function generateMetadata({
   const { slug } = await params;
   const pathname = `/${slug.join("/").replace(/^\/+/, "")}`;
 
-  if (slug.length === 1) {
-    const entry = await getPageEntry(slug[0]);
-    if (entry) {
-      return buildPageMetadata({
-        cfg,
-        title: entry.title,
-        description: entry.description ?? cfg.seo.description,
-        pathname,
-        type: "website",
-        modifiedTime: entry.updatedIso || undefined,
-      });
-    }
+  const joined = slug.join("/");
+  const entry = await getPageEntry(joined);
+  if (entry) {
+    return buildPageMetadata({
+      cfg,
+      title: entry.title,
+      description: entry.description ?? cfg.seo.description,
+      pathname,
+      type: "website",
+      modifiedTime: entry.updatedIso || undefined,
+    });
   }
 
   return buildPageMetadata({
@@ -56,10 +57,11 @@ export default async function SlugPage({
   params: Promise<{ slug: string[] }>;
 }) {
   const { slug } = await params;
-  if (slug.length !== 1) notFound();
-  const entry = await getPageEntry(slug[0]);
+  const joined = slug.join("/");
+  if (!joined) notFound();
+  const entry = await getPageEntry(joined);
   if (!entry) notFound();
-  const file = await readPageSource(slug[0]);
+  const file = await readPageSource(joined);
   if (!file) notFound();
   return <PageView entry={entry} source={file.source} />;
 }

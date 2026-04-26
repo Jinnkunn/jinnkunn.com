@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import {
   addFavorite,
@@ -141,9 +141,38 @@ export function App() {
     [],
   );
 
+  // Active surface's drag-reparent handler. Sidebar's onMoveNavItem
+  // routes here, which dispatches to whatever the surface registered
+  // via the surface-nav context.
+  const moveHandlerRef = useRef<
+    ((fromId: string, toId: string) => void) | null
+  >(null);
+  const setMoveNavItemHandler = useCallback(
+    (handler: ((fromId: string, toId: string) => void) | null) => {
+      moveHandlerRef.current = handler;
+    },
+    [],
+  );
+  const handleMoveNavItem = useCallback(
+    (_surfaceId: string, fromId: string, toId: string) => {
+      moveHandlerRef.current?.(fromId, toId);
+    },
+    [],
+  );
+
   const navContextValue = useMemo(
-    () => ({ activeNavItemId, setActiveNavItemId, setNavItemChildren }),
-    [activeNavItemId, setActiveNavItemId, setNavItemChildren],
+    () => ({
+      activeNavItemId,
+      setActiveNavItemId,
+      setNavItemChildren,
+      setMoveNavItemHandler,
+    }),
+    [
+      activeNavItemId,
+      setActiveNavItemId,
+      setNavItemChildren,
+      setMoveNavItemHandler,
+    ],
   );
 
   const [favorites, setFavoritesState] = useState<SidebarFavorite[]>(() =>
@@ -212,6 +241,7 @@ export function App() {
           onSelectNavItem={selectNavItem}
           onToggleFavorite={toggleFavorite}
           isFavorite={isFavorite}
+          onMoveNavItem={handleMoveNavItem}
         />
         <main
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"

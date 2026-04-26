@@ -16,6 +16,11 @@ interface SidebarProps {
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   isFavorite: (surfaceId: string, itemId: string) => boolean;
+  /** Drop handler for drag-reparent. Sidebar fires this when a row
+   * marked draggable lands on a row marked droppable in the same
+   * surface. The surface is responsible for the actual move (e.g.
+   * site-admin posts to /api/site-admin/pages/move and refreshes). */
+  onMoveNavItem?: (surfaceId: string, fromId: string, toId: string) => void;
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
@@ -96,9 +101,15 @@ function itemContainsActive(
 interface RenderNavItemArgs {
   activeNavItemId: string | null;
   depth: number;
+  dragOverItemId: string | null;
+  draggingItemId: string | null;
   isFavorite: (surfaceId: string, itemId: string) => boolean;
   item: SurfaceNavItem;
   itemTreeCollapsed: CollapseMap;
+  onDragEnd: () => void;
+  onDragOver: (itemId: string | null) => void;
+  onDragStart: (itemId: string) => void;
+  onDrop: (targetItemId: string) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   surfaceId: string;
@@ -131,9 +142,15 @@ function StarIcon({ filled }: { filled: boolean }) {
 function renderNavItem({
   activeNavItemId,
   depth,
+  dragOverItemId,
+  draggingItemId,
   isFavorite,
   item,
   itemTreeCollapsed,
+  onDragEnd,
+  onDragOver,
+  onDragStart,
+  onDrop,
   onSelectNavItem,
   onToggleFavorite,
   surfaceId,
@@ -154,15 +171,69 @@ function renderNavItem({
     ? containsActive || !itemTreeCollapsed[treeKey]
     : false;
   const treeId = `sidebar-item-tree-${surfaceId}-${item.id.replace(/[^a-z0-9-]/gi, "_")}`;
+  const isDragging = draggingItemId === item.id;
+  const isDragOver = dragOverItemId === item.id && draggingItemId !== item.id;
   return (
     <li key={item.id}>
       <div
         className="sidebar-tree__item-row"
+        data-dragging={isDragging ? "true" : undefined}
+        data-drag-over={isDragOver ? "true" : undefined}
         style={{ ["--sidebar-depth" as string]: depth }}
+        onDragOver={
+          item.droppable
+            ? (event) => {
+                if (
+                  !Array.from(event.dataTransfer.types).includes(
+                    "application/x-sidebar-nav-item",
+                  )
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                if (dragOverItemId !== item.id) onDragOver(item.id);
+              }
+            : undefined
+        }
+        onDragLeave={
+          item.droppable
+            ? () => {
+                if (dragOverItemId === item.id) onDragOver(null);
+              }
+            : undefined
+        }
+        onDrop={
+          item.droppable
+            ? (event) => {
+                const sourceId = event.dataTransfer.getData(
+                  "application/x-sidebar-nav-item",
+                );
+                event.preventDefault();
+                event.stopPropagation();
+                onDragOver(null);
+                if (sourceId && sourceId !== item.id) onDrop(item.id);
+              }
+            : undefined
+        }
       >
         <button
           type="button"
           className="sidebar-nav-item sidebar-tree__item"
+          draggable={item.draggable ? true : undefined}
+          onDragStart={
+            item.draggable
+              ? (event) => {
+                  event.dataTransfer.setData(
+                    "application/x-sidebar-nav-item",
+                    item.id,
+                  );
+                  event.dataTransfer.effectAllowed = "move";
+                  onDragStart(item.id);
+                }
+              : undefined
+          }
+          onDragEnd={item.draggable ? () => onDragEnd() : undefined}
           onClick={() => onSelectNavItem(surfaceId, item.id)}
           aria-current={selected ? "page" : undefined}
         >
@@ -233,9 +304,15 @@ function renderNavItem({
             renderNavItem({
               activeNavItemId,
               depth: depth + 1,
+              dragOverItemId,
+              draggingItemId,
               isFavorite,
               item: child,
               itemTreeCollapsed,
+              onDragEnd,
+              onDragOver,
+              onDragStart,
+              onDrop,
               onSelectNavItem,
               onToggleFavorite,
               surfaceId,
@@ -258,7 +335,34 @@ export function Sidebar({
   onSelectNavItem,
   onToggleFavorite,
   isFavorite,
+  onMoveNavItem,
 }: SidebarProps) {
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+  const [dragSurfaceId, setDragSurfaceId] = useState<string | null>(null);
+  const startDrag = useCallback((surfaceId: string, itemId: string) => {
+    setDragSurfaceId(surfaceId);
+    setDraggingItemId(itemId);
+  }, []);
+  const endDrag = useCallback(() => {
+    setDragSurfaceId(null);
+    setDraggingItemId(null);
+    setDragOverItemId(null);
+  }, []);
+  const dropOnto = useCallback(
+    (surfaceId: string, targetItemId: string) => {
+      if (
+        onMoveNavItem &&
+        draggingItemId &&
+        dragSurfaceId === surfaceId &&
+        draggingItemId !== targetItemId
+      ) {
+        onMoveNavItem(surfaceId, draggingItemId, targetItemId);
+      }
+      endDrag();
+    },
+    [draggingItemId, dragSurfaceId, endDrag, onMoveNavItem],
+  );
   const [groupCollapsed, setGroupCollapsed] = useState<CollapseMap>(() =>
     loadCollapseMap(GROUP_COLLAPSE_STORAGE_KEY),
   );
@@ -455,9 +559,15 @@ export function Sidebar({
                                   renderNavItem({
                                     activeNavItemId,
                                     depth: 0,
+                                    dragOverItemId,
+                                    draggingItemId,
                                     isFavorite,
                                     item,
                                     itemTreeCollapsed,
+                                    onDragEnd: endDrag,
+                                    onDragOver: setDragOverItemId,
+                                    onDragStart: (id) => startDrag(surface.id, id),
+                                    onDrop: (targetId) => dropOnto(surface.id, targetId),
                                     onSelectNavItem,
                                     onToggleFavorite,
                                     surfaceId: surface.id,
