@@ -352,9 +352,13 @@ function emptyRichTextSection(): HomeRichTextSection {
 }
 
 export function prepareHomeDataForSave(data: HomeData): HomeData {
+  // Forward bodyMdx alongside title + sections — without this, the
+  // section-mutation code paths and the save payload silently strip
+  // the Notion-mode body and the migrate prompt re-appears.
   return normalizeHomeData({
     title: data.title,
     sections: data.sections,
+    bodyMdx: data.bodyMdx,
   });
 }
 
