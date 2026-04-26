@@ -19,6 +19,12 @@ interface SurfaceNavContextValue {
     itemId: string,
     children: readonly SurfaceNavItem[] | null,
   ) => void;
+  /** Surfaces register a callback here to handle drag-reparent. Sidebar
+   * fires onMoveNavItem → App routes it to the active surface's
+   * registered handler. Pass `null` to clear. */
+  setMoveNavItemHandler: (
+    handler: ((fromId: string, toId: string) => void) | null,
+  ) => void;
 }
 
 const SurfaceNavContext = createContext<SurfaceNavContextValue | null>(null);

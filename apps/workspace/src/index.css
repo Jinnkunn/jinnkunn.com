@@ -513,6 +513,24 @@ body[data-window-focused="true"] .sidebar-surface {
   align-items: stretch;
   gap: 0;
   padding-inline-start: calc(var(--sidebar-depth, 0) * 12px);
+  border-radius: 6px;
+}
+
+.sidebar-tree__item-row[data-dragging="true"] {
+  opacity: 0.4;
+}
+
+.sidebar-tree__item-row[data-drag-over="true"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.sidebar-tree__item[draggable="true"] {
+  cursor: grab;
+}
+
+.sidebar-tree__item[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .sidebar-tree__item-disclosure {

@@ -29,7 +29,15 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
     items: [
       { id: "home", label: "Home", icon: <HomeIcon /> },
       { id: "posts", label: "Posts", icon: <PostsIcon />, canAddChild: true },
-      { id: "pages", label: "Pages", icon: <PagesIcon />, canAddChild: true },
+      {
+        id: "pages",
+        label: "Pages",
+        icon: <PagesIcon />,
+        canAddChild: true,
+        // Drop a page row onto Pages itself to move it back to the
+        // root (slug becomes its leaf only).
+        droppable: true,
+      },
       { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
       { id: "news", label: "News", icon: <NewsIcon /> },
       { id: "teaching", label: "Teaching", icon: <TeachingIcon /> },

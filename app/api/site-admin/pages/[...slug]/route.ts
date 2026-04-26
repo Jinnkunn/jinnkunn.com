@@ -14,7 +14,7 @@ import {
   readPage,
   updatePage,
 } from "@/lib/pages/store";
-import { isValidSlug } from "@/lib/posts/slug";
+import { isValidPageSlug } from "@/lib/pages/slug";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 
 export const runtime = "nodejs";
@@ -60,22 +60,25 @@ function parseDeleteCommand(
 }
 
 async function resolveSlug(
-  params: Promise<{ slug: string }>,
+  params: Promise<{ slug: string[] }>,
 ): Promise<{ ok: true; slug: string } | { ok: false; res: Response }> {
   const { slug } = await params;
-  const trimmed = String(slug || "").trim();
-  if (!trimmed || !isValidSlug(trimmed)) {
+  // Catch-all delivers slug as an array of path segments. Join into the
+  // canonical "/"-separated form, then validate against the multi-segment
+  // page-slug rule.
+  const joined = Array.isArray(slug) ? slug.map((s) => String(s).trim()).join("/") : "";
+  if (!joined || !isValidPageSlug(joined)) {
     return {
       ok: false,
       res: apiError("invalid slug", { status: 400, code: "BAD_REQUEST" }),
     };
   }
-  return { ok: true, slug: trimmed };
+  return { ok: true, slug: joined };
 }
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: Promise<{ slug: string }> },
+  ctx: { params: Promise<{ slug: string[] }> },
 ) {
   return withSiteAdminContext(
     req,
@@ -104,7 +107,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  ctx: { params: Promise<{ slug: string }> },
+  ctx: { params: Promise<{ slug: string[] }> },
 ) {
   return withSiteAdminContext(
     req,
@@ -176,7 +179,7 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  ctx: { params: Promise<{ slug: string }> },
+  ctx: { params: Promise<{ slug: string[] }> },
 ) {
   return withSiteAdminContext(
     req,

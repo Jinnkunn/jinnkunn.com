@@ -17,6 +17,14 @@ export interface SurfaceNavItem {
    * new child" action (e.g. site-admin opens a fresh PageEditor with
    * the slug prefilled to the parent path). */
   canAddChild?: boolean;
+  /** Marks the row as a drag source — Sidebar attaches HTML5 DnD
+   * handlers and a "grab" cursor. Pair with `droppable` on intended
+   * targets. */
+  draggable?: boolean;
+  /** Marks the row as a valid drop target. Sidebar highlights it
+   * during drag-over and fires `onMoveNavItem` when something is
+   * dropped on it. */
+  droppable?: boolean;
 }
 
 /** A collapsible group of nav items shown under the active surface in

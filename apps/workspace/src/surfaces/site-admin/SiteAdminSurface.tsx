@@ -76,6 +76,7 @@ function decodeNavItemId(
 interface SidebarPageRow {
   slug: string;
   title: string;
+  version: string;
 }
 
 // Group flat slug rows like ["docs/intro", "docs/api/auth"] into a
@@ -123,6 +124,12 @@ function buildPagesTree(rows: SidebarPageRow[]): SurfaceNavItem[] {
       // users can create a sub-page under that prefix; leaves don't —
       // pages don't nest beyond a single slug-derived hierarchy.
       canAddChild: n.children.size > 0,
+      // Every page row is a drag source; both leaves and folders are
+      // valid drop targets. Dropping A onto B reparents A under B.
+      // Dropping onto the static "Pages" parent (handled separately
+      // below) reparents to root.
+      draggable: true,
+      droppable: true,
       children: n.children.size > 0 ? toItems(n.children) : undefined,
     }));
   }
@@ -189,9 +196,20 @@ function buildPostsTree(
 }
 
 function SiteAdminContent() {
-  const { activeNavItemId, setActiveNavItemId, setNavItemChildren } =
-    useSurfaceNav();
-  const { connection, contentRevision, postsGrouping, request } = useSiteAdmin();
+  const {
+    activeNavItemId,
+    setActiveNavItemId,
+    setNavItemChildren,
+    setMoveNavItemHandler,
+  } = useSurfaceNav();
+  const {
+    bumpContentRevision,
+    connection,
+    contentRevision,
+    postsGrouping,
+    request,
+    setMessage,
+  } = useSiteAdmin();
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Selection state lives in the shell (not the panels) so the command
@@ -199,6 +217,7 @@ function SiteAdminContent() {
   const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
   const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
   const [sidebarPostRows, setSidebarPostRows] = useState<SidebarPostRow[]>([]);
+  const [pageRows, setPageRows] = useState<SidebarPageRow[]>([]);
   const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
 
   // Derived tree applies the current grouping setting to the cached
@@ -275,6 +294,7 @@ function SiteAdminContent() {
   useEffect(() => {
     if (!ready) {
       setSidebarPostRows([]);
+      setPageRows([]);
       setPagesTree([]);
       return;
     }
@@ -311,8 +331,10 @@ function SiteAdminContent() {
           const slug = typeof obj.slug === "string" ? obj.slug : "";
           if (!slug) continue;
           const title = typeof obj.title === "string" ? obj.title : slug;
-          flat.push({ slug, title });
+          const version = typeof obj.version === "string" ? obj.version : "";
+          flat.push({ slug, title, version });
         }
+        setPageRows(flat);
         setPagesTree(buildPagesTree(flat));
       }
     })();
@@ -329,6 +351,76 @@ function SiteAdminContent() {
   useEffect(() => {
     setNavItemChildren("pages", pagesTree.length > 0 ? pagesTree : null);
   }, [pagesTree, setNavItemChildren]);
+
+  // Drag-reparent handler: Sidebar fires (fromId, toId) with sidebar
+  // ids like "pages:docs/intro" and "pages" (the static root). Decode
+  // both into slugs, build the target slug from target prefix + dragged
+  // leaf, look up the dragged page's version, POST to /move, and bump
+  // contentRevision on success so the eager-fetch refreshes the tree.
+  useEffect(() => {
+    setMoveNavItemHandler(async (fromId, toId) => {
+      if (!fromId.startsWith("pages:")) return;
+      const fromSlug = fromId.slice("pages:".length);
+      const draggedRow = pageRows.find((r) => r.slug === fromSlug);
+      if (!draggedRow) {
+        setMessage("error", `Couldn't find page metadata for ${fromSlug}.`);
+        return;
+      }
+      const leaf = fromSlug.includes("/")
+        ? fromSlug.slice(fromSlug.lastIndexOf("/") + 1)
+        : fromSlug;
+      let toSlug: string;
+      if (toId === "pages") {
+        toSlug = leaf;
+      } else if (toId.startsWith("pages:")) {
+        const targetSlug = toId.slice("pages:".length);
+        // If the user drops onto the page itself, no-op (Sidebar already
+        // guards same-id, but a leaf can technically equal the dragged
+        // row's parent prefix in degenerate cases).
+        if (targetSlug === fromSlug) return;
+        // If the target is the same parent as the source, the slug
+        // wouldn't change — skip the API call.
+        const targetIsAncestorOfSource =
+          fromSlug === targetSlug ||
+          fromSlug.startsWith(`${targetSlug}/`);
+        if (targetIsAncestorOfSource) {
+          setMessage(
+            "warn",
+            "That move would orphan the page under itself — try dropping somewhere else.",
+          );
+          return;
+        }
+        toSlug = `${targetSlug}/${leaf}`;
+      } else {
+        return;
+      }
+      if (toSlug === fromSlug) return;
+      const response = await request("/api/site-admin/pages/move", "POST", {
+        fromSlug,
+        toSlug,
+        version: draggedRow.version,
+      });
+      if (!response.ok) {
+        setMessage(
+          "error",
+          `Move failed: ${response.code}: ${response.error}`,
+        );
+        return;
+      }
+      setMessage("success", `Moved ${fromSlug} → ${toSlug}`);
+      bumpContentRevision();
+      // Switch the active nav item to the new id so highlight follows.
+      setActiveNavItemId(`pages:${toSlug}`);
+    });
+    return () => setMoveNavItemHandler(null);
+  }, [
+    bumpContentRevision,
+    pageRows,
+    request,
+    setActiveNavItemId,
+    setMessage,
+    setMoveNavItemHandler,
+  ]);
 
   const selectTab = useCallback(
     (tab: SiteAdminTab) => setActiveNavItemId(tab),

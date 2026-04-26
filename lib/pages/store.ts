@@ -8,7 +8,7 @@ import {
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
 import { parsePageFile } from "./meta";
-import { assertValidSlug } from "@/lib/posts/slug"; // pages reuse the same slug rules
+import { assertValidPageSlug } from "./slug";
 import type { PageEntry } from "./types";
 
 const PAGES_DIR = "pages";
@@ -36,11 +36,15 @@ export async function listPages(opts?: {
   includeDrafts?: boolean;
 }): Promise<PageListItem[]> {
   const store = await getStore();
-  const files = await store.listFiles(PAGES_DIR);
+  // Recursive so hierarchical slugs (e.g. "docs/api/auth") show up. Each
+  // file's relPath is `pages/<slug>.mdx`; strip the directory prefix and
+  // extension to get the slug as the rest of the system sees it.
+  const files = await store.listFiles(PAGES_DIR, { recursive: true });
   const out: PageListItem[] = [];
   for (const file of files) {
     if (!file.name.endsWith(".mdx") && !file.name.endsWith(".md")) continue;
-    const slug = file.name.replace(/\.mdx?$/, "");
+    const rel = file.relPath.replace(/^pages\//, "");
+    const slug = rel.replace(/\.mdx?$/, "");
     if (!slug) continue;
     const fetched = await store.readFile(file.relPath);
     if (!fetched) continue;
@@ -57,7 +61,7 @@ export async function listPages(opts?: {
 }
 
 export async function readPage(slug: string): Promise<PageDetail | null> {
-  assertValidSlug(slug);
+  assertValidPageSlug(slug);
   const store = await getStore();
   const file = await store.readFile(pageRelPath(slug));
   if (!file) return null;
@@ -69,7 +73,7 @@ export async function createPage(
   slug: string,
   source: string,
 ): Promise<PageDetail> {
-  assertValidSlug(slug);
+  assertValidPageSlug(slug);
   parsePageFile(slug, source);
   const store = await getStore();
   const { sha } = await store.writeFile(pageRelPath(slug), source, { ifMatch: null });
@@ -82,7 +86,7 @@ export async function updatePage(
   source: string,
   ifMatch: ContentVersion,
 ): Promise<PageDetail> {
-  assertValidSlug(slug);
+  assertValidPageSlug(slug);
   parsePageFile(slug, source);
   const store = await getStore();
   const { sha } = await store.writeFile(pageRelPath(slug), source, { ifMatch });
@@ -94,7 +98,51 @@ export async function deletePage(
   slug: string,
   ifMatch: ContentVersion,
 ): Promise<void> {
-  assertValidSlug(slug);
+  assertValidPageSlug(slug);
   const store = await getStore();
   await store.deleteFile(pageRelPath(slug), { ifMatch });
+}
+
+/** Move a page to a new slug. Used by the sidebar's drag-reparent flow.
+ *
+ * Implementation: read the source at the old slug → write it at the new
+ * slug (with `ifMatch: null` to require the target be vacant) → delete
+ * the old file. Not atomic across the two writes; if the delete fails
+ * after the write succeeded, the page exists at both locations until
+ * the user retries. This is a deliberate trade-off — keeping the source
+ * document available is more valuable than perfect atomicity for an
+ * admin-initiated rename. */
+export async function movePage(
+  fromSlug: string,
+  toSlug: string,
+  ifMatch: ContentVersion,
+): Promise<PageDetail> {
+  assertValidPageSlug(fromSlug);
+  assertValidPageSlug(toSlug);
+  if (fromSlug === toSlug) {
+    throw new Error("source and target slug are identical");
+  }
+  const store = await getStore();
+  const existing = await store.readFile(pageRelPath(fromSlug));
+  if (!existing) {
+    throw new ContentStoreNotFoundError(`page not found: ${fromSlug}`);
+  }
+  if (existing.sha !== ifMatch) {
+    throw new ContentStoreConflictError({
+      expected: ifMatch,
+      actual: existing.sha,
+    });
+  }
+  // The slug is not stored in the source file's frontmatter (parsePageFile
+  // takes the slug as an argument), so we don't need to rewrite the source.
+  const targetExisting = await store.readFile(pageRelPath(toSlug));
+  if (targetExisting) {
+    throw new Error(`page already exists at ${toSlug}`);
+  }
+  const { sha } = await store.writeFile(pageRelPath(toSlug), existing.content, {
+    ifMatch: null,
+  });
+  await store.deleteFile(pageRelPath(fromSlug), { ifMatch: existing.sha });
+  const { entry } = parsePageFile(toSlug, existing.content);
+  return { entry, version: sha, source: existing.content };
 }
