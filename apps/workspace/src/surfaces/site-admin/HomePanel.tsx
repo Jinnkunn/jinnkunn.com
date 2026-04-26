@@ -31,6 +31,7 @@ import {
   prepareHomeDataForSave,
   sameData,
 } from "./home-builder/schema";
+import { homeSectionsToMdx } from "./home-builder/migrate-to-mdx";
 import { useHomePreview } from "./home-builder/useHomePreview";
 import type {
   HomeData,
@@ -1053,6 +1054,42 @@ export function HomePanel() {
                 section builder does, plus regular paragraphs / headings
                 / images / etc.
               </p>
+              {!draft.bodyMdx && draft.sections.length > 0 ? (
+                <div className="home-builder__notion-migrate">
+                  <p>
+                    Start from your existing sections. The conversion is
+                    best-effort — review the result before saving.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => {
+                      const result = homeSectionsToMdx(draft);
+                      if (!result.mdx) {
+                        setMessage(
+                          "warn",
+                          "No enabled sections to migrate.",
+                        );
+                        return;
+                      }
+                      setDraft((current) => ({
+                        ...current,
+                        bodyMdx: result.mdx,
+                      }));
+                      const noteSummary =
+                        result.notes.length > 0
+                          ? ` Notes: ${result.notes.join(" / ")}`
+                          : "";
+                      setMessage(
+                        "success",
+                        `Migrated ${draft.sections.filter((s) => s.enabled).length} section(s) to MDX. Review and Save.${noteSummary}`,
+                      );
+                    }}
+                  >
+                    Migrate sections to MDX
+                  </button>
+                </div>
+              ) : null}
               <BlocksEditor
                 value={draft.bodyMdx ?? ""}
                 onChange={(next) =>
