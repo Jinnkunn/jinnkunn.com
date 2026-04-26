@@ -10,6 +10,8 @@ import {
   parsePostSource,
   type PostFrontmatterForm,
 } from "./mdx-source";
+import { PageRoutingProperties } from "./page-routing-properties";
+import { PageSeoProperties } from "./page-seo-properties";
 import { localDateIso } from "./utils";
 
 export type PostEditorMode = "create" | "edit";
@@ -112,6 +114,18 @@ function PostProperties({
         />
         Draft (hidden from public index)
       </label>
+
+      {/* Same per-page URL override + password protection drawer the
+        * page editor surfaces. The component talks to the routes API
+        * keyed by `slug` (pageId convention is just the slug for both
+        * posts and pages); only render in edit mode since a freshly-
+        * created post needs a slug on disk before routing it. */}
+      {mode === "edit" ? (
+        <>
+          <PageRoutingProperties slug={slug} />
+          <PageSeoProperties pathname={`/blog/${slug}`} />
+        </>
+      ) : null}
     </>
   );
 }
