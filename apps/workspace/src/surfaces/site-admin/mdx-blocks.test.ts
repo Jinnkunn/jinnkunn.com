@@ -381,3 +381,34 @@ describe("link-list block (inline-config with item array)", () => {
     expect(serializeMdxBlocks(blocks)).toBe(source);
   });
 });
+
+describe("featured-pages block", () => {
+  it("round-trips a FeaturedPagesBlock with title + columns + cards", () => {
+    const source =
+      `<FeaturedPagesBlock title="Highlights" columns={3} items='[{"label":"Posts","href":"/posts","description":"Thoughts and notes"},{"label":"Works","href":"/works"}]' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("featured-pages-block");
+    expect(blocks[0].title).toBe("Highlights");
+    expect(blocks[0].columns).toBe(3);
+    expect(blocks[0].linkItems).toEqual([
+      { label: "Posts", href: "/posts", description: "Thoughts and notes" },
+      { label: "Works", href: "/works" },
+    ]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("omits default columns=2 + empty items on serialize", () => {
+    const source = "<FeaturedPagesBlock />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].columns).toBe(2);
+    expect(blocks[0].linkItems).toEqual([]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("clamps unknown columns values to default 2", () => {
+    const source = "<FeaturedPagesBlock columns={42} />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].columns).toBe(2);
+  });
+});

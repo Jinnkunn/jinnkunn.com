@@ -2523,6 +2523,12 @@ body[data-window-focused="true"] .sidebar-surface {
   background: var(--color-bg-surface);
 }
 
+/* Featured-pages variant adds a description column between URL and
+   the action buttons. */
+.mdx-document-link-list-block__item--featured {
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.3fr) minmax(160px, 1.5fr) auto;
+}
+
 .mdx-document-link-list-block__item input {
   border: 1px solid var(--color-border-subtle);
   border-radius: 5px;
