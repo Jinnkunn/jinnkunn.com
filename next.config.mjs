@@ -30,6 +30,22 @@ const nextConfig = {
   },
 
   async redirects() {
+    const out = [];
+
+    // Notion-imported media still lives under `/notion-assets/<hash>.png`
+    // in the admin's content because that's the path the legacy
+    // `scripts/sync-notion.mjs` writer used. The deployed Cloudflare
+    // Worker doesn't serve from `public/`, so the actual asset lives on
+    // R2 (cdn.jinkunchen.com). Redirect any `/notion-assets/*` request
+    // to its CDN counterpart so admin-saved relative URLs keep working
+    // without us having to rewrite content/home.json on every save.
+    // Permanent (308) so browsers + Cloudflare cache the bounce.
+    out.push({
+      source: "/notion-assets/:path*",
+      destination: "https://cdn.jinkunchen.com/notion-assets/:path*",
+      permanent: true,
+    });
+
     // Each successful page/post rename appends an entry to
     // content/redirects.json. Read it at build time and emit Next-shaped
     // 308 redirects so /pages/<oldSlug> and /blog/<oldSlug> keep
@@ -41,7 +57,6 @@ const nextConfig = {
         "utf8",
       );
       const data = JSON.parse(raw);
-      const out = [];
       const pages =
         data && typeof data === "object" && data.pages && typeof data.pages === "object"
           ? data.pages
@@ -64,9 +79,9 @@ const nextConfig = {
       }
       return out;
     } catch (err) {
-      if (err && err.code === "ENOENT") return [];
+      if (err && err.code === "ENOENT") return out;
       console.warn("[next.config.redirects] failed to load content/redirects.json:", err);
-      return [];
+      return out;
     }
   },
 
