@@ -10,6 +10,7 @@ import {
   parsePageSource,
   type PageFrontmatterForm,
 } from "./mdx-source";
+import { PageRoutingProperties } from "./page-routing-properties";
 
 export type PageEditorMode = "create" | "edit";
 
@@ -84,6 +85,8 @@ function PageProperties({
         />
         Draft (hidden from public site)
       </label>
+
+      {mode === "edit" ? <PageRoutingProperties slug={slug} /> : null}
     </>
   );
 }
