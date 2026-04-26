@@ -403,3 +403,33 @@
 .notion-color[data-color="purple"] { background: var(--ds-color-bg-purple); }
 .notion-color[data-color="pink"] { background: var(--ds-color-bg-pink); }
 .notion-color[data-color="red"] { background: var(--ds-color-bg-red); }
+
+/* Inline color spans — emitted by the editor's selection toolbar as
+ * `<span data-color="X" data-bg="X">word</span>` inside a paragraph.
+ * `data-color` paints the foreground; `data-bg` paints a tint behind
+ * the run with a small horizontal pad so it reads as a highlight rather
+ * than a hard rectangle. Both attrs are independent — text+bg, text-
+ * only, or bg-only all valid. */
+span[data-color="gray"] { color: var(--ds-color-text-gray); }
+span[data-color="brown"] { color: var(--ds-color-text-brown); }
+span[data-color="orange"] { color: var(--ds-color-text-orange); }
+span[data-color="yellow"] { color: var(--ds-color-text-yellow); }
+span[data-color="green"] { color: var(--ds-color-text-green); }
+span[data-color="blue"] { color: var(--ds-color-text-blue); }
+span[data-color="purple"] { color: var(--ds-color-text-purple); }
+span[data-color="pink"] { color: var(--ds-color-text-pink); }
+span[data-color="red"] { color: var(--ds-color-text-red); }
+
+span[data-bg] {
+  padding: 0 3px;
+  border-radius: 3px;
+}
+span[data-bg="gray"] { background: var(--ds-color-bg-gray); }
+span[data-bg="brown"] { background: var(--ds-color-bg-brown); }
+span[data-bg="orange"] { background: var(--ds-color-bg-orange); }
+span[data-bg="yellow"] { background: var(--ds-color-bg-yellow); }
+span[data-bg="green"] { background: var(--ds-color-bg-green); }
+span[data-bg="blue"] { background: var(--ds-color-bg-blue); }
+span[data-bg="purple"] { background: var(--ds-color-bg-purple); }
+span[data-bg="pink"] { background: var(--ds-color-bg-pink); }
+span[data-bg="red"] { background: var(--ds-color-bg-red); }

@@ -76,6 +76,19 @@ html[data-theme="light"] {
   --ds-color-bg-purple: rgba(144, 101, 176, 0.14);
   --ds-color-bg-pink: rgba(193, 76, 138, 0.14);
   --ds-color-bg-red: rgba(212, 76, 71, 0.14);
+  /* Foreground text tints, paired with the bg set above. Used by the
+   * inline color span the editor's selection toolbar emits. Hex values
+   * mirror Notion's published palette so users porting Notion content
+   * land on familiar tones. */
+  --ds-color-text-gray: #787774;
+  --ds-color-text-brown: #9f6b53;
+  --ds-color-text-orange: #d9730d;
+  --ds-color-text-yellow: #cb912f;
+  --ds-color-text-green: #448361;
+  --ds-color-text-blue: #337ea9;
+  --ds-color-text-purple: #9065b0;
+  --ds-color-text-pink: #c14c8a;
+  --ds-color-text-red: #d44c47;
 
   --ds-selection-bg: rgba(216, 191, 131, 0.56);
   --ds-selection-text: #2f2c26;
@@ -161,6 +174,17 @@ html[data-theme="dark"] {
   --ds-color-bg-purple: rgba(170, 130, 210, 0.24);
   --ds-color-bg-pink: rgba(220, 110, 165, 0.24);
   --ds-color-bg-red: rgba(225, 110, 105, 0.24);
+  /* Foreground text tints — slightly brighter on dark to maintain
+   * contrast against the dark page background. */
+  --ds-color-text-gray: #9b9a97;
+  --ds-color-text-brown: #ba856e;
+  --ds-color-text-orange: #d98732;
+  --ds-color-text-yellow: #d9a546;
+  --ds-color-text-green: #60a282;
+  --ds-color-text-blue: #56a1c8;
+  --ds-color-text-purple: #aa82d2;
+  --ds-color-text-pink: #dc6ea5;
+  --ds-color-text-red: #e16e69;
 
   --ds-selection-bg: rgba(133, 104, 44, 0.58);
   --ds-selection-text: #fff8eb;
