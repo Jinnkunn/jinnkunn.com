@@ -8,6 +8,7 @@ import { Color } from "./color";
 import { Embed } from "./embed";
 import { Figure } from "./figure";
 import { FileLink } from "./file-link";
+import { HeroBlock } from "./hero-block";
 import { NewsBlock } from "./news-block";
 import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
@@ -78,6 +79,7 @@ export const postMdxComponents: MDXComponents = {
   Embed,
   Figure,
   FileLink,
+  HeroBlock,
   NewsBlock,
   PageLink,
   PublicationsBlock,

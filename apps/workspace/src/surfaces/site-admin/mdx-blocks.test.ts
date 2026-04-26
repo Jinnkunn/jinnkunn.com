@@ -302,3 +302,36 @@ describe("data-source blocks", () => {
     }
   });
 });
+
+describe("hero block (inline-config)", () => {
+  it("round-trips a HeroBlock with title + image + custom layout", () => {
+    const source =
+      '<HeroBlock title="Hi" subtitle="welcome" imageUrl="/uploads/me.jpg" imageAlt="Me" imagePosition="left" textAlign="center" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("hero-block");
+    expect(blocks[0].title).toBe("Hi");
+    expect(blocks[0].subtitle).toBe("welcome");
+    expect(blocks[0].url).toBe("/uploads/me.jpg");
+    expect(blocks[0].alt).toBe("Me");
+    expect(blocks[0].imagePosition).toBe("left");
+    expect(blocks[0].textAlign).toBe("center");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("omits default imagePosition (right) and textAlign (left) on serialize", () => {
+    // Defaults are skipped to keep the serialized form short.
+    const source = '<HeroBlock title="Hi" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].imagePosition).toBe("right"); // applied during parse
+    expect(blocks[0].textAlign).toBe("left");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("falls back to defaults when imagePosition or textAlign is invalid", () => {
+    const source = '<HeroBlock imagePosition="bogus" textAlign="weird" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].imagePosition).toBe("right");
+    expect(blocks[0].textAlign).toBe("left");
+  });
+});

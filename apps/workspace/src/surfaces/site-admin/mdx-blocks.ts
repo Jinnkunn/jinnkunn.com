@@ -22,7 +22,12 @@ export type MdxBlockType =
   | "news-block"
   | "publications-block"
   | "works-block"
-  | "teaching-block";
+  | "teaching-block"
+  // Layout / structural blocks lifted from the Home builder so a hero
+  // section can be dropped into any page (`<HeroBlock title="…" />`).
+  // Inline-config (no external data source); all fields live on the
+  // tag itself.
+  | "hero-block";
 
 export type MdxEmbedKind = "youtube" | "vimeo" | "iframe" | "video";
 
@@ -74,9 +79,15 @@ export interface MdxBlock {
   image?: string;
   language?: string;
   level?: 1 | 2 | 3;
+  // For HeroBlock: position of the profile image relative to the body.
+  imagePosition?: "left" | "right" | "top" | "none";
   // For data-source blocks (news-block, …): cap the number of entries
   // rendered. `undefined` means "show all".
   limit?: number;
+  // For HeroBlock: optional sub-line shown under the title.
+  subtitle?: string;
+  // For HeroBlock: text alignment within the hero body.
+  textAlign?: "left" | "center" | "right";
   listStyle?: "bulleted" | "numbered";
   markers?: string[];
   mimeType?: string;
@@ -157,6 +168,16 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
     type === "teaching-block"
   ) {
     return { id, type, text: "" };
+  }
+  if (type === "hero-block") {
+    return {
+      id,
+      type,
+      text: "",
+      title: "",
+      imagePosition: "right",
+      textAlign: "left",
+    };
   }
   return { id, type, text: "" };
 }
@@ -625,6 +646,28 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "HeroBlock") {
+        const imagePos = (attrs.imagePosition || "").toLowerCase();
+        const align = (attrs.textAlign || "").toLowerCase();
+        pushBlock(
+          makeBlock("hero-block", {
+            text: "",
+            title: attrs.title,
+            subtitle: attrs.subtitle,
+            url: attrs.imageUrl,
+            alt: attrs.imageAlt,
+            imagePosition:
+              imagePos === "left" || imagePos === "right" || imagePos === "top" || imagePos === "none"
+                ? (imagePos as "left" | "right" | "top" | "none")
+                : "right",
+            textAlign:
+              align === "left" || align === "center" || align === "right"
+                ? (align as "left" | "center" | "right")
+                : "left",
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -792,6 +835,24 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   if (block.type === "teaching-block") {
     const attrs = serializeAttrs([["limit", block.limit]]);
     return attrs ? `<TeachingBlock ${attrs} />` : "<TeachingBlock />";
+  }
+  if (block.type === "hero-block") {
+    // Skip default values to keep the serialized form short and stable.
+    const imagePosition =
+      block.imagePosition && block.imagePosition !== "right"
+        ? block.imagePosition
+        : undefined;
+    const textAlign =
+      block.textAlign && block.textAlign !== "left" ? block.textAlign : undefined;
+    const attrs = serializeAttrs([
+      ["title", block.title],
+      ["subtitle", block.subtitle],
+      ["imageUrl", block.url],
+      ["imageAlt", block.alt],
+      ["imagePosition", imagePosition],
+      ["textAlign", textAlign],
+    ]);
+    return attrs ? `<HeroBlock ${attrs} />` : "<HeroBlock />";
   }
   return text;
 }
