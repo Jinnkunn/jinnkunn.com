@@ -9,15 +9,24 @@ import { getSiteConfig } from "@/lib/site-config";
 export const dynamic = "force-static";
 export const dynamicParams = false;
 
+// Slugs whose route lives at a sibling page.tsx (currently only
+// /publications, which keeps a custom route so it can emit JSON-LD).
+// We filter them out of the catch-all's static-params list to avoid
+// double-generating identical static HTML at build time. Functionally
+// harmless to leave (Next.js routes the explicit page.tsx in
+// preference to the catch-all), but the duplicate slows down the
+// build and shows up confusingly in route inventories.
+const RESERVED_EXPLICIT_SLUGS = new Set(["publications"]);
+
 export async function generateStaticParams(): Promise<Array<{ slug: string[] }>> {
-  // Every route that the catch-all serves now lives as an MDX file
-  // under `content/pages/*.mdx`. The legacy Notion raw-HTML pipeline
-  // was retired — dedicated routes (home, blog, publications, news,
-  // teaching, works) handle the rest. Page slugs can be hierarchical
+  // Every other route the catch-all serves lives as an MDX file
+  // under `content/pages/*.mdx`. Page slugs can be hierarchical
   // (e.g. "docs/intro"); split on "/" so the array form matches what
   // Next.js gives back from the catch-all.
   const pageSlugs = await getPageSlugs();
-  return pageSlugs.map((slug) => ({ slug: slug.split("/") }));
+  return pageSlugs
+    .filter((slug) => !RESERVED_EXPLICIT_SLUGS.has(slug))
+    .map((slug) => ({ slug: slug.split("/") }));
 }
 
 export async function generateMetadata({
