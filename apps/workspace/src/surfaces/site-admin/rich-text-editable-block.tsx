@@ -104,6 +104,12 @@ export function RichTextEditableBlock({
 }: RichTextEditableBlockProps) {
   const isHeading = block.type === "heading";
   const richRef = useRef<RichTextInputHandle>(null);
+  // The editor lives in RichTextInput's `useEditor`. We track it as
+  // reactive state via the `onEditorReady` callback so the
+  // selection-subscribe effect below can depend on it — `useEffect([])`
+  // against `richRef.current?.getEditor()` was racing the initial mount
+  // and never registering the listener (selection toolbar never showed).
+  const [editor, setEditor] = useState<Editor | null>(null);
   const [selection, setSelection] = useState<{ from: number; to: number } | null>(null);
   const [mention, setMention] = useState<{ from: number } | null>(null);
   // Force re-render on every selection / doc update so anchor coords stay
@@ -117,7 +123,6 @@ export function RichTextEditableBlock({
   // Subscribe to TipTap selection / doc updates so the format toolbar
   // anchors to the live caret and the rev counter forces a coords recompute.
   useEffect(() => {
-    const editor = richRef.current?.getEditor();
     if (!editor) return;
     const onUpdate = () => {
       setRevision((r) => r + 1);
@@ -130,7 +135,7 @@ export function RichTextEditableBlock({
       editor.off("selectionUpdate", onUpdate);
       editor.off("transaction", onUpdate);
     };
-  }, []);
+  }, [editor]);
 
   // Keyboard handler. Most logic is borrowed from the textarea path — the
   // diffs are: format shortcuts use TipTap commands instead of toggle-wrap,
@@ -279,7 +284,6 @@ export function RichTextEditableBlock({
   // textarea-caret helper uses for the textarea path, so the existing
   // BlockPopover positioning works unchanged.
   const inlineAnchor = useMemo<BlockPopoverAnchor>(() => {
-    const editor = richRef.current?.getEditor();
     if (!editor || !selection) return null;
     try {
       const coords = editor.view.coordsAtPos(selection.from);
@@ -292,10 +296,9 @@ export function RichTextEditableBlock({
     } catch {
       return null;
     }
-  }, [selection]);
+  }, [editor, selection]);
 
   const mentionAnchor = useMemo<BlockPopoverAnchor>(() => {
-    const editor = richRef.current?.getEditor();
     if (!editor || !mention) return null;
     try {
       const coords = editor.view.coordsAtPos(mention.from);
@@ -308,11 +311,10 @@ export function RichTextEditableBlock({
     } catch {
       return null;
     }
-  }, [mention]);
+  }, [editor, mention]);
 
   const insertMention = useCallback(
     (target: MentionTarget) => {
-      const editor = richRef.current?.getEditor();
       if (!editor || !mention) return;
       // Range to replace: from one char before the "@" up through the
       // current caret (so the picker swallows the literal @ and any partial
@@ -331,11 +333,10 @@ export function RichTextEditableBlock({
         .run();
       setMention(null);
     },
-    [mention],
+    [editor, mention],
   );
 
   const mentionInitialQuery = useMemo(() => {
-    const editor = richRef.current?.getEditor();
     if (!editor || !mention) return "";
     const text = editor.state.doc.textBetween(
       mention.from,
@@ -343,22 +344,21 @@ export function RichTextEditableBlock({
       "",
     );
     return text;
-  }, [mention]);
+  }, [editor, mention]);
 
   // Hand the contenteditable DOM node to the parent so its focus-request
   // effect (when a new block is created) can call `node.focus()`. Tied to
   // editor identity so a re-creation re-registers; cleanup on unmount
   // un-registers so stale ids don't leak.
   useEffect(() => {
-    const editor = richRef.current?.getEditor();
     if (!editor) return;
     const node = editor.view.dom as HTMLElement;
     onFocusInput(node);
     return () => onFocusInput(null);
-    // We intentionally re-run when block id changes; otherwise the node is
-    // stable for the editor's lifetime.
+    // We intentionally re-run when block id or editor identity changes;
+    // otherwise the node is stable for the editor's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [block.id]);
+  }, [block.id, editor]);
 
   const inner = (
     <RichTextInput
@@ -366,6 +366,7 @@ export function RichTextEditableBlock({
       value={block.text}
       onChange={handleValueChange}
       onKeyDown={onKeyDown}
+      onEditorReady={setEditor}
       className={classNameFor(block)}
       ariaLabel={`${block.type} block`}
       placeholder={isEmpty ? placeholderFor(block) : undefined}
@@ -384,7 +385,7 @@ export function RichTextEditableBlock({
       {selection && inlineAnchor ? (
         <InlineFormatToolbar
           anchor={inlineAnchor}
-          editor={richRef.current?.getEditor() ?? null}
+          editor={editor}
           onClose={() => setSelection(null)}
           onTurnInto={onTurnInto}
         />
