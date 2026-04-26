@@ -380,9 +380,11 @@ export function RoutesPanel() {
     [request, setMessage, loadRedirects],
   );
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Redirects are loaded from the admin API on mount; the loader owns loading state. */
   useEffect(() => {
     void loadRedirects({ silent: true });
   }, [loadRedirects]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const updateOverrideDraft = useCallback(
     (pageId: string, value: string) => {

@@ -54,22 +54,21 @@ Run the desktop app against staging and record pass/fail notes for each item.
 
 ### Home WYSIWYG Editor
 
-- Open Home and confirm the default mode is canvas-first, not a cramped
-  three-column preview/editor layout.
-- Select each visible Home section and block; the inspector must edit the
-  selected item only.
-- Add a rich text block, image block, links block, featured pages block, and
-  layout section.
-- Reorder sections and layout blocks; preview order must update immediately.
-- Edit text inline in the canvas, then switch to source/structure escape hatches
-  if available; content must round-trip without loss.
-- Save, reload the app, and confirm the saved Home content still matches the
-  staging preview.
+- Open Home and confirm it uses the shared MDX document editor with Write,
+  Source, and Preview modes.
+- Add Hero, Columns, Link list, Featured pages, regular text, and image blocks.
+- Reorder blocks in the Write canvas; preview order must update immediately.
+- Edit text inline in the canvas, then switch to Source and back without losing
+  unsupported MDX.
+- Save, reload the app, and confirm `content/home.json` round-trips as title +
+  bodyMdx and still matches the staging preview.
 
 ### Post And Page Editors
 
 - Open one existing blog post and one existing page.
 - Edit title, description/frontmatter, and body content.
+- Confirm the Page properties drawer exposes routing/protection and SEO for the
+  public `/<slug>` path.
 - Use the shared MDX editor in Write mode, Source mode, and Preview mode.
 - Confirm unsupported raw MDX, code fences, tables, lists, callouts, and links
   remain editable and serializable.
@@ -102,6 +101,14 @@ Run the desktop app against staging and record pass/fail notes for each item.
 - Confirm Post and Page preview heading links inherit heading color.
 - Confirm Home profile image loads from the CDN URL directly.
 - Confirm preview iframe styles are loaded from `/_next/static/css/*.css`.
+
+### Page Tree
+
+- Confirm Home contains Blog plus the standalone page tree in the sidebar.
+- Create a root page and a nested page; reload the app and confirm the order is
+  stable.
+- Rename or reparent a disposable page; confirm the page tree remains stable
+  after refresh.
 
 ## Evidence Template
 

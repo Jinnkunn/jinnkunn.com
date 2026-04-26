@@ -19,6 +19,7 @@ type SiteAdminAuditAction =
   | "pages.update"
   | "pages.delete"
   | "pages.move"
+  | "pages.tree.save"
   | "redirects.delete"
   | "assets.upload"
   | "assets.delete"

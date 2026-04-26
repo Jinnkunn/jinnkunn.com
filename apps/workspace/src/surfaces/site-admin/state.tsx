@@ -33,11 +33,15 @@ import {
   toIsoFromEpochSeconds,
 } from "./utils";
 
-const DEFAULT_BASE_URL = "https://jinkunchen.com";
+const STAGING_BASE_URL = "https://staging.jinkunchen.com";
+const PRODUCTION_BASE_URL = "https://jinkunchen.com";
+const DEFAULT_BASE_URL = STAGING_BASE_URL;
 const LOCAL_STORAGE_KEY = "workspace.site-admin.connection.v1";
 const PROFILES_STORAGE_KEY = "workspace.site-admin.profiles.v1";
 const POSTS_GROUPING_STORAGE_KEY = "workspace.site-admin.postsGrouping.v1";
 const DEFAULT_PROFILE_ID = "default";
+const STAGING_PROFILE_ID = "staging";
+const PRODUCTION_PROFILE_ID = "production";
 
 export type PostsGrouping = "all" | "drafts" | "published" | "by-year";
 
@@ -234,18 +238,38 @@ function loadProfiles(): ProfilesEnvelope {
     // fall through to migration
   }
 
-  // Migration: first run after upgrade → seed from the legacy single-
-  // baseUrl storage so the user lands on the same URL they had before.
+  // Migration: first run after upgrade → seed explicit environments.
+  // Staging is the daily editing target; production remains available
+  // for inspection while real promotion stays guarded by the runbook.
   const legacy = loadPersistedConnection();
+  const legacyBase = normalizeString(legacy.baseUrl);
+  const seeded: ConnectionProfile[] = [
+    {
+      id: STAGING_PROFILE_ID,
+      label: "Staging",
+      baseUrl: STAGING_BASE_URL,
+    },
+    {
+      id: PRODUCTION_PROFILE_ID,
+      label: "Production",
+      baseUrl: PRODUCTION_BASE_URL,
+    },
+  ];
+  const legacyMatchesSeed = seeded.some(
+    (profile) =>
+      profile.baseUrl.replace(/\/+$/, "").toLowerCase() ===
+      legacyBase.replace(/\/+$/, "").toLowerCase(),
+  );
+  if (legacyBase && !legacyMatchesSeed) {
+    seeded.push({
+      id: DEFAULT_PROFILE_ID,
+      label: "Legacy",
+      baseUrl: legacyBase,
+    });
+  }
   return {
-    profiles: [
-      {
-        id: DEFAULT_PROFILE_ID,
-        label: "Default",
-        baseUrl: legacy.baseUrl,
-      },
-    ],
-    activeProfileId: DEFAULT_PROFILE_ID,
+    profiles: seeded,
+    activeProfileId: STAGING_PROFILE_ID,
   };
 }
 

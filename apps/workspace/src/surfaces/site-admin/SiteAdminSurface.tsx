@@ -91,17 +91,77 @@ function decodeNavItemId(id: string | null): DecodedNavItem | null {
 // nested SurfaceNavItem tree. Intermediate path segments without their
 // own page just appear as folder rows; the leaf row carries the real
 // title.
-function buildPagesTree(rows: PageListRow[]): SurfaceNavItem[] {
+function normalizePageOrderSlugs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const slug = item.trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
+  }
+  return out;
+}
+
+function orderedPageSlugs(rows: PageListRow[], savedOrder: string[]): string[] {
+  const known = new Set(rows.map((row) => row.slug));
+  const ordered = savedOrder.filter((slug) => known.has(slug));
+  const orderedSet = new Set(ordered);
+  const appended = rows
+    .map((row) => row.slug)
+    .filter((slug) => slug && !orderedSet.has(slug))
+    .sort((a, b) => a.localeCompare(b));
+  return [...ordered, ...appended];
+}
+
+function sortPagesForTree(rows: PageListRow[], savedOrder: string[]): PageListRow[] {
+  const orderedSlugs = orderedPageSlugs(rows, savedOrder);
+  const index = new Map(orderedSlugs.map((slug, i) => [slug, i]));
+  return rows
+    .filter((r) => r.slug)
+    .slice()
+    .sort((a, b) => {
+      const ai = index.get(a.slug);
+      const bi = index.get(b.slug);
+      if (ai !== undefined && bi !== undefined) return ai - bi;
+      if (ai !== undefined) return -1;
+      if (bi !== undefined) return 1;
+      return a.slug.localeCompare(b.slug);
+    });
+}
+
+function remapSavedPageOrder(
+  currentOrder: string[],
+  rows: PageListRow[],
+  replacement?: { fromSlug: string; toSlug: string },
+): string[] {
+  const nextRows = rows.map((row) =>
+    replacement && row.slug === replacement.fromSlug
+      ? { ...row, slug: replacement.toSlug }
+      : row,
+  );
+  const saved = replacement
+    ? currentOrder.map((slug) =>
+        slug === replacement.fromSlug ? replacement.toSlug : slug,
+      )
+    : currentOrder;
+  return orderedPageSlugs(nextRows, saved);
+}
+
+function sameStringList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
+}
+
+function buildPagesTree(rows: PageListRow[], savedOrder: string[] = []): SurfaceNavItem[] {
   type Node = {
     id: string;
     label: string;
     children: Map<string, Node>;
   };
   const root = new Map<string, Node>();
-  const sorted = rows
-    .filter((r) => r.slug)
-    .slice()
-    .sort((a, b) => a.slug.localeCompare(b.slug));
+  const sorted = sortPagesForTree(rows, savedOrder);
   for (const { slug, title } of sorted) {
     const parts = slug.split("/");
     let level = root;
@@ -128,14 +188,19 @@ function buildPagesTree(rows: PageListRow[]): SurfaceNavItem[] {
     return Array.from(level.values()).map((n) => ({
       id: n.id,
       label: n.label,
-      // Folders (intermediate path segments) get the "+" affordance so
-      // users can create a sub-page under that prefix; leaves don't —
-      // pages don't nest beyond a single slug-derived hierarchy.
-      canAddChild: n.children.size > 0,
+      // Notion-style sub-pages: every page row gets the "+" affordance
+      // so the user can add a sub-page under any leaf or folder. The
+      // surface decodes "add:pages:<prefix>" into a fresh PageEditor
+      // pre-filled with `<prefix>/`, and the slug rules cap the
+      // hierarchy at PAGE_MAX_DEPTH (= 4 segments). Older versions
+      // gated this on `n.children.size > 0`, which only let you add
+      // children to existing folders — surprising once we wanted real
+      // page trees.
+      canAddChild: true,
       // Every page row is a drag source; both leaves and folders are
       // valid drop targets. Dropping A onto B reparents A under B.
-      // Dropping onto the static "Pages" parent (handled separately
-      // below) reparents to root.
+      // Dropping onto the Home parent (handled separately below)
+      // reparents to root.
       draggable: true,
       droppable: true,
       children: n.children.size > 0 ? toItems(n.children) : undefined,
@@ -263,6 +328,8 @@ function SiteAdminContent() {
   const [postRows, setPostRows] = useState<PostListRow[]>([]);
   const [pageRows, setPageRows] = useState<PageListRow[]>([]);
   const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
+  const [pageOrderSlugs, setPageOrderSlugs] = useState<string[]>([]);
+  const [pageTreeFileSha, setPageTreeFileSha] = useState("");
 
   // Derived tree applies the current grouping setting to the cached
   // post rows. Cheap enough to recompute on every grouping change; no
@@ -291,6 +358,7 @@ function SiteAdminContent() {
   // components:news), open the editor for that target. The
   // activeNavItemId is what the shell persists; the *Selected state
   // is what the panel renders.
+  /* eslint-disable react-hooks/set-state-in-effect -- Sidebar ids are persisted shell state; editor selections intentionally mirror that external state. */
   useEffect(() => {
     if (!decodedItem) return;
     if (decodedItem.tab === "posts") {
@@ -301,6 +369,7 @@ function SiteAdminContent() {
       setComponentsSelected(decodedItem.name);
     }
   }, [decodedItem]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Synthetic "add:<itemId>" ids fired by the sidebar's "+" button.
   // Decode and dispatch to the appropriate New flow, then bounce the
@@ -308,6 +377,7 @@ function SiteAdminContent() {
   // localStorage. A ref prevents the effect from re-firing on the
   // bounce-back.
   const lastHandledAddRef = useRef<string | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect -- Synthetic add ids are a sidebar event channel that must be consumed and reset synchronously. */
   useEffect(() => {
     if (!activeNavItemId?.startsWith("add:")) return;
     if (lastHandledAddRef.current === activeNavItemId) return;
@@ -335,28 +405,46 @@ function SiteAdminContent() {
       return;
     }
   }, [activeNavItemId, setActiveNavItemId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Eager-fetch the posts + pages indexes once we have credentials.
   // This is the single source for both the sidebar tree (Phase 1) and
   // the command palette index — Phase 2 deleted the panel-local list
   // that used to populate the palette. Two parallel calls; failures
   // are silent (the sidebar just stays collapsed, palette empty).
+  /* eslint-disable react-hooks/set-state-in-effect -- Ready changes invalidate the cached admin indexes before the async refetch repopulates them. */
   useEffect(() => {
     if (!ready) {
       setPostRows([]);
       setPageRows([]);
       setPagesTree([]);
+      setPageOrderSlugs([]);
+      setPageTreeFileSha("");
       setPostsIndex([]);
       setPagesIndex([]);
       return;
     }
     let cancelled = false;
     void (async () => {
-      const [postsResp, pagesResp] = await Promise.all([
+      const [postsResp, pagesResp, pageTreeResp] = await Promise.all([
         request("/api/site-admin/posts?drafts=1", "GET"),
         request("/api/site-admin/pages?drafts=1", "GET"),
+        request("/api/site-admin/pages/tree", "GET"),
       ]);
       if (cancelled) return;
+      let fetchedPageOrder: string[] = [];
+      if (pageTreeResp.ok) {
+        const data = (pageTreeResp.data ?? {}) as Record<string, unknown>;
+        fetchedPageOrder = normalizePageOrderSlugs(data.slugs);
+        const sourceVersion = (data.sourceVersion ?? {}) as { fileSha?: unknown };
+        setPageTreeFileSha(
+          typeof sourceVersion.fileSha === "string" ? sourceVersion.fileSha : "",
+        );
+        setPageOrderSlugs(fetchedPageOrder);
+      } else {
+        setPageTreeFileSha("");
+        setPageOrderSlugs([]);
+      }
       if (postsResp.ok) {
         const data = (postsResp.data ?? {}) as Record<string, unknown>;
         const raw = Array.isArray(data.posts) ? data.posts : [];
@@ -376,8 +464,9 @@ function SiteAdminContent() {
           const row = normalizePageListRow(r);
           if (row) parsed.push(row);
         }
+        const completeOrder = orderedPageSlugs(parsed, fetchedPageOrder);
         setPageRows(parsed);
-        setPagesTree(buildPagesTree(parsed));
+        setPagesTree(buildPagesTree(parsed, completeOrder));
         setPagesIndex(parsed);
       }
     })();
@@ -385,6 +474,52 @@ function SiteAdminContent() {
       cancelled = true;
     };
   }, [ready, request, contentRevision, setPostsIndex, setPagesIndex]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const savePageOrder = useCallback(
+    async (slugs: string[], expectedFileSha = pageTreeFileSha) => {
+      const normalized = normalizePageOrderSlugs(slugs);
+      const response = await request("/api/site-admin/pages/tree", "POST", {
+        slugs: normalized,
+        expectedFileSha,
+      });
+      if (!response.ok) {
+        if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+          setMessage(
+            "warn",
+            "Page tree order changed on the server. Reload pages before saving order again.",
+          );
+          return false;
+        }
+        setMessage("error", `Save page tree failed: ${response.code}: ${response.error}`);
+        return false;
+      }
+      const data = (response.data ?? {}) as Record<string, unknown>;
+      const sourceVersion = (data.sourceVersion ?? {}) as { fileSha?: unknown };
+      setPageOrderSlugs(normalized);
+      if (typeof sourceVersion.fileSha === "string") {
+        setPageTreeFileSha(sourceVersion.fileSha);
+      }
+      return true;
+    },
+    [pageTreeFileSha, request, setMessage],
+  );
+
+  const handlePageMutation = useCallback(
+    (action: "saved" | "deleted", slug?: string) => {
+      if (!slug) return;
+      const baseOrder = orderedPageSlugs(pageRows, pageOrderSlugs);
+      const nextOrder =
+        action === "deleted"
+          ? baseOrder.filter((item) => item !== slug)
+          : baseOrder.includes(slug)
+            ? baseOrder
+            : [...baseOrder, slug];
+      if (sameStringList(baseOrder, nextOrder)) return;
+      void savePageOrder(nextOrder);
+    },
+    [pageOrderSlugs, pageRows, savePageOrder],
+  );
 
   // Build the unified Home tree. Home is the only top-level item under
   // Content; underneath it the sidebar shows:
@@ -475,6 +610,9 @@ function SiteAdminContent() {
         );
         return;
       }
+      void savePageOrder(
+        remapSavedPageOrder(pageOrderSlugs, pageRows, { fromSlug, toSlug }),
+      );
       setMessage("success", `Moved ${fromSlug} → ${toSlug}`);
       bumpContentRevision();
       // Switch the active nav item to the new id so highlight follows.
@@ -484,7 +622,9 @@ function SiteAdminContent() {
   }, [
     bumpContentRevision,
     pageRows,
+    pageOrderSlugs,
     request,
+    savePageOrder,
     setActiveNavItemId,
     setMessage,
     setMoveNavItemHandler,
@@ -536,6 +676,9 @@ function SiteAdminContent() {
           setMessage("error", `Rename failed: ${response.code}: ${response.error}`);
           return;
         }
+        void savePageOrder(
+          remapSavedPageOrder(pageOrderSlugs, pageRows, { fromSlug, toSlug: cleaned }),
+        );
         setMessage("success", `Renamed ${fromSlug} → ${cleaned}`);
         bumpContentRevision();
         setActiveNavItemId(`pages:${cleaned}`);
@@ -544,8 +687,10 @@ function SiteAdminContent() {
     return () => setRenameNavItemHandler(null);
   }, [
     bumpContentRevision,
+    pageOrderSlugs,
     pageRows,
     request,
+    savePageOrder,
     setActiveNavItemId,
     setMessage,
     setRenameNavItemHandler,
@@ -613,8 +758,10 @@ function SiteAdminContent() {
           // "Saving…" spinner. If no editor is mounted, fall through so
           // the browser's default save-page dialog still doesn't fire.
           const form =
-            document.getElementById("post-editor-form") ??
-            document.getElementById("page-editor-form");
+            document.getElementById("home-document-editor-form") ??
+            document.getElementById("post-document-editor-form") ??
+            document.getElementById("page-document-editor-form") ??
+            document.getElementById("component-document-editor-form");
           event.preventDefault();
           if (form instanceof HTMLFormElement) {
             form.requestSubmit();
@@ -690,6 +837,7 @@ function SiteAdminContent() {
               )}
               {activeTab === "pages" && (
                 <PagesPanel
+                  onPageMutation={handlePageMutation}
                   selected={pagesSelected}
                   onSelectedChange={setPagesSelected}
                 />

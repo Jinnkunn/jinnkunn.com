@@ -113,9 +113,11 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
     }
   }, [pageId, request, setMessage]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Route properties are fetched from the admin API whenever the edited page changes. */
   useEffect(() => {
     void load();
   }, [load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveOverride = useCallback(async () => {
     if (!pageId || !sourceVersion) return;

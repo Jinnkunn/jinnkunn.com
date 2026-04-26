@@ -1,180 +1,111 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
-import { BlocksEditor } from "./LazyBlocksEditor";
-import { useSiteAdmin } from "./state";
-import { useJsonDraft } from "./use-json-draft";
-import { clone, normalizeHomeData, sameData } from "./home-builder/schema";
-import type { HomeData } from "./types";
+import {
+  MdxDocumentEditor,
+  type MdxDocumentEditorAdapter,
+  type MdxDocumentPropertiesProps,
+} from "./MdxDocumentEditor";
+import {
+  buildHomeSource,
+  parseHomeSource,
+  type HomeFrontmatterForm,
+} from "./mdx-source";
 
-const BLANK_DATA: HomeData = normalizeHomeData({});
+function blankForm(): HomeFrontmatterForm {
+  return { title: "Hi there!" };
+}
 
-/** Home is a single Notion-style MDX document. The section-builder UI
- * (and the underlying `sections` schema) was removed in this refactor;
- * everything Home renders now flows through `bodyMdx` and the same
- * MDX block primitives every other page uses (HeroBlock / Columns /
- * LinkListBlock / FeaturedPagesBlock / paragraphs / headings / …). */
+function HomeProperties({
+  form,
+}: MdxDocumentPropertiesProps<HomeFrontmatterForm>) {
+  return (
+    <>
+      <label className="home-builder__field">
+        <span>Title</span>
+        <input value={form.title} readOnly />
+        <em>
+          The title is edited in the canvas. Home saves to content/home.json as
+          title + bodyMdx.
+        </em>
+      </label>
+    </>
+  );
+}
+
+function sourceToHomeData(source: string): {
+  title: string;
+  bodyMdx?: string;
+} {
+  const parsed = parseHomeSource(source);
+  const body = parsed.body.trim();
+  return {
+    title: parsed.form.title.trim() || "Hi there!",
+    ...(body ? { bodyMdx: parsed.body } : {}),
+  };
+}
+
+/** Home is edited with the same MDX document editor as pages/posts. The
+ * server still stores the compatibility JSON file (`content/home.json`),
+ * but the editor surface is now a normal Notion-style block document. */
 export function HomePanel() {
-  const { connection, request, setMessage } = useSiteAdmin();
-  const [baseData, setBaseData] = useState<HomeData>(BLANK_DATA);
-  const [draft, setDraft] = useState<HomeData>(BLANK_DATA);
-  const [fileSha, setFileSha] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [conflict, setConflict] = useState(false);
-
-  const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
-  const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
-
-  // Restore unsaved drafts across reloads. Snapshot is the whole HomeData
-  // (just title + bodyMdx now), so the restore round-trips losslessly.
-  const { restorable, clearDraft, dismissRestore } = useJsonDraft<HomeData>(
-    "home",
-    draft,
-    dirty && !loading && !saving,
+  const adapter = useMemo<MdxDocumentEditorAdapter<HomeFrontmatterForm>>(
+    () => ({
+      allowBack: false,
+      allowDelete: false,
+      buildSource: buildHomeSource,
+      canSave: ({ form }) => Boolean(form.title.trim()),
+      contentPath: () => "content/home.json",
+      createBlankForm: blankForm,
+      defaultBody: "",
+      getTitle: (form) => form.title,
+      kind: "home",
+      loadDocument: async ({ request }) => {
+        const response = await request("/api/site-admin/home", "GET");
+        if (!response.ok) {
+          return {
+            ok: false,
+            code: response.code,
+            error: response.error,
+          };
+        }
+        const payload = (response.data ?? {}) as Record<string, unknown>;
+        const data = (payload.data ?? {}) as Record<string, unknown>;
+        const sourceVersion = (payload.sourceVersion ?? {}) as {
+          fileSha?: unknown;
+        };
+        return {
+          ok: true,
+          source: buildHomeSource(
+            { title: typeof data.title === "string" ? data.title : "Hi there!" },
+            typeof data.bodyMdx === "string" ? data.bodyMdx : "",
+          ),
+          version: typeof sourceVersion.fileSha === "string" ? sourceVersion.fileSha : "",
+        };
+      },
+      parseSource: parseHomeSource,
+      renderProperties: (props) => <HomeProperties {...props} />,
+      routeBase: "/api/site-admin/home",
+      saveDocument: async ({ request, source, version }) =>
+        request("/api/site-admin/home", "POST", {
+          data: sourceToHomeData(source),
+          expectedFileSha: version,
+        }),
+      setTitle: (form, title) => ({ ...form, title }),
+      stayAfterSave: true,
+      title: "Home",
+      titleNoun: "Home",
+    }),
+    [],
   );
-
-  const loadData = useCallback(
-    async (options: { silent?: boolean } = {}) => {
-      if (!ready) return;
-      setLoading(true);
-      setError("");
-      const response = await request("/api/site-admin/home", "GET");
-      setLoading(false);
-      if (!response.ok) {
-        const msg = `${response.code}: ${response.error}`;
-        setError(msg);
-        if (!options.silent) setMessage("error", `Load home failed: ${msg}`);
-        return;
-      }
-      const data = (response.data ?? {}) as Record<string, unknown>;
-      const payload = data.data ?? {};
-      const version = (data.sourceVersion ?? {}) as { fileSha?: string };
-      const normalized = normalizeHomeData(payload);
-      setBaseData(clone(normalized));
-      setDraft(clone(normalized));
-      setFileSha(version.fileSha || "");
-      setConflict(false);
-      if (!options.silent) setMessage("success", "Home loaded.");
-    },
-    [ready, request, setMessage],
-  );
-
-  useEffect(() => {
-    if (!ready) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData({ silent: true });
-  }, [ready, loadData]);
-
-  const save = useCallback(async () => {
-    if (!ready || saving) return;
-    setSaving(true);
-    setError("");
-    const response = await request("/api/site-admin/home", "POST", {
-      data: draft,
-      expectedFileSha: fileSha,
-    });
-    setSaving(false);
-    if (!response.ok) {
-      const msg = `${response.code}: ${response.error}`;
-      if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
-        setConflict(true);
-        setMessage("warn", "Home changed on the server. Reload + re-apply.");
-        return;
-      }
-      setError(msg);
-      setMessage("error", `Save home failed: ${msg}`);
-      return;
-    }
-    const data = (response.data ?? {}) as Record<string, unknown>;
-    const version = (data.sourceVersion ?? {}) as { fileSha?: string };
-    setBaseData(clone(draft));
-    setFileSha(version.fileSha || "");
-    setConflict(false);
-    clearDraft();
-    setMessage("success", "Home saved.");
-  }, [ready, saving, request, draft, fileSha, clearDraft, setMessage]);
-
-  const stateNote = loading
-    ? "Loading…"
-    : conflict
-      ? "Conflict detected. Reload before saving."
-      : dirty
-        ? "Unsaved changes."
-        : "In sync.";
 
   return (
-    <section className="surface-card">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
-            Home
-          </h1>
-          <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Edit Home as a Notion page. Use <code>/</code> for blocks —
-            Hero, Columns, Link list, Featured pages, plus regular
-            paragraphs / headings / images. Saves to{" "}
-            <code>content/home.json</code>.
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void loadData()}
-            disabled={!ready || loading}
-          >
-            {loading ? "Loading…" : "Reload"}
-          </button>
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => void save()}
-            disabled={!ready || saving || !dirty || conflict}
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </header>
-
-      {error && (
-        <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>
-      )}
-      <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
-
-      <label className="flex flex-col gap-1 text-[12.5px]">
-        <span className="text-text-muted">Page title</span>
-        <input
-          value={draft.title}
-          placeholder="Hi there!"
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, title: event.target.value }))
-          }
-        />
-      </label>
-
-      {restorable && (
-        <JsonDraftRestoreBanner
-          savedAt={restorable.savedAt}
-          onDismiss={dismissRestore}
-          onRestore={() => {
-            setDraft(clone(restorable.value));
-            dismissRestore();
-          }}
-        />
-      )}
-
-      <BlocksEditor
-        value={draft.bodyMdx ?? ""}
-        onChange={(next) =>
-          setDraft((current) => ({
-            ...current,
-            bodyMdx: next.trim() ? next : undefined,
-          }))
-        }
-        minHeight={520}
-      />
-    </section>
+    <MdxDocumentEditor
+      adapter={adapter}
+      mode="edit"
+      slug="home"
+      onExit={() => {
+        // Home is the root document; it stays mounted after save.
+      }}
+    />
   );
 }

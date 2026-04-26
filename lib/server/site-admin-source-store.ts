@@ -634,7 +634,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     // Check expected sha against current file content (best-effort
     // optimistic concurrency in local mode; real enforcement happens in
     // the GitHub store path).
-    if (input.expectedSha) {
+    if (input.expectedSha !== undefined) {
       try {
         const current = fs.readFileSync(filePath, "utf8");
         const currentSha = jsonSha(current);
@@ -1113,7 +1113,7 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     message?: string;
   }): Promise<{ fileSha: string; commitSha: string }> {
     const existing = await this.getRepoFile(input.relPath);
-    if (input.expectedSha) {
+    if (input.expectedSha !== undefined) {
       const currentSha = existing?.sha ?? "";
       if (currentSha !== input.expectedSha) {
         throw new SiteAdminSourceConflictError({
