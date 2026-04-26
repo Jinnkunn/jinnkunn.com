@@ -15,9 +15,6 @@ import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider, useSiteAdmin, type PostsGrouping } from "./state";
 import type { ItemSelection, SiteAdminTab } from "./types";
 
-const ConfigPanel = lazy(() =>
-  import("./ConfigPanel").then((module) => ({ default: module.ConfigPanel })),
-);
 const HomePanel = lazy(() =>
   import("./HomePanel").then((module) => ({ default: module.HomePanel })),
 );
@@ -34,9 +31,6 @@ const PublicationsPanel = lazy(() =>
   import("./PublicationsPanel").then((module) => ({
     default: module.PublicationsPanel,
   })),
-);
-const RoutesPanel = lazy(() =>
-  import("./RoutesPanel").then((module) => ({ default: module.RoutesPanel })),
 );
 const SettingsPanel = lazy(() =>
   import("./SettingsPanel").then((module) => ({ default: module.SettingsPanel })),
@@ -667,11 +661,6 @@ function SiteAdminContent() {
               {activeTab === "teaching" && <TeachingPanel />}
               {activeTab === "works" && <WorksPanel />}
               {activeTab === "settings" && <SettingsPanel />}
-              {/* Direct deep-links into the legacy standalone tabs still
-               * resolve so old persisted UI state and bookmarks keep
-               * working. The sidebar only surfaces "Settings" now. */}
-              {activeTab === "config" && <ConfigPanel />}
-              {activeTab === "routes" && <RoutesPanel />}
             </>
           )}
         </Suspense>
