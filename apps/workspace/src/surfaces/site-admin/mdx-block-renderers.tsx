@@ -18,6 +18,7 @@ import {
   createMdxBlock,
   type MdxBlock,
   type MdxEmbedKind,
+  type MdxLinkItem,
 } from "./mdx-blocks";
 import type { NormalizedApiResponse } from "./types";
 
@@ -990,6 +991,173 @@ export function HeroBlockEditableBlock({
             ))}
           </select>
         </label>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Link list block ----------
+// Inline-config block for a row/grid/stack of links. Items live as a
+// JSON-encoded array on the tag (`<LinkListBlock items='[…]' />`) so
+// no parser-level child-JSX support is needed; the editor card owns
+// the item-row UI for adding / removing / reordering links.
+
+const LINK_LIST_LAYOUTS = ["stack", "grid", "inline"] as const;
+
+export interface LinkListBlockEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+function patchItems(
+  items: MdxLinkItem[] | undefined,
+  index: number,
+  patch: Partial<MdxLinkItem>,
+): MdxLinkItem[] {
+  const list = items ? items.slice() : [];
+  if (index < 0 || index >= list.length) return list;
+  list[index] = { ...list[index], ...patch };
+  return list;
+}
+
+export function LinkListBlockEditableBlock({
+  block,
+  onPatch,
+}: LinkListBlockEditableBlockProps) {
+  const items = block.linkItems ?? [];
+  const layout = block.linkLayout ?? "stack";
+
+  const addItem = () =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: [...(current.linkItems ?? []), { label: "", href: "" }],
+    }));
+
+  const removeItem = (index: number) =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: (current.linkItems ?? []).filter((_, i) => i !== index),
+    }));
+
+  const moveItem = (index: number, direction: -1 | 1) =>
+    onPatch((current) => {
+      const list = (current.linkItems ?? []).slice();
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return current;
+      [list[index], list[target]] = [list[target], list[index]];
+      return { ...current, linkItems: list };
+    });
+
+  const updateItem = (index: number, patch: Partial<MdxLinkItem>) =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: patchItems(current.linkItems, index, patch),
+    }));
+
+  return (
+    <div className="mdx-document-link-list-block">
+      <div className="mdx-document-data-block__head">
+        <span className="mdx-document-data-block__icon" aria-hidden="true">
+          🔗
+        </span>
+        <div className="mdx-document-data-block__heading">
+          <strong>Link list</strong>
+          <span>Stack, grid, or inline row of links.</span>
+        </div>
+      </div>
+      <div className="mdx-document-link-list-block__row">
+        <label className="mdx-document-hero-block__field">
+          <span>Title</span>
+          <input
+            value={block.title ?? ""}
+            placeholder="Optional heading"
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, title: event.target.value }))
+            }
+          />
+        </label>
+        <label className="mdx-document-hero-block__field">
+          <span>Layout</span>
+          <select
+            value={layout}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                linkLayout: event.target.value as MdxBlock["linkLayout"],
+              }))
+            }
+          >
+            {LINK_LIST_LAYOUTS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <ul className="mdx-document-link-list-block__items" role="list">
+        {items.length === 0 ? (
+          <li className="mdx-document-link-list-block__empty">
+            No links yet. Click &ldquo;Add link&rdquo; below.
+          </li>
+        ) : (
+          items.map((item, index) => (
+            <li key={index} className="mdx-document-link-list-block__item">
+              <input
+                aria-label={`Link ${index + 1} label`}
+                value={item.label}
+                placeholder="Label"
+                onChange={(event) =>
+                  updateItem(index, { label: event.target.value })
+                }
+              />
+              <input
+                aria-label={`Link ${index + 1} URL`}
+                value={item.href}
+                placeholder="/path or https://"
+                onChange={(event) =>
+                  updateItem(index, { href: event.target.value })
+                }
+              />
+              <div className="mdx-document-link-list-block__item-actions">
+                <button
+                  type="button"
+                  aria-label="Move up"
+                  disabled={index === 0}
+                  onClick={() => moveItem(index, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move down"
+                  disabled={index === items.length - 1}
+                  onClick={() => moveItem(index, 1)}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  aria-label="Remove link"
+                  onClick={() => removeItem(index)}
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          ))
+        )}
+      </ul>
+
+      <div>
+        <button
+          type="button"
+          className="btn btn--secondary"
+          onClick={addItem}
+        >
+          + Add link
+        </button>
       </div>
     </div>
   );

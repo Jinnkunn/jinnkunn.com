@@ -9,6 +9,7 @@ import { Embed } from "./embed";
 import { Figure } from "./figure";
 import { FileLink } from "./file-link";
 import { HeroBlock } from "./hero-block";
+import { LinkListBlock } from "./link-list-block";
 import { NewsBlock } from "./news-block";
 import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
@@ -80,6 +81,7 @@ export const postMdxComponents: MDXComponents = {
   Figure,
   FileLink,
   HeroBlock,
+  LinkListBlock,
   NewsBlock,
   PageLink,
   PublicationsBlock,

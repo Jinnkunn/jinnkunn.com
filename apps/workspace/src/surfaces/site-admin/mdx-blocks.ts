@@ -27,7 +27,15 @@ export type MdxBlockType =
   // section can be dropped into any page (`<HeroBlock title="…" />`).
   // Inline-config (no external data source); all fields live on the
   // tag itself.
-  | "hero-block";
+  | "hero-block"
+  | "link-list-block";
+
+/** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
+export interface MdxLinkItem {
+  label: string;
+  href: string;
+  description?: string;
+}
 
 export type MdxEmbedKind = "youtube" | "vimeo" | "iframe" | "video";
 
@@ -84,6 +92,13 @@ export interface MdxBlock {
   // For data-source blocks (news-block, …): cap the number of entries
   // rendered. `undefined` means "show all".
   limit?: number;
+  // For LinkListBlock / FeaturedPagesBlock: how the items array is laid
+  // out. linkList accepts stack/grid/inline; featuredPages tweaks columns
+  // separately, so this is intentionally narrow.
+  linkLayout?: "stack" | "grid" | "inline";
+  // For LinkListBlock / FeaturedPagesBlock: the items array, serialized
+  // as a JSON string in a single-quoted JSX attribute.
+  linkItems?: MdxLinkItem[];
   // For HeroBlock: optional sub-line shown under the title.
   subtitle?: string;
   // For HeroBlock: text alignment within the hero body.
@@ -179,6 +194,16 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       textAlign: "left",
     };
   }
+  if (type === "link-list-block") {
+    return {
+      id,
+      type,
+      text: "",
+      title: "",
+      linkLayout: "stack",
+      linkItems: [],
+    };
+  }
   return { id, type, text: "" };
 }
 
@@ -233,13 +258,45 @@ const COLOR_OPEN_RE = /^<Color\s+bg="(\w+)">$/;
 const TODO_LINE_RE = /^(?:\s*)- \[([ xX])\]\s*(.*)$/;
 const TABLE_DIVIDER_RE = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|\s*$/;
 const SELF_CLOSING_TAG_RE = /^<(\w+)([\s\S]*?)\/>$/;
-const ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|\{(\d+)\})/g;
+// JSX attribute values: double-quoted string, single-quoted string, or
+// `{N}` numeric literal. Single-quoted form lets data-bearing attributes
+// (e.g. JSON arrays) embed double-quotes without escaping.
+const ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{(\d+)\})/g;
 
 function parseAttrs(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const match of raw.matchAll(ATTR_RE)) {
     const name = match[1];
-    out[name] = match[2] ?? match[3] ?? "";
+    out[name] = match[2] ?? match[3] ?? match[4] ?? "";
+  }
+  return out;
+}
+
+/** Decode a JSON-attribute value into a typed link items array. Bad
+ * JSON or missing label/href silently yields an empty list — the user
+ * sees an empty editor card and can rebuild the items, but a corrupt
+ * source line never crashes the editor. */
+function parseLinkItems(raw: string | undefined): MdxLinkItem[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: MdxLinkItem[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object") continue;
+    const obj = entry as Record<string, unknown>;
+    const label = typeof obj.label === "string" ? obj.label : "";
+    const href = typeof obj.href === "string" ? obj.href : "";
+    if (!label && !href) continue;
+    const item: MdxLinkItem = { label, href };
+    if (typeof obj.description === "string" && obj.description.trim()) {
+      item.description = obj.description;
+    }
+    out.push(item);
   }
   return out;
 }
@@ -263,12 +320,28 @@ function escapeAttr(value: string): string {
   return value.replace(/"/g, "&quot;");
 }
 
-function serializeAttrs(entries: Array<[string, string | number | undefined]>): string {
+/** Sentinel that flags an attribute value as JSON. The serializer
+ * single-quotes it (no escape pass) so the JSON's own double-quotes
+ * don't need to become `&quot;`. The parser already accepts
+ * single-quoted attribute values, so the round-trip stays exact. */
+type JsonAttr = { kind: "json"; value: string };
+
+function jsonAttr(value: unknown): JsonAttr {
+  return { kind: "json", value: JSON.stringify(value) };
+}
+
+function serializeAttrs(
+  entries: Array<[string, string | number | JsonAttr | undefined]>,
+): string {
   return entries
     .filter(([, value]) => value !== undefined && value !== "" && value !== null)
-    .map(([key, value]) =>
-      typeof value === "number" ? `${key}={${value}}` : `${key}="${escapeAttr(String(value))}"`,
-    )
+    .map(([key, value]) => {
+      if (typeof value === "number") return `${key}={${value}}`;
+      if (typeof value === "object" && value !== null && (value as JsonAttr).kind === "json") {
+        return `${key}='${(value as JsonAttr).value}'`;
+      }
+      return `${key}="${escapeAttr(String(value))}"`;
+    })
     .join(" ");
 }
 
@@ -668,6 +741,21 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "LinkListBlock") {
+        const layout = (attrs.layout || "").toLowerCase();
+        pushBlock(
+          makeBlock("link-list-block", {
+            text: "",
+            title: attrs.title,
+            linkLayout:
+              layout === "stack" || layout === "grid" || layout === "inline"
+                ? (layout as "stack" | "grid" | "inline")
+                : "stack",
+            linkItems: parseLinkItems(attrs.items),
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -853,6 +941,19 @@ function serializeBlock(block: MdxBlock, depth: number): string {
       ["textAlign", textAlign],
     ]);
     return attrs ? `<HeroBlock ${attrs} />` : "<HeroBlock />";
+  }
+  if (block.type === "link-list-block") {
+    const layout =
+      block.linkLayout && block.linkLayout !== "stack" ? block.linkLayout : undefined;
+    const items = block.linkItems && block.linkItems.length > 0 ? block.linkItems : undefined;
+    const attrs = serializeAttrs([
+      ["title", block.title],
+      ["layout", layout],
+      // Items go in via single-quoted JSON so the inner double-quotes
+      // need no escaping. parseLinkItems is the inverse.
+      ["items", items ? jsonAttr(items) : undefined],
+    ]);
+    return attrs ? `<LinkListBlock ${attrs} />` : "<LinkListBlock />";
   }
   return text;
 }
