@@ -40,7 +40,8 @@ function normalizePostListRow(raw: unknown): PostListRow | null {
 }
 
 export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
-  const { connection, request, setMessage, setPostsIndex } = useSiteAdmin();
+  const { connection, postsGrouping, request, setMessage, setPostsGrouping, setPostsIndex } =
+    useSiteAdmin();
   const [rows, setRows] = useState<PostListRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [error, setError] = useState("");
@@ -98,6 +99,23 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
           onChange={(event) => setIncludeDrafts(event.target.checked)}
         />
         <span>Drafts</span>
+      </label>
+      <label
+        className="list-detail__grouping"
+        title="How posts are grouped under the sidebar's Posts row"
+      >
+        <span>Group</span>
+        <select
+          value={postsGrouping}
+          onChange={(event) =>
+            setPostsGrouping(event.target.value as typeof postsGrouping)
+          }
+        >
+          <option value="all">All</option>
+          <option value="drafts">Drafts only</option>
+          <option value="published">Published only</option>
+          <option value="by-year">By year</option>
+        </select>
       </label>
       <button
         className="btn btn--ghost list-detail__refresh"

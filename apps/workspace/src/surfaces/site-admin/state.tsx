@@ -36,7 +36,37 @@ import {
 const DEFAULT_BASE_URL = "https://jinkunchen.com";
 const LOCAL_STORAGE_KEY = "workspace.site-admin.connection.v1";
 const PROFILES_STORAGE_KEY = "workspace.site-admin.profiles.v1";
+const POSTS_GROUPING_STORAGE_KEY = "workspace.site-admin.postsGrouping.v1";
 const DEFAULT_PROFILE_ID = "default";
+
+export type PostsGrouping = "all" | "drafts" | "published" | "by-year";
+
+const POSTS_GROUPING_VALUES: ReadonlyArray<PostsGrouping> = [
+  "all",
+  "drafts",
+  "published",
+  "by-year",
+];
+
+function loadPostsGrouping(): PostsGrouping {
+  try {
+    const raw = localStorage.getItem(POSTS_GROUPING_STORAGE_KEY);
+    if (!raw) return "all";
+    return (POSTS_GROUPING_VALUES as readonly string[]).includes(raw)
+      ? (raw as PostsGrouping)
+      : "all";
+  } catch {
+    return "all";
+  }
+}
+
+function persistPostsGrouping(mode: PostsGrouping): void {
+  try {
+    localStorage.setItem(POSTS_GROUPING_STORAGE_KEY, mode);
+  } catch {
+    // ignore quota / private-mode errors
+  }
+}
 
 // Per-tool secure storage namespace. Each feature module gets its own
 // prefix in the system keychain so e.g. a future calendar tool can't
@@ -89,6 +119,18 @@ export interface SiteAdminContextValue {
   pagesIndex: PageListRow[];
   setPostsIndex: (rows: PostListRow[]) => void;
   setPagesIndex: (rows: PageListRow[]) => void;
+
+  // Bumped after any post/page mutation (create/update/delete). The
+  // sidebar's eager-fetch effect listens for changes to refresh its
+  // tree without waiting for the user to revisit the Posts/Pages panel.
+  contentRevision: number;
+  bumpContentRevision: () => void;
+
+  // Sidebar grouping mode for posts. Controls how SiteAdminContent
+  // folds the posts list into a SurfaceNavItem tree under the "Posts"
+  // row. Persisted across reloads.
+  postsGrouping: PostsGrouping;
+  setPostsGrouping: (mode: PostsGrouping) => void;
 
   // Connection profiles — named environments (Local, Staging, Prod, …)
   // each with its own baseUrl. Credentials in the keyring are still
@@ -252,6 +294,19 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpenState] = useState(false);
   const [postsIndex, setPostsIndexState] = useState<PostListRow[]>([]);
   const [pagesIndex, setPagesIndexState] = useState<PageListRow[]>([]);
+  const [contentRevision, setContentRevisionState] = useState(0);
+  const [postsGrouping, setPostsGroupingState] = useState<PostsGrouping>(() =>
+    loadPostsGrouping(),
+  );
+
+  const bumpContentRevision = useCallback(() => {
+    setContentRevisionState((prev) => prev + 1);
+  }, []);
+
+  const setPostsGrouping = useCallback((mode: PostsGrouping) => {
+    setPostsGroupingState(mode);
+    persistPostsGrouping(mode);
+  }, []);
 
   const toggleDrawer = useCallback(() => {
     setDrawerOpenState((prev) => !prev);
@@ -690,6 +745,10 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       pagesIndex,
       setPostsIndex,
       setPagesIndex,
+      contentRevision,
+      bumpContentRevision,
+      postsGrouping,
+      setPostsGrouping,
       profiles,
       activeProfileId,
       switchProfile,
@@ -718,6 +777,10 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       pagesIndex,
       setPostsIndex,
       setPagesIndex,
+      contentRevision,
+      bumpContentRevision,
+      postsGrouping,
+      setPostsGrouping,
       profiles,
       activeProfileId,
       switchProfile,
