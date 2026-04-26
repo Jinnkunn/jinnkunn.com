@@ -40,6 +40,7 @@ import {
   TodoEditableBlock,
   ToggleEditableBlock,
 } from "./mdx-block-renderers";
+import { ParagraphRichTextBlock } from "./paragraph-rich-text-block";
 import {
   createMdxBlock,
   duplicateMdxBlock,
@@ -1187,6 +1188,31 @@ function EditableBlock({
   const slashCommands =
     block.type === "paragraph" ? getMatchingSlashCommands(block.text) : [];
   const showSlashMenu = slashCommands.length > 0;
+
+  // Paragraph blocks render through the TipTap-based WYSIWYG path so that
+  // **bold**, *italic*, `code`, ~~strike~~, and [links](url) appear formatted
+  // inline rather than as raw markdown chars. Other text-bearing block types
+  // (heading, quote, callout, list, todo, toggle) still use the textarea
+  // path until later phases migrate them.
+  if (block.type === "paragraph") {
+    return (
+      <ParagraphRichTextBlock
+        block={block}
+        slashCommands={slashCommands}
+        onChooseSlashCommand={onChooseSlashCommand}
+        onDuplicate={onDuplicate}
+        onInsertParagraphAfter={onInsertParagraphAfter}
+        onMoveDown={onMoveDown}
+        onMoveUp={onMoveUp}
+        onPatch={onPatch}
+        onRemoveEmpty={onRemoveEmpty}
+        onSlashCommand={onSlashCommand}
+        onTurnInto={onTurnInto}
+        request={request}
+      />
+    );
+  }
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [selection, setSelection] = useState<{ end: number; start: number } | null>(
     null,
@@ -1194,8 +1220,10 @@ function EditableBlock({
   // mention.atOffset is the position of the literal "@" character; the
   // picker lives until the user dismisses or selects a target.
   const [mention, setMention] = useState<{ atOffset: number } | null>(null);
+  // Paragraph is handled by ParagraphRichTextBlock above and never reaches
+  // this branch — `isFormattableBlock` narrows the textarea-based blocks
+  // that still benefit from the selection-anchored inline format toolbar.
   const isFormattableBlock =
-    block.type === "paragraph" ||
     block.type === "heading" ||
     block.type === "quote" ||
     block.type === "callout" ||
@@ -1677,12 +1705,11 @@ function EditableBlock({
     return <FeaturedPagesBlockEditableBlock block={block} onPatch={onPatch} />;
   }
 
-  const isParagraph = block.type === "paragraph";
-  // Paragraph blocks suppress the native placeholder and use an overlay so
-  // the hint only appears when the textarea is focused (Notion style).
-  const nativePlaceholder = isParagraph
-    ? ""
-    : block.type === "code"
+  // Paragraph is handled above. The textarea-overlay placeholder it used
+  // to drive (only visible while focused, Notion-style) lives entirely in
+  // ParagraphRichTextBlock now.
+  const nativePlaceholder =
+    block.type === "code"
       ? "Code"
       : block.type === "raw"
         ? "Raw MDX"
@@ -1691,7 +1718,7 @@ function EditableBlock({
           : block.type === "quote"
             ? "Quote"
             : "";
-  const showOverlayPlaceholder = isParagraph && block.text.length === 0;
+  const showOverlayPlaceholder = false;
   // Anchor the inline format toolbar above the start of the actual selection
   // (Notion-style), not the textarea top-left. The mirror-div helper computes
   // pixel coords for any caret offset; recompute only when the selection
