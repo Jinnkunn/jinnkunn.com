@@ -19,7 +19,8 @@ const RATE_LIMIT = { namespace: "site-admin-versions", maxRequests: 40 };
 
 const STRUCTURED_CONTENT = new Set([
   "content/home.json",
-  "content/news.json",
+  // News migrated to `content/pages/news.mdx`; the regex below picks
+  // it up via the page-mdx pattern so version-tracking still works.
   "content/publications.json",
   "content/teaching.json",
   "content/works.json",

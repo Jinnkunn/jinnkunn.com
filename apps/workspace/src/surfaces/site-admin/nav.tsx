@@ -1,7 +1,6 @@
 import {
   ConfigIcon,
   HomeIcon,
-  NewsIcon,
   PagesIcon,
   PostsIcon,
   PublicationsIcon,
@@ -38,7 +37,6 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
         droppable: true,
       },
       { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
-      { id: "news", label: "News", icon: <NewsIcon /> },
       { id: "teaching", label: "Teaching", icon: <TeachingIcon /> },
       { id: "works", label: "Works", icon: <WorksIcon /> },
     ],

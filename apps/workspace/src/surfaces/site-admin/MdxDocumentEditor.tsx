@@ -30,6 +30,7 @@ import {
   FileEditableBlock,
   HeroBlockEditableBlock,
   LinkListBlockEditableBlock,
+  NewsEntryEditableBlock,
   PageLinkEditableBlock,
   TableEditableBlock,
   TodoEditableBlock,
@@ -97,6 +98,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "featured-pages-block": "Featured pages",
   columns: "Columns",
   column: "Column",
+  "news-entry": "News entry",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -259,13 +261,22 @@ const SLASH_COMMANDS: SlashCommand[] = [
   // Configure the query inline; entries live in their canonical content/*.json
   // and render via matching server components.
   {
-    description: "Latest news entries from content/news.json",
+    description: "Latest news entries from content/pages/news.mdx",
     group: "Data",
     icon: "📰",
     id: "news-block",
     keywords: ["news", "updates", "feed"],
     label: "News",
     makeBlock: () => createMdxBlock("news-block"),
+  },
+  {
+    description: "A single dated entry inside the news page",
+    group: "Data",
+    icon: "🗞",
+    id: "news-entry",
+    keywords: ["news", "entry", "post", "dated", "feed-item"],
+    label: "News entry",
+    makeBlock: () => createMdxBlock("news-entry"),
   },
   {
     description: "Publication list from content/publications.json",
@@ -1435,6 +1446,26 @@ function EditableBlock({
     );
   }
 
+  if (block.type === "news-entry") {
+    return (
+      <NewsEntryEditableBlock
+        block={block}
+        depth={depth}
+        onPatch={onPatch}
+        renderChildren={(props) => (
+          <EditableBlocksList
+            blocks={props.blocks}
+            depth={props.depth}
+            onBlocksChange={props.onBlocksChange}
+            request={request}
+            setError={setError}
+            setMessage={setMessage}
+          />
+        )}
+      />
+    );
+  }
+
   if (block.type === "table") {
     return <TableEditableBlock block={block} onPatch={onPatch} />;
   }
@@ -1479,7 +1510,7 @@ function EditableBlock({
         onPatch={onPatch}
         label="News"
         icon="📰"
-        description="Latest entries from content/news.json"
+        description="Latest entries from content/pages/news.mdx"
       />
     );
   }
