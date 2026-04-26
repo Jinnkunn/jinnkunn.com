@@ -61,6 +61,39 @@ export async function readRedirects(): Promise<RedirectsTable> {
   return table;
 }
 
+/** Drop a single redirect entry. Used by the admin UI when the user
+ * wants to forget an old slug (after enough time, or if the redirect
+ * was created in error). Idempotent — a missing entry is a no-op. */
+export async function deleteRedirect(
+  kind: RedirectKind,
+  fromSlug: string,
+): Promise<void> {
+  if (!fromSlug) return;
+  const store = await getContentStore();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { table, sha } = await readRedirectsFile(store);
+    if (!table[kind][fromSlug]) return; // nothing to do
+    delete table[kind][fromSlug];
+    const next = JSON.stringify(
+      {
+        pages: sortedRecord(table.pages),
+        posts: sortedRecord(table.posts),
+      },
+      null,
+      2,
+    );
+    try {
+      await store.writeFile(REDIRECTS_REL, `${next}\n`, { ifMatch: sha });
+      return;
+    } catch (err) {
+      if (err instanceof ContentStoreConflictError && attempt === 0) {
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 /** Append a single (fromSlug → toSlug) entry. Idempotent — overwrites
  * any prior entry for the same fromSlug. Also collapses chains: any
  * existing entry that pointed at fromSlug is rewritten to point at

@@ -29,6 +29,14 @@ interface SidebarProps {
     itemId: string,
     newSlug: string,
   ) => void;
+  /** Optional live validator. Sidebar invokes it on every keystroke
+   * inside the rename input; non-null return is shown as inline error
+   * text and disables Enter submit. Falsy return means valid. */
+  validateRenameNavItem?: (
+    surfaceId: string,
+    itemId: string,
+    newSlug: string,
+  ) => string | null;
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
@@ -123,6 +131,7 @@ interface RenderNavItemArgs {
   onStartRename: (itemId: string) => void;
   onCancelRename: () => void;
   onSubmitRename: (newSlug: string) => void;
+  renameValidate?: (value: string) => string | null;
   renamingItemId: string | null;
   surfaceId: string;
   toggleItemTree: (key: string) => void;
@@ -133,36 +142,52 @@ function RenameInput({
   initial,
   onCancel,
   onSubmit,
+  validate,
 }: {
   initial: string;
   onCancel: () => void;
   onSubmit: (value: string) => void;
+  validate?: (value: string) => string | null;
 }) {
   const [value, setValue] = useState(initial);
+  // Skip validation when the value is still the original — no point
+  // showing an error before the user has typed anything.
+  const error = value === initial || !validate ? null : validate(value);
+  const canSubmit = value.trim().length > 0 && value !== initial && !error;
   return (
-    <input
-      autoFocus
-      type="text"
-      className="sidebar-tree__item sidebar-tree__rename-input"
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          onSubmit(value);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          onCancel();
-        }
-      }}
-      onBlur={() => {
-        // Cancel on click-outside; Enter handler runs synchronously
-        // before blur fires, so a successful submit isn't preempted.
-        if (value === initial) onCancel();
-        else onSubmit(value);
-      }}
-      aria-label="New slug"
-    />
+    <span className="sidebar-tree__rename-shell">
+      <input
+        autoFocus
+        type="text"
+        className="sidebar-tree__item sidebar-tree__rename-input"
+        data-invalid={error ? "true" : undefined}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (canSubmit) onSubmit(value);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+        onBlur={() => {
+          // Cancel when blank or invalid; auto-commit when typed and valid.
+          // Enter runs synchronously before blur so a successful submit
+          // isn't preempted.
+          if (value === initial || !canSubmit) onCancel();
+          else onSubmit(value);
+        }}
+        aria-label="New slug"
+        aria-invalid={error ? "true" : undefined}
+      />
+      {error ? (
+        <span className="sidebar-tree__rename-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -205,6 +230,7 @@ function renderNavItem({
   onStartRename,
   onCancelRename,
   onSubmitRename,
+  renameValidate,
   renamingItemId,
   surfaceId,
   toggleItemTree,
@@ -282,6 +308,7 @@ function renderNavItem({
             })()}
             onCancel={onCancelRename}
             onSubmit={onSubmitRename}
+            validate={renameValidate}
           />
         ) : (
           <button
@@ -397,6 +424,7 @@ function renderNavItem({
               onStartRename,
               onCancelRename,
               onSubmitRename,
+              renameValidate,
               renamingItemId,
               surfaceId,
               toggleItemTree,
@@ -420,6 +448,7 @@ export function Sidebar({
   isFavorite,
   onMoveNavItem,
   onRenameNavItem,
+  validateRenameNavItem,
 }: SidebarProps) {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
@@ -681,6 +710,16 @@ export function Sidebar({
                                     onStartRename: (id) => startRename(surface.id, id),
                                     onCancelRename: cancelRename,
                                     onSubmitRename: submitRename,
+                                    renameValidate: renamingItemId
+                                      ? (value) =>
+                                          validateRenameNavItem
+                                            ? validateRenameNavItem(
+                                                surface.id,
+                                                renamingItemId,
+                                                value,
+                                              )
+                                            : null
+                                      : undefined,
                                     renamingItemId,
                                     surfaceId: surface.id,
                                     toggleItemTree,

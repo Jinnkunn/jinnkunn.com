@@ -136,6 +136,30 @@ function buildPagesTree(rows: SidebarPageRow[]): SurfaceNavItem[] {
   return toItems(root);
 }
 
+// Mirrors lib/posts/slug.ts — kept inline because the server-side
+// validator lives outside the workspace bundle. Regex copy is fine;
+// the slug rules are stable.
+const POST_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+
+function isValidPostSlugClient(slug: string): boolean {
+  return typeof slug === "string" && POST_SLUG_RE.test(slug);
+}
+
+// Mirrors lib/pages/slug.ts — same rules per segment plus "/" join up
+// to 4 segments deep.
+const PAGE_SEGMENT_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+const PAGE_MAX_DEPTH = 4;
+
+function isValidPageSlugClient(slug: string): boolean {
+  if (typeof slug !== "string" || !slug) return false;
+  if (slug.startsWith("/") || slug.endsWith("/") || slug.includes("//")) {
+    return false;
+  }
+  const parts = slug.split("/");
+  if (parts.length > PAGE_MAX_DEPTH) return false;
+  return parts.every((part) => PAGE_SEGMENT_RE.test(part));
+}
+
 interface SidebarPostRow {
   slug: string;
   title: string;
@@ -208,6 +232,7 @@ function SiteAdminContent() {
     setNavItemChildren,
     setMoveNavItemHandler,
     setRenameNavItemHandler,
+    setRenameValidator,
   } = useSurfaceNav();
   const {
     bumpContentRevision,
@@ -491,6 +516,39 @@ function SiteAdminContent() {
     setRenameNavItemHandler,
     sidebarPostRows,
   ]);
+
+  // Live-validate the rename input against the slug rules so users see
+  // an inline error before they hit Enter. Cheap pure-function check
+  // — runs on every keystroke. Validator dispatch is dead simple
+  // (prefix-driven) since posts and pages have separate rules.
+  useEffect(() => {
+    setRenameValidator((itemId, newSlug) => {
+      const trimmed = newSlug.trim();
+      if (!trimmed) return "Slug cannot be empty";
+      if (itemId.startsWith("posts:")) {
+        if (!isValidPostSlugClient(trimmed)) {
+          return "1–60 chars: lowercase letters, digits, dashes (no leading/trailing dash)";
+        }
+        const fromSlug = itemId.slice("posts:".length);
+        if (trimmed !== fromSlug && sidebarPostRows.some((r) => r.slug === trimmed)) {
+          return `A post already exists at "${trimmed}"`;
+        }
+        return null;
+      }
+      if (itemId.startsWith("pages:")) {
+        if (!isValidPageSlugClient(trimmed)) {
+          return "Each segment 1–60 lowercase chars, separated by '/' (max 4 levels)";
+        }
+        const fromSlug = itemId.slice("pages:".length);
+        if (trimmed !== fromSlug && pageRows.some((r) => r.slug === trimmed)) {
+          return `A page already exists at "${trimmed}"`;
+        }
+        return null;
+      }
+      return null;
+    });
+    return () => setRenameValidator(null);
+  }, [pageRows, setRenameValidator, sidebarPostRows]);
 
   const selectTab = useCallback(
     (tab: SiteAdminTab) => setActiveNavItemId(tab),

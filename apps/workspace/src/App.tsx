@@ -178,6 +178,26 @@ export function App() {
     [],
   );
 
+  // Live validator paired with the rename handler — Sidebar calls this
+  // on every keystroke to render inline error text and gate Enter.
+  const renameValidatorRef = useRef<
+    ((itemId: string, newSlug: string) => string | null) | null
+  >(null);
+  const setRenameValidator = useCallback(
+    (
+      validator: ((itemId: string, newSlug: string) => string | null) | null,
+    ) => {
+      renameValidatorRef.current = validator;
+    },
+    [],
+  );
+  const validateRenameNavItem = useCallback(
+    (_surfaceId: string, itemId: string, newSlug: string) => {
+      return renameValidatorRef.current?.(itemId, newSlug) ?? null;
+    },
+    [],
+  );
+
   const navContextValue = useMemo(
     () => ({
       activeNavItemId,
@@ -185,6 +205,7 @@ export function App() {
       setNavItemChildren,
       setMoveNavItemHandler,
       setRenameNavItemHandler,
+      setRenameValidator,
     }),
     [
       activeNavItemId,
@@ -192,6 +213,7 @@ export function App() {
       setNavItemChildren,
       setMoveNavItemHandler,
       setRenameNavItemHandler,
+      setRenameValidator,
     ],
   );
 
@@ -263,6 +285,7 @@ export function App() {
           isFavorite={isFavorite}
           onMoveNavItem={handleMoveNavItem}
           onRenameNavItem={handleRenameNavItem}
+          validateRenameNavItem={validateRenameNavItem}
         />
         <main
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"

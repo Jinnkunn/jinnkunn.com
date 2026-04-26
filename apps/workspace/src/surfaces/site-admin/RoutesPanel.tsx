@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BLANK_NEW_OVERRIDE,
   OverridesSection,
@@ -10,6 +10,7 @@ import {
   type NewProtectedInput,
   validateProtected,
 } from "./routes/ProtectedSection";
+import { RedirectsSection } from "./routes/RedirectsSection";
 import { useSiteAdmin } from "./state";
 import type {
   OverrideRow,
@@ -45,6 +46,16 @@ export function RoutesPanel() {
   const [conflict, setConflict] = useState(false);
   const [newOverride, setNewOverride] = useState<NewOverrideInput>(BLANK_NEW_OVERRIDE);
   const [newProtected, setNewProtected] = useState<NewProtectedInput>(BLANK_NEW_PROTECTED);
+  const [redirects, setRedirects] = useState<{
+    pages: Record<string, string>;
+    posts: Record<string, string>;
+  }>({ pages: {}, posts: {} });
+  const [redirectsLoading, setRedirectsLoading] = useState(false);
+  const [redirectsRefreshing, setRedirectsRefreshing] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    kind: "pages" | "posts";
+    from: string;
+  } | null>(null);
 
   const anyDirty = useMemo(() => {
     const overrideDirty = overrides.some((row) => {
@@ -312,6 +323,67 @@ export function RoutesPanel() {
     await loadRoutes({ silent: true });
   }, [conflict, sourceVersion, newProtected, request, setMessage, applyConflict, loadRoutes]);
 
+  const loadRedirects = useCallback(
+    async (options: { silent?: boolean; refresh?: boolean } = {}) => {
+      if (options.refresh) {
+        setRedirectsRefreshing(true);
+      } else {
+        setRedirectsLoading(true);
+      }
+      const response = await request("/api/site-admin/redirects", "GET");
+      if (options.refresh) {
+        setRedirectsRefreshing(false);
+      } else {
+        setRedirectsLoading(false);
+      }
+      if (!response.ok) {
+        if (!options.silent) {
+          setMessage(
+            "error",
+            `Load redirects failed: ${response.code}: ${response.error}`,
+          );
+        }
+        return;
+      }
+      const payload = (response.data ?? {}) as Record<string, unknown>;
+      const pages =
+        payload.pages && typeof payload.pages === "object"
+          ? (payload.pages as Record<string, string>)
+          : {};
+      const posts =
+        payload.posts && typeof payload.posts === "object"
+          ? (payload.posts as Record<string, string>)
+          : {};
+      setRedirects({ pages, posts });
+    },
+    [request, setMessage],
+  );
+
+  const deleteRedirectEntry = useCallback(
+    async (kind: "pages" | "posts", fromSlug: string) => {
+      setPendingDelete({ kind, from: fromSlug });
+      const response = await request("/api/site-admin/redirects", "DELETE", {
+        kind,
+        fromSlug,
+      });
+      setPendingDelete(null);
+      if (!response.ok) {
+        setMessage(
+          "error",
+          `Delete redirect failed: ${response.code}: ${response.error}`,
+        );
+        return;
+      }
+      setMessage("success", `Redirect deleted: /${kind === "posts" ? "blog" : "pages"}/${fromSlug}.`);
+      await loadRedirects({ silent: true, refresh: true });
+    },
+    [request, setMessage, loadRedirects],
+  );
+
+  useEffect(() => {
+    void loadRedirects({ silent: true });
+  }, [loadRedirects]);
+
   const updateOverrideDraft = useCallback(
     (pageId: string, value: string) => {
       setOverrideDrafts((prev) => {
@@ -406,6 +478,16 @@ export function RoutesPanel() {
         updateProtectedDraft={updateProtectedDraft}
         saveProtected={(rowId) => void saveProtected(rowId)}
         createProtected={() => void createProtected()}
+      />
+
+      <RedirectsSection
+        pages={redirects.pages}
+        posts={redirects.posts}
+        loading={redirectsLoading}
+        refreshing={redirectsRefreshing}
+        pendingDelete={pendingDelete}
+        onRefresh={() => void loadRedirects({ refresh: true })}
+        onDelete={(kind, from) => void deleteRedirectEntry(kind, from)}
       />
     </section>
   );
