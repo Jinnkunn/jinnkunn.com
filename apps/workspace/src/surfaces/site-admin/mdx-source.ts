@@ -26,6 +26,10 @@ export interface ComponentFrontmatterForm {
   title: string;
 }
 
+export interface HomeFrontmatterForm {
+  title: string;
+}
+
 function escapeYamlString(value: string): string {
   // Always emit double-quoted to sidestep YAML's tricky scalar rules.
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
@@ -55,6 +59,13 @@ export function buildPageSource(form: PageFrontmatterForm, body: string): string
   }
   if (form.draft) lines.push("draft: true");
   if (form.updated.trim()) lines.push(`updated: ${form.updated.trim()}`);
+  lines.push("---", "");
+  return `${lines.join("\n")}\n${body.trimStart()}`;
+}
+
+export function buildHomeSource(form: HomeFrontmatterForm, body: string): string {
+  const lines: string[] = ["---"];
+  lines.push(`title: ${escapeYamlString(form.title)}`);
   lines.push("---", "");
   return `${lines.join("\n")}\n${body.trimStart()}`;
 }
@@ -151,6 +162,23 @@ export function parseComponentSource(source: string): {
     const key = kv[1].toLowerCase();
     const value = kv[2];
     if (key === "title") form.title = parseScalar(value);
+  }
+  return { form, body };
+}
+
+export function parseHomeSource(source: string): {
+  form: HomeFrontmatterForm;
+  body: string;
+} {
+  const { raw, body } = splitFrontmatter(source);
+  const form: HomeFrontmatterForm = { title: "Hi there!" };
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const kv = /^(\w+)\s*:\s*(.*)$/.exec(line);
+    if (!kv) continue;
+    const key = kv[1].toLowerCase();
+    const value = kv[2];
+    if (key === "title") form.title = parseScalar(value) || form.title;
   }
   return { form, body };
 }

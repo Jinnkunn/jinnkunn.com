@@ -6,6 +6,7 @@ import type {
   SurfaceNavItem,
 } from "../surfaces/types";
 import type { SidebarFavorite } from "./favorites";
+import { handleWindowDragMouseDown } from "./windowDrag";
 
 interface SidebarProps {
   surfaces: readonly SurfaceDefinition[];
@@ -21,6 +22,14 @@ interface SidebarProps {
    * surface. The surface is responsible for the actual move (e.g.
    * site-admin posts to /api/site-admin/pages/move and refreshes). */
   onMoveNavItem?: (surfaceId: string, fromId: string, toId: string) => void;
+  /** Explicit sibling reorder handler for rows marked `orderable`.
+   * Unlike drag/drop, this never reparents; it only moves within the
+   * current sibling group. */
+  onReorderNavItem?: (
+    surfaceId: string,
+    itemId: string,
+    direction: "up" | "down",
+  ) => void;
   /** Inline-rename handler. Sidebar fires it when the user submits the
    * rename input on a draggable row; surface decides which API to call
    * based on the id prefix. */
@@ -126,6 +135,7 @@ interface RenderNavItemArgs {
   onDragOver: (itemId: string | null) => void;
   onDragStart: (itemId: string) => void;
   onDrop: (targetItemId: string) => void;
+  onReorderNavItem?: (surfaceId: string, itemId: string, direction: "up" | "down") => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   onStartRename: (itemId: string) => void;
@@ -133,6 +143,8 @@ interface RenderNavItemArgs {
   onSubmitRename: (newSlug: string) => void;
   renameValidate?: (value: string) => string | null;
   renamingItemId: string | null;
+  siblingCount: number;
+  siblingIndex: number;
   surfaceId: string;
   toggleItemTree: (key: string) => void;
   itemKey: (surfaceId: string, itemId: string) => string;
@@ -209,6 +221,24 @@ function StarIcon({ filled }: { filled: boolean }) {
   );
 }
 
+function ReorderIcon({ direction }: { direction: "up" | "down" }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {direction === "up" ? <path d="M4 10l4-4 4 4" /> : <path d="M4 6l4 4 4-4" />}
+    </svg>
+  );
+}
+
 // Recursive renderer for one nav row + its descendants. Indent doubles
 // per depth via the `--depth` CSS variable; the parent row stays clickable
 // and the chevron is a separate hit target. Children that include the
@@ -225,6 +255,7 @@ function renderNavItem({
   onDragOver,
   onDragStart,
   onDrop,
+  onReorderNavItem,
   onSelectNavItem,
   onToggleFavorite,
   onStartRename,
@@ -232,6 +263,8 @@ function renderNavItem({
   onSubmitRename,
   renameValidate,
   renamingItemId,
+  siblingCount,
+  siblingIndex,
   surfaceId,
   toggleItemTree,
   itemKey,
@@ -384,6 +417,30 @@ function renderNavItem({
             ✎
           </button>
         )}
+        {item.orderable && !isRenaming && onReorderNavItem && (
+          <span className="sidebar-tree__item-reorder" aria-label={`Reorder ${item.label}`}>
+            <button
+              type="button"
+              className="sidebar-tree__item-reorder-btn"
+              disabled={siblingIndex <= 0}
+              onClick={() => onReorderNavItem(surfaceId, item.id, "up")}
+              aria-label={`Move ${item.label} up`}
+              title="Move up"
+            >
+              <ReorderIcon direction="up" />
+            </button>
+            <button
+              type="button"
+              className="sidebar-tree__item-reorder-btn"
+              disabled={siblingIndex >= siblingCount - 1}
+              onClick={() => onReorderNavItem(surfaceId, item.id, "down")}
+              aria-label={`Move ${item.label} down`}
+              title="Move down"
+            >
+              <ReorderIcon direction="down" />
+            </button>
+          </span>
+        )}
         <button
           type="button"
           className="sidebar-tree__item-star"
@@ -413,8 +470,10 @@ function renderNavItem({
           className="sidebar-tree__items sidebar-tree__items--nested"
           role="list"
         >
-          {item.children!.map((child) =>
-            renderNavItem({
+          {item.children!.map((child, childIndex) => {
+            const reorderSiblings = item.children!.filter((entry) => entry.id.startsWith("pages:"));
+            const reorderIndex = reorderSiblings.findIndex((entry) => entry.id === child.id);
+            return renderNavItem({
               activeNavItemId,
               depth: depth + 1,
               dragOverItemId,
@@ -426,6 +485,7 @@ function renderNavItem({
               onDragOver,
               onDragStart,
               onDrop,
+              onReorderNavItem,
               onSelectNavItem,
               onToggleFavorite,
               onStartRename,
@@ -433,11 +493,13 @@ function renderNavItem({
               onSubmitRename,
               renameValidate,
               renamingItemId,
+              siblingCount: child.orderable ? reorderSiblings.length : item.children!.length,
+              siblingIndex: child.orderable ? reorderIndex : childIndex,
               surfaceId,
               toggleItemTree,
               itemKey,
-            }),
-          )}
+            });
+          })}
         </ul>
       )}
     </li>
@@ -454,6 +516,7 @@ export function Sidebar({
   onToggleFavorite,
   isFavorite,
   onMoveNavItem,
+  onReorderNavItem,
   onRenameNavItem,
   validateRenameNavItem,
 }: SidebarProps) {
@@ -573,6 +636,7 @@ export function Sidebar({
       <div
         className="sidebar-header-strip"
         data-tauri-drag-region
+        onMouseDown={handleWindowDragMouseDown}
         aria-hidden="true"
       />
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-2 pb-3 flex flex-col gap-4">
@@ -699,8 +763,14 @@ export function Sidebar({
                                 className="sidebar-tree__items"
                                 role="list"
                               >
-                                {group.items.map((item) =>
-                                  renderNavItem({
+                                {group.items.map((item, itemIndex) => {
+                                  const reorderSiblings = group.items.filter((entry) =>
+                                    entry.id.startsWith("pages:"),
+                                  );
+                                  const reorderIndex = reorderSiblings.findIndex(
+                                    (entry) => entry.id === item.id,
+                                  );
+                                  return renderNavItem({
                                     activeNavItemId,
                                     depth: 0,
                                     dragOverItemId,
@@ -712,6 +782,7 @@ export function Sidebar({
                                     onDragOver: setDragOverItemId,
                                     onDragStart: (id) => startDrag(surface.id, id),
                                     onDrop: (targetId) => dropOnto(surface.id, targetId),
+                                    onReorderNavItem,
                                     onSelectNavItem,
                                     onToggleFavorite,
                                     onStartRename: (id) => startRename(surface.id, id),
@@ -728,11 +799,15 @@ export function Sidebar({
                                             : null
                                       : undefined,
                                     renamingItemId,
+                                    siblingCount: item.orderable
+                                      ? reorderSiblings.length
+                                      : group.items.length,
+                                    siblingIndex: item.orderable ? reorderIndex : itemIndex,
                                     surfaceId: surface.id,
                                     toggleItemTree,
                                     itemKey,
-                                  }),
-                                )}
+                                  });
+                                })}
                               </ul>
                             )}
                           </div>

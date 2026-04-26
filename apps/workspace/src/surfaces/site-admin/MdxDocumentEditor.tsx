@@ -440,6 +440,8 @@ export interface MdxDocumentPropertiesProps<TForm> {
 }
 
 export interface MdxDocumentEditorAdapter<TForm> {
+  allowBack?: boolean;
+  allowDelete?: boolean;
   buildSource: (form: TForm, body: string) => string;
   canSave: (state: {
     body: string;
@@ -455,7 +457,22 @@ export interface MdxDocumentEditorAdapter<TForm> {
   parseSource: (source: string) => { body: string; form: TForm };
   renderProperties: (props: MdxDocumentPropertiesProps<TForm>) => ReactNode;
   routeBase: string;
+  loadDocument?: (input: {
+    request: RequestFn;
+    slug: string;
+  }) => Promise<
+    | { ok: true; source: string; version: string }
+    | { ok: false; code: string; error: string }
+  >;
+  saveDocument?: (input: {
+    request: RequestFn;
+    slug: string;
+    source: string;
+    version: string;
+  }) => Promise<NormalizedApiResponse>;
   setTitle: (form: TForm, title: string) => TForm;
+  stayAfterSave?: boolean;
+  title?: string;
   titleNoun: string;
 }
 
@@ -511,6 +528,10 @@ function isTextEditableBlock(block: MdxBlock): boolean {
     block.type === "raw" ||
     block.type === "toggle"
   );
+}
+
+function isSourceConflictResponse(response: NormalizedApiResponse): boolean {
+  return !response.ok && (response.code === "SOURCE_CONFLICT" || response.status === 409);
 }
 
 export interface BlocksEditorProps {
@@ -1254,6 +1275,15 @@ function EditableBlock({
   // happens to start with "/".
   const slashCommands =
     block.type === "paragraph" ? getMatchingSlashCommands(block.text) : [];
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const setRefs = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      textareaRef.current = node;
+      onFocusInput(node);
+    },
+    [onFocusInput],
+  );
 
   // Text-bearing blocks (paragraph, heading, quote, callout, list) render
   // through the TipTap-based WYSIWYG path so that **bold**, *italic*,
@@ -1294,16 +1324,6 @@ function EditableBlock({
   // (todo, toggle) live in TipTap-backed components — the inline format
   // toolbar, mention picker, slash menu, mirror-div caret coords, and
   // toggle-wrap helpers all moved with them.
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const setRefs = useCallback(
-    (node: HTMLTextAreaElement | null) => {
-      textareaRef.current = node;
-      onFocusInput(node);
-    },
-    [onFocusInput],
-  );
-
   // Verbatim-text keyboard contract: block-level navigation + a
   // Backspace-at-empty short-circuit. Inline format shortcuts and Enter-
   // to-new-block are intentionally absent — code / raw shouldn't auto-wrap
@@ -1388,6 +1408,19 @@ function EditableBlock({
               onPatch((current) => ({ ...current, caption: event.target.value }))
             }
           />
+          <div className="mdx-document-image-block__asset-picker">
+            <AssetLibraryPicker
+              currentUrl={block.url}
+              onSelect={(asset) => {
+                onPatch((current) => ({
+                  ...current,
+                  alt: current.alt || asset.alt || asset.filename || "image",
+                  url: asset.url,
+                }));
+                setMessage("success", "Image asset selected.");
+              }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -1679,6 +1712,8 @@ export function MdxDocumentEditor<TForm>({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editorMode, setEditorMode] = usePersistentUiState<DocumentEditorMode>(
     `workspace.site-admin.${adapter.kind}-editor.document-mode.v1`,
@@ -1718,31 +1753,50 @@ export function MdxDocumentEditor<TForm>({
     (async () => {
       setLoading(true);
       setError("");
-      const response = await request(
-        `${adapter.routeBase}/${encodeURIComponent(initialSlug)}`,
-        "GET",
-      );
-      if (cancelled) return;
-      setLoading(false);
-      if (!response.ok) {
-        const msg = `${response.code}: ${response.error}`;
-        setError(msg);
-        setMessage("error", `Load ${adapter.titleNoun} failed: ${msg}`);
-        return;
+      setConflict(false);
+      let loadedSource = "";
+      let loadedVersion = "";
+      if (adapter.loadDocument) {
+        const custom = await adapter.loadDocument({ request, slug: initialSlug });
+        if (cancelled) return;
+        setLoading(false);
+        if (!custom.ok) {
+          const msg = `${custom.code}: ${custom.error}`;
+          setError(msg);
+          setMessage("error", `Load ${adapter.titleNoun} failed: ${msg}`);
+          return;
+        }
+        loadedSource = custom.source;
+        loadedVersion = custom.version;
+      } else {
+        const response = await request(
+          `${adapter.routeBase}/${encodeURIComponent(initialSlug)}`,
+          "GET",
+        );
+        if (cancelled) return;
+        setLoading(false);
+        if (!response.ok) {
+          const msg = `${response.code}: ${response.error}`;
+          setError(msg);
+          setMessage("error", `Load ${adapter.titleNoun} failed: ${msg}`);
+          return;
+        }
+        const data = (response.data ?? {}) as Record<string, unknown>;
+        loadedSource = typeof data.source === "string" ? data.source : "";
+        loadedVersion = normalizeString(data.version);
       }
-      const data = (response.data ?? {}) as Record<string, unknown>;
-      const loadedSource = typeof data.source === "string" ? data.source : "";
       const parsed = adapter.parseSource(loadedSource);
       const nextBody = parsed.body.replace(/^\n+/, "");
       setForm(parsed.form);
       setBody(nextBody);
       setLastSavedSource(adapter.buildSource(parsed.form, nextBody));
-      setVersion(normalizeString(data.version));
+      setVersion(loadedVersion);
+      setConflict(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [adapter, initialSlug, mode, request, setMessage]);
+  }, [adapter, initialSlug, mode, reloadNonce, request, setMessage]);
 
   useUnsavedChangesBeforeUnload(dirty, saving, deleting);
 
@@ -1755,6 +1809,10 @@ export function MdxDocumentEditor<TForm>({
     async (event: FormEvent) => {
       event.preventDefault();
       if (!canSave || saving) return;
+      if (conflict) {
+        setMessage("warn", `${adapter.titleNoun} is in conflict state. Reload latest before saving.`);
+        return;
+      }
       const nextSource = adapter.buildSource(form, body);
       setSaving(true);
       setError("");
@@ -1776,18 +1834,32 @@ export function MdxDocumentEditor<TForm>({
         clearDraft();
         setMessage("success", `${adapter.titleNoun} created.`);
         bumpContentRevision();
-        onExit("saved", slug.trim());
+        if (!adapter.stayAfterSave) onExit("saved", slug.trim());
         return;
       }
 
       const currentSlug = initialSlug ?? slug;
-      const response = await request(
-        `${adapter.routeBase}/${encodeURIComponent(currentSlug)}`,
-        "PATCH",
-        { source: nextSource, version },
-      );
+      const response = adapter.saveDocument
+        ? await adapter.saveDocument({
+            request,
+            slug: currentSlug,
+            source: nextSource,
+            version,
+          })
+        : await request(
+            `${adapter.routeBase}/${encodeURIComponent(currentSlug)}`,
+            "PATCH",
+            { source: nextSource, version },
+          );
       setSaving(false);
       if (!response.ok) {
+        if (isSourceConflictResponse(response)) {
+          const msg = "Remote content changed. Reload latest before saving again.";
+          setConflict(true);
+          setError(msg);
+          setMessage("warn", `${adapter.titleNoun} save conflict. Reload latest before saving.`);
+          return;
+        }
         setError(`${response.code}: ${response.error}`);
         setMessage(
           "error",
@@ -1797,12 +1869,16 @@ export function MdxDocumentEditor<TForm>({
       }
       const data = (response.data ?? {}) as Record<string, unknown>;
       const nextVersion = normalizeString(data.version);
+      const sourceVersion = (data.sourceVersion ?? {}) as { fileSha?: unknown };
+      const nextFileSha = normalizeString(sourceVersion.fileSha);
       if (nextVersion) setVersion(nextVersion);
+      else if (nextFileSha) setVersion(nextFileSha);
       setLastSavedSource(nextSource);
+      setConflict(false);
       clearDraft();
-      setMessage("success", `${adapter.titleNoun} saved.`);
+      setMessage("success", `${adapter.titleNoun} saved to source branch. Publish separately.`);
       bumpContentRevision();
-      onExit("saved", currentSlug);
+      if (!adapter.stayAfterSave) onExit("saved", currentSlug);
     },
     [
       adapter,
@@ -1810,6 +1886,7 @@ export function MdxDocumentEditor<TForm>({
       bumpContentRevision,
       canSave,
       clearDraft,
+      conflict,
       form,
       initialSlug,
       mode,
@@ -1823,6 +1900,7 @@ export function MdxDocumentEditor<TForm>({
   );
 
   const remove = useCallback(async () => {
+    if (adapter.allowDelete === false) return;
     if (mode !== "edit" || !initialSlug || !version) return;
     setDeleting(true);
     setError("");
@@ -1858,7 +1936,7 @@ export function MdxDocumentEditor<TForm>({
 
   const title = mode === "create"
     ? `New ${adapter.titleNoun}`
-    : `Edit ${adapter.titleNoun}: ${initialSlug ?? ""}`;
+    : (adapter.title ?? `Edit ${adapter.titleNoun}: ${initialSlug ?? ""}`);
   const formId = `${adapter.kind}-document-editor-form`;
 
   return (
@@ -1887,15 +1965,17 @@ export function MdxDocumentEditor<TForm>({
           >
             Properties
           </button>
-          <button
-            type="button"
-            className={confirmBack ? "btn btn--danger" : "btn btn--secondary"}
-            onClick={leaveEditor}
-            disabled={saving || deleting}
-          >
-            {confirmBack ? "Discard changes" : "Back"}
-          </button>
-          {mode === "edit" && (
+          {adapter.allowBack !== false && (
+            <button
+              type="button"
+              className={confirmBack ? "btn btn--danger" : "btn btn--secondary"}
+              onClick={leaveEditor}
+              disabled={saving || deleting}
+            >
+              {confirmBack ? "Discard changes" : "Back"}
+            </button>
+          )}
+          {mode === "edit" && adapter.allowDelete !== false && (
             <button
               type="button"
               className={confirmDelete ? "btn btn--danger btn--confirming" : "btn btn--danger"}
@@ -1912,12 +1992,30 @@ export function MdxDocumentEditor<TForm>({
             type="submit"
             form={formId}
             className="btn btn--primary"
-            disabled={!canSave || saving || loading || imageDrop.uploading}
+            disabled={!canSave || saving || loading || imageDrop.uploading || conflict}
           >
             {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
           </button>
         </div>
       </header>
+
+      {conflict && (
+        <div className="editor-conflict" role="alert">
+          <span>
+            Remote content changed. Reload latest to continue editing this {adapter.titleNoun.toLowerCase()}.
+          </span>
+          <button
+            type="button"
+            className="btn btn--secondary draft-restore__btn"
+            onClick={() => {
+              setReloadNonce((value) => value + 1);
+            }}
+            disabled={loading || saving}
+          >
+            Reload latest
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>

@@ -150,6 +150,10 @@ function previewSummaryText(preview: DeployPreviewData): string {
     : "Preview loaded.";
 }
 
+function isStagingOrigin(baseUrl: string): boolean {
+  return /\/\/staging\./i.test(baseUrl);
+}
+
 /**
  * Triggers /api/site-admin/deploy. Deploy promotes the currently-uploaded
  * worker version — it does not rebuild from source. In the common workflow,
@@ -207,20 +211,32 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
       setMessage("error", `Publish failed: ${response.code}: ${response.error}`);
       return;
     }
+    const [statusAfter, homeCheck, blogCheck] = await Promise.all([
+      request("/api/site-admin/status", "GET"),
+      isStagingOrigin(connection.baseUrl) ? request("/", "GET") : Promise.resolve(null),
+      isStagingOrigin(connection.baseUrl) ? request("/blog", "GET") : Promise.resolve(null),
+    ]);
     const data = (response.data ?? {}) as Record<string, unknown>;
     const provider = normalizeString(data.provider);
     const deploymentId = normalizeString(data.deploymentId);
+    if (statusAfter.ok) {
+      setSourceSnapshot(parseSourceSnapshot(statusAfter.data));
+    }
+    const verified =
+      !isStagingOrigin(connection.baseUrl) ||
+      (homeCheck?.status === 200 && blogCheck?.status === 200);
     const details = [
       provider ? `provider=${provider}` : "",
       deploymentId ? `deploymentId=${deploymentId}` : "",
+      verified ? "verified" : "",
     ]
       .filter(Boolean)
       .join(", ");
     setMessage(
-      "success",
+      verified ? "success" : "warn",
       details
         ? `Deploy triggered (${details}).`
-        : "Deploy triggered.",
+        : "Deploy triggered. Staging verification did not complete.",
     );
   }
 

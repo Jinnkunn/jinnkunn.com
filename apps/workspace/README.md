@@ -1,6 +1,8 @@
 # Workspace App (Tauri v1)
 
-Desktop client for the existing Site Admin APIs.
+Desktop client for the existing Site Admin APIs. The app is the daily editing
+surface for the personal site; staging is the default target and production
+promotion remains a guarded release step.
 
 ## Scope
 
@@ -8,6 +10,10 @@ Desktop client for the existing Site Admin APIs.
   - `GET /api/site-admin/status`
   - `GET/POST /api/site-admin/config`
   - `GET/POST /api/site-admin/routes`
+  - `GET/POST /api/site-admin/home`
+  - `GET/POST/PATCH/DELETE /api/site-admin/posts`
+  - `GET/POST/PATCH/DELETE /api/site-admin/pages`
+  - `GET/POST /api/site-admin/pages/tree`
   - `POST /api/site-admin/deploy`
 - Keeps strict semantics:
   - `Save` writes source branch.
@@ -18,9 +24,16 @@ Desktop client for the existing Site Admin APIs.
 
 ## Current UI
 
+- `Home` tab:
+  - Shared MDX document editor writing `content/home.json` as title + bodyMdx.
+- `Blog` / `Pages` tabs:
+  - Notion-style block editor with Source and Preview modes.
+  - Sidebar-driven page tree with persisted page order.
+- `Components` tab:
+  - Edits reusable MDX component documents.
 - `Status` tab:
   - Source head/branch, pending deploy, deploy trigger.
-- `Config` tab:
+- `Settings` tab:
   - Site settings edit/save.
   - Navigation row update/create.
 - `Routes` tab:

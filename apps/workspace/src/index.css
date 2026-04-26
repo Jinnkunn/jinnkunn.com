@@ -631,6 +631,7 @@ body[data-window-focused="true"] .sidebar-surface {
  * out via the surface's registered handlers. */
 .sidebar-tree__item-add,
 .sidebar-tree__item-rename,
+.sidebar-tree__item-reorder-btn,
 .sidebar-tree__item-star {
   display: inline-flex;
   align-items: center;
@@ -649,12 +650,20 @@ body[data-window-focused="true"] .sidebar-surface {
   transition: opacity 100ms ease, background-color 80ms ease, color 80ms ease;
 }
 
+.sidebar-tree__item-reorder {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 1px;
+}
+
 /* Reveal on row hover or when keyboard focus lands inside the row. */
 .sidebar-tree__item-row:hover .sidebar-tree__item-add,
 .sidebar-tree__item-row:hover .sidebar-tree__item-rename,
+.sidebar-tree__item-row:hover .sidebar-tree__item-reorder-btn,
 .sidebar-tree__item-row:hover .sidebar-tree__item-star,
 .sidebar-tree__item-row:focus-within .sidebar-tree__item-add,
 .sidebar-tree__item-row:focus-within .sidebar-tree__item-rename,
+.sidebar-tree__item-row:focus-within .sidebar-tree__item-reorder-btn,
 .sidebar-tree__item-row:focus-within .sidebar-tree__item-star {
   opacity: 1;
 }
@@ -669,11 +678,18 @@ body[data-window-focused="true"] .sidebar-surface {
 .sidebar-tree__item-add:focus-visible,
 .sidebar-tree__item-rename:hover,
 .sidebar-tree__item-rename:focus-visible,
+.sidebar-tree__item-reorder-btn:hover,
+.sidebar-tree__item-reorder-btn:focus-visible,
 .sidebar-tree__item-star:hover,
 .sidebar-tree__item-star:focus-visible {
   outline: none;
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
+}
+
+.sidebar-tree__item-reorder-btn:disabled {
+  cursor: default;
+  color: var(--color-text-muted);
 }
 
 /* Inline rename input replaces the label button while active. The
@@ -894,6 +910,30 @@ body[data-window-focused="true"] .sidebar-surface {
   background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-surface));
   border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border-default));
   color: var(--color-accent-strong);
+}
+
+.site-admin-conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-warn) 32%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warn) 10%, transparent);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.site-admin-conflict-banner span {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.site-admin-conflict-banner .btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 /* Connection pill ------------------------------------------------- */
@@ -1480,6 +1520,23 @@ body[data-window-focused="true"] .sidebar-surface {
   padding: 3px 10px;
   font-size: 12px;
   flex-shrink: 0;
+}
+
+.editor-conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-warn) 32%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warn) 10%, transparent);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.editor-conflict span {
+  flex: 1;
+  min-width: 0;
 }
 
 .editor-meta-row {
@@ -3448,6 +3505,18 @@ span[data-bg="red"] { background: var(--color-bg-red); }
 .mdx-document-image-block__fields input {
   padding: 7px 9px;
   font-size: 12.5px;
+}
+
+.mdx-document-image-block__asset-picker {
+  min-width: 0;
+}
+
+.mdx-document-image-block__asset-picker .asset-library {
+  padding: 8px;
+}
+
+.mdx-document-image-block__asset-picker .asset-library__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mdx-document-slash-menu {

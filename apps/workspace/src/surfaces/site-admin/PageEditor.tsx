@@ -90,7 +90,7 @@ function PageProperties({
       {mode === "edit" ? (
         <>
           <PageRoutingProperties slug={slug} />
-          <PageSeoProperties pathname={`/pages/${slug}`} />
+          <PageSeoProperties pathname={`/${slug}`} />
         </>
       ) : null}
     </>

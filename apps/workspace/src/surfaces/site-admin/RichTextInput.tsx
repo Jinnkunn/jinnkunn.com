@@ -184,7 +184,6 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       // Second arg `false` skips firing onUpdate so we don't re-emit and
       // trigger an infinite loop. (TipTap v2 signature:
       // setContent(content, emitUpdate?, parseOptions?))
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       editor.commands.setContent(inlineMarkdownToHtml(value), false);
     }, [editor, value]);
 
