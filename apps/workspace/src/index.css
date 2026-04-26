@@ -33,6 +33,18 @@
   --color-accent: hsl(30, 87%, 42%);
   --color-accent-strong: hsl(30, 87%, 36%);
 
+  /* MDX block editor — gutter handles (+ / ⋮⋮) and floating popovers
+   * (action menu, inline format toolbar). Consumed by PR2/PR3. */
+  --mdx-handle-color: rgba(55, 53, 47, 0.45);
+  --mdx-handle-color-hover: rgba(55, 53, 47, 0.85);
+  --mdx-handle-bg-hover: rgba(55, 53, 47, 0.06);
+  --mdx-block-row-hover-bg: rgba(55, 53, 47, 0.03);
+  --mdx-placeholder-color: rgba(55, 53, 47, 0.4);
+  --mdx-popover-bg: #ffffff;
+  --mdx-popover-border: rgba(15, 15, 15, 0.1);
+  --mdx-popover-shadow:
+    0 14px 28px rgba(15, 15, 15, 0.12), 0 2px 6px rgba(15, 15, 15, 0.08);
+
   --color-danger: #b3261e;
   --color-danger-strong: #8f1d17;
   --color-warn: #b84a00;
@@ -77,6 +89,17 @@
 
   --color-accent: hsl(30, 90%, 62%);
   --color-accent-strong: hsl(30, 90%, 70%);
+
+  --mdx-handle-color: rgba(242, 235, 223, 0.45);
+  --mdx-handle-color-hover: rgba(242, 235, 223, 0.92);
+  --mdx-handle-bg-hover: rgba(242, 235, 223, 0.06);
+  --mdx-block-row-hover-bg: rgba(242, 235, 223, 0.04);
+  --mdx-placeholder-color: rgba(242, 235, 223, 0.42);
+  --mdx-popover-bg: #25211d;
+  --mdx-popover-border: rgba(242, 235, 223, 0.12);
+  --mdx-popover-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.45);
+
   --color-danger: #ff8479;
   --color-danger-strong: #ff9b91;
   --color-warn: #f0a45a;
@@ -1543,91 +1566,217 @@ body[data-window-focused="true"] .sidebar-surface {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 75%, transparent) inset;
 }
 
-.mdx-document-blocks__quick-add,
-.mdx-document-block__insert,
-.mdx-document-block__toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.mdx-document-blocks__quick-add {
-  justify-content: center;
-  margin: 0 0 6px;
-  opacity: 0;
-  transform: translateY(-2px);
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
-}
-
-.mdx-document-blocks:hover .mdx-document-blocks__quick-add,
-.mdx-document-blocks:focus-within .mdx-document-blocks__quick-add {
-  opacity: 0.72;
-  transform: translateY(0);
-}
-
 .mdx-document-block {
   position: relative;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 6px;
-  padding: 3px 8px 3px 0;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 4px;
+  padding: 1px 8px 1px 0;
+  border-radius: 6px;
   transition:
-    border-color 120ms ease,
     background-color 120ms ease,
     box-shadow 120ms ease;
 }
 
 .mdx-document-block[data-drag-over="true"] {
-  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-default));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow:
+    inset 0 2px 0 0 var(--color-accent),
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
-.mdx-document-block:hover,
-.mdx-document-block:focus-within {
-  border-color: var(--color-border-subtle);
-  background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
+.mdx-document-block[data-dragging="true"] {
+  opacity: 0.4;
 }
 
-.mdx-document-block__toolbar {
-  position: sticky;
-  top: 0;
-  align-self: start;
+.mdx-document-block:hover {
+  background: var(--mdx-block-row-hover-bg);
+}
+
+/* Notion-style left gutter: + on the left, ⋮⋮ on the right. Both fade in
+ * on row hover. The gutter uses grid column 1 so the content column always
+ * starts at the same x-position regardless of hover state. */
+.mdx-document-block__gutter {
+  grid-column: 1;
+  display: flex;
+  align-items: flex-start;
   justify-content: flex-end;
-  padding-top: 6px;
-  opacity: 0;
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
-  transform: translateX(-2px);
-}
-
-.mdx-document-block:hover .mdx-document-block__toolbar,
-.mdx-document-block:focus-within .mdx-document-block__toolbar {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.mdx-document-block__insert {
-  grid-column: 2;
-  justify-content: center;
+  gap: 2px;
+  padding-top: 4px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.mdx-document-block:hover .mdx-document-block__insert,
-.mdx-document-block:focus-within .mdx-document-block__insert {
-  opacity: 0.9;
+.mdx-document-block:hover .mdx-document-block__gutter,
+.mdx-document-block:focus-within .mdx-document-block__gutter,
+.mdx-document-block__gutter:has(:focus-visible) {
+  opacity: 1;
 }
 
-.mdx-document-blocks__quick-add button,
-.mdx-document-block__insert button,
-.mdx-document-block__toolbar button,
-.mdx-document-block__toolbar select,
+.mdx-document-block__handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--mdx-handle-color);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+
+.mdx-document-block__handle:hover,
+.mdx-document-block__handle:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+  color: var(--mdx-handle-color-hover);
+}
+
+.mdx-document-block__handle--menu {
+  cursor: grab;
+  font-size: 14px;
+  letter-spacing: -1px;
+}
+
+.mdx-document-block__handle--menu:active {
+  cursor: grabbing;
+}
+
+/* Empty-paragraph placeholder overlay. Fades in only when the textarea is
+ * focused (via :focus-within on the shell) so empty rows aren't noisy. */
+.mdx-document-block__placeholder {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  pointer-events: none;
+  color: var(--mdx-placeholder-color);
+  font-size: 13.5px;
+  line-height: 1.6;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.mdx-document-text-block-shell:focus-within .mdx-document-block__placeholder {
+  opacity: 1;
+}
+
+/* Action menu items (rendered inside .block-popover via BlockPopover). */
+.block-popover__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 200px;
+}
+
+.block-popover__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+.block-popover__item:hover:not(:disabled),
+.block-popover__item:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.block-popover__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.block-popover__item kbd {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.block-popover__item--back {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: 2px;
+}
+
+.block-popover__divider {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--mdx-popover-border);
+}
+
+/* Inline format toolbar — dense single-row strip, anchored above the
+ * focused textarea while the user has a non-empty selection. */
+.block-popover--inline {
+  padding: 2px;
+  min-width: 0;
+}
+
+.block-popover__inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.block-popover__inline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+.block-popover__inline-btn:hover,
+.block-popover__inline-btn:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.block-popover__inline-btn--mono {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 11px;
+}
+
+.block-popover__inline-btn[aria-pressed="true"] {
+  color: var(--color-accent);
+}
+
+.block-popover__inline-divider {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--mdx-popover-border);
+}
+
 .mdx-document-heading-block select {
   min-height: 24px;
   border: 1px solid var(--color-border-subtle);
@@ -1639,44 +1788,10 @@ body[data-window-focused="true"] .sidebar-surface {
   font-weight: 650;
 }
 
-.mdx-document-block__toolbar select {
-  width: 28px;
-  color: transparent;
-}
-
-.mdx-document-block__toolbar select:focus,
-.mdx-document-block__toolbar select:hover {
-  width: auto;
-  color: var(--color-text-primary);
-}
-
-.mdx-document-block__toolbar button {
-  width: 24px;
-  min-width: 24px;
-  padding: 0;
-}
-
-.mdx-document-block__drag {
-  cursor: grab;
-}
-
-.mdx-document-block__drag:active {
-  cursor: grabbing;
-}
-
-.mdx-document-blocks__quick-add button:hover,
-.mdx-document-block__insert button:hover,
-.mdx-document-block__toolbar button:hover,
-.mdx-document-block__toolbar select:hover,
 .mdx-document-heading-block select:hover {
   border-color: var(--color-border-default);
   color: var(--color-text-primary);
   background: var(--color-bg-hover);
-}
-
-.mdx-document-block__toolbar button:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
 }
 
 .mdx-document-text-block,
@@ -1732,6 +1847,518 @@ body[data-window-focused="true"] .sidebar-surface {
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
   font-size: 12px;
+}
+
+/* Toggle block — collapsible details with nested children. */
+.mdx-document-toggle-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mdx-document-toggle-block__head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.mdx-document-toggle-block__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+}
+
+.mdx-document-toggle-block__chevron:hover {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-toggle-block__summary {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 5px 8px;
+}
+
+.mdx-document-toggle-block__summary:focus {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-toggle-block__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 22px;
+  margin-left: 4px;
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+/* Empty nested blocks list (e.g. an empty toggle body). Renders a small
+ * affordance so the user can seed the first child. */
+.mdx-document-blocks-empty {
+  padding: 6px 0;
+}
+
+.mdx-document-blocks-empty__btn {
+  border: 1px dashed var(--color-border-default);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+}
+
+.mdx-document-blocks-empty__btn:hover {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Table block — GFM table editor. */
+.mdx-document-table-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdx-document-table-block__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.mdx-document-table-block__table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.mdx-document-table-block__table td {
+  border: 1px solid var(--color-border-subtle);
+  padding: 0;
+  vertical-align: top;
+}
+
+.mdx-document-table-block__table tr[data-header="true"] td {
+  background: var(--color-bg-surface-alt);
+  font-weight: 600;
+}
+
+.mdx-document-table-block__cell {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 6px 8px;
+}
+
+.mdx-document-table-block__cell:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.mdx-document-table-block__row-actions {
+  width: 28px;
+  text-align: center;
+}
+
+.mdx-document-table-block__row-actions button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.mdx-document-table-block__row-actions button:hover:not(:disabled) {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-table-block__col-controls {
+  display: flex;
+  gap: 4px;
+  margin-left: 0;
+}
+
+.mdx-document-table-block__col-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.mdx-document-table-block__col-control select {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-table-block__col-control button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mdx-document-table-block__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.mdx-document-table-block__actions button {
+  border: 1px dashed var(--color-border-default);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-document-table-block__actions button:hover {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Bookmark block */
+.mdx-document-bookmark-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-bookmark-block__row {
+  display: flex;
+  gap: 6px;
+}
+
+.mdx-document-bookmark-block__row input {
+  flex: 1;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-bookmark-block__row button {
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-document-bookmark-block__row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mdx-document-bookmark-block__preview {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.mdx-document-bookmark-block__preview img {
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--color-bg-hover);
+}
+
+.mdx-document-bookmark-block__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  grid-column: 2;
+}
+
+.mdx-document-bookmark-block__fields input,
+.mdx-document-bookmark-block__fields textarea {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  resize: vertical;
+}
+
+/* Embed block */
+.mdx-document-embed-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdx-document-embed-block__row {
+  display: flex;
+  gap: 6px;
+}
+
+.mdx-document-embed-block__row select,
+.mdx-document-embed-block__row input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mdx-document-embed-block__row input {
+  flex: 1;
+}
+
+.mdx-document-embed-block__preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-embed-block__preview iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.mdx-document-embed-block__hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* File block */
+.mdx-document-file-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-file-block__upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-document-file-block__upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mdx-document-file-block__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mdx-document-file-block__fields input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.mdx-document-file-block__meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* Page link block */
+.mdx-document-page-link-block {
+  position: relative;
+  display: inline-block;
+}
+
+.mdx-document-page-link-block__current {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mdx-document-page-link-block__current:hover {
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-page-link-block__current span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-page-link-block__picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 8px;
+  background: var(--mdx-popover-bg);
+  box-shadow: var(--mdx-popover-shadow);
+}
+
+.mdx-document-page-link-block__picker input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mdx-document-page-link-block__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.mdx-document-page-link-block__list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdx-document-page-link-block__list button:hover {
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-page-link-block__list button span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-page-link-block__empty {
+  padding: 6px 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* To-do block — multi-line checklist. */
+.mdx-document-todo-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.mdx-document-todo-block__row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.mdx-document-todo-block__check {
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.mdx-document-todo-block__input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  line-height: 1.6;
+  padding: 4px 6px;
+  transition: text-decoration-color 100ms ease, color 100ms ease;
+}
+
+.mdx-document-todo-block__input:focus {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-todo-block__input[data-checked="true"] {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--color-text-muted);
 }
 
 .mdx-document-list-block {
@@ -1902,6 +2529,20 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-muted);
   font-size: 11px;
   line-height: 1.25;
+}
+
+/* Floating popover used by block action menus and inline format
+ * toolbars. Positioned via JS (fixed + computed left/top), styled here. */
+.block-popover {
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 8px;
+  background: var(--mdx-popover-bg);
+  box-shadow: var(--mdx-popover-shadow);
+  font-size: 13px;
+  color: var(--color-text-primary);
 }
 
 /* ------------------------------------------------------------------ *
