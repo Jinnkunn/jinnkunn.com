@@ -2596,6 +2596,64 @@ span[data-bg="red"] { background: var(--color-bg-red); }
   border-left: 1px solid var(--color-border-subtle);
 }
 
+/* Multi-field data entry block (works / teaching / publications).
+ * Same chrome as news-entry but each row hosts a flex of labelled
+ * inputs instead of a single date input. The body div reuses the
+ * news-entry body class to share the indent-with-borderleft rule. */
+.mdx-document-data-entry-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-data-entry-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+}
+
+.mdx-document-data-entry-block__field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 160px;
+  min-width: 120px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-data-entry-block__field--small {
+  flex: 0 0 100px;
+  min-width: 100px;
+}
+
+.mdx-document-data-entry-block__field > span {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mdx-document-data-entry-block__field input,
+.mdx-document-data-entry-block__field select {
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mdx-document-data-entry-block__field input[aria-invalid] {
+  border-color: var(--color-danger);
+}
+
 .mdx-document-toggle-block__body {
   display: flex;
   flex-direction: column;

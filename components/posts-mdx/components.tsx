@@ -20,6 +20,7 @@ import { TeachingBlock } from "./teaching-block";
 import { Toggle } from "./toggle";
 import { Video } from "./video";
 import { WorksBlock } from "./works-block";
+import { WorksEntry } from "./works-entry";
 
 function joinClassNames(...classNames: (string | undefined)[]): string {
   return classNames.filter(Boolean).join(" ");
@@ -96,4 +97,5 @@ export const postMdxComponents: MDXComponents = {
   Toggle,
   Video,
   WorksBlock,
+  WorksEntry,
 };

@@ -10,7 +10,6 @@ export type SiteAdminTab =
   | "pages"
   | "publications"
   | "teaching"
-  | "works"
   | "settings";
 
 export interface SiteSettings {
@@ -239,29 +238,10 @@ export interface TeachingData {
   footerLinks: TeachingLink[];
 }
 
-// --- Works (structured editor) -------------------------------------------
-
-export type WorksCategoryClient = "recent" | "passed";
-
-export interface WorksEntry {
-  category: WorksCategoryClient;
-  role: string;
-  affiliation?: string;
-  affiliationUrl?: string;
-  location?: string;
-  period: string;
-  description?: string;
-}
-
-export interface WorksData {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  sections?: StructuredPageSection[];
-  intro?: string;
-  note?: string;
-  entries: WorksEntry[];
-}
+// Works migrated to inline `<WorksEntry>` blocks inside
+// `content/pages/works.mdx`. Block-level types live in
+// `mdx-blocks.ts` (the `worksCategory` / `worksRole` / etc. fields
+// on MdxBlock).
 
 // --- Home (section-based landing page) -----------------------------------
 

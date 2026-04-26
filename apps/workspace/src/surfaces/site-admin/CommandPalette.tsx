@@ -122,7 +122,6 @@ export function CommandPalette({
       { id: "pages", label: "Pages" },
       { id: "publications", label: "Publications" },
       { id: "teaching", label: "Teaching" },
-      { id: "works", label: "Works" },
       { id: "settings", label: "Settings" },
     ];
     for (const tab of tabs) {

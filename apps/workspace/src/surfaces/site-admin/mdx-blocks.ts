@@ -42,7 +42,8 @@ export type MdxBlockType =
   // page MDX (`content/pages/news.mdx`, etc.) and renders via a matching
   // server component on the public site. Replaces the old separate-JSON
   // model where all entries lived in `content/{name}.json`.
-  | "news-entry";
+  | "news-entry"
+  | "works-entry";
 
 /** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
 export interface MdxLinkItem {
@@ -123,6 +124,18 @@ export interface MdxBlock {
   // both the rendered heading on the public site and the chronological
   // sort order when the news page is read by the embed component.
   dateIso?: string;
+  // For `works-entry` blocks. Mirrors the WorksEntry DTO that used to
+  // live in content/works.json; each entry now lives as a `<WorksEntry>`
+  // block inside content/pages/works.mdx, with these as JSX attributes.
+  // `worksCategory` partitions entries on the page (recent vs. past)
+  // and lets the WorksBlock embed pick the right slice for the home
+  // feed. Description body lives in `children` (nested MdxBlocks).
+  worksCategory?: "recent" | "passed";
+  worksRole?: string;
+  worksAffiliation?: string;
+  worksAffiliationUrl?: string;
+  worksLocation?: string;
+  worksPeriod?: string;
   // For LinkListBlock / FeaturedPagesBlock: how the items array is laid
   // out. linkList accepts stack/grid/inline; featuredPages tweaks columns
   // separately, so this is intentionally narrow.
@@ -283,6 +296,20 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       children: [createMdxBlock("paragraph")],
     };
   }
+  if (type === "works-entry") {
+    // Default to "recent" since the user is most likely adding a
+    // current role; description starts empty so the toggle body is
+    // optional.
+    return {
+      id,
+      type,
+      text: "",
+      worksCategory: "recent",
+      worksRole: "",
+      worksPeriod: "",
+      children: [createMdxBlock("paragraph")],
+    };
+  }
   return { id, type, text: "" };
 }
 
@@ -340,6 +367,11 @@ const COLUMNS_OPEN_RE = /^<Columns\b([\s\S]*?)>$/;
 // depth + 1, then closed by `</NewsEntry>`. The matching counterpart
 // to columns / toggle on the entry-block axis.
 const NEWS_ENTRY_OPEN_RE = /^<NewsEntry\b([\s\S]*?)>$/;
+// `<WorksEntry [...]>` opener for one resume / work entry. Same
+// recursive shape as NewsEntry — the body inside is markdown that
+// gets parsed at depth + 1 (the legacy "description" field on
+// WorksEntry DTO).
+const WORKS_ENTRY_OPEN_RE = /^<WorksEntry\b([\s\S]*?)>$/;
 const COLUMN_OPEN_RE = /^<Column>$/;
 const COLUMN_CLOSE_RE = /^<\/Column>$/;
 // Allow tabs / spaces around the marker to support indented checklists nested
@@ -695,6 +727,58 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       pushBlock(
         makeBlock("news-entry", {
           dateIso: date,
+          children,
+        }),
+      );
+      continue;
+    }
+
+    // Works entry: same recursive shape as <NewsEntry>. Top-level only.
+    const worksEntryMatch = depth === 0 ? WORKS_ENTRY_OPEN_RE.exec(trimmedLine) : null;
+    if (worksEntryMatch) {
+      const attrs = parseAttrs(worksEntryMatch[1] ?? "");
+      const innerLines: string[] = [];
+      index += 1;
+      let foundClose = false;
+      while (index < lines.length) {
+        const probe = (lines[index] ?? "").trim();
+        if (probe === "</WorksEntry>") {
+          foundClose = true;
+          index += 1;
+          break;
+        }
+        innerLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (!foundClose) {
+        pushBlock(
+          makeBlock("raw", { text: [trimmedLine, ...innerLines].join("\n") }),
+        );
+        continue;
+      }
+      const bodySource = innerLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+      const children = bodySource ? parseBlocksAtDepth(bodySource, depth + 1) : [];
+      const category =
+        attrs.category === "recent" || attrs.category === "passed"
+          ? (attrs.category as "recent" | "passed")
+          : "recent";
+      pushBlock(
+        makeBlock("works-entry", {
+          worksCategory: category,
+          worksRole: typeof attrs.role === "string" ? attrs.role : "",
+          worksAffiliation:
+            typeof attrs.affiliation === "string" && attrs.affiliation
+              ? attrs.affiliation
+              : undefined,
+          worksAffiliationUrl:
+            typeof attrs.affiliationUrl === "string" && attrs.affiliationUrl
+              ? attrs.affiliationUrl
+              : undefined,
+          worksLocation:
+            typeof attrs.location === "string" && attrs.location
+              ? attrs.location
+              : undefined,
+          worksPeriod: typeof attrs.period === "string" ? attrs.period : "",
           children,
         }),
       );
@@ -1133,6 +1217,29 @@ function serializeBlock(block: MdxBlock, depth: number): string {
       return [opener, "</NewsEntry>"].join("\n");
     }
     return [opener, "", inner, "", "</NewsEntry>"].join("\n");
+  }
+  if (block.type === "works-entry") {
+    // Always emit `category`, `role`, `period` so the round-trip is
+    // explicit even when partially empty (the editor card warns when
+    // role / period is missing); `affiliation`, `affiliationUrl`,
+    // `location` are only emitted when set so the markdown source stays
+    // tight for the most-common single-line entries.
+    const attrs = serializeAttrs([
+      ["category", block.worksCategory ?? "recent"],
+      ["role", block.worksRole ?? ""],
+      ["affiliation", block.worksAffiliation],
+      ["affiliationUrl", block.worksAffiliationUrl],
+      ["location", block.worksLocation],
+      ["period", block.worksPeriod ?? ""],
+    ]);
+    const opener = attrs ? `<WorksEntry ${attrs}>` : `<WorksEntry>`;
+    const inner = block.children?.length
+      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
+      : "";
+    if (!inner) {
+      return [opener, "</WorksEntry>"].join("\n");
+    }
+    return [opener, "", inner, "", "</WorksEntry>"].join("\n");
   }
   if (block.type === "table") {
     const data = block.tableData;
