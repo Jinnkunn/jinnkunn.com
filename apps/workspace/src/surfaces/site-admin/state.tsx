@@ -469,7 +469,23 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (cancelled) return;
         updateAuth("");
-        setMessage("error", `Failed to read secure storage: ${String(err)}`);
+        // Outside the Tauri webview (browser dev / Vite preview / tests) the
+        // `invoke` global isn't injected, so the secure-storage call always
+        // throws a TypeError. That's not a real failure — there's just no
+        // keyring to read. Suppress the noise and rely on the connection
+        // pill's "Not connected" tone instead. Real Tauri keyring errors
+        // (file lock, permission denied, etc.) still surface as before.
+        const message = err instanceof Error ? err.message : String(err);
+        const isMissingTauriBridge =
+          /Cannot read properties of undefined \(reading 'invoke'\)|window\.__TAURI__|undefined is not an object/i.test(
+            message,
+          );
+        if (!isMissingTauriBridge) {
+          setMessage(
+            "error",
+            "Couldn't read saved credentials from the keyring. Reconnect from the connection menu to retry.",
+          );
+        }
       } finally {
         if (!cancelled) {
           setConnection((prev) => ({ ...prev, authLoading: false }));

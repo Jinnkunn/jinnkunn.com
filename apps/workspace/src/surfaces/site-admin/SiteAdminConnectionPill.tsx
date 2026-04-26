@@ -99,9 +99,16 @@ export function SiteAdminConnectionPill() {
       : hasCfService
         ? "CF Access"
         : "Not connected";
-  const pillLabel = currentTone === "connected"
-    ? profileLabel
-    : `${profileLabel} · ${statusLabel}`;
+  // When connected, the pill is a quiet status indicator. When
+  // disconnected, it doubles as the primary "Connect" CTA — the rest of
+  // the app blocks on it via DisconnectedNotice — so we lead with a
+  // verb-first label instead of the profile name.
+  const pillLabel =
+    currentTone === "connected"
+      ? profileLabel
+      : currentTone === "loading"
+        ? "Connecting…"
+        : "Connect";
   const pillTitle = [profileLabel, statusLabel, trimmedBase].filter(Boolean).join(" · ");
 
   const disableLogin = connection.authLoading || !normalizeString(connection.baseUrl);

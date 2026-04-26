@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import { CommandPalette } from "./CommandPalette";
+import { DisconnectedNotice } from "./DisconnectedNotice";
 import { MessageBar } from "./MessageBar";
 import {
   SITE_ADMIN_DEFAULT_TAB,
@@ -10,7 +11,7 @@ import {
 } from "./nav";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
-import { SiteAdminProvider } from "./state";
+import { SiteAdminProvider, useSiteAdmin } from "./state";
 import type { ItemSelection, SiteAdminTab } from "./types";
 
 const ConfigPanel = lazy(() =>
@@ -56,6 +57,8 @@ function PanelFallback() {
 
 function SiteAdminContent() {
   const { activeNavItemId, setActiveNavItemId } = useSurfaceNav();
+  const { connection } = useSiteAdmin();
+  const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Selection state lives in the shell (not the panels) so the command
   // palette can deep-link straight into a specific post/page.
@@ -158,26 +161,36 @@ function SiteAdminContent() {
         <MessageBar />
 
         <Suspense fallback={<PanelFallback />}>
+          {/* Status renders even when disconnected — it's the diagnostic
+           * surface and shows the missing connection itself. Every other
+           * panel is replaced by DisconnectedNotice so users don't see
+           * grids of disabled buttons before they've signed in. */}
           {activeTab === "status" && <StatusPanel />}
-          {activeTab === "home" && <HomePanel />}
-          {activeTab === "posts" && (
-            <PostsPanel
-              selected={postsSelected}
-              onSelectedChange={setPostsSelected}
-            />
+          {activeTab !== "status" && !ready ? (
+            <DisconnectedNotice />
+          ) : (
+            <>
+              {activeTab === "home" && <HomePanel />}
+              {activeTab === "posts" && (
+                <PostsPanel
+                  selected={postsSelected}
+                  onSelectedChange={setPostsSelected}
+                />
+              )}
+              {activeTab === "pages" && (
+                <PagesPanel
+                  selected={pagesSelected}
+                  onSelectedChange={setPagesSelected}
+                />
+              )}
+              {activeTab === "publications" && <PublicationsPanel />}
+              {activeTab === "news" && <NewsPanel />}
+              {activeTab === "teaching" && <TeachingPanel />}
+              {activeTab === "works" && <WorksPanel />}
+              {activeTab === "config" && <ConfigPanel />}
+              {activeTab === "routes" && <RoutesPanel />}
+            </>
           )}
-          {activeTab === "pages" && (
-            <PagesPanel
-              selected={pagesSelected}
-              onSelectedChange={setPagesSelected}
-            />
-          )}
-          {activeTab === "publications" && <PublicationsPanel />}
-          {activeTab === "news" && <NewsPanel />}
-          {activeTab === "teaching" && <TeachingPanel />}
-          {activeTab === "works" && <WorksPanel />}
-          {activeTab === "config" && <ConfigPanel />}
-          {activeTab === "routes" && <RoutesPanel />}
         </Suspense>
       </div>
       <SiteAdminDevDrawer />
