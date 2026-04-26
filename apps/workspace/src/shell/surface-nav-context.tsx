@@ -31,6 +31,13 @@ interface SurfaceNavContextValue {
   setRenameNavItemHandler: (
     handler: ((itemId: string, newSlug: string) => void) | null,
   ) => void;
+  /** Optional live-validation hook for the rename input. Sidebar calls
+   * this on every keystroke; returning a non-empty string surfaces it
+   * as inline error text and disables Enter submit. Pass `null` to
+   * clear (input falls back to "any non-empty value" client-side). */
+  setRenameValidator: (
+    validator: ((itemId: string, newSlug: string) => string | null) | null,
+  ) => void;
 }
 
 const SurfaceNavContext = createContext<SurfaceNavContextValue | null>(null);
