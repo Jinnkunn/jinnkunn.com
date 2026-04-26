@@ -33,8 +33,10 @@ import {
   NewsEntryEditableBlock,
   PageLinkEditableBlock,
   PublicationsEntryEditableBlock,
+  PublicationsProfileLinksEditableBlock,
   TableEditableBlock,
   TeachingEntryEditableBlock,
+  TeachingLinksEditableBlock,
   TodoEditableBlock,
   ToggleEditableBlock,
   WorksEntryEditableBlock,
@@ -105,6 +107,8 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "works-entry": "Works entry",
   "teaching-entry": "Teaching entry",
   "publications-entry": "Publication",
+  "teaching-links": "Teaching links",
+  "publications-profile-links": "Profile links",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -1527,6 +1531,16 @@ function EditableBlock({
     return <PublicationsEntryEditableBlock block={block} onPatch={onPatch} />;
   }
 
+  if (block.type === "teaching-links") {
+    return <TeachingLinksEditableBlock block={block} onPatch={onPatch} />;
+  }
+
+  if (block.type === "publications-profile-links") {
+    return (
+      <PublicationsProfileLinksEditableBlock block={block} onPatch={onPatch} />
+    );
+  }
+
   if (block.type === "table") {
     return <TableEditableBlock block={block} onPatch={onPatch} />;
   }
@@ -1695,6 +1709,7 @@ export function MdxDocumentEditor<TForm>({
     body,
     form,
     !loading,
+    dirty,
   );
 
   useEffect(() => {

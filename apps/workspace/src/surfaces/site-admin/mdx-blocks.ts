@@ -45,13 +45,27 @@ export type MdxBlockType =
   | "news-entry"
   | "works-entry"
   | "teaching-entry"
-  | "publications-entry";
+  | "publications-entry"
+  // Standalone link rows used as page-level decoration on the data
+  // pages — `<TeachingLinks>` for header/footer rows on the teaching
+  // page, `<PublicationsProfileLinks>` for the yellow-highlighted
+  // profile-link strip above publications. Both carry a JSON-encoded
+  // links array; rendered in the editor as an inline list with
+  // per-row label/url inputs (and an optional hostname for favicons
+  // on profile links).
+  | "teaching-links"
+  | "publications-profile-links";
 
-/** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
+/** Single entry in a LinkListBlock / FeaturedPagesBlock items array,
+ * also reused by the standalone TeachingLinks / PublicationsProfileLinks
+ * decoration rows on the data pages. `hostname` is only consumed by
+ * `<PublicationsProfileLinks>` (drives the favicon column on the public
+ * site); other consumers ignore it. */
 export interface MdxLinkItem {
   label: string;
   href: string;
   description?: string;
+  hostname?: string;
 }
 
 export type MdxEmbedKind = "youtube" | "vimeo" | "iframe" | "video";
@@ -160,9 +174,23 @@ export interface MdxBlock {
   // out. linkList accepts stack/grid/inline; featuredPages tweaks columns
   // separately, so this is intentionally narrow.
   linkLayout?: "stack" | "grid" | "inline";
-  // For LinkListBlock / FeaturedPagesBlock: the items array, serialized
-  // as a JSON string in a single-quoted JSX attribute.
+  // For LinkListBlock / FeaturedPagesBlock and the new
+  // teaching-links / publications-profile-links rows: the items
+  // array, serialized as a JSON string in a single-quoted JSX
+  // attribute on the way out.
   linkItems?: MdxLinkItem[];
+  // For `teaching-links` blocks: which row this is — `header` (above
+  // the entries list, bold + `|` dividers) vs `footer` (below the
+  // list, plain links + ` · ` dividers). Mirrors the `variant` JSX
+  // attribute on the public-site `<TeachingLinks>` component.
+  teachingLinksVariant?: "header" | "footer";
+  // For `quote` blocks emitted as `<blockquote className="…">` JSX
+  // (rather than the standard `> markdown` form). Carries the class
+  // string verbatim so the public site keeps its custom CSS hooks
+  // (e.g. `notion-quote teaching-intro` / `works-intro` /
+  // `works-note`). When unset, the serializer falls back to the
+  // markdown-quote form.
+  quoteClassName?: string;
   // For HeroBlock: optional sub-line shown under the title.
   subtitle?: string;
   // For HeroBlock: text alignment within the hero body.
@@ -357,6 +385,20 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
     });
     return { id, type, text: "", pubData: empty };
   }
+  if (type === "teaching-links") {
+    // Default to a header row since it's the more common placement
+    // (intro link strip above the entries). Variant is editable.
+    return {
+      id,
+      type,
+      text: "",
+      teachingLinksVariant: "header",
+      linkItems: [],
+    };
+  }
+  if (type === "publications-profile-links") {
+    return { id, type, text: "", linkItems: [] };
+  }
   return { id, type, text: "" };
 }
 
@@ -425,6 +467,12 @@ const COLUMN_CLOSE_RE = /^<\/Column>$/;
 // inside toggle bodies.
 const TODO_LINE_RE = /^(?:\s*)- \[([ xX])\]\s*(.*)$/;
 const TABLE_DIVIDER_RE = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|\s*$/;
+// `<blockquote className="...">` opener (className optional). The
+// inner content is markdown that gets recursively parsed at the
+// same depth — keeps the data model flat (the quote block's inner
+// is a single rich-text body, not nested children) while letting
+// authors freely use **bold**, links, etc. Closed by `</blockquote>`.
+const BLOCKQUOTE_OPEN_RE = /^<blockquote(?:\s+className="([^"]*)")?\s*>$/;
 const SELF_CLOSING_TAG_RE = /^<(\w+)([\s\S]*?)\/>$/;
 // JSX attribute values: double-quoted string, single-quoted string, or
 // `{N}` numeric literal. Single-quoted form lets data-bearing attributes
@@ -463,6 +511,9 @@ function parseLinkItems(raw: string | undefined): MdxLinkItem[] {
     const item: MdxLinkItem = { label, href };
     if (typeof obj.description === "string" && obj.description.trim()) {
       item.description = obj.description;
+    }
+    if (typeof obj.hostname === "string" && obj.hostname.trim()) {
+      item.hostname = obj.hostname;
     }
     out.push(item);
   }
@@ -944,6 +995,51 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       continue;
     }
 
+    // `<blockquote className="…">…</blockquote>` JSX form. Used by the
+    // data pages for their styled intros (e.g. teaching-intro,
+    // works-intro, works-note). Without this branch the editor splits
+    // the open / body / close lines into three separate blocks and
+    // the user sees raw JSX in cream boxes around the body text.
+    const blockquoteOpenLine = paragraphLines.length === 1
+      ? BLOCKQUOTE_OPEN_RE.exec(paragraph)
+      : null;
+    if (blockquoteOpenLine) {
+      const className = blockquoteOpenLine[1] ?? "";
+      const innerLines: string[] = [];
+      let foundClose = false;
+      while (index < lines.length) {
+        const probe = (lines[index] ?? "").trim();
+        if (probe === "</blockquote>") {
+          foundClose = true;
+          index += 1;
+          break;
+        }
+        innerLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (foundClose) {
+        // Strip the leading + trailing blank lines MDX requires
+        // around the JSX-wrapped markdown body so they don't show up
+        // as edit-time padding.
+        const body = innerLines.join("\n").replace(/^\n+|\n+$/g, "");
+        pushBlock(
+          makeBlock("quote", {
+            text: body,
+            quoteClassName: className || undefined,
+          }),
+        );
+        continue;
+      }
+      // Unclosed `<blockquote>`: emit the consumed lines as raw to
+      // avoid silently swallowing arbitrary markdown.
+      pushBlock(
+        makeBlock("raw", {
+          text: [paragraph, ...innerLines].join("\n"),
+        }),
+      );
+      continue;
+    }
+
     // GFM table: every line starts with `|` and the second line is a
     // dashes-and-pipes divider. Must precede the raw-paragraph fallback.
     if (
@@ -1158,6 +1254,26 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "TeachingLinks") {
+        const variant = attrs.variant === "footer" ? "footer" : "header";
+        pushBlock(
+          makeBlock("teaching-links", {
+            text: "",
+            teachingLinksVariant: variant,
+            linkItems: parseLinkItems(attrs.links),
+          }),
+        );
+        continue;
+      }
+      if (tagName === "PublicationsProfileLinks") {
+        pushBlock(
+          makeBlock("publications-profile-links", {
+            text: "",
+            linkItems: parseLinkItems(attrs.links),
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -1192,6 +1308,16 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   }
   if (block.type === "quote") {
     if (!text) return "";
+    // When the block carries a className (e.g. `notion-quote
+    // teaching-intro` on the data-page intros), emit the JSX
+    // `<blockquote>` form so the public site keeps its CSS hook;
+    // otherwise fall back to the plain markdown `> …` form. The
+    // body is wrapped in blank lines so MDX parses the inner as
+    // markdown rather than a single text token.
+    const className = (block.quoteClassName ?? "").trim();
+    if (className) {
+      return `<blockquote className="${escapeAttr(className)}">\n\n${text}\n\n</blockquote>`;
+    }
     return text
       .split("\n")
       .map((line) => `> ${line}`)
@@ -1466,6 +1592,24 @@ function serializeBlock(block: MdxBlock, depth: number): string {
       ["items", items ? jsonAttr(items) : undefined],
     ]);
     return attrs ? `<FeaturedPagesBlock ${attrs} />` : "<FeaturedPagesBlock />";
+  }
+  if (block.type === "teaching-links") {
+    const items = block.linkItems && block.linkItems.length > 0 ? block.linkItems : [];
+    const variant = block.teachingLinksVariant === "footer" ? "footer" : "header";
+    // Always emit `variant` and `links` even when empty so the
+    // round-trip stays exact and the public component still renders
+    // (it returns null on an empty list, but the page MDX keeps the
+    // tag). Items are JSON-encoded the same way LinkListBlock does.
+    const attrs = serializeAttrs([
+      ["variant", variant],
+      ["links", jsonAttr(items)],
+    ]);
+    return `<TeachingLinks ${attrs} />`;
+  }
+  if (block.type === "publications-profile-links") {
+    const items = block.linkItems && block.linkItems.length > 0 ? block.linkItems : [];
+    const attrs = serializeAttrs([["links", jsonAttr(items)]]);
+    return `<PublicationsProfileLinks ${attrs} />`;
   }
   return text;
 }
