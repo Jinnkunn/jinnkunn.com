@@ -11,6 +11,7 @@ import {
   type PageFrontmatterForm,
 } from "./mdx-source";
 import { PageRoutingProperties } from "./page-routing-properties";
+import { PageSeoProperties } from "./page-seo-properties";
 
 export type PageEditorMode = "create" | "edit";
 
@@ -86,7 +87,12 @@ function PageProperties({
         Draft (hidden from public site)
       </label>
 
-      {mode === "edit" ? <PageRoutingProperties slug={slug} /> : null}
+      {mode === "edit" ? (
+        <>
+          <PageRoutingProperties slug={slug} />
+          <PageSeoProperties pathname={`/pages/${slug}`} />
+        </>
+      ) : null}
     </>
   );
 }
