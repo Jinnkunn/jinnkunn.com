@@ -340,7 +340,14 @@ function escapeAttr(value: string): string {
 type JsonAttr = { kind: "json"; value: string };
 
 function jsonAttr(value: unknown): JsonAttr {
-  return { kind: "json", value: JSON.stringify(value) };
+  // The serialized JSON sits inside a single-quoted JSX attribute, so a
+  // literal `'` in any value (e.g. "Don't") would terminate the attr
+  // mid-stream. Encode it as the JSON unicode escape — JSON.parse turns
+  // `'` back into a real single quote on the way out.
+  return {
+    kind: "json",
+    value: JSON.stringify(value).replace(/'/g, "\\u0027"),
+  };
 }
 
 function serializeAttrs(

@@ -380,6 +380,26 @@ describe("link-list block (inline-config with item array)", () => {
     ]);
     expect(serializeMdxBlocks(blocks)).toBe(source);
   });
+
+  it("round-trips an apostrophe in an item value via \\u0027 escape", () => {
+    // The block sits inside a single-quoted JSX attribute, so any raw
+    // `'` in a value would terminate the attr early. jsonAttr escapes
+    // them as JSON unicode escapes; JSON.parse turns them back into
+    // real apostrophes on read.
+    const blocks = [
+      {
+        id: "test",
+        type: "link-list-block" as const,
+        text: "",
+        linkItems: [{ label: "Don't", href: "/x" }],
+      },
+    ];
+    const md = serializeMdxBlocks(blocks);
+    expect(md).not.toMatch(/'Don't'/);
+    expect(md).toMatch(/Don\\u0027t/);
+    const reparsed = parseMdxBlocks(md);
+    expect(reparsed[0].linkItems).toEqual([{ label: "Don't", href: "/x" }]);
+  });
 });
 
 describe("featured-pages block", () => {
