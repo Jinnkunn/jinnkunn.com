@@ -1,184 +1,38 @@
-import { useCallback, useEffect, useState } from "react";
-import { ListDetailLayout } from "./ListDetailLayout";
+import { useCallback } from "react";
 import { PostEditor } from "./PostEditor";
 import { PublishButton } from "./PublishButton";
 import { useSiteAdmin } from "./state";
-import type { ItemSelection, PostListRow } from "./types";
-import { normalizeString } from "./utils";
+import type { ItemSelection } from "./types";
 
 export interface PostsPanelProps {
   selected: ItemSelection;
   onSelectedChange: (next: ItemSelection) => void;
 }
 
-function asBoolean(value: unknown, fallback = false): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function asInteger(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function normalizePostListRow(raw: unknown): PostListRow | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const slug = normalizeString(r.slug);
-  if (!slug) return null;
-  return {
-    slug,
-    href: normalizeString(r.href) || `/blog/${slug}`,
-    title: normalizeString(r.title) || slug,
-    dateIso: (r.dateIso as string | null) ?? null,
-    dateText: (r.dateText as string | null) ?? null,
-    description: (r.description as string | null) ?? null,
-    draft: asBoolean(r.draft),
-    tags: Array.isArray(r.tags) ? r.tags.filter((t): t is string => typeof t === "string") : [],
-    wordCount: asInteger(r.wordCount),
-    readingMinutes: asInteger(r.readingMinutes),
-    version: normalizeString(r.version),
-  };
-}
-
+/** Posts panel — Phase 2 dropped the left list column. Selection is
+ * driven entirely by the sidebar tree (Blog → posts) plus the command
+ * palette; this panel just renders the editor for `selected` (or an
+ * empty state when nothing is picked). */
 export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
-  const { connection, postsGrouping, request, setMessage, setPostsGrouping, setPostsIndex } =
-    useSiteAdmin();
-  const [rows, setRows] = useState<PostListRow[]>([]);
-  const [loadingList, setLoadingList] = useState(false);
-  const [error, setError] = useState("");
-  const [includeDrafts, setIncludeDrafts] = useState(true);
-
+  const { bumpContentRevision, connection } = useSiteAdmin();
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
 
-  const refresh = useCallback(async () => {
-    if (!ready) return;
-    setLoadingList(true);
-    setError("");
-    const path = `/api/site-admin/posts${includeDrafts ? "?drafts=1" : ""}`;
-    const response = await request(path, "GET");
-    setLoadingList(false);
-    if (!response.ok) {
-      const msg = `${response.code}: ${response.error}`;
-      setError(msg);
-      setMessage("error", `Load posts failed: ${msg}`);
-      return;
-    }
-    const data = (response.data ?? {}) as Record<string, unknown>;
-    const rawPosts = Array.isArray(data.posts) ? data.posts : [];
-    const parsed: PostListRow[] = [];
-    for (const raw of rawPosts) {
-      const row = normalizePostListRow(raw);
-      if (row) parsed.push(row);
-    }
-    setRows(parsed);
-    setPostsIndex(parsed);
-    setMessage("success", `Loaded ${parsed.length} post${parsed.length === 1 ? "" : "s"}.`);
-  }, [includeDrafts, ready, request, setMessage, setPostsIndex]);
-
-  useEffect(() => {
-    // Auto-load posts list once the connection is ready. The async state
-    // writes live inside `refresh` and don't cascade renders.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (ready) void refresh();
-  }, [ready, refresh]);
-
+  // Saving / deleting bumps contentRevision so SiteAdminContent's
+  // eager-fetch reloads the index that backs both the sidebar tree
+  // and the command palette.
   const onEditorExit = useCallback(
     (action: "saved" | "deleted" | "cancel") => {
       onSelectedChange(null);
-      if (action !== "cancel") void refresh();
+      if (action !== "cancel") bumpContentRevision();
     },
-    [onSelectedChange, refresh],
+    [onSelectedChange, bumpContentRevision],
   );
 
-  // --- Left: list ----------------------------------------------------------
-  const listHeader = (
-    <div className="list-detail__list-toolbar">
-      <label className="list-detail__drafts-toggle">
-        <input
-          type="checkbox"
-          checked={includeDrafts}
-          onChange={(event) => setIncludeDrafts(event.target.checked)}
-        />
-        <span>Drafts</span>
-      </label>
-      <label
-        className="list-detail__grouping"
-        title="How posts are grouped under the sidebar's Posts row"
-      >
-        <span>Group</span>
-        <select
-          value={postsGrouping}
-          onChange={(event) =>
-            setPostsGrouping(event.target.value as typeof postsGrouping)
-          }
-        >
-          <option value="all">All</option>
-          <option value="drafts">Drafts only</option>
-          <option value="published">Published only</option>
-          <option value="by-year">By year</option>
-        </select>
-      </label>
-      <button
-        className="btn btn--ghost list-detail__refresh"
-        type="button"
-        onClick={() => void refresh()}
-        disabled={!ready || loadingList}
-      >
-        {loadingList ? "…" : "Refresh"}
-      </button>
-    </div>
-  );
-
-  const list =
-    rows.length === 0 && !loadingList ? (
-      <div className="list-detail__empty list-detail__empty--cta">
-        <span className="list-detail__empty-icon" aria-hidden="true">+</span>
-        <strong>No posts yet</strong>
-        <span>Create the first draft for the blog index.</span>
-        <button
-          className="btn btn--primary"
-          type="button"
-          onClick={() => onSelectedChange({ kind: "new" })}
-          disabled={!ready}
-        >
-          New post
-        </button>
-      </div>
-    ) : (
-      <ul className="list-detail__rows" role="list">
-        {rows.map((row) => {
-          const active = selected?.kind === "edit" && selected.slug === row.slug;
-          return (
-            <li key={row.slug}>
-              <button
-                type="button"
-                className="list-detail__row"
-                aria-current={active ? "true" : undefined}
-                onClick={() => onSelectedChange({ kind: "edit", slug: row.slug })}
-              >
-                <span className="list-detail__row-title" title={row.title}>
-                  {row.title}
-                </span>
-                <span className="list-detail__row-meta">
-                  {row.dateText || row.dateIso || "—"}
-                  {row.draft ? (
-                    <span className="list-detail__draft-dot" title="Draft">
-                      ●
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    );
-
-  // --- Right: detail -------------------------------------------------------
-  let detail: React.ReactNode;
+  let body: React.ReactNode;
   if (selected === null) {
-    detail = (
-      <div className="list-detail__empty-detail">
-        <p>Select a post to edit, or start a new one.</p>
+    body = (
+      <div className="panel-empty">
+        <p>Select a post from the sidebar, or start a new one.</p>
         <button
           className="btn btn--primary"
           type="button"
@@ -190,9 +44,9 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
       </div>
     );
   } else if (selected.kind === "new") {
-    detail = <PostEditor mode="create" onExit={onEditorExit} />;
+    body = <PostEditor mode="create" onExit={onEditorExit} />;
   } else {
-    detail = (
+    body = (
       <PostEditor
         mode="edit"
         slug={selected.slug}
@@ -202,30 +56,28 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
     );
   }
 
-  // --- Header actions ------------------------------------------------------
-  const headerActions = (
-    <>
-      <button
-        className="btn btn--primary"
-        type="button"
-        onClick={() => onSelectedChange({ kind: "new" })}
-        disabled={!ready}
-      >
-        New post
-      </button>
-      <PublishButton />
-    </>
-  );
-
   return (
-    <ListDetailLayout
-      title="Posts"
-      description="MDX-authored blog posts under content/posts/*.mdx."
-      headerActions={headerActions}
-      listHeader={listHeader}
-      list={list}
-      detail={detail}
-      error={error}
-    />
+    <section className="panel-shell">
+      <header className="panel-shell__header">
+        <div className="panel-shell__titleblock">
+          <h1 className="panel-shell__title">Blog</h1>
+          <p className="panel-shell__description">
+            MDX-authored blog posts under content/posts/*.mdx.
+          </p>
+        </div>
+        <div className="panel-shell__actions">
+          <button
+            className="btn btn--primary"
+            type="button"
+            onClick={() => onSelectedChange({ kind: "new" })}
+            disabled={!ready}
+          >
+            New post
+          </button>
+          <PublishButton />
+        </div>
+      </header>
+      <div className="panel-shell__body">{body}</div>
+    </section>
   );
 }

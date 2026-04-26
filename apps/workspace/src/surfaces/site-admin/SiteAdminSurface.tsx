@@ -3,6 +3,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import type { SurfaceNavItem } from "../types";
 import { CommandPalette } from "./CommandPalette";
+import type { ComponentName } from "./ComponentEditor";
 import { DisconnectedNotice } from "./DisconnectedNotice";
 import { MessageBar } from "./MessageBar";
 import {
@@ -13,8 +14,19 @@ import {
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider, useSiteAdmin, type PostsGrouping } from "./state";
-import type { ItemSelection, SiteAdminTab } from "./types";
+import type {
+  ItemSelection,
+  PageListRow,
+  PostListRow,
+  SiteAdminTab,
+} from "./types";
+import { normalizePageListRow, normalizePostListRow } from "./utils";
 
+const ComponentsPanel = lazy(() =>
+  import("./ComponentsPanel").then((module) => ({
+    default: module.ComponentsPanel,
+  })),
+);
 const HomePanel = lazy(() =>
   import("./HomePanel").then((module) => ({ default: module.HomePanel })),
 );
@@ -39,34 +51,47 @@ function PanelFallback() {
   );
 }
 
-// Decode an active nav item id of the form "posts:my-slug" into a tab +
-// slug pair. Plain ids (no colon) decode to null. Used both to derive
-// the active tab when the sidebar deep-links into an editor and to
-// trigger the corresponding `setSelected({kind:"edit", slug})`.
-function decodeNavItemId(
-  id: string | null,
-): { tab: "posts" | "pages"; slug: string } | null {
+type DecodedNavItem =
+  | { tab: "posts" | "pages"; slug: string }
+  | { tab: "components"; name: ComponentName };
+
+const COMPONENT_NAMES: readonly ComponentName[] = [
+  "news",
+  "teaching",
+  "publications",
+  "works",
+];
+
+function isComponentName(value: string): value is ComponentName {
+  return (COMPONENT_NAMES as readonly string[]).includes(value);
+}
+
+// Decode an active nav item id of the form "posts:my-slug" / "pages:..."
+// / "components:news" into a tab + payload pair. Plain ids (no colon)
+// decode to null. Used both to derive the active tab when the sidebar
+// deep-links into an editor and to trigger the corresponding selection
+// state on the panel.
+function decodeNavItemId(id: string | null): DecodedNavItem | null {
   if (!id) return null;
   const colon = id.indexOf(":");
   if (colon < 0) return null;
   const prefix = id.slice(0, colon);
-  if (prefix !== "posts" && prefix !== "pages") return null;
-  const slug = id.slice(colon + 1);
-  if (!slug) return null;
-  return { tab: prefix, slug };
-}
-
-interface SidebarPageRow {
-  slug: string;
-  title: string;
-  version: string;
+  const tail = id.slice(colon + 1);
+  if (!tail) return null;
+  if (prefix === "posts" || prefix === "pages") {
+    return { tab: prefix, slug: tail };
+  }
+  if (prefix === "components" && isComponentName(tail)) {
+    return { tab: "components", name: tail };
+  }
+  return null;
 }
 
 // Group flat slug rows like ["docs/intro", "docs/api/auth"] into a
 // nested SurfaceNavItem tree. Intermediate path segments without their
 // own page just appear as folder rows; the leaf row carries the real
 // title.
-function buildPagesTree(rows: SidebarPageRow[]): SurfaceNavItem[] {
+function buildPagesTree(rows: PageListRow[]): SurfaceNavItem[] {
   type Node = {
     id: string;
     label: string;
@@ -143,21 +168,13 @@ function isValidPageSlugClient(slug: string): boolean {
   return parts.every((part) => PAGE_SEGMENT_RE.test(part));
 }
 
-interface SidebarPostRow {
-  slug: string;
-  title: string;
-  draft: boolean;
-  dateIso: string;
-  version: string;
-}
-
 // Apply the current sidebar grouping to a flat post list. "all" returns
 // a flat tree (one row per post). "drafts" / "published" filter by the
 // draft flag but stay flat. "by-year" extracts the year from dateIso
 // (or "Undated" when missing) and produces one folder per year newest
 // first; posts within each year are date-desc.
 function buildPostsTree(
-  rows: SidebarPostRow[],
+  rows: PostListRow[],
   grouping: PostsGrouping,
 ): SurfaceNavItem[] {
   const filtered =
@@ -178,10 +195,12 @@ function buildPostsTree(
   }
   // "by-year": group by 4-digit year extracted from dateIso. Years sort
   // newest first; posts inside each year sort newest first within their
-  // year too.
-  const buckets = new Map<string, SidebarPostRow[]>();
+  // year too. dateIso is nullable on PostListRow — undated posts land
+  // in the "Undated" bucket which sinks to the bottom.
+  const buckets = new Map<string, PostListRow[]>();
   for (const row of filtered) {
-    const yearMatch = /^(\d{4})/.exec(row.dateIso);
+    const iso = row.dateIso ?? "";
+    const yearMatch = /^(\d{4})/.exec(iso);
     const year = yearMatch ? yearMatch[1] : "Undated";
     const arr = buckets.get(year);
     if (arr) arr.push(row);
@@ -194,7 +213,7 @@ function buildPostsTree(
   });
   return orderedYears.map((year) => {
     const items = (buckets.get(year) ?? [])
-      .sort((a, b) => b.dateIso.localeCompare(a.dateIso))
+      .sort((a, b) => (b.dateIso ?? "").localeCompare(a.dateIso ?? ""))
       .map((r) => ({
         id: `posts:${r.slug}`,
         label: r.title || r.slug,
@@ -224,6 +243,8 @@ function SiteAdminContent() {
     postsGrouping,
     request,
     setMessage,
+    setPagesIndex,
+    setPostsIndex,
   } = useSiteAdmin();
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -231,16 +252,24 @@ function SiteAdminContent() {
   // palette can deep-link straight into a specific post/page.
   const [postsSelected, setPostsSelected] = useState<ItemSelection>(null);
   const [pagesSelected, setPagesSelected] = useState<ItemSelection>(null);
-  const [sidebarPostRows, setSidebarPostRows] = useState<SidebarPostRow[]>([]);
-  const [pageRows, setPageRows] = useState<SidebarPageRow[]>([]);
+  // Components panel only ever shows one component at a time; the
+  // sidebar leaf id ("components:news") drives this state via
+  // decodeNavItemId.
+  const [componentsSelected, setComponentsSelected] =
+    useState<ComponentName | null>(null);
+  // Cached post / page rows — drive both the sidebar tree and the
+  // command palette index. Phase 2 dropped the panel-local lists so
+  // these are now the only fetch.
+  const [postRows, setPostRows] = useState<PostListRow[]>([]);
+  const [pageRows, setPageRows] = useState<PageListRow[]>([]);
   const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
 
   // Derived tree applies the current grouping setting to the cached
   // post rows. Cheap enough to recompute on every grouping change; no
   // need to refetch.
   const postsTree = useMemo(
-    () => buildPostsTree(sidebarPostRows, postsGrouping),
-    [sidebarPostRows, postsGrouping],
+    () => buildPostsTree(postRows, postsGrouping),
+    [postRows, postsGrouping],
   );
 
   const decodedItem = useMemo(
@@ -258,15 +287,18 @@ function SiteAdminContent() {
       : SITE_ADMIN_DEFAULT_TAB;
   }, [activeNavItemId, decodedItem]);
 
-  // When the user clicks a sidebar child (posts:slug / pages:slug),
-  // open the editor for that slug. The activeNavItemId is what the
-  // shell persists; the *Selected state is what the panel renders.
+  // When the user clicks a sidebar child (posts:slug / pages:slug /
+  // components:news), open the editor for that target. The
+  // activeNavItemId is what the shell persists; the *Selected state
+  // is what the panel renders.
   useEffect(() => {
     if (!decodedItem) return;
     if (decodedItem.tab === "posts") {
       setPostsSelected({ kind: "edit", slug: decodedItem.slug });
     } else if (decodedItem.tab === "pages") {
       setPagesSelected({ kind: "edit", slug: decodedItem.slug });
+    } else if (decodedItem.tab === "components") {
+      setComponentsSelected(decodedItem.name);
     }
   }, [decodedItem]);
 
@@ -286,7 +318,9 @@ function SiteAdminContent() {
       setPostsSelected({ kind: "new" });
       return;
     }
-    if (target === "pages") {
+    // "+" on the Home row → create a new page at root. Home replaced
+    // the old "pages" parent as the page-tree's root affordance.
+    if (target === "home") {
       setActiveNavItemId("pages");
       setPagesSelected({ kind: "new" });
       return;
@@ -302,15 +336,18 @@ function SiteAdminContent() {
     }
   }, [activeNavItemId, setActiveNavItemId]);
 
-  // Eager-fetch the posts + pages indexes once we have credentials so
-  // the sidebar tree shows up without first visiting the Posts/Pages
-  // tabs. Two parallel calls — failures are silent (the sidebar just
-  // stays collapsed).
+  // Eager-fetch the posts + pages indexes once we have credentials.
+  // This is the single source for both the sidebar tree (Phase 1) and
+  // the command palette index — Phase 2 deleted the panel-local list
+  // that used to populate the palette. Two parallel calls; failures
+  // are silent (the sidebar just stays collapsed, palette empty).
   useEffect(() => {
     if (!ready) {
-      setSidebarPostRows([]);
+      setPostRows([]);
       setPageRows([]);
       setPagesTree([]);
+      setPostsIndex([]);
+      setPagesIndex([]);
       return;
     }
     let cancelled = false;
@@ -322,51 +359,63 @@ function SiteAdminContent() {
       if (cancelled) return;
       if (postsResp.ok) {
         const data = (postsResp.data ?? {}) as Record<string, unknown>;
-        const rows = Array.isArray(data.posts) ? data.posts : [];
-        const out: SidebarPostRow[] = [];
-        for (const raw of rows) {
-          if (!raw || typeof raw !== "object") continue;
-          const obj = raw as Record<string, unknown>;
-          const slug = typeof obj.slug === "string" ? obj.slug : "";
-          if (!slug) continue;
-          const title = typeof obj.title === "string" ? obj.title : slug;
-          const draft = obj.draft === true;
-          const dateIso = typeof obj.dateIso === "string" ? obj.dateIso : "";
-          const version = typeof obj.version === "string" ? obj.version : "";
-          out.push({ slug, title, draft, dateIso, version });
+        const raw = Array.isArray(data.posts) ? data.posts : [];
+        const parsed: PostListRow[] = [];
+        for (const r of raw) {
+          const row = normalizePostListRow(r);
+          if (row) parsed.push(row);
         }
-        setSidebarPostRows(out);
+        setPostRows(parsed);
+        setPostsIndex(parsed);
       }
       if (pagesResp.ok) {
         const data = (pagesResp.data ?? {}) as Record<string, unknown>;
-        const rows = Array.isArray(data.pages) ? data.pages : [];
-        const flat: SidebarPageRow[] = [];
-        for (const raw of rows) {
-          if (!raw || typeof raw !== "object") continue;
-          const obj = raw as Record<string, unknown>;
-          const slug = typeof obj.slug === "string" ? obj.slug : "";
-          if (!slug) continue;
-          const title = typeof obj.title === "string" ? obj.title : slug;
-          const version = typeof obj.version === "string" ? obj.version : "";
-          flat.push({ slug, title, version });
+        const raw = Array.isArray(data.pages) ? data.pages : [];
+        const parsed: PageListRow[] = [];
+        for (const r of raw) {
+          const row = normalizePageListRow(r);
+          if (row) parsed.push(row);
         }
-        setPageRows(flat);
-        setPagesTree(buildPagesTree(flat));
+        setPageRows(parsed);
+        setPagesTree(buildPagesTree(parsed));
+        setPagesIndex(parsed);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [ready, request, contentRevision]);
+  }, [ready, request, contentRevision, setPostsIndex, setPagesIndex]);
 
-  // Push trees up to the App-level nav state so Sidebar can render
-  // them under the static "Posts" / "Pages" rows.
+  // Build the unified Home tree. Home is the only top-level item under
+  // Content; underneath it the sidebar shows:
+  //   - "Blog" (id "posts") — a virtual parent whose children are the
+  //     real post leaves. Clicking the row routes to the Posts panel.
+  //   - one row per standalone page (about, bio, etc.) at the top
+  //     level, plus nested folders for hierarchical slugs.
+  // App.tsx merges children only at the top-level `home` item — it
+  // doesn't recurse — so we pre-assemble Blog's children inline rather
+  // than calling setNavItemChildren("posts", ...) separately.
+  const homeChildren = useMemo<readonly SurfaceNavItem[]>(() => {
+    const blog: SurfaceNavItem = {
+      id: "posts",
+      label: "Blog",
+      // No icon — Blog sits among the page leaves (which are also
+      // icon-less) under Home; an icon would single it out
+      // visually when it's just one of the children.
+      // "+" on Blog creates a new post (the surface decodes
+      // "add:posts" into a fresh PostEditor).
+      canAddChild: true,
+      children: postsTree.length > 0 ? postsTree : undefined,
+    };
+    return [blog, ...pagesTree];
+  }, [postsTree, pagesTree]);
+
   useEffect(() => {
-    setNavItemChildren("posts", postsTree.length > 0 ? postsTree : null);
-  }, [postsTree, setNavItemChildren]);
-  useEffect(() => {
-    setNavItemChildren("pages", pagesTree.length > 0 ? pagesTree : null);
-  }, [pagesTree, setNavItemChildren]);
+    setNavItemChildren(
+      "home",
+      homeChildren.length > 0 ? homeChildren : null,
+    );
+  }, [homeChildren, setNavItemChildren]);
 
   // Drag-reparent handler: Sidebar fires (fromId, toId) with sidebar
   // ids like "pages:docs/intro" and "pages" (the static root). Decode
@@ -386,7 +435,10 @@ function SiteAdminContent() {
         ? fromSlug.slice(fromSlug.lastIndexOf("/") + 1)
         : fromSlug;
       let toSlug: string;
-      if (toId === "pages") {
+      if (toId === "home") {
+        // Drop on the Home parent row → reparent to root (slug becomes
+        // just its leaf). Home replaced the old "pages" parent as the
+        // root drop target.
         toSlug = leaf;
       } else if (toId.startsWith("pages:")) {
         const targetSlug = toId.slice("pages:".length);
@@ -448,7 +500,7 @@ function SiteAdminContent() {
       if (itemId.startsWith("posts:")) {
         const fromSlug = itemId.slice("posts:".length);
         if (fromSlug === cleaned) return;
-        const row = sidebarPostRows.find((r) => r.slug === fromSlug);
+        const row = postRows.find((r) => r.slug === fromSlug);
         if (!row) {
           setMessage("error", `Couldn't find post metadata for ${fromSlug}.`);
           return;
@@ -497,7 +549,7 @@ function SiteAdminContent() {
     setActiveNavItemId,
     setMessage,
     setRenameNavItemHandler,
-    sidebarPostRows,
+    postRows,
   ]);
 
   // Live-validate the rename input against the slug rules so users see
@@ -513,7 +565,7 @@ function SiteAdminContent() {
           return "1–60 chars: lowercase letters, digits, dashes (no leading/trailing dash)";
         }
         const fromSlug = itemId.slice("posts:".length);
-        if (trimmed !== fromSlug && sidebarPostRows.some((r) => r.slug === trimmed)) {
+        if (trimmed !== fromSlug && postRows.some((r) => r.slug === trimmed)) {
           return `A post already exists at "${trimmed}"`;
         }
         return null;
@@ -531,7 +583,7 @@ function SiteAdminContent() {
       return null;
     });
     return () => setRenameValidator(null);
-  }, [pageRows, setRenameValidator, sidebarPostRows]);
+  }, [pageRows, setRenameValidator, postRows]);
 
   const selectTab = useCallback(
     (tab: SiteAdminTab) => setActiveNavItemId(tab),
@@ -640,6 +692,12 @@ function SiteAdminContent() {
                 <PagesPanel
                   selected={pagesSelected}
                   onSelectedChange={setPagesSelected}
+                />
+              )}
+              {activeTab === "components" && (
+                <ComponentsPanel
+                  selected={componentsSelected}
+                  onSelectedChange={setComponentsSelected}
                 />
               )}
               {activeTab === "settings" && <SettingsPanel />}
