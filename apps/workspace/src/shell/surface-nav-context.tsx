@@ -25,6 +25,11 @@ interface SurfaceNavContextValue {
   setMoveNavItemHandler: (
     handler: ((fromId: string, toId: string) => void) | null,
   ) => void;
+  /** Surfaces register a callback here to handle explicit sibling
+   * reordering from the sidebar. */
+  setReorderNavItemHandler: (
+    handler: ((itemId: string, direction: "up" | "down") => void) | null,
+  ) => void;
   /** Surfaces register a callback here to handle inline rename. Sidebar
    * fires onRenameNavItem with the row id and the new slug; the surface
    * decides what API call to make. Pass `null` to clear. */
