@@ -1328,3 +1328,165 @@ export function FeaturedPagesBlockEditableBlock({
     </div>
   );
 }
+
+// ---------- Columns ----------
+
+// Same renderChildren shape Toggle uses; columns and toggles both nest
+// recursively into EditableBlocksList without importing it directly.
+export interface ColumnsChildrenRenderProps {
+  blocks: MdxBlock[];
+  depth: number;
+  onBlocksChange: (next: MdxBlock[]) => void;
+}
+
+export interface ColumnsEditableBlockProps {
+  block: MdxBlock;
+  depth: number;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
+}
+
+export function ColumnsEditableBlock({
+  block,
+  depth,
+  onPatch,
+  renderChildren,
+}: ColumnsEditableBlockProps) {
+  const count: 2 | 3 = (block.columns ?? 2) >= 3 ? 3 : 2;
+  const gap = block.columnsGap ?? "standard";
+  const align = block.columnsAlign ?? "start";
+  const variant = block.columnsVariant ?? "";
+  const columns = block.children ?? [];
+
+  const setCount = (next: 2 | 3) => {
+    onPatch((current) => {
+      const nextChildren = (current.children ?? []).slice();
+      while (nextChildren.length < next) nextChildren.push(createMdxBlock("column"));
+      return { ...current, columns: next, children: nextChildren.slice(0, next) };
+    });
+  };
+
+  const updateColumnChildren = (idx: number, nextBlocks: MdxBlock[]) => {
+    onPatch((current) => {
+      const nextChildren = (current.children ?? []).slice();
+      const target = nextChildren[idx];
+      if (!target) return current;
+      nextChildren[idx] = { ...target, children: nextBlocks };
+      return { ...current, children: nextChildren };
+    });
+  };
+
+  return (
+    <div
+      className="mdx-document-columns-block"
+      data-cols={count}
+      data-gap={gap}
+      data-align={align}
+    >
+      <div className="mdx-document-columns-block__toolbar">
+        <label>
+          <span>Columns</span>
+          <select
+            value={count}
+            onChange={(event) => setCount(Number(event.target.value) as 2 | 3)}
+            aria-label="Column count"
+          >
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+          </select>
+        </label>
+        <label>
+          <span>Gap</span>
+          <select
+            value={gap}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                columnsGap: event.target.value as "compact" | "standard" | "loose",
+              }))
+            }
+            aria-label="Column gap"
+          >
+            <option value="compact">Compact</option>
+            <option value="standard">Standard</option>
+            <option value="loose">Loose</option>
+          </select>
+        </label>
+        <label>
+          <span>Align</span>
+          <select
+            value={align}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                columnsAlign: event.target.value as "start" | "center",
+              }))
+            }
+            aria-label="Vertical alignment"
+          >
+            <option value="start">Top</option>
+            <option value="center">Middle</option>
+          </select>
+        </label>
+        <label>
+          <span>Variant</span>
+          <select
+            value={variant}
+            onChange={(event) => {
+              const value = event.target.value;
+              onPatch((current) => ({
+                ...current,
+                columnsVariant: value === "classicIntro" ? "classicIntro" : undefined,
+              }));
+            }}
+            aria-label="Column variant"
+          >
+            <option value="">Default</option>
+            <option value="classicIntro">Classic Intro</option>
+          </select>
+        </label>
+      </div>
+      <div className="mdx-document-columns-block__grid">
+        {columns.slice(0, count).map((column, idx) => (
+          <div className="mdx-document-columns-block__column" key={column.id}>
+            {renderChildren({
+              blocks: column.children ?? [],
+              depth: depth + 2,
+              onBlocksChange: (next) => updateColumnChildren(idx, next),
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Defensive renderer for `column` blocks that escape their `columns` parent.
+// In normal use, ColumnsEditableBlock renders each column inline; this branch
+// only fires if a stray <Column> shows up at the top level (hand-edited MDX,
+// migration glitch). Render the children recursively so the user can still
+// edit them and re-wrap in a Columns block from the slash menu.
+export interface ColumnEditableBlockProps {
+  block: MdxBlock;
+  depth: number;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
+}
+
+export function ColumnEditableBlock({
+  block,
+  depth,
+  onPatch,
+  renderChildren,
+}: ColumnEditableBlockProps) {
+  return (
+    <div className="mdx-document-column-block">
+      {renderChildren({
+        blocks: block.children ?? [],
+        depth: depth + 1,
+        onBlocksChange: (next) =>
+          onPatch((current) => ({ ...current, children: next })),
+      })}
+    </div>
+  );
+}

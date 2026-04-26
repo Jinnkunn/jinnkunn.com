@@ -112,6 +112,64 @@ describe("toggle blocks", () => {
   });
 });
 
+describe("columns blocks", () => {
+  it("round-trips a default 2-column block with one paragraph each", () => {
+    const source =
+      '<Columns count={2}>\n<Column>\n\nLeft side.\n\n</Column>\n<Column>\n\nRight side.\n\n</Column>\n</Columns>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("columns");
+    expect(blocks[0].columns).toBe(2);
+    expect(blocks[0].children).toHaveLength(2);
+    expect(blocks[0].children?.[0].type).toBe("column");
+    expect(blocks[0].children?.[0].children?.[0].text).toBe("Left side.");
+    expect(blocks[0].children?.[1].children?.[0].text).toBe("Right side.");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("round-trips a 3-column block with gap, align, and variant attrs", () => {
+    const source =
+      '<Columns count={3} variant="classicIntro" gap="loose" align="center">\n<Column>\n\nA\n\n</Column>\n<Column>\n\nB\n\n</Column>\n<Column>\n\nC\n\n</Column>\n</Columns>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].columns).toBe(3);
+    expect(blocks[0].columnsGap).toBe("loose");
+    expect(blocks[0].columnsAlign).toBe("center");
+    expect(blocks[0].columnsVariant).toBe("classicIntro");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("supports nested headings and lists inside a column", () => {
+    const source =
+      '<Columns count={2}>\n<Column>\n\n## Heading\n\n- one\n- two\n\n</Column>\n<Column>\n\nPlain text.\n\n</Column>\n</Columns>\n';
+    const blocks = parseMdxBlocks(source);
+    const left = blocks[0].children?.[0].children ?? [];
+    expect(left[0].type).toBe("heading");
+    expect(left[1].type).toBe("list");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("clamps a stray count={1} up to 2 and pads the missing column", () => {
+    const source = '<Columns count={1}>\n<Column>\n\nOnly one.\n\n</Column>\n</Columns>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].columns).toBe(2);
+    expect(blocks[0].children).toHaveLength(2);
+  });
+
+  it("ignores unknown gap/align values rather than crashing", () => {
+    const source =
+      '<Columns count={2} gap="bogus" align="weird">\n<Column>\n\nA\n\n</Column>\n<Column>\n\nB\n\n</Column>\n</Columns>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].columnsGap).toBeUndefined();
+    expect(blocks[0].columnsAlign).toBeUndefined();
+  });
+
+  it("falls back to raw when Columns is unclosed", () => {
+    const source = "<Columns count={2}>\n<Column>\n\nA\n\n</Column>\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("raw");
+  });
+});
+
 describe("table blocks", () => {
   it("round-trips a 2x2 table with column alignment", () => {
     const source =
