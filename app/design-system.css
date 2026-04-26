@@ -65,6 +65,18 @@ html[data-theme="light"] {
   --ds-info-bg: rgba(196, 224, 255, 0.22);
   --ds-info-border: rgba(46, 170, 220, 0.22);
 
+  /* Notion-style background tints for the <Color bg="..."> wrapper. Only
+   * background tones; foreground text inherits the surrounding palette. */
+  --ds-color-bg-gray: rgba(120, 119, 116, 0.1);
+  --ds-color-bg-brown: rgba(159, 107, 83, 0.12);
+  --ds-color-bg-orange: rgba(217, 115, 13, 0.12);
+  --ds-color-bg-yellow: rgba(203, 145, 47, 0.16);
+  --ds-color-bg-green: rgba(68, 131, 97, 0.16);
+  --ds-color-bg-blue: rgba(51, 126, 169, 0.14);
+  --ds-color-bg-purple: rgba(144, 101, 176, 0.14);
+  --ds-color-bg-pink: rgba(193, 76, 138, 0.14);
+  --ds-color-bg-red: rgba(212, 76, 71, 0.14);
+
   --ds-selection-bg: rgba(216, 191, 131, 0.56);
   --ds-selection-text: #2f2c26;
   --ds-toc-underline: rgba(55, 53, 47, 0.24);
@@ -139,6 +151,16 @@ html[data-theme="dark"] {
   --ds-info-text: #98d5f0;
   --ds-info-bg: rgba(70, 140, 190, 0.2);
   --ds-info-border: rgba(70, 140, 190, 0.32);
+
+  --ds-color-bg-gray: rgba(155, 154, 151, 0.18);
+  --ds-color-bg-brown: rgba(186, 133, 110, 0.22);
+  --ds-color-bg-orange: rgba(217, 135, 50, 0.22);
+  --ds-color-bg-yellow: rgba(217, 165, 70, 0.26);
+  --ds-color-bg-green: rgba(96, 162, 130, 0.26);
+  --ds-color-bg-blue: rgba(86, 161, 200, 0.24);
+  --ds-color-bg-purple: rgba(170, 130, 210, 0.24);
+  --ds-color-bg-pink: rgba(220, 110, 165, 0.24);
+  --ds-color-bg-red: rgba(225, 110, 105, 0.24);
 
   --ds-selection-bg: rgba(133, 104, 44, 0.58);
   --ds-selection-text: #fff8eb;
