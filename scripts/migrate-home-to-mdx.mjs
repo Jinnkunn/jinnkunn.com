@@ -119,27 +119,72 @@ function migrateFeatured(section) {
   return { mdx: ensureBlankLineBetween([intro, tag]), note: null };
 }
 
+function renderLayoutBlock(block) {
+  if (block.type === "image") {
+    if (!block.url) return "";
+    const alt = block.alt || "";
+    const caption = block.caption ? `\n\n*${block.caption}*` : "";
+    return `![${alt}](${block.url})${caption}`;
+  }
+  if (block.type === "markdown") {
+    const heading = block.title ? `### ${block.title}` : "";
+    const body = block.body?.trim() || "";
+    return ensureBlankLineBetween([heading, body]);
+  }
+  return "";
+}
+
 function migrateLayout(section) {
+  const cols = section.columns >= 1 && section.columns <= 3 ? section.columns : 2;
+  // Group blocks by their column index (1-based in the source schema).
+  const byColumn = Array.from({ length: cols }, (_, i) => {
+    const target = i + 1;
+    return (section.blocks || [])
+      .filter((block) => block.column === target)
+      .map(renderLayoutBlock)
+      .filter((mdx) => mdx.length > 0)
+      .join("\n\n");
+  });
+
+  // 1-column layouts don't need a Columns wrapper — emit the markdown
+  // straight through.
+  if (cols === 1) {
+    const flat = byColumn.filter((c) => c.length > 0).join("\n\n");
+    const lines = [];
+    if (section.title) lines.push(`## ${section.title}`);
+    if (flat) lines.push(flat);
+    return { mdx: ensureBlankLineBetween(lines), note: null };
+  }
+
+  const variantAttr =
+    section.variant === "classicIntro" ? ` variant="classicIntro"` : "";
+  const gapAttr =
+    section.gap && section.gap !== "standard" ? ` gap="${section.gap}"` : "";
+  const alignAttr =
+    section.verticalAlign && section.verticalAlign !== "start"
+      ? ` align="${section.verticalAlign}"`
+      : "";
+
+  const columnTags = byColumn
+    .map((columnMdx) => `<Column>\n\n${columnMdx || "&nbsp;"}\n\n</Column>`)
+    .join("\n");
+
+  const wrapper =
+    `<Columns count={${cols}}${variantAttr}${gapAttr}${alignAttr}>\n` +
+    columnTags +
+    `\n</Columns>`;
+
   const lines = [];
   if (section.title) lines.push(`## ${section.title}`);
-  for (const block of section.blocks || []) {
-    if (block.type === "markdown") {
-      const heading = block.title ? `### ${block.title}` : "";
-      const body = block.body?.trim() || "";
-      const merged = ensureBlankLineBetween([heading, body]);
-      if (merged) lines.push(merged);
-    } else if (block.type === "image") {
-      if (!block.url) continue;
-      const alt = block.alt || "";
-      lines.push(`![${alt}](${block.url})`);
-      if (block.caption) lines.push(`*${block.caption}*`);
-    }
-  }
-  const note =
-    (section.blocks || []).length > 0
-      ? `Layout "${section.title || "(untitled)"}": multi-column structure flattened to a single column.`
-      : null;
-  return { mdx: ensureBlankLineBetween(lines), note };
+  lines.push(wrapper);
+
+  return {
+    mdx: ensureBlankLineBetween(lines),
+    note:
+      cols > 1
+        ? `Layout "${section.title || "(untitled)"}": preserved as <Columns count={${cols}}${variantAttr}/>. Visual fidelity should match the original.`
+        : null,
+  };
 }
 
 function migrateOne(section) {

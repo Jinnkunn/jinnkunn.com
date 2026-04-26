@@ -5,6 +5,7 @@ import { ClassicLink } from "@/components/classic/classic-link";
 import { Bookmark } from "./bookmark";
 import { Callout } from "./callout";
 import { Color } from "./color";
+import { Column, Columns } from "./columns";
 import { Embed } from "./embed";
 import { FeaturedPagesBlock } from "./featured-pages-block";
 import { Figure } from "./figure";
@@ -78,6 +79,8 @@ export const postMdxComponents: MDXComponents = {
   Bookmark,
   Callout,
   Color,
+  Column,
+  Columns,
   Embed,
   FeaturedPagesBlock,
   Figure,
