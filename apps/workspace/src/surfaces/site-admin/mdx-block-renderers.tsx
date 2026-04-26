@@ -2011,3 +2011,199 @@ export function NewsEntryEditableBlock({
     </div>
   );
 }
+
+
+// ---------- Teaching links / Publications profile links ----------
+// Both share the same shape as LinkListBlock's editor: an array of
+// `{label, href}` rows with add / remove / reorder controls. Distinct
+// blocks rather than reusing `link-list-block` because (a) they
+// serialize to different JSX tags, and (b) `<TeachingLinks>` carries
+// a header/footer variant that link-list-block doesn't have.
+
+export interface LinksRowEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+function patchLinkRowItems(
+  items: MdxLinkItem[] | undefined,
+  index: number,
+  patch: Partial<MdxLinkItem>,
+): MdxLinkItem[] {
+  const list = items ? items.slice() : [];
+  if (index < 0 || index >= list.length) return list;
+  list[index] = { ...list[index], ...patch };
+  return list;
+}
+
+function LinksRowEditor({
+  block,
+  onPatch,
+  withHostname,
+}: LinksRowEditableBlockProps & { withHostname: boolean }) {
+  const items = block.linkItems ?? [];
+
+  const addItem = () =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: [...(current.linkItems ?? []), { label: "", href: "" }],
+    }));
+
+  const removeItem = (index: number) =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: (current.linkItems ?? []).filter((_, i) => i !== index),
+    }));
+
+  const moveItem = (index: number, direction: -1 | 1) =>
+    onPatch((current) => {
+      const list = (current.linkItems ?? []).slice();
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return current;
+      [list[index], list[target]] = [list[target], list[index]];
+      return { ...current, linkItems: list };
+    });
+
+  const updateItem = (index: number, patch: Partial<MdxLinkItem>) =>
+    onPatch((current) => ({
+      ...current,
+      linkItems: patchLinkRowItems(current.linkItems, index, patch),
+    }));
+
+  return (
+    <ul className="mdx-document-link-list-block__items" role="list">
+      {items.length === 0 ? (
+        <li className="mdx-document-link-list-block__empty">
+          No links yet. Click &ldquo;Add link&rdquo; below.
+        </li>
+      ) : (
+        items.map((item, index) => (
+          <li key={index} className="mdx-document-link-list-block__item">
+            <input
+              aria-label={`Link ${index + 1} label`}
+              value={item.label}
+              placeholder="Label"
+              onChange={(event) =>
+                updateItem(index, { label: event.target.value })
+              }
+            />
+            <input
+              aria-label={`Link ${index + 1} URL`}
+              value={item.href}
+              placeholder="/path or https://"
+              onChange={(event) =>
+                updateItem(index, { href: event.target.value })
+              }
+            />
+            {withHostname ? (
+              <input
+                aria-label={`Link ${index + 1} hostname`}
+                value={item.hostname ?? ""}
+                placeholder="hostname (favicon)"
+                onChange={(event) =>
+                  updateItem(index, { hostname: event.target.value })
+                }
+              />
+            ) : null}
+            <div className="mdx-document-link-list-block__item-actions">
+              <button
+                type="button"
+                aria-label="Move up"
+                disabled={index === 0}
+                onClick={() => moveItem(index, -1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                aria-label="Move down"
+                disabled={index === items.length - 1}
+                onClick={() => moveItem(index, 1)}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                aria-label="Remove link"
+                onClick={() => removeItem(index)}
+              >
+                ×
+              </button>
+            </div>
+          </li>
+        ))
+      )}
+      <li>
+        <button type="button" className="btn btn--secondary" onClick={addItem}>
+          + Add link
+        </button>
+      </li>
+    </ul>
+  );
+}
+
+export function TeachingLinksEditableBlock({
+  block,
+  onPatch,
+}: LinksRowEditableBlockProps) {
+  const variant = block.teachingLinksVariant ?? "header";
+  return (
+    <div className="mdx-document-link-list-block">
+      <div className="mdx-document-data-block__head">
+        <span className="mdx-document-data-block__icon" aria-hidden="true">
+          🔗
+        </span>
+        <div className="mdx-document-data-block__heading">
+          <strong>Teaching links</strong>
+          <span>
+            {variant === "header"
+              ? "Header row — bold labels with `|` dividers, above the entries."
+              : "Footer row — plain links with ` · ` dividers, below the entries."}
+          </span>
+        </div>
+      </div>
+      <div className="mdx-document-link-list-block__row">
+        <label className="mdx-document-hero-block__field">
+          <span>Variant</span>
+          <select
+            value={variant}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                teachingLinksVariant:
+                  event.target.value === "footer" ? "footer" : "header",
+              }))
+            }
+          >
+            <option value="header">header</option>
+            <option value="footer">footer</option>
+          </select>
+        </label>
+      </div>
+      <LinksRowEditor block={block} onPatch={onPatch} withHostname={false} />
+    </div>
+  );
+}
+
+export function PublicationsProfileLinksEditableBlock({
+  block,
+  onPatch,
+}: LinksRowEditableBlockProps) {
+  return (
+    <div className="mdx-document-link-list-block">
+      <div className="mdx-document-data-block__head">
+        <span className="mdx-document-data-block__icon" aria-hidden="true">
+          🔗
+        </span>
+        <div className="mdx-document-data-block__heading">
+          <strong>Profile links</strong>
+          <span>
+            Yellow-highlighted link strip above the publications list. Each
+            row optionally carries a hostname (drives the favicon).
+          </span>
+        </div>
+      </div>
+      <LinksRowEditor block={block} onPatch={onPatch} withHostname={true} />
+    </div>
+  );
+}
