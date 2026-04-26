@@ -290,6 +290,34 @@
   margin-bottom: 0;
 }
 
+/* Notion-mode Home renders bodyMdx through `.mdx-post__body` directly
+   (no enclosing `.home-section__body` wrapper). Restore the same
+   paragraph rhythm + body type the section-builder used to give every
+   classicBody section, so the public Home reads the same after the
+   refactor. Kept narrow to `.page__index` so we don't bleed into other
+   surfaces that mount mdx-post__body (post / page editors). */
+.page__index .mdx-post__body {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.page__index .mdx-post__body > p {
+  margin: 0 0 32px;
+}
+
+.page__index .mdx-post__body > p:last-child {
+  margin-bottom: 0;
+}
+
+.page__index .mdx-post__body strong {
+  color: var(--color-text-default);
+  font-weight: 600;
+}
+
+.page__index .mdx-post__body {
+  color: var(--color-text-default-light);
+}
+
 .page__index .home-section__body a.notion-link.link:not([href="/chen"]):not([href="/blog"]):not([href="https://twitter.com/_jinnkunn"]):not([href="https://www.linkedin.com/in/jinkun-chen/"]) {
   --link-icon-space: 0px;
   padding-left: 0.08em;
