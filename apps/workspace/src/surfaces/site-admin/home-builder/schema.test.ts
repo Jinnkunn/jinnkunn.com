@@ -1,84 +1,81 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BLANK_HOME_DATA,
   normalizeHomeData,
   prepareHomeDataForSave,
   sameData,
 } from "./schema";
 import type { HomeData } from "../types";
 
-const sampleSection: HomeData["sections"][number] = {
-  id: "r",
-  type: "richText",
-  enabled: true,
-  body: "Some prose.",
-  variant: "standard",
-  tone: "plain",
-  textAlign: "left",
-  width: "standard",
-};
-
-describe("prepareHomeDataForSave", () => {
-  it("preserves bodyMdx through the save pipeline", () => {
-    // Regression for the migrate flow: clicking Migrate set
-    // draft.bodyMdx, but every section mutation + the save payload
-    // were piped through prepareHomeDataForSave, which only forwarded
-    // title + sections — silently dropping bodyMdx and making the
-    // migrate prompt re-appear after any subsequent edit or save.
-    const data: HomeData = {
-      schemaVersion: 3,
-      title: "Hi there!",
-      sections: [sampleSection],
-      bodyMdx: "<HeroBlock title=\"Welcome\" />\n",
-    };
-    const out = prepareHomeDataForSave(data);
-    expect(out.bodyMdx).toBe("<HeroBlock title=\"Welcome\" />\n");
+describe("normalizeHomeData", () => {
+  it("returns the BLANK template for non-object input", () => {
+    expect(normalizeHomeData(null)).toEqual(BLANK_HOME_DATA);
+    expect(normalizeHomeData(undefined)).toEqual(BLANK_HOME_DATA);
+    expect(normalizeHomeData("nope")).toEqual(BLANK_HOME_DATA);
+    expect(normalizeHomeData(42)).toEqual(BLANK_HOME_DATA);
   });
 
-  it("normalizes blank/whitespace bodyMdx to undefined", () => {
+  it("preserves a non-empty bodyMdx round-trip", () => {
+    expect(
+      normalizeHomeData({ title: "T", bodyMdx: "Hello" }).bodyMdx,
+    ).toBe("Hello");
+  });
+
+  it("drops blank/whitespace-only bodyMdx to undefined", () => {
     for (const value of ["", "   \n\n  "]) {
-      const data: HomeData = {
-        schemaVersion: 3,
-        title: "T",
-        sections: [sampleSection],
-        bodyMdx: value,
-      };
-      expect(prepareHomeDataForSave(data).bodyMdx).toBeUndefined();
+      expect(normalizeHomeData({ title: "T", bodyMdx: value }).bodyMdx).toBeUndefined();
     }
   });
 
-  it("leaves an existing bodyMdx alone when sections are also present", () => {
-    // The two content sources coexist intentionally — section-builder
-    // still works for users who haven't migrated. Save must not nuke
-    // sections just because bodyMdx exists.
-    const data: HomeData = {
-      schemaVersion: 3,
+  it("falls back to default title when blank or wrong type", () => {
+    expect(normalizeHomeData({ title: "   " }).title).toBe("Hi there!");
+    expect(normalizeHomeData({ title: 42 }).title).toBe("Hi there!");
+  });
+
+  it("silently drops legacy section data", () => {
+    // Older home.json files still load — the dropped sections data
+    // disappears on the next save. Smoke-test that the loader doesn't
+    // choke on unexpected fields.
+    const result = normalizeHomeData({
       title: "T",
-      sections: [sampleSection],
-      bodyMdx: "Some MDX",
+      bodyMdx: "body",
+      sections: [{ id: "x", type: "hero" }],
+    });
+    expect(result.title).toBe("T");
+    expect(result.bodyMdx).toBe("body");
+    expect("sections" in result).toBe(false);
+  });
+});
+
+describe("prepareHomeDataForSave", () => {
+  it("forwards title + bodyMdx through normalize", () => {
+    const data: HomeData = {
+      schemaVersion: 4,
+      title: "Hi there!",
+      bodyMdx: "<HeroBlock title=\"Welcome\" />\n",
     };
-    const out = prepareHomeDataForSave(data);
-    expect(out.bodyMdx).toBe("Some MDX");
-    expect(out.sections).toHaveLength(1);
+    expect(prepareHomeDataForSave(data).bodyMdx).toBe(
+      "<HeroBlock title=\"Welcome\" />\n",
+    );
+  });
+
+  it("normalizes blank bodyMdx to undefined", () => {
+    expect(
+      prepareHomeDataForSave({ schemaVersion: 4, title: "T", bodyMdx: "   " })
+        .bodyMdx,
+    ).toBeUndefined();
   });
 });
 
 describe("sameData", () => {
   it("treats bodyMdx changes as dirty", () => {
-    const base: HomeData = {
-      schemaVersion: 3,
-      title: "T",
-      sections: [sampleSection],
-    };
+    const base = BLANK_HOME_DATA;
     const next: HomeData = { ...base, bodyMdx: "Some MDX" };
     expect(sameData(base, next)).toBe(false);
   });
-});
 
-describe("normalizeHomeData", () => {
-  it("preserves a non-empty bodyMdx round-trip", () => {
-    expect(
-      normalizeHomeData({ title: "T", bodyMdx: "Hello" }).bodyMdx,
-    ).toBe("Hello");
+  it("treats identical drafts as clean", () => {
+    expect(sameData(BLANK_HOME_DATA, normalizeHomeData({}))).toBe(true);
   });
 });

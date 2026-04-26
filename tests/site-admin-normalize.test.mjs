@@ -8,24 +8,15 @@ import { normalizeTeachingData } from "../lib/site-admin/teaching-normalize.ts";
 import { normalizeWorksData } from "../lib/site-admin/works-normalize.ts";
 
 // ----------------------------------------------------------------------------
-// Home
+// Home — single Notion-style MDX document. The legacy section-based
+// schema (hero / richText / linkList / featuredPages / layout) was
+// retired when the Notion-mode editor became the only authoring
+// surface; `bodyMdx` is now the only content source.
 // ----------------------------------------------------------------------------
 
 const emptyHome = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   title: "Hi there!",
-  sections: [
-    {
-      id: "home-empty",
-      type: "richText",
-      enabled: true,
-      body: "",
-      variant: "standard",
-      tone: "plain",
-      textAlign: "left",
-      width: "standard",
-    },
-  ],
 };
 
 test("normalizeHomeData: returns empty template for non-object input", () => {
@@ -35,82 +26,7 @@ test("normalizeHomeData: returns empty template for non-object input", () => {
   assert.deepEqual(normalizeHomeData(42), emptyHome);
 });
 
-test("normalizeHomeData: uses sections as the only content source", () => {
-  const result = normalizeHomeData({
-    title: "Welcome",
-    sections: [
-      {
-        id: "intro",
-        type: "layout",
-        enabled: true,
-        variant: "classicIntro",
-        columns: 2,
-        gap: "standard",
-        verticalAlign: "start",
-        width: "standard",
-        blocks: [
-          {
-            id: "portrait",
-            type: "image",
-            column: 1,
-            url: "/notion-assets/abc.png",
-            alt: "Portrait",
-            shape: "portrait",
-            fit: "contain",
-          },
-          {
-            id: "copy",
-            type: "markdown",
-            column: 2,
-            body: "# Hi",
-            tone: "plain",
-            textAlign: "left",
-          },
-        ],
-      },
-    ],
-  });
-  assert.equal(result.title, "Welcome");
-  assert.equal(result.schemaVersion, 3);
-  assert.equal(result.sections[0].type, "layout");
-  assert.equal(result.sections[0].variant, "classicIntro");
-  assert.equal(result.sections[0].blocks[0].fit, "contain");
-});
-
-test("normalizeHomeData: falls back to default title when blank or wrong type", () => {
-  assert.equal(normalizeHomeData({ title: "   " }).title, "Hi there!");
-  assert.equal(normalizeHomeData({ title: 123 }).title, "Hi there!");
-});
-
-test("normalizeHomeData: ignores legacy top-level body and image fields", () => {
-  const result = normalizeHomeData({
-    title: "T",
-    body: "legacy body",
-    profileImageUrl: "   ",
-    profileImageAlt: "",
-  });
-  assert.equal(result.sections[0].type, "richText");
-  assert.equal(result.sections[0].body, "");
-  assert.ok(!("profileImageUrl" in result));
-  assert.ok(!("profileImageAlt" in result));
-});
-
-test("normalizeHomeData: falls back to an empty section when sections are missing", () => {
-  assert.deepEqual(normalizeHomeData({ title: "T", body: 42 }).sections, [
-    {
-      id: "home-empty",
-      type: "richText",
-      enabled: true,
-      body: "",
-      variant: "standard",
-      tone: "plain",
-      textAlign: "left",
-      width: "standard",
-    },
-  ]);
-});
-
-test("normalizeHomeData: preserves a non-empty bodyMdx string", () => {
+test("normalizeHomeData: preserves a non-empty bodyMdx round-trip", () => {
   const result = normalizeHomeData({
     title: "T",
     bodyMdx: "# Hi\n\n<HeroBlock title=\"Welcome\" />\n",
@@ -121,7 +37,7 @@ test("normalizeHomeData: preserves a non-empty bodyMdx string", () => {
   );
 });
 
-test("normalizeHomeData: drops blank / whitespace-only bodyMdx", () => {
+test("normalizeHomeData: drops blank/whitespace-only bodyMdx to undefined", () => {
   for (const value of ["", "   \n  ", undefined, null, 42]) {
     const result = normalizeHomeData({ title: "T", bodyMdx: value });
     assert.equal(
@@ -132,89 +48,25 @@ test("normalizeHomeData: drops blank / whitespace-only bodyMdx", () => {
   }
 });
 
-test("normalizeHomeData: preserves normalized home sections", () => {
-  const result = normalizeHomeData({
-    title: "Legacy",
-    sections: [
-      {
-        id: "intro",
-        type: "hero",
-        enabled: true,
-        title: "Custom",
-        body: "Custom body",
-        imagePosition: "right",
-        textAlign: "center",
-        width: "wide",
-      },
-      {
-        id: "quick-links",
-        type: "linkList",
-        enabled: false,
-        layout: "inline",
-        links: [{ label: "Works", href: "/works", description: "Selected work" }],
-      },
-    ],
-  });
-  assert.equal(result.title, "Legacy");
-  assert.equal(result.sections.length, 2);
-  assert.equal(result.sections[0].type, "hero");
-  assert.equal(result.sections[0].imagePosition, "right");
-  assert.equal(result.sections[0].textAlign, "center");
-  assert.equal(result.sections[0].width, "wide");
-  assert.equal(result.sections[1].type, "linkList");
-  assert.equal(result.sections[1].enabled, false);
-  assert.equal(result.sections[1].links[0].href, "/works");
+test("normalizeHomeData: falls back to default title when blank or wrong type", () => {
+  assert.equal(normalizeHomeData({ title: "   " }).title, "Hi there!");
+  assert.equal(normalizeHomeData({ title: 123 }).title, "Hi there!");
 });
 
-test("normalizeHomeData: preserves generic layout sections", () => {
+test("normalizeHomeData: silently drops legacy section data", () => {
+  // Older home.json files still load — the dropped sections data
+  // disappears on the next save. Smoke-test that the loader doesn't
+  // choke on unexpected fields.
   const result = normalizeHomeData({
-    title: "Home",
-    body: "Intro",
-    sections: [
-      {
-        id: "image-text",
-        type: "layout",
-        enabled: true,
-        title: "About",
-        variant: "classicIntro",
-        columns: 2,
-        gap: "loose",
-        verticalAlign: "center",
-        width: "wide",
-        blocks: [
-          {
-            id: "portrait",
-            type: "image",
-            column: 1,
-            url: "/uploads/2026/04/portrait.png",
-            alt: "Portrait",
-            caption: "Lab photo",
-            shape: "portrait",
-            fit: "cover",
-          },
-          {
-            id: "copy",
-            type: "markdown",
-            column: 2,
-            title: "Hi",
-            body: "Markdown body",
-            tone: "panel",
-            textAlign: "left",
-          },
-        ],
-      },
-    ],
+    title: "T",
+    bodyMdx: "body",
+    sections: [{ id: "x", type: "hero" }],
+    profileImageUrl: "/legacy.png",
   });
-  assert.equal(result.sections[0].type, "layout");
-  assert.equal(result.sections[0].variant, "classicIntro");
-  assert.equal(result.sections[0].columns, 2);
-  assert.equal(result.sections[0].gap, "loose");
-  assert.equal(result.sections[0].verticalAlign, "center");
-  assert.equal(result.sections[0].blocks.length, 2);
-  assert.equal(result.sections[0].blocks[0].type, "image");
-  assert.equal(result.sections[0].blocks[0].url, "/uploads/2026/04/portrait.png");
-  assert.equal(result.sections[0].blocks[1].type, "markdown");
-  assert.equal(result.sections[0].blocks[1].tone, "panel");
+  assert.equal(result.title, "T");
+  assert.equal(result.bodyMdx, "body");
+  assert.ok(!("sections" in result));
+  assert.ok(!("profileImageUrl" in result));
 });
 
 // ----------------------------------------------------------------------------
