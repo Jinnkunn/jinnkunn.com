@@ -260,3 +260,123 @@
     background: var(--ds-surface-page);
   }
 }
+
+/* Notion-style bookmark card. */
+.notion-bookmark {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: 8px;
+  background: var(--ds-surface-soft);
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.notion-bookmark:hover {
+  background: var(--ds-interactive-hover);
+}
+
+.notion-bookmark__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.notion-bookmark__title {
+  font-weight: 600;
+}
+
+.notion-bookmark__description {
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notion-bookmark__url {
+  font-size: 11.5px;
+  color: var(--ds-text-secondary);
+  opacity: 0.8;
+}
+
+.notion-bookmark__thumb {
+  width: 120px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--ds-interactive-hover);
+}
+
+.notion-bookmark__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* File link */
+.notion-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: 6px;
+  background: var(--ds-surface-soft);
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+  transition: background-color 120ms ease;
+}
+
+.notion-file-link:hover {
+  background: var(--ds-interactive-hover);
+}
+
+.notion-file-link__icon {
+  color: var(--ds-text-secondary);
+}
+
+.notion-file-link__size {
+  color: var(--ds-text-secondary);
+  font-size: 11.5px;
+}
+
+/* Inline page link */
+.notion-page-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--ds-interactive-hover);
+}
+
+.notion-page-link:hover {
+  background: var(--ds-border-subtle);
+}
+
+.notion-page-link__icon {
+  color: var(--ds-text-secondary);
+  font-size: 11px;
+}
+
+/* Self-hosted video figure */
+.notion-video {
+  margin: 1.4em 0;
+}
+
+.notion-video video {
+  width: 100%;
+  border-radius: 6px;
+  background: black;
+}

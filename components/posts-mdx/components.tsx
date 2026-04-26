@@ -2,10 +2,14 @@ import type { AnchorHTMLAttributes, HTMLAttributes } from "react";
 import type { MDXComponents } from "mdx/types";
 
 import { ClassicLink } from "@/components/classic/classic-link";
+import { Bookmark } from "./bookmark";
 import { Callout } from "./callout";
 import { Embed } from "./embed";
 import { Figure } from "./figure";
+import { FileLink } from "./file-link";
+import { PageLink } from "./page-link";
 import { Toggle } from "./toggle";
+import { Video } from "./video";
 
 function joinClassNames(...classNames: (string | undefined)[]): string {
   return classNames.filter(Boolean).join(" ");
@@ -63,8 +67,12 @@ function MdxPre({ children, className, ...props }: HTMLAttributes<HTMLPreElement
 export const postMdxComponents: MDXComponents = {
   a: MdxLink,
   pre: MdxPre,
+  Bookmark,
   Callout,
   Embed,
   Figure,
+  FileLink,
+  PageLink,
   Toggle,
+  Video,
 };
