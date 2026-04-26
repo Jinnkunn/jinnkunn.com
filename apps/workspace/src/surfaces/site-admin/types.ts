@@ -2,12 +2,15 @@
 
 /** Site-admin nav tab id — mirrors the leaf ids in `nav.ts` and the
  * surface switches on this value to pick which panel to render. Keep
- * the union in sync with `SECTIONS` when adding/removing tabs. */
+ * the union in sync with `SECTIONS` when adding/removing tabs.
+ * `components` is reachable only via the dynamic Components sub-tree
+ * leaves — no static row maps to it directly. */
 export type SiteAdminTab =
   | "status"
   | "home"
   | "posts"
   | "pages"
+  | "components"
   | "settings";
 
 export interface SiteSettings {
@@ -170,10 +173,10 @@ export interface PageDetail extends PageListRow {
   source: string;
 }
 
-/** Selection state for the Posts/Pages list-detail shells. `null` → detail
- * column shows the empty-state; `{kind:"new"}` → create form; otherwise
- * the editor for `slug` is open. Shared between the containers and the
- * command palette so ⌘K can deep-link into a specific entry. */
+/** Selection state for the Posts/Pages panels. `null` → empty state;
+ * `{kind:"new"}` → create form; otherwise the editor for `slug` is open.
+ * Shared between the containers and the command palette so ⌘K can
+ * deep-link into a specific entry. */
 export type ItemSelection =
   | null
   | { kind: "new"; initialSlug?: string }

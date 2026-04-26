@@ -553,13 +553,26 @@ body[data-window-focused="true"] .sidebar-surface {
 /* Wrapper around an expandable nav item: keeps the row clickable while
  * giving the disclosure chevron its own hit target. The CSS variable
  * `--sidebar-depth` (set inline by the renderer) drives Notion-style
- * indent for nested children — each level adds 12px of left padding. */
+ * indent for nested children — each level adds 18px of left padding;
+ * combined with the indent guide line on `.sidebar-tree__items--nested`
+ * the hierarchy reads as a tree at a glance. */
 .sidebar-tree__item-row {
   display: flex;
   align-items: stretch;
   gap: 0;
-  padding-inline-start: calc(var(--sidebar-depth, 0) * 12px);
+  padding-inline-start: calc(var(--sidebar-depth, 0) * 18px);
   border-radius: 6px;
+}
+
+/* Indent guide for nested children — a thin left border on the
+ * <ul> wrapper visually anchors the sub-tree to its parent the way
+ * Notion / Finder / VS Code do. Lives on the wrapper rather than on
+ * each row so it spans the whole sub-tree as a single line. The
+ * left margin pulls the line into the indent gutter created by the
+ * parent's depth-padding. */
+.sidebar-tree__items--nested {
+  margin-inline-start: 12px;
+  border-inline-start: 1px solid var(--color-border-subtle);
 }
 
 .sidebar-tree__item-row[data-dragging="true"] {
@@ -592,6 +605,18 @@ body[data-window-focused="true"] .sidebar-surface {
   border-radius: 6px;
   margin-inline-end: 2px;
   transition: background-color 80ms ease, color 80ms ease;
+}
+
+/* Placeholder rendered in place of the disclosure chevron on leaf
+ * rows. Same dimensions as `.sidebar-tree__item-disclosure` so labels
+ * line up with rows that DO have a chevron — without it, a leaf nested
+ * under a parent that has children would visually start to the left of
+ * the parent's label, breaking the tree look. */
+.sidebar-tree__item-disclosure-placeholder {
+  display: inline-block;
+  width: 22px;
+  flex-shrink: 0;
+  margin-inline-end: 2px;
 }
 
 .sidebar-tree__item-disclosure:hover,
@@ -722,15 +747,18 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-accent);
 }
 
-/* Children rendered one level deeper. Their padding-inline-start is
- * already supplied by --sidebar-depth on each row; this rule drops the
- * extra group-level indent so the chevron lines up. */
+/* Children rendered one level deeper. The visual indent comes from
+ * --sidebar-depth on each row (see `.sidebar-tree__item-row` above);
+ * this rule used to override the inner button's padding-inline-start
+ * to 4px, but that flattened the depth indent (the row's 18px got
+ * eaten by the button losing 16px of its baseline 20px). Keep only
+ * the slightly smaller font for nested rows so deep trees stay
+ * readable; let the inner button inherit its baseline padding. */
 .sidebar-tree__items--nested {
   padding: 1px 0 1px;
 }
 
 .sidebar-tree__items--nested .sidebar-tree__item {
-  padding-inline-start: 4px;
   font-size: 12px;
 }
 
@@ -1230,20 +1258,20 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 /* ------------------------------------------------------------------ *
- * List + Detail layout (Posts, Pages)
+ * Panel shell (Posts, Pages — phase 2)
  *
- * Side-by-side: sticky list column on the left, editor/empty-state on
- * the right. Keeps the list visible while editing so jumping between
- * entries is a single click.
+ * Single-column layout: header (title + actions), then a body that
+ * mounts the editor or an empty-state. The list column was dropped
+ * once the sidebar tree took over selection.
  * ------------------------------------------------------------------ */
-.list-detail {
+.panel-shell {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
 }
 
-.list-detail__header {
+.panel-shell__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1252,11 +1280,11 @@ body[data-window-focused="true"] .sidebar-surface {
   padding: 0 2px;
 }
 
-.list-detail__titleblock {
+.panel-shell__titleblock {
   min-width: 0;
 }
 
-.list-detail__title {
+.panel-shell__title {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
@@ -1264,210 +1292,24 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-primary);
 }
 
-.list-detail__description {
+.panel-shell__description {
   margin: 2px 0 0;
   font-size: 12.5px;
   color: var(--color-text-muted);
 }
 
-.list-detail__actions {
+.panel-shell__actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.list-detail__error {
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-  color: var(--color-danger);
-  font-size: 12px;
-}
-
-.list-detail__grid {
-  display: grid;
-  gap: 14px;
-  align-items: start;
+.panel-shell__body {
   min-width: 0;
 }
 
-/* Left column ---------------------------------------------------- */
-.list-detail__list {
-  position: sticky;
-  top: 12px;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  background: var(--color-bg-surface);
-  overflow: hidden;
-  max-height: calc(100vh - 160px);
-}
-
-.list-detail__list-header {
-  border-bottom: 1px solid var(--color-border-subtle);
-  padding: 8px 10px;
-  background: var(--color-bg-surface-alt);
-}
-
-.list-detail__list-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: space-between;
-}
-
-.list-detail__drafts-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-/* Sidebar grouping dropdown — lives next to the Drafts toggle in the
- * Posts panel toolbar. Choosing here updates the grouping used by the
- * sidebar tree (cached in state.tsx + persisted to localStorage). */
-.list-detail__grouping {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-}
-
-.list-detail__grouping select {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
-  padding: 2px 4px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-}
-
-.list-detail__refresh {
-  font-size: 11.5px;
-  padding: 3px 8px;
-}
-
-.list-detail__list-body {
-  overflow: auto;
-  min-height: 0;
-}
-
-.list-detail__rows {
-  margin: 0;
-  padding: 4px 4px 6px;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.list-detail__row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: stretch;
-  text-align: left;
-  width: 100%;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--color-text-primary);
-  cursor: pointer;
-  font: inherit;
-  transition: background-color 100ms ease;
-}
-
-.list-detail__row:hover {
-  background: var(--color-bg-hover);
-}
-
-.list-detail__row:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
-  outline-offset: 1px;
-}
-
-.list-detail__row[aria-current="true"] {
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-}
-
-.list-detail__row[aria-current="true"] .list-detail__row-title {
-  color: var(--color-accent-strong);
-}
-
-.list-detail__row-title {
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.list-detail__row-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-}
-
-.list-detail__draft-dot {
-  color: var(--color-warn);
-  font-size: 10px;
-}
-
-.list-detail__empty {
-  margin: 0;
-  padding: 24px 16px;
-  text-align: center;
-  color: var(--color-text-muted);
-  font-size: 12.5px;
-}
-
-.list-detail__empty--cta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 28px 14px;
-}
-
-.list-detail__empty-icon {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-border-default));
-  background: color-mix(in srgb, var(--color-accent) 9%, transparent);
-  color: var(--color-accent-strong);
-  font-size: 18px;
-  line-height: 1;
-}
-
-.list-detail__empty--cta strong {
-  color: var(--color-text-primary);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.list-detail__empty--cta span:not(.list-detail__empty-icon) {
-  max-width: 220px;
-  line-height: 1.4;
-}
-
-/* Right column --------------------------------------------------- */
-.list-detail__detail {
-  min-width: 0;
-}
-
-.list-detail__empty-detail {
+.panel-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1481,19 +1323,9 @@ body[data-window-focused="true"] .sidebar-surface {
   text-align: center;
 }
 
-.list-detail__empty-detail p {
+.panel-empty p {
   margin: 0;
   font-size: 13px;
-}
-
-@media (max-width: 1180px) {
-  .list-detail__grid {
-    grid-template-columns: 1fr !important;
-  }
-  .list-detail__list {
-    position: static;
-    max-height: 360px;
-  }
 }
 
 /* ------------------------------------------------------------------ *
