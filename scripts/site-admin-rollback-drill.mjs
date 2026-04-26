@@ -36,8 +36,8 @@ function resolveBaseUrl(envName, argBaseUrl) {
     const stg =
       normalizeBaseUrl(process.env.SITE_ADMIN_BASE_URL_STAGING || "") ||
       normalizeBaseUrl(process.env.SITE_ADMIN_STAGING_BASE_URL || "");
-    if (stg) return stg;
-    throw new Error("Missing SITE_ADMIN_BASE_URL_STAGING for staging rollback drill");
+    if (stg && !stg.includes(".workers.dev")) return stg;
+    return "https://staging.jinkunchen.com";
   }
   const prod =
     normalizeBaseUrl(process.env.SITE_ADMIN_BASE_URL_PRODUCTION || "") ||

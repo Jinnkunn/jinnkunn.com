@@ -17,19 +17,28 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 
+import { loadProjectEnv } from "./load-project-env.mjs";
+import { stopProcessTree } from "./_lib/process-tree.mjs";
+
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "output", "ui-snapshots");
 const DEFAULT_TARGETS = [
   "/",
-  "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities",
-  "/blog",
+  "/news",
   "/publications",
   "/works",
+  "/teaching",
+  "/blog",
+  "/bio",
+  "/connect",
+  "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities",
   "/site-admin",
+  "/site-admin/design-system",
 ];
 const DEFAULT_THEMES = ["light", "dark"];
 const SCRIPT_NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
+const FALLBACK_ADMIN_LOGIN = "jinnkunn";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -86,14 +95,24 @@ function startNext(port) {
   const nextBin = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
   const child = spawn(process.execPath, [nextBin, "start", "-p", String(port)], {
     stdio: "inherit",
+    detached: process.platform !== "win32",
     env: {
       ...process.env,
       PORT: String(port),
       NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
       NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+      SITE_ADMIN_GITHUB_USERS: process.env.SITE_ADMIN_GITHUB_USERS || FALLBACK_ADMIN_LOGIN,
     },
   });
   return child;
+}
+
+function firstGithubUserFromCsv(raw) {
+  const users = String(raw || "")
+    .split(/[,\n]/)
+    .map((item) => item.trim().replace(/^@+/, "").toLowerCase())
+    .filter(Boolean);
+  return users[0] || FALLBACK_ADMIN_LOGIN;
 }
 
 function safeNameFromPath(p) {
@@ -176,7 +195,23 @@ async function launchBrowser() {
   }
 }
 
+async function createSnapshotAdminToken() {
+  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS);
+  const { encode } = await import("next-auth/jwt");
+  return await encode({
+    secret: SCRIPT_NEXTAUTH_SECRET,
+    token: {
+      sub: `ui-snapshot-${login}`,
+      login,
+      name: login,
+    },
+    maxAge: 60 * 30,
+  });
+}
+
 async function main() {
+  loadProjectEnv({ override: false });
+
   if (!hasBuild()) {
     await run("npm", ["run", "build"], { cwd: ROOT });
   }
@@ -196,6 +231,16 @@ async function main() {
     const ctx = await browser.newContext({
       userAgent: "jinnkunn.com ui-snapshots",
     });
+    const adminToken = await createSnapshotAdminToken();
+    await ctx.addCookies([
+      {
+        name: "next-auth.session-token",
+        value: adminToken,
+        url: origin,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     const page = await ctx.newPage();
 
     const targets = effectiveTargets();
@@ -227,7 +272,7 @@ async function main() {
 
     await browser.close();
   } finally {
-    server.kill("SIGTERM");
+    await stopProcessTree(server);
   }
 
   console.log(`Snapshots saved to: ${runDir}`);

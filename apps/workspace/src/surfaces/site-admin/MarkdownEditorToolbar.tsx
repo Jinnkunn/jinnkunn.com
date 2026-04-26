@@ -123,6 +123,7 @@ export function MarkdownEditorToolbar({ getApi }: ToolbarProps) {
               type="button"
               className="mdx-toolbar__btn"
               title={action.title}
+              aria-label={action.title}
               onMouseDown={(event) => {
                 // Prevent the editor from losing focus so selection state is preserved.
                 event.preventDefault();

@@ -1,55 +1,20 @@
-/* News timeline — grouped-by-year list of dated entries served from
- * content/news.json. Mirrors the blog-index spacing / typography so the
- * /news page feels consistent with /blog. */
+/* News uses the original Notion page rhythm: date heading, then one text block. */
 
-.news-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+.news-entry__body {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-text-default-light);
 }
 
-.news-timeline section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.news-timeline__list {
-  list-style: none;
+.news-entry__body > * {
   margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  padding: 3px 2px;
 }
 
-.news-timeline__item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--color-border-subtle, rgba(55, 53, 47, 0.1));
-  border-radius: 10px;
-  background: var(--color-bg-surface, #ffffff);
-}
-
-.news-timeline__date {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted, rgba(55, 53, 47, 0.62));
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.news-timeline__body {
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.news-timeline__body > *:first-child {
+.news-entry__body > *:first-child {
   margin-top: 0;
 }
 
-.news-timeline__body > *:last-child {
+.news-entry__body > *:last-child {
   margin-bottom: 0;
 }

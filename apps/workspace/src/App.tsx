@@ -1,11 +1,19 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
+import {
+  addFavorite,
+  favoritesContain,
+  loadFavorites,
+  persistFavorites,
+  removeFavorite,
+  type SidebarFavorite,
+} from "./shell/favorites";
 import { Sidebar } from "./shell/Sidebar";
 import { SurfaceNavProvider } from "./shell/surface-nav-context";
 import { Titlebar } from "./shell/Titlebar";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { SURFACES, findSurface } from "./surfaces/registry";
-import type { SurfaceDefinition } from "./surfaces/types";
+import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
 
 const DEFAULT_SURFACE_ID = "site-admin";
 const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
@@ -110,10 +118,144 @@ export function App() {
     [activeSurface],
   );
 
-  const navContextValue = useMemo(
-    () => ({ activeNavItemId, setActiveNavItemId }),
-    [activeNavItemId, setActiveNavItemId],
+  // Dynamic child trees published by the active surface (e.g. site-admin
+  // injecting the live posts/pages list under the Posts/Pages nav items).
+  // Walked into the surface's static navGroups before passing them to the
+  // Sidebar so the shell stays generic.
+  const [navItemChildren, setNavItemChildrenMap] = useState<
+    Record<string, readonly SurfaceNavItem[]>
+  >({});
+
+  const setNavItemChildren = useCallback(
+    (itemId: string, children: readonly SurfaceNavItem[] | null) => {
+      setNavItemChildrenMap((prev) => {
+        if (!children || children.length === 0) {
+          if (!(itemId in prev)) return prev;
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        }
+        return { ...prev, [itemId]: children };
+      });
+    },
+    [],
   );
+
+  // Active surface's drag-reparent handler. Sidebar's onMoveNavItem
+  // routes here, which dispatches to whatever the surface registered
+  // via the surface-nav context.
+  const moveHandlerRef = useRef<
+    ((fromId: string, toId: string) => void) | null
+  >(null);
+  const setMoveNavItemHandler = useCallback(
+    (handler: ((fromId: string, toId: string) => void) | null) => {
+      moveHandlerRef.current = handler;
+    },
+    [],
+  );
+  const handleMoveNavItem = useCallback(
+    (_surfaceId: string, fromId: string, toId: string) => {
+      moveHandlerRef.current?.(fromId, toId);
+    },
+    [],
+  );
+
+  // Same pattern for inline rename — Sidebar fires (surfaceId, itemId,
+  // newSlug); App routes to the active surface's registered handler.
+  const renameHandlerRef = useRef<
+    ((itemId: string, newSlug: string) => void) | null
+  >(null);
+  const setRenameNavItemHandler = useCallback(
+    (handler: ((itemId: string, newSlug: string) => void) | null) => {
+      renameHandlerRef.current = handler;
+    },
+    [],
+  );
+  const handleRenameNavItem = useCallback(
+    (_surfaceId: string, itemId: string, newSlug: string) => {
+      renameHandlerRef.current?.(itemId, newSlug);
+    },
+    [],
+  );
+
+  // Live validator paired with the rename handler — Sidebar calls this
+  // on every keystroke to render inline error text and gate Enter.
+  const renameValidatorRef = useRef<
+    ((itemId: string, newSlug: string) => string | null) | null
+  >(null);
+  const setRenameValidator = useCallback(
+    (
+      validator: ((itemId: string, newSlug: string) => string | null) | null,
+    ) => {
+      renameValidatorRef.current = validator;
+    },
+    [],
+  );
+  const validateRenameNavItem = useCallback(
+    (_surfaceId: string, itemId: string, newSlug: string) => {
+      return renameValidatorRef.current?.(itemId, newSlug) ?? null;
+    },
+    [],
+  );
+
+  const navContextValue = useMemo(
+    () => ({
+      activeNavItemId,
+      setActiveNavItemId,
+      setNavItemChildren,
+      setMoveNavItemHandler,
+      setRenameNavItemHandler,
+      setRenameValidator,
+    }),
+    [
+      activeNavItemId,
+      setActiveNavItemId,
+      setNavItemChildren,
+      setMoveNavItemHandler,
+      setRenameNavItemHandler,
+      setRenameValidator,
+    ],
+  );
+
+  const [favorites, setFavoritesState] = useState<SidebarFavorite[]>(() =>
+    loadFavorites(),
+  );
+  useEffect(() => {
+    persistFavorites(favorites);
+  }, [favorites]);
+
+  const toggleFavorite = useCallback(
+    (entry: SidebarFavorite) => {
+      setFavoritesState((prev) =>
+        favoritesContain(prev, entry.surfaceId, entry.itemId)
+          ? removeFavorite(prev, entry.surfaceId, entry.itemId)
+          : addFavorite(prev, entry),
+      );
+    },
+    [],
+  );
+
+  const isFavorite = useCallback(
+    (surfaceId: string, itemId: string) =>
+      favoritesContain(favorites, surfaceId, itemId),
+    [favorites],
+  );
+
+  const derivedSurfaces = useMemo(() => {
+    if (Object.keys(navItemChildren).length === 0) return SURFACES;
+    return SURFACES.map((surface) => {
+      if (!surface.navGroups?.length) return surface;
+      const groups = surface.navGroups.map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          navItemChildren[item.id]
+            ? { ...item, children: navItemChildren[item.id] }
+            : item,
+        ),
+      }));
+      return { ...surface, navGroups: groups };
+    });
+  }, [navItemChildren]);
 
   if (!activeSurface) {
     // SURFACES is statically non-empty (site-admin is always registered),
@@ -127,18 +269,27 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Titlebar activeSurface={activeSurface} />
+      <Titlebar
+        activeSurface={activeSurface}
+        activeNavItemId={activeNavItemId}
+      />
       <div className="app-body">
         <Sidebar
-          surfaces={SURFACES}
+          surfaces={derivedSurfaces}
           activeSurfaceId={activeSurface.id}
           activeNavItemId={activeNavItemId}
+          favorites={favorites}
           onSelectSurface={selectSurface}
           onSelectNavItem={selectNavItem}
+          onToggleFavorite={toggleFavorite}
+          isFavorite={isFavorite}
+          onMoveNavItem={handleMoveNavItem}
+          onRenameNavItem={handleRenameNavItem}
+          validateRenameNavItem={validateRenameNavItem}
         />
         <main
           className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"
-          aria-labelledby="surface-label"
+          aria-label={activeSurface.title}
         >
           <ErrorBoundary label={activeSurface.title} key={activeSurface.id}>
             <SurfaceNavProvider value={navContextValue}>

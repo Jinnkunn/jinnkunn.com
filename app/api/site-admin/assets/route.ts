@@ -9,6 +9,8 @@ import {
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import {
   AssetsValidationError,
+  deleteAsset,
+  listAssets,
   uploadAsset,
 } from "@/lib/server/assets-store";
 import type { ParseResult } from "@/lib/site-admin/request-types";
@@ -50,6 +52,42 @@ function parseUploadCommand(
     ok: true,
     value: { filename, contentType, base64: payload.replace(/\s+/g, "") },
   };
+}
+
+type DeleteCommand = {
+  key: string;
+  version: string;
+};
+
+function parseDeleteCommand(
+  body: Record<string, unknown>,
+): ParseResult<DeleteCommand> {
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  const version = typeof body.version === "string" ? body.version.trim() : "";
+  if (!key) return { ok: false, error: "key is required", status: 400 };
+  if (!version) return { ok: false, error: "version is required", status: 400 };
+  return { ok: true, value: { key, version } };
+}
+
+export async function GET(req: NextRequest) {
+  return withSiteAdminContext(
+    req,
+    async () => {
+      const assets = await listAssets();
+      return apiPayloadOk({
+        assets: assets.map((asset) => ({
+          key: asset.key,
+          url: asset.url,
+          filename: asset.filename,
+          size: asset.size,
+          contentType: asset.contentType,
+          version: asset.sha,
+          uploadedAt: asset.uploadedAt,
+        })),
+      });
+    },
+    { rateLimit: RATE_LIMIT },
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -121,6 +159,61 @@ export async function POST(req: NextRequest) {
           code,
           message,
           metadata: { filename: filename ?? null, contentType },
+        });
+        return apiError(message, { status, code });
+      }
+    },
+    { rateLimit: RATE_LIMIT },
+  );
+}
+
+export async function DELETE(req: NextRequest) {
+  return withSiteAdminContext(
+    req,
+    async (ctx) => {
+      const parsed = await readSiteAdminJsonCommand(req, parseDeleteCommand);
+      if (!parsed.ok) return parsed.res;
+      const { key, version } = parsed.value;
+
+      let result: "success" | "error" = "success";
+      let code = "OK";
+      let message = "";
+      let status = 200;
+      try {
+        await deleteAsset(key, version);
+        await writeSiteAdminAuditLog({
+          actor: ctx.login,
+          action: "assets.delete",
+          endpoint: "/api/site-admin/assets",
+          method: "DELETE",
+          status,
+          result,
+          code,
+          message,
+          metadata: { key, version },
+        });
+        return apiPayloadOk({ deleted: true });
+      } catch (err) {
+        result = "error";
+        if (err instanceof AssetsValidationError) {
+          code = "BAD_REQUEST";
+          message = err.message;
+          status = 400;
+        } else {
+          code = "ASSET_DELETE_FAILED";
+          message = err instanceof Error ? err.message : "unexpected error";
+          status = 500;
+        }
+        await writeSiteAdminAuditLog({
+          actor: ctx.login,
+          action: "assets.delete",
+          endpoint: "/api/site-admin/assets",
+          method: "DELETE",
+          status,
+          result,
+          code,
+          message,
+          metadata: { key, version },
         });
         return apiError(message, { status, code });
       }

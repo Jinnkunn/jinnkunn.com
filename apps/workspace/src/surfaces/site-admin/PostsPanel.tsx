@@ -40,7 +40,8 @@ function normalizePostListRow(raw: unknown): PostListRow | null {
 }
 
 export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
-  const { connection, request, setMessage, setPostsIndex } = useSiteAdmin();
+  const { connection, postsGrouping, request, setMessage, setPostsGrouping, setPostsIndex } =
+    useSiteAdmin();
   const [rows, setRows] = useState<PostListRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [error, setError] = useState("");
@@ -99,6 +100,23 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
         />
         <span>Drafts</span>
       </label>
+      <label
+        className="list-detail__grouping"
+        title="How posts are grouped under the sidebar's Posts row"
+      >
+        <span>Group</span>
+        <select
+          value={postsGrouping}
+          onChange={(event) =>
+            setPostsGrouping(event.target.value as typeof postsGrouping)
+          }
+        >
+          <option value="all">All</option>
+          <option value="drafts">Drafts only</option>
+          <option value="published">Published only</option>
+          <option value="by-year">By year</option>
+        </select>
+      </label>
       <button
         className="btn btn--ghost list-detail__refresh"
         type="button"
@@ -112,7 +130,19 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
 
   const list =
     rows.length === 0 && !loadingList ? (
-      <p className="list-detail__empty">No posts found.</p>
+      <div className="list-detail__empty list-detail__empty--cta">
+        <span className="list-detail__empty-icon" aria-hidden="true">+</span>
+        <strong>No posts yet</strong>
+        <span>Create the first draft for the blog index.</span>
+        <button
+          className="btn btn--primary"
+          type="button"
+          onClick={() => onSelectedChange({ kind: "new" })}
+          disabled={!ready}
+        >
+          New post
+        </button>
+      </div>
     ) : (
       <ul className="list-detail__rows" role="list">
         {rows.map((row) => {

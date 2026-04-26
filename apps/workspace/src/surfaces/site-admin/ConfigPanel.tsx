@@ -250,7 +250,7 @@ export function ConfigPanel() {
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
-            Config
+            Settings &amp; Navigation
           </h1>
           <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
             Site settings + navigation rows served to the public site.

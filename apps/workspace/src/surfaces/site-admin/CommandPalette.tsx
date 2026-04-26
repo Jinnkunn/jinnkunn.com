@@ -267,6 +267,10 @@ export function CommandPalette({
 
   if (!open) return null;
 
+  const activeOptionId = filtered[cursor]
+    ? commandOptionId(filtered[cursor].id)
+    : undefined;
+
   return (
     <div
       className="command-palette__backdrop"
@@ -314,13 +318,21 @@ export function CommandPalette({
             onChange={(event) => setQuery(event.target.value)}
             spellCheck={false}
             autoComplete="off"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-list"
+            aria-activedescendant={activeOptionId}
           />
           <kbd className="command-palette__hint-key">Esc</kbd>
         </div>
         {filtered.length === 0 ? (
-          <p className="command-palette__empty">No matches.</p>
+          <div className="command-palette__empty">
+            <p>No matches.</p>
+            <span>{'Try "new post", "status", "sign in", or "routes".'}</span>
+          </div>
         ) : (
           <ul
+            id="command-palette-list"
             className="command-palette__list"
             role="listbox"
             ref={listRef}
@@ -328,6 +340,7 @@ export function CommandPalette({
             {filtered.map((cmd, index) => (
               <Row
                 key={cmd.id}
+                id={commandOptionId(cmd.id)}
                 cmd={cmd}
                 active={index === cursor}
                 onHover={() => setCursor(index)}
@@ -341,12 +354,18 @@ export function CommandPalette({
   );
 }
 
+function commandOptionId(id: string): string {
+  return `command-palette-option-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
 function Row({
+  id,
   cmd,
   active,
   onHover,
   onSelect,
 }: {
+  id: string;
   cmd: CommandItem;
   active: boolean;
   onHover: () => void;
@@ -354,6 +373,7 @@ function Row({
 }): JSX.Element {
   return (
     <li
+      id={id}
       className="command-palette__row"
       role="option"
       aria-selected={active}

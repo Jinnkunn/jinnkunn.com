@@ -115,3 +115,88 @@ export const PagesIcon = () => (
     <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
   </svg>
 );
+
+export const HomeIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M2.5 7.25 8 2.75l5.5 4.5" />
+    <path d="M4 6.75v6a1.25 1.25 0 0 0 1.25 1.25h5.5A1.25 1.25 0 0 0 12 12.75v-6" />
+    <path d="M6.5 14v-3.5h3V14" />
+  </svg>
+);
+
+export const PublicationsIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 3.25h4.25A1.75 1.75 0 0 1 9 5v8.25a2 2 0 0 0-1.75-.95H3Z" />
+    <path d="M13 3.25H9.75A1.75 1.75 0 0 0 8 5v8.25a2 2 0 0 1 1.75-.95H13Z" />
+    <path d="M5 6h2M10 6h1.5M5 8.5h2M10 8.5h1.5" />
+  </svg>
+);
+
+export const NewsIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 3h8.5A1.5 1.5 0 0 1 13 4.5v8A1.5 1.5 0 0 1 11.5 14H4.25A2.25 2.25 0 0 1 2 11.75V5" />
+    <path d="M2 5h2v6.75A2.25 2.25 0 0 1 2 14" />
+    <path d="M5.5 6h4.5M5.5 8.5h4.5M5.5 11h2.5" />
+  </svg>
+);
+
+export const TeachingIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M2 5.25 8 2.5l6 2.75L8 8Z" />
+    <path d="M4.25 6.4v3.1c0 1.35 1.7 2.4 3.75 2.4s3.75-1.05 3.75-2.4V6.4" />
+    <path d="M14 5.25v4" />
+  </svg>
+);
+
+export const WorksIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+    <path d="M4.75 10.75 7 8.5l1.75 1.75L10.5 8l2.25 2.75" />
+    <circle cx="6" cy="6" r="1" />
+  </svg>
+);

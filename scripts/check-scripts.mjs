@@ -27,6 +27,7 @@ function rel(p) {
 
 function main() {
   const roots = [
+    path.join(process.cwd(), "cloudflare"),
     path.join(process.cwd(), "scripts"),
     path.join(process.cwd(), "lib"),
   ];
@@ -58,4 +59,3 @@ function main() {
 }
 
 main();
-

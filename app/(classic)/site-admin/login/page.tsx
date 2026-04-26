@@ -19,10 +19,7 @@ function missingAuthEnv(): string[] {
   const missing: string[] = [];
   if (!process.env.GITHUB_ID?.trim()) missing.push("GITHUB_ID");
   if (!process.env.GITHUB_SECRET?.trim()) missing.push("GITHUB_SECRET");
-  if (
-    !process.env.NEXTAUTH_URL?.trim() &&
-    !process.env.VERCEL_URL?.trim()
-  ) {
+  if (!process.env.NEXTAUTH_URL?.trim()) {
     missing.push("NEXTAUTH_URL");
   }
   const secret =

@@ -3,9 +3,15 @@ import type {
   PublicationProfileLinkDTO,
   SiteAdminPublicationsData,
 } from "./api-types";
+import {
+  normalizeStructuredPageSections,
+  PUBLICATIONS_SECTIONS,
+} from "./page-sections.ts";
 
 const EMPTY_DATA: SiteAdminPublicationsData = {
+  schemaVersion: 2,
   title: "Publications",
+  sections: PUBLICATIONS_SECTIONS,
   profileLinks: [],
   entries: [],
 };
@@ -87,8 +93,10 @@ export function normalizePublicationsData(raw: unknown): SiteAdminPublicationsDa
   if (!raw || typeof raw !== "object") return { ...EMPTY_DATA };
   const r = raw as Record<string, unknown>;
   return {
+    schemaVersion: 2,
     title: typeof r.title === "string" && r.title.trim() ? r.title : "Publications",
     description: typeof r.description === "string" ? r.description : undefined,
+    sections: normalizeStructuredPageSections(r.sections, PUBLICATIONS_SECTIONS),
     profileLinks: coerceProfileLinks(r.profileLinks),
     entries: coerceEntries(r.entries),
   };
