@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { useDragReorder } from "./shared/useDragReorder";
-import { MarkdownEditor } from "./LazyMarkdownEditor";
+import { BlocksEditor } from "./LazyBlocksEditor";
 import {
   createRichTextSection,
   structuredPageSectionLabel,
@@ -127,11 +127,10 @@ export function StructuredPageSectionsEditor({ sections, onChange }: Props) {
             </div>
             {section.type === "richText" && (
               <div className="structured-section-row__body">
-                <MarkdownEditor
-                value={section.body || ""}
-                placeholder="Markdown body for this custom section."
+                <BlocksEditor
+                  value={section.body || ""}
+                  placeholder="Body — type / for blocks"
                   minHeight={112}
-                  showToolbar={false}
                   onChange={(next) => patch(index, { body: next || undefined })}
                 />
               </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
-import { MarkdownEditor } from "./LazyMarkdownEditor";
+import { BlocksEditor } from "./LazyBlocksEditor";
 import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import type { NewsData, NewsEntry } from "./types";
@@ -303,12 +303,11 @@ export function NewsPanel() {
                   </button>
                 </div>
               </div>
-              <MarkdownEditor
+              <BlocksEditor
                 value={entry.body}
                 onChange={(next) => updateEntry(index, { body: next })}
-                placeholder="Body (markdown: **bold**, *italic*, [link](url))"
+                placeholder="Body — type / for blocks"
                 minHeight={120}
-                showToolbar={false}
               />
             </div>
           ))
