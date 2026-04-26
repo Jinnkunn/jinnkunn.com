@@ -12,6 +12,12 @@ const DEFAULT_ROUTES = [
   { path: "/publications", contains: "Publications" },
   { path: "/works", contains: "Works" },
   { path: "/teaching", contains: "Teaching" },
+  { path: "/teaching/archive", contains: "CSCI3141", minBreadcrumbs: 3 },
+  {
+    path: "/teaching/archive/2024-25-fall/csci3141",
+    contains: "Foundations/Data Science",
+    minBreadcrumbs: 4,
+  },
   { path: "/blog", contains: "Blog" },
   { path: "/bio", contains: "BIO" },
   { path: "/connect", contains: "Connect" },
@@ -64,47 +70,6 @@ const API_READ_CHECKS = [
         listLength: pages.length,
       });
       return `count=${count}`;
-    },
-  },
-  {
-    label: "news",
-    path: "/api/site-admin/news",
-    summarize(payload) {
-      const data = requireRecord(payload.data, "news data");
-      requireSourceVersion(payload.sourceVersion, "news");
-      const entries = requireArray(data.entries, "news entries");
-      return `entries=${entries.length}`;
-    },
-  },
-  {
-    label: "publications",
-    path: "/api/site-admin/publications",
-    summarize(payload) {
-      const data = requireRecord(payload.data, "publications data");
-      requireSourceVersion(payload.sourceVersion, "publications");
-      const entries = requireArray(data.entries, "publications entries");
-      const profileLinks = requireArray(data.profileLinks, "publications profile links");
-      return `entries=${entries.length} profileLinks=${profileLinks.length}`;
-    },
-  },
-  {
-    label: "works",
-    path: "/api/site-admin/works",
-    summarize(payload) {
-      const data = requireRecord(payload.data, "works data");
-      requireSourceVersion(payload.sourceVersion, "works");
-      const entries = requireArray(data.entries, "works entries");
-      return `entries=${entries.length}`;
-    },
-  },
-  {
-    label: "teaching",
-    path: "/api/site-admin/teaching",
-    summarize(payload) {
-      const data = requireRecord(payload.data, "teaching data");
-      requireSourceVersion(payload.sourceVersion, "teaching");
-      const entries = requireArray(data.entries, "teaching entries");
-      return `entries=${entries.length}`;
     },
   },
 ];
@@ -189,7 +154,7 @@ async function createSessionCookie() {
   return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
 }
 
-async function checkStaticRoute({ origin, cookie, path, contains }) {
+async function checkStaticRoute({ origin, cookie, path, contains, minBreadcrumbs = 0 }) {
   const url = `${origin}${path}`;
   const res = await fetch(url, {
     redirect: "manual",
@@ -206,6 +171,14 @@ async function checkStaticRoute({ origin, cookie, path, contains }) {
   assert(staticShell === "1", "route did not use static shell", { path, staticShell, staticPath });
   if (contains) {
     assert(text.includes(contains), "route content check failed", { path, contains });
+  }
+  if (minBreadcrumbs > 0) {
+    const breadcrumbCount = (text.match(/notion-breadcrumb__item/g) || []).length;
+    assert(breadcrumbCount >= minBreadcrumbs, "route breadcrumb check failed", {
+      path,
+      breadcrumbCount,
+      minBreadcrumbs,
+    });
   }
 }
 

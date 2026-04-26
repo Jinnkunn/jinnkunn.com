@@ -4,6 +4,10 @@ import { createElement } from "react";
 import { compilePostMdx } from "@/lib/posts/compile";
 import { postMdxComponents } from "@/components/posts-mdx/components";
 import {
+  isMdxRuntimeCodeGenerationError,
+  renderMdxPreviewHtml,
+} from "@/lib/site-admin/mdx-preview-render";
+import {
   apiError,
   apiPayloadOk,
   readSiteAdminJsonCommand,
@@ -42,6 +46,12 @@ export async function POST(req: NextRequest) {
         const html = renderToStaticMarkup(element);
         return apiPayloadOk({ html });
       } catch (err) {
+        if (isMdxRuntimeCodeGenerationError(err)) {
+          return apiPayloadOk({
+            html: renderMdxPreviewHtml(parsed.value.source),
+            renderer: "static-mdx-preview",
+          });
+        }
         return apiError(
           err instanceof Error ? err.message : "MDX compile failed",
           { status: 400, code: "MDX_COMPILE_FAILED" },
