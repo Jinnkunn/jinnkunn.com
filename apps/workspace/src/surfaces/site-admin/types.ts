@@ -9,7 +9,6 @@ export type SiteAdminTab =
   | "posts"
   | "pages"
   | "publications"
-  | "news"
   | "teaching"
   | "works"
   | "settings";
@@ -210,20 +209,6 @@ export interface PublicationsData {
   sections?: StructuredPageSection[];
   profileLinks: PublicationProfileLink[];
   entries: PublicationEntry[];
-}
-
-// --- News (structured editor) --------------------------------------------
-
-export interface NewsEntry {
-  dateIso: string; // YYYY-MM-DD
-  body: string;    // markdown
-}
-
-export interface NewsData {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  entries: NewsEntry[];
 }
 
 // --- Teaching (structured editor) ----------------------------------------

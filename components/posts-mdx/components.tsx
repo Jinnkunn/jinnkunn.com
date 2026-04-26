@@ -13,6 +13,7 @@ import { FileLink } from "./file-link";
 import { HeroBlock } from "./hero-block";
 import { LinkListBlock } from "./link-list-block";
 import { NewsBlock } from "./news-block";
+import { NewsEntry } from "./news-entry";
 import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
 import { TeachingBlock } from "./teaching-block";
@@ -88,6 +89,7 @@ export const postMdxComponents: MDXComponents = {
   HeroBlock,
   LinkListBlock,
   NewsBlock,
+  NewsEntry,
   PageLink,
   PublicationsBlock,
   TeachingBlock,

@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { normalizeHomeData } from "../lib/site-admin/home-normalize.ts";
-import { normalizeNewsData } from "../lib/site-admin/news-normalize.ts";
 import { normalizePublicationsData } from "../lib/site-admin/publications-normalize.ts";
 import { normalizeTeachingData } from "../lib/site-admin/teaching-normalize.ts";
 import { normalizeWorksData } from "../lib/site-admin/works-normalize.ts";
@@ -69,63 +68,11 @@ test("normalizeHomeData: silently drops legacy section data", () => {
   assert.ok(!("profileImageUrl" in result));
 });
 
-// ----------------------------------------------------------------------------
-// News
-// ----------------------------------------------------------------------------
-
-test("normalizeNewsData: empty template for non-object input", () => {
-  const out = normalizeNewsData(null);
-  assert.equal(out.title, "News");
-  assert.deepEqual(out.entries, []);
-});
-
-test("normalizeNewsData: drops entries missing dateIso or body", () => {
-  const out = normalizeNewsData({
-    entries: [
-      { dateIso: "2026-01-01", body: "valid" },
-      { dateIso: "", body: "no date" },
-      { dateIso: "2026-02-01", body: "   " },
-      { dateIso: "2026-03-01" },
-      { body: "orphan" },
-      null,
-      "not-an-object",
-    ],
-  });
-  assert.equal(out.entries.length, 1);
-  assert.equal(out.entries[0].dateIso, "2026-01-01");
-  assert.equal(out.entries[0].body, "valid");
-});
-
-test("normalizeNewsData: sorts entries newest-first by dateIso", () => {
-  const out = normalizeNewsData({
-    entries: [
-      { dateIso: "2025-05-01", body: "older" },
-      { dateIso: "2026-01-10", body: "newer" },
-      { dateIso: "2025-12-31", body: "mid" },
-    ],
-  });
-  assert.deepEqual(
-    out.entries.map((e) => e.dateIso),
-    ["2026-01-10", "2025-12-31", "2025-05-01"],
-  );
-});
-
-test("normalizeNewsData: trims body whitespace", () => {
-  const out = normalizeNewsData({
-    entries: [{ dateIso: "2026-01-01", body: "  trimmed  " }],
-  });
-  assert.equal(out.entries[0].body, "trimmed");
-});
-
-test("normalizeNewsData: preserves custom title + description", () => {
-  const out = normalizeNewsData({
-    title: "Updates",
-    description: "Latest news",
-    entries: [],
-  });
-  assert.equal(out.title, "Updates");
-  assert.equal(out.description, "Latest news");
-});
+// News no longer has a normalize layer — entries live as `<NewsEntry>`
+// blocks inside `content/pages/news.mdx` and round-trip through
+// `apps/workspace/src/surfaces/site-admin/mdx-blocks.ts`. The
+// equivalent newest-first sort + invalid-entry drop happen at render
+// time inside `components/posts-mdx/news-block.tsx`.
 
 // ----------------------------------------------------------------------------
 // Publications

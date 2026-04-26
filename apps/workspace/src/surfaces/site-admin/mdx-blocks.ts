@@ -36,7 +36,13 @@ export type MdxBlockType =
   // grid in both editor and public site (`<Columns>`/`<Column>` MDX
   // components).
   | "columns"
-  | "column";
+  | "column"
+  // Per-entry blocks for the data pages (news / works / teaching /
+  // publications). Each lives as a child block inside the corresponding
+  // page MDX (`content/pages/news.mdx`, etc.) and renders via a matching
+  // server component on the public site. Replaces the old separate-JSON
+  // model where all entries lived in `content/{name}.json`.
+  | "news-entry";
 
 /** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
 export interface MdxLinkItem {
@@ -113,6 +119,10 @@ export interface MdxBlock {
   // For data-source blocks (news-block, …): cap the number of entries
   // rendered. `undefined` means "show all".
   limit?: number;
+  // For `news-entry` blocks: the entry's date in YYYY-MM-DD form. Drives
+  // both the rendered heading on the public site and the chronological
+  // sort order when the news page is read by the embed component.
+  dateIso?: string;
   // For LinkListBlock / FeaturedPagesBlock: how the items array is laid
   // out. linkList accepts stack/grid/inline; featuredPages tweaks columns
   // separately, so this is intentionally narrow.
@@ -257,6 +267,22 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       children: [createMdxBlock("paragraph")],
     };
   }
+  if (type === "news-entry") {
+    // Default to today's date so a freshly inserted entry has a
+    // reasonable starting point. Body is one empty paragraph the user
+    // can immediately type into.
+    const today = new Date();
+    const yyyy = String(today.getFullYear()).padStart(4, "0");
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    return {
+      id,
+      type,
+      text: "",
+      dateIso: `${yyyy}-${mm}-${dd}`,
+      children: [createMdxBlock("paragraph")],
+    };
+  }
   return { id, type, text: "" };
 }
 
@@ -309,6 +335,11 @@ const COLOR_OPEN_RE = /^<Color\s+bg="(\w+)">$/;
 // `<Columns count={N} variant="…" gap="…" align="…">` opener (attrs all
 // optional). Captures the attribute list verbatim for `parseAttrs`.
 const COLUMNS_OPEN_RE = /^<Columns\b([\s\S]*?)>$/;
+// `<NewsEntry date="YYYY-MM-DD">` opener — followed (after a blank
+// line) by markdown body content that gets recursively parsed at
+// depth + 1, then closed by `</NewsEntry>`. The matching counterpart
+// to columns / toggle on the entry-block axis.
+const NEWS_ENTRY_OPEN_RE = /^<NewsEntry\b([\s\S]*?)>$/;
 const COLUMN_OPEN_RE = /^<Column>$/;
 const COLUMN_CLOSE_RE = /^<\/Column>$/;
 // Allow tabs / spaces around the marker to support indented checklists nested
@@ -623,6 +654,48 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
               ? (align as "start" | "center")
               : undefined,
           columnsVariant: variant === "classicIntro" ? "classicIntro" : undefined,
+        }),
+      );
+      continue;
+    }
+
+    // News entry: `<NewsEntry date="YYYY-MM-DD">` … `</NewsEntry>` with
+    // markdown body inside. Top-level only (depth === 0); a nested
+    // <NewsEntry> falls through to raw to keep the data model flat. Body
+    // is recursively parsed at depth + 1.
+    const newsEntryMatch = depth === 0 ? NEWS_ENTRY_OPEN_RE.exec(trimmedLine) : null;
+    if (newsEntryMatch) {
+      const attrs = parseAttrs(newsEntryMatch[1] ?? "");
+      const innerLines: string[] = [];
+      index += 1;
+      let foundClose = false;
+      while (index < lines.length) {
+        const probe = (lines[index] ?? "").trim();
+        if (probe === "</NewsEntry>") {
+          foundClose = true;
+          index += 1;
+          break;
+        }
+        innerLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (!foundClose) {
+        // Unclosed <NewsEntry>: emit as raw so the user doesn't
+        // silently lose content.
+        pushBlock(
+          makeBlock("raw", { text: [trimmedLine, ...innerLines].join("\n") }),
+        );
+        continue;
+      }
+      const bodySource = innerLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+      const children = bodySource ? parseBlocksAtDepth(bodySource, depth + 1) : [];
+      const date = typeof attrs.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(attrs.date)
+        ? attrs.date
+        : "";
+      pushBlock(
+        makeBlock("news-entry", {
+          dateIso: date,
+          children,
         }),
       );
       continue;
@@ -1046,6 +1119,20 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     return inner
       ? ["<Column>", "", inner, "", "</Column>"].join("\n")
       : "<Column>\n</Column>";
+  }
+  if (block.type === "news-entry") {
+    // News entries always carry a date; if the user hasn't set one,
+    // emit an empty `date=""` rather than dropping the attr — round-trip
+    // remains explicit and the editor card highlights the missing date.
+    const date = block.dateIso ?? "";
+    const opener = `<NewsEntry date="${escapeAttr(date)}">`;
+    const inner = block.children?.length
+      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
+      : "";
+    if (!inner) {
+      return [opener, "</NewsEntry>"].join("\n");
+    }
+    return [opener, "", inner, "", "</NewsEntry>"].join("\n");
   }
   if (block.type === "table") {
     const data = block.tableData;

@@ -170,6 +170,51 @@ describe("columns blocks", () => {
   });
 });
 
+describe("news-entry blocks", () => {
+  it("round-trips a news entry with a date and a single paragraph", () => {
+    const source =
+      '<NewsEntry date="2026-04-15">\n\nWe shipped the editor.\n\n</NewsEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("news-entry");
+    expect(blocks[0].dateIso).toBe("2026-04-15");
+    expect(blocks[0].children).toHaveLength(1);
+    expect(blocks[0].children?.[0].type).toBe("paragraph");
+    expect(blocks[0].children?.[0].text).toBe("We shipped the editor.");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("supports headings, lists, and callouts inside the entry body", () => {
+    const source =
+      '<NewsEntry date="2026-03-20">\n\n## Spring update\n\n- Item one\n- Item two\n\n> [!NOTE]\n> Heads-up note.\n\n</NewsEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    const body = blocks[0].children ?? [];
+    expect(body[0].type).toBe("heading");
+    expect(body[1].type).toBe("list");
+    expect(body[2].type).toBe("callout");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("preserves an empty entry as `<NewsEntry date=\"...\"></NewsEntry>` adjacent lines", () => {
+    const source = '<NewsEntry date="2026-04-01">\n</NewsEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].children).toHaveLength(0);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("rejects malformed dates (keeps dateIso empty so the editor warns)", () => {
+    const source = '<NewsEntry date="2026/04/15">\n\nWords.\n\n</NewsEntry>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].dateIso).toBe("");
+  });
+
+  it("falls back to raw when NewsEntry is unclosed", () => {
+    const source = '<NewsEntry date="2026-04-15">\n\nWords.\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("raw");
+  });
+});
+
 describe("table blocks", () => {
   it("round-trips a 2x2 table with column alignment", () => {
     const source =
