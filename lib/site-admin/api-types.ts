@@ -522,6 +522,11 @@ export type SiteAdminHomeData = {
   schemaVersion?: number;
   title: string;
   sections: SiteAdminHomeSection[];
+  /** Optional Notion-style MDX body. When non-empty, the public Home
+   * page renders this through the shared MDX components instead of
+   * iterating sections. Lets the user author Home as a block-editor
+   * document. */
+  bodyMdx?: string;
 };
 
 export type SiteAdminHomeGetPayload = {

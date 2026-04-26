@@ -257,10 +257,12 @@ export function normalizeHomeData(raw: unknown): SiteAdminHomeData {
         .map((section, index) => normalizeSection(section, index))
         .filter((section): section is SiteAdminHomeSection => Boolean(section))
     : [];
+  const bodyMdx = typeof r.bodyMdx === "string" ? r.bodyMdx : undefined;
   return {
     schemaVersion: SCHEMA_VERSION,
     title: readString(r.title).trim() || EMPTY_DATA.title,
     sections: sections.length > 0 ? sections : [emptyRichTextSection()],
+    bodyMdx: bodyMdx && bodyMdx.trim() ? bodyMdx : undefined,
   };
 }
 

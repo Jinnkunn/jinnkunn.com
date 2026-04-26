@@ -6,6 +6,8 @@ import type { ReactElement } from "react";
 import { ClassicLink } from "@/components/classic/classic-link";
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { renderSimpleClassicMarkdown } from "@/components/classic/markdown";
+import { postMdxComponents } from "@/components/posts-mdx/components";
+import { compilePostMdx } from "@/lib/posts/compile";
 import type {
   SiteAdminHomeData,
   SiteAdminHomeLayoutBlock,
@@ -329,6 +331,26 @@ export async function HomeView({
   previewStaticImages?: boolean;
 }): Promise<ReactElement> {
   const options: HomeRenderOptions = { previewStaticImages };
+
+  // Phase 3d: when the user authors Home through the Notion-style
+  // BlocksEditor (HomePanel's "notion" mode), `bodyMdx` is non-empty
+  // and supersedes the section-iteration entirely. Same renderer as
+  // every other MDX surface on the public site.
+  const trimmedBody = data.bodyMdx?.trim() ?? "";
+  if (trimmedBody) {
+    const { Content } = await compilePostMdx(trimmedBody);
+    return (
+      <ClassicPageShell
+        title={data.title}
+        className="super-content page__index parent-page__index"
+      >
+        <div className="mdx-post__body">
+          <Content components={postMdxComponents} />
+        </div>
+      </ClassicPageShell>
+    );
+  }
+
   const sections = (
     await Promise.all(data.sections.map((section) => renderHomeSection(section, options)))
   ).filter((section): section is ReactElement => Boolean(section));
