@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import JsonLdScript from "@/components/seo/json-ld-script";
 import { PageView } from "@/components/posts-mdx/page-view";
@@ -11,6 +13,11 @@ import { getSiteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-static";
 
+const PUBLICATIONS_SOURCE_PATH = resolve(
+  process.cwd(),
+  "content/components/publications.mdx",
+);
+
 const ENTRY_RE = /<PublicationsEntry\s+data='([^']*)'\s*\/>/g;
 
 function unescapeJsonAttr(raw: string): string {
@@ -19,10 +26,17 @@ function unescapeJsonAttr(raw: string): string {
   return raw.replace(/\\u0027/g, "'");
 }
 
+// Read the publications data from the components file (the page MDX
+// only embeds `<PublicationsBlock />`; entries live in the dedicated
+// component file). Used to materialize JSON-LD for SEO.
 async function readPublicationsEntries(): Promise<PublicationStructuredEntry[]> {
-  const loaded = await readPageSource("publications");
-  if (!loaded) return [];
-  const body = loaded.source.replace(/^---[\s\S]*?---\s*/m, "");
+  let raw = "";
+  try {
+    raw = await readFile(PUBLICATIONS_SOURCE_PATH, "utf8");
+  } catch {
+    return [];
+  }
+  const body = raw.replace(/^---[\s\S]*?---\s*/m, "");
   const out: PublicationStructuredEntry[] = [];
   let m: RegExpExecArray | null;
   while ((m = ENTRY_RE.exec(body)) !== null) {
@@ -51,10 +65,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /** /publications keeps a custom route so we can emit the
- * publications-list JSON-LD alongside the rendered page. The body
- * itself comes from `content/pages/publications.mdx` via the standard
- * PageView so editing happens through the same MDX page editor every
- * other page uses. */
+ * publications-list JSON-LD alongside the rendered page. The page
+ * body comes from `content/pages/publications.mdx` via PageView (it
+ * embeds `<PublicationsBlock />`), and the JSON-LD reader pulls the
+ * raw entries from `content/components/publications.mdx` directly so
+ * the structured data stays canonical even though the page itself
+ * never inlines them. */
 export default async function PublicationsPage() {
   const cfg = getSiteConfig();
   const entry = await getPageEntry("publications");

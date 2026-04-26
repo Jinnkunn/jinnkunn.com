@@ -20,20 +20,24 @@ interface NewsEntryRecord {
   body: string;
 }
 
-const NEWS_PAGE_PATH = resolve(process.cwd(), "content/pages/news.mdx");
+const NEWS_SOURCE_PATH = resolve(
+  process.cwd(),
+  "content/components/news.mdx",
+);
 
-// Match `<NewsEntry date="...">…</NewsEntry>` blocks in the news page.
-// Content between the opening tag and `</NewsEntry>` is the entry's
-// markdown body — compiled by `compilePostMdx` per entry on the public
-// site. Same shape the editor's parser produces (apps/workspace/.../
-// mdx-blocks.ts), so nothing diverges as long as both stay in sync.
+// Match `<NewsEntry date="...">…</NewsEntry>` blocks in the news
+// component file. Content between the opening tag and `</NewsEntry>`
+// is the entry's markdown body — compiled by `compilePostMdx` per
+// entry on the public site. Same shape the editor's parser produces
+// (apps/workspace/.../mdx-blocks.ts), so nothing diverges as long as
+// both stay in sync.
 const NEWS_ENTRY_RE =
   /<NewsEntry\s+date="([^"]*)"[^>]*>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
 
 async function loadEntries(): Promise<NewsEntryRecord[]> {
   let raw = "";
   try {
-    raw = await readFile(NEWS_PAGE_PATH, "utf8");
+    raw = await readFile(NEWS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
@@ -55,11 +59,12 @@ async function loadEntries(): Promise<NewsEntryRecord[]> {
 }
 
 /** Server component for `<NewsBlock />` in MDX. Reads the canonical
- * news data from `content/pages/news.mdx` (the same file the /news
- * route renders) so any other page can embed a feed without
- * duplicating data. Rendered output mirrors what the /news page emits
- * for each entry — same `news-entry__body` + `notion-heading` markup
- * the existing CSS already styles. */
+ * news data from `content/components/news.mdx` — the dedicated
+ * component file edited via the admin Components → News panel. Any
+ * page (including `content/pages/news.mdx`) can drop `<NewsBlock />`
+ * to render the feed; the rendered output mirrors what the legacy
+ * inline-entries layout produced (`news-entry__body` + `notion-heading`
+ * markup the existing CSS already styles). */
 export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement> {
   const entries = await loadEntries();
   const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
