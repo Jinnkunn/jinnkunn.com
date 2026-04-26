@@ -500,6 +500,53 @@ body[data-window-focused="true"] .sidebar-surface {
 .sidebar-tree__item {
   padding-inline-start: 20px; /* align under chevron + indent under group */
   font-size: 12.5px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Wrapper around an expandable nav item: keeps the row clickable while
+ * giving the disclosure chevron its own hit target. The CSS variable
+ * `--sidebar-depth` (set inline by the renderer) drives Notion-style
+ * indent for nested children — each level adds 12px of left padding. */
+.sidebar-tree__item-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding-inline-start: calc(var(--sidebar-depth, 0) * 12px);
+}
+
+.sidebar-tree__item-disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  margin-inline-end: 2px;
+  transition: background-color 80ms ease, color 80ms ease;
+}
+
+.sidebar-tree__item-disclosure:hover,
+.sidebar-tree__item-disclosure:focus-visible {
+  outline: none;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Children rendered one level deeper. Their padding-inline-start is
+ * already supplied by --sidebar-depth on each row; this rule drops the
+ * extra group-level indent so the chevron lines up. */
+.sidebar-tree__items--nested {
+  padding: 1px 0 1px;
+}
+
+.sidebar-tree__items--nested .sidebar-tree__item {
+  padding-inline-start: 4px;
+  font-size: 12px;
 }
 
 .sidebar-tree__badge {

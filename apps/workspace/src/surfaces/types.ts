@@ -1,12 +1,16 @@
 import type { ComponentType, ReactNode } from "react";
 
 /** One leaf nav item inside a surface's nested tree. Rendered as an
- * indented row under its group in the shell sidebar. */
+ * indented row under its group in the shell sidebar. May itself host
+ * children (Notion-style page tree) — when `children` is non-empty the
+ * row gets its own disclosure chevron and the nested items render at
+ * one extra level of indent. */
 export interface SurfaceNavItem {
   id: string;
   label: string;
   icon?: ReactNode;
   badge?: ReactNode;
+  children?: readonly SurfaceNavItem[];
 }
 
 /** A collapsible group of nav items shown under the active surface in

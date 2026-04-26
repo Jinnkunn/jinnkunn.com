@@ -5,7 +5,7 @@ import { SurfaceNavProvider } from "./shell/surface-nav-context";
 import { Titlebar } from "./shell/Titlebar";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { SURFACES, findSurface } from "./surfaces/registry";
-import type { SurfaceDefinition } from "./surfaces/types";
+import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
 
 const DEFAULT_SURFACE_ID = "site-admin";
 const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
@@ -110,10 +110,49 @@ export function App() {
     [activeSurface],
   );
 
-  const navContextValue = useMemo(
-    () => ({ activeNavItemId, setActiveNavItemId }),
-    [activeNavItemId, setActiveNavItemId],
+  // Dynamic child trees published by the active surface (e.g. site-admin
+  // injecting the live posts/pages list under the Posts/Pages nav items).
+  // Walked into the surface's static navGroups before passing them to the
+  // Sidebar so the shell stays generic.
+  const [navItemChildren, setNavItemChildrenMap] = useState<
+    Record<string, readonly SurfaceNavItem[]>
+  >({});
+
+  const setNavItemChildren = useCallback(
+    (itemId: string, children: readonly SurfaceNavItem[] | null) => {
+      setNavItemChildrenMap((prev) => {
+        if (!children || children.length === 0) {
+          if (!(itemId in prev)) return prev;
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        }
+        return { ...prev, [itemId]: children };
+      });
+    },
+    [],
   );
+
+  const navContextValue = useMemo(
+    () => ({ activeNavItemId, setActiveNavItemId, setNavItemChildren }),
+    [activeNavItemId, setActiveNavItemId, setNavItemChildren],
+  );
+
+  const derivedSurfaces = useMemo(() => {
+    if (Object.keys(navItemChildren).length === 0) return SURFACES;
+    return SURFACES.map((surface) => {
+      if (!surface.navGroups?.length) return surface;
+      const groups = surface.navGroups.map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          navItemChildren[item.id]
+            ? { ...item, children: navItemChildren[item.id] }
+            : item,
+        ),
+      }));
+      return { ...surface, navGroups: groups };
+    });
+  }, [navItemChildren]);
 
   if (!activeSurface) {
     // SURFACES is statically non-empty (site-admin is always registered),
@@ -133,7 +172,7 @@ export function App() {
       />
       <div className="app-body">
         <Sidebar
-          surfaces={SURFACES}
+          surfaces={derivedSurfaces}
           activeSurfaceId={activeSurface.id}
           activeNavItemId={activeNavItemId}
           onSelectSurface={selectSurface}
