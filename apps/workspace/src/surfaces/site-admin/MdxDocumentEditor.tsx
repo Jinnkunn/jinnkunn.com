@@ -40,7 +40,7 @@ import {
   TodoEditableBlock,
   ToggleEditableBlock,
 } from "./mdx-block-renderers";
-import { ParagraphRichTextBlock } from "./paragraph-rich-text-block";
+import { RichTextEditableBlock } from "./rich-text-editable-block";
 import {
   createMdxBlock,
   duplicateMdxBlock,
@@ -626,7 +626,14 @@ function EditableBlocksList({
     anchor: HTMLElement;
     blockId: string;
   } | null>(null);
-  const blockInputRefs = useRef(new Map<string, HTMLInputElement | HTMLTextAreaElement>());
+  // The map holds whichever focusable element a block registered: <input>
+  // / <textarea> for textarea-path blocks, the contenteditable HTMLElement
+  // for TipTap-path blocks. The focus effect below only requires `.focus()`
+  // — the textarea-only `setSelectionRange` call is opt-in so contenteditable
+  // nodes don't blow up.
+  const blockInputRefs = useRef(
+    new Map<string, HTMLInputElement | HTMLTextAreaElement | HTMLElement>(),
+  );
   const focusSeqRef = useRef(0);
 
   // Drag-reorder is enabled at every depth; HTML5 DnD scopes by parent
@@ -636,7 +643,10 @@ function EditableBlocksList({
   const enableDrag = true;
 
   const registerBlockInput = useCallback(
-    (blockId: string, node: HTMLInputElement | HTMLTextAreaElement | null) => {
+    (
+      blockId: string,
+      node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
+    ) => {
       if (node) blockInputRefs.current.set(blockId, node);
       else blockInputRefs.current.delete(blockId);
     },
@@ -654,8 +664,16 @@ function EditableBlocksList({
     const node = blockInputRefs.current.get(focusRequest.id);
     if (!node) return;
     node.focus();
-    const length = node.value.length;
-    node.setSelectionRange(length, length);
+    // setSelectionRange is textarea/input only. For contenteditable
+    // (TipTap path) the browser places the caret naturally on focus.
+    if (
+      "value" in node &&
+      "setSelectionRange" in node &&
+      typeof (node as HTMLTextAreaElement).setSelectionRange === "function"
+    ) {
+      const length = (node as HTMLTextAreaElement).value.length;
+      (node as HTMLTextAreaElement).setSelectionRange(length, length);
+    }
   }, [blocks, focusRequest]);
 
   const commitBlocks = useCallback(
@@ -1189,18 +1207,26 @@ function EditableBlock({
     block.type === "paragraph" ? getMatchingSlashCommands(block.text) : [];
   const showSlashMenu = slashCommands.length > 0;
 
-  // Paragraph blocks render through the TipTap-based WYSIWYG path so that
-  // **bold**, *italic*, `code`, ~~strike~~, and [links](url) appear formatted
-  // inline rather than as raw markdown chars. Other text-bearing block types
-  // (heading, quote, callout, list, todo, toggle) still use the textarea
-  // path until later phases migrate them.
-  if (block.type === "paragraph") {
+  // Single-paragraph text blocks (paragraph, heading, quote, callout) render
+  // through the TipTap-based WYSIWYG path so that **bold**, *italic*,
+  // `code`, ~~strike~~, and [links](url) appear formatted inline rather
+  // than as raw markdown chars. Multi-item blocks (list, todo, toggle
+  // summary) still use the textarea path until a later phase migrates
+  // them — they need per-item keyboard semantics that the single-block
+  // editor doesn't model yet.
+  if (
+    block.type === "paragraph" ||
+    block.type === "heading" ||
+    block.type === "quote" ||
+    block.type === "callout"
+  ) {
     return (
-      <ParagraphRichTextBlock
+      <RichTextEditableBlock
         block={block}
         slashCommands={slashCommands}
         onChooseSlashCommand={onChooseSlashCommand}
         onDuplicate={onDuplicate}
+        onFocusInput={onFocusInput as (node: HTMLElement | null) => void}
         onInsertParagraphAfter={onInsertParagraphAfter}
         onMoveDown={onMoveDown}
         onMoveUp={onMoveUp}
@@ -1220,14 +1246,11 @@ function EditableBlock({
   // mention.atOffset is the position of the literal "@" character; the
   // picker lives until the user dismisses or selects a target.
   const [mention, setMention] = useState<{ atOffset: number } | null>(null);
-  // Paragraph is handled by ParagraphRichTextBlock above and never reaches
-  // this branch — `isFormattableBlock` narrows the textarea-based blocks
-  // that still benefit from the selection-anchored inline format toolbar.
-  const isFormattableBlock =
-    block.type === "heading" ||
-    block.type === "quote" ||
-    block.type === "callout" ||
-    block.type === "list";
+  // Paragraph / heading / quote / callout are handled by RichTextEditableBlock
+  // above and never reach this branch. Only `list` (multi-item textarea)
+  // remains as a textarea-path block that still benefits from the
+  // selection-anchored inline format toolbar.
+  const isFormattableBlock = block.type === "list";
 
   // Re-read the current textarea selection after every keystroke / mouse drag
   // so the inline format toolbar shows up only when there's a real range.
@@ -1455,37 +1478,9 @@ function EditableBlock({
     );
   }
 
-  if (block.type === "heading") {
-    return (
-      <div className="mdx-document-heading-block">
-        <select
-          aria-label="Heading level"
-          value={block.level ?? 2}
-          onChange={(event) =>
-            onPatch((current) => ({
-              ...current,
-              level: Number(event.target.value) as 1 | 2 | 3,
-            }))
-          }
-        >
-          <option value={1}>H1</option>
-          <option value={2}>H2</option>
-          <option value={3}>H3</option>
-        </select>
-        <input
-          aria-label="Heading text"
-          className={`mdx-document-heading-block__input mdx-document-heading-block__input--h${block.level ?? 2}`}
-          ref={onFocusInput}
-          value={block.text}
-          placeholder="Heading"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, text: event.target.value }))
-          }
-          onKeyDown={onTextKeyDown}
-        />
-      </div>
-    );
-  }
+  // heading is handled by RichTextEditableBlock above; this branch is
+  // intentionally absent so the dispatcher falls through cleanly to the
+  // remaining textarea-path block types (list, code, raw, todo, …).
 
   if (block.type === "divider") {
     return (
