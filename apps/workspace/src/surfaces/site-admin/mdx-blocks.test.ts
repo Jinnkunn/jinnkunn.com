@@ -295,6 +295,33 @@ describe("teaching-entry blocks", () => {
   });
 });
 
+describe("publications-entry blocks", () => {
+  it("round-trips a JSON-encoded data attribute", () => {
+    const data = JSON.stringify({
+      title: "A Paper",
+      year: "2026",
+      labels: ["conference"],
+      authorsRich: [{ name: "J. Chen", isSelf: true }],
+      venues: [{ type: "conference", text: "AAAI 2026" }],
+      highlights: ["oral"],
+    });
+    const source = `<PublicationsEntry data='${data}' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("publications-entry");
+    expect(blocks[0].pubData).toBe(data);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("escapes single-quote characters inside the data attr", () => {
+    const data = JSON.stringify({ title: "Don't break it", year: "2024" });
+    const source = `<PublicationsEntry data='${data.replace(/'/g, "\\u0027")}' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].pubData).toBe(data.replace(/'/g, "\\u0027"));
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+});
+
 describe("table blocks", () => {
   it("round-trips a 2x2 table with column alignment", () => {
     const source =

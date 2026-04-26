@@ -32,6 +32,7 @@ import {
   LinkListBlockEditableBlock,
   NewsEntryEditableBlock,
   PageLinkEditableBlock,
+  PublicationsEntryEditableBlock,
   TableEditableBlock,
   TeachingEntryEditableBlock,
   TodoEditableBlock,
@@ -103,6 +104,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "news-entry": "News entry",
   "works-entry": "Works entry",
   "teaching-entry": "Teaching entry",
+  "publications-entry": "Publication",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -283,13 +285,22 @@ const SLASH_COMMANDS: SlashCommand[] = [
     makeBlock: () => createMdxBlock("news-entry"),
   },
   {
-    description: "Publication list from content/publications.json",
+    description: "Publication list from content/pages/publications.mdx",
     group: "Data",
     icon: "📚",
     id: "publications-block",
     keywords: ["publications", "papers", "research", "academic"],
     label: "Publications",
     makeBlock: () => createMdxBlock("publications-block"),
+  },
+  {
+    description: "A single publication inside the publications page",
+    group: "Data",
+    icon: "📑",
+    id: "publications-entry",
+    keywords: ["publication", "paper", "entry", "research"],
+    label: "Publication",
+    makeBlock: () => createMdxBlock("publications-entry"),
   },
   {
     description: "Recent + past work entries from content/pages/works.mdx",
@@ -1510,6 +1521,10 @@ function EditableBlock({
 
   if (block.type === "teaching-entry") {
     return <TeachingEntryEditableBlock block={block} onPatch={onPatch} />;
+  }
+
+  if (block.type === "publications-entry") {
+    return <PublicationsEntryEditableBlock block={block} onPatch={onPatch} />;
   }
 
   if (block.type === "table") {

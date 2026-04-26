@@ -133,20 +133,3 @@ export const HomeIcon = () => (
   </svg>
 );
 
-export const PublicationsIcon = () => (
-  <svg
-    viewBox="0 0 16 16"
-    width="14"
-    height="14"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M3 3.25h4.25A1.75 1.75 0 0 1 9 5v8.25a2 2 0 0 0-1.75-.95H3Z" />
-    <path d="M13 3.25H9.75A1.75 1.75 0 0 0 8 5v8.25a2 2 0 0 1 1.75-.95H13Z" />
-    <path d="M5 6h2M10 6h1.5M5 8.5h2M10 8.5h1.5" />
-  </svg>
-);
-

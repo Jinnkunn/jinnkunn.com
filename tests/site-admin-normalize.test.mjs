@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { normalizeHomeData } from "../lib/site-admin/home-normalize.ts";
-import { normalizePublicationsData } from "../lib/site-admin/publications-normalize.ts";
 
 // ----------------------------------------------------------------------------
 // Home — single Notion-style MDX document. The legacy section-based
@@ -72,116 +71,10 @@ test("normalizeHomeData: silently drops legacy section data", () => {
 // equivalent newest-first sort + invalid-entry drop happen at render
 // time inside `components/posts-mdx/news-block.tsx`.
 
-// ----------------------------------------------------------------------------
-// Publications
-// ----------------------------------------------------------------------------
-
-test("normalizePublicationsData: empty template for non-object input", () => {
-  const out = normalizePublicationsData(null);
-  assert.equal(out.title, "Publications");
-  assert.deepEqual(out.profileLinks, []);
-  assert.deepEqual(out.entries, []);
-});
-
-test("normalizePublicationsData: drops profile links missing label or href", () => {
-  const out = normalizePublicationsData({
-    profileLinks: [
-      { label: "Scholar", href: "https://scholar.google.com" },
-      { label: "", href: "https://example.com" },
-      { label: "No URL", href: "" },
-      { label: "Scholar" },
-      null,
-      "bad",
-    ],
-  });
-  assert.equal(out.profileLinks.length, 1);
-  assert.equal(out.profileLinks[0].label, "Scholar");
-});
-
-test("normalizePublicationsData: keeps hostname when string, strips otherwise", () => {
-  const out = normalizePublicationsData({
-    profileLinks: [
-      { label: "A", href: "https://a.com", hostname: "a.com" },
-      { label: "B", href: "https://b.com", hostname: 42 },
-    ],
-  });
-  assert.equal(out.profileLinks[0].hostname, "a.com");
-  assert.equal(out.profileLinks[1].hostname, undefined);
-});
-
-test("normalizePublicationsData: drops entries without title", () => {
-  const out = normalizePublicationsData({
-    entries: [
-      { title: "Good paper", year: "2025", url: "", labels: [] },
-      { title: "", year: "2025", url: "", labels: [] },
-      { year: "2025" },
-      null,
-    ],
-  });
-  assert.equal(out.entries.length, 1);
-  assert.equal(out.entries[0].title, "Good paper");
-});
-
-test("normalizePublicationsData: filters non-string label/author items", () => {
-  const out = normalizePublicationsData({
-    entries: [
-      {
-        title: "Paper",
-        year: "2025",
-        url: "",
-        labels: ["conference", 42, null, "journal"],
-        authors: ["A. Author", 0, "B. Author"],
-        externalUrls: ["https://example.com", null, 123],
-      },
-    ],
-  });
-  assert.deepEqual(out.entries[0].labels, ["conference", "journal"]);
-  assert.deepEqual(out.entries[0].authors, ["A. Author", "B. Author"]);
-  assert.deepEqual(out.entries[0].externalUrls, ["https://example.com"]);
-});
-
-test("normalizePublicationsData: coerces authorsRich into {name,isSelf} entries", () => {
-  const out = normalizePublicationsData({
-    entries: [
-      {
-        title: "Paper",
-        year: "2025",
-        url: "",
-        labels: [],
-        authorsRich: [
-          { name: "Jinkun Chen", isSelf: true },
-          { name: "Collaborator", isSelf: false },
-          { name: "", isSelf: true },
-          { isSelf: true },
-          null,
-        ],
-      },
-    ],
-  });
-  assert.deepEqual(out.entries[0].authorsRich, [
-    { name: "Jinkun Chen", isSelf: true },
-    { name: "Collaborator", isSelf: false },
-  ]);
-});
-
-test("normalizePublicationsData: keeps optional string fields (doi/arxiv/venue)", () => {
-  const out = normalizePublicationsData({
-    entries: [
-      {
-        title: "Paper",
-        year: "2025",
-        url: "",
-        labels: [],
-        doiUrl: "https://doi.org/...",
-        arxivUrl: "https://arxiv.org/abs/...",
-        venue: "NeurIPS 2025",
-      },
-    ],
-  });
-  assert.equal(out.entries[0].doiUrl, "https://doi.org/...");
-  assert.equal(out.entries[0].arxivUrl, "https://arxiv.org/abs/...");
-  assert.equal(out.entries[0].venue, "NeurIPS 2025");
-});
+// Publications migrated to inline `<PublicationsEntry data='...' />`
+// blocks inside `content/pages/publications.mdx`. The DTO normalizer
+// is gone; equivalent invariants live in the publications-entry round-
+// trip tests in apps/workspace/src/surfaces/site-admin/mdx-blocks.test.ts.
 
 // Teaching migrated to inline `<TeachingEntry>` blocks inside
 // `content/pages/teaching.mdx`. Equivalent invariants live in the
