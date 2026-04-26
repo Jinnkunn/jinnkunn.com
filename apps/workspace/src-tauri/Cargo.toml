@@ -9,7 +9,11 @@ edition = "2021"
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
-keyring = "3"
+# `apple-native` is required: in keyring v3 every platform backend is
+# opt-in. Without this feature the crate silently uses an in-memory
+# mock keystore on macOS, so the site-admin token never reaches the
+# real Keychain and the user has to re-sign-in on every app launch.
+keyring = { version = "3", features = ["apple-native"] }
 open = "5"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
