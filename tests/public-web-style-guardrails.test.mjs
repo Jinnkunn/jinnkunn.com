@@ -41,16 +41,16 @@ test("public-web-style-guardrails: public content links keep Notion link classes
 
 test("public-web-style-guardrails: classic list pages keep production Notion markup", async () => {
   const sources = {
-    // News rendering moved to a generic MDX block (`<NewsBlock />`) so it
-    // can be embedded into any page; the dedicated /news route now wraps
-    // the same component with a ClassicPageShell.
-    news: await read("components/posts-mdx/news-block.tsx"),
+    // News rendering lives on the per-entry `<NewsEntry>` MDX component
+    // since `content/pages/news.mdx` is the source of truth — `<NewsBlock />`
+    // re-uses the same entry component for embeds (e.g. Home top-N).
+    news: await read("components/posts-mdx/news-entry.tsx"),
     works: await read("components/posts-mdx/works-block.tsx"),
     publications: await read("components/publications/publication-list.tsx"),
     blog: await read("components/blog-index/blog-index-list.tsx"),
   };
 
-  assertIncludes(sources.news, "news-entry__body mdx-post__body", "News page");
+  assertIncludes(sources.news, "news-entry__body mdx-post__body", "News entry");
   assertIncludes(sources.works, "notion-toggle closed works-toggle", "Works page");
   assertIncludes(
     sources.publications,
