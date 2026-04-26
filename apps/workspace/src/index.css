@@ -1722,6 +1722,116 @@ body[data-window-focused="true"] .sidebar-surface {
   background: var(--mdx-popover-border);
 }
 
+.block-popover__item--swatch {
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.block-popover__swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--mdx-color-bg, transparent);
+}
+
+/* Notion-ish background palette. Used both as the popover swatch via the
+ * `data-color` attribute on the swatch span, and as the tinted background on
+ * the .mdx-document-block wrapper for the editor canvas. The same colors
+ * land in notion-blocks.css for the public render. */
+.block-popover__swatch[data-color="default"] { background: transparent; }
+.block-popover__swatch[data-color="gray"] { background: rgba(120, 119, 116, 0.15); }
+.block-popover__swatch[data-color="brown"] { background: rgba(159, 107, 83, 0.18); }
+.block-popover__swatch[data-color="orange"] { background: rgba(217, 115, 13, 0.18); }
+.block-popover__swatch[data-color="yellow"] { background: rgba(203, 145, 47, 0.22); }
+.block-popover__swatch[data-color="green"] { background: rgba(68, 131, 97, 0.22); }
+.block-popover__swatch[data-color="blue"] { background: rgba(51, 126, 169, 0.22); }
+.block-popover__swatch[data-color="purple"] { background: rgba(144, 101, 176, 0.22); }
+.block-popover__swatch[data-color="pink"] { background: rgba(193, 76, 138, 0.22); }
+.block-popover__swatch[data-color="red"] { background: rgba(212, 76, 71, 0.22); }
+
+.mdx-document-block[data-color] {
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 6px;
+}
+.mdx-document-block[data-color="gray"] { background: rgba(120, 119, 116, 0.1); }
+.mdx-document-block[data-color="brown"] { background: rgba(159, 107, 83, 0.12); }
+.mdx-document-block[data-color="orange"] { background: rgba(217, 115, 13, 0.12); }
+.mdx-document-block[data-color="yellow"] { background: rgba(203, 145, 47, 0.16); }
+.mdx-document-block[data-color="green"] { background: rgba(68, 131, 97, 0.16); }
+.mdx-document-block[data-color="blue"] { background: rgba(51, 126, 169, 0.14); }
+.mdx-document-block[data-color="purple"] { background: rgba(144, 101, 176, 0.14); }
+.mdx-document-block[data-color="pink"] { background: rgba(193, 76, 138, 0.14); }
+.mdx-document-block[data-color="red"] { background: rgba(212, 76, 71, 0.14); }
+
+/* @mention picker — search box + page list. */
+.block-popover--mention {
+  padding: 4px;
+  min-width: 240px;
+}
+
+.mention-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mention-picker__input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mention-picker__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.mention-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mention-picker__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mention-picker__item:hover,
+.mention-picker__item:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mention-picker__item span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mention-picker__empty {
+  padding: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* Inline format toolbar — dense single-row strip, anchored above the
  * focused textarea while the user has a non-empty selection. */
 .block-popover--inline {
@@ -1912,22 +2022,34 @@ body[data-window-focused="true"] .sidebar-surface {
 /* Empty nested blocks list (e.g. an empty toggle body). Renders a small
  * affordance so the user can seed the first child. */
 .mdx-document-blocks-empty {
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 .mdx-document-blocks-empty__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
   border: 1px dashed var(--color-border-default);
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: 8px;
+  padding: 10px;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color 80ms ease, color 80ms ease;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease;
 }
 
-.mdx-document-blocks-empty__btn:hover {
-  background: var(--mdx-handle-bg-hover);
+.mdx-document-blocks-empty__btn:hover,
+.mdx-document-blocks-empty__btn:focus-visible {
+  outline: none;
+  background: var(--mdx-block-row-hover-bg);
+  border-color: var(--color-accent);
   color: var(--color-text-primary);
 }
 
@@ -2485,11 +2607,11 @@ body[data-window-focused="true"] .sidebar-surface {
   z-index: 3;
   top: calc(100% + 4px);
   left: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
-  gap: 3px;
-  width: min(520px, calc(100% - 16px));
-  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(320px, calc(100% - 16px));
+  max-height: 360px;
   overflow: auto;
   padding: 6px;
   border: 1px solid var(--color-border-subtle);
@@ -2498,15 +2620,30 @@ body[data-window-focused="true"] .sidebar-surface {
   box-shadow: 0 14px 34px color-mix(in srgb, var(--color-text-primary) 13%, transparent);
 }
 
-.mdx-document-slash-menu button {
+.block-editor-command__group {
   display: flex;
-  min-height: 44px;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  gap: 1px;
+}
+
+.block-editor-command__group-label {
+  padding: 6px 8px 2px;
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mdx-document-slash-menu button {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
   border: 1px solid transparent;
-  border-radius: 7px;
-  padding: 7px 9px;
+  border-radius: 6px;
+  padding: 6px 8px;
   background: transparent;
   color: var(--color-text-secondary);
   text-align: left;
@@ -2519,16 +2656,41 @@ body[data-window-focused="true"] .sidebar-surface {
   background: var(--color-bg-hover);
 }
 
-.mdx-document-slash-menu button strong {
+.block-editor-command__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 5px;
+  background: var(--color-bg-surface-alt);
   color: var(--color-text-primary);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.mdx-document-slash-menu button span {
+.block-editor-command__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.block-editor-command__body > strong {
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.block-editor-command__body > span {
   color: var(--color-text-muted);
   font-size: 11px;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 /* Floating popover used by block action menus and inline format

@@ -15,22 +15,34 @@ import {
 
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import { MarkdownEditor } from "./LazyMarkdownEditor";
-import { uploadGenericFile, uploadImageFile } from "./assets-upload";
+import { uploadImageFile } from "./assets-upload";
 import {
   BlockEditorCommandMenu,
   getMatchingBlockEditorCommands,
   type BlockEditorCommand,
 } from "./block-editor";
-import { BlockPopover } from "./block-popover";
+import { BlockPopover, type BlockPopoverAnchor } from "./block-popover";
 import { applyLink, toggleWrap } from "./format-helpers";
+import { MentionPicker, type MentionTarget } from "./mention-picker";
+import { getTextareaCaretCoords } from "./textarea-caret";
+import {
+  BookmarkEditableBlock,
+  EmbedEditableBlock,
+  FileEditableBlock,
+  PageLinkEditableBlock,
+  TableEditableBlock,
+  TodoEditableBlock,
+  ToggleEditableBlock,
+} from "./mdx-block-renderers";
 import {
   createMdxBlock,
   duplicateMdxBlock,
+  MDX_BLOCK_COLORS,
   parseMdxBlocks,
   serializeMdxBlocks,
   type MdxBlock,
+  type MdxBlockColor,
   type MdxBlockType,
-  type MdxEmbedKind,
 } from "./mdx-blocks";
 import { useSiteAdmin } from "./state";
 import { formatDraftAge, useEditorDraft, type EditorKind } from "./use-editor-draft";
@@ -103,8 +115,11 @@ interface SlashCommand extends BlockEditorCommand {
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
+  // Basic — text-bearing blocks for paragraphs, headings, lists, and quotes.
   {
     description: "Plain paragraph text",
+    group: "Basic",
+    icon: "T",
     id: "text",
     keywords: ["text", "paragraph", "plain"],
     label: "Text",
@@ -112,6 +127,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Large section heading",
+    group: "Basic",
+    icon: "H₁",
     id: "heading1",
     keywords: ["h1", "heading1", "title"],
     label: "Heading 1",
@@ -119,6 +136,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Medium section heading",
+    group: "Basic",
+    icon: "H₂",
     id: "heading2",
     keywords: ["h2", "heading", "heading2"],
     label: "Heading 2",
@@ -126,20 +145,17 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Small section heading",
+    group: "Basic",
+    icon: "H₃",
     id: "heading3",
     keywords: ["h3", "heading3", "subheading"],
     label: "Heading 3",
     makeBlock: () => ({ ...createMdxBlock("heading"), level: 3, text: "" }),
   },
   {
-    description: "Upload or paste an image",
-    id: "image",
-    keywords: ["image", "img", "photo", "media"],
-    label: "Image",
-    makeBlock: () => createMdxBlock("image"),
-  },
-  {
     description: "Quote or excerpt",
+    group: "Basic",
+    icon: "❝",
     id: "quote",
     keywords: ["quote", "blockquote"],
     label: "Quote",
@@ -147,6 +163,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Bulleted or numbered list",
+    group: "Basic",
+    icon: "•",
     id: "list",
     keywords: ["list", "bullet", "bulleted", "numbered"],
     label: "List",
@@ -154,6 +172,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Checkbox list with completion",
+    group: "Basic",
+    icon: "☑",
     id: "todo",
     keywords: ["todo", "task", "check", "checkbox", "checklist"],
     label: "To-do list",
@@ -161,55 +181,83 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Collapsible section with hidden content",
+    group: "Basic",
+    icon: "▸",
     id: "toggle",
     keywords: ["toggle", "collapse", "details", "expand"],
     label: "Toggle",
     makeBlock: () => createMdxBlock("toggle"),
   },
+  // Media — uploads and platform-hosted media.
   {
-    description: "Markdown table",
-    id: "table",
-    keywords: ["table", "grid", "matrix", "spreadsheet"],
-    label: "Table",
-    makeBlock: () => createMdxBlock("table"),
-  },
-  {
-    description: "Link preview card",
-    id: "bookmark",
-    keywords: ["bookmark", "link", "url", "preview"],
-    label: "Bookmark",
-    makeBlock: () => createMdxBlock("bookmark"),
+    description: "Upload or paste an image",
+    group: "Media",
+    icon: "▢",
+    id: "image",
+    keywords: ["image", "img", "photo", "media"],
+    label: "Image",
+    makeBlock: () => createMdxBlock("image"),
   },
   {
     description: "YouTube or Vimeo video",
+    group: "Media",
+    icon: "▶",
     id: "video",
     keywords: ["video", "youtube", "vimeo"],
     label: "Video",
     makeBlock: () => ({ ...createMdxBlock("embed"), embedKind: "youtube" }),
   },
   {
+    description: "Uploaded file attachment",
+    group: "Media",
+    icon: "⇩",
+    id: "file",
+    keywords: ["file", "upload", "attachment", "pdf"],
+    label: "File",
+    makeBlock: () => createMdxBlock("file"),
+  },
+  // Embeds — third-party content and links.
+  {
+    description: "Link preview card",
+    group: "Embeds",
+    icon: "⌐",
+    id: "bookmark",
+    keywords: ["bookmark", "link", "url", "preview"],
+    label: "Bookmark",
+    makeBlock: () => createMdxBlock("bookmark"),
+  },
+  {
     description: "Iframe embed (CodePen, Loom, Figma, …)",
+    group: "Embeds",
+    icon: "⌬",
     id: "embed",
     keywords: ["embed", "iframe"],
     label: "Embed",
     makeBlock: () => ({ ...createMdxBlock("embed"), embedKind: "iframe" }),
   },
   {
-    description: "Uploaded file attachment",
-    id: "file",
-    keywords: ["file", "upload", "attachment", "pdf"],
-    label: "File",
-    makeBlock: () => createMdxBlock("file"),
-  },
-  {
     description: "Link to another page in this site",
+    group: "Embeds",
+    icon: "→",
     id: "page-link",
     keywords: ["page", "link", "internal"],
     label: "Page link",
     makeBlock: () => createMdxBlock("page-link"),
   },
+  // Layout — structural blocks and advanced.
+  {
+    description: "Markdown table",
+    group: "Layout",
+    icon: "▦",
+    id: "table",
+    keywords: ["table", "grid", "matrix", "spreadsheet"],
+    label: "Table",
+    makeBlock: () => createMdxBlock("table"),
+  },
   {
     description: "Visual separator",
+    group: "Layout",
+    icon: "—",
     id: "divider",
     keywords: ["divider", "hr", "line"],
     label: "Divider",
@@ -217,6 +265,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Highlighted note",
+    group: "Layout",
+    icon: "⚐",
     id: "callout",
     keywords: ["callout", "note", "tip"],
     label: "Callout",
@@ -224,6 +274,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Fenced code block",
+    group: "Layout",
+    icon: "{}",
     id: "code",
     keywords: ["code", "snippet"],
     label: "Code",
@@ -231,6 +283,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     description: "Advanced MDX",
+    group: "Layout",
+    icon: "◇",
     id: "raw",
     keywords: ["raw", "mdx", "html"],
     label: "Raw MDX",
@@ -467,7 +521,11 @@ function EditableBlocksList({
   const blockInputRefs = useRef(new Map<string, HTMLInputElement | HTMLTextAreaElement>());
   const focusSeqRef = useRef(0);
 
-  const enableDrag = depth === 0;
+  // Drag-reorder is enabled at every depth; HTML5 DnD scopes by parent
+  // because each EditableBlocksList instance owns its own draggingBlockId
+  // state, and the dataTransfer payload only matches when both source and
+  // drop target live in the same list.
+  const enableDrag = true;
 
   const registerBlockInput = useCallback(
     (blockId: string, node: HTMLInputElement | HTMLTextAreaElement | null) => {
@@ -658,7 +716,7 @@ function EditableBlocksList({
           className="mdx-document-blocks-empty__btn"
           onClick={() => commitBlocks([createMdxBlock("paragraph")])}
         >
-          + Add a block
+          + Click to add a block
         </button>
       </div>
     );
@@ -670,6 +728,7 @@ function EditableBlocksList({
         <div
           className="mdx-document-block"
           data-depth={depth}
+          data-color={block.color && block.color !== "default" ? block.color : undefined}
           data-drag-over={dragOverBlockId === block.id ? "true" : undefined}
           data-dragging={draggingBlockId === block.id ? "true" : undefined}
           key={block.id}
@@ -737,6 +796,7 @@ function EditableBlocksList({
             onUploadImage={(file) => void uploadImageIntoBlock(block.id, file)}
             onMoveUp={() => moveBlock(index, -1)}
             onMoveDown={() => moveBlock(index, 1)}
+            onDuplicate={() => duplicateBlockById(block.id)}
             onTurnInto={(type, level) => changeBlockType(block.id, type, level)}
           />
         </div>
@@ -772,6 +832,10 @@ function EditableBlocksList({
           onMoveUp={() => {
             const idx = blocks.findIndex((b) => b.id === actionMenu.blockId);
             if (idx >= 0) moveBlock(idx, -1);
+            setActionMenu(null);
+          }}
+          onSetColor={(color) => {
+            patchBlock(actionMenu.blockId, (b) => ({ ...b, color }));
             setActionMenu(null);
           }}
           onTurnInto={(type) => {
@@ -837,8 +901,11 @@ interface BlockActionMenuProps {
   onDuplicate: () => void;
   onMoveDown: () => void;
   onMoveUp: () => void;
+  onSetColor: (color: MdxBlockColor) => void;
   onTurnInto: (type: MdxBlockType) => void;
 }
+
+type ActionMenuPanel = "main" | "turnInto" | "color";
 
 function BlockActionMenu({
   anchor,
@@ -851,9 +918,10 @@ function BlockActionMenu({
   onDuplicate,
   onMoveDown,
   onMoveUp,
+  onSetColor,
   onTurnInto,
 }: BlockActionMenuProps) {
-  const [turnIntoOpen, setTurnIntoOpen] = useState(false);
+  const [panel, setPanel] = useState<ActionMenuPanel>("main");
 
   useEffect(() => {
     if (!block) onClose();
@@ -868,12 +936,12 @@ function BlockActionMenu({
       open={Boolean(block)}
       placement="bottom-start"
     >
-      {turnIntoOpen ? (
+      {panel === "turnInto" ? (
         <div className="block-popover__section" role="menu" aria-label="Turn into">
           <button
             type="button"
             className="block-popover__item block-popover__item--back"
-            onClick={() => setTurnIntoOpen(false)}
+            onClick={() => setPanel("main")}
           >
             ← Turn into…
           </button>
@@ -886,6 +954,35 @@ function BlockActionMenu({
               aria-current={block?.type === type ? "true" : undefined}
             >
               {BLOCK_TYPE_LABELS[type]}
+            </button>
+          ))}
+        </div>
+      ) : panel === "color" ? (
+        <div className="block-popover__section" role="menu" aria-label="Color">
+          <button
+            type="button"
+            className="block-popover__item block-popover__item--back"
+            onClick={() => setPanel("main")}
+          >
+            ← Color
+          </button>
+          {MDX_BLOCK_COLORS.map((color) => (
+            <button
+              type="button"
+              key={color}
+              className="block-popover__item block-popover__item--swatch"
+              data-color={color}
+              onClick={() => onSetColor(color)}
+              aria-current={
+                (block?.color ?? "default") === color ? "true" : undefined
+              }
+            >
+              <span
+                className="block-popover__swatch"
+                data-color={color}
+                aria-hidden="true"
+              />
+              <span style={{ textTransform: "capitalize" }}>{color}</span>
             </button>
           ))}
         </div>
@@ -902,9 +999,17 @@ function BlockActionMenu({
           <button
             type="button"
             className="block-popover__item"
-            onClick={() => setTurnIntoOpen(true)}
+            onClick={() => setPanel("turnInto")}
           >
             <span>Turn into</span>
+            <span aria-hidden="true">›</span>
+          </button>
+          <button
+            type="button"
+            className="block-popover__item"
+            onClick={() => setPanel("color")}
+          >
+            <span>Color</span>
             <span aria-hidden="true">›</span>
           </button>
           <button type="button" className="block-popover__item" onClick={onCopyLink}>
@@ -939,6 +1044,7 @@ function EditableBlock({
   block,
   depth,
   onChooseSlashCommand,
+  onDuplicate,
   onFocusInput,
   onInsertParagraphAfter,
   onMoveDown,
@@ -956,6 +1062,7 @@ function EditableBlock({
   block: MdxBlock;
   depth: number;
   onChooseSlashCommand: (command: SlashCommand) => void;
+  onDuplicate: () => void;
   onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
   onInsertParagraphAfter: () => void;
   onMoveDown: () => void;
@@ -977,6 +1084,9 @@ function EditableBlock({
   const [selection, setSelection] = useState<{ end: number; start: number } | null>(
     null,
   );
+  // mention.atOffset is the position of the literal "@" character; the
+  // picker lives until the user dismisses or selects a target.
+  const [mention, setMention] = useState<{ atOffset: number } | null>(null);
   const isFormattableBlock =
     block.type === "paragraph" ||
     block.type === "heading" ||
@@ -1063,6 +1173,20 @@ function EditableBlock({
   const onTextKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const value = event.currentTarget.value;
     const meta = event.metaKey || event.ctrlKey;
+    // @-mention trigger: typed "@" in a formattable block opens the page
+    // picker. The "@" still gets typed; the picker reads the offset of
+    // the just-typed character on the next render via selectionStart.
+    if (
+      event.key === "@" &&
+      !meta &&
+      isFormattableBlock &&
+      block.type !== "code" &&
+      block.type !== "raw"
+    ) {
+      const offset = event.currentTarget.selectionStart ?? 0;
+      // Schedule on the next tick so the "@" lands in the textarea first.
+      requestAnimationFrame(() => setMention({ atOffset: offset }));
+    }
     if (meta && event.shiftKey && event.key === "ArrowUp") {
       event.preventDefault();
       onMoveUp();
@@ -1078,27 +1202,44 @@ function EditableBlock({
       onTurnInto("heading", Number(event.key) as 1 | 2 | 3);
       return;
     }
-    if (meta && !event.shiftKey && !event.altKey && isFormattableBlock) {
+    if (meta && !event.shiftKey && !event.altKey) {
       const lowered = event.key.toLowerCase();
-      if (lowered === "b") {
+      // Cmd+D: duplicate current block. Always available regardless of
+      // whether the block is text-formattable.
+      if (lowered === "d") {
         event.preventDefault();
-        applyToggleWrap("**");
+        onDuplicate();
         return;
       }
-      if (lowered === "i") {
+      // Cmd+/: open the slash menu without typing a "/". Replaces the
+      // paragraph text with "/" so the matcher fires; only meaningful for
+      // paragraph blocks (other types ignore the shortcut).
+      if (event.key === "/" && block.type === "paragraph") {
         event.preventDefault();
-        applyToggleWrap("*");
+        onPatch((current) => ({ ...current, text: "/" }));
         return;
       }
-      if (lowered === "e") {
-        event.preventDefault();
-        applyToggleWrap("`");
-        return;
-      }
-      if (lowered === "k") {
-        event.preventDefault();
-        applyLinkWrap();
-        return;
+      if (isFormattableBlock) {
+        if (lowered === "b") {
+          event.preventDefault();
+          applyToggleWrap("**");
+          return;
+        }
+        if (lowered === "i") {
+          event.preventDefault();
+          applyToggleWrap("*");
+          return;
+        }
+        if (lowered === "e") {
+          event.preventDefault();
+          applyToggleWrap("`");
+          return;
+        }
+        if (lowered === "k") {
+          event.preventDefault();
+          applyLinkWrap();
+          return;
+        }
       }
     }
     if (event.key === "Enter" && value.trim().startsWith("/")) {
@@ -1275,9 +1416,16 @@ function EditableBlock({
         onFocusInput={onFocusInput}
         onPatch={onPatch}
         onRemoveEmpty={onRemoveEmpty}
-        request={request}
-        setError={setError}
-        setMessage={setMessage}
+        renderChildren={(props) => (
+          <EditableBlocksList
+            blocks={props.blocks}
+            depth={props.depth}
+            onBlocksChange={props.onBlocksChange}
+            request={request}
+            setError={setError}
+            setMessage={setMessage}
+          />
+        )}
       />
     );
   }
@@ -1334,8 +1482,62 @@ function EditableBlock({
             ? "Quote"
             : "";
   const showOverlayPlaceholder = isParagraph && block.text.length === 0;
-  const showInlineToolbar =
-    isFormattableBlock && selection !== null && textareaRef.current !== null;
+  // Anchor the inline format toolbar above the start of the actual selection
+  // (Notion-style), not the textarea top-left. The mirror-div helper computes
+  // pixel coords for any caret offset; recompute only when the selection
+  // changes to keep the popover position stable across unrelated re-renders.
+  const inlineAnchor = useMemo<BlockPopoverAnchor>(() => {
+    if (!isFormattableBlock || !selection || !textareaRef.current) return null;
+    const coords = getTextareaCaretCoords(textareaRef.current, selection.start);
+    return { top: coords.top, left: coords.left, width: 0, height: coords.height };
+  }, [isFormattableBlock, selection]);
+  const showInlineToolbar = inlineAnchor !== null;
+
+  const mentionAnchor = useMemo<BlockPopoverAnchor>(() => {
+    if (!mention || !textareaRef.current) return null;
+    const coords = getTextareaCaretCoords(textareaRef.current, mention.atOffset);
+    return {
+      top: coords.top + coords.height,
+      left: coords.left,
+      width: 0,
+      height: 0,
+    };
+  }, [mention]);
+
+  const insertMention = (target: MentionTarget) => {
+    if (!mention || !textareaRef.current) return;
+    const link = `[${target.title}](/pages/${target.slug})`;
+    const node = textareaRef.current;
+    const value = node.value;
+    // Replace the literal "@" + any partial query the user typed before
+    // selecting. We bound the query to a single line / no whitespace so
+    // @-mentions can't swallow paragraph content if the picker is left
+    // open.
+    let queryEnd = mention.atOffset + 1;
+    while (queryEnd < value.length && /[^\s\n]/.test(value.charAt(queryEnd))) {
+      queryEnd += 1;
+    }
+    const before = value.slice(0, mention.atOffset);
+    const after = value.slice(queryEnd);
+    const next = `${before}${link}${after}`;
+    onPatch((current) => ({ ...current, text: next }));
+    setMention(null);
+    requestAnimationFrame(() => {
+      const fresh = textareaRef.current;
+      if (!fresh) return;
+      fresh.focus();
+      const caret = before.length + link.length;
+      fresh.setSelectionRange(caret, caret);
+    });
+  };
+
+  const mentionInitialQuery = useMemo(() => {
+    if (!mention) return "";
+    const value = textareaRef.current?.value ?? "";
+    let end = mention.atOffset + 1;
+    while (end < value.length && /[^\s\n]/.test(value.charAt(end))) end += 1;
+    return value.slice(mention.atOffset + 1, end);
+  }, [mention, block.text]);
 
   return (
     <div className="mdx-document-text-block-shell">
@@ -1363,9 +1565,9 @@ function EditableBlock({
           onChoose={onChooseSlashCommand}
         />
       ) : null}
-      {showInlineToolbar && textareaRef.current ? (
+      {showInlineToolbar && inlineAnchor ? (
         <InlineFormatPopover
-          anchor={textareaRef.current}
+          anchor={inlineAnchor}
           blockType={block.type}
           onBold={() => applyToggleWrap("**")}
           onClose={() => setSelection(null)}
@@ -1376,12 +1578,21 @@ function EditableBlock({
           onTurnInto={onTurnInto}
         />
       ) : null}
+      {mention && mentionAnchor ? (
+        <MentionPicker
+          anchor={mentionAnchor}
+          initialQuery={mentionInitialQuery}
+          onClose={() => setMention(null)}
+          onPick={insertMention}
+          request={request}
+        />
+      ) : null}
     </div>
   );
 }
 
 interface InlineFormatPopoverProps {
-  anchor: HTMLElement;
+  anchor: BlockPopoverAnchor;
   blockType: MdxBlockType;
   onBold: () => void;
   onClose: () => void;
@@ -1490,723 +1701,6 @@ function InlineFormatPopover({
   );
 }
 
-interface TodoEditableBlockProps {
-  block: MdxBlock;
-  onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-  onRemoveEmpty: () => void;
-}
-
-function TodoEditableBlock({
-  block,
-  onFocusInput,
-  onPatch,
-  onRemoveEmpty,
-}: TodoEditableBlockProps) {
-  const lines = block.text.split("\n");
-  const checked = new Set(block.checkedLines ?? []);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  const focusLine = (idx: number, position: "start" | "end" = "end") => {
-    requestAnimationFrame(() => {
-      const node = inputRefs.current[idx];
-      if (!node) return;
-      node.focus();
-      const pos = position === "end" ? node.value.length : 0;
-      node.setSelectionRange(pos, pos);
-    });
-  };
-
-  const updateLines = (
-    nextLines: string[],
-    nextChecked: number[],
-    focusIdx?: number,
-    focusPosition?: "start" | "end",
-  ) => {
-    onPatch((current) => ({
-      ...current,
-      text: nextLines.join("\n"),
-      checkedLines: nextChecked,
-    }));
-    if (focusIdx !== undefined) focusLine(focusIdx, focusPosition);
-  };
-
-  const toggleChecked = (idx: number) => {
-    const next = checked.has(idx)
-      ? Array.from(checked).filter((i) => i !== idx)
-      : [...checked, idx].sort((a, b) => a - b);
-    onPatch((current) => ({ ...current, checkedLines: next }));
-  };
-
-  const handleLineKeyDown = (
-    event: KeyboardEvent<HTMLInputElement>,
-    idx: number,
-  ) => {
-    const node = event.currentTarget;
-    if (event.key === "Enter") {
-      event.preventDefault();
-      // Empty line + Enter exits the todo block (drops the line and focuses
-      // none — the EditableBlock parent will handle the next-paragraph flow
-      // via onRemoveEmpty if appropriate).
-      if (!node.value && lines.length > 1) {
-        const nextLines = lines.filter((_, i) => i !== idx);
-        const nextChecked = Array.from(checked)
-          .filter((i) => i !== idx)
-          .map((i) => (i > idx ? i - 1 : i));
-        updateLines(nextLines, nextChecked, Math.max(0, idx - 1), "end");
-        return;
-      }
-      // Otherwise insert a new empty line after the current one.
-      const nextLines = [...lines.slice(0, idx + 1), "", ...lines.slice(idx + 1)];
-      const nextChecked = Array.from(checked).map((i) => (i > idx ? i + 1 : i));
-      updateLines(nextLines, nextChecked, idx + 1, "start");
-      return;
-    }
-    if (event.key === "Backspace" && !node.value && node.selectionStart === 0) {
-      event.preventDefault();
-      if (lines.length === 1) {
-        // Empty single-line todo: bubble up to the standard remove-empty flow,
-        // which converts/removes the block.
-        onRemoveEmpty();
-        return;
-      }
-      const nextLines = lines.filter((_, i) => i !== idx);
-      const nextChecked = Array.from(checked)
-        .filter((i) => i !== idx)
-        .map((i) => (i > idx ? i - 1 : i));
-      updateLines(nextLines, nextChecked, Math.max(0, idx - 1), "end");
-    }
-  };
-
-  return (
-    <div className="mdx-document-todo-block">
-      {lines.map((line, idx) => (
-        <div className="mdx-document-todo-block__row" key={idx}>
-          <input
-            type="checkbox"
-            className="mdx-document-todo-block__check"
-            checked={checked.has(idx)}
-            onChange={() => toggleChecked(idx)}
-            aria-label={`Item ${idx + 1} ${checked.has(idx) ? "complete" : "pending"}`}
-          />
-          <input
-            ref={(node) => {
-              inputRefs.current[idx] = node;
-              if (idx === 0) onFocusInput(node);
-            }}
-            className="mdx-document-todo-block__input"
-            data-checked={checked.has(idx) ? "true" : undefined}
-            value={line}
-            placeholder="To-do"
-            onChange={(event) => {
-              const nextLines = lines.slice();
-              nextLines[idx] = event.target.value;
-              onPatch((current) => ({
-                ...current,
-                text: nextLines.join("\n"),
-              }));
-            }}
-            onKeyDown={(event) => handleLineKeyDown(event, idx)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-interface ToggleEditableBlockProps {
-  block: MdxBlock;
-  depth: number;
-  onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-  onRemoveEmpty: () => void;
-  request: RequestFn;
-  setError: (error: string) => void;
-  setMessage: (kind: "error" | "success", text: string) => void;
-}
-
-function ToggleEditableBlock({
-  block,
-  depth,
-  onFocusInput,
-  onPatch,
-  onRemoveEmpty,
-  request,
-  setError,
-  setMessage,
-}: ToggleEditableBlockProps) {
-  const isOpen = block.open ?? true;
-  const children = block.children ?? [];
-
-  const toggleOpen = () => {
-    onPatch((current) => ({ ...current, open: !(current.open ?? true) }));
-  };
-
-  const handleSummaryKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      // Enter on summary opens the toggle (if collapsed) and seeds an empty
-      // first child if the body is empty.
-      if (!isOpen) {
-        onPatch((current) => ({ ...current, open: true }));
-      }
-      if (children.length === 0) {
-        onPatch((current) => ({
-          ...current,
-          open: true,
-          children: [createMdxBlock("paragraph")],
-        }));
-      }
-      return;
-    }
-    if (event.key === "Backspace" && !event.currentTarget.value) {
-      // Empty summary + no children → the toggle is essentially blank, fold
-      // it back into the standard remove-empty flow.
-      if (children.length === 0) {
-        event.preventDefault();
-        onRemoveEmpty();
-      }
-    }
-  };
-
-  return (
-    <div className="mdx-document-toggle-block" data-open={isOpen ? "true" : undefined}>
-      <div className="mdx-document-toggle-block__head">
-        <button
-          type="button"
-          className="mdx-document-toggle-block__chevron"
-          aria-expanded={isOpen}
-          aria-label={isOpen ? "Collapse toggle" : "Expand toggle"}
-          onClick={toggleOpen}
-        >
-          {isOpen ? "▾" : "▸"}
-        </button>
-        <input
-          ref={onFocusInput}
-          className="mdx-document-toggle-block__summary"
-          value={block.text}
-          placeholder="Toggle"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, text: event.target.value }))
-          }
-          onKeyDown={handleSummaryKeyDown}
-        />
-      </div>
-      {isOpen ? (
-        <div className="mdx-document-toggle-block__body">
-          <EditableBlocksList
-            blocks={children}
-            depth={depth + 1}
-            onBlocksChange={(next) => onPatch((current) => ({ ...current, children: next }))}
-            request={request}
-            setError={setError}
-            setMessage={setMessage}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-interface TableEditableBlockProps {
-  block: MdxBlock;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-}
-
-function TableEditableBlock({ block, onPatch }: TableEditableBlockProps) {
-  const data = block.tableData ?? { rows: [["", ""], ["", ""]], headerRow: true };
-  const rows = data.rows;
-  const colCount = rows[0]?.length ?? 0;
-
-  const updateData = (next: MdxBlock["tableData"]) => {
-    onPatch((current) => ({ ...current, tableData: next }));
-  };
-
-  const setCell = (rowIdx: number, colIdx: number, value: string) => {
-    const nextRows = rows.map((row) => row.slice());
-    nextRows[rowIdx][colIdx] = value;
-    updateData({ ...data, rows: nextRows });
-  };
-
-  const addRow = () => {
-    const blank = new Array(colCount).fill("");
-    updateData({ ...data, rows: [...rows, blank] });
-  };
-
-  const addColumn = () => {
-    const nextRows = rows.map((row) => [...row, ""]);
-    const nextAlign = data.align ? [...data.align, "left" as const] : undefined;
-    updateData({ ...data, rows: nextRows, align: nextAlign });
-  };
-
-  const removeRow = (idx: number) => {
-    if (rows.length <= 1) return;
-    updateData({ ...data, rows: rows.filter((_, i) => i !== idx) });
-  };
-
-  const removeColumn = (idx: number) => {
-    if (colCount <= 1) return;
-    const nextRows = rows.map((row) => row.filter((_, i) => i !== idx));
-    const nextAlign = data.align?.filter((_, i) => i !== idx);
-    updateData({ ...data, rows: nextRows, align: nextAlign });
-  };
-
-  const setAlign = (colIdx: number, value: "left" | "center" | "right") => {
-    const nextAlign = (data.align ?? new Array(colCount).fill("left" as const)).slice();
-    nextAlign[colIdx] = value;
-    updateData({ ...data, align: nextAlign });
-  };
-
-  const handleCellKeyDown = (
-    event: KeyboardEvent<HTMLInputElement>,
-    rowIdx: number,
-    colIdx: number,
-  ) => {
-    if (event.key === "Tab" && !event.shiftKey) {
-      const isLastCell = rowIdx === rows.length - 1 && colIdx === colCount - 1;
-      if (isLastCell) {
-        event.preventDefault();
-        addRow();
-      }
-    }
-  };
-
-  return (
-    <div className="mdx-document-table-block">
-      <div className="mdx-document-table-block__scroll">
-        <table className="mdx-document-table-block__table">
-          <tbody>
-            {rows.map((row, rowIdx) => (
-              <tr key={rowIdx} data-header={rowIdx === 0 && data.headerRow ? "true" : undefined}>
-                {row.map((cell, colIdx) => (
-                  <td
-                    key={colIdx}
-                    style={{ textAlign: data.align?.[colIdx] ?? "left" }}
-                  >
-                    <input
-                      className="mdx-document-table-block__cell"
-                      value={cell}
-                      onChange={(event) => setCell(rowIdx, colIdx, event.target.value)}
-                      onKeyDown={(event) => handleCellKeyDown(event, rowIdx, colIdx)}
-                      placeholder={rowIdx === 0 ? "Header" : ""}
-                    />
-                  </td>
-                ))}
-                <td className="mdx-document-table-block__row-actions">
-                  <button
-                    type="button"
-                    onClick={() => removeRow(rowIdx)}
-                    disabled={rows.length <= 1}
-                    aria-label="Remove row"
-                    title="Remove row"
-                  >
-                    −
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mdx-document-table-block__col-controls">
-        {Array.from({ length: colCount }).map((_, colIdx) => (
-          <div key={colIdx} className="mdx-document-table-block__col-control">
-            <select
-              value={data.align?.[colIdx] ?? "left"}
-              onChange={(event) =>
-                setAlign(colIdx, event.target.value as "left" | "center" | "right")
-              }
-              aria-label={`Column ${colIdx + 1} alignment`}
-            >
-              <option value="left">←</option>
-              <option value="center">↔</option>
-              <option value="right">→</option>
-            </select>
-            <button
-              type="button"
-              onClick={() => removeColumn(colIdx)}
-              disabled={colCount <= 1}
-              aria-label={`Remove column ${colIdx + 1}`}
-              title="Remove column"
-            >
-              −
-            </button>
-          </div>
-        ))}
-      </div>
-      <div className="mdx-document-table-block__actions">
-        <button type="button" onClick={addRow}>
-          + Row
-        </button>
-        <button type="button" onClick={addColumn}>
-          + Column
-        </button>
-      </div>
-    </div>
-  );
-}
-
-interface BookmarkEditableBlockProps {
-  block: MdxBlock;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-  request: RequestFn;
-  setMessage: (kind: "error" | "success", text: string) => void;
-}
-
-function BookmarkEditableBlock({
-  block,
-  onPatch,
-  request,
-  setMessage,
-}: BookmarkEditableBlockProps) {
-  const [fetching, setFetching] = useState(false);
-  const url = block.url ?? "";
-
-  const fetchMeta = async () => {
-    if (!url.trim()) {
-      setMessage("error", "Enter a URL first.");
-      return;
-    }
-    setFetching(true);
-    const response = await request("/api/site-admin/og-fetch", "POST", {
-      url: url.trim(),
-    });
-    setFetching(false);
-    if (!response.ok) {
-      setMessage("error", `Bookmark fetch failed: ${response.code}: ${response.error}`);
-      return;
-    }
-    const data = (response.data ?? {}) as Record<string, unknown>;
-    onPatch((current) => ({
-      ...current,
-      title: typeof data.title === "string" ? data.title : current.title,
-      description:
-        typeof data.description === "string" ? data.description : current.description,
-      image: typeof data.image === "string" ? data.image : current.image,
-      provider: typeof data.provider === "string" ? data.provider : current.provider,
-    }));
-    setMessage("success", "Bookmark metadata fetched.");
-  };
-
-  return (
-    <div className="mdx-document-bookmark-block">
-      <div className="mdx-document-bookmark-block__row">
-        <input
-          aria-label="Bookmark URL"
-          value={url}
-          placeholder="https://example.com"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, url: event.target.value }))
-          }
-        />
-        <button type="button" onClick={fetchMeta} disabled={fetching || !url.trim()}>
-          {fetching ? "Fetching…" : "Fetch metadata"}
-        </button>
-      </div>
-      <div className="mdx-document-bookmark-block__preview">
-        {block.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={block.image} alt={block.title || "Bookmark thumbnail"} />
-        ) : null}
-        <div className="mdx-document-bookmark-block__fields">
-          <input
-            aria-label="Bookmark title"
-            value={block.title ?? ""}
-            placeholder="Title"
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, title: event.target.value }))
-            }
-          />
-          <textarea
-            aria-label="Bookmark description"
-            value={block.description ?? ""}
-            placeholder="Description"
-            rows={2}
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, description: event.target.value }))
-            }
-          />
-          <input
-            aria-label="Bookmark provider"
-            value={block.provider ?? ""}
-            placeholder="example.com"
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, provider: event.target.value }))
-            }
-          />
-          <input
-            aria-label="Bookmark thumbnail URL"
-            value={block.image ?? ""}
-            placeholder="Image URL (optional)"
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, image: event.target.value }))
-            }
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface EmbedEditableBlockProps {
-  block: MdxBlock;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-}
-
-const EMBED_KIND_LABELS: Record<MdxEmbedKind, string> = {
-  youtube: "YouTube",
-  vimeo: "Vimeo",
-  iframe: "Iframe (CodePen, Loom, …)",
-  video: "Direct video file",
-};
-
-function EmbedEditableBlock({ block, onPatch }: EmbedEditableBlockProps) {
-  const kind = block.embedKind ?? "iframe";
-  const url = block.url ?? "";
-  const previewSrc = previewSrcForEmbed(kind, url);
-
-  return (
-    <div className="mdx-document-embed-block">
-      <div className="mdx-document-embed-block__row">
-        <select
-          aria-label="Embed kind"
-          value={kind}
-          onChange={(event) =>
-            onPatch((current) => ({
-              ...current,
-              embedKind: event.target.value as MdxEmbedKind,
-            }))
-          }
-        >
-          {(Object.keys(EMBED_KIND_LABELS) as MdxEmbedKind[]).map((value) => (
-            <option key={value} value={value}>
-              {EMBED_KIND_LABELS[value]}
-            </option>
-          ))}
-        </select>
-        <input
-          aria-label="Embed URL"
-          value={url}
-          placeholder="https://…"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, url: event.target.value }))
-          }
-        />
-      </div>
-      {previewSrc ? (
-        <div className="mdx-document-embed-block__preview">
-          <iframe
-            src={previewSrc}
-            title="Embed preview"
-            loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-          />
-        </div>
-      ) : (
-        <div className="mdx-document-embed-block__hint">
-          Paste a URL to preview the embed.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function previewSrcForEmbed(kind: MdxEmbedKind, url: string): string {
-  if (!url.trim()) return "";
-  if (kind === "youtube") {
-    const match = url.match(/(?:youtu\.be\/|v=)([\w-]{11})/);
-    if (match) return `https://www.youtube.com/embed/${match[1]}`;
-    return url;
-  }
-  if (kind === "vimeo") {
-    const match = url.match(/vimeo\.com\/(\d+)/);
-    if (match) return `https://player.vimeo.com/video/${match[1]}`;
-    return url;
-  }
-  return url;
-}
-
-interface FileEditableBlockProps {
-  block: MdxBlock;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-  request: RequestFn;
-  setError: (error: string) => void;
-  setMessage: (kind: "error" | "success", text: string) => void;
-}
-
-function FileEditableBlock({
-  block,
-  onPatch,
-  request,
-  setError,
-  setMessage,
-}: FileEditableBlockProps) {
-  const [uploading, setUploading] = useState(false);
-
-  const handleUpload = async (file: File | null) => {
-    if (!file || uploading) return;
-    setUploading(true);
-    const result = await uploadGenericFile({ file, request });
-    setUploading(false);
-    if (!result.ok) {
-      setError(result.error);
-      setMessage("error", `Upload failed: ${result.error}`);
-      return;
-    }
-    rememberRecentAsset(result.asset, result.filename);
-    onPatch((current) => ({
-      ...current,
-      url: result.asset.url,
-      filename: file.name,
-      size: file.size,
-      mimeType: file.type,
-    }));
-    setMessage("success", `Uploaded ${result.filename}.`);
-  };
-
-  return (
-    <div className="mdx-document-file-block">
-      <label className="mdx-document-file-block__upload">
-        <input
-          type="file"
-          disabled={uploading}
-          onChange={(event) => {
-            void handleUpload(event.target.files?.[0] ?? null);
-            event.currentTarget.value = "";
-          }}
-        />
-        <span>{uploading ? "Uploading…" : "Choose file"}</span>
-      </label>
-      <div className="mdx-document-file-block__fields">
-        <input
-          aria-label="File URL"
-          value={block.url ?? ""}
-          placeholder="/uploads/file.pdf"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, url: event.target.value }))
-          }
-        />
-        <input
-          aria-label="File name"
-          value={block.filename ?? ""}
-          placeholder="file.pdf"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, filename: event.target.value }))
-          }
-        />
-        {block.size ? (
-          <span className="mdx-document-file-block__meta">
-            {formatBytes(block.size)}
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-interface PageLinkEditableBlockProps {
-  block: MdxBlock;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-  request: RequestFn;
-}
-
-interface AdminPageEntry {
-  slug: string;
-  title: string;
-}
-
-function PageLinkEditableBlock({ block, onPatch, request }: PageLinkEditableBlockProps) {
-  const [pages, setPages] = useState<AdminPageEntry[]>([]);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const response = await request("/api/site-admin/pages", "GET");
-      if (cancelled) return;
-      if (!response.ok) return;
-      const raw = response.data;
-      const list: AdminPageEntry[] = [];
-      const items = Array.isArray(raw)
-        ? raw
-        : Array.isArray((raw as Record<string, unknown> | null)?.items)
-          ? ((raw as Record<string, unknown>).items as unknown[])
-          : [];
-      for (const entry of items) {
-        if (!entry || typeof entry !== "object") continue;
-        const obj = entry as Record<string, unknown>;
-        const slug = typeof obj.slug === "string" ? obj.slug : "";
-        if (!slug) continue;
-        const title = typeof obj.title === "string" ? obj.title : slug;
-        list.push({ slug, title });
-      }
-      setPages(list);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [request]);
-
-  const filtered = query
-    ? pages.filter(
-        (p) =>
-          p.slug.toLowerCase().includes(query.toLowerCase()) ||
-          p.title.toLowerCase().includes(query.toLowerCase()),
-      )
-    : pages;
-
-  const current = pages.find((p) => p.slug === block.pageSlug);
-
-  return (
-    <div className="mdx-document-page-link-block">
-      <button
-        type="button"
-        className="mdx-document-page-link-block__current"
-        onClick={() => setOpen((prev) => !prev)}
-      >
-        <strong>{current?.title ?? block.pageSlug ?? "Choose a page"}</strong>
-        <span>{block.pageSlug ? `/pages/${block.pageSlug}` : "Click to pick"}</span>
-      </button>
-      {open ? (
-        <div className="mdx-document-page-link-block__picker">
-          <input
-            autoFocus
-            value={query}
-            placeholder="Search pages…"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <div className="mdx-document-page-link-block__list">
-            {filtered.length === 0 ? (
-              <span className="mdx-document-page-link-block__empty">No pages found.</span>
-            ) : (
-              filtered.map((page) => (
-                <button
-                  key={page.slug}
-                  type="button"
-                  onClick={() => {
-                    onPatch((current) => ({ ...current, pageSlug: page.slug }));
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                >
-                  <strong>{page.title}</strong>
-                  <span>/{page.slug}</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 export function MdxDocumentEditor<TForm>({
   adapter,

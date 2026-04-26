@@ -183,3 +183,30 @@ describe("self-closing JSX blocks", () => {
     expect(serializeMdxBlocks(blocks)).toBe(source);
   });
 });
+
+describe("block color wrappers", () => {
+  it("round-trips a colored paragraph", () => {
+    const source = '<Color bg="yellow">\n\nHighlighted text.\n\n</Color>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("paragraph");
+    expect(blocks[0].color).toBe("yellow");
+    expect(blocks[0].text).toBe("Highlighted text.");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("round-trips a colored heading", () => {
+    const source = '<Color bg="blue">\n\n# Section\n\n</Color>\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("heading");
+    expect(blocks[0].color).toBe("blue");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("emits no wrapper when color is default or unset", () => {
+    const source = "Plain.\n";
+    const blocks = parseMdxBlocks(source);
+    blocks[0].color = "default";
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+});

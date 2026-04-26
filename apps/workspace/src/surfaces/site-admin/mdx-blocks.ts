@@ -24,12 +24,41 @@ export interface MdxTableData {
   rows: string[][];
 }
 
+export type MdxBlockColor =
+  | "default"
+  | "gray"
+  | "brown"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "blue"
+  | "purple"
+  | "pink"
+  | "red";
+
+export const MDX_BLOCK_COLORS: MdxBlockColor[] = [
+  "default",
+  "gray",
+  "brown",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+  "red",
+];
+
 export interface MdxBlock {
   alt?: string;
   blankLinesBefore?: number;
   caption?: string;
   checkedLines?: number[];
   children?: MdxBlock[];
+  // Optional background color tag. When set and not "default", the block
+  // serializes wrapped in a <Color bg="..."> JSX element so the rendered
+  // page can apply a matching background.
+  color?: MdxBlockColor;
   description?: string;
   embedKind?: MdxEmbedKind;
   filename?: string;
@@ -158,6 +187,7 @@ export function parseMdxBlocks(source: string): MdxBlock[] {
 
 const DETAILS_OPEN_RE = /^<details(\s+open)?>$/;
 const SUMMARY_RE = /^<summary>([\s\S]*?)<\/summary>$/;
+const COLOR_OPEN_RE = /^<Color\s+bg="(\w+)">$/;
 // Allow tabs / spaces around the marker to support indented checklists nested
 // inside toggle bodies.
 const TODO_LINE_RE = /^(?:\s*)- \[([ xX])\]\s*(.*)$/;
@@ -235,6 +265,42 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       }
       if ((lines[index] ?? "").trim() === "```") index += 1;
       pushBlock(makeBlock("code", { language, text: bodyLines.join("\n") }));
+      continue;
+    }
+
+    // <Color bg="..."> wraps a single inner block (paragraph / heading /
+    // list / etc). Recognized at every depth. The wrapper is stripped and
+    // the color is attached to the inner block.
+    const colorMatch = COLOR_OPEN_RE.exec(trimmedLine);
+    if (colorMatch) {
+      const color = colorMatch[1] as MdxBlockColor;
+      const innerLines: string[] = [];
+      index += 1;
+      let foundClose = false;
+      while (index < lines.length) {
+        const probe = (lines[index] ?? "").trim();
+        if (probe === "</Color>") {
+          foundClose = true;
+          index += 1;
+          break;
+        }
+        innerLines.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (foundClose) {
+        const innerSource = innerLines.join("\n").replace(/^\n+|\n+$/g, "");
+        const innerBlocks = parseBlocksAtDepth(innerSource, depth);
+        if (innerBlocks.length > 0) {
+          // Attach the color to the first parsed inner block; subsequent
+          // inner blocks (rare; <Color> is meant to wrap one block at a
+          // time) are pushed unwrapped.
+          pushBlock({ ...innerBlocks[0], color });
+          for (let i = 1; i < innerBlocks.length; i += 1) pushBlock(innerBlocks[i]);
+          continue;
+        }
+      }
+      // Fall through to raw if unclosed or empty.
+      pushBlock(makeBlock("raw", { text: [trimmedLine, ...innerLines].join("\n") }));
       continue;
     }
 
@@ -655,10 +721,16 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   return text;
 }
 
+function wrapColor(serialized: string, color: MdxBlockColor | undefined): string {
+  if (!color || color === "default") return serialized;
+  if (!serialized) return serialized;
+  return `<Color bg="${color}">\n\n${serialized}\n\n</Color>`;
+}
+
 function serializeBlocksWithDepth(blocks: MdxBlock[], depth: number): string {
   const parts: string[] = [];
   for (const block of blocks) {
-    const serialized = serializeBlock(block, depth);
+    const serialized = wrapColor(serializeBlock(block, depth), block.color);
     if (!serialized) continue;
     if (parts.length > 0) {
       parts.push("\n".repeat((block.blankLinesBefore ?? 1) + 1));
