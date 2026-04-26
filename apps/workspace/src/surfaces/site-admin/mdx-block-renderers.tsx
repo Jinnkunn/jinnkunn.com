@@ -5,6 +5,7 @@
 // `renderChildren` so this file does not depend on its parent.
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -20,6 +21,7 @@ import {
   type MdxEmbedKind,
   type MdxLinkItem,
 } from "./mdx-blocks";
+import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
 import type { NormalizedApiResponse } from "./types";
 
 type RequestFn = (
@@ -34,7 +36,9 @@ export type BlockRendererRequestFn = RequestFn;
 
 export interface TodoEditableBlockProps {
   block: MdxBlock;
-  onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
+  onFocusInput: (
+    node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
+  ) => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
 }
@@ -47,31 +51,50 @@ export function TodoEditableBlock({
 }: TodoEditableBlockProps) {
   const lines = block.text.split("\n");
   const checked = new Set(block.checkedLines ?? []);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // One TipTap handle per item — per-line WYSIWYG so each todo entry can
+  // carry inline marks (bold/italic/code/links) rather than just plain
+  // text. The ref array is sized to `lines.length`; null slots cover gaps
+  // before each item mounts.
+  const itemRefs = useRef<(RichTextInputHandle | null)[]>([]);
+  const [pendingFocus, setPendingFocus] = useState<{
+    idx: number;
+    seq: number;
+  } | null>(null);
+  const focusSeqRef = useRef(0);
 
-  const focusLine = (idx: number, position: "start" | "end" = "end") => {
-    requestAnimationFrame(() => {
-      const node = inputRefs.current[idx];
-      if (!node) return;
-      node.focus();
-      const pos = position === "end" ? node.value.length : 0;
-      node.setSelectionRange(pos, pos);
-    });
-  };
+  // Re-issue a focus request when the user navigates between items via
+  // Enter / Backspace. The seq counter forces a fresh effect run even
+  // when we move back to an idx we already focused once.
+  useEffect(() => {
+    if (!pendingFocus) return;
+    itemRefs.current[pendingFocus.idx]?.focus();
+  }, [pendingFocus]);
 
-  const updateLines = (
-    nextLines: string[],
-    nextChecked: number[],
-    focusIdx?: number,
-    focusPosition?: "start" | "end",
-  ) => {
-    onPatch((current) => ({
-      ...current,
-      text: nextLines.join("\n"),
-      checkedLines: nextChecked,
-    }));
-    if (focusIdx !== undefined) focusLine(focusIdx, focusPosition);
-  };
+  // Hand the first item's contenteditable to the parent's focus-request
+  // map so a freshly-inserted todo block gets focus on the first row.
+  useEffect(() => {
+    const first = itemRefs.current[0];
+    const node = first?.getEditor()?.view.dom;
+    if (node) onFocusInput(node as HTMLElement);
+    return () => onFocusInput(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.id]);
+
+  const requestFocus = useCallback((idx: number) => {
+    focusSeqRef.current += 1;
+    setPendingFocus({ idx, seq: focusSeqRef.current });
+  }, []);
+
+  const updateLines = useCallback(
+    (nextLines: string[], nextChecked: number[]) => {
+      onPatch((current) => ({
+        ...current,
+        text: nextLines.join("\n"),
+        checkedLines: nextChecked,
+      }));
+    },
+    [onPatch],
+  );
 
   const toggleChecked = (idx: number) => {
     const next = checked.has(idx)
@@ -80,27 +103,30 @@ export function TodoEditableBlock({
     onPatch((current) => ({ ...current, checkedLines: next }));
   };
 
-  const handleLineKeyDown = (
-    event: KeyboardEvent<HTMLInputElement>,
-    idx: number,
-  ) => {
-    const node = event.currentTarget;
+  const handleLineKeyDown = (event: KeyboardEvent, idx: number) => {
+    const handle = itemRefs.current[idx];
+    if (!handle) return;
     if (event.key === "Enter") {
       event.preventDefault();
-      if (!node.value && lines.length > 1) {
+      const isEmpty = handle.isEmpty();
+      if (isEmpty && lines.length > 1) {
+        // Empty item + Enter on a multi-item list: drop this row, focus prev.
         const nextLines = lines.filter((_, i) => i !== idx);
         const nextChecked = Array.from(checked)
           .filter((i) => i !== idx)
           .map((i) => (i > idx ? i - 1 : i));
-        updateLines(nextLines, nextChecked, Math.max(0, idx - 1), "end");
+        updateLines(nextLines, nextChecked);
+        requestFocus(Math.max(0, idx - 1));
         return;
       }
+      // Otherwise: insert an empty row below, focus it.
       const nextLines = [...lines.slice(0, idx + 1), "", ...lines.slice(idx + 1)];
       const nextChecked = Array.from(checked).map((i) => (i > idx ? i + 1 : i));
-      updateLines(nextLines, nextChecked, idx + 1, "start");
+      updateLines(nextLines, nextChecked);
+      requestFocus(idx + 1);
       return;
     }
-    if (event.key === "Backspace" && !node.value && node.selectionStart === 0) {
+    if (event.key === "Backspace" && handle.isEmpty()) {
       event.preventDefault();
       if (lines.length === 1) {
         onRemoveEmpty();
@@ -110,7 +136,8 @@ export function TodoEditableBlock({
       const nextChecked = Array.from(checked)
         .filter((i) => i !== idx)
         .map((i) => (i > idx ? i - 1 : i));
-      updateLines(nextLines, nextChecked, Math.max(0, idx - 1), "end");
+      updateLines(nextLines, nextChecked);
+      requestFocus(Math.max(0, idx - 1));
     }
   };
 
@@ -125,18 +152,19 @@ export function TodoEditableBlock({
             onChange={() => toggleChecked(idx)}
             aria-label={`Item ${idx + 1} ${checked.has(idx) ? "complete" : "pending"}`}
           />
-          <input
-            ref={(node) => {
-              inputRefs.current[idx] = node;
-              if (idx === 0) onFocusInput(node);
+          <RichTextInput
+            ref={(handle) => {
+              itemRefs.current[idx] = handle;
             }}
-            className="mdx-document-todo-block__input"
-            data-checked={checked.has(idx) ? "true" : undefined}
+            className={`mdx-document-text-block mdx-document-todo-block__input${
+              checked.has(idx) ? " mdx-document-todo-block__input--checked" : ""
+            }`}
+            ariaLabel={`Todo item ${idx + 1}`}
+            placeholder={idx === 0 ? "To-do" : ""}
             value={line}
-            placeholder="To-do"
-            onChange={(event) => {
+            onChange={(next) => {
               const nextLines = lines.slice();
-              nextLines[idx] = event.target.value;
+              nextLines[idx] = next;
               onPatch((current) => ({
                 ...current,
                 text: nextLines.join("\n"),
@@ -163,7 +191,9 @@ export interface ToggleChildrenRenderProps {
 export interface ToggleEditableBlockProps {
   block: MdxBlock;
   depth: number;
-  onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
+  onFocusInput: (
+    node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
+  ) => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
   renderChildren: (props: ToggleChildrenRenderProps) => ReactNode;
@@ -179,33 +209,59 @@ export function ToggleEditableBlock({
 }: ToggleEditableBlockProps) {
   const isOpen = block.open ?? true;
   const children = block.children ?? [];
+  const summaryRef = useRef<RichTextInputHandle>(null);
 
   const toggleOpen = () => {
     onPatch((current) => ({ ...current, open: !(current.open ?? true) }));
   };
 
-  const handleSummaryKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      if (!isOpen) {
-        onPatch((current) => ({ ...current, open: true }));
+  // Hand the contenteditable to the parent's focus-request map so a
+  // newly-inserted toggle still auto-focuses its summary.
+  useEffect(() => {
+    const editor = summaryRef.current?.getEditor();
+    if (!editor) return;
+    onFocusInput(editor.view.dom as HTMLElement);
+    return () => onFocusInput(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.id]);
+
+  const handleSummaryKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      // Single-line summary: any Enter (with or without shift) opens the
+      // toggle and seeds an empty body block. We swallow it so TipTap
+      // doesn't split the paragraph or insert a hardBreak inline.
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (!isOpen || children.length === 0) {
+          onPatch((current) => ({
+            ...current,
+            open: true,
+            children:
+              current.children && current.children.length > 0
+                ? current.children
+                : [createMdxBlock("paragraph")],
+          }));
+        }
+        return;
       }
-      if (children.length === 0) {
-        onPatch((current) => ({
-          ...current,
-          open: true,
-          children: [createMdxBlock("paragraph")],
-        }));
-      }
-      return;
-    }
-    if (event.key === "Backspace" && !event.currentTarget.value) {
-      if (children.length === 0) {
+      if (
+        event.key === "Backspace" &&
+        children.length === 0 &&
+        (summaryRef.current?.isEmpty() ?? true)
+      ) {
         event.preventDefault();
         onRemoveEmpty();
       }
-    }
-  };
+    },
+    [children.length, isOpen, onPatch, onRemoveEmpty],
+  );
+
+  const handleSummaryChange = useCallback(
+    (next: string) => {
+      onPatch((current) => ({ ...current, text: next }));
+    },
+    [onPatch],
+  );
 
   return (
     <div className="mdx-document-toggle-block" data-open={isOpen ? "true" : undefined}>
@@ -219,14 +275,13 @@ export function ToggleEditableBlock({
         >
           {isOpen ? "▾" : "▸"}
         </button>
-        <input
-          ref={onFocusInput}
-          className="mdx-document-toggle-block__summary"
-          value={block.text}
+        <RichTextInput
+          ref={summaryRef}
+          className="mdx-document-text-block mdx-document-toggle-block__summary"
+          ariaLabel="Toggle summary"
           placeholder="Toggle"
-          onChange={(event) =>
-            onPatch((current) => ({ ...current, text: event.target.value }))
-          }
+          value={block.text}
+          onChange={handleSummaryChange}
           onKeyDown={handleSummaryKeyDown}
         />
       </div>

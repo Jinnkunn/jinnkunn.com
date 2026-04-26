@@ -71,6 +71,7 @@ function placeholderFor(block: MdxBlock): string {
   if (block.type === "heading") return "Heading";
   if (block.type === "quote") return "Quote";
   if (block.type === "callout") return "Callout";
+  if (block.type === "list") return "One item per line";
   return "Type '/' for commands";
 }
 
@@ -78,6 +79,10 @@ function classNameFor(block: MdxBlock): string {
   if (block.type === "heading") {
     const level = block.level ?? 2;
     return `mdx-document-text-block mdx-document-text-block--heading mdx-document-heading-block__input mdx-document-heading-block__input--h${level}`;
+  }
+  if (block.type === "list") {
+    const style = block.listStyle ?? "bulleted";
+    return `mdx-document-text-block mdx-document-text-block--list mdx-document-text-block--list-${style}`;
   }
   return `mdx-document-text-block mdx-document-text-block--${block.type}`;
 }
@@ -208,6 +213,11 @@ export function RichTextEditableBlock({
       }
 
       if (event.key === "Enter" && !event.shiftKey) {
+        // list blocks let TipTap split the paragraph — each split becomes
+        // a new line in the markdown serializer (which prepends the bullet
+        // / number on save). All other kinds intercept Enter to either
+        // trigger the slash menu or insert a sibling block.
+        if (block.type === "list") return;
         const plain = editor.getText();
         if (plain.trim().startsWith("/")) {
           if (onSlashCommand(plain)) {
@@ -231,6 +241,7 @@ export function RichTextEditableBlock({
       }
     },
     [
+      block.type,
       onDuplicate,
       onInsertParagraphAfter,
       onMoveDown,
@@ -244,7 +255,16 @@ export function RichTextEditableBlock({
 
   const handleValueChange = useCallback(
     (next: string) => {
-      onPatch((current) => ({ ...current, text: next }));
+      onPatch((current) => {
+        // Lists track per-line `markers`; once the user adds / removes a
+        // line via the WYSIWYG editor those indices go stale, so we drop
+        // the array and let the markdown serializer fall back to the
+        // default for the current `listStyle` (`- ` or `1. `, `2. `, …).
+        if (current.type === "list") {
+          return { ...current, text: next, markers: undefined };
+        }
+        return { ...current, text: next };
+      });
     },
     [onPatch],
   );
@@ -396,6 +416,35 @@ export function RichTextEditableBlock({
           <option value={1}>H1</option>
           <option value={2}>H2</option>
           <option value={3}>H3</option>
+        </select>
+        <div className="mdx-document-text-block-shell">
+          {inner}
+          {overlays}
+        </div>
+      </div>
+    );
+  }
+
+  // list reuses the existing two-column wrapper from the textarea path:
+  // the bulleted/numbered selector on the left, the editor on the right.
+  // CSS keys off `--list-bulleted` / `--list-numbered` to render the marker
+  // on each TipTap paragraph via a `::before` pseudo-element.
+  if (block.type === "list") {
+    return (
+      <div className="mdx-document-list-block">
+        <select
+          aria-label="List style"
+          value={block.listStyle ?? "bulleted"}
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              markers: undefined,
+              listStyle: event.target.value as "bulleted" | "numbered",
+            }))
+          }
+        >
+          <option value="bulleted">Bulleted</option>
+          <option value="numbered">Numbered</option>
         </select>
         <div className="mdx-document-text-block-shell">
           {inner}
