@@ -50,6 +50,30 @@
   --color-warn: #b84a00;
   --color-success: #1f7a34;
 
+  /* Notion-style named-color palette. The selection toolbar's color
+   * picker writes one of these tokens onto `<span data-color>` /
+   * `<span data-bg>` runs; the same names exist on the public site as
+   * --ds-color-{text,bg}-{name} so colored text round-trips identically
+   * between editor preview and rendered MDX. */
+  --color-text-gray: #787774;
+  --color-text-brown: #9f6b53;
+  --color-text-orange: #d9730d;
+  --color-text-yellow: #cb912f;
+  --color-text-green: #448361;
+  --color-text-blue: #337ea9;
+  --color-text-purple: #9065b0;
+  --color-text-pink: #c14c8a;
+  --color-text-red: #d44c47;
+  --color-bg-gray: rgba(120, 119, 116, 0.1);
+  --color-bg-brown: rgba(159, 107, 83, 0.12);
+  --color-bg-orange: rgba(217, 115, 13, 0.12);
+  --color-bg-yellow: rgba(203, 145, 47, 0.16);
+  --color-bg-green: rgba(68, 131, 97, 0.16);
+  --color-bg-blue: rgba(51, 126, 169, 0.14);
+  --color-bg-purple: rgba(144, 101, 176, 0.14);
+  --color-bg-pink: rgba(193, 76, 138, 0.14);
+  --color-bg-red: rgba(212, 76, 71, 0.14);
+
   /* Layout */
   --spacing-titlebar: 40px;
   --spacing-sidebar: 248px;
@@ -104,6 +128,28 @@
   --color-danger-strong: #ff9b91;
   --color-warn: #f0a45a;
   --color-success: #62cb7c;
+
+  /* Brighter foreground tones on dark to maintain contrast against the
+   * dark page background — bg tints use higher alpha for the same
+   * reason. Mirrors the dark-theme block in app/design-system.css. */
+  --color-text-gray: #9b9a97;
+  --color-text-brown: #ba856e;
+  --color-text-orange: #d98732;
+  --color-text-yellow: #d9a546;
+  --color-text-green: #60a282;
+  --color-text-blue: #56a1c8;
+  --color-text-purple: #aa82d2;
+  --color-text-pink: #dc6ea5;
+  --color-text-red: #e16e69;
+  --color-bg-gray: rgba(155, 154, 151, 0.18);
+  --color-bg-brown: rgba(186, 133, 110, 0.22);
+  --color-bg-orange: rgba(217, 135, 50, 0.22);
+  --color-bg-yellow: rgba(217, 165, 70, 0.26);
+  --color-bg-green: rgba(96, 162, 130, 0.26);
+  --color-bg-blue: rgba(86, 161, 200, 0.24);
+  --color-bg-purple: rgba(170, 130, 210, 0.24);
+  --color-bg-pink: rgba(220, 110, 165, 0.24);
+  --color-bg-red: rgba(225, 110, 105, 0.24);
 }
 
 :root[data-theme="light"] {
@@ -2055,6 +2101,9 @@ body[data-window-focused="true"] .sidebar-surface {
   display: inline-flex;
   align-items: center;
   gap: 1px;
+  /* The color picker panel positions itself absolutely relative to this
+   * row so it drops right below the "A▾" button. */
+  position: relative;
 }
 
 .block-popover__inline-btn {
@@ -2244,6 +2293,135 @@ body[data-window-focused="true"] .sidebar-surface {
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
+
+/* Inline color span as it shows up inside the contenteditable. Mirrors
+ * the public-site rules in app/(classic)/notion-blocks.css so the WYSIWYG
+ * preview matches what readers see post-publish. Independent text vs bg
+ * axes: any combination of color / bg / both is supported. */
+.mdx-document-text-block.ProseMirror span[data-color="gray"] { color: var(--color-text-gray); }
+.mdx-document-text-block.ProseMirror span[data-color="brown"] { color: var(--color-text-brown); }
+.mdx-document-text-block.ProseMirror span[data-color="orange"] { color: var(--color-text-orange); }
+.mdx-document-text-block.ProseMirror span[data-color="yellow"] { color: var(--color-text-yellow); }
+.mdx-document-text-block.ProseMirror span[data-color="green"] { color: var(--color-text-green); }
+.mdx-document-text-block.ProseMirror span[data-color="blue"] { color: var(--color-text-blue); }
+.mdx-document-text-block.ProseMirror span[data-color="purple"] { color: var(--color-text-purple); }
+.mdx-document-text-block.ProseMirror span[data-color="pink"] { color: var(--color-text-pink); }
+.mdx-document-text-block.ProseMirror span[data-color="red"] { color: var(--color-text-red); }
+.mdx-document-text-block.ProseMirror span[data-bg] {
+  padding: 0 3px;
+  border-radius: 3px;
+}
+.mdx-document-text-block.ProseMirror span[data-bg="gray"] { background: var(--color-bg-gray); }
+.mdx-document-text-block.ProseMirror span[data-bg="brown"] { background: var(--color-bg-brown); }
+.mdx-document-text-block.ProseMirror span[data-bg="orange"] { background: var(--color-bg-orange); }
+.mdx-document-text-block.ProseMirror span[data-bg="yellow"] { background: var(--color-bg-yellow); }
+.mdx-document-text-block.ProseMirror span[data-bg="green"] { background: var(--color-bg-green); }
+.mdx-document-text-block.ProseMirror span[data-bg="blue"] { background: var(--color-bg-blue); }
+.mdx-document-text-block.ProseMirror span[data-bg="purple"] { background: var(--color-bg-purple); }
+.mdx-document-text-block.ProseMirror span[data-bg="pink"] { background: var(--color-bg-pink); }
+.mdx-document-text-block.ProseMirror span[data-bg="red"] { background: var(--color-bg-red); }
+
+/* Color picker — opens beneath the toolbar's "A▾" button. Two rows
+ * (text / bg) of swatches, each row showing the named-color palette.
+ * Positioned absolutely relative to the popover so it lays out below
+ * the button row. */
+.block-popover__inline-color-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.block-popover__inline-color-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 1px;
+}
+
+.mdx-document-color-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 8px;
+  background: var(--mdx-popover-bg);
+  box-shadow: var(--mdx-popover-shadow);
+  z-index: 1;
+}
+
+.mdx-document-color-picker__row {
+  display: grid;
+  grid-template-columns: 28px repeat(10, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.mdx-document-color-picker__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.mdx-document-color-picker__swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 100ms ease,
+    background-color 100ms ease,
+    transform 80ms ease;
+}
+
+.mdx-document-color-picker__swatch:hover {
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.mdx-document-color-picker__swatch[data-active] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.mdx-document-color-picker__swatch--text[data-color="gray"] { color: var(--color-text-gray); }
+.mdx-document-color-picker__swatch--text[data-color="brown"] { color: var(--color-text-brown); }
+.mdx-document-color-picker__swatch--text[data-color="orange"] { color: var(--color-text-orange); }
+.mdx-document-color-picker__swatch--text[data-color="yellow"] { color: var(--color-text-yellow); }
+.mdx-document-color-picker__swatch--text[data-color="green"] { color: var(--color-text-green); }
+.mdx-document-color-picker__swatch--text[data-color="blue"] { color: var(--color-text-blue); }
+.mdx-document-color-picker__swatch--text[data-color="purple"] { color: var(--color-text-purple); }
+.mdx-document-color-picker__swatch--text[data-color="pink"] { color: var(--color-text-pink); }
+.mdx-document-color-picker__swatch--text[data-color="red"] { color: var(--color-text-red); }
+
+.mdx-document-color-picker__swatch--bg[data-bg="gray"] { background: var(--color-bg-gray); }
+.mdx-document-color-picker__swatch--bg[data-bg="brown"] { background: var(--color-bg-brown); }
+.mdx-document-color-picker__swatch--bg[data-bg="orange"] { background: var(--color-bg-orange); }
+.mdx-document-color-picker__swatch--bg[data-bg="yellow"] { background: var(--color-bg-yellow); }
+.mdx-document-color-picker__swatch--bg[data-bg="green"] { background: var(--color-bg-green); }
+.mdx-document-color-picker__swatch--bg[data-bg="blue"] { background: var(--color-bg-blue); }
+.mdx-document-color-picker__swatch--bg[data-bg="purple"] { background: var(--color-bg-purple); }
+.mdx-document-color-picker__swatch--bg[data-bg="pink"] { background: var(--color-bg-pink); }
+.mdx-document-color-picker__swatch--bg[data-bg="red"] { background: var(--color-bg-red); }
 
 /* List markers via ::before. Each paragraph TipTap renders inside a list
  * block becomes a list "item" visually — we don't use the BulletList /
