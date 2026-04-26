@@ -196,6 +196,11 @@ export function RichTextEditableBlock({
           editor.chain().focus().toggleItalic().run();
           return;
         }
+        if (lowered === "u") {
+          event.preventDefault();
+          editor.chain().focus().toggleUnderline().run();
+          return;
+        }
         if (lowered === "e") {
           event.preventDefault();
           editor.chain().focus().toggleCode().run();
@@ -469,7 +474,12 @@ interface InlineFormatToolbarProps {
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
 }
 
-function InlineFormatToolbar({ anchor, editor, onClose }: InlineFormatToolbarProps) {
+function InlineFormatToolbar({
+  anchor,
+  editor,
+  onClose,
+  onTurnInto,
+}: InlineFormatToolbarProps) {
   // Same focus-preserving trick the textarea version uses — mousedown on
   // toolbar buttons would normally collapse the editor selection before
   // the click handler runs, so we preventDefault to keep the range intact.
@@ -481,6 +491,7 @@ function InlineFormatToolbar({ anchor, editor, onClose }: InlineFormatToolbarPro
 
   const onBold = () => editor.chain().focus().toggleBold().run();
   const onItalic = () => editor.chain().focus().toggleItalic().run();
+  const onUnderline = () => editor.chain().focus().toggleUnderline().run();
   const onCode = () => editor.chain().focus().toggleCode().run();
   const onStrike = () => editor.chain().focus().toggleStrike().run();
   const onLink = () => {
@@ -532,6 +543,17 @@ function InlineFormatToolbar({ anchor, editor, onClose }: InlineFormatToolbarPro
         <button
           type="button"
           className="block-popover__inline-btn"
+          aria-label="Underline (⌘U)"
+          title="Underline (⌘U)"
+          onMouseDown={preserve}
+          onClick={onUnderline}
+          data-active={editor.isActive("underline") || undefined}
+        >
+          <u>U</u>
+        </button>
+        <button
+          type="button"
+          className="block-popover__inline-btn"
           aria-label="Strikethrough"
           title="Strikethrough"
           onMouseDown={preserve}
@@ -562,6 +584,34 @@ function InlineFormatToolbar({ anchor, editor, onClose }: InlineFormatToolbarPro
         >
           🔗
         </button>
+        <span className="block-popover__inline-divider" aria-hidden="true" />
+        {/* Turn-into shortcuts — replace the current block (paragraph or
+         * heading) with a heading at the chosen level, or convert back to
+         * paragraph. The buttons mirror Cmd+Alt+1/2/3 already wired in the
+         * keyboard handler. */}
+        <button
+          type="button"
+          className="block-popover__inline-btn"
+          aria-label="Turn into Text"
+          title="Turn into Text"
+          onMouseDown={preserve}
+          onClick={() => onTurnInto("paragraph")}
+        >
+          T
+        </button>
+        {([1, 2, 3] as const).map((level) => (
+          <button
+            key={`h${level}`}
+            type="button"
+            className="block-popover__inline-btn"
+            aria-label={`Turn into Heading ${level} (⌘⌥${level})`}
+            title={`Turn into Heading ${level} (⌘⌥${level})`}
+            onMouseDown={preserve}
+            onClick={() => onTurnInto("heading", level)}
+          >
+            H{level}
+          </button>
+        ))}
       </div>
     </BlockPopover>
   );
