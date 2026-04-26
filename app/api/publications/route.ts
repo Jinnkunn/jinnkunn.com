@@ -5,9 +5,9 @@ import { noStoreData, withNoStoreApi } from "@/lib/server/api-response";
 
 export const runtime = "nodejs";
 
-const PUBLICATIONS_PAGE_PATH = resolve(
+const PUBLICATIONS_SOURCE_PATH = resolve(
   process.cwd(),
-  "content/pages/publications.mdx",
+  "content/components/publications.mdx",
 );
 
 const ENTRY_RE = /<PublicationsEntry\s+data='([^']*)'\s*\/>/g;
@@ -19,7 +19,7 @@ function unescapeJsonAttr(raw: string): string {
 async function loadEntries(): Promise<unknown[]> {
   let raw = "";
   try {
-    raw = await readFile(PUBLICATIONS_PAGE_PATH, "utf8");
+    raw = await readFile(PUBLICATIONS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
@@ -40,10 +40,11 @@ async function loadEntries(): Promise<unknown[]> {
 }
 
 /** Public read-only feed for publications. Used by external scrapers.
- * After the migration the source of truth is
- * `content/pages/publications.mdx` (each row is a self-closing
- * `<PublicationsEntry data='...' />` JSX block); we re-extract entries
- * here so the JSON-API contract stays unchanged. */
+ * After the components migration the source of truth is
+ * `content/components/publications.mdx` (each row is a self-closing
+ * `<PublicationsEntry data='...' />` JSX block, edited via the admin
+ * Components → Publications panel); we re-extract entries here so the
+ * JSON-API contract stays unchanged. */
 export async function GET() {
   return withNoStoreApi(async () => {
     const items = await loadEntries();
