@@ -1,5 +1,6 @@
 import type { SurfaceDefinition } from "../surfaces/types";
 import { ThemeToggle } from "./ThemeToggle";
+import { handleWindowDragMouseDown } from "./windowDrag";
 
 interface TitlebarProps {
   activeSurface: SurfaceDefinition;
@@ -19,7 +20,11 @@ export function Titlebar({ activeSurface, activeNavItemId }: TitlebarProps) {
     : null;
 
   return (
-    <header className="titlebar-shell" data-tauri-drag-region>
+    <header
+      className="titlebar-shell"
+      data-tauri-drag-region
+      onMouseDown={handleWindowDragMouseDown}
+    >
       <div className="titlebar-leading-pad" aria-hidden="true" />
       <div
         className="min-w-0 flex-1 flex items-center gap-2 text-[12.5px] text-text-secondary whitespace-nowrap overflow-hidden"

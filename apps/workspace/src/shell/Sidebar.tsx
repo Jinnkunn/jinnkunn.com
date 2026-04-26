@@ -6,6 +6,7 @@ import type {
   SurfaceNavItem,
 } from "../surfaces/types";
 import type { SidebarFavorite } from "./favorites";
+import { handleWindowDragMouseDown } from "./windowDrag";
 
 interface SidebarProps {
   surfaces: readonly SurfaceDefinition[];
@@ -635,6 +636,7 @@ export function Sidebar({
       <div
         className="sidebar-header-strip"
         data-tauri-drag-region
+        onMouseDown={handleWindowDragMouseDown}
         aria-hidden="true"
       />
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-2 pb-3 flex flex-col gap-4">
