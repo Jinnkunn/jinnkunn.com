@@ -1,15 +1,26 @@
 import "server-only";
 
 import { Fragment } from "react";
+import type { ReactElement } from "react";
 
+import teachingData from "@/content/teaching.json";
 import { ClassicLink } from "@/components/classic/classic-link";
-import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { renderPostMarkdown } from "@/components/classic/markdown";
+import { TEACHING_SECTIONS } from "@/lib/site-admin/page-sections";
+import { normalizeTeachingData } from "@/lib/site-admin/teaching-normalize";
 import type {
   SiteAdminStructuredPageSection,
   SiteAdminTeachingData,
 } from "@/lib/site-admin/api-types";
-import { TEACHING_SECTIONS } from "@/lib/site-admin/page-sections";
+
+interface TeachingBlockProps {
+  /** Cap rendered teaching entries (newest first). Omit for all entries. */
+  limit?: number;
+}
+
+function NotionSpacer() {
+  return <div className="notion-text" aria-hidden="true" />;
+}
 
 function LinkLine({
   links,
@@ -43,30 +54,27 @@ function LinkLine({
   );
 }
 
-function NotionSpacer() {
-  return <div className="notion-text" aria-hidden="true" />;
-}
-
-async function renderMarkdown(source?: string) {
-  return renderPostMarkdown(source);
-}
-
-export async function TeachingView({
-  data,
-}: {
-  data: SiteAdminTeachingData;
-}) {
-  const Intro = await renderMarkdown(data.intro);
+/** Server component rendered from MDX as `<TeachingBlock />`. Reads
+ * the canonical content/teaching.json and renders the section
+ * iteration (intro / headerLinks / entries / footerLinks / richText)
+ * — without ClassicPageShell, which the embedding page provides. */
+export async function TeachingBlock({
+  limit,
+}: TeachingBlockProps): Promise<ReactElement> {
+  const data = normalizeTeachingData(teachingData);
+  const Intro = data.intro ? await renderPostMarkdown(data.intro) : null;
   const sections = data.sections?.length ? data.sections : TEACHING_SECTIONS;
+  const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
+  const visibleEntries = cap ? data.entries.slice(0, cap) : data.entries;
 
   const TeachingList =
-    data.entries.length === 0 ? (
+    visibleEntries.length === 0 ? (
       <p className="notion-text notion-text__content notion-semantic-string">
         No teaching activities yet.
       </p>
     ) : (
       <ul className="notion-bulleted-list teaching-list">
-        {data.entries.map((entry, index) => (
+        {visibleEntries.map((entry, index) => (
           <li
             key={`${entry.term}-${entry.courseCode}-${index}`}
             className="notion-list-item notion-semantic-string teaching-item"
@@ -121,9 +129,7 @@ export async function TeachingView({
           const isExternal = /^https?:\/\//.test(link.href);
           return (
             <Fragment key={`${link.href}-${index}`}>
-              {index > 0 && (
-                <span className="teaching-link-divider"> · </span>
-              )}
+              {index > 0 && <span className="teaching-link-divider"> · </span>}
               <ClassicLink
                 href={link.href}
                 {...(isExternal
@@ -138,71 +144,60 @@ export async function TeachingView({
       </p>
     ) : null;
 
-  return (
-    <ClassicPageShell
-      title={data.title}
-      className="super-content page__teaching parent-page__index"
-      breadcrumbs={[
-        { href: "/", label: "Home" },
-        { href: "/teaching", label: data.title },
-      ]}
-    >
-      {await Promise.all(
-        sections.map(async (section: SiteAdminStructuredPageSection) => {
-          if (!section.enabled) return null;
-          if (section.type === "intro") {
-            return Intro ? (
-              <Fragment key={section.id}>
-                <blockquote className="notion-quote teaching-intro">
-                  {Intro}
-                </blockquote>
-              </Fragment>
-            ) : null;
-          }
-          if (section.type === "headerLinks") {
-            return data.headerLinks.length > 0 ? (
-              <Fragment key={section.id}>
-                <LinkLine links={data.headerLinks} />
-              </Fragment>
-            ) : null;
-          }
-          if (section.type === "entries") {
-            return (
-              <Fragment key={section.id}>
-                <NotionSpacer />
-                {section.title && (
-                  <h2 className="notion-heading notion-semantic-string">
-                    {section.title}
-                  </h2>
-                )}
-                {TeachingList}
-              </Fragment>
-            );
-          }
-          if (section.type === "footerLinks") {
-            return FooterLinks ? (
-              <Fragment key={section.id}>
-                <NotionSpacer />
-                {FooterLinks}
-              </Fragment>
-            ) : null;
-          }
-          if (section.type === "richText") {
-            const body = await renderMarkdown(section.body);
-            return body ? (
-              <Fragment key={section.id}>
-                {section.title && (
-                  <h2 className="notion-heading notion-semantic-string">
-                    {section.title}
-                  </h2>
-                )}
-                <div className="mdx-post__body">{body}</div>
-              </Fragment>
-            ) : null;
-          }
-          return null;
-        }),
-      )}
-    </ClassicPageShell>
+  const rendered = await Promise.all(
+    sections.map(async (section: SiteAdminStructuredPageSection) => {
+      if (!section.enabled) return null;
+      if (section.type === "intro") {
+        return Intro ? (
+          <Fragment key={section.id}>
+            <blockquote className="notion-quote teaching-intro">{Intro}</blockquote>
+          </Fragment>
+        ) : null;
+      }
+      if (section.type === "headerLinks") {
+        return data.headerLinks.length > 0 ? (
+          <Fragment key={section.id}>
+            <LinkLine links={data.headerLinks} />
+          </Fragment>
+        ) : null;
+      }
+      if (section.type === "entries") {
+        return (
+          <Fragment key={section.id}>
+            <NotionSpacer />
+            {section.title && (
+              <h2 className="notion-heading notion-semantic-string">
+                {section.title}
+              </h2>
+            )}
+            {TeachingList}
+          </Fragment>
+        );
+      }
+      if (section.type === "footerLinks") {
+        return FooterLinks ? (
+          <Fragment key={section.id}>
+            <NotionSpacer />
+            {FooterLinks}
+          </Fragment>
+        ) : null;
+      }
+      if (section.type === "richText") {
+        const body = await renderPostMarkdown(section.body);
+        return body ? (
+          <Fragment key={section.id}>
+            {section.title && (
+              <h2 className="notion-heading notion-semantic-string">
+                {section.title}
+              </h2>
+            )}
+            <div className="mdx-post__body">{body}</div>
+          </Fragment>
+        ) : null;
+      }
+      return null;
+    }),
   );
+
+  return <>{rendered}</>;
 }

@@ -11,6 +11,7 @@ import { FileLink } from "./file-link";
 import { NewsBlock } from "./news-block";
 import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
+import { TeachingBlock } from "./teaching-block";
 import { Toggle } from "./toggle";
 import { Video } from "./video";
 import { WorksBlock } from "./works-block";
@@ -80,6 +81,7 @@ export const postMdxComponents: MDXComponents = {
   NewsBlock,
   PageLink,
   PublicationsBlock,
+  TeachingBlock,
   Toggle,
   Video,
   WorksBlock,
