@@ -530,6 +530,10 @@ function isTextEditableBlock(block: MdxBlock): boolean {
   );
 }
 
+function isSourceConflictResponse(response: NormalizedApiResponse): boolean {
+  return !response.ok && (response.code === "SOURCE_CONFLICT" || response.status === 409);
+}
+
 export interface BlocksEditorProps {
   /** Markdown body. The block editor parses this into blocks for editing
    * and serializes back on every change. */
@@ -1404,6 +1408,19 @@ function EditableBlock({
               onPatch((current) => ({ ...current, caption: event.target.value }))
             }
           />
+          <div className="mdx-document-image-block__asset-picker">
+            <AssetLibraryPicker
+              currentUrl={block.url}
+              onSelect={(asset) => {
+                onPatch((current) => ({
+                  ...current,
+                  alt: current.alt || asset.alt || asset.filename || "image",
+                  url: asset.url,
+                }));
+                setMessage("success", "Image asset selected.");
+              }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -1695,6 +1712,8 @@ export function MdxDocumentEditor<TForm>({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editorMode, setEditorMode] = usePersistentUiState<DocumentEditorMode>(
     `workspace.site-admin.${adapter.kind}-editor.document-mode.v1`,
@@ -1734,6 +1753,7 @@ export function MdxDocumentEditor<TForm>({
     (async () => {
       setLoading(true);
       setError("");
+      setConflict(false);
       let loadedSource = "";
       let loadedVersion = "";
       if (adapter.loadDocument) {
@@ -1771,11 +1791,12 @@ export function MdxDocumentEditor<TForm>({
       setBody(nextBody);
       setLastSavedSource(adapter.buildSource(parsed.form, nextBody));
       setVersion(loadedVersion);
+      setConflict(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [adapter, initialSlug, mode, request, setMessage]);
+  }, [adapter, initialSlug, mode, reloadNonce, request, setMessage]);
 
   useUnsavedChangesBeforeUnload(dirty, saving, deleting);
 
@@ -1788,6 +1809,10 @@ export function MdxDocumentEditor<TForm>({
     async (event: FormEvent) => {
       event.preventDefault();
       if (!canSave || saving) return;
+      if (conflict) {
+        setMessage("warn", `${adapter.titleNoun} is in conflict state. Reload latest before saving.`);
+        return;
+      }
       const nextSource = adapter.buildSource(form, body);
       setSaving(true);
       setError("");
@@ -1828,6 +1853,13 @@ export function MdxDocumentEditor<TForm>({
           );
       setSaving(false);
       if (!response.ok) {
+        if (isSourceConflictResponse(response)) {
+          const msg = "Remote content changed. Reload latest before saving again.";
+          setConflict(true);
+          setError(msg);
+          setMessage("warn", `${adapter.titleNoun} save conflict. Reload latest before saving.`);
+          return;
+        }
         setError(`${response.code}: ${response.error}`);
         setMessage(
           "error",
@@ -1842,6 +1874,7 @@ export function MdxDocumentEditor<TForm>({
       if (nextVersion) setVersion(nextVersion);
       else if (nextFileSha) setVersion(nextFileSha);
       setLastSavedSource(nextSource);
+      setConflict(false);
       clearDraft();
       setMessage("success", `${adapter.titleNoun} saved to source branch. Publish separately.`);
       bumpContentRevision();
@@ -1853,6 +1886,7 @@ export function MdxDocumentEditor<TForm>({
       bumpContentRevision,
       canSave,
       clearDraft,
+      conflict,
       form,
       initialSlug,
       mode,
@@ -1958,12 +1992,30 @@ export function MdxDocumentEditor<TForm>({
             type="submit"
             form={formId}
             className="btn btn--primary"
-            disabled={!canSave || saving || loading || imageDrop.uploading}
+            disabled={!canSave || saving || loading || imageDrop.uploading || conflict}
           >
             {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
           </button>
         </div>
       </header>
+
+      {conflict && (
+        <div className="editor-conflict" role="alert">
+          <span>
+            Remote content changed. Reload latest to continue editing this {adapter.titleNoun.toLowerCase()}.
+          </span>
+          <button
+            type="button"
+            className="btn btn--secondary draft-restore__btn"
+            onClick={() => {
+              setReloadNonce((value) => value + 1);
+            }}
+            disabled={loading || saving}
+          >
+            Reload latest
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>

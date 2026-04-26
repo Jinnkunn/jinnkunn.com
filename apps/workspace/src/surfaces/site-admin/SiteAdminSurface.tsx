@@ -154,8 +154,90 @@ function sameStringList(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((item, index) => item === b[index]);
 }
 
+type PageOrderNode = {
+  childMap: Map<string, PageOrderNode>;
+  children: PageOrderNode[];
+  hasPage: boolean;
+  slug: string;
+};
+
+function buildPageOrderNodes(
+  rows: PageListRow[],
+  savedOrder: string[],
+): PageOrderNode[] {
+  const root: PageOrderNode[] = [];
+  const rootMap = new Map<string, PageOrderNode>();
+  const sorted = sortPagesForTree(rows, savedOrder);
+
+  for (const row of sorted) {
+    const parts = row.slug.split("/");
+    let level = root;
+    let levelMap = rootMap;
+    let path = "";
+    for (let index = 0; index < parts.length; index += 1) {
+      const part = parts[index];
+      path = path ? `${path}/${part}` : part;
+      const isLeaf = index === parts.length - 1;
+      let node = levelMap.get(part);
+      if (!node) {
+        node = {
+          childMap: new Map(),
+          children: [],
+          hasPage: isLeaf,
+          slug: path,
+        };
+        levelMap.set(part, node);
+        level.push(node);
+      } else if (isLeaf) {
+        node.hasPage = true;
+      }
+      level = node.children;
+      levelMap = node.childMap;
+    }
+  }
+  return root;
+}
+
+function findSiblingNodes(
+  nodes: PageOrderNode[],
+  slug: string,
+): PageOrderNode[] | null {
+  for (const node of nodes) {
+    if (node.slug === slug) return nodes;
+    const nested = findSiblingNodes(node.children, slug);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function flattenPageOrder(nodes: PageOrderNode[], out: string[] = []): string[] {
+  for (const node of nodes) {
+    if (node.hasPage) out.push(node.slug);
+    flattenPageOrder(node.children, out);
+  }
+  return out;
+}
+
+function reorderPageWithinSiblings(
+  rows: PageListRow[],
+  savedOrder: string[],
+  slug: string,
+  direction: "up" | "down",
+): string[] | null {
+  if (!rows.some((row) => row.slug === slug)) return null;
+  const tree = buildPageOrderNodes(rows, savedOrder);
+  const siblings = findSiblingNodes(tree, slug);
+  if (!siblings) return null;
+  const from = siblings.findIndex((node) => node.slug === slug);
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (from < 0 || to < 0 || to >= siblings.length) return null;
+  [siblings[from], siblings[to]] = [siblings[to], siblings[from]];
+  return flattenPageOrder(tree);
+}
+
 function buildPagesTree(rows: PageListRow[], savedOrder: string[] = []): SurfaceNavItem[] {
   type Node = {
+    hasPage: boolean;
     id: string;
     label: string;
     children: Map<string, Node>;
@@ -173,12 +255,14 @@ function buildPagesTree(rows: PageListRow[], savedOrder: string[] = []): Surface
       let node = level.get(part);
       if (!node) {
         node = {
+          hasPage: isLeaf,
           id: `pages:${path}`,
           label: isLeaf ? title || part : part,
           children: new Map(),
         };
         level.set(part, node);
       } else if (isLeaf) {
+        node.hasPage = true;
         node.label = title || node.label;
       }
       level = node.children;
@@ -201,8 +285,9 @@ function buildPagesTree(rows: PageListRow[], savedOrder: string[] = []): Surface
       // valid drop targets. Dropping A onto B reparents A under B.
       // Dropping onto the Home parent (handled separately below)
       // reparents to root.
-      draggable: true,
+      draggable: n.hasPage,
       droppable: true,
+      orderable: n.hasPage,
       children: n.children.size > 0 ? toItems(n.children) : undefined,
     }));
   }
@@ -298,6 +383,7 @@ function SiteAdminContent() {
     setActiveNavItemId,
     setNavItemChildren,
     setMoveNavItemHandler,
+    setReorderNavItemHandler,
     setRenameNavItemHandler,
     setRenameValidator,
   } = useSurfaceNav();
@@ -330,6 +416,7 @@ function SiteAdminContent() {
   const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
   const [pageOrderSlugs, setPageOrderSlugs] = useState<string[]>([]);
   const [pageTreeFileSha, setPageTreeFileSha] = useState("");
+  const [pageTreeConflict, setPageTreeConflict] = useState(false);
 
   // Derived tree applies the current grouping setting to the cached
   // post rows. Cheap enough to recompute on every grouping change; no
@@ -420,6 +507,7 @@ function SiteAdminContent() {
       setPagesTree([]);
       setPageOrderSlugs([]);
       setPageTreeFileSha("");
+      setPageTreeConflict(false);
       setPostsIndex([]);
       setPagesIndex([]);
       return;
@@ -441,9 +529,11 @@ function SiteAdminContent() {
           typeof sourceVersion.fileSha === "string" ? sourceVersion.fileSha : "",
         );
         setPageOrderSlugs(fetchedPageOrder);
+        setPageTreeConflict(false);
       } else {
         setPageTreeFileSha("");
         setPageOrderSlugs([]);
+        setPageTreeConflict(false);
       }
       if (postsResp.ok) {
         const data = (postsResp.data ?? {}) as Record<string, unknown>;
@@ -478,6 +568,10 @@ function SiteAdminContent() {
 
   const savePageOrder = useCallback(
     async (slugs: string[], expectedFileSha = pageTreeFileSha) => {
+      if (pageTreeConflict) {
+        setMessage("warn", "Page tree is in conflict state. Reload latest before saving order.");
+        return false;
+      }
       const normalized = normalizePageOrderSlugs(slugs);
       const response = await request("/api/site-admin/pages/tree", "POST", {
         slugs: normalized,
@@ -485,6 +579,7 @@ function SiteAdminContent() {
       });
       if (!response.ok) {
         if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+          setPageTreeConflict(true);
           setMessage(
             "warn",
             "Page tree order changed on the server. Reload pages before saving order again.",
@@ -497,12 +592,14 @@ function SiteAdminContent() {
       const data = (response.data ?? {}) as Record<string, unknown>;
       const sourceVersion = (data.sourceVersion ?? {}) as { fileSha?: unknown };
       setPageOrderSlugs(normalized);
+      setPagesTree(buildPagesTree(pageRows, normalized));
+      setPageTreeConflict(false);
       if (typeof sourceVersion.fileSha === "string") {
         setPageTreeFileSha(sourceVersion.fileSha);
       }
       return true;
     },
-    [pageTreeFileSha, request, setMessage],
+    [pageRows, pageTreeConflict, pageTreeFileSha, request, setMessage],
   );
 
   const handlePageMutation = useCallback(
@@ -552,6 +649,36 @@ function SiteAdminContent() {
     );
   }, [homeChildren, setNavItemChildren]);
 
+  useEffect(() => {
+    setReorderNavItemHandler(async (itemId, direction) => {
+      if (!itemId.startsWith("pages:")) return;
+      if (pageTreeConflict) {
+        setMessage("warn", "Page tree is in conflict state. Reload latest before sorting.");
+        return;
+      }
+      const slug = itemId.slice("pages:".length);
+      const nextOrder = reorderPageWithinSiblings(
+        pageRows,
+        pageOrderSlugs,
+        slug,
+        direction,
+      );
+      if (!nextOrder || sameStringList(nextOrder, orderedPageSlugs(pageRows, pageOrderSlugs))) {
+        return;
+      }
+      const ok = await savePageOrder(nextOrder);
+      if (ok) setMessage("success", "Page order saved to source branch.");
+    });
+    return () => setReorderNavItemHandler(null);
+  }, [
+    pageOrderSlugs,
+    pageRows,
+    pageTreeConflict,
+    savePageOrder,
+    setMessage,
+    setReorderNavItemHandler,
+  ]);
+
   // Drag-reparent handler: Sidebar fires (fromId, toId) with sidebar
   // ids like "pages:docs/intro" and "pages" (the static root). Decode
   // both into slugs, build the target slug from target prefix + dragged
@@ -560,6 +687,10 @@ function SiteAdminContent() {
   useEffect(() => {
     setMoveNavItemHandler(async (fromId, toId) => {
       if (!fromId.startsWith("pages:")) return;
+      if (pageTreeConflict) {
+        setMessage("warn", "Page tree is in conflict state. Reload latest before moving pages.");
+        return;
+      }
       const fromSlug = fromId.slice("pages:".length);
       const draggedRow = pageRows.find((r) => r.slug === fromSlug);
       if (!draggedRow) {
@@ -604,6 +735,11 @@ function SiteAdminContent() {
         version: draggedRow.version,
       });
       if (!response.ok) {
+        if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+          setPageTreeConflict(true);
+          setMessage("warn", "Move conflict. Reload latest before moving pages again.");
+          return;
+        }
         setMessage(
           "error",
           `Move failed: ${response.code}: ${response.error}`,
@@ -625,6 +761,7 @@ function SiteAdminContent() {
     pageOrderSlugs,
     request,
     savePageOrder,
+    pageTreeConflict,
     setActiveNavItemId,
     setMessage,
     setMoveNavItemHandler,
@@ -651,6 +788,10 @@ function SiteAdminContent() {
           version: row.version,
         });
         if (!response.ok) {
+          if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+            setMessage("warn", "Rename conflict. Reload latest before renaming posts again.");
+            return;
+          }
           setMessage("error", `Rename failed: ${response.code}: ${response.error}`);
           return;
         }
@@ -660,6 +801,10 @@ function SiteAdminContent() {
         return;
       }
       if (itemId.startsWith("pages:")) {
+        if (pageTreeConflict) {
+          setMessage("warn", "Page tree is in conflict state. Reload latest before renaming pages.");
+          return;
+        }
         const fromSlug = itemId.slice("pages:".length);
         if (fromSlug === cleaned) return;
         const row = pageRows.find((r) => r.slug === fromSlug);
@@ -673,6 +818,11 @@ function SiteAdminContent() {
           version: row.version,
         });
         if (!response.ok) {
+          if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+            setPageTreeConflict(true);
+            setMessage("warn", "Rename conflict. Reload latest before renaming pages again.");
+            return;
+          }
           setMessage("error", `Rename failed: ${response.code}: ${response.error}`);
           return;
         }
@@ -689,6 +839,7 @@ function SiteAdminContent() {
     bumpContentRevision,
     pageOrderSlugs,
     pageRows,
+    pageTreeConflict,
     request,
     savePageOrder,
     setActiveNavItemId,
@@ -817,6 +968,24 @@ function SiteAdminContent() {
       <SiteAdminTopBar sections={SITE_ADMIN_NAV_GROUPS} activeTab={activeTab} />
       <div className="site-admin-layout__main">
         <MessageBar />
+        {pageTreeConflict && (
+          <div className="site-admin-conflict-banner" role="alert">
+            <span>
+              Page tree order changed remotely. Reload latest before sorting,
+              renaming, or moving pages again.
+            </span>
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => {
+                setPageTreeConflict(false);
+                bumpContentRevision();
+              }}
+            >
+              Reload latest
+            </button>
+          </div>
+        )}
 
         <Suspense fallback={<PanelFallback />}>
           {/* Status renders even when disconnected — it's the diagnostic
