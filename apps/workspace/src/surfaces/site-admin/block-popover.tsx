@@ -105,7 +105,41 @@ export function BlockPopover({
 
   useLayoutEffect(() => {
     if (!open || !anchor) return;
-    setStyle(computePosition(anchor, placement));
+    // Step 1 — initial position from the anchor + placement rule.
+    const initial = computePosition(anchor, placement);
+    setStyle(initial);
+    // Step 2 — after the browser paints with `initial`, measure the
+    // popover's actual rendered rect (post-transform) and clamp it
+    // inside the viewport so toolbars near the right / bottom edge
+    // don't get clipped. Single rAF is enough; the visible content
+    // doesn't change between the initial paint and the corrected one
+    // (the user just sees it land at the corrected spot).
+    const raf = requestAnimationFrame(() => {
+      const node = popoverRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const margin = 8;
+      const initialLeft = typeof initial.left === "number" ? initial.left : 0;
+      const initialTop = typeof initial.top === "number" ? initial.top : 0;
+      let nextLeft = initialLeft;
+      let nextTop = initialTop;
+      if (rect.right > window.innerWidth - margin) {
+        nextLeft -= rect.right - (window.innerWidth - margin);
+      }
+      if (rect.left < margin) {
+        nextLeft += margin - rect.left;
+      }
+      if (rect.bottom > window.innerHeight - margin) {
+        nextTop -= rect.bottom - (window.innerHeight - margin);
+      }
+      if (rect.top < margin) {
+        nextTop += margin - rect.top;
+      }
+      if (nextLeft !== initialLeft || nextTop !== initialTop) {
+        setStyle({ ...initial, left: nextLeft, top: nextTop });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
   }, [anchor, open, placement]);
 
   useEffect(() => {
