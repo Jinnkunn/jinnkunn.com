@@ -5,7 +5,6 @@ import {
   PostsIcon,
   PublicationsIcon,
   StatusIcon,
-  TeachingIcon,
 } from "../icons";
 import type { SurfaceNavGroup } from "../types";
 import type { SiteAdminTab } from "./types";
@@ -36,7 +35,6 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
         droppable: true,
       },
       { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
-      { id: "teaching", label: "Teaching", icon: <TeachingIcon /> },
     ],
   },
   {
