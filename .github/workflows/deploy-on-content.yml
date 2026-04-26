@@ -92,8 +92,14 @@ jobs:
         run: npm run build:cf
 
       - name: Deploy to Cloudflare (${{ env.TARGET_ENV }})
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
-          npx --yes wrangler@latest deploy --env "$TARGET_ENV" --message "auto deploy ${{ github.sha }}"
+          # wrangler@latest started rejecting multi-word --message values
+          # (parses past the value and treats trailing tokens as positional
+          # args). Pass the SHA via env + a hyphen-joined single-token
+          # message so wrangler gets exactly one word per flag.
+          npx --yes wrangler@latest deploy --env "$TARGET_ENV" --message "auto-deploy-${DEPLOY_SHA}"
 
       - name: Smoke ping
         run: |
