@@ -32,6 +32,19 @@ describe("inlineMarkdownToHtml", () => {
       .toBe("<p><u><strong>bold + under</strong></u></p>");
   });
 
+  it("preserves <span data-color> so the inline color mark round-trips", () => {
+    expect(
+      inlineMarkdownToHtml('plain <span data-color="red">red</span> tail'),
+    ).toBe('<p>plain <span data-color="red">red</span> tail</p>');
+    expect(
+      inlineMarkdownToHtml(
+        '<span data-color="blue" data-bg="yellow">**bold + colored**</span>',
+      ),
+    ).toBe(
+      '<p><span data-color="blue" data-bg="yellow"><strong>bold + colored</strong></span></p>',
+    );
+  });
+
   it("preserves underscores in mid-word identifiers (no italic)", () => {
     expect(inlineMarkdownToHtml("foo_bar_baz")).toBe("<p>foo_bar_baz</p>");
   });
@@ -95,6 +108,40 @@ describe("tiptapDocToMarkdown", () => {
   it("underline wraps in <u>...</u> outside the markdown-char marks", () => {
     const doc = makeDoc(makeText("y", [{ type: "underline" }, { type: "bold" }]));
     expect(tiptapDocToMarkdown(doc)).toBe("<u>**y**</u>");
+  });
+
+  it("inline color emits <span> with whichever data-* attrs are set", () => {
+    expect(
+      tiptapDocToMarkdown(
+        makeDoc(makeText("hot", [{ type: "inlineColor", attrs: { color: "red" } }])),
+      ),
+    ).toBe('<span data-color="red">hot</span>');
+    expect(
+      tiptapDocToMarkdown(
+        makeDoc(makeText("hl", [{ type: "inlineColor", attrs: { bg: "yellow" } }])),
+      ),
+    ).toBe('<span data-bg="yellow">hl</span>');
+    expect(
+      tiptapDocToMarkdown(
+        makeDoc(
+          makeText("both", [
+            { type: "inlineColor", attrs: { color: "blue", bg: "gray" } },
+          ]),
+        ),
+      ),
+    ).toBe('<span data-color="blue" data-bg="gray">both</span>');
+  });
+
+  it("inline color skips emitting when both attrs are null/empty", () => {
+    expect(
+      tiptapDocToMarkdown(
+        makeDoc(
+          makeText("plain", [
+            { type: "inlineColor", attrs: { color: null, bg: null } },
+          ]),
+        ),
+      ),
+    ).toBe("plain");
   });
 });
 
