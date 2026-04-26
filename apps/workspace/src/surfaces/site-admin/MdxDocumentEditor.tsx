@@ -1189,7 +1189,9 @@ function EditableBlock({
   depth: number;
   onChooseSlashCommand: (command: SlashCommand) => void;
   onDuplicate: () => void;
-  onFocusInput: (node: HTMLInputElement | HTMLTextAreaElement | null) => void;
+  onFocusInput: (
+    node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
+  ) => void;
   onInsertParagraphAfter: () => void;
   onMoveDown: () => void;
   onMoveUp: () => void;
@@ -1207,18 +1209,18 @@ function EditableBlock({
     block.type === "paragraph" ? getMatchingSlashCommands(block.text) : [];
   const showSlashMenu = slashCommands.length > 0;
 
-  // Single-paragraph text blocks (paragraph, heading, quote, callout) render
+  // Text-bearing blocks (paragraph, heading, quote, callout, list) render
   // through the TipTap-based WYSIWYG path so that **bold**, *italic*,
   // `code`, ~~strike~~, and [links](url) appear formatted inline rather
-  // than as raw markdown chars. Multi-item blocks (list, todo, toggle
-  // summary) still use the textarea path until a later phase migrates
-  // them — they need per-item keyboard semantics that the single-block
-  // editor doesn't model yet.
+  // than as raw markdown chars. Todo + toggle still ride dedicated
+  // components in mdx-block-renderers (todo wraps each item in a row,
+  // toggle has its own chrome plus its summary now uses RichTextInput).
   if (
     block.type === "paragraph" ||
     block.type === "heading" ||
     block.type === "quote" ||
-    block.type === "callout"
+    block.type === "callout" ||
+    block.type === "list"
   ) {
     return (
       <RichTextEditableBlock
@@ -1246,11 +1248,15 @@ function EditableBlock({
   // mention.atOffset is the position of the literal "@" character; the
   // picker lives until the user dismisses or selects a target.
   const [mention, setMention] = useState<{ atOffset: number } | null>(null);
-  // Paragraph / heading / quote / callout are handled by RichTextEditableBlock
-  // above and never reach this branch. Only `list` (multi-item textarea)
-  // remains as a textarea-path block that still benefits from the
-  // selection-anchored inline format toolbar.
-  const isFormattableBlock = block.type === "list";
+  // The remaining textarea path now serves only `code` / `raw` (verbatim
+  // text — no inline format marks) and the catch-all default for any
+  // future block type that lacks a dedicated component. None of those
+  // need the selection-anchored inline format toolbar, so the predicate
+  // is permanently false. Kept rather than fully torn out so the
+  // textarea-path infrastructure (selection sync, mention picker,
+  // mirror-div caret coords) compiles cleanly while it lives — the next
+  // cleanup PR can rip it once nothing relies on those dormant paths.
+  const isFormattableBlock = false;
 
   // Re-read the current textarea selection after every keystroke / mouse drag
   // so the inline format toolbar shows up only when there's a real range.
@@ -1490,42 +1496,7 @@ function EditableBlock({
     );
   }
 
-  if (block.type === "list") {
-    return (
-      <div className="mdx-document-list-block">
-        <select
-          aria-label="List style"
-          value={block.listStyle ?? "bulleted"}
-          onChange={(event) =>
-            onPatch((current) => ({
-              ...current,
-              markers: undefined,
-              listStyle: event.target.value as "bulleted" | "numbered",
-            }))
-          }
-        >
-          <option value="bulleted">Bulleted</option>
-          <option value="numbered">Numbered</option>
-        </select>
-        <textarea
-          aria-label="List items"
-          className="mdx-document-text-block mdx-document-text-block--list"
-          ref={onFocusInput}
-          rows={Math.max(3, block.text.split("\n").length + 1)}
-          value={block.text}
-          placeholder="One item per line"
-          onChange={(event) =>
-            onPatch((current) => ({
-              ...current,
-              markers: undefined,
-              text: event.target.value,
-            }))
-          }
-          onKeyDown={onTextKeyDown}
-        />
-      </div>
-    );
-  }
+  // list is handled by RichTextEditableBlock above.
 
   if (block.type === "todo") {
     return (
