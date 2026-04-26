@@ -2,11 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
 import { BlocksEditor } from "./LazyBlocksEditor";
-import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
 import type { NewsData, NewsEntry } from "./types";
 import { useJsonDraft } from "./use-json-draft";
-import { localDateIso } from "./utils";
 
 const BLANK_DATA: NewsData = {
   schemaVersion: 1,
@@ -14,37 +12,149 @@ const BLANK_DATA: NewsData = {
   entries: [],
 };
 
-function clone(value: NewsData): NewsData {
-  return JSON.parse(JSON.stringify(value)) as NewsData;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Render the entire news file as one markdown document. The first `#`
+ * heading is the page title; each `## YYYY-MM-DD` heading begins a new
+ * entry whose body is the markdown that follows up to the next `## …`. */
+function entriesToMarkdown(data: { title: string; entries: NewsEntry[] }): string {
+  const lines: string[] = [];
+  lines.push(`# ${data.title || "News"}`);
+  for (const entry of data.entries) {
+    lines.push("");
+    lines.push(`## ${entry.dateIso}`);
+    const body = (entry.body || "").trim();
+    if (body) {
+      lines.push("");
+      lines.push(body);
+    }
+  }
+  return `${lines.join("\n")}\n`;
 }
 
-function sameData(a: NewsData, b: NewsData): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+interface ParsedNews {
+  title: string;
+  entries: NewsEntry[];
+}
+
+interface ParseError {
+  message: string;
+  /** 1-based line number that failed validation, when available. */
+  line?: number;
+}
+
+interface ParseResult {
+  ok: true;
+  value: ParsedNews;
+}
+
+interface ParseFail {
+  ok: false;
+  error: ParseError;
+}
+
+/** Inverse of entriesToMarkdown. Splits the document into entries on
+ * `## YYYY-MM-DD` boundaries and rejects any non-date level-2 heading
+ * to keep news.json's typed shape intact. */
+function markdownToNews(markdown: string): ParseResult | ParseFail {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  let title = "News";
+  let titleSeen = false;
+  const entries: NewsEntry[] = [];
+  let currentDate: string | null = null;
+  let currentBody: string[] = [];
+
+  const flush = () => {
+    if (currentDate) {
+      entries.push({
+        dateIso: currentDate,
+        body: currentBody.join("\n").trim(),
+      });
+    }
+    currentDate = null;
+    currentBody = [];
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const h1 = /^#\s+(.+?)\s*$/.exec(line);
+    const h2 = /^##\s+(.+?)\s*$/.exec(line);
+
+    if (h1) {
+      if (!titleSeen) {
+        title = h1[1].trim() || "News";
+        titleSeen = true;
+        continue;
+      }
+      if (currentDate) {
+        currentBody.push(line);
+      }
+      continue;
+    }
+
+    if (h2) {
+      const date = h2[1].trim();
+      if (!DATE_RE.test(date)) {
+        return {
+          ok: false,
+          error: {
+            message: `"## ${date}" is not a valid YYYY-MM-DD date heading. Each entry must start with a date heading like "## 2026-04-26".`,
+            line: i + 1,
+          },
+        };
+      }
+      flush();
+      currentDate = date;
+      continue;
+    }
+
+    if (currentDate) {
+      currentBody.push(line);
+    }
+  }
+  flush();
+
+  return { ok: true, value: { title, entries } };
 }
 
 export function NewsPanel() {
   const { connection, request, setMessage } = useSiteAdmin();
   const [baseData, setBaseData] = useState<NewsData>(BLANK_DATA);
-  const [draft, setDraft] = useState<NewsData>(BLANK_DATA);
+  const [markdownDraft, setMarkdownDraft] = useState<string>(() =>
+    entriesToMarkdown(BLANK_DATA),
+  );
+  const [description, setDescription] = useState<string>("");
   const [fileSha, setFileSha] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [parseError, setParseError] = useState<ParseError | null>(null);
   const [conflict, setConflict] = useState(false);
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
-  const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
-  const { restorable, clearDraft, dismissRestore } = useJsonDraft<NewsData>(
-    "news",
-    draft,
-    dirty && !loading && !saving,
+
+  const baseMarkdown = useMemo(() => entriesToMarkdown(baseData), [baseData]);
+  const dirty =
+    markdownDraft !== baseMarkdown ||
+    (description || "") !== (baseData.description || "");
+
+  // Drafts are restored as the markdown buffer + description, which
+  // round-trips losslessly through entriesToMarkdown.
+  const draftSnapshot = useMemo(
+    () => ({ markdown: markdownDraft, description }),
+    [markdownDraft, description],
   );
+  const { restorable, clearDraft, dismissRestore } = useJsonDraft<{
+    markdown: string;
+    description: string;
+  }>("news", draftSnapshot, dirty && !loading && !saving);
 
   const loadData = useCallback(
     async (options: { silent?: boolean } = {}) => {
       if (!ready) return;
       setLoading(true);
       setError("");
+      setParseError(null);
       const response = await request("/api/site-admin/news", "GET");
       setLoading(false);
       if (!response.ok) {
@@ -63,7 +173,8 @@ export function NewsPanel() {
         entries: Array.isArray(payload.entries) ? payload.entries : [],
       };
       setBaseData(normalized);
-      setDraft(clone(normalized));
+      setMarkdownDraft(entriesToMarkdown(normalized));
+      setDescription(normalized.description || "");
       setFileSha(version.fileSha || "");
       setConflict(false);
       if (!options.silent) {
@@ -84,10 +195,23 @@ export function NewsPanel() {
 
   const save = useCallback(async () => {
     if (!ready || saving) return;
+    const parsed = markdownToNews(markdownDraft);
+    if (!parsed.ok) {
+      setParseError(parsed.error);
+      setMessage("error", parsed.error.message);
+      return;
+    }
+    setParseError(null);
     setSaving(true);
     setError("");
+    const payload: NewsData = {
+      schemaVersion: 1,
+      title: parsed.value.title,
+      description: description.trim() || undefined,
+      entries: parsed.value.entries,
+    };
     const response = await request("/api/site-admin/news", "POST", {
-      data: draft,
+      data: payload,
       expectedFileSha: fileSha,
     });
     setSaving(false);
@@ -107,79 +231,40 @@ export function NewsPanel() {
     }
     const data = (response.data ?? {}) as Record<string, unknown>;
     const version = (data.sourceVersion ?? {}) as { fileSha?: string };
-    setBaseData(clone(draft));
+    setBaseData(payload);
+    setMarkdownDraft(entriesToMarkdown(payload));
     setFileSha(version.fileSha || "");
     setConflict(false);
     clearDraft();
-    setMessage("success", "News saved.");
-  }, [ready, saving, request, draft, fileSha, clearDraft, setMessage]);
+    setMessage(
+      "success",
+      `News saved (${payload.entries.length} entr${payload.entries.length === 1 ? "y" : "ies"}).`,
+    );
+  }, [
+    ready,
+    saving,
+    markdownDraft,
+    description,
+    fileSha,
+    request,
+    clearDraft,
+    setMessage,
+  ]);
 
-  const updateEntry = useCallback(
-    (index: number, next: Partial<NewsEntry>) => {
-      setDraft((d) => ({
-        ...d,
-        entries: d.entries.map((entry, i) =>
-          i === index ? { ...entry, ...next } : entry,
-        ),
-      }));
-    },
-    [],
-  );
-
-  const move = useCallback((index: number, direction: -1 | 1) => {
-    setDraft((d) => {
-      const target = index + direction;
-      if (target < 0 || target >= d.entries.length) return d;
-      const next = d.entries.slice();
-      [next[index], next[target]] = [next[target], next[index]];
-      return { ...d, entries: next };
-    });
-  }, []);
-
-  const reorder = useCallback((from: number, to: number) => {
-    setDraft((d) => {
-      if (
-        from < 0 ||
-        from >= d.entries.length ||
-        to < 0 ||
-        to >= d.entries.length ||
-        from === to
-      ) {
-        return d;
-      }
-      const next = d.entries.slice();
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return { ...d, entries: next };
-    });
-  }, []);
-
-  const { getRowProps, getHandleProps } = useDragReorder(
-    draft.entries.length,
-    reorder,
-  );
-
-  const remove = useCallback((index: number) => {
-    setDraft((d) => ({
-      ...d,
-      entries: d.entries.filter((_, i) => i !== index),
-    }));
-  }, []);
-
-  const add = useCallback(() => {
-    setDraft((d) => ({
-      ...d,
-      entries: [{ dateIso: localDateIso(), body: "" }, ...d.entries],
-    }));
-  }, []);
+  const entryCount = useMemo(() => {
+    const parsed = markdownToNews(markdownDraft);
+    return parsed.ok ? parsed.value.entries.length : 0;
+  }, [markdownDraft]);
 
   const stateNote = loading
     ? "Loading…"
     : conflict
       ? "Conflict detected. Reload latest before saving."
-      : dirty
-        ? "Unsaved changes."
-        : "In sync.";
+      : parseError
+        ? `Cannot save: ${parseError.message}`
+        : dirty
+          ? "Unsaved changes."
+          : "In sync.";
 
   return (
     <section className="surface-card">
@@ -189,9 +274,10 @@ export function NewsPanel() {
             News
           </h1>
           <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Dated timeline rendered at <code>/news</code>. Writes to{" "}
-            <code>content/news.json</code>. Body field accepts markdown
-            (links, bold, italics).
+            Edit the entire news file as one document. The first <code>#</code>{" "}
+            heading is the page title; every <code>## YYYY-MM-DD</code> heading
+            starts a new entry. Saves to <code>content/news.json</code>; the{" "}
+            <code>&lt;NewsBlock /&gt;</code> block embeds it in any page.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -207,7 +293,9 @@ export function NewsPanel() {
             className="btn btn--primary"
             type="button"
             onClick={() => void save()}
-            disabled={!ready || saving || !dirty || conflict}
+            disabled={
+              !ready || saving || !dirty || conflict || parseError !== null
+            }
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -218,8 +306,7 @@ export function NewsPanel() {
         <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>
       )}
       <p className="m-0 text-[12px] text-text-muted">
-        {stateNote} · {draft.entries.length} entr
-        {draft.entries.length === 1 ? "y" : "ies"}
+        {stateNote} · {entryCount} entr{entryCount === 1 ? "y" : "ies"}
       </p>
 
       {restorable && (
@@ -227,92 +314,42 @@ export function NewsPanel() {
           savedAt={restorable.savedAt}
           onDismiss={dismissRestore}
           onRestore={() => {
-            setDraft(clone(restorable.value));
+            setMarkdownDraft(restorable.value.markdown);
+            setDescription(restorable.value.description);
             dismissRestore();
           }}
         />
       )}
 
-      <div className="flex gap-2">
-        <button className="btn btn--primary" type="button" onClick={add}>
-          + Add entry (newest)
-        </button>
-      </div>
+      <details className="surface-details">
+        <summary>SEO description</summary>
+        <p className="m-0 mt-1 text-[12px] text-text-muted">
+          Used in <code>&lt;meta name="description"&gt;</code> for the{" "}
+          <code>/news</code> page. Not visible on the page itself.
+        </p>
+        <input
+          className="mt-2 w-full"
+          type="text"
+          value={description}
+          placeholder="Short summary for search engines and link previews."
+          onChange={(event) => setDescription(event.target.value)}
+        />
+      </details>
 
-      <div className="flex flex-col gap-3">
-        {draft.entries.length === 0 ? (
-          <p className="empty-note">
-            No news yet. Click &ldquo;+ Add entry&rdquo; to start.
-          </p>
-        ) : (
-          draft.entries.map((entry, index) => (
-            <div className="news-entry-card" key={index} {...getRowProps(index)}>
-              <div className="news-entry-header">
-                <button
-                  type="button"
-                  className="drag-handle"
-                  title="Drag to reorder"
-                  aria-label="Drag to reorder"
-                  {...getHandleProps(index)}
-                >
-                  ⋮⋮
-                </button>
-                <input
-                  type="date"
-                  value={entry.dateIso}
-                  onChange={(e) => updateEntry(index, { dateIso: e.target.value })}
-                  className="news-entry-date"
-                />
-                <span className="news-entry-index">#{index + 1}</span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    style={{ padding: "3px 8px", fontSize: 11 }}
-                    onClick={() => move(index, -1)}
-                    disabled={index === 0}
-                    aria-label="Move news entry up"
-                    title="Move up (newer position)"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    style={{ padding: "3px 8px", fontSize: 11 }}
-                    onClick={() => move(index, 1)}
-                    disabled={index === draft.entries.length - 1}
-                    aria-label="Move news entry down"
-                    title="Move down (older position)"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    style={{
-                      padding: "3px 8px",
-                      fontSize: 11,
-                      color: "var(--color-danger)",
-                    }}
-                    onClick={() => remove(index)}
-                    aria-label="Remove news entry"
-                    title="Remove"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              <BlocksEditor
-                value={entry.body}
-                onChange={(next) => updateEntry(index, { body: next })}
-                placeholder="Body — type / for blocks"
-                minHeight={120}
-              />
-            </div>
-          ))
-        )}
-      </div>
+      <BlocksEditor
+        value={markdownDraft}
+        onChange={(next) => {
+          setMarkdownDraft(next);
+          // Re-validate on every change so the user sees errors live and
+          // the Save button stays accurate.
+          const parsed = markdownToNews(next);
+          setParseError(parsed.ok ? null : parsed.error);
+        }}
+        minHeight={420}
+      />
     </section>
   );
 }
+
+// Exported for unit tests in news-panel.test.ts.
+export { entriesToMarkdown, markdownToNews };
