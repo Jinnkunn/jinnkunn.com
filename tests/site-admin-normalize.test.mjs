@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { normalizeHomeData } from "../lib/site-admin/home-normalize.ts";
 import { normalizePublicationsData } from "../lib/site-admin/publications-normalize.ts";
-import { normalizeTeachingData } from "../lib/site-admin/teaching-normalize.ts";
 
 // ----------------------------------------------------------------------------
 // Home — single Notion-style MDX document. The legacy section-based
@@ -184,89 +183,10 @@ test("normalizePublicationsData: keeps optional string fields (doi/arxiv/venue)"
   assert.equal(out.entries[0].venue, "NeurIPS 2025");
 });
 
-// ----------------------------------------------------------------------------
-// Teaching
-// ----------------------------------------------------------------------------
-
-test("normalizeTeachingData: empty template for non-object input", () => {
-  const out = normalizeTeachingData(null);
-  assert.equal(out.title, "Teaching");
-  assert.deepEqual(out.headerLinks, []);
-  assert.deepEqual(out.entries, []);
-  assert.deepEqual(out.footerLinks, []);
-});
-
-test("normalizeTeachingData: drops entries with neither term nor courseCode", () => {
-  const out = normalizeTeachingData({
-    entries: [
-      {
-        term: "2025/26 Fall",
-        courseCode: "CSCI1234",
-        courseName: "Intro",
-        period: "Sep-Dec",
-        role: "TA",
-      },
-      { term: "", courseCode: "", courseName: "no id" },
-      null,
-    ],
-  });
-  assert.equal(out.entries.length, 1);
-  assert.equal(out.entries[0].courseCode, "CSCI1234");
-});
-
-test("normalizeTeachingData: keeps optional courseUrl + instructor only when non-empty", () => {
-  const out = normalizeTeachingData({
-    entries: [
-      {
-        term: "Fall",
-        courseCode: "X",
-        courseName: "Y",
-        period: "",
-        role: "",
-        courseUrl: "/teaching/x",
-        instructor: "Prof",
-      },
-      {
-        term: "Fall",
-        courseCode: "Z",
-        courseName: "W",
-        period: "",
-        role: "",
-        courseUrl: "   ",
-        instructor: "",
-      },
-    ],
-  });
-  assert.equal(out.entries[0].courseUrl, "/teaching/x");
-  assert.equal(out.entries[0].instructor, "Prof");
-  assert.equal(out.entries[1].courseUrl, undefined);
-  assert.equal(out.entries[1].instructor, undefined);
-});
-
-test("normalizeTeachingData: drops header/footer links missing label or href", () => {
-  const out = normalizeTeachingData({
-    headerLinks: [
-      { label: "A", href: "/a" },
-      { label: "", href: "/b" },
-      { label: "C" },
-    ],
-    footerLinks: [
-      { label: "D", href: "/d" },
-      null,
-      { label: "E", href: "" },
-    ],
-  });
-  assert.equal(out.headerLinks.length, 1);
-  assert.equal(out.headerLinks[0].label, "A");
-  assert.equal(out.footerLinks.length, 1);
-  assert.equal(out.footerLinks[0].label, "D");
-});
-
-test("normalizeTeachingData: keeps intro only when non-whitespace string", () => {
-  assert.equal(normalizeTeachingData({ intro: "Hi." }).intro, "Hi.");
-  assert.equal(normalizeTeachingData({ intro: "  " }).intro, undefined);
-  assert.equal(normalizeTeachingData({ intro: 42 }).intro, undefined);
-});
+// Teaching migrated to inline `<TeachingEntry>` blocks inside
+// `content/pages/teaching.mdx`. Equivalent invariants live in the
+// teaching-entry round-trip tests in
+// apps/workspace/src/surfaces/site-admin/mdx-blocks.test.ts.
 
 // ----------------------------------------------------------------------------
 // Works migrated to inline `<WorksEntry>` blocks inside

@@ -9,7 +9,6 @@ export type SiteAdminTab =
   | "posts"
   | "pages"
   | "publications"
-  | "teaching"
   | "settings";
 
 export interface SiteSettings {
@@ -210,33 +209,9 @@ export interface PublicationsData {
   entries: PublicationEntry[];
 }
 
-// --- Teaching (structured editor) ----------------------------------------
-
-export interface TeachingLink {
-  label: string;
-  href: string;
-}
-
-export interface TeachingEntry {
-  term: string;
-  period: string;
-  role: string;
-  courseCode: string;
-  courseName: string;
-  courseUrl?: string;
-  instructor?: string;
-}
-
-export interface TeachingData {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  sections?: StructuredPageSection[];
-  intro?: string;
-  headerLinks: TeachingLink[];
-  entries: TeachingEntry[];
-  footerLinks: TeachingLink[];
-}
+// Teaching migrated to inline `<TeachingEntry>` blocks inside
+// `content/pages/teaching.mdx`. Fields live on MdxBlock (`teachingTerm`,
+// `teachingPeriod`, etc.) instead of a separate DTO.
 
 // Works migrated to inline `<WorksEntry>` blocks inside
 // `content/pages/works.mdx`. Block-level types live in

@@ -1665,6 +1665,114 @@ export function WorksEntryEditableBlock({
   );
 }
 
+// ---------- Teaching entry ----------
+
+// One row on the teaching page. Atomic (no body content) — every field
+// is a JSX attribute on the self-closing `<TeachingEntry />` tag, so
+// the editor card is a flat form, no nested EditableBlocksList.
+export interface TeachingEntryEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+export function TeachingEntryEditableBlock({
+  block,
+  onPatch,
+}: TeachingEntryEditableBlockProps) {
+  const term = block.teachingTerm ?? "";
+  const period = block.teachingPeriod ?? "";
+  const role = block.teachingRole ?? "";
+  const courseCode = block.teachingCourseCode ?? "";
+  const courseName = block.teachingCourseName ?? "";
+  const courseUrl = block.teachingCourseUrl ?? "";
+  const instructor = block.teachingInstructor ?? "";
+
+  const set = (
+    key:
+      | "teachingTerm"
+      | "teachingPeriod"
+      | "teachingRole"
+      | "teachingCourseCode"
+      | "teachingCourseName"
+      | "teachingCourseUrl"
+      | "teachingInstructor",
+    value: string,
+    optional = false,
+  ) => {
+    onPatch((current) => ({
+      ...current,
+      [key]: optional ? value || undefined : value,
+    }));
+  };
+
+  return (
+    <div className="mdx-document-data-entry-block">
+      <div className="mdx-document-data-entry-block__head">
+        <label className="mdx-document-data-entry-block__field mdx-document-data-entry-block__field--small">
+          <span>Term</span>
+          <input
+            value={term}
+            placeholder="Fall 2024"
+            onChange={(event) => set("teachingTerm", event.target.value)}
+            aria-invalid={!term.trim() || undefined}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Period</span>
+          <input
+            value={period}
+            placeholder="Sep 2024 - Dec 2024"
+            onChange={(event) => set("teachingPeriod", event.target.value)}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Role</span>
+          <input
+            value={role}
+            placeholder="Instructor"
+            onChange={(event) => set("teachingRole", event.target.value)}
+          />
+        </label>
+      </div>
+      <div className="mdx-document-data-entry-block__head">
+        <label className="mdx-document-data-entry-block__field mdx-document-data-entry-block__field--small">
+          <span>Course code</span>
+          <input
+            value={courseCode}
+            placeholder="CSCI3141"
+            onChange={(event) => set("teachingCourseCode", event.target.value)}
+            aria-invalid={!courseCode.trim() || undefined}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Course name</span>
+          <input
+            value={courseName}
+            placeholder="Foundations of Data Science"
+            onChange={(event) => set("teachingCourseName", event.target.value)}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Course URL</span>
+          <input
+            value={courseUrl}
+            placeholder="https://..."
+            onChange={(event) => set("teachingCourseUrl", event.target.value, true)}
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Instructor</span>
+          <input
+            value={instructor}
+            placeholder="Dr. Someone"
+            onChange={(event) => set("teachingInstructor", event.target.value, true)}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 // ---------- News entry ----------
 
 // One dated entry on the news page. Same recursive-children shape as
