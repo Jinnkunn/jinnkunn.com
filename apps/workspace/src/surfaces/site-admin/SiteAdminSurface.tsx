@@ -38,6 +38,9 @@ const PublicationsPanel = lazy(() =>
 const RoutesPanel = lazy(() =>
   import("./RoutesPanel").then((module) => ({ default: module.RoutesPanel })),
 );
+const SettingsPanel = lazy(() =>
+  import("./SettingsPanel").then((module) => ({ default: module.SettingsPanel })),
+);
 const StatusPanel = lazy(() =>
   import("./StatusPanel").then((module) => ({ default: module.StatusPanel })),
 );
@@ -663,6 +666,10 @@ function SiteAdminContent() {
               {activeTab === "news" && <NewsPanel />}
               {activeTab === "teaching" && <TeachingPanel />}
               {activeTab === "works" && <WorksPanel />}
+              {activeTab === "settings" && <SettingsPanel />}
+              {/* Direct deep-links into the legacy standalone tabs still
+               * resolve so old persisted UI state and bookmarks keep
+               * working. The sidebar only surfaces "Settings" now. */}
               {activeTab === "config" && <ConfigPanel />}
               {activeTab === "routes" && <RoutesPanel />}
             </>

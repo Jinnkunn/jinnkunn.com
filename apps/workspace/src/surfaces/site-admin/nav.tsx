@@ -5,7 +5,6 @@ import {
   PagesIcon,
   PostsIcon,
   PublicationsIcon,
-  RoutesIcon,
   StatusIcon,
   TeachingIcon,
   WorksIcon,
@@ -47,9 +46,11 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
   {
     id: "site",
     label: "Site",
+    // The Settings surface (Phase 5) bundles what used to be two
+    // separate sidebar entries — Settings & Navigation + Routes — into
+    // one super.so-style settings page with horizontal sub-tabs.
     items: [
-      { id: "config", label: "Settings & Navigation", icon: <ConfigIcon /> },
-      { id: "routes", label: "Routes", icon: <RoutesIcon /> },
+      { id: "settings", label: "Settings", icon: <ConfigIcon /> },
     ],
   },
   {
