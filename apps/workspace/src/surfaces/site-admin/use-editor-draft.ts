@@ -41,13 +41,21 @@ export interface UseEditorDraftResult<TForm> {
  * Scope: intentionally simple. One draft per (kind, slug) pair; new-post
  * drafts collide under a single `__new__` key so creating two at once
  * loses one of them. Good enough for the common case ("I was in the
- * middle of writing this post and the app quit"). */
+ * middle of writing this post and the app quit").
+ *
+ * `dirty` gates writes — without it the load-induced state change
+ * triggers the autosave effect (body/form transition from initial
+ * empty values to the fetched ones) and writes the loaded content as
+ * a "draft", causing a false-positive "Unsaved draft" banner on the
+ * next open. We only persist when there's a real diff vs. the last
+ * server snapshot. */
 export function useEditorDraft<TForm>(
   kind: EditorKind,
   slug: string,
   body: string,
   form: TForm,
   enabled: boolean,
+  dirty: boolean,
 ): UseEditorDraftResult<TForm> {
   const [restorable, setRestorable] =
     useState<DraftEnvelope<TForm> | null>(null);
@@ -87,11 +95,15 @@ export function useEditorDraft<TForm>(
     setRestorable(next);
   }, [enabled, kind, slug]);
 
-  // Autosave on change, debounced. Skip when disabled (e.g. loading state
-  // before the server response has populated `body`/`form`).
+  // Autosave on change, debounced. Skip when disabled (loading state)
+  // OR when not dirty (`body`/`form` still match the last server
+  // snapshot). The dirty gate is what stops the load-induced state
+  // change from being persisted as a "draft" identical to the saved
+  // content — without it, every page open quietly creates a fake
+  // draft that surfaces as "Unsaved draft" on the next visit.
   const timerRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !dirty) return;
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
     }
@@ -115,7 +127,30 @@ export function useEditorDraft<TForm>(
         timerRef.current = null;
       }
     };
-  }, [enabled, kind, slug, body, form]);
+  }, [enabled, dirty, kind, slug, body, form]);
+
+  // Auto-discard stale drafts: when there's no active edit (`!dirty`)
+  // and the persisted draft body+form already match the current
+  // server snapshot, drop the localStorage entry so the banner stops
+  // showing for content that's already saved. Cheap JSON.stringify
+  // for `form` equality — the form is small (title / draft / a few
+  // strings) and only this hook's lifetime depends on it.
+  useEffect(() => {
+    if (!enabled) return;
+    if (!restorable) return;
+    if (dirty) return;
+    const sameBody = restorable.body === body;
+    const sameForm =
+      JSON.stringify(restorable.form) === JSON.stringify(form);
+    if (!sameBody || !sameForm) return;
+    try {
+      localStorage.removeItem(draftKey(kind, slug));
+    } catch {
+      // ignore — best-effort cleanup
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRestorable(null);
+  }, [enabled, dirty, restorable, body, form, kind, slug]);
 
   const clearDraft = useCallback(() => {
     try {
