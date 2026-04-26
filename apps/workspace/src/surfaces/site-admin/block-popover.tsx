@@ -11,11 +11,23 @@ export type BlockPopoverPlacement =
   | "bottom-start"
   | "bottom-end"
   | "right-start"
-  | "top-start";
+  | "top-start"
+  | "top-center";
+
+// A virtual anchor — used by the inline format toolbar to anchor against
+// the bounding box of the current text selection rather than a DOM node.
+export interface BlockPopoverRectAnchor {
+  top: number;
+  left: number;
+  width?: number;
+  height?: number;
+}
+
+export type BlockPopoverAnchor = HTMLElement | BlockPopoverRectAnchor | null;
 
 export interface BlockPopoverProps {
   ariaLabel?: string;
-  anchor: HTMLElement | null;
+  anchor: BlockPopoverAnchor;
   children: ReactNode;
   className?: string;
   onClose: () => void;
@@ -25,35 +37,58 @@ export interface BlockPopoverProps {
 
 const POPOVER_OFFSET = 6;
 
+function isRectAnchor(value: unknown): value is BlockPopoverRectAnchor {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as BlockPopoverRectAnchor).top === "number" &&
+    typeof (value as BlockPopoverRectAnchor).left === "number"
+  );
+}
+
+function getAnchorRect(
+  anchor: HTMLElement | BlockPopoverRectAnchor,
+): DOMRect | BlockPopoverRectAnchor {
+  if (isRectAnchor(anchor)) return anchor;
+  return anchor.getBoundingClientRect();
+}
+
 function computePosition(
-  anchor: HTMLElement,
+  anchor: HTMLElement | BlockPopoverRectAnchor,
   placement: BlockPopoverPlacement,
 ): CSSProperties {
-  const rect = anchor.getBoundingClientRect();
+  const r = getAnchorRect(anchor);
+  const top = r.top;
+  const left = r.left;
+  const width = "width" in r ? r.width ?? 0 : 0;
+  const height = "height" in r ? r.height ?? 0 : 0;
+  const right = left + width;
+  const bottom = top + height;
   if (placement === "right-start") {
-    return {
-      left: rect.right + POPOVER_OFFSET,
-      top: rect.top,
-    };
+    return { left: right + POPOVER_OFFSET, top };
   }
   if (placement === "bottom-end") {
     return {
-      left: rect.right,
-      top: rect.bottom + POPOVER_OFFSET,
+      left: right,
+      top: bottom + POPOVER_OFFSET,
       transform: "translateX(-100%)",
     };
   }
   if (placement === "top-start") {
     return {
-      left: rect.left,
-      top: rect.top - POPOVER_OFFSET,
+      left,
+      top: top - POPOVER_OFFSET,
       transform: "translateY(-100%)",
     };
   }
-  return {
-    left: rect.left,
-    top: rect.bottom + POPOVER_OFFSET,
-  };
+  if (placement === "top-center") {
+    return {
+      left: left + width / 2,
+      top: top - POPOVER_OFFSET,
+      transform: "translate(-50%, -100%)",
+    };
+  }
+  return { left, top: bottom + POPOVER_OFFSET };
 }
 
 export function BlockPopover({
@@ -92,7 +127,10 @@ export function BlockPopover({
       const target = event.target as Node | null;
       if (!target) return;
       if (popoverRef.current?.contains(target)) return;
-      if (anchor?.contains(target)) return;
+      // Only DOM-element anchors have a contains() method; rect anchors
+      // (used by the inline format toolbar) intentionally don't claim any
+      // DOM area, so a click outside the popover always closes it.
+      if (anchor && !isRectAnchor(anchor) && anchor.contains(target)) return;
       onClose();
     };
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -105,8 +105,12 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /\.mdx-document-editor__layout/);
   assert.match(styles, /\.mdx-document-block/);
   assert.match(styles, /\.mdx-document-slash-menu/);
-  assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*grid-template-columns: 38px minmax\(0, 1fr\);/);
-  assert.match(styles, /\.mdx-document-slash-menu\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(180px, 1fr\)\);/);
+  // Notion-style refactor: gutter handle column slimmed to 36px; slash menu
+  // uses a single-column flex layout (with grouped sections + icons) instead
+  // of the old 2-column grid.
+  assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*grid-template-columns: 36px minmax\(0, 1fr\);/);
+  assert.match(styles, /\.mdx-document-slash-menu\s*\{[\s\S]*flex-direction: column;/);
+  assert.match(styles, /\.block-editor-command__group-label\s*\{/);
   assert.match(blockEditor, /export interface BlockEditorCommand/);
   assert.match(blockEditor, /export function getMatchingBlockEditorCommands/);
   assert.match(blockEditor, /export function BlockEditorCommandMenu/);
