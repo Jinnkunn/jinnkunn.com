@@ -1,0 +1,281 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useSiteAdmin } from "./state";
+import type {
+  OverrideRow,
+  ProtectedRow,
+  RoutesSourceVersion,
+} from "./types";
+import { normalizeOverride, normalizeProtected, normalizeString } from "./utils";
+
+interface PageRoutingPropertiesProps {
+  /** The page's slug (used as the pageId key against /api/site-admin/routes). */
+  slug: string;
+}
+
+interface OverrideDraft {
+  routePath: string;
+  enabled: boolean;
+}
+
+interface ProtectedDraft {
+  path: string;
+  auth: "public" | "password" | "github";
+  password: string;
+  enabled: boolean;
+}
+
+const BLANK_OVERRIDE: OverrideDraft = { routePath: "", enabled: true };
+const BLANK_PROTECTED: ProtectedDraft = {
+  path: "",
+  auth: "public",
+  password: "",
+  enabled: true,
+};
+
+/** Compact "URL & Protection" panel rendered next to the page's
+ * frontmatter inside the page editor. Talks to the same
+ * `/api/site-admin/routes` endpoint as RoutesPanel — just scoped to one
+ * page so the user doesn't have to leave the editor to give the page a
+ * custom URL or password-protect it. Independent save per section to
+ * keep the UX simple (no shared draft / dirty bookkeeping with the page
+ * MDX save). */
+export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
+  const { request, setMessage } = useSiteAdmin();
+  const [loading, setLoading] = useState(false);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [savingProtected, setSavingProtected] = useState(false);
+  const [sourceVersion, setSourceVersion] = useState<RoutesSourceVersion | null>(null);
+  const [override, setOverride] = useState<OverrideDraft>(BLANK_OVERRIDE);
+  const [protectedRow, setProtectedRow] = useState<ProtectedDraft>(BLANK_PROTECTED);
+  const [hasOverride, setHasOverride] = useState(false);
+  const [hasProtected, setHasProtected] = useState(false);
+
+  const pageId = useMemo(() => slug.trim(), [slug]);
+
+  const load = useCallback(async () => {
+    if (!pageId) return;
+    setLoading(true);
+    const response = await request("/api/site-admin/routes", "GET");
+    setLoading(false);
+    if (!response.ok) {
+      setMessage(
+        "error",
+        `Load page routing failed: ${response.code}: ${response.error}`,
+      );
+      return;
+    }
+    const payload = (response.data ?? {}) as Record<string, unknown>;
+    const srcVersion = payload.sourceVersion as
+      | { siteConfigSha?: string; protectedRoutesSha?: string; branchSha?: string }
+      | undefined;
+    if (srcVersion?.siteConfigSha && srcVersion.protectedRoutesSha && srcVersion.branchSha) {
+      setSourceVersion({
+        siteConfigSha: srcVersion.siteConfigSha,
+        protectedRoutesSha: srcVersion.protectedRoutesSha,
+        branchSha: srcVersion.branchSha,
+      });
+    }
+
+    const overrides: OverrideRow[] = Array.isArray(payload.overrides)
+      ? (payload.overrides as unknown[]).map(normalizeOverride)
+      : [];
+    const protectedRows: ProtectedRow[] = Array.isArray(payload.protectedRoutes)
+      ? (payload.protectedRoutes as unknown[]).map(normalizeProtected)
+      : [];
+
+    const matchingOverride = overrides.find((row) => row.pageId === pageId);
+    if (matchingOverride) {
+      setOverride({
+        routePath: matchingOverride.routePath,
+        enabled: matchingOverride.enabled,
+      });
+      setHasOverride(true);
+    } else {
+      setOverride(BLANK_OVERRIDE);
+      setHasOverride(false);
+    }
+
+    const matchingProtected = protectedRows.find((row) => row.pageId === pageId);
+    if (matchingProtected) {
+      setProtectedRow({
+        path: matchingProtected.path,
+        auth: matchingProtected.auth,
+        // Server never returns the password (write-only); leave empty so
+        // the user can re-enter to change, but blank means "keep existing".
+        password: "",
+        enabled: matchingProtected.enabled,
+      });
+      setHasProtected(true);
+    } else {
+      setProtectedRow(BLANK_PROTECTED);
+      setHasProtected(false);
+    }
+  }, [pageId, request, setMessage]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const saveOverride = useCallback(async () => {
+    if (!pageId || !sourceVersion) return;
+    setSavingOverride(true);
+    const response = await request("/api/site-admin/routes", "POST", {
+      kind: "override",
+      pageId,
+      routePath: normalizeString(override.routePath),
+      expectedSiteConfigSha: sourceVersion.siteConfigSha,
+    });
+    setSavingOverride(false);
+    if (!response.ok) {
+      if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+        setMessage(
+          "warn",
+          "Routes changed on the server. Reload the page editor to pick up the latest.",
+        );
+        return;
+      }
+      setMessage(
+        "error",
+        `Save URL override failed: ${response.code}: ${response.error}`,
+      );
+      return;
+    }
+    setMessage("success", `URL override saved for ${pageId}.`);
+    await load();
+  }, [pageId, sourceVersion, override, request, setMessage, load]);
+
+  const saveProtected = useCallback(async () => {
+    if (!pageId || !sourceVersion) return;
+    if (protectedRow.auth === "password" && !protectedRow.password.trim() && !hasProtected) {
+      setMessage("error", "Password required when auth mode is 'password'.");
+      return;
+    }
+    setSavingProtected(true);
+    const response = await request("/api/site-admin/routes", "POST", {
+      kind: "protected",
+      pageId,
+      path: normalizeString(protectedRow.path),
+      auth: protectedRow.auth,
+      password: normalizeString(protectedRow.password),
+      expectedProtectedRoutesSha: sourceVersion.protectedRoutesSha,
+    });
+    setSavingProtected(false);
+    if (!response.ok) {
+      if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
+        setMessage(
+          "warn",
+          "Protected routes changed on the server. Reload the page editor to pick up the latest.",
+        );
+        return;
+      }
+      setMessage(
+        "error",
+        `Save protection failed: ${response.code}: ${response.error}`,
+      );
+      return;
+    }
+    setMessage("success", `Protection saved for ${pageId}.`);
+    await load();
+  }, [pageId, sourceVersion, protectedRow, hasProtected, request, setMessage, load]);
+
+  if (!pageId) return null;
+
+  return (
+    <div className="page-routing-properties">
+      <details className="surface-details">
+        <summary>URL override</summary>
+        <p className="page-routing-properties__hint">
+          By default the page renders at <code>/pages/{pageId}</code>.
+          Provide a custom path here to route requests for that path to
+          this page (e.g. <code>/about</code>). Leave empty to disable.
+        </p>
+        <label className="home-builder__field">
+          <span>Custom URL</span>
+          <input
+            value={override.routePath}
+            placeholder="/about"
+            disabled={loading || !sourceVersion}
+            onChange={(event) =>
+              setOverride((prev) => ({ ...prev, routePath: event.target.value }))
+            }
+          />
+        </label>
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() => void saveOverride()}
+            disabled={loading || savingOverride || !sourceVersion}
+          >
+            {savingOverride ? "Saving…" : hasOverride ? "Update override" : "Add override"}
+          </button>
+        </div>
+      </details>
+
+      <details className="surface-details">
+        <summary>Protection</summary>
+        <p className="page-routing-properties__hint">
+          Restricts access to the page. <code>password</code> requires
+          one shared password; <code>github</code> requires NextAuth
+          login with an allowed GitHub user; <code>public</code> removes
+          all restrictions.
+        </p>
+        <label className="home-builder__field">
+          <span>Path to protect</span>
+          <input
+            value={protectedRow.path}
+            placeholder="/about"
+            disabled={loading || !sourceVersion}
+            onChange={(event) =>
+              setProtectedRow((prev) => ({ ...prev, path: event.target.value }))
+            }
+          />
+        </label>
+        <label className="home-builder__field">
+          <span>Auth mode</span>
+          <select
+            value={protectedRow.auth}
+            disabled={loading || !sourceVersion}
+            onChange={(event) =>
+              setProtectedRow((prev) => ({
+                ...prev,
+                auth: event.target.value as ProtectedDraft["auth"],
+                password: event.target.value === "password" ? prev.password : "",
+              }))
+            }
+          >
+            <option value="public">public</option>
+            <option value="password">password</option>
+            <option value="github">github</option>
+          </select>
+        </label>
+        {protectedRow.auth === "password" ? (
+          <label className="home-builder__field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={protectedRow.password}
+              placeholder={hasProtected ? "(leave blank to keep current)" : "Set a password"}
+              disabled={loading || !sourceVersion}
+              autoComplete="new-password"
+              onChange={(event) =>
+                setProtectedRow((prev) => ({ ...prev, password: event.target.value }))
+              }
+            />
+          </label>
+        ) : null}
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() => void saveProtected()}
+            disabled={loading || savingProtected || !sourceVersion}
+          >
+            {savingProtected ? "Saving…" : hasProtected ? "Update protection" : "Add protection"}
+          </button>
+        </div>
+      </details>
+    </div>
+  );
+}

@@ -21,6 +21,10 @@ function summaryHasNestedInteractiveContent(summary: HTMLElement): boolean {
 }
 
 export function setToggleState(toggle: HTMLElement, open: boolean) {
+  if (toggle instanceof HTMLDetailsElement) {
+    toggle.open = open;
+  }
+
   toggle.classList.toggle("open", open);
   toggle.classList.toggle("closed", !open);
 

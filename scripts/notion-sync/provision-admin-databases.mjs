@@ -254,7 +254,7 @@ export async function ensureDeployLogsDatabase({ adminPageId, blocks }) {
         type: "paragraph",
         paragraph: {
           rich_text: richText(
-            "Each time you click Deploy now, the site writes a row here. With the Vercel webhook configured, the status will auto-update to Ready/Error when the deploy finishes.",
+            "Each time you click Deploy now, the site writes a row here. With Cloudflare deploy configured, the status will update to Ready/Error when the deploy finishes.",
           ),
         },
       },
@@ -344,7 +344,7 @@ export async function ensureDeployLogsDatabase({ adminPageId, blocks }) {
   await updateBlock(compactId(paragraph.id), {
     paragraph: {
       rich_text: richText(
-        "Each time you click Deploy now, the site writes a row here. With the Vercel webhook configured, the status will auto-update to Ready/Error when the deploy finishes.",
+        "Each time you click Deploy now, the site writes a row here. With Cloudflare deploy configured, the status will update to Ready/Error when the deploy finishes.",
       ),
     },
   });

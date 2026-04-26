@@ -4,6 +4,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
 
+import { stopProcessTree } from "./_lib/process-tree.mjs";
+
 const require = createRequire(import.meta.url);
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
@@ -190,6 +192,7 @@ function ensureBuild() {
 function startServer(port) {
   return spawn("npm", ["run", "start", "--", "-p", String(port)], {
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
     env: {
       ...process.env,
       PORT: String(port),
@@ -383,7 +386,7 @@ async function main() {
     }
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (server) server.kill("SIGTERM");
+    if (server) await stopProcessTree(server);
   }
 }
 

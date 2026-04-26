@@ -1,9 +1,13 @@
 import {
   ConfigIcon,
+  HomeIcon,
+  NewsIcon,
   PagesIcon,
   PostsIcon,
-  RoutesIcon,
+  PublicationsIcon,
   StatusIcon,
+  TeachingIcon,
+  WorksIcon,
 } from "../icons";
 import type { SurfaceNavGroup } from "../types";
 import type { SiteAdminTab } from "./types";
@@ -22,21 +26,31 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
     id: "content",
     label: "Content",
     items: [
-      { id: "home", label: "Home", icon: <PagesIcon /> },
-      { id: "posts", label: "Posts", icon: <PostsIcon /> },
-      { id: "pages", label: "Pages", icon: <PagesIcon /> },
-      { id: "publications", label: "Publications", icon: <PagesIcon /> },
-      { id: "news", label: "News", icon: <PagesIcon /> },
-      { id: "teaching", label: "Teaching", icon: <PagesIcon /> },
-      { id: "works", label: "Works", icon: <PagesIcon /> },
+      { id: "home", label: "Home", icon: <HomeIcon /> },
+      { id: "posts", label: "Posts", icon: <PostsIcon />, canAddChild: true },
+      {
+        id: "pages",
+        label: "Pages",
+        icon: <PagesIcon />,
+        canAddChild: true,
+        // Drop a page row onto Pages itself to move it back to the
+        // root (slug becomes its leaf only).
+        droppable: true,
+      },
+      { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
+      { id: "news", label: "News", icon: <NewsIcon /> },
+      { id: "teaching", label: "Teaching", icon: <TeachingIcon /> },
+      { id: "works", label: "Works", icon: <WorksIcon /> },
     ],
   },
   {
     id: "site",
     label: "Site",
+    // The Settings surface (Phase 5) bundles what used to be two
+    // separate sidebar entries — Settings & Navigation + Routes — into
+    // one super.so-style settings page with horizontal sub-tabs.
     items: [
-      { id: "config", label: "Settings & Navigation", icon: <ConfigIcon /> },
-      { id: "routes", label: "Routes", icon: <RoutesIcon /> },
+      { id: "settings", label: "Settings", icon: <ConfigIcon /> },
     ],
   },
   {

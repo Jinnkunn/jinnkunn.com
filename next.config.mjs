@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import bundleAnalyzer from "@next/bundle-analyzer";
 
 // Gate the analyzer behind `ANALYZE=1 npm run build` so a normal build
@@ -26,6 +27,47 @@ const nextConfig = {
 
   images: {
     formats: ["image/avif", "image/webp"],
+  },
+
+  async redirects() {
+    // Each successful page/post rename appends an entry to
+    // content/redirects.json. Read it at build time and emit Next-shaped
+    // 308 redirects so /pages/<oldSlug> and /blog/<oldSlug> keep
+    // resolving after the slug changes. Missing or unparsable file is
+    // treated as "no redirects" — never block a build on this.
+    try {
+      const raw = await readFile(
+        path.join(path.resolve("."), "content/redirects.json"),
+        "utf8",
+      );
+      const data = JSON.parse(raw);
+      const out = [];
+      const pages =
+        data && typeof data === "object" && data.pages && typeof data.pages === "object"
+          ? data.pages
+          : {};
+      const posts =
+        data && typeof data === "object" && data.posts && typeof data.posts === "object"
+          ? data.posts
+          : {};
+      for (const [from, to] of Object.entries(pages)) {
+        if (typeof from !== "string" || typeof to !== "string" || !from || !to) continue;
+        if (from === to) continue;
+        out.push({ source: `/pages/${from}`, destination: `/pages/${to}`, permanent: true });
+        // Pages also serve at the bare /<slug> via the root catch-all.
+        out.push({ source: `/${from}`, destination: `/${to}`, permanent: true });
+      }
+      for (const [from, to] of Object.entries(posts)) {
+        if (typeof from !== "string" || typeof to !== "string" || !from || !to) continue;
+        if (from === to) continue;
+        out.push({ source: `/blog/${from}`, destination: `/blog/${to}`, permanent: true });
+      }
+      return out;
+    } catch (err) {
+      if (err && err.code === "ENOENT") return [];
+      console.warn("[next.config.redirects] failed to load content/redirects.json:", err);
+      return [];
+    }
   },
 
   async headers() {

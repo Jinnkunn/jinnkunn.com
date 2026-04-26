@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      FLAGS_SECRET: ${{ secrets.FLAGS_SECRET }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET != '' && secrets.NEXTAUTH_SECRET || format('ci-nextauth-{0}-{1}', github.run_id, github.run_attempt) }}
     steps:
       - name: Checkout

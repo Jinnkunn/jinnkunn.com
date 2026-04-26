@@ -18,8 +18,8 @@ function makeValidPayload(overrides = {}) {
       runtimeProvider: "cloudflare",
       runtimeRegion: "iad",
       hasDeployTarget: true,
-      isVercel: true,
-      vercelRegion: "iad1",
+      isVercel: false,
+      vercelRegion: "",
       hasNotionToken: true,
       hasNotionAdminPageId: true,
       notionVersion: "2022-06-28",
@@ -37,7 +37,7 @@ function makeValidPayload(overrides = {}) {
       commitMessage: "msg",
       deploymentId: "dep",
       deploymentUrl: "https://example.workers.dev",
-      vercelUrl: "example.vercel.app",
+      vercelUrl: "",
     },
     content: {
       siteName: "Site",
@@ -136,7 +136,7 @@ test("site-admin-status-contract: parses valid success payload", () => {
   if (!parsed || !isSiteAdminStatusOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.env.runtimeProvider, "cloudflare");
   assert.equal(parsed.env.hasDeployTarget, true);
-  assert.equal(parsed.env.isVercel, true);
+  assert.equal(parsed.env.isVercel, false);
   assert.equal(parsed.content.nav.top, 4);
   assert.equal(parsed.files.notionSyncCache.count, 12);
   assert.equal(parsed.preflight?.generatedFiles.expected, 12);
@@ -192,7 +192,7 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminStatusOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.env.runtimeProvider, "cloudflare");
-  assert.equal(parsed.env.isVercel, true);
+  assert.equal(parsed.env.isVercel, false);
   assert.equal(parsed.content.nav.top, 4);
   assert.equal(parsed.files.notionSyncCache.count, 12);
   assert.equal(parsed.source.storeKind, "github");

@@ -1,0 +1,213 @@
+.site-admin-design-system {
+  display: grid;
+  gap: 28px;
+}
+
+.ds-gallery-section {
+  display: grid;
+  gap: 16px;
+}
+
+.ds-gallery-section__head {
+  display: grid;
+  gap: 6px;
+}
+
+.ds-gallery-section__title {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: 24px;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.ds-gallery-section__description {
+  max-width: 780px;
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: 15px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.ds-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+  gap: 14px;
+}
+
+.ds-gallery-grid--wide {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.ds-gallery-surface {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--ds-card-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-panel);
+}
+
+.ds-gallery-surface__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ds-gallery-surface__body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ds-gallery-token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.ds-gallery-token {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.ds-gallery-token__swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid var(--ds-border-subtle);
+  background:
+    linear-gradient(45deg, var(--ds-surface-soft) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--ds-surface-soft) 25%, transparent 25%),
+    var(--ds-gallery-swatch, var(--ds-surface-panel));
+  background-size: 10px 10px;
+}
+
+.ds-gallery-token__swatch[data-empty="true"] {
+  background: var(--ds-surface-panel);
+}
+
+.ds-gallery-token__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ds-gallery-token__name,
+.ds-gallery-token__value,
+.ds-gallery-code {
+  font-family: var(--ds-font-mono);
+}
+
+.ds-gallery-token__name {
+  color: var(--ds-text-primary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.ds-gallery-token__value {
+  color: var(--ds-text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.ds-gallery-code {
+  display: inline-flex;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-soft-strong);
+  color: var(--ds-text-muted);
+  font-size: 12px;
+}
+
+.ds-gallery-row-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.ds-gallery-form {
+  display: grid;
+  gap: 10px;
+}
+
+.ds-gallery-form__label {
+  display: grid;
+  gap: 6px;
+  color: var(--ds-text-muted);
+  font-size: 13px;
+}
+
+.ds-gallery-icon {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+}
+
+.ds-gallery-dialog-area {
+  display: grid;
+  place-items: start;
+  min-height: 220px;
+  padding: 18px;
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-soft);
+}
+
+.ds-gallery-inventory {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ds-gallery-inventory li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.ds-gallery-inventory li:last-child {
+  border-bottom: 0;
+}
+
+.ds-gallery-inventory strong {
+  color: var(--ds-text-primary);
+}
+
+.ds-gallery-inventory span {
+  color: var(--ds-text-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .ds-gallery-grid,
+  .ds-gallery-grid--wide,
+  .ds-gallery-token-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ds-gallery-surface {
+    padding: 14px;
+  }
+}

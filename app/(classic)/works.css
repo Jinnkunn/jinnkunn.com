@@ -1,49 +1,24 @@
-/* Works page — projects / experiences grouped by "Recent" / "Passed"
- * served from content/works.json. Compact header line per entry,
- * optional markdown body rendered via the MDX pipeline. */
+/* Works is rendered with Notion toggle markup to match the production page. */
 
 .works-intro,
 .works-note {
-  margin-block: 10px 16px;
+  color: var(--color-text-default-light);
+  font-size: 16px;
+  line-height: 24px;
 }
 
-.works-list {
-  list-style: none;
-  margin: 0 0 24px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.works-toggle .notion-toggle__summary {
+  align-items: flex-start;
 }
 
-.works-item {
-  padding: 12px 14px;
-  border: 1px solid var(--color-border-subtle, rgba(55, 53, 47, 0.1));
-  border-radius: 10px;
-  background: var(--color-bg-surface, #ffffff);
+.works-toggle .notion-semantic-string {
+  line-height: 24px;
 }
 
-.works-item__header {
-  font-size: 14px;
-  line-height: 1.55;
+.works-toggle__body {
+  padding-left: 24px;
 }
 
-.works-item__location,
-.works-item__period {
-  color: var(--color-text-muted, rgba(55, 53, 47, 0.62));
-  font-size: 13px;
-}
-
-.works-item__body {
-  margin-top: 10px;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.works-item__body > *:first-child {
-  margin-top: 0;
-}
-
-.works-item__body > *:last-child {
-  margin-bottom: 0;
+.works-note {
+  margin-top: 32px;
 }

@@ -1,12 +1,30 @@
 import type { ComponentType, ReactNode } from "react";
 
 /** One leaf nav item inside a surface's nested tree. Rendered as an
- * indented row under its group in the shell sidebar. */
+ * indented row under its group in the shell sidebar. May itself host
+ * children (Notion-style page tree) — when `children` is non-empty the
+ * row gets its own disclosure chevron and the nested items render at
+ * one extra level of indent. */
 export interface SurfaceNavItem {
   id: string;
   label: string;
   icon?: ReactNode;
   badge?: ReactNode;
+  children?: readonly SurfaceNavItem[];
+  /** When true the row gets a hover-revealed "+" affordance next to its
+   * disclosure chevron. Clicking it fires `onSelectNavItem` with the
+   * synthetic id `add:<itemId>`, which surfaces decode into a "create
+   * new child" action (e.g. site-admin opens a fresh PageEditor with
+   * the slug prefilled to the parent path). */
+  canAddChild?: boolean;
+  /** Marks the row as a drag source — Sidebar attaches HTML5 DnD
+   * handlers and a "grab" cursor. Pair with `droppable` on intended
+   * targets. */
+  draggable?: boolean;
+  /** Marks the row as a valid drop target. Sidebar highlights it
+   * during drag-over and fires `onMoveNavItem` when something is
+   * dropped on it. */
+  droppable?: boolean;
 }
 
 /** A collapsible group of nav items shown under the active surface in

@@ -141,18 +141,12 @@ function resolveDeployProvider(explicit?: DeployProvider): DeployProvider {
   if (hasCloudflareApiDeployConfig(process.env)) {
     return "cloudflare";
   }
-  if (asString(process.env.VERCEL_DEPLOY_HOOK_URL) || asString(process.env.VERCEL)) {
-    return "vercel";
-  }
   return "generic";
 }
 
 function resolveHookUrl(hookUrlRaw: string | undefined): string {
   if (hookUrlRaw !== undefined) return asString(hookUrlRaw);
-  return (
-    asString(process.env.DEPLOY_HOOK_URL) ||
-    asString(process.env.VERCEL_DEPLOY_HOOK_URL)
-  );
+  return asString(process.env.DEPLOY_HOOK_URL);
 }
 
 function readCloudflareDeployConfig():

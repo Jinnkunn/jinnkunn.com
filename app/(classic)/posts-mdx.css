@@ -77,22 +77,66 @@
   color: var(--ds-text-primary);
 }
 
-/* MDX toggle: native <details>, keeps the Notion-toggle cursor-pointer feel. */
-.mdx-toggle > summary {
+/* MDX toggle: mirrors the legacy Notion export and uses the shared behavior runtime. */
+.mdx-toggle > .notion-toggle__summary {
   cursor: pointer;
-  list-style: none;
 }
 
-.mdx-toggle > summary::-webkit-details-marker {
-  display: none;
-}
-
-.mdx-toggle[open] > .notion-toggle__summary .notion-toggle__trigger_icon {
+.mdx-toggle.open > .notion-toggle__summary .notion-toggle__trigger_icon {
   transform: rotate(90deg);
 }
 
 .mdx-toggle .notion-toggle__trigger_icon {
   transition: transform 160ms ease;
+}
+
+.mdx-post__body p,
+.mdx-post__body li,
+.mdx-post__body blockquote {
+  color: var(--color-text-default-light);
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.mdx-post__body strong,
+.mdx-post__body b,
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--color-text-default);
+}
+
+.mdx-post__body a {
+  color: inherit;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mdx-post__body :is(p, li, blockquote) a.notion-link.link {
+  color: var(--color-text-default-light);
+}
+
+.mdx-post__body :is(strong, b) a.notion-link.link {
+  color: var(--color-text-default);
+}
+
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a {
+  color: inherit;
+  padding: 0;
+  background-image: none;
+  text-decoration: none;
+  text-decoration-color: currentColor;
+}
+
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) a:hover {
+  background-size: 0 0, 0 0;
+  text-decoration-color: currentColor;
+}
+
+.mdx-post__body .notion-heading__anchor-link {
+  color: inherit;
+  text-decoration: none;
+  text-decoration-color: currentColor;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -106,4 +150,25 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--ds-radius-sm);
+}
+
+/* Native Markdown images do not go through <Figure/>. Keep them inside the
+   classic content column so large source images cannot create page-level
+   horizontal scroll on mobile. */
+.mdx-post__body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mdx-post__body pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mdx-code .notion-code__copy-button {
+  z-index: 3;
+  opacity: 1;
+  pointer-events: all;
 }

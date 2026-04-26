@@ -152,6 +152,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                   style={{ padding: "3px 8px", fontSize: 11 }}
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
+                  aria-label="Move publication up"
                   title="Move up"
                 >
                   ↑
@@ -162,6 +163,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                   style={{ padding: "3px 8px", fontSize: 11 }}
                   onClick={() => move(index, 1)}
                   disabled={index === entries.length - 1}
+                  aria-label="Move publication down"
                   title="Move down"
                 >
                   ↓
@@ -175,6 +177,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                     color: "var(--color-danger)",
                   }}
                   onClick={() => remove(index)}
+                  aria-label="Remove publication"
                   title="Remove"
                 >
                   ×
@@ -195,7 +198,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                 URL
                 <input
                   value={entry.url}
-                  placeholder="https://..."
+                  placeholder="https://…"
                   spellCheck={false}
                   onChange={(e) => updateField(index, "url", e.target.value)}
                 />
@@ -214,7 +217,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                 Venue
                 <input
                   value={entry.venue || ""}
-                  placeholder="NeurIPS 2025 / IEEE Trans on ..."
+                  placeholder="NeurIPS 2025 / IEEE Trans on …"
                   onChange={(e) =>
                     updateField(index, "venue", e.target.value || undefined)
                   }
@@ -224,7 +227,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                 DOI URL
                 <input
                   value={entry.doiUrl || ""}
-                  placeholder="https://doi.org/..."
+                  placeholder="https://doi.org/…"
                   spellCheck={false}
                   onChange={(e) =>
                     updateField(index, "doiUrl", e.target.value || undefined)
@@ -235,7 +238,7 @@ export function EntriesSection({ entries, onChange }: EntriesSectionProps) {
                 arXiv URL
                 <input
                   value={entry.arxivUrl || ""}
-                  placeholder="https://arxiv.org/abs/..."
+                  placeholder="https://arxiv.org/abs/…"
                   spellCheck={false}
                   onChange={(e) =>
                     updateField(index, "arxivUrl", e.target.value || undefined)

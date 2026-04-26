@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { JsonDraftRestoreBanner } from "./JsonDraftRestoreBanner";
+import { BlocksEditor } from "./LazyBlocksEditor";
 import { useDragReorder } from "./shared/useDragReorder";
 import { useSiteAdmin } from "./state";
+import { StructuredPageSectionsEditor } from "./StructuredPageSectionsEditor";
+import {
+  normalizeStructuredPageSections,
+  WORKS_SECTIONS,
+} from "./structured-page-sections";
 import type {
   WorksCategoryClient,
   WorksData,
   WorksEntry,
 } from "./types";
+import { useJsonDraft } from "./use-json-draft";
 
 const BLANK_DATA: WorksData = {
+  schemaVersion: 2,
   title: "Works",
+  sections: WORKS_SECTIONS,
   entries: [],
 };
 
@@ -33,6 +43,11 @@ export function WorksPanel() {
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const dirty = useMemo(() => !sameData(baseData, draft), [baseData, draft]);
+  const { restorable, clearDraft, dismissRestore } = useJsonDraft<WorksData>(
+    "works",
+    draft,
+    dirty && !loading && !saving,
+  );
 
   const loadData = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -52,8 +67,10 @@ export function WorksPanel() {
       const payload = (data.data ?? {}) as Partial<WorksData>;
       const version = (data.sourceVersion ?? {}) as { fileSha?: string };
       const normalized: WorksData = {
+        schemaVersion: 2,
         title: payload.title || "Works",
         description: payload.description,
+        sections: normalizeStructuredPageSections(payload.sections, WORKS_SECTIONS),
         intro: payload.intro,
         note: payload.note,
         entries: Array.isArray(payload.entries) ? payload.entries : [],
@@ -103,8 +120,9 @@ export function WorksPanel() {
     setBaseData(clone(draft));
     setFileSha(version.fileSha || "");
     setConflict(false);
+    clearDraft();
     setMessage("success", "Works saved.");
-  }, [ready, saving, request, draft, fileSha, setMessage]);
+  }, [ready, saving, request, draft, fileSha, clearDraft, setMessage]);
 
   const updateEntry = useCallback(
     (index: number, next: Partial<WorksEntry>) => {
@@ -219,29 +237,43 @@ export function WorksPanel() {
         {stateNote} · {recentCount} recent · {passedCount} passed
       </p>
 
+      {restorable && (
+        <JsonDraftRestoreBanner
+          savedAt={restorable.savedAt}
+          onDismiss={dismissRestore}
+          onRestore={() => {
+            setDraft(clone(restorable.value));
+            dismissRestore();
+          }}
+        />
+      )}
+
+      <StructuredPageSectionsEditor
+        sections={draft.sections || WORKS_SECTIONS}
+        onChange={(next) => setDraft((d) => ({ ...d, sections: next }))}
+      />
+
       <label className="flex flex-col gap-1 text-[12.5px]">
-        <span className="text-text-muted">Intro (markdown, optional)</span>
-        <textarea
-          className="news-entry-body"
-          rows={2}
+        <span className="text-text-muted">Intro (optional)</span>
+        <BlocksEditor
           value={draft.intro || ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, intro: e.target.value || undefined }))
+          onChange={(next) =>
+            setDraft((d) => ({ ...d, intro: next || undefined }))
           }
           placeholder="Shown as a pull-quote at the top of the page."
+          minHeight={112}
         />
       </label>
 
       <label className="flex flex-col gap-1 text-[12.5px]">
-        <span className="text-text-muted">Footer note (markdown, optional)</span>
-        <textarea
-          className="news-entry-body"
-          rows={2}
+        <span className="text-text-muted">Footer note (optional)</span>
+        <BlocksEditor
           value={draft.note || ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, note: e.target.value || undefined }))
+          onChange={(next) =>
+            setDraft((d) => ({ ...d, note: next || undefined }))
           }
           placeholder="e.g. This list is not exhaustive, and maybe not up-to-date."
+          minHeight={112}
         />
       </label>
 
@@ -305,6 +337,7 @@ export function WorksPanel() {
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
+                    aria-label="Move work entry up"
                   >
                     ↑
                   </button>
@@ -314,6 +347,7 @@ export function WorksPanel() {
                     style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => move(index, 1)}
                     disabled={index === draft.entries.length - 1}
+                    aria-label="Move work entry down"
                   >
                     ↓
                   </button>
@@ -326,6 +360,7 @@ export function WorksPanel() {
                       color: "var(--color-danger)",
                     }}
                     onClick={() => remove(index)}
+                    aria-label="Remove work entry"
                   >
                     ×
                   </button>
@@ -348,7 +383,7 @@ export function WorksPanel() {
                   Affiliation URL
                   <input
                     value={entry.affiliationUrl || ""}
-                    placeholder="https://..."
+                    placeholder="https://…"
                     spellCheck={false}
                     onChange={(e) =>
                       updateEntry(index, {
@@ -378,17 +413,16 @@ export function WorksPanel() {
                   />
                 </label>
                 <label className="pubs-entry-label pubs-entry-label--wide">
-                  Description (markdown)
-                  <textarea
-                    rows={4}
+                  Description
+                  <BlocksEditor
                     value={entry.description || ""}
-                    onChange={(e) =>
+                    onChange={(next) =>
                       updateEntry(index, {
-                        description: e.target.value || undefined,
+                        description: next || undefined,
                       })
                     }
-                    placeholder="Optional rich body. Supports links, bold, etc."
-                    spellCheck={false}
+                    placeholder="Optional rich body — type / for blocks"
+                    minHeight={120}
                   />
                 </label>
               </div>

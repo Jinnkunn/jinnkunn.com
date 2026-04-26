@@ -56,6 +56,22 @@ test("content-store: lists files with sha1 + size", async () => {
   }
 });
 
+test("content-store: recursively lists nested files when requested", async () => {
+  const root = await makeRoot();
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(path.join(root, "public/uploads/2026/04"), { recursive: true });
+    await writeFile(path.join(root, "public/uploads/2026/04/a.png"), "asset");
+    const store = createLocalContentStore({ rootDir: root });
+    assert.deepEqual(await store.listFiles("public/uploads"), []);
+    const files = await store.listFiles("public/uploads", { recursive: true });
+    assert.equal(files.length, 1);
+    assert.equal(files[0].relPath, "public/uploads/2026/04/a.png");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("content-store: write with ifMatch=null creates new file; second create fails", async () => {
   const root = await makeRoot();
   try {

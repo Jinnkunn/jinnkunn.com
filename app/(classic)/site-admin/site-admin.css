@@ -4,7 +4,9 @@
  * - routes.css  : /site-admin/routes explorer UI
  * - status.css  : /site-admin status dashboard
  * - config.css  : /site-admin/config settings + navigation editor
+ * - design-system-gallery.css: /site-admin/design-system inventory + gallery
  */
 @import "./styles/routes.css";
 @import "./styles/status.css";
 @import "./styles/config.css";
+@import "./styles/design-system-gallery.css";

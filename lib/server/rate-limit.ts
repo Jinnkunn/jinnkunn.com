@@ -16,7 +16,6 @@
  * Notes on the runtime model:
  * - Workers isolates do share a process across requests within a
  *   region, so this gives meaningful protection on Cloudflare too.
- * - Vercel Fluid Compute also reuses instances, so the same applies.
  * - In traditional one-request-per-instance serverless, each cold
  *   boot resets the counter — acceptable since cold boots are already
  *   throttled at the provider level.

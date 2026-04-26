@@ -20,6 +20,10 @@ const CLASSIC_BRIDGE_CSS = fs.readFileSync(
   path.join(ROOT, "app/(classic)/design-system-bridge.css"),
   "utf8",
 );
+const WORKSPACE_CSS = fs.readFileSync(
+  path.join(ROOT, "apps/workspace/src/index.css"),
+  "utf8",
+);
 
 test("design-system-tokens: each theme exposes foundation, semantic, and component sections", () => {
   assert.deepEqual([...DESIGN_THEMES], ["light", "dark"]);
@@ -68,4 +72,19 @@ test("design-system-tokens: theme metadata stays aligned with surface-page token
       },
     ],
   );
+});
+
+test("design-system-tokens: Tauri workspace exposes shared semantic aliases", () => {
+  const requiredAliases = [
+    "--ds-surface-page: var(--color-bg-window)",
+    "--ds-surface-panel: var(--color-bg-surface)",
+    "--ds-text-primary: var(--color-text-primary)",
+    "--ds-text-muted: var(--color-text-muted)",
+    "--ds-border-subtle: var(--color-border-subtle)",
+    "--ds-accent: var(--color-accent)",
+  ];
+
+  for (const alias of requiredAliases) {
+    assert.ok(WORKSPACE_CSS.includes(alias), `missing workspace alias ${alias}`);
+  }
 });
