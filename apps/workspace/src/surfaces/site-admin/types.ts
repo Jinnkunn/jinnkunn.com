@@ -195,25 +195,10 @@ export type ItemSelection =
 
 // --- Home (section-based landing page) -----------------------------------
 
-export type StructuredPageSectionType =
-  | "intro"
-  | "profileLinks"
-  | "entries"
-  | "recentWorks"
-  | "passedWorks"
-  | "note"
-  | "headerLinks"
-  | "footerLinks"
-  | "richText";
-
-export interface StructuredPageSection {
-  id: string;
-  type: StructuredPageSectionType;
-  enabled: boolean;
-  title?: string;
-  body?: string;
-  width: "narrow" | "standard" | "wide";
-}
+// StructuredPageSection types lived here while the news / works /
+// teaching / publications panels iterated over a typed section list.
+// They're gone now — every page in `content/pages/*.mdx` is a flat
+// MDX document edited via the shared block editor.
 
 /** Home is now a single MDX document — `bodyMdx` is the only content
  * source. The legacy section-builder schema (HomeHeroSection,
