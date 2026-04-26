@@ -187,50 +187,83 @@ test("public-web-style-guardrails: data-page entry components are registered for
   }
 });
 
-test("public-web-style-guardrails: data-page MDX files exist and use the expected blocks", async () => {
-  // Belt-and-suspenders: the migration writes each page once, but we
-  // want CI to scream if someone accidentally deletes the file or
-  // mass-replaces the entry tag in a refactor.
+test("public-web-style-guardrails: data-page files split between pages (shortcode) and components (entries)", async () => {
+  // After the Components migration: each public route page MDX
+  // contains a single `<{Name}Block />` shortcode (no inline entries),
+  // and the matching `content/components/{name}.mdx` holds the actual
+  // entry tags. Belt-and-suspenders: CI screams if someone reverts
+  // the split or mass-replaces the entry tag in a refactor.
   const news = await read("content/pages/news.mdx");
-  assertIncludes(news, "<NewsEntry date=", "news.mdx contains NewsEntry blocks");
+  assertIncludes(news, "<NewsBlock", "news.mdx embeds the NewsBlock shortcode");
   assertIncludes(news, 'title: "News"', "news.mdx frontmatter title");
+  const newsComponent = await read("content/components/news.mdx");
+  assertIncludes(
+    newsComponent,
+    "<NewsEntry date=",
+    "components/news.mdx contains NewsEntry blocks",
+  );
 
   const works = await read("content/pages/works.mdx");
-  assertIncludes(works, "<WorksEntry category=", "works.mdx contains WorksEntry blocks");
-  assertIncludes(works, "Recent Works", "works.mdx Recent Works heading");
-  assertIncludes(works, "Past Works", "works.mdx Past Works heading");
+  assertIncludes(works, "<WorksBlock", "works.mdx embeds the WorksBlock shortcode");
+  // The "Recent Works" / "Past Works" headings are now emitted by
+  // WorksBlock itself; verify the block source carries them so the
+  // visual output stays identical.
+  const worksBlock = await read("components/posts-mdx/works-block.tsx");
+  assertIncludes(worksBlock, "Recent Works", "works-block emits Recent Works heading");
+  assertIncludes(worksBlock, "Past Works", "works-block emits Past Works heading");
+  const worksComponent = await read("content/components/works.mdx");
+  assertIncludes(
+    worksComponent,
+    "<WorksEntry category=",
+    "components/works.mdx contains WorksEntry blocks",
+  );
 
   const teaching = await read("content/pages/teaching.mdx");
   assertIncludes(
     teaching,
-    "<TeachingEntry term=",
-    "teaching.mdx contains TeachingEntry blocks",
+    "<TeachingBlock",
+    "teaching.mdx embeds the TeachingBlock shortcode",
   );
+  // The legacy `<ul className="notion-bulleted-list teaching-list">`
+  // wrapper is now emitted by TeachingBlock itself.
+  const teachingBlock = await read("components/posts-mdx/teaching-block.tsx");
   assertIncludes(
-    teaching,
+    teachingBlock,
     'className="notion-bulleted-list teaching-list"',
-    "teaching.mdx wraps entries in the legacy <ul>",
+    "teaching-block wraps entries in the legacy <ul>",
+  );
+  const teachingComponent = await read("content/components/teaching.mdx");
+  assertIncludes(
+    teachingComponent,
+    "<TeachingEntry term=",
+    "components/teaching.mdx contains TeachingEntry blocks",
   );
 
   const publications = await read("content/pages/publications.mdx");
   assertIncludes(
     publications,
-    "<PublicationsEntry data=",
-    "publications.mdx contains PublicationsEntry blocks",
+    "<PublicationsBlock",
+    "publications.mdx embeds the PublicationsBlock shortcode",
   );
   assertIncludes(
     publications,
     "<PublicationsProfileLinks links=",
     "publications.mdx contains profile links block",
   );
+  const publicationsComponent = await read("content/components/publications.mdx");
+  assertIncludes(
+    publicationsComponent,
+    "<PublicationsEntry data=",
+    "components/publications.mdx contains PublicationsEntry blocks",
+  );
 });
 
-test("public-web-style-guardrails: data-page embed blocks read from page MDX, not legacy JSON", async () => {
+test("public-web-style-guardrails: data-page embed blocks read from components, not pages or legacy JSON", async () => {
   // The four `<NewsBlock />` / `<WorksBlock />` / `<TeachingBlock />` /
-  // `<PublicationsBlock />` MDX components used to read from
-  // content/{name}.json. After the migration they read from the
-  // matching content/pages/{name}.mdx page so the source of truth is
-  // single. Catch any regression that re-imports the deleted JSON.
+  // `<PublicationsBlock />` MDX components must read entries from
+  // `content/components/{name}.mdx` (the dedicated component file
+  // edited via the admin Components panel). Catch any regression that
+  // re-points at the public page MDX or re-imports the deleted JSON.
   const blocks = {
     news: await read("components/posts-mdx/news-block.tsx"),
     works: await read("components/posts-mdx/works-block.tsx"),
@@ -240,8 +273,8 @@ test("public-web-style-guardrails: data-page embed blocks read from page MDX, no
   for (const [name, source] of Object.entries(blocks)) {
     assertIncludes(
       source,
-      `content/pages/${name}.mdx`,
-      `${name}-block reads from content/pages/${name}.mdx`,
+      `content/components/${name}.mdx`,
+      `${name}-block reads from content/components/${name}.mdx`,
     );
     assertExcludes(
       source,

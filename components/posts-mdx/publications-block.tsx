@@ -12,9 +12,9 @@ interface PublicationsBlockProps {
   limit?: number;
 }
 
-const PUBLICATIONS_PAGE_PATH = resolve(
+const PUBLICATIONS_SOURCE_PATH = resolve(
   process.cwd(),
-  "content/pages/publications.mdx",
+  "content/components/publications.mdx",
 );
 
 const ENTRY_RE = /<PublicationsEntry\s+data='([^']*)'\s*\/>/g;
@@ -26,7 +26,7 @@ function unescapeJsonAttr(raw: string): string {
 async function loadEntries(): Promise<PublicationStructuredEntry[]> {
   let raw = "";
   try {
-    raw = await readFile(PUBLICATIONS_PAGE_PATH, "utf8");
+    raw = await readFile(PUBLICATIONS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
@@ -49,8 +49,10 @@ async function loadEntries(): Promise<PublicationStructuredEntry[]> {
 /** Embeddable publications-list view. The /publications route itself
  * keeps a custom page.tsx (so it can emit JSON-LD), but everywhere
  * else can drop `<PublicationsBlock />` into an MDX page to get the
- * year-grouped toggle list. Reads from content/pages/publications.mdx
- * so the source of truth stays single. */
+ * year-grouped toggle list. Reads from
+ * `content/components/publications.mdx` — the dedicated component
+ * file edited via the admin Components → Publications panel — so the
+ * source of truth stays single. */
 export async function PublicationsBlock({
   limit,
 }: PublicationsBlockProps): Promise<ReactElement> {
