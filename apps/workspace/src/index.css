@@ -2189,6 +2189,80 @@ body[data-window-focused="true"] .sidebar-surface {
   font-size: 12px;
 }
 
+/* TipTap-backed paragraph blocks (ParagraphRichTextBlock). The
+ * contenteditable already carries `.mdx-document-text-block` via
+ * editorProps.attributes.class, so the base sizing / focus chrome from
+ * `.mdx-document-text-block` rules above applies directly. The selectors
+ * below add the bits a contenteditable needs that a textarea didn't:
+ * paragraph margin reset, link/code styling, and the placeholder overlay
+ * driven by the Placeholder extension. */
+.mdx-document-text-block.ProseMirror:focus,
+.mdx-document-text-block.ProseMirror-focused {
+  outline: none;
+}
+
+.mdx-document-text-block.ProseMirror p {
+  margin: 0;
+}
+
+.mdx-document-text-block.ProseMirror code {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-text-block.ProseMirror a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: text;
+}
+
+.mdx-document-text-block.ProseMirror strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+/* Placeholder rendering: the @tiptap/extension-placeholder package adds
+ * an `is-editor-empty` class on the first empty paragraph and stores the
+ * placeholder string in `data-placeholder`. The pseudo-element shows it
+ * with the same dimmed treatment the textarea overlay used. */
+.mdx-document-text-block.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--mdx-placeholder-color);
+  pointer-events: none;
+  height: 0;
+}
+
+/* When unfocused, fade out the placeholder so empty rows aren't noisy
+ * (matches the textarea overlay's :focus-within behavior). */
+.mdx-document-text-block-shell:not(:focus-within)
+  .mdx-document-text-block.ProseMirror
+  p.is-editor-empty:first-child::before {
+  opacity: 0;
+}
+
+.mdx-document-text-block-shell:focus-within
+  .mdx-document-text-block.ProseMirror
+  p.is-editor-empty:first-child::before {
+  opacity: 1;
+  transition: opacity 100ms ease;
+}
+
+/* Active state for inline format toolbar buttons — the textarea version
+ * had no notion of "currently inside a bold span", so this was unset.
+ * TipTap exposes `editor.isActive(...)` and we mirror it via a data attr. */
+.block-popover__inline-btn[data-active] {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
 /* Toggle block — collapsible details with nested children. */
 .mdx-document-toggle-block {
   display: flex;
