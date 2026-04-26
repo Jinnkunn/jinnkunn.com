@@ -106,7 +106,10 @@ export async function POST(req: NextRequest) {
       if (!parsed.ok) return parsed.res;
       try {
         const data = normalizeHomeData(parsed.value.data);
-        const element = await HomeView({ data, previewStaticImages: true });
+        // The post-cleanup HomeView renders bodyMdx through next/mdx
+        // directly — no more `previewStaticImages` knob since the
+        // section-builder image-rendering path is gone.
+        const element = await HomeView({ data });
         const { renderToStaticMarkup } = await import("react-dom/server");
         const html = renderToStaticMarkup(element);
         return apiPayloadOk({ html, stylesheets: readClassicPageStylesheets() });

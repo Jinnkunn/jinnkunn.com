@@ -1,46 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "title": "Hi there!",
-  "sections": [
-    {
-      "id": "classic-intro",
-      "enabled": true,
-      "type": "layout",
-      "variant": "classicIntro",
-      "columns": 2,
-      "gap": "standard",
-      "verticalAlign": "start",
-      "blocks": [
-        {
-          "id": "classic-intro-image",
-          "column": 1,
-          "type": "image",
-          "url": "/notion-assets/17140d70fdf5805f8936f05797866cba.png",
-          "shape": "portrait",
-          "fit": "contain",
-          "alt": "Jinkun Chen"
-        },
-        {
-          "id": "classic-intro-copy",
-          "column": 2,
-          "type": "markdown",
-          "body": "I am **Jinkun Chen** (he/him/his), a **Ph.D. student** (Post-Bachelor's, fully funded) studying Computer Science at [Dalhousie University](https://www.dal.ca/) under the supervision of [Dr. Vlado Keselj](https://web.cs.dal.ca/~vlado/). My research primarily focuses on **Explainable AI**, **AI for Science**, and **Visualization**, with a particular emphasis on **fairness**, on enabling **open-ended co-evolution in LM-based agents**, and on developing **reliable long-term memory** in both LLMs and LLM-based agents. While my work is not heavily centered on ocean data, it does occasionally touch on aspects of marine environment analysis as part of my works and broader research interests. Prior to my doctoral studies, I obtained a **bachelor's degree in Computer Science with First Class Honours** from Dalhousie University under the supervision of [Dr. Fernando Paulovich](https://www.tue.nl/en/research/researchers/fernando-paulovich), who is now an Associate Professor at Eindhoven University of Technology.",
-          "tone": "plain",
-          "textAlign": "left"
-        }
-      ],
-      "width": "standard"
-    },
-    {
-      "id": "classic-body",
-      "enabled": true,
-      "type": "richText",
-      "body": "In addition to my role as a **Researcher Intern** at [Tsinghua University](https://www.tsinghua.edu.cn/en/) and [Donut Labs](https://donutbrowser.ai/), I also serve as a seasonal **Instructor at Dalhousie University**, a co-founder of [Exorcat Technologies Ltd.](https://exorcat.com/), and **the founder of [Jinnkunn Consulting Inc](https://jinnkunn.com/)**.\n\nI can be reached at **[jinkun.chen@dal.ca](mailto:jinkun.chen@dal.ca)** or **[i@jinkunchen.com](mailto:i@jinkunchen.com)**. You can also find my profile on [LinkedIn](https://www.linkedin.com/in/jinkun-chen/). If you are interested in reading my thoughts and insights, you can check my [blog](/blog), or follow me on X at [@_jinnkunn](https://twitter.com/_jinnkunn) for more updates.\n\nIn addition to my academic pursuits, I have a diverse range of hobbies and experiences that enrich my life. For instance, I hold an Advanced Open Water (AOW) diver certification, am currently training as a fixed-wing aircraft pilot, and find creative expression through playing the Chinese Bamboo Flute. Additionally, I have prior experience serving as an anchor on Bilibili, a popular video-sharing platform in China.\n\nLastly, if you happen to speak Chinese, my Chinese name is **陈晋坤**, which is pronounced as **chén jìn kūn**. My family name is 'Chen (陈)', and we belong to the [Yimen Chen lineage](/chen) of the Yiling branch (义门陈荆州庄夷陵支系), with 'Jin (晋)' as my generational designation.",
-      "variant": "classicBody",
-      "tone": "plain",
-      "textAlign": "left",
-      "width": "standard"
-    }
-  ],
   "bodyMdx": "<Columns count={2} variant=\"classicIntro\">\n<Column>\n\n![Jinkun Chen](/notion-assets/17140d70fdf5805f8936f05797866cba.png)\n\n</Column>\n<Column>\n\nI am **Jinkun Chen** (he/him/his), a **Ph.D. student** (Post-Bachelor's, fully funded) studying Computer Science at [Dalhousie University](https://www.dal.ca/) under the supervision of [Dr. Vlado Keselj](https://web.cs.dal.ca/~vlado/). My research primarily focuses on **Explainable AI**, **AI for Science**, and **Visualization**, with a particular emphasis on **fairness**, on enabling **open-ended co-evolution in LM-based agents**, and on developing **reliable long-term memory** in both LLMs and LLM-based agents. While my work is not heavily centered on ocean data, it does occasionally touch on aspects of marine environment analysis as part of my works and broader research interests. Prior to my doctoral studies, I obtained a **bachelor's degree in Computer Science with First Class Honours** from Dalhousie University under the supervision of [Dr. Fernando Paulovich](https://www.tue.nl/en/research/researchers/fernando-paulovich), who is now an Associate Professor at Eindhoven University of Technology.\n\n</Column>\n</Columns>\n\nIn addition to my role as a **Researcher Intern** at [Tsinghua University](https://www.tsinghua.edu.cn/en/) and [Donut Labs](https://donutbrowser.ai/), I also serve as a seasonal **Instructor at Dalhousie University**, a co-founder of [Exorcat Technologies Ltd.](https://exorcat.com/), and **the founder of [Jinnkunn Consulting Inc](https://jinnkunn.com/)**.\n\nI can be reached at **[jinkun.chen@dal.ca](mailto:jinkun.chen@dal.ca)** or **[i@jinkunchen.com](mailto:i@jinkunchen.com)**. You can also find my profile on [LinkedIn](https://www.linkedin.com/in/jinkun-chen/). If you are interested in reading my thoughts and insights, you can check my [blog](/blog), or follow me on X at [@_jinnkunn](https://twitter.com/_jinnkunn) for more updates.\n\nIn addition to my academic pursuits, I have a diverse range of hobbies and experiences that enrich my life. For instance, I hold an Advanced Open Water (AOW) diver certification, am currently training as a fixed-wing aircraft pilot, and find creative expression through playing the Chinese Bamboo Flute. Additionally, I have prior experience serving as an anchor on Bilibili, a popular video-sharing platform in China.\n\nLastly, if you happen to speak Chinese, my Chinese name is **陈晋坤**, which is pronounced as **chén jìn kūn**. My family name is 'Chen (陈)', and we belong to the [Yimen Chen lineage](/chen) of the Yiling branch (义门陈荆州庄夷陵支系), with 'Jin (晋)' as my generational designation.\n"
 }

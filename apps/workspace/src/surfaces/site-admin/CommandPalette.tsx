@@ -124,8 +124,7 @@ export function CommandPalette({
       { id: "news", label: "News" },
       { id: "teaching", label: "Teaching" },
       { id: "works", label: "Works" },
-      { id: "config", label: "Settings & Navigation" },
-      { id: "routes", label: "Routes" },
+      { id: "settings", label: "Settings" },
     ];
     for (const tab of tabs) {
       items.push({
