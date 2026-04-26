@@ -34,6 +34,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import Underline from "@tiptap/extension-underline";
 
 import { inlineMarkdownToHtml, tiptapDocToMarkdown } from "./markdown-inline";
 
@@ -104,6 +105,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
           // link, so autolink would surprise more than help.
           HTMLAttributes: { rel: "noreferrer noopener" },
         }),
+        // Underline is the only common inline mark StarterKit doesn't
+        // bundle — markdown has no `**`-style syntax for it, so we
+        // round-trip via literal `<u>` HTML tags in the markdown source.
+        Underline,
         // The extension adds an `is-editor-empty` class on the empty <p>
         // node when the doc has no content; CSS keys off it to render the
         // placeholder string we pass in via the `placeholder` prop.
