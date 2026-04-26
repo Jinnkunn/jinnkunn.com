@@ -2263,6 +2263,30 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-primary);
 }
 
+/* List markers via ::before. Each paragraph TipTap renders inside a list
+ * block becomes a list "item" visually — we don't use the BulletList /
+ * OrderedList extensions because the MdxBlock model is the source of
+ * truth for list-style; CSS just paints the right glyph. The
+ * `:not(.is-editor-empty)` guard keeps the placeholder pseudo-element
+ * (which also lives on `p::before` of the first empty paragraph) from
+ * fighting with the marker. */
+.mdx-document-text-block--list-bulleted.ProseMirror p:not(.is-editor-empty)::before {
+  content: "•  ";
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.mdx-document-text-block--list-numbered.ProseMirror {
+  counter-reset: list-item;
+}
+
+.mdx-document-text-block--list-numbered.ProseMirror p:not(.is-editor-empty)::before {
+  counter-increment: list-item;
+  content: counter(list-item) ".  ";
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
 /* Toggle block — collapsible details with nested children. */
 .mdx-document-toggle-block {
   display: flex;
@@ -3152,7 +3176,8 @@ body[data-window-focused="true"] .sidebar-surface {
   background: var(--mdx-handle-bg-hover);
 }
 
-.mdx-document-todo-block__input[data-checked="true"] {
+.mdx-document-todo-block__input[data-checked="true"],
+.mdx-document-todo-block__input--checked {
   color: var(--color-text-muted);
   text-decoration: line-through;
   text-decoration-color: var(--color-text-muted);
