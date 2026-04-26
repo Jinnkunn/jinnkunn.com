@@ -1,13 +1,16 @@
-// WYSIWYG paragraph block. Renders inline marks (bold/italic/code/strike,
-// links) the way they'll appear on the public site instead of leaving raw
-// markdown chars on screen — `**foo**` becomes **foo**, `[t](u)` becomes a
-// styled link, etc.
+// WYSIWYG inline-markdown block. Renders **bold**, *italic*, `code`,
+// ~~strike~~, [links](url) the way they'll appear on the public site
+// instead of leaving raw markdown chars on screen.
 //
-// This is the TipTap-based replacement for the textarea path EditableBlock
-// uses for paragraph blocks. The dispatcher in MdxDocumentEditor routes
-// `block.type === "paragraph"` here BEFORE the textarea fallback. Other
-// text-bearing block types (heading, quote, callout, list, todo, toggle)
-// still use the textarea path until later phases migrate them.
+// Handles every text-bearing block type whose body is "one logical paragraph
+// of styled inline text" — paragraph, heading, quote, callout. The
+// dispatcher in MdxDocumentEditor routes those four block types here BEFORE
+// the textarea fallback. Multi-item blocks (list, todo, toggle summary)
+// still go through the textarea path until a later phase migrates them.
+//
+// All four kinds share the same TipTap engine (RichTextInput); the only
+// differences are the wrapper chrome (heading gets a level selector;
+// paragraph hosts the slash menu) and the CSS class on the contenteditable.
 
 import {
   useCallback,
@@ -40,9 +43,18 @@ interface SlashCommand extends BlockEditorCommand {
   makeBlock: () => MdxBlock;
 }
 
-export interface ParagraphRichTextBlockProps {
+export type RichTextBlockKind = "paragraph" | "heading" | "quote" | "callout";
+
+export interface RichTextEditableBlockProps {
   block: MdxBlock;
+  /** Empty for non-paragraph kinds — slash menu only fires on `block.text`
+   * starting with "/" inside a paragraph. */
   slashCommands: SlashCommand[];
+  /** Receives the contenteditable DOM node so the parent's focus-request
+   * effect can call `node.focus()` after a new block is inserted. The
+   * focus effect is tolerant of non-textarea nodes (no setSelectionRange
+   * call when `value` is missing). */
+  onFocusInput: (node: HTMLElement | null) => void;
   onChooseSlashCommand: (command: SlashCommand) => void;
   onDuplicate: () => void;
   onInsertParagraphAfter: () => void;
@@ -55,11 +67,27 @@ export interface ParagraphRichTextBlockProps {
   request: RequestFn;
 }
 
-export function ParagraphRichTextBlock({
+function placeholderFor(block: MdxBlock): string {
+  if (block.type === "heading") return "Heading";
+  if (block.type === "quote") return "Quote";
+  if (block.type === "callout") return "Callout";
+  return "Type '/' for commands";
+}
+
+function classNameFor(block: MdxBlock): string {
+  if (block.type === "heading") {
+    const level = block.level ?? 2;
+    return `mdx-document-text-block mdx-document-text-block--heading mdx-document-heading-block__input mdx-document-heading-block__input--h${level}`;
+  }
+  return `mdx-document-text-block mdx-document-text-block--${block.type}`;
+}
+
+export function RichTextEditableBlock({
   block,
   slashCommands,
   onChooseSlashCommand,
   onDuplicate,
+  onFocusInput,
   onInsertParagraphAfter,
   onMoveDown,
   onMoveUp,
@@ -68,7 +96,8 @@ export function ParagraphRichTextBlock({
   onSlashCommand,
   onTurnInto,
   request,
-}: ParagraphRichTextBlockProps) {
+}: RichTextEditableBlockProps) {
+  const isHeading = block.type === "heading";
   const richRef = useRef<RichTextInputHandle>(null);
   const [selection, setSelection] = useState<{ from: number; to: number } | null>(null);
   const [mention, setMention] = useState<{ from: number } | null>(null);
@@ -291,17 +320,35 @@ export function ParagraphRichTextBlock({
     return text;
   }, [mention]);
 
-  return (
-    <div className="mdx-document-text-block-shell">
-      <RichTextInput
-        ref={richRef}
-        value={block.text}
-        onChange={handleValueChange}
-        onKeyDown={onKeyDown}
-        className="mdx-document-text-block mdx-document-text-block--paragraph"
-        ariaLabel="Paragraph block"
-        placeholder={isEmpty ? "Type '/' for commands" : undefined}
-      />
+  // Hand the contenteditable DOM node to the parent so its focus-request
+  // effect (when a new block is created) can call `node.focus()`. Tied to
+  // editor identity so a re-creation re-registers; cleanup on unmount
+  // un-registers so stale ids don't leak.
+  useEffect(() => {
+    const editor = richRef.current?.getEditor();
+    if (!editor) return;
+    const node = editor.view.dom as HTMLElement;
+    onFocusInput(node);
+    return () => onFocusInput(null);
+    // We intentionally re-run when block id changes; otherwise the node is
+    // stable for the editor's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.id]);
+
+  const inner = (
+    <RichTextInput
+      ref={richRef}
+      value={block.text}
+      onChange={handleValueChange}
+      onKeyDown={onKeyDown}
+      className={classNameFor(block)}
+      ariaLabel={`${block.type} block`}
+      placeholder={isEmpty ? placeholderFor(block) : undefined}
+    />
+  );
+
+  const overlays = (
+    <>
       {showSlashMenu ? (
         <BlockEditorCommandMenu
           className="mdx-document-slash-menu"
@@ -326,6 +373,42 @@ export function ParagraphRichTextBlock({
           request={request}
         />
       ) : null}
+    </>
+  );
+
+  // Heading carries its own outer wrapper that lays the H1/H2/H3 selector
+  // beside the input. The other kinds reuse the same shell the textarea
+  // path used so block-level chrome (drag handle, popover anchor, etc.)
+  // stays unchanged.
+  if (isHeading) {
+    return (
+      <div className="mdx-document-heading-block">
+        <select
+          aria-label="Heading level"
+          value={block.level ?? 2}
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              level: Number(event.target.value) as 1 | 2 | 3,
+            }))
+          }
+        >
+          <option value={1}>H1</option>
+          <option value={2}>H2</option>
+          <option value={3}>H3</option>
+        </select>
+        <div className="mdx-document-text-block-shell">
+          {inner}
+          {overlays}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mdx-document-text-block-shell">
+      {inner}
+      {overlays}
     </div>
   );
 }
