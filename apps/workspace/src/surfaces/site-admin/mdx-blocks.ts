@@ -14,7 +14,12 @@ export type MdxBlockType =
   | "bookmark"
   | "embed"
   | "file"
-  | "page-link";
+  | "page-link"
+  // Data-source blocks: insertable views over the typed JSON files in
+  // `content/`. The block stores only the query (limit, layout, …); the
+  // entries live in their canonical JSON file and are rendered by a
+  // matching server component on the public site.
+  | "news-block";
 
 export type MdxEmbedKind = "youtube" | "vimeo" | "iframe" | "video";
 
@@ -66,6 +71,9 @@ export interface MdxBlock {
   image?: string;
   language?: string;
   level?: 1 | 2 | 3;
+  // For data-source blocks (news-block, …): cap the number of entries
+  // rendered. `undefined` means "show all".
+  limit?: number;
   listStyle?: "bulleted" | "numbered";
   markers?: string[];
   mimeType?: string;
@@ -138,6 +146,9 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
   }
   if (type === "page-link") {
     return { id, type, text: "", pageSlug: "" };
+  }
+  if (type === "news-block") {
+    return { id, type, text: "" };
   }
   return { id, type, text: "" };
 }
@@ -566,6 +577,16 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "NewsBlock") {
+        const limitNum = attrs.limit ? Number(attrs.limit) : undefined;
+        pushBlock(
+          makeBlock("news-block", {
+            limit: Number.isFinite(limitNum) && limitNum! > 0 ? limitNum : undefined,
+            text: "",
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -717,6 +738,10 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     const slug = (block.pageSlug ?? "").trim();
     if (!slug) return "";
     return `<PageLink ${serializeAttrs([["slug", slug]])} />`;
+  }
+  if (block.type === "news-block") {
+    const attrs = serializeAttrs([["limit", block.limit]]);
+    return attrs ? `<NewsBlock ${attrs} />` : "<NewsBlock />";
   }
   return text;
 }

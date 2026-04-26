@@ -818,3 +818,49 @@ export function PageLinkEditableBlock({
     </div>
   );
 }
+
+// ---------- News block ----------
+// Insertable view over `content/news.json`. The block carries only the
+// query (limit). Entries themselves live in news.json and are rendered
+// by the matching server component on the public site.
+
+export interface NewsBlockEditableBlockProps {
+  block: MdxBlock;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+}
+
+export function NewsBlockEditableBlock({ block, onPatch }: NewsBlockEditableBlockProps) {
+  const limitValue = block.limit !== undefined ? String(block.limit) : "";
+  return (
+    <div className="mdx-document-data-block">
+      <div className="mdx-document-data-block__head">
+        <span className="mdx-document-data-block__icon" aria-hidden="true">
+          📰
+        </span>
+        <div className="mdx-document-data-block__heading">
+          <strong>News</strong>
+          <span>Latest entries from content/news.json</span>
+        </div>
+      </div>
+      <label className="mdx-document-data-block__row">
+        <span>Limit</span>
+        <input
+          aria-label="News block limit"
+          type="number"
+          min={1}
+          step={1}
+          placeholder="All"
+          value={limitValue}
+          onChange={(event) => {
+            const raw = event.target.value.trim();
+            const next = raw === "" ? undefined : Math.max(1, Math.trunc(Number(raw)));
+            onPatch((current) => ({
+              ...current,
+              limit: Number.isFinite(next as number) ? (next as number) : undefined,
+            }));
+          }}
+        />
+      </label>
+    </div>
+  );
+}
