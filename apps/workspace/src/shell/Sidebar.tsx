@@ -21,6 +21,14 @@ interface SidebarProps {
    * surface. The surface is responsible for the actual move (e.g.
    * site-admin posts to /api/site-admin/pages/move and refreshes). */
   onMoveNavItem?: (surfaceId: string, fromId: string, toId: string) => void;
+  /** Inline-rename handler. Sidebar fires it when the user submits the
+   * rename input on a draggable row; surface decides which API to call
+   * based on the id prefix. */
+  onRenameNavItem?: (
+    surfaceId: string,
+    itemId: string,
+    newSlug: string,
+  ) => void;
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
@@ -112,9 +120,50 @@ interface RenderNavItemArgs {
   onDrop: (targetItemId: string) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
+  onStartRename: (itemId: string) => void;
+  onCancelRename: () => void;
+  onSubmitRename: (newSlug: string) => void;
+  renamingItemId: string | null;
   surfaceId: string;
   toggleItemTree: (key: string) => void;
   itemKey: (surfaceId: string, itemId: string) => string;
+}
+
+function RenameInput({
+  initial,
+  onCancel,
+  onSubmit,
+}: {
+  initial: string;
+  onCancel: () => void;
+  onSubmit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <input
+      autoFocus
+      type="text"
+      className="sidebar-tree__item sidebar-tree__rename-input"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onSubmit(value);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+      onBlur={() => {
+        // Cancel on click-outside; Enter handler runs synchronously
+        // before blur fires, so a successful submit isn't preempted.
+        if (value === initial) onCancel();
+        else onSubmit(value);
+      }}
+      aria-label="New slug"
+    />
+  );
 }
 
 function StarIcon({ filled }: { filled: boolean }) {
@@ -153,10 +202,15 @@ function renderNavItem({
   onDrop,
   onSelectNavItem,
   onToggleFavorite,
+  onStartRename,
+  onCancelRename,
+  onSubmitRename,
+  renamingItemId,
   surfaceId,
   toggleItemTree,
   itemKey,
 }: RenderNavItemArgs) {
+  const isRenaming = renamingItemId === item.id;
   const selected = activeNavItemId === item.id;
   const hasChildren = Boolean(item.children?.length);
   const containsActive = hasChildren
@@ -217,36 +271,50 @@ function renderNavItem({
             : undefined
         }
       >
-        <button
-          type="button"
-          className="sidebar-nav-item sidebar-tree__item"
-          draggable={item.draggable ? true : undefined}
-          onDragStart={
-            item.draggable
-              ? (event) => {
-                  event.dataTransfer.setData(
-                    "application/x-sidebar-nav-item",
-                    item.id,
-                  );
-                  event.dataTransfer.effectAllowed = "move";
-                  onDragStart(item.id);
-                }
-              : undefined
-          }
-          onDragEnd={item.draggable ? () => onDragEnd() : undefined}
-          onClick={() => onSelectNavItem(surfaceId, item.id)}
-          aria-current={selected ? "page" : undefined}
-        >
-          {item.icon && (
-            <span className="sidebar-nav-item-icon">{item.icon}</span>
-          )}
-          <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-            {item.label}
-          </span>
-          {item.badge !== undefined && item.badge !== null && (
-            <span className="sidebar-tree__badge">{item.badge}</span>
-          )}
-        </button>
+        {isRenaming ? (
+          <RenameInput
+            initial={(() => {
+              // Strip the surface-specific prefix so the user only edits
+              // the slug part (e.g. "docs/intro", not "pages:docs/intro").
+              // Falls back to the raw id when no colon is present.
+              const idx = item.id.indexOf(":");
+              return idx >= 0 ? item.id.slice(idx + 1) : item.id;
+            })()}
+            onCancel={onCancelRename}
+            onSubmit={onSubmitRename}
+          />
+        ) : (
+          <button
+            type="button"
+            className="sidebar-nav-item sidebar-tree__item"
+            draggable={item.draggable ? true : undefined}
+            onDragStart={
+              item.draggable
+                ? (event) => {
+                    event.dataTransfer.setData(
+                      "application/x-sidebar-nav-item",
+                      item.id,
+                    );
+                    event.dataTransfer.effectAllowed = "move";
+                    onDragStart(item.id);
+                  }
+                : undefined
+            }
+            onDragEnd={item.draggable ? () => onDragEnd() : undefined}
+            onClick={() => onSelectNavItem(surfaceId, item.id)}
+            aria-current={selected ? "page" : undefined}
+          >
+            {item.icon && (
+              <span className="sidebar-nav-item-icon">{item.icon}</span>
+            )}
+            <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+              {item.label}
+            </span>
+            {item.badge !== undefined && item.badge !== null && (
+              <span className="sidebar-tree__badge">{item.badge}</span>
+            )}
+          </button>
+        )}
         {hasChildren && (
           <button
             type="button"
@@ -260,7 +328,7 @@ function renderNavItem({
             <ChevronIcon open={treeOpen} />
           </button>
         )}
-        {item.canAddChild && (
+        {item.canAddChild && !isRenaming && (
           <button
             type="button"
             className="sidebar-tree__item-add"
@@ -269,6 +337,17 @@ function renderNavItem({
             title={`Add under ${item.label}`}
           >
             +
+          </button>
+        )}
+        {item.draggable && !isRenaming && (
+          <button
+            type="button"
+            className="sidebar-tree__item-rename"
+            onClick={() => onStartRename(item.id)}
+            aria-label={`Rename ${item.label}`}
+            title="Rename"
+          >
+            ✎
           </button>
         )}
         <button
@@ -315,6 +394,10 @@ function renderNavItem({
               onDrop,
               onSelectNavItem,
               onToggleFavorite,
+              onStartRename,
+              onCancelRename,
+              onSubmitRename,
+              renamingItemId,
               surfaceId,
               toggleItemTree,
               itemKey,
@@ -336,10 +419,35 @@ export function Sidebar({
   onToggleFavorite,
   isFavorite,
   onMoveNavItem,
+  onRenameNavItem,
 }: SidebarProps) {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
   const [dragSurfaceId, setDragSurfaceId] = useState<string | null>(null);
+  const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
+  const [renameSurfaceId, setRenameSurfaceId] = useState<string | null>(null);
+  const startRename = useCallback((surfaceId: string, itemId: string) => {
+    setRenameSurfaceId(surfaceId);
+    setRenamingItemId(itemId);
+  }, []);
+  const cancelRename = useCallback(() => {
+    setRenameSurfaceId(null);
+    setRenamingItemId(null);
+  }, []);
+  const submitRename = useCallback(
+    (newSlug: string) => {
+      if (
+        renamingItemId &&
+        renameSurfaceId &&
+        onRenameNavItem &&
+        newSlug.trim()
+      ) {
+        onRenameNavItem(renameSurfaceId, renamingItemId, newSlug.trim());
+      }
+      cancelRename();
+    },
+    [cancelRename, onRenameNavItem, renameSurfaceId, renamingItemId],
+  );
   const startDrag = useCallback((surfaceId: string, itemId: string) => {
     setDragSurfaceId(surfaceId);
     setDraggingItemId(itemId);
@@ -570,6 +678,10 @@ export function Sidebar({
                                     onDrop: (targetId) => dropOnto(surface.id, targetId),
                                     onSelectNavItem,
                                     onToggleFavorite,
+                                    onStartRename: (id) => startRename(surface.id, id),
+                                    onCancelRename: cancelRename,
+                                    onSubmitRename: submitRename,
+                                    renamingItemId,
                                     surfaceId: surface.id,
                                     toggleItemTree,
                                     itemKey,

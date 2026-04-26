@@ -14,6 +14,7 @@ type SiteAdminAuditAction =
   | "posts.create"
   | "posts.update"
   | "posts.delete"
+  | "posts.move"
   | "pages.create"
   | "pages.update"
   | "pages.delete"

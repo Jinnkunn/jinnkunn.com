@@ -555,10 +555,11 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-primary);
 }
 
-/* "+" affordance — appears on hover for nav items that opt in via
- * canAddChild. Click fires onSelectNavItem with id "add:<itemId>",
- * which the surface decodes into a "create new child" action. */
+/* "+" / "✎" / "★" affordances — appear on hover for nav items that opt
+ * in via canAddChild / draggable / always (star). Click handlers fan
+ * out via the surface's registered handlers. */
 .sidebar-tree__item-add,
+.sidebar-tree__item-rename,
 .sidebar-tree__item-star {
   display: inline-flex;
   align-items: center;
@@ -579,8 +580,10 @@ body[data-window-focused="true"] .sidebar-surface {
 
 /* Reveal on row hover or when keyboard focus lands inside the row. */
 .sidebar-tree__item-row:hover .sidebar-tree__item-add,
+.sidebar-tree__item-row:hover .sidebar-tree__item-rename,
 .sidebar-tree__item-row:hover .sidebar-tree__item-star,
 .sidebar-tree__item-row:focus-within .sidebar-tree__item-add,
+.sidebar-tree__item-row:focus-within .sidebar-tree__item-rename,
 .sidebar-tree__item-row:focus-within .sidebar-tree__item-star {
   opacity: 1;
 }
@@ -593,11 +596,32 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .sidebar-tree__item-add:hover,
 .sidebar-tree__item-add:focus-visible,
+.sidebar-tree__item-rename:hover,
+.sidebar-tree__item-rename:focus-visible,
 .sidebar-tree__item-star:hover,
 .sidebar-tree__item-star:focus-visible {
   outline: none;
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
+}
+
+/* Inline rename input replaces the label button while active. Inherits
+ * the same baseline padding so the row doesn't jump. */
+.sidebar-tree__rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--color-accent);
+  border-radius: 5px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.sidebar-tree__rename-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 .sidebar-tree__item-star[data-active="true"]:hover,

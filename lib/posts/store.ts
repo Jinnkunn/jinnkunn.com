@@ -10,6 +10,7 @@ import {
   type ContentVersion,
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
+import { appendRedirect } from "@/lib/redirects";
 import { parsePostFile } from "./meta";
 import { assertValidSlug } from "./slug";
 import type { PostEntry } from "./types";
@@ -105,4 +106,47 @@ export async function deletePost(
   assertValidSlug(slug);
   const store = await getStore();
   await store.deleteFile(postRelPath(slug), { ifMatch });
+}
+
+/** Rename a post to a new (still-flat) slug. Mirrors lib/pages/store's
+ * movePage: read source → write at new slug (must be vacant) → delete
+ * the old. Writes a redirect entry on success so /blog/<oldSlug> keeps
+ * resolving via next.config.mjs.redirects(). Posts are flat by design,
+ * so this is a pure rename with no reparent semantics. */
+export async function movePost(
+  fromSlug: string,
+  toSlug: string,
+  ifMatch: ContentVersion,
+): Promise<PostDetail> {
+  assertValidSlug(fromSlug);
+  assertValidSlug(toSlug);
+  if (fromSlug === toSlug) {
+    throw new Error("source and target slug are identical");
+  }
+  const store = await getStore();
+  const existing = await store.readFile(postRelPath(fromSlug));
+  if (!existing) {
+    throw new ContentStoreNotFoundError(`post not found: ${fromSlug}`);
+  }
+  if (existing.sha !== ifMatch) {
+    throw new ContentStoreConflictError({
+      expected: ifMatch,
+      actual: existing.sha,
+    });
+  }
+  const targetExisting = await store.readFile(postRelPath(toSlug));
+  if (targetExisting) {
+    throw new Error(`post already exists at ${toSlug}`);
+  }
+  const { sha } = await store.writeFile(postRelPath(toSlug), existing.content, {
+    ifMatch: null,
+  });
+  await store.deleteFile(postRelPath(fromSlug), { ifMatch: existing.sha });
+  try {
+    await appendRedirect("posts", fromSlug, toSlug);
+  } catch {
+    // see movePage — losing the redirect is recoverable later
+  }
+  const { entry } = parsePostFile(toSlug, existing.content);
+  return { entry, version: sha, source: existing.content };
 }
