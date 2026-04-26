@@ -60,6 +60,14 @@ export interface RichTextInputProps {
   onKeyDown?: (event: KeyboardEvent) => void;
   onFocus?: (event: FocusEvent) => void;
   onBlur?: (event: FocusEvent) => void;
+  /** Fires whenever the underlying TipTap editor becomes available (or
+   * is destroyed on unmount). Lets the parent depend on the editor as
+   * reactive state — e.g. to subscribe to selectionUpdate so the inline
+   * format toolbar can anchor to the live caret. The imperative ref's
+   * `getEditor()` returns the same instance but isn't reactive, so a
+   * `useEffect([])` against it would race the editor's mount and miss
+   * the subscription. */
+  onEditorReady?: (editor: Editor | null) => void;
   /** Forwarded to the contenteditable node. Default `mdx-document-text-block`
    * so the same CSS rules the textarea relied on still apply. Add per-type
    * variant classes via the parent (e.g. `mdx-document-text-block--paragraph`). */
@@ -73,7 +81,17 @@ export interface RichTextInputProps {
 
 export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>(
   function RichTextInput(
-    { value, onChange, onKeyDown, onFocus, onBlur, className, ariaLabel, placeholder },
+    {
+      value,
+      onChange,
+      onKeyDown,
+      onFocus,
+      onBlur,
+      onEditorReady,
+      className,
+      ariaLabel,
+      placeholder,
+    },
     ref,
   ) {
     // Track the markdown we last emitted so the value-sync effect below can
@@ -169,6 +187,16 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       // eslint-disable-next-line react-hooks/set-state-in-effect
       editor.commands.setContent(inlineMarkdownToHtml(value), false);
     }, [editor, value]);
+
+    // Fire onEditorReady when the editor becomes available (or is
+    // destroyed). The imperative-ref `getEditor()` would also work but
+    // isn't reactive — a parent's useEffect against it can race the
+    // initial mount and never re-run. Pushing the editor up via a
+    // callback gives the parent a real piece of state to depend on.
+    useEffect(() => {
+      onEditorReady?.(editor ?? null);
+      return () => onEditorReady?.(null);
+    }, [editor, onEditorReady]);
 
     // Imperative handle. Most parent operations route through getEditor()
     // — focus + isEmpty are common enough to ship as conveniences.
