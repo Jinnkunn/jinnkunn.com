@@ -69,6 +69,12 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const controller = await read(
     "apps/workspace/src/surfaces/site-admin/use-mdx-editor-controller.ts",
   );
+  // The TipTap-backed editor for paragraph / heading / quote / callout /
+  // list blocks. Owns the slash menu rendering since the textarea path
+  // no longer handles any block whose text starts with "/".
+  const richTextBlock = await read(
+    "apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx",
+  );
   const styles = await read("apps/workspace/src/index.css");
 
   assert.match(documentEditor, /export function MdxDocumentEditor/);
@@ -79,15 +85,19 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /parseMdxBlocks/);
   assert.match(documentEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
-  assert.match(documentEditor, /mdx-document-slash-menu/);
   assert.match(documentEditor, /SLASH_COMMANDS/);
   assert.match(documentEditor, /getMatchingSlashCommands/);
-  assert.match(documentEditor, /BlockEditorCommandMenu/);
   assert.match(documentEditor, /getMatchingBlockEditorCommands/);
   assert.match(documentEditor, /onInsertParagraphAfter/);
   assert.match(documentEditor, /onRemoveEmpty/);
   assert.match(documentEditor, /blockInputRefs/);
   assert.match(documentEditor, /application\/x-mdx-block/);
+  // Slash-menu rendering moved into the per-block TipTap component when
+  // paragraph migrated off the textarea. The dispatcher still owns
+  // SLASH_COMMANDS + matching, but the menu element + className are
+  // emitted from RichTextEditableBlock.
+  assert.match(richTextBlock, /BlockEditorCommandMenu/);
+  assert.match(richTextBlock, /mdx-document-slash-menu/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
   assert.match(blocks, /type === "raw"/);
