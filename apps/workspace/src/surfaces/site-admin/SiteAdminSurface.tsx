@@ -18,9 +18,6 @@ import type { ItemSelection, SiteAdminTab } from "./types";
 const HomePanel = lazy(() =>
   import("./HomePanel").then((module) => ({ default: module.HomePanel })),
 );
-const NewsPanel = lazy(() =>
-  import("./NewsPanel").then((module) => ({ default: module.NewsPanel })),
-);
 const PagesPanel = lazy(() =>
   import("./PagesPanel").then((module) => ({ default: module.PagesPanel })),
 );
@@ -657,7 +654,6 @@ function SiteAdminContent() {
                 />
               )}
               {activeTab === "publications" && <PublicationsPanel />}
-              {activeTab === "news" && <NewsPanel />}
               {activeTab === "teaching" && <TeachingPanel />}
               {activeTab === "works" && <WorksPanel />}
               {activeTab === "settings" && <SettingsPanel />}

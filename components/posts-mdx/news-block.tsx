@@ -2,34 +2,70 @@ import "server-only";
 
 import { Fragment } from "react";
 import type { ReactElement } from "react";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
-import newsData from "@/content/news.json";
 import { compilePostMdx } from "@/lib/posts/compile";
-import { normalizeNewsData } from "@/lib/site-admin/news-normalize";
 
 import { postMdxComponents } from "./components";
-
-function formatDateHeading(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  return `${m[1]}/${m[2]}/${m[3]}`;
-}
+import { NewsEntry } from "./news-entry";
 
 interface NewsBlockProps {
   /** Cap rendered entries (most recent first). Omit for all entries. */
   limit?: number;
 }
 
-/** Server component rendered from MDX as `<NewsBlock />`. Reads the
- * canonical content/news.json data source so any page can embed a feed
- * without duplicating data. Output mirrors the dedicated /news page so
- * existing CSS (`news-entry__body`, `notion-heading`) keeps working. */
-export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement> {
-  const data = normalizeNewsData(newsData);
-  const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
-  const entries = cap ? data.entries.slice(0, cap) : data.entries;
+interface NewsEntryRecord {
+  dateIso: string;
+  body: string;
+}
 
-  if (entries.length === 0) {
+const NEWS_PAGE_PATH = resolve(process.cwd(), "content/pages/news.mdx");
+
+// Match `<NewsEntry date="...">…</NewsEntry>` blocks in the news page.
+// Content between the opening tag and `</NewsEntry>` is the entry's
+// markdown body — compiled by `compilePostMdx` per entry on the public
+// site. Same shape the editor's parser produces (apps/workspace/.../
+// mdx-blocks.ts), so nothing diverges as long as both stay in sync.
+const NEWS_ENTRY_RE =
+  /<NewsEntry\s+date="([^"]*)"[^>]*>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
+
+async function loadEntries(): Promise<NewsEntryRecord[]> {
+  let raw = "";
+  try {
+    raw = await readFile(NEWS_PAGE_PATH, "utf8");
+  } catch {
+    return [];
+  }
+  // Strip leading frontmatter so the regex doesn't trip on something
+  // weird in the YAML.
+  const body = raw.replace(/^---[\s\S]*?---\s*/m, "");
+  const out: NewsEntryRecord[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = NEWS_ENTRY_RE.exec(body)) !== null) {
+    const dateIso = m[1] ?? "";
+    const entryBody = m[2] ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) continue;
+    out.push({ dateIso, body: entryBody });
+  }
+  // Newest first — same order normalizeNewsData used to apply against
+  // the legacy news.json shape.
+  out.sort((a, b) => b.dateIso.localeCompare(a.dateIso));
+  return out;
+}
+
+/** Server component for `<NewsBlock />` in MDX. Reads the canonical
+ * news data from `content/pages/news.mdx` (the same file the /news
+ * route renders) so any other page can embed a feed without
+ * duplicating data. Rendered output mirrors what the /news page emits
+ * for each entry — same `news-entry__body` + `notion-heading` markup
+ * the existing CSS already styles. */
+export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement> {
+  const entries = await loadEntries();
+  const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
+  const visible = cap ? entries.slice(0, cap) : entries;
+
+  if (visible.length === 0) {
     return (
       <p className="notion-text notion-text__content notion-semantic-string">
         No news yet.
@@ -38,7 +74,7 @@ export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement
   }
 
   const rendered = await Promise.all(
-    entries.map(async (entry) => ({
+    visible.map(async (entry) => ({
       ...entry,
       Content: (await compilePostMdx(entry.body)).Content,
     })),
@@ -48,13 +84,9 @@ export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement
     <div className="news-block">
       {rendered.map((entry) => (
         <Fragment key={entry.dateIso + entry.body.slice(0, 40)}>
-          <span className="notion-heading__anchor" />
-          <h3 className="notion-heading notion-semantic-string">
-            {formatDateHeading(entry.dateIso)}
-          </h3>
-          <div className="news-entry__body mdx-post__body">
+          <NewsEntry date={entry.dateIso}>
             <entry.Content components={postMdxComponents} />
-          </div>
+          </NewsEntry>
         </Fragment>
       ))}
     </div>

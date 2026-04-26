@@ -121,7 +121,6 @@ export function CommandPalette({
       { id: "posts", label: "Posts" },
       { id: "pages", label: "Pages" },
       { id: "publications", label: "Publications" },
-      { id: "news", label: "News" },
       { id: "teaching", label: "Teaching" },
       { id: "works", label: "Works" },
       { id: "settings", label: "Settings" },

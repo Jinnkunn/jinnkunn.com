@@ -1545,3 +1545,62 @@ export function ColumnEditableBlock({
     </div>
   );
 }
+
+// ---------- News entry ----------
+
+// One dated entry on the news page. Same recursive-children shape as
+// toggle / column — receives `renderChildren` from the parent so this
+// file doesn't depend on the EditableBlocksList living in
+// MdxDocumentEditor.tsx (would be a circular import).
+export interface NewsEntryEditableBlockProps {
+  block: MdxBlock;
+  depth: number;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
+}
+
+export function NewsEntryEditableBlock({
+  block,
+  depth,
+  onPatch,
+  renderChildren,
+}: NewsEntryEditableBlockProps) {
+  const date = block.dateIso ?? "";
+  const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+
+  return (
+    <div className="mdx-document-news-entry-block">
+      <div className="mdx-document-news-entry-block__head">
+        <label className="mdx-document-news-entry-block__date">
+          <span className="mdx-document-news-entry-block__date-label">Date</span>
+          <input
+            type="date"
+            value={isValidDate ? date : ""}
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, dateIso: event.target.value }))
+            }
+            aria-invalid={!isValidDate || undefined}
+          />
+        </label>
+        {!isValidDate ? (
+          <span
+            className="mdx-document-news-entry-block__warn"
+            role="status"
+            aria-live="polite"
+          >
+            Pick a date (YYYY-MM-DD) — empty entries don't sort correctly on the
+            published page.
+          </span>
+        ) : null}
+      </div>
+      <div className="mdx-document-news-entry-block__body">
+        {renderChildren({
+          blocks: block.children ?? [],
+          depth: depth + 1,
+          onBlocksChange: (next) =>
+            onPatch((current) => ({ ...current, children: next })),
+        })}
+      </div>
+    </div>
+  );
+}
