@@ -15,6 +15,7 @@ import {
   cfAccessSecretStoreKeyForBase,
   siteAdminRequest,
   tokenStoreKeyForBase,
+  type SiteAdminRequestResult,
 } from "./api";
 import type {
   ConnectionProfile,
@@ -57,7 +58,7 @@ export interface SiteAdminContextValue {
   connection: ConnectionState;
   setBaseUrl: (next: string) => void;
   saveConnectionLocally: () => void;
-  signInWithBrowser: () => Promise<void>;
+  signInWithBrowser: () => Promise<string>;
   clearAuth: () => Promise<void>;
   setCfAccessServiceToken: (
     clientId: string,
@@ -498,11 +499,11 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     };
   }, [connection.baseUrl, updateAuth, setMessage]);
 
-  const signInWithBrowser = useCallback(async () => {
+  const signInWithBrowser = useCallback(async (): Promise<string> => {
     const baseUrl = normalizeString(connection.baseUrl);
     if (!baseUrl) {
       setMessage("error", "Missing API base URL.");
-      return;
+      return "";
     }
     setConnection((prev) => ({ ...prev, authLoading: true }));
     try {
@@ -512,14 +513,16 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       const expiresAt = normalizeString(result?.expires_at);
       if (!token) {
         setMessage("error", "Browser login did not return an app token.");
-        return;
+        return "";
       }
       const key = tokenStoreKeyForBase(baseUrl);
       await secureStorage.set(key, token);
       updateAuth(token, { login, expiresAt });
       setMessage("success", "Browser sign-in completed. App token stored securely.");
+      return token;
     } catch (err) {
       setMessage("error", `Browser sign-in failed: ${String(err)}`);
+      return "";
     } finally {
       setConnection((prev) => ({ ...prev, authLoading: false }));
     }
@@ -582,29 +585,86 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     }
   }, [connection.baseUrl, setMessage, updateAuth]);
 
-  const request = useCallback(
+  // Single-flight reauth promise. When multiple requests fan out and all
+  // come back 401, only the first triggers signInWithBrowser; the rest
+  // await the same promise and reuse the freshly-issued token. Cleared
+  // once the in-flight reauth resolves (success or failure).
+  const reauthPromiseRef = useRef<Promise<string> | null>(null);
+
+  const requestOnce = useCallback(
     async (
       path: string,
-      method = "GET",
-      body: unknown = null,
-    ): Promise<NormalizedApiResponse> => {
+      method: string,
+      body: unknown,
+      authToken: string,
+    ): Promise<{ result: SiteAdminRequestResult }> => {
       const result = await siteAdminRequest({
         baseUrl: connection.baseUrl,
-        authToken: connection.authToken,
+        authToken,
         path,
         method,
         body,
         cfAccessClientId: connection.cfAccessClientId,
         cfAccessClientSecret: connection.cfAccessClientSecret,
       });
-      writeDebugResponse(result.debugTitle, result.debugBody);
-      return result.response;
+      return { result };
+    },
+    [
+      connection.baseUrl,
+      connection.cfAccessClientId,
+      connection.cfAccessClientSecret,
+    ],
+  );
+
+  const request = useCallback(
+    async (
+      path: string,
+      method = "GET",
+      body: unknown = null,
+    ): Promise<NormalizedApiResponse> => {
+      const first = await requestOnce(path, method, body, connection.authToken);
+      const firstResp = first.result.response;
+      const wasUnauthorized =
+        firstResp.status === 401 ||
+        (!firstResp.ok && firstResp.code === "UNAUTHORIZED");
+      // Skip auto-retry for the actual sign-in / token-issue endpoints to
+      // avoid a recursive loop if the auth flow itself returns 401. Also
+      // skip when there's no baseUrl (would hit the same MISSING_BASE_URL
+      // short-circuit) or when the user never had a token in the first
+      // place (initial load — the disconnected notice handles that path).
+      const skipRetry =
+        !wasUnauthorized ||
+        !connection.baseUrl ||
+        !connection.authToken ||
+        path.startsWith("/api/site-admin/app-auth/");
+      if (skipRetry) {
+        writeDebugResponse(first.result.debugTitle, first.result.debugBody);
+        return first.result.response;
+      }
+      // Single-flight: if a reauth is already in flight, await it; else
+      // start one. The promise resolves to the new token (empty string
+      // if the user cancelled or sign-in failed).
+      if (!reauthPromiseRef.current) {
+        reauthPromiseRef.current = signInWithBrowser().finally(() => {
+          reauthPromiseRef.current = null;
+        });
+      }
+      const newToken = await reauthPromiseRef.current;
+      if (!newToken) {
+        // Reauth failed or user cancelled — surface the original 401.
+        writeDebugResponse(first.result.debugTitle, first.result.debugBody);
+        return first.result.response;
+      }
+      // Retry exactly once with the freshly-issued token.
+      const second = await requestOnce(path, method, body, newToken);
+      writeDebugResponse(second.result.debugTitle, second.result.debugBody);
+      return second.result.response;
     },
     [
       connection.authToken,
       connection.baseUrl,
-      connection.cfAccessClientId,
-      connection.cfAccessClientSecret,
+      requestOnce,
+      signInWithBrowser,
       writeDebugResponse,
     ],
   );

@@ -873,6 +873,14 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-muted);
 }
 
+.site-admin-pill__note[data-tone="warn"] {
+  color: var(--color-warn);
+}
+
+.site-admin-pill__note[data-tone="danger"] {
+  color: var(--color-danger);
+}
+
 .site-admin-pill__links {
   display: flex;
   flex-direction: column;
