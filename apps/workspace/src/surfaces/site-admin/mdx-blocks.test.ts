@@ -249,4 +249,35 @@ describe("data-source blocks", () => {
     ]);
     expect(serializeMdxBlocks(blocks)).toBe(source);
   });
+
+  it("round-trips a PublicationsBlock without limit", () => {
+    const source = "<PublicationsBlock />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("publications-block");
+    expect(blocks[0].limit).toBeUndefined();
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("round-trips a PublicationsBlock with limit", () => {
+    const source = "<PublicationsBlock limit={10} />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("publications-block");
+    expect(blocks[0].limit).toBe(10);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("mixes news + publications + paragraphs in one document", () => {
+    const source =
+      "# Hello\n\n<NewsBlock limit={3} />\n\nThen some prose.\n\n<PublicationsBlock />\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks.map((b) => b.type)).toEqual([
+      "heading",
+      "news-block",
+      "paragraph",
+      "publications-block",
+    ]);
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
 });
