@@ -289,4 +289,16 @@ describe("data-source blocks", () => {
       expect(serializeMdxBlocks(blocks)).toBe(source);
     }
   });
+
+  it("round-trips a TeachingBlock with and without limit", () => {
+    for (const source of [
+      "<TeachingBlock />\n",
+      "<TeachingBlock limit={4} />\n",
+    ]) {
+      const blocks = parseMdxBlocks(source);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].type).toBe("teaching-block");
+      expect(serializeMdxBlocks(blocks)).toBe(source);
+    }
+  });
 });

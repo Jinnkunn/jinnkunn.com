@@ -90,6 +90,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   "news-block": "News",
   "publications-block": "Publications",
   "works-block": "Works",
+  "teaching-block": "Teaching",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -277,6 +278,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
     keywords: ["works", "experience", "jobs", "projects", "career"],
     label: "Works",
     makeBlock: () => createMdxBlock("works-block"),
+  },
+  {
+    description: "Teaching activities from content/teaching.json",
+    group: "Data",
+    icon: "🎓",
+    id: "teaching-block",
+    keywords: ["teaching", "courses", "education", "classes"],
+    label: "Teaching",
+    makeBlock: () => createMdxBlock("teaching-block"),
   },
   // Layout — structural blocks and advanced.
   {
@@ -1550,6 +1560,18 @@ function EditableBlock({
         label="Works"
         icon="💼"
         description="Work entries from content/works.json"
+      />
+    );
+  }
+
+  if (block.type === "teaching-block") {
+    return (
+      <DataBlockEditableBlock
+        block={block}
+        onPatch={onPatch}
+        label="Teaching"
+        icon="🎓"
+        description="Teaching activities from content/teaching.json"
       />
     );
   }

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 
 import teachingData from "@/content/teaching.json";
-import { TeachingView } from "@/components/teaching/teaching-view";
+import { ClassicPageShell } from "@/components/classic/classic-page-shell";
+import { TeachingBlock } from "@/components/posts-mdx/teaching-block";
 import { normalizeTeachingData } from "@/lib/site-admin/teaching-normalize";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
@@ -26,6 +27,19 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function TeachingPage() {
-  const data = readData();
-  return <TeachingView data={data} />;
+  const { title } = readData();
+  // Same pattern as /news, /publications, /works (Phases 1c, 2a, 2b):
+  // the page is just chrome around <TeachingBlock />.
+  return (
+    <ClassicPageShell
+      title={title}
+      className="super-content page__teaching parent-page__index"
+      breadcrumbs={[
+        { href: "/", label: "Home" },
+        { href: "/teaching", label: title },
+      ]}
+    >
+      <TeachingBlock />
+    </ClassicPageShell>
+  );
 }
