@@ -3,7 +3,6 @@ import {
   HomeIcon,
   PagesIcon,
   PostsIcon,
-  PublicationsIcon,
   StatusIcon,
 } from "../icons";
 import type { SurfaceNavGroup } from "../types";
@@ -34,7 +33,6 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
         // root (slug becomes its leaf only).
         droppable: true,
       },
-      { id: "publications", label: "Publications", icon: <PublicationsIcon /> },
     ],
   },
   {

@@ -44,7 +44,8 @@ export type MdxBlockType =
   // model where all entries lived in `content/{name}.json`.
   | "news-entry"
   | "works-entry"
-  | "teaching-entry";
+  | "teaching-entry"
+  | "publications-entry";
 
 /** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
 export interface MdxLinkItem {
@@ -148,6 +149,13 @@ export interface MdxBlock {
   teachingCourseName?: string;
   teachingCourseUrl?: string;
   teachingInstructor?: string;
+  // For `publications-entry` blocks. The schema is rich enough
+  // (nested authorsRich / venues / labels / highlights arrays) that
+  // collapsing it into individual scalar attrs would explode the
+  // serialized form; instead we JSON-encode the whole entry into a
+  // single `data` attribute, same single-quoted-JSON pattern
+  // LinkListBlock / FeaturedPagesBlock use for their items array.
+  pubData?: string;
   // For LinkListBlock / FeaturedPagesBlock: how the items array is laid
   // out. linkList accepts stack/grid/inline; featuredPages tweaks columns
   // separately, so this is intentionally narrow.
@@ -335,6 +343,19 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       teachingCourseCode: "",
       teachingCourseName: "",
     };
+  }
+  if (type === "publications-entry") {
+    // Empty entry — the editor card seeds the JSON with a minimal
+    // shape so the user can fill in title / year / authors / etc.
+    const empty = JSON.stringify({
+      title: "",
+      year: "",
+      labels: [],
+      authorsRich: [],
+      venues: [],
+      highlights: [],
+    });
+    return { id, type, text: "", pubData: empty };
   }
   return { id, type, text: "" };
 }
@@ -1128,6 +1149,15 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "PublicationsEntry") {
+        pushBlock(
+          makeBlock("publications-entry", {
+            text: "",
+            pubData: typeof attrs.data === "string" ? attrs.data : "{}",
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -1387,6 +1417,13 @@ function serializeBlock(block: MdxBlock, depth: number): string {
       ["instructor", block.teachingInstructor],
     ]);
     return attrs ? `<TeachingEntry ${attrs} />` : "<TeachingEntry />";
+  }
+  if (block.type === "publications-entry") {
+    // Single JSON-encoded `data` attribute carries the entire entry
+    // record. Single-quoted attr so the inner `"` of the JSON don't
+    // need to be escaped.
+    const raw = block.pubData ?? "{}";
+    return `<PublicationsEntry data='${raw.replace(/'/g, "\\u0027")}' />`;
   }
   if (block.type === "hero-block") {
     // Skip default values to keep the serialized form short and stable.

@@ -198,96 +198,10 @@ export type SiteAdminConfigPostPayload = {
 
 export type SiteAdminConfigPostResult = SiteAdminConfigPostPayload | SiteAdminApiError;
 
-// --- Publications (structured editor data) -------------------------------
-
-export type PublicationProfileLinkDTO = {
-  label: string;
-  href: string;
-  hostname?: string;
-};
-
-export type PublicationAuthorDTO = {
-  name: string;
-  isSelf?: boolean;
-};
-
-export type PublicationVenueDTO = {
-  type: string;
-  text: string;
-  url?: string;
-};
-
-export type PublicationEntryDTO = {
-  title: string;
-  year: string;
-  url: string;
-  labels: string[];
-  authors?: string[];
-  authorsRich?: PublicationAuthorDTO[];
-  externalUrls?: string[];
-  doiUrl?: string;
-  arxivUrl?: string;
-  venue?: string;
-  venues?: PublicationVenueDTO[];
-  highlights?: string[];
-};
-
-export type SiteAdminPublicationsData = {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  sections?: SiteAdminStructuredPageSection[];
-  profileLinks: PublicationProfileLinkDTO[];
-  entries: PublicationEntryDTO[];
-};
-
-export type SiteAdminPublicationsGetPayload = {
-  ok: true;
-  data: SiteAdminPublicationsData;
-  sourceVersion: { fileSha: string };
-};
-
-export type SiteAdminPublicationsGetResult =
-  | SiteAdminPublicationsGetPayload
-  | SiteAdminApiError;
-
-export type SiteAdminPublicationsPostPayload = {
-  ok: true;
-  sourceVersion: { fileSha: string };
-};
-
-export type SiteAdminPublicationsPostResult =
-  | SiteAdminPublicationsPostPayload
-  | SiteAdminApiError;
-
-// --- News (dated timeline) ----------------------------------------------
-
-export type NewsEntryDTO = {
-  dateIso: string; // YYYY-MM-DD
-  body: string; // markdown (inline formatting + links)
-};
-
-export type SiteAdminNewsData = {
-  schemaVersion?: number;
-  title: string;
-  description?: string;
-  entries: NewsEntryDTO[];
-};
-
-export type SiteAdminNewsGetPayload = {
-  ok: true;
-  data: SiteAdminNewsData;
-  sourceVersion: { fileSha: string };
-};
-
-export type SiteAdminNewsGetResult = SiteAdminNewsGetPayload | SiteAdminApiError;
-
-export type SiteAdminNewsPostPayload = {
-  ok: true;
-  sourceVersion: { fileSha: string };
-};
-
-export type SiteAdminNewsPostResult = SiteAdminNewsPostPayload | SiteAdminApiError;
+// Publications + News + Teaching all migrated to inline blocks under
+// content/pages/{publications,news,teaching}.mdx — their DTO types,
+// `/api/site-admin/{...}` routes, and normalize layers are gone.
+// Block-level data lives on MdxBlock fields.
 
 // --- Teaching (term + course list) --------------------------------------
 
