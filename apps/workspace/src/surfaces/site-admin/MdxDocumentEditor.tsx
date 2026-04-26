@@ -33,6 +33,7 @@ import {
   NewsEntryEditableBlock,
   PageLinkEditableBlock,
   TableEditableBlock,
+  TeachingEntryEditableBlock,
   TodoEditableBlock,
   ToggleEditableBlock,
   WorksEntryEditableBlock,
@@ -101,6 +102,7 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   column: "Column",
   "news-entry": "News entry",
   "works-entry": "Works entry",
+  "teaching-entry": "Teaching entry",
   divider: "Divider",
   callout: "Callout",
   code: "Code",
@@ -308,13 +310,22 @@ const SLASH_COMMANDS: SlashCommand[] = [
     makeBlock: () => createMdxBlock("works-entry"),
   },
   {
-    description: "Teaching activities from content/teaching.json",
+    description: "Teaching activities from content/pages/teaching.mdx",
     group: "Data",
     icon: "🎓",
     id: "teaching-block",
     keywords: ["teaching", "courses", "education", "classes"],
     label: "Teaching",
     makeBlock: () => createMdxBlock("teaching-block"),
+  },
+  {
+    description: "A single teaching activity inside the teaching page",
+    group: "Data",
+    icon: "🎓",
+    id: "teaching-entry",
+    keywords: ["teaching", "entry", "course", "class", "term"],
+    label: "Teaching entry",
+    makeBlock: () => createMdxBlock("teaching-entry"),
   },
   // Layout — structural blocks and advanced.
   {
@@ -1497,6 +1508,10 @@ function EditableBlock({
     );
   }
 
+  if (block.type === "teaching-entry") {
+    return <TeachingEntryEditableBlock block={block} onPatch={onPatch} />;
+  }
+
   if (block.type === "table") {
     return <TableEditableBlock block={block} onPatch={onPatch} />;
   }
@@ -1577,7 +1592,7 @@ function EditableBlock({
         onPatch={onPatch}
         label="Teaching"
         icon="🎓"
-        description="Teaching activities from content/teaching.json"
+        description="Teaching activities from content/pages/teaching.mdx"
       />
     );
   }

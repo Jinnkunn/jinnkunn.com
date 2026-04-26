@@ -261,6 +261,40 @@ describe("works-entry blocks", () => {
   });
 });
 
+describe("teaching-entry blocks", () => {
+  it("round-trips the required attributes (term/period/role/code/name)", () => {
+    const source =
+      '<TeachingEntry term="Fall 2024" period="Sep 2024 - Dec 2024" role="Instructor" courseCode="CSCI3141" courseName="Data Science" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("teaching-entry");
+    expect(blocks[0].teachingTerm).toBe("Fall 2024");
+    expect(blocks[0].teachingPeriod).toBe("Sep 2024 - Dec 2024");
+    expect(blocks[0].teachingRole).toBe("Instructor");
+    expect(blocks[0].teachingCourseCode).toBe("CSCI3141");
+    expect(blocks[0].teachingCourseName).toBe("Data Science");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("round-trips optional courseUrl + instructor", () => {
+    const source =
+      '<TeachingEntry term="W24" period="2024" role="TA" courseCode="C1" courseName="N" courseUrl="https://x" instructor="Dr. X" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].teachingCourseUrl).toBe("https://x");
+    expect(blocks[0].teachingInstructor).toBe("Dr. X");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+
+  it("omits empty optional attrs from serialized output", () => {
+    const source =
+      '<TeachingEntry term="W24" period="2024" role="TA" courseCode="C1" courseName="N" />\n';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].teachingCourseUrl).toBeUndefined();
+    expect(blocks[0].teachingInstructor).toBeUndefined();
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+});
+
 describe("table blocks", () => {
   it("round-trips a 2x2 table with column alignment", () => {
     const source =

@@ -43,7 +43,8 @@ export type MdxBlockType =
   // server component on the public site. Replaces the old separate-JSON
   // model where all entries lived in `content/{name}.json`.
   | "news-entry"
-  | "works-entry";
+  | "works-entry"
+  | "teaching-entry";
 
 /** Single entry in a LinkListBlock / FeaturedPagesBlock items array. */
 export interface MdxLinkItem {
@@ -136,6 +137,17 @@ export interface MdxBlock {
   worksAffiliationUrl?: string;
   worksLocation?: string;
   worksPeriod?: string;
+  // For `teaching-entry` blocks. Each entry is a single line item on
+  // the teaching page — atomic (no body content), serialized as a
+  // self-closing `<TeachingEntry ... />` JSX tag inside an `<ul>`
+  // wrapper that the page MDX provides.
+  teachingTerm?: string;
+  teachingPeriod?: string;
+  teachingRole?: string;
+  teachingCourseCode?: string;
+  teachingCourseName?: string;
+  teachingCourseUrl?: string;
+  teachingInstructor?: string;
   // For LinkListBlock / FeaturedPagesBlock: how the items array is laid
   // out. linkList accepts stack/grid/inline; featuredPages tweaks columns
   // separately, so this is intentionally narrow.
@@ -308,6 +320,20 @@ export function createMdxBlock(type: MdxBlockType): MdxBlock {
       worksRole: "",
       worksPeriod: "",
       children: [createMdxBlock("paragraph")],
+    };
+  }
+  if (type === "teaching-entry") {
+    // No body — every field lives as a JSX attribute on the
+    // self-closing `<TeachingEntry />` tag.
+    return {
+      id,
+      type,
+      text: "",
+      teachingTerm: "",
+      teachingPeriod: "",
+      teachingRole: "",
+      teachingCourseCode: "",
+      teachingCourseName: "",
     };
   }
   return { id, type, text: "" };
@@ -1079,6 +1105,29 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
+      if (tagName === "TeachingEntry") {
+        pushBlock(
+          makeBlock("teaching-entry", {
+            text: "",
+            teachingTerm: typeof attrs.term === "string" ? attrs.term : "",
+            teachingPeriod: typeof attrs.period === "string" ? attrs.period : "",
+            teachingRole: typeof attrs.role === "string" ? attrs.role : "",
+            teachingCourseCode:
+              typeof attrs.courseCode === "string" ? attrs.courseCode : "",
+            teachingCourseName:
+              typeof attrs.courseName === "string" ? attrs.courseName : "",
+            teachingCourseUrl:
+              typeof attrs.courseUrl === "string" && attrs.courseUrl
+                ? attrs.courseUrl
+                : undefined,
+            teachingInstructor:
+              typeof attrs.instructor === "string" && attrs.instructor
+                ? attrs.instructor
+                : undefined,
+          }),
+        );
+        continue;
+      }
     }
 
     if (isRawMdxParagraph(paragraphLines)) {
@@ -1323,6 +1372,21 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   if (block.type === "teaching-block") {
     const attrs = serializeAttrs([["limit", block.limit]]);
     return attrs ? `<TeachingBlock ${attrs} />` : "<TeachingBlock />";
+  }
+  if (block.type === "teaching-entry") {
+    // Self-closing JSX — every field as a JSX attribute. Optional ones
+    // (courseUrl, instructor) are skipped when empty so the markdown
+    // source doesn't carry empty `attr=""` noise.
+    const attrs = serializeAttrs([
+      ["term", block.teachingTerm ?? ""],
+      ["period", block.teachingPeriod ?? ""],
+      ["role", block.teachingRole ?? ""],
+      ["courseCode", block.teachingCourseCode ?? ""],
+      ["courseName", block.teachingCourseName ?? ""],
+      ["courseUrl", block.teachingCourseUrl],
+      ["instructor", block.teachingInstructor],
+    ]);
+    return attrs ? `<TeachingEntry ${attrs} />` : "<TeachingEntry />";
   }
   if (block.type === "hero-block") {
     // Skip default values to keep the serialized form short and stable.

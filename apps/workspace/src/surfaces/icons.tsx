@@ -150,20 +150,3 @@ export const PublicationsIcon = () => (
   </svg>
 );
 
-export const TeachingIcon = () => (
-  <svg
-    viewBox="0 0 16 16"
-    width="14"
-    height="14"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M2 5.25 8 2.5l6 2.75L8 8Z" />
-    <path d="M4.25 6.4v3.1c0 1.35 1.7 2.4 3.75 2.4s3.75-1.05 3.75-2.4V6.4" />
-    <path d="M14 5.25v4" />
-  </svg>
-);
-
