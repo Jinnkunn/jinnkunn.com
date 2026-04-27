@@ -68,6 +68,8 @@ jobs:
         || 'staging' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_WORKER_NAME_STAGING: ${{ secrets.CLOUDFLARE_WORKER_NAME_STAGING }}
+      CLOUDFLARE_WORKER_NAME_PRODUCTION: ${{ secrets.CLOUDFLARE_WORKER_NAME_PRODUCTION }}
     steps:
       - name: Guard — required secrets present
         run: |
@@ -95,6 +97,9 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.sha }}
         run: |
+          export CLOUDFLARE_WORKER_NAME_STAGING="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
+          export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
+
           if [ "$TARGET_ENV" = "staging" ]; then
             npm run release:staging -- --skip-checks --skip-build
           else
