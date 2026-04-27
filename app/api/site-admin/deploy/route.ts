@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { apiError, apiPayloadOk, withSiteAdminContext } from "@/lib/server/site-admin-api";
-import { postSiteAdminDeployBackend } from "@/lib/server/site-admin-backend-service";
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 
 export const runtime = "nodejs";
@@ -11,6 +10,9 @@ export async function POST(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async (ctx) => {
+      const { postSiteAdminDeployBackend } = await import(
+        "@/lib/server/site-admin-backend-service"
+      );
       const out = await postSiteAdminDeployBackend();
       await writeSiteAdminAuditLog({
         actor: ctx.login,
