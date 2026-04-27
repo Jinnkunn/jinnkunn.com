@@ -43,7 +43,10 @@ name = "jinnkunn-site-staging"
 workers_dev = false
 
 [env.staging.vars]
-SITE_ADMIN_STORAGE = "github"
+SITE_ADMIN_STORAGE = "db"
+# Kept for fallback / read-only compatibility while we transition the
+# write path off GitHub. Resolver only reads it when SITE_ADMIN_STORAGE
+# is "github", so this is a no-op today.
 SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
