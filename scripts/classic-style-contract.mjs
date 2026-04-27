@@ -456,13 +456,18 @@ function assertContentLinkBaseline(item, state) {
   assert(state.hover, `${item.name} hover state was not readable`, item);
   assert(
     state.normal.opacity === "0.7",
-    `${item.name} default opacity drifted from the Blog RSS baseline`,
+    `${item.name} default mask drifted from the Blog RSS baseline`,
     state.normal,
   );
   assert(
     state.hover.opacity === "1",
-    `${item.name} hover opacity drifted from the Blog RSS baseline`,
+    `${item.name} hover mask drifted from the Blog RSS baseline`,
     state.hover,
+  );
+  assert(
+    state.normal.color === state.hover.color,
+    `${item.name} should inherit the same user-set text color before and after hover`,
+    { normal: state.normal.color, hover: state.hover.color },
   );
   assert(
     String(state.normal.textDecorationLine || "").includes("underline"),
