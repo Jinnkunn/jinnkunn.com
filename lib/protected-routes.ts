@@ -1,5 +1,7 @@
 import "server-only";
 
+import filesystemProtectedRoutes from "@/content/filesystem/protected-routes.json";
+import generatedProtectedRoutes from "@/content/generated/protected-routes.json";
 import { readContentJsonWithStat } from "@/lib/server/content-json";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
 
@@ -25,9 +27,8 @@ function normalizeRoute(x: unknown): ProtectedRoute | null {
 
 export function getProtectedRoutes(): ProtectedRoute[] {
   const data = readContentJsonWithStat("protected-routes.json");
-  if (!data) return [];
+  const parsed = data?.parsed ?? filesystemProtectedRoutes ?? generatedProtectedRoutes;
 
-  const parsed = data.parsed;
   return Array.isArray(parsed)
     ? parsed.map(normalizeRoute).filter((x): x is ProtectedRoute => Boolean(x))
     : [];

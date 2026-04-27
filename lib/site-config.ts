@@ -1,3 +1,5 @@
+import filesystemSiteConfig from "@/content/filesystem/site-config.json";
+import generatedSiteConfig from "@/content/generated/site-config.json";
 import { readContentJson } from "@/lib/server/content-json";
 import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config";
 import { normalizeGithubUserList } from "@/lib/shared/github-users";
@@ -152,7 +154,7 @@ function normalizeConfig(input: unknown): SiteConfig {
 }
 
 export function getSiteConfig(): SiteConfig {
-  const parsed = readContentJson("site-config.json");
+  const parsed = readContentJson("site-config.json") ?? filesystemSiteConfig ?? generatedSiteConfig;
   if (!parsed) return DEFAULT_CONFIG;
   return normalizeConfig(parsed);
 }

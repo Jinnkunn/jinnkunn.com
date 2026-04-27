@@ -40,4 +40,3 @@ export function readContentJsonWithStat(relPath: string): { file: string; mtimeM
 export function readContentJson(relPath: string): unknown | null {
   return readContentJsonWithStat(relPath)?.parsed ?? null;
 }
-

@@ -1,3 +1,4 @@
+import generatedSyncMeta from "@/content/generated/sync-meta.json";
 import { readContentJson } from "@/lib/server/content-json";
 
 export type SyncMeta = {
@@ -42,7 +43,7 @@ function normalizeSyncMeta(input: unknown): SyncMeta | null {
 }
 
 export function getSyncMeta(): SyncMeta | null {
-  const parsed = readContentJson("sync-meta.json");
+  const parsed = readContentJson("sync-meta.json") ?? generatedSyncMeta;
   if (!parsed) return null;
   return normalizeSyncMeta(parsed);
 }
