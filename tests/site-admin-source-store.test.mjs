@@ -123,3 +123,65 @@ test("site-admin-source-store: empty expected sha means file must not exist", as
     },
   );
 });
+
+test("site-admin-source-store: path-key protected routes write, preserve token, and delete", async () => {
+  const root = createFixtureRoot();
+  const store = createLocalSiteAdminSourceStore({ rootDir: root });
+
+  const before = await store.loadRoutes();
+  const firstVersion = await store.updateProtected({
+    pageId: "",
+    path: "/secret",
+    mode: "prefix",
+    auth: "password",
+    password: "open-sesame",
+    expectedProtectedRoutesSha: before.sourceVersion.protectedRoutesSha,
+  });
+
+  const protectedPath = path.join(root, "content", "filesystem", "protected-routes.json");
+  const saved = JSON.parse(fs.readFileSync(protectedPath, "utf8"));
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].key, "path");
+  assert.equal(saved[0].pageId, "");
+  assert.equal(saved[0].path, "/secret");
+  assert.equal(saved[0].mode, "prefix");
+  assert.equal(saved[0].auth, "password");
+  assert.ok(saved[0].token);
+  const token = saved[0].token;
+
+  const loaded = await store.loadRoutes();
+  assert.deepEqual(loaded.protectedRoutes, [
+    {
+      rowId: saved[0].id,
+      pageId: "",
+      path: "/secret",
+      mode: "prefix",
+      auth: "password",
+      enabled: true,
+    },
+  ]);
+
+  const secondVersion = await store.updateProtected({
+    pageId: "",
+    path: "/secret",
+    mode: "prefix",
+    auth: "password",
+    password: "",
+    expectedProtectedRoutesSha: firstVersion.protectedRoutesSha,
+  });
+  const preserved = JSON.parse(fs.readFileSync(protectedPath, "utf8"));
+  assert.equal(preserved.length, 1);
+  assert.equal(preserved[0].token, token);
+
+  await store.updateProtected({
+    pageId: "",
+    path: "/secret",
+    mode: "prefix",
+    auth: "password",
+    password: "",
+    delete: true,
+    expectedProtectedRoutesSha: secondVersion.protectedRoutesSha,
+  });
+  const deleted = JSON.parse(fs.readFileSync(protectedPath, "utf8"));
+  assert.deepEqual(deleted, []);
+});

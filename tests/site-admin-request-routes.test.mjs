@@ -84,19 +84,27 @@ test("site-admin-request routes: github/public auth rejects password payload", (
   });
 });
 
-test("site-admin-request routes: protected validates required fields", () => {
-  const missingPageId = parseSiteAdminRoutesCommand({
+test("site-admin-request routes: protected allows path-key rules without pageId", () => {
+  const parsed = parseSiteAdminRoutesCommand({
     kind: "protected",
     path: "/works",
     auth: "password",
     expectedProtectedRoutesSha: "protected-sha",
   });
-  assert.deepEqual(missingPageId, {
-    ok: false,
-    error: "Missing pageId",
-    status: 400,
-  });
 
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) throw new Error("expected success");
+  assert.deepEqual(parsed.value, {
+    kind: "protected",
+    pageId: "",
+    path: "/works",
+    authKind: "password",
+    password: "",
+    expectedProtectedRoutesSha: "protected-sha",
+  });
+});
+
+test("site-admin-request routes: protected validates required fields", () => {
   const missingPath = parseSiteAdminRoutesCommand({
     kind: "protected",
     pageId: "dddddddddddddddddddddddddddddddd",

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import filesystemProtectedRoutesData from "@/content/filesystem/protected-routes.json";
 import protectedRoutesData from "@/content/generated/protected-routes.json";
 import routesData from "@/content/generated/routes.json";
 import routesManifestData from "@/content/generated/routes-manifest.json";
@@ -19,6 +20,11 @@ type ProtectedRoute = {
 const protectedRoutes: ProtectedRoute[] = Array.isArray(protectedRoutesData)
   ? (protectedRoutesData as ProtectedRoute[])
   : [];
+const filesystemProtectedRoutes: ProtectedRoute[] = Array.isArray(filesystemProtectedRoutesData)
+  ? (filesystemProtectedRoutesData as ProtectedRoute[])
+  : [];
+const activeProtectedRoutes =
+  Array.isArray(filesystemProtectedRoutesData) ? filesystemProtectedRoutes : protectedRoutes;
 
 const routesMap: Record<string, unknown> =
   routesData && typeof routesData === "object" && !Array.isArray(routesData)
@@ -155,9 +161,9 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (protectedRoutes.length === 0) return NextResponse.next();
+  if (activeProtectedRoutes.length === 0) return NextResponse.next();
 
-  const match = pickProtectedRule(pathname, protectedRoutes, routesMap, parentByPageIdMap);
+  const match = pickProtectedRule(pathname, activeProtectedRoutes, routesMap, parentByPageIdMap);
   if (!match) return NextResponse.next();
 
   const authKind = (match.auth || "password") as "password" | "github";

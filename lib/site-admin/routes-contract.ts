@@ -33,7 +33,7 @@ function parseProtectedRoute(v: unknown): SiteAdminProtectedRoute | null {
   const path = toStringValue(v.path).trim();
   const mode = toStringValue(v.mode) === "prefix" ? "prefix" : toStringValue(v.mode) === "exact" ? "exact" : "";
   const auth = parseProtectedAccessMode(v.auth);
-  if (!rowId || !pageId || !path || !mode || !auth) return null;
+  if (!rowId || !path || !mode || !auth) return null;
   return {
     rowId,
     pageId,
