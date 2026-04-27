@@ -294,7 +294,7 @@ function buildPagesTree(rows: PageListRow[], savedOrder: string[] = []): Surface
 // Mirrors lib/posts/slug.ts — kept inline because the server-side
 // validator lives outside the workspace bundle. Regex copy is fine;
 // the slug rules are stable.
-const POST_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+const POST_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,118}[a-z0-9])?$/;
 
 function isValidPostSlugClient(slug: string): boolean {
   return typeof slug === "string" && POST_SLUG_RE.test(slug);
@@ -866,7 +866,7 @@ function SiteAdminContent() {
       if (!trimmed) return "Slug cannot be empty";
       if (itemId.startsWith("posts:")) {
         if (!isValidPostSlugClient(trimmed)) {
-          return "1–60 chars: lowercase letters, digits, dashes (no leading/trailing dash)";
+          return "1–120 chars: lowercase letters, digits, dashes (no leading/trailing dash)";
         }
         const fromSlug = itemId.slice("posts:".length);
         if (trimmed !== fromSlug && postRows.some((r) => r.slug === trimmed)) {
