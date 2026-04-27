@@ -1,5 +1,12 @@
 import openNextWorker from "../.open-next/worker.js";
-import { isStagingStaticShellAuthorized } from "./staging-static-auth.mjs";
+import {
+  isStagingStaticShellAuthorized,
+  parseCookieHeader,
+} from "./staging-static-auth.mjs";
+import {
+  isStaticProtectionSatisfied,
+  pickStaticProtectedRule,
+} from "./static-shell-protection.mjs";
 
 const BYPASS_PREFIXES = [
   "/api/",
@@ -56,6 +63,34 @@ function cloneStaticRequest(original, targetUrl) {
   });
 }
 
+let staticProtectionPolicyPromise = null;
+
+async function loadStaticProtectionPolicy(request, env) {
+  if (!staticProtectionPolicyPromise) {
+    staticProtectionPolicyPromise = (async () => {
+      const policyUrl = new URL(request.url);
+      policyUrl.pathname = "/__static/protected-routes-policy.json";
+      policyUrl.search = "";
+      const res = await env.ASSETS.fetch(cloneStaticRequest(request, policyUrl));
+      if (!res || !res.ok) return null;
+      return res.json().catch(() => null);
+    })();
+  }
+  return staticProtectionPolicyPromise;
+}
+
+async function shouldDeferProtectedRouteToOpenNext(request, env, pathname) {
+  const policy = await loadStaticProtectionPolicy(request, env);
+  if (!policy) return true;
+  const rule = pickStaticProtectedRule(pathname, policy);
+  if (!rule) return false;
+  return !isStaticProtectionSatisfied(
+    rule,
+    request.headers.get("cookie") || "",
+    parseCookieHeader,
+  );
+}
+
 async function fetchStaticAssetWithRedirects(request, env, assetPath) {
   const originUrl = new URL(request.url);
   originUrl.pathname = assetPath;
@@ -78,6 +113,7 @@ async function tryServeStaticShell(request, env) {
   const url = new URL(request.url);
   const pathname = normalizePathname(url.pathname);
   if (shouldBypassStatic(pathname)) return null;
+  if (await shouldDeferProtectedRouteToOpenNext(request, env, pathname)) return null;
 
   const assetPaths = staticAssetPathForRoute(pathname);
   for (const assetPath of assetPaths) {
