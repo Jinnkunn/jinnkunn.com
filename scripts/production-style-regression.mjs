@@ -27,7 +27,6 @@ const ROUTES = [
     kind: "home",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
     grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
-    linkOpacity: "0.7",
     required: [
       [".home-layout--variant-classicIntro", 1],
       [".page__index .mdx-post__body", 1],
@@ -38,7 +37,6 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "News",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-heading", 1],
@@ -64,7 +62,6 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "Works",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.works-toggle", 1],
@@ -77,7 +74,6 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "Teaching",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-bulleted-list .notion-list-item", 1],

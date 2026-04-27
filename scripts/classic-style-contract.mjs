@@ -97,9 +97,9 @@ const CONTENT_LINK_STYLE_SAMPLES = [
   },
   {
     path: "/teaching",
-    name: "Teaching icon link",
-    selector: 'span[data-link-style="icon"] > a[href="/teaching/archive"].notion-link.link',
-    icon: true,
+    name: "Teaching regular link",
+    selector: 'a[href="/teaching/archive"].notion-link.link',
+    icon: false,
   },
 ];
 
@@ -456,12 +456,12 @@ function assertContentLinkBaseline(item, state) {
   assert(state.hover, `${item.name} hover state was not readable`, item);
   assert(
     state.normal.opacity === "0.7",
-    `${item.name} default mask drifted from the Blog RSS baseline`,
+    `${item.name} default opacity drifted from the Feb 26 link baseline`,
     state.normal,
   );
   assert(
     state.hover.opacity === "1",
-    `${item.name} hover mask drifted from the Blog RSS baseline`,
+    `${item.name} hover opacity drifted from the Feb 26 link baseline`,
     state.hover,
   );
   assert(
