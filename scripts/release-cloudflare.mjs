@@ -145,8 +145,15 @@ async function main() {
   loadProjectEnv({ cwd: ROOT, override: true });
   const git = readGitState();
   const promoteStagingContent = shouldPromoteStagingContent(args);
-  const stagingContentRef =
-    args.env === "staging" || promoteStagingContent ? pickStagingContentRef() : "";
+  // SITE_ADMIN_STORAGE=db makes D1 the source of truth, so the git-branch
+  // content overlay (designed for the GitHub-backed staging workflow) no
+  // longer applies — the dump-from-d1 prebuild step will already have pulled
+  // the right bytes into content/* before build:cf runs.
+  const dbContentSource =
+    String(process.env.SITE_ADMIN_STORAGE || "").trim().toLowerCase() === "db";
+  const useContentOverlay =
+    !dbContentSource && (args.env === "staging" || promoteStagingContent);
+  const stagingContentRef = useContentOverlay ? pickStagingContentRef() : "";
   if (stagingContentRef) refreshStagingContentBranch(stagingContentRef);
   const stagingContentSha = stagingContentRef
     ? gitValue(["rev-parse", stagingContentRef])
@@ -169,7 +176,7 @@ async function main() {
       ...baseReport,
       wouldRun: [
         ...(args.skipChecks ? [] : CHECKS.map(([name]) => name)),
-        ...(args.env === "staging" || promoteStagingContent
+        ...(useContentOverlay
           ? args.skipBuild && args.skipUpload
             ? []
             : ["content overlay build/upload"]
@@ -205,7 +212,7 @@ async function main() {
   let uploadedVersionId = null;
   let overlayRelease = null;
 
-  if (args.env === "staging" || promoteStagingContent) {
+  if (useContentOverlay) {
     if (args.skipBuild && !args.skipUpload) {
       throw new Error(
         "Content-overlay release cannot upload without an overlay build. Use --skip-upload too, or run the release normally.",
@@ -233,7 +240,7 @@ async function main() {
     run("npm", ["run", "build:cf"], { label: "build:cf" });
   }
 
-  if (args.env !== "staging" && !promoteStagingContent && !args.skipUpload) {
+  if (!useContentOverlay && !args.skipUpload) {
     console.log(`[release-cloudflare] uploading ${args.env} Worker version`);
     const uploadOutput = run(
       "npx",
