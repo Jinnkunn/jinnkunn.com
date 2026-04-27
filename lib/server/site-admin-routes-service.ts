@@ -83,7 +83,7 @@ export async function upsertProtected(input: {
   });
   return {
     protected: {
-      rowId: input.pageId,
+      rowId: input.pageId || input.path,
       pageId: input.pageId,
       path: input.path,
       mode: input.mode,
@@ -105,6 +105,7 @@ export async function disableProtected(input: {
     mode: "prefix",
     auth: "password",
     password: "",
+    delete: true,
     expectedProtectedRoutesSha: input.expectedProtectedRoutesSha,
   });
 }
