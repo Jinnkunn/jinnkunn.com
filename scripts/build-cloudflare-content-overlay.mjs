@@ -121,10 +121,14 @@ function parseWorkerVersionId(output) {
 
 function shellEnvForCloudflare(extra = {}) {
   loadProjectEnv({ cwd: ROOT, override: true });
+  const githubPrivateKeyFile = process.env.GITHUB_APP_PRIVATE_KEY_FILE
+    ? path.resolve(ROOT, process.env.GITHUB_APP_PRIVATE_KEY_FILE)
+    : "";
   return {
     ...process.env,
     CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN || "",
     CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID || "",
+    ...(githubPrivateKeyFile ? { GITHUB_APP_PRIVATE_KEY_FILE: githubPrivateKeyFile } : {}),
     ...extra,
   };
 }
