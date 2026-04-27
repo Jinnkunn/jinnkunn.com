@@ -170,7 +170,7 @@ function serializeInline(nodes: JSONContent[]): string {
       index -= 1;
       const shouldGroup = originalRun.length > 1 || originalRun.some((item) => hasMark(item, "link"));
       buffer += shouldGroup
-        ? `**${serializeInlineUngrouped(run)}**`
+        ? wrapMarkdownBoundary(serializeInlineUngrouped(run), "**")
         : serializeInlineUngrouped(originalRun);
       continue;
     }
@@ -190,6 +190,22 @@ function withoutMark(node: JSONContent, type: string): JSONContent {
   };
 }
 
+function splitEdgeWhitespace(text: string): {
+  leading: string;
+  body: string;
+  trailing: string;
+} {
+  const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(text);
+  if (!match) return { leading: "", body: text, trailing: "" };
+  return { leading: match[1], body: match[2], trailing: match[3] };
+}
+
+function wrapMarkdownBoundary(text: string, marker: string): string {
+  const { leading, body, trailing } = splitEdgeWhitespace(text);
+  if (!body) return text;
+  return `${leading}${marker}${body}${marker}${trailing}`;
+}
+
 function serializeInlineUngrouped(nodes: JSONContent[]): string {
   let buffer = "";
   for (const node of nodes) {
@@ -198,14 +214,22 @@ function serializeInlineUngrouped(nodes: JSONContent[]): string {
       continue;
     }
     if (node.type !== "text") continue;
-    let text = node.text ?? "";
-    if (!text) continue;
     const marks = node.marks ?? [];
+    const has = (name: string) => marks.some((m) => m.type === name);
+    const rawText = node.text ?? "";
+    if (!rawText) continue;
+    const { leading, body, trailing } = has("code")
+      ? { leading: "", body: rawText, trailing: "" }
+      : splitEdgeWhitespace(rawText);
+    if (!body) {
+      buffer += rawText;
+      continue;
+    }
+    let text = body;
     // Apply marks in a stable order. Code is innermost (so `**`/`*` won't
     // appear inside a `code` mark and confuse the parser). Link wraps the
     // markdown-char marks as `[**bold**](url)`, then presentation-only span
     // marks can wrap the whole link without turning the href into raw HTML.
-    const has = (name: string) => marks.some((m) => m.type === name);
     if (has("code")) text = `\`${text}\``;
     if (has("bold")) text = `**${text}**`;
     if (has("italic")) text = `*${text}*`;
@@ -241,7 +265,7 @@ function serializeInlineUngrouped(nodes: JSONContent[]): string {
       const iconAttr = icon ? ` data-link-icon="${escapeAttr(icon)}"` : "";
       text = `<span data-link-style="icon"${iconAttr}>${text}</span>`;
     }
-    buffer += text;
+    buffer += `${leading}${text}${trailing}`;
   }
   return buffer;
 }

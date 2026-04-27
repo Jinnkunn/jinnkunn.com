@@ -75,6 +75,16 @@ describe("inlineMarkdownToHtml", () => {
     );
   });
 
+  it("keeps visible spaces between colored text and bold text", () => {
+    expect(
+      inlineMarkdownToHtml(
+        '<span data-color="gray">focuses on</span> **Explainable AI**<span data-color="gray">, and</span> **Visualization**',
+      ),
+    ).toBe(
+      '<p><span data-color="gray">focuses on</span> <strong>Explainable AI</strong><span data-color="gray">, and</span> <strong>Visualization</strong></p>',
+    );
+  });
+
   it("keeps bold link labels inside the link instead of leaking markdown stars", () => {
     expect(
       inlineMarkdownToHtml("**a co-founder of [Exorcat Technologies Ltd.](https://exorcat.com/)**"),
@@ -152,6 +162,30 @@ describe("tiptapDocToMarkdown", () => {
     );
     expect(tiptapDocToMarkdown(doc)).toBe(
       "**a co-founder of [Exorcat Technologies Ltd.](https://exorcat.com/)**",
+    );
+  });
+
+  it("serializes boundary spaces outside inline color and bold marks", () => {
+    const doc = makeDoc(
+      makeText("My research primarily focuses on ", [
+        { type: "inlineColor", attrs: { color: "gray" } },
+      ]),
+      makeText("Explainable AI", [{ type: "bold" }]),
+      makeText(", and ", [{ type: "inlineColor", attrs: { color: "gray" } }]),
+      makeText("Visualization", [{ type: "bold" }]),
+    );
+    expect(tiptapDocToMarkdown(doc)).toBe(
+      '<span data-color="gray">My research primarily focuses on</span> **Explainable AI**<span data-color="gray">, and</span> **Visualization**',
+    );
+  });
+
+  it("serializes leading spaces outside bold marks", () => {
+    const doc = makeDoc(
+      makeText("focuses on", [{ type: "inlineColor", attrs: { color: "gray" } }]),
+      makeText(" Explainable AI", [{ type: "bold" }]),
+    );
+    expect(tiptapDocToMarkdown(doc)).toBe(
+      '<span data-color="gray">focuses on</span> **Explainable AI**',
     );
   });
 
