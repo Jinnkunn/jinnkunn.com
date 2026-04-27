@@ -92,11 +92,15 @@
 
 .mdx-post__body p,
 .mdx-post__body li,
-.mdx-post__body blockquote {
-  color: var(--color-text-default-light);
+.mdx-post__body blockquote,
+.mdx-post__body > span[data-color] {
   font-size: 16px;
   line-height: 1.5;
   overflow-wrap: break-word;
+}
+
+.mdx-post__body > span[data-color] {
+  display: block;
 }
 
 .mdx-post__body strong,
@@ -110,14 +114,6 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-.mdx-post__body :is(p, li, blockquote) a.notion-link.link {
-  color: var(--color-text-default-light);
-}
-
-.mdx-post__body :is(strong, b) a.notion-link.link {
-  color: var(--color-text-default);
 }
 
 .mdx-post__body :is(h1, h2, h3, h4, h5, h6) a {
