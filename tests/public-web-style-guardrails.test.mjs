@@ -481,7 +481,7 @@ test("public-web-style-guardrails: classic gray text is content-level, not page-
 
   assertIncludes(
     bridgeCss,
-    "--color-text-gray: var(--ds-text-faint)",
+    "--color-text-gray: var(--ds-color-text-gray)",
     "Classic design-system bridge",
   );
   assertIncludes(notionBlocksCss, 'span[data-color="gray"]', "Classic inline gray mark CSS");
