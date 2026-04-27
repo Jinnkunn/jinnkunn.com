@@ -73,12 +73,12 @@ type RequestFn = (
   body?: unknown,
 ) => Promise<NormalizedApiResponse>;
 
-const DOCUMENT_EDITOR_MODES: DocumentEditorMode[] = ["blocks", "source", "preview"];
+const DOCUMENT_EDITOR_MODES: DocumentEditorMode[] = ["blocks", "preview", "source"];
 
 const DOCUMENT_EDITOR_MODE_LABELS: Record<DocumentEditorMode, string> = {
   blocks: "Write",
-  source: "Source",
   preview: "Preview",
+  source: "MDX",
 };
 
 const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
@@ -1941,34 +1941,34 @@ export function MdxDocumentEditor<TForm>({
 
   return (
     <section className="surface-card mdx-document-editor-card">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
+      <header className="mdx-document-editor__topbar">
+        <div className="mdx-document-editor__context">
+          <h1 className="mdx-document-editor__context-title">
             {title}
           </h1>
-          <div className="editor-meta-row">
-            <p className="m-0 text-[12.5px] text-text-muted">
-              Writes to <code>{adapter.contentPath(slug || "<slug>")}</code>.
+          <div className="mdx-document-editor__context-meta">
+            <p className="mdx-document-editor__crumb">
+              {mode === "create" ? "New draft" : initialSlug}
             </p>
             <span className={`editor-state ${dirty ? "editor-state--dirty" : "editor-state--clean"}`}>
               {dirty ? "Unsaved changes" : "Saved"}
             </span>
           </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="mdx-document-editor__actions">
           <button
             type="button"
-            className="btn btn--secondary"
+            className="btn btn--ghost"
             onClick={() => setPropertiesOpen((open) => !open)}
             disabled={saving || deleting}
             aria-expanded={propertiesOpen}
           >
-            Properties
+            Options
           </button>
           {adapter.allowBack !== false && (
             <button
               type="button"
-              className={confirmBack ? "btn btn--danger" : "btn btn--secondary"}
+              className={confirmBack ? "btn btn--danger" : "btn btn--ghost"}
               onClick={leaveEditor}
               disabled={saving || deleting}
             >
@@ -2060,7 +2060,7 @@ export function MdxDocumentEditor<TForm>({
           data-properties-open={propertiesOpen ? "true" : undefined}
         >
           <div className="mdx-document-editor__toolbar" aria-label="Document editor mode">
-            <div className="home-builder__segmented">
+            <div className="home-builder__segmented mdx-document-editor__mode-switch">
               {DOCUMENT_EDITOR_MODES.map((item) => (
                 <button
                   aria-pressed={editorMode === item}
@@ -2073,9 +2073,9 @@ export function MdxDocumentEditor<TForm>({
                 </button>
               ))}
             </div>
-            <span>
+            <span className="mdx-document-editor__mode-hint">
               {editorMode === "blocks"
-                ? "Block canvas"
+                ? "Visual editor"
                 : editorMode === "source"
                   ? imageDrop.uploading
                     ? "Uploading image…"

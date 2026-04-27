@@ -84,7 +84,7 @@ function PageProperties({
             setForm((current) => ({ ...current, draft: event.target.checked }))
           }
         />
-        Draft (hidden from public site)
+        Draft / folder page (shown in Tauri, hidden from public site)
       </label>
 
       {mode === "edit" ? (

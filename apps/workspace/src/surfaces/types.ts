@@ -17,6 +17,11 @@ export interface SurfaceNavItem {
    * new child" action (e.g. site-admin opens a fresh PageEditor with
    * the slug prefilled to the parent path). */
   canAddChild?: boolean;
+  /** Defaults to true. Set false for tree-only folder/group rows that
+   * should remain visible for hierarchy but do not map to an editable
+   * document. Clicking such a row toggles its children instead of
+   * changing the active nav item. */
+  selectable?: boolean;
   /** Marks the row as a drag source — Sidebar attaches HTML5 DnD
    * handlers and a "grab" cursor. Pair with `droppable` on intended
    * targets. */
