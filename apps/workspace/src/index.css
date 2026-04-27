@@ -2700,7 +2700,7 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-preview-entry a.notion-link.link {
   --link-icon-space: 0px;
   color: inherit;
-  opacity: 1;
+  opacity: 0.7;
   padding: 0.04em 0.08em;
   border-radius: 4px;
   text-decoration-line: underline;
@@ -2728,12 +2728,14 @@ body[data-window-focused="true"] .sidebar-surface {
   -webkit-box-decoration-break: clone;
   transition:
     background-size 620ms cubic-bezier(0.16, 1, 0.3, 1),
-    text-decoration-color 180ms ease;
+    text-decoration-color 180ms ease,
+    opacity 100ms ease-in;
 }
 
 .mdx-document-text-block.ProseMirror a:hover,
 .component-embed-preview__body a.notion-link.link:hover,
 .mdx-preview-entry a.notion-link.link:hover {
+  opacity: 1;
   background-size:
     calc(100% - var(--link-icon-space)) 1.35em,
     calc(100% - var(--link-icon-space)) 0.42em;

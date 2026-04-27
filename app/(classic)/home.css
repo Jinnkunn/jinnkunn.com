@@ -318,16 +318,6 @@
   color: var(--color-text-default-light);
 }
 
-.page__index .home-section__body span[data-link-style="icon"] > a.notion-link.link {
-  --link-icon-space: 28px !important;
-  padding-left: calc(var(--link-icon-space) + 0.08em) !important;
-}
-
-.page__index .home-section__body span[data-link-style="icon"] > a.notion-link.link::before {
-  display: block !important;
-  content: "" !important;
-}
-
 .home-link-list__items,
 .home-featured-pages__items {
   list-style: none;
