@@ -34,22 +34,26 @@
 - `Save` only writes source branch via `/api/site-admin/*`.
 - `Deploy` only promotes Worker version via `/api/site-admin/deploy` or `npm run deploy:cf:*`.
 - Avoid ad-hoc `wrangler deploy` without deployment message metadata.
-- Preferred promotion command:
+- Preferred staging release command:
+  - `npm run release:staging`
+- Preferred promotion commands after a matching version is uploaded:
   - `npm run deploy:cf:staging`
   - `npm run deploy:cf:prod`
-- Those scripts stamp `workers/message` with `source=<sha> branch=<name>` to keep `pendingDeploy` deterministically computable.
+- Staging release builds from `main` code/CSS and overlays only content-owned paths from `site-admin-staging`; content branches must not be used as the code source.
+- Those scripts stamp `workers/message` with `source=<sha> branch=<name> code=<sha> content=<sha> contentBranch=<name>` to keep `pendingDeploy` and deployable-version readiness deterministic.
 
 ## 3. Staging Setup
 
 1. Ensure source branch `site-admin-staging` exists and is seeded from `main`.
 2. Apply staging env vars (especially branch binding + Cloudflare deploy vars).
-3. Build Cloudflare artifact:
-   - `npm run build:cf`
-4. Deploy with env-safe command:
+3. Build/upload Cloudflare artifact with the content overlay:
+   - `npm run release:staging`
+4. If a version has already been uploaded and status shows `deployableVersionReady=true`, promote with:
    - `npm run deploy:cf:staging` (script auto-loads `.env` and overrides stale shell values)
 5. Open `/api/site-admin/status` and confirm:
    - `source.storeKind=github`
    - `source.branch=site-admin-staging`
+   - `source.deployableVersionReady=true`
    - `env.runtimeProvider=cloudflare` (or expected runtime provider)
    - `source.pendingDeploy=false`
 

@@ -5,10 +5,12 @@ import type {
   ReactNode,
   TextareaHTMLAttributes,
 } from "react";
-
-function joinClassNames(...items: Array<string | false | null | undefined>): string {
-  return items.filter(Boolean).join(" ");
-}
+import {
+  WorkspaceTextField,
+  WorkspaceTextareaField,
+  WorkspaceToolbar,
+  joinClassNames,
+} from "../../ui/primitives";
 
 type ButtonTone = "primary" | "secondary" | "ghost" | "danger";
 
@@ -61,14 +63,7 @@ export function Toolbar({
   role = "toolbar",
   ...props
 }: ToolbarProps) {
-  return (
-    <div
-      aria-label={label}
-      className={joinClassNames("flex gap-2 flex-wrap", className)}
-      role={role}
-      {...props}
-    />
-  );
+  return <WorkspaceToolbar className={className} label={label} role={role} {...props} />;
 }
 
 export interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -85,11 +80,13 @@ export function Field({
   ...props
 }: FieldProps) {
   return (
-    <label className={joinClassNames("flex flex-col gap-1 text-[12.5px]", wrapperClassName)}>
-      <span className="text-text-muted">{label}</span>
-      <input className={joinClassNames("ds-input", className)} {...props} />
-      {hint ? <span className="text-[11.5px] text-text-muted">{hint}</span> : null}
-    </label>
+    <WorkspaceTextField
+      className={className}
+      hint={hint}
+      label={label}
+      wrapperClassName={wrapperClassName}
+      {...props}
+    />
   );
 }
 
@@ -107,11 +104,13 @@ export function TextareaField({
   ...props
 }: TextareaFieldProps) {
   return (
-    <label className={joinClassNames("flex flex-col gap-1 text-[12.5px]", wrapperClassName)}>
-      <span className="text-text-muted">{label}</span>
-      <textarea className={joinClassNames("ds-input", className)} {...props} />
-      {hint ? <span className="text-[11.5px] text-text-muted">{hint}</span> : null}
-    </label>
+    <WorkspaceTextareaField
+      className={className}
+      hint={hint}
+      label={label}
+      wrapperClassName={wrapperClassName}
+      {...props}
+    />
   );
 }
 
@@ -127,14 +126,14 @@ export function StatusNotice({
 }: StatusNoticeProps) {
   const toneClass =
     tone === "error"
-      ? "text-[color:var(--color-danger)]"
+      ? "workspace-status-banner--error"
       : tone === "muted"
-        ? "text-text-muted"
-        : "text-text-primary";
+        ? "workspace-status-banner--muted"
+        : "workspace-status-banner--default";
   return (
     <p
       aria-live={role === "status" ? "polite" : undefined}
-      className={joinClassNames("m-0 text-[12px]", toneClass, className)}
+      className={joinClassNames("workspace-status-banner", toneClass, className)}
       role={role}
       {...props}
     />

@@ -137,7 +137,8 @@ export function StatusPanel() {
     loading ||
     deploying ||
     !connection.baseUrl ||
-    !connection.authToken;
+    !connection.authToken ||
+    data?.source?.deployableVersionReady === false;
 
   const notes: string[] = [];
   if (loading) notes.push("Loading status…");
@@ -147,6 +148,12 @@ export function StatusPanel() {
   if (!notes.length && data?.source?.pendingDeploy === true) {
     notes.push(
       "Source has changes ahead of active deployment. Run Deploy when ready.",
+    );
+  }
+  if (data?.source?.deployableVersionReady === false) {
+    notes.push(
+      data.source.deployableVersionReason ||
+        "Latest uploaded Worker version does not match the current content.",
     );
   }
 
@@ -197,6 +204,24 @@ export function StatusPanel() {
         <div>
           <dt>Source Head</dt>
           <dd>{data?.source?.headSha || "-"}</dd>
+        </div>
+        <div>
+          <dt>Code SHA</dt>
+          <dd>{data?.source?.codeSha || "-"}</dd>
+        </div>
+        <div>
+          <dt>Content SHA</dt>
+          <dd>{data?.source?.contentSha || "-"}</dd>
+        </div>
+        <div>
+          <dt>Deployable Version</dt>
+          <dd>
+            {data?.source?.deployableVersionReady === true
+              ? "Ready"
+              : data?.source?.deployableVersionReady === false
+                ? "Stale"
+                : "-"}
+          </dd>
         </div>
         <div>
           <dt>Pending Deploy</dt>

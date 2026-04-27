@@ -74,6 +74,11 @@ function makeValidPayload(overrides = {}) {
       headSha: "0123456789abcdef0123456789abcdef01234567",
       headCommitTime: "2026-02-01T00:00:00.000Z",
       pendingDeploy: false,
+      codeSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      contentSha: "0123456789abcdef0123456789abcdef01234567",
+      contentBranch: "main",
+      deployableVersionReady: true,
+      deployableVersionId: "version-1",
     },
     preflight: {
       generatedFiles: {
@@ -196,6 +201,9 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
   assert.equal(parsed.content.nav.top, 4);
   assert.equal(parsed.files.notionSyncCache.count, 12);
   assert.equal(parsed.source.storeKind, "github");
+  assert.equal(parsed.source.codeSha, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  assert.equal(parsed.source.contentSha, "0123456789abcdef0123456789abcdef01234567");
+  assert.equal(parsed.source.deployableVersionReady, true);
 });
 
 test("site-admin-status-contract: preserves api error payload", () => {
@@ -245,6 +253,8 @@ test("site-admin-status-contract: accepts nullable optional sections", () => {
         headCommitTime: null,
         pendingDeploy: null,
         pendingDeployReason: "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE",
+        deployableVersionReady: null,
+        deployableVersionReason: "LATEST_WORKER_VERSION_UNAVAILABLE",
       },
     }),
   );
@@ -256,4 +266,18 @@ test("site-admin-status-contract: accepts nullable optional sections", () => {
   assert.equal(parsed.notion.rootPage?.title, "Home");
   assert.equal(parsed.env.hasDeployTarget, true);
   assert.equal(parsed.source.pendingDeployReason, "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE");
+  assert.equal(parsed.source.deployableVersionReady, null);
+  assert.equal(parsed.source.deployableVersionReason, "LATEST_WORKER_VERSION_UNAVAILABLE");
+});
+
+test("site-admin-status-contract: rejects malformed deployableVersionReady", () => {
+  const parsed = parseSiteAdminStatusResult(
+    makeValidPayload({
+      source: {
+        ...makeValidPayload().source,
+        deployableVersionReady: "yes",
+      },
+    }),
+  );
+  assert.equal(parsed, null);
 });

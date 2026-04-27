@@ -115,9 +115,22 @@ function reportAndExit(report) {
   console.log(JSON.stringify(report, null, 2));
 }
 
+function pickStagingContentRef() {
+  return (
+    readEnv("SITE_ADMIN_REPO_BRANCH_STAGING") ||
+    readEnv("SITE_ADMIN_REPO_BRANCH") ||
+    "site-admin-staging"
+  );
+}
+
 async function main() {
   const args = parseArgs();
+  loadProjectEnv({ cwd: ROOT, override: true });
   const git = readGitState();
+  const stagingContentRef = args.env === "staging" ? pickStagingContentRef() : "";
+  const stagingContentSha = stagingContentRef
+    ? gitValue(["rev-parse", stagingContentRef])
+    : "";
   const productionGuard = args.env === "production" ? evaluateProductionGuard(git) : null;
   const expectedProductionVersionFromShell =
     readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
@@ -136,11 +149,20 @@ async function main() {
       ...baseReport,
       wouldRun: [
         ...(args.skipChecks ? [] : CHECKS.map(([name]) => name)),
-        ...(args.skipBuild ? [] : ["build:cf"]),
-        ...(args.skipUpload ? [] : ["wrangler versions upload"]),
+        ...(args.env === "staging"
+          ? args.skipBuild && args.skipUpload
+            ? []
+            : ["content overlay build/upload"]
+          : [
+              ...(args.skipBuild ? [] : ["build:cf"]),
+              ...(args.skipUpload ? [] : ["wrangler versions upload"]),
+            ]),
         "deploy:cf",
         ...(args.skipVerify ? [] : ["verify:cf"]),
       ],
+      ...(stagingContentRef
+        ? { stagingContent: { ref: stagingContentRef, sha: stagingContentSha } }
+        : {}),
     });
     return;
   }
@@ -160,15 +182,38 @@ async function main() {
     }
   }
 
-  if (!args.skipBuild) {
+  let uploadedVersionId = null;
+  let overlayRelease = null;
+
+  if (args.env === "staging") {
+    if (args.skipBuild && !args.skipUpload) {
+      throw new Error(
+        "Staging release cannot upload without an overlay build. Use --skip-upload too, or run npm run release:staging normally.",
+      );
+    }
+    if (!args.skipBuild || !args.skipUpload) {
+      console.log("[release-cloudflare] running staging content-overlay build");
+      const overlayArgs = [
+        "scripts/build-cloudflare-content-overlay.mjs",
+        "--env=staging",
+        `--code-ref=${git.sha}`,
+        `--content-ref=${stagingContentRef}`,
+        ...(args.skipBuild ? ["--skip-build"] : []),
+        ...(args.skipUpload ? ["--skip-upload"] : []),
+      ];
+      const overlayOutput = run("node", overlayArgs, {
+        capture: true,
+        label: "staging content-overlay build/upload",
+      });
+      overlayRelease = parseDeployJson(overlayOutput);
+      uploadedVersionId = overlayRelease?.uploadedVersionId || null;
+    }
+  } else if (!args.skipBuild) {
     console.log("[release-cloudflare] running build:cf");
     run("npm", ["run", "build:cf"], { label: "build:cf" });
   }
 
-  loadProjectEnv({ cwd: ROOT, override: true });
-
-  let uploadedVersionId = null;
-  if (!args.skipUpload) {
+  if (args.env !== "staging" && !args.skipUpload) {
     console.log(`[release-cloudflare] uploading ${args.env} Worker version`);
     const uploadOutput = run(
       "npx",
@@ -189,8 +234,11 @@ async function main() {
   console.log(`[release-cloudflare] deploying ${args.env}`);
   const deployScript = args.env === "production" ? "deploy:cf:prod" : "deploy:cf:staging";
   const deployEnv = {
-    DEPLOY_SOURCE_SHA: git.sha,
-    DEPLOY_SOURCE_BRANCH: git.branch,
+    DEPLOY_SOURCE_SHA: args.env === "staging" ? stagingContentSha : git.sha,
+    DEPLOY_SOURCE_BRANCH: args.env === "staging" ? stagingContentRef : git.branch,
+    DEPLOY_CONTENT_SHA: args.env === "staging" ? stagingContentSha : git.sha,
+    DEPLOY_CONTENT_BRANCH: args.env === "staging" ? stagingContentRef : git.branch,
+    DEPLOY_CODE_SHA: git.sha,
     DEPLOY_SOURCE_DIRTY: git.dirty ? "1" : "0",
   };
   const deployOutput = run("npm", ["run", deployScript], {
@@ -225,6 +273,7 @@ async function main() {
     ...baseReport,
     checksRun,
     buildRun: !args.skipBuild,
+    overlayRelease,
     uploadedVersionId,
     deployedVersionId: deployment?.versionId || null,
     deploymentId: deployment?.deploymentId || null,

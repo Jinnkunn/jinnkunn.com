@@ -3,6 +3,11 @@ import {
   resolveCloudflareTargetEnv,
   resolveCloudflareWorkerName,
 } from "./cloudflare-deploy-env.ts";
+import {
+  describeDeployMetadataMismatch,
+  parseDeployMetadataMessage,
+  type ExpectedDeployVersionMetadata,
+} from "./deploy-metadata.ts";
 
 export type DeployHookResult = {
   ok: boolean;
@@ -26,6 +31,7 @@ type TriggerDeployHookOptions = {
   retryBaseDelayMs?: number;
   provider?: DeployProvider;
   message?: string;
+  expectedCloudflareVersion?: ExpectedDeployVersionMetadata;
 };
 
 type CloudflareDeployConfig = {
@@ -255,7 +261,10 @@ async function cloudflareApiRequest(input: {
   };
 }
 
-function pickLatestVersionId(raw: unknown): string {
+function pickLatestVersion(raw: unknown): {
+  id: string;
+  message: string;
+} | null {
   const result = asRecord(raw).result;
   const payload = asRecord(result);
   const items = Array.isArray(payload.items)
@@ -264,10 +273,17 @@ function pickLatestVersionId(raw: unknown): string {
       ? (result as unknown[])
       : [];
   for (const item of items) {
-    const id = asString(asRecord(item).id);
-    if (id) return id;
+    const record = asRecord(item);
+    const id = asString(record.id);
+    if (!id) continue;
+    const annotations = asRecord(record.annotations);
+    const message =
+      asString(annotations["workers/message"]) ||
+      asString(record.message) ||
+      asString(record.tag);
+    return { id, message };
   }
-  return "";
+  return null;
 }
 
 function pickDeploymentId(raw: unknown): string {
@@ -294,8 +310,8 @@ async function triggerCloudflareDeployment(
     };
   }
 
-  const latestVersionId = pickLatestVersionId(versions.raw);
-  if (!latestVersionId) {
+  const latestVersion = pickLatestVersion(versions.raw);
+  if (!latestVersion) {
     return {
       ok: false,
       status: 424,
@@ -303,6 +319,22 @@ async function triggerCloudflareDeployment(
       attempts: 1,
       provider: "cloudflare",
     };
+  }
+  if (options?.expectedCloudflareVersion) {
+    const actual = parseDeployMetadataMessage(latestVersion.message);
+    const mismatch = describeDeployMetadataMismatch({
+      actual,
+      expected: options.expectedCloudflareVersion,
+    });
+    if (mismatch) {
+      return {
+        ok: false,
+        status: 409,
+        text: `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match current source (${mismatch}). Run the staging overlay build/upload before publishing.`,
+        attempts: 1,
+        provider: "cloudflare",
+      };
+    }
   }
 
   const message =
@@ -312,7 +344,7 @@ async function triggerCloudflareDeployment(
   const deployPath = `/workers/scripts/${encodeURIComponent(config.workerName)}/deployments`;
   const baseBody = {
     strategy: "percentage",
-    versions: [{ percentage: 100, version_id: latestVersionId }],
+    versions: [{ percentage: 100, version_id: latestVersion.id }],
   };
 
   let deploy = await cloudflareApiRequest({
@@ -349,8 +381,8 @@ async function triggerCloudflareDeployment(
     ok: true,
     status: deploy.status,
     text: deploymentId
-      ? `Deployed version ${latestVersionId} as deployment ${deploymentId}`
-      : `Deployed version ${latestVersionId}`,
+      ? `Deployed version ${latestVersion.id} as deployment ${deploymentId}`
+      : `Deployed version ${latestVersion.id}`,
     attempts: 1,
     provider: "cloudflare",
     ...(deploymentId ? { deploymentId } : {}),

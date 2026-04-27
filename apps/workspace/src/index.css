@@ -429,6 +429,106 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 /* ------------------------------------------------------------------ *
+ * Workspace UI primitives
+ * ------------------------------------------------------------------ */
+.workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.workspace-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.workspace-icon-button:hover:not(:disabled),
+.workspace-icon-button:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+  color: var(--color-text-primary);
+}
+
+.workspace-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.workspace-icon-button--accent {
+  color: var(--color-accent);
+}
+
+.workspace-icon-button--danger {
+  color: var(--color-danger);
+}
+
+.workspace-popover {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-menu);
+  color: var(--color-text-primary);
+}
+
+.workspace-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.workspace-form-row__label,
+.workspace-form-row__hint {
+  color: var(--color-text-muted);
+}
+
+.workspace-form-row__hint {
+  font-size: 11.5px;
+}
+
+.workspace-status-banner {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.workspace-status-banner--muted {
+  color: var(--color-text-muted);
+}
+
+.workspace-status-banner--success {
+  color: var(--color-success);
+}
+
+.workspace-status-banner--warn {
+  color: var(--color-warn);
+}
+
+.workspace-status-banner--error {
+  color: var(--color-danger);
+}
+
+.workspace-sidebar-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ *
  * Shell-sidebar nested nav tree
  *
  * A surface with `navGroups` renders collapsible sub-groups under its
@@ -2279,7 +2379,7 @@ body[data-window-focused="true"] .sidebar-surface {
   flex-direction: column;
   gap: 2px;
   border-radius: 8px;
-  padding: 2px 0;
+  padding: 2px 0 2px 36px;
   transition:
     background-color 130ms ease,
     box-shadow 130ms ease;
@@ -2292,9 +2392,7 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .mdx-document-block {
   position: relative;
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 2px;
+  display: block;
   padding: 0;
   border-radius: 5px;
   transition:
@@ -2316,24 +2414,29 @@ body[data-window-focused="true"] .sidebar-surface {
   background: color-mix(in srgb, var(--color-text-primary) 2.5%, transparent);
 }
 
-/* Notion-style left gutter: + on the left, ⋮⋮ on the right. Both fade in
- * on row hover. The gutter uses grid column 1 so the content column always
- * starts at the same x-position regardless of hover state. */
+/* Notion-style left gutter. It sits outside the content column, so idle or
+ * hovered controls never compress the editable text. */
 .mdx-document-block__gutter {
-  grid-column: 1;
+  position: absolute;
+  top: 0;
+  left: -34px;
+  width: 32px;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
   gap: 1px;
   padding-top: 3px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 120ms ease;
 }
 
 .mdx-document-block:hover .mdx-document-block__gutter,
 .mdx-document-block:focus-within .mdx-document-block__gutter,
+.mdx-document-block[data-controls-open="true"] .mdx-document-block__gutter,
 .mdx-document-block__gutter:has(:focus-visible) {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .mdx-document-block__handle {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { CLASSIC_LINK_ICON_CONTRACT } from "./_lib/classic-link-icons.mjs";
@@ -12,6 +13,7 @@ import {
 import { gotoWithFallback, launchBrowser } from "./_lib/playwright.mjs";
 
 const ROOT = process.cwd();
+const ARTIFACT_DIR = path.join(ROOT, "output", "playwright", "classic-style-contract");
 const BLOG_STABLE_POST =
   "/blog/context-order-and-reasoning-drift-measuring-order-sensitivity-from-token-probabilities";
 
@@ -61,6 +63,18 @@ const CLASSIC_ROUTES = [
     expectedLinks: 1,
   },
   {
+    path: "/bio",
+    pageClass: "page__mdx-page",
+    titleIncludes: "BIO",
+    expectedLinks: 0,
+  },
+  {
+    path: "/connect",
+    pageClass: "page__mdx-page",
+    titleIncludes: "Connect",
+    expectedLinks: 0,
+  },
+  {
     path: "/chen",
     pageClass: "page__mdx-page",
     titleIncludes: "Yimen Chen",
@@ -103,6 +117,26 @@ const CONTENT_LINK_STYLE_SAMPLES = [
   },
 ];
 
+const NOTION_BLOCK_SPACING_PROBES = [
+  {
+    name: "Notion text",
+    selector:
+      ".notion-root .notion-text__content, .notion-root .mdx-post__body > p",
+  },
+  {
+    name: "Notion bulleted list item",
+    selector: ".notion-root .notion-bulleted-list .notion-list-item",
+  },
+  {
+    name: "Notion quote",
+    selector: ".notion-root blockquote, .notion-root .notion-quote",
+  },
+  {
+    name: "Notion toggle",
+    selector: ".notion-root .notion-toggle",
+  },
+];
+
 function assert(condition, message, details = {}) {
   if (condition) return;
   const payload = details && typeof details === "object" ? details : {};
@@ -112,6 +146,21 @@ function assert(condition, message, details = {}) {
 
 function assertBetween(value, min, max, message, details = {}) {
   assert(value >= min && value <= max, message, { value, min, max, ...details });
+}
+
+function artifactName(label) {
+  return String(label || "artifact")
+    .replace(/^\/+/, "")
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "") || "root";
+}
+
+async function saveFailureArtifact(page, label) {
+  fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+  const base = path.join(ARTIFACT_DIR, artifactName(label));
+  await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
+  const html = await page.content().catch(() => "");
+  if (html) fs.writeFileSync(`${base}.html`, html);
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -190,6 +239,52 @@ async function readRouteContract(page, pageClass) {
       articleStyle: styleOf(`.${targetClass} .notion-root.max-width`),
       firstReadableStyle,
       firstLinkStyle,
+      blockSpacing: [
+        {
+          name: "Notion text",
+          selector:
+            ".notion-root .notion-text__content, .notion-root .mdx-post__body > p",
+        },
+        {
+          name: "Notion bulleted list item",
+          selector: ".notion-root .notion-bulleted-list .notion-list-item",
+        },
+        {
+          name: "Notion quote",
+          selector: ".notion-root blockquote, .notion-root .notion-quote",
+        },
+        {
+          name: "Notion toggle",
+          selector: ".notion-root .notion-toggle",
+        },
+      ].map((probe) => {
+        const candidates = Array.from(document.querySelectorAll(probe.selector));
+        const node = candidates.find((candidate) => {
+          const rect = candidate.getBoundingClientRect();
+          const style = getComputedStyle(candidate);
+          return (
+            style.display !== "none" &&
+            rect.height > 0 &&
+            rect.width > 0 &&
+            (candidate.textContent || "").trim().length > 0
+          );
+        });
+        if (!node) return { ...probe, exists: false, candidateCount: candidates.length };
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return {
+          ...probe,
+          exists: true,
+          display: style.display,
+          fontSize: style.fontSize,
+          lineHeight: style.lineHeight,
+          marginTop: style.marginTop,
+          marginBottom: style.marginBottom,
+          paddingTop: style.paddingTop,
+          paddingBottom: style.paddingBottom,
+          height: rect.height,
+        };
+      }),
       linkCount: document.querySelectorAll(".notion-root a.notion-link.link").length,
       breadcrumbCount: document.querySelectorAll(".super-navbar__breadcrumbs .notion-breadcrumb__item").length,
     };
@@ -328,6 +423,46 @@ function assertClassicRoute(route, contract) {
       contract.breadcrumbCount >= 2,
       `${route.path} breadcrumbs disappeared`,
       { breadcrumbCount: contract.breadcrumbCount },
+    );
+  }
+
+  const presentProbes = (contract.blockSpacing || []).filter((probe) => probe.exists);
+  assert(
+    presentProbes.length > 0,
+    `${route.path} has no readable Notion block spacing probes`,
+    { probes: NOTION_BLOCK_SPACING_PROBES.map((probe) => probe.selector) },
+  );
+  for (const probe of presentProbes) {
+    const fontSize = Number.parseFloat(probe.fontSize || "");
+    const lineHeight = Number.parseFloat(probe.lineHeight || "");
+    const marginBottom = Number.parseFloat(probe.marginBottom || "0");
+    assert(
+      probe.display !== "none" && (probe.height ?? 0) > 0,
+      `${route.path} ${probe.name} block disappeared`,
+      probe,
+    );
+    assertBetween(
+      fontSize,
+      13,
+      22,
+      `${route.path} ${probe.name} font size left the Notion block contract`,
+      probe,
+    );
+    if (Number.isFinite(lineHeight)) {
+      assertBetween(
+        lineHeight,
+        18,
+        34,
+        `${route.path} ${probe.name} line height left the Notion block contract`,
+        probe,
+      );
+    }
+    assertBetween(
+      marginBottom,
+      0,
+      40,
+      `${route.path} ${probe.name} margin rhythm left the Notion block contract`,
+      probe,
     );
   }
 }
@@ -522,22 +657,27 @@ async function runContracts(baseURL, options = {}) {
     const desktopPage = await desktop.newPage();
 
     for (const route of targets) {
-      await gotoWithFallback(desktopPage, `${baseURL}${route.path}?theme=light`, {
-        waitUntil: "networkidle",
-      });
-      await desktopPage.waitForSelector(`#main-content.${route.pageClass}`, {
-        timeout: 10_000,
-      });
-      await desktopPage.waitForTimeout(200);
+      try {
+        await gotoWithFallback(desktopPage, `${baseURL}${route.path}?theme=light`, {
+          waitUntil: "networkidle",
+        });
+        await desktopPage.waitForSelector(`#main-content.${route.pageClass}`, {
+          timeout: 10_000,
+        });
+        await desktopPage.waitForTimeout(200);
 
-      const contract = await readRouteContract(desktopPage, route.pageClass);
-      assertClassicRoute(route, contract);
-      if (route.kind === "home") assertHomeDesktop(await readHomeContract(desktopPage));
+        const contract = await readRouteContract(desktopPage, route.pageClass);
+        assertClassicRoute(route, contract);
+        if (route.kind === "home") assertHomeDesktop(await readHomeContract(desktopPage));
 
-      for (const item of CLASSIC_LINK_ICON_CONTRACT.filter(
-        (icon) => icon.route === route.path,
-      )) {
-        await assertIcon(desktopPage, item);
+        for (const item of CLASSIC_LINK_ICON_CONTRACT.filter(
+          (icon) => icon.route === route.path,
+        )) {
+          await assertIcon(desktopPage, item);
+        }
+      } catch (error) {
+        await saveFailureArtifact(desktopPage, `desktop-${route.path}`);
+        throw error;
       }
     }
     await assertSharedContentLinkBaseline(desktopPage, baseURL);
@@ -549,16 +689,21 @@ async function runContracts(baseURL, options = {}) {
     });
     const mobilePage = await mobile.newPage();
     for (const route of targets) {
-      await gotoWithFallback(mobilePage, `${baseURL}${route.path}?theme=light`, {
-        waitUntil: "networkidle",
-      });
-      await mobilePage.waitForSelector(`#main-content.${route.pageClass}`, {
-        timeout: 10_000,
-      });
-      await mobilePage.waitForTimeout(200);
-      const contract = await readRouteContract(mobilePage, route.pageClass);
-      assertMobileRoute(route, contract);
-      if (route.kind === "home") assertMobileHome(await readMobileHomeContract(mobilePage));
+      try {
+        await gotoWithFallback(mobilePage, `${baseURL}${route.path}?theme=light`, {
+          waitUntil: "networkidle",
+        });
+        await mobilePage.waitForSelector(`#main-content.${route.pageClass}`, {
+          timeout: 10_000,
+        });
+        await mobilePage.waitForTimeout(200);
+        const contract = await readRouteContract(mobilePage, route.pageClass);
+        assertMobileRoute(route, contract);
+        if (route.kind === "home") assertMobileHome(await readMobileHomeContract(mobilePage));
+      } catch (error) {
+        await saveFailureArtifact(mobilePage, `mobile-${route.path}`);
+        throw error;
+      }
     }
     await mobile.close();
   } finally {

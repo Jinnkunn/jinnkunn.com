@@ -8,6 +8,7 @@
     "build": "next build --webpack",
     "analyze": "ANALYZE=1 next build --webpack",
     "build:cf": "npm run build && node scripts/export-classic-css-assets.mjs && opennextjs-cloudflare build && node scripts/export-classic-css-assets.mjs && node scripts/export-static-shell-assets.mjs",
+    "build:cf:staging:content-overlay": "node scripts/build-cloudflare-content-overlay.mjs --env=staging",
     "start": "next start",
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.mjs'",

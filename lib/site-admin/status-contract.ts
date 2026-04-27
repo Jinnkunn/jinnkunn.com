@@ -232,6 +232,25 @@ function parseSource(
       out.pendingDeployReason = pendingDeployReason;
     }
   }
+  if ("codeSha" in value) out.codeSha = parseNullableString(value.codeSha);
+  if ("contentSha" in value) out.contentSha = parseNullableString(value.contentSha);
+  if ("contentBranch" in value) {
+    out.contentBranch = parseNullableString(value.contentBranch);
+  }
+  if ("deployableVersionReady" in value) {
+    const ready =
+      value.deployableVersionReady === null
+        ? null
+        : toBooleanOrNull(value.deployableVersionReady);
+    if (ready === null && value.deployableVersionReady !== null) return null;
+    out.deployableVersionReady = ready;
+  }
+  if ("deployableVersionReason" in value) {
+    out.deployableVersionReason = parseNullableString(value.deployableVersionReason);
+  }
+  if ("deployableVersionId" in value) {
+    out.deployableVersionId = parseNullableString(value.deployableVersionId);
+  }
   const error = toStringValue(value.error).trim();
   if (error) out.error = error;
   return out;

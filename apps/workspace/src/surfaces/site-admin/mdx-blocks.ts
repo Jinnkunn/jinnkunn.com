@@ -1,4 +1,4 @@
-import { normalizeInlineBoundaryWhitespace } from "./markdown-inline";
+import { normalizeInlineBoundaryWhitespace } from "./markdown-inline.ts";
 
 export type MdxBlockType =
   | "paragraph"

@@ -80,6 +80,12 @@ export interface StatusPayload {
     headSha?: string;
     pendingDeploy?: boolean;
     pendingDeployReason?: string;
+    codeSha?: string;
+    contentSha?: string;
+    contentBranch?: string;
+    deployableVersionReady?: boolean | null;
+    deployableVersionReason?: string;
+    deployableVersionId?: string;
   };
   env: {
     runtimeProvider?: string;

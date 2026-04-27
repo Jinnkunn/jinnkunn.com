@@ -82,6 +82,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const richTextInput = await read(
     "apps/workspace/src/surfaces/site-admin/RichTextInput.tsx",
   );
+  const richTextExtensions = await read(
+    "apps/workspace/src/surfaces/site-admin/rich-text-extensions.ts",
+  );
   const inlineLinkStyleMark = await read(
     "apps/workspace/src/surfaces/site-admin/inline-link-style-mark.ts",
   );
@@ -117,7 +120,8 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   // emitted from RichTextEditableBlock.
   assert.match(richTextBlock, /BlockEditorCommandMenu/);
   assert.match(richTextBlock, /mdx-document-slash-menu/);
-  assert.match(richTextInput, /InlineLinkStyle/);
+  assert.match(richTextInput, /createRichTextExtensions/);
+  assert.match(richTextExtensions, /InlineLinkStyle/);
   assert.match(inlineLinkStyleMark, /data-link-style/);
   assert.match(inlineLinkStyleMark, /data-link-icon/);
   assert.match(richTextBlock, /setInlineLinkStyle/);
@@ -174,10 +178,13 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
     /\.mdx-document-text-block\.ProseMirror a\s*\{\s*color: var\(--color-accent\)/,
     "Workspace editor links should not use a separate accent-link style",
   );
-  // Notion-style refactor: gutter handle column slimmed to 36px; slash menu
-  // uses a single-column flex layout (with grouped sections + icons) instead
-  // of the old 2-column grid.
-  assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*grid-template-columns: 36px minmax\(0, 1fr\);/);
+  // Notion-style refactor: gutter handles live outside the content column
+  // and reveal only on hover/focus/menu-open, so controls no longer compress
+  // the editable text.
+  assert.match(styles, /\.mdx-document-blocks\s*\{[\s\S]*padding: 2px 0 2px 36px;/);
+  assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*display: block;/);
+  assert.match(styles, /\.mdx-document-block__gutter\s*\{[\s\S]*position: absolute;/);
+  assert.match(styles, /\.mdx-document-block\[data-controls-open="true"\] \.mdx-document-block__gutter/);
   assert.match(styles, /\.mdx-document-slash-menu\s*\{[\s\S]*flex-direction: column;/);
   assert.match(styles, /\.block-editor-command__group-label\s*\{/);
   assert.match(blockEditor, /export interface BlockEditorCommand/);
