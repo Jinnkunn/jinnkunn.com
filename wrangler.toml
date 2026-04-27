@@ -43,10 +43,11 @@ name = "jinnkunn-site-staging"
 workers_dev = false
 
 [env.staging.vars]
-SITE_ADMIN_STORAGE = "db"
-# Kept for fallback / read-only compatibility while we transition the
-# write path off GitHub. Resolver only reads it when SITE_ADMIN_STORAGE
-# is "github", so this is a no-op today.
+# Reverted from "db" to "github" pending a D1 implementation of
+# lib/server/site-admin-source-store.ts. ContentStore (posts/pages/blob)
+# already has a db backend and the staging D1 is provisioned + populated,
+# but the higher-level structured-source store still throws on db mode.
+SITE_ADMIN_STORAGE = "github"
 SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
