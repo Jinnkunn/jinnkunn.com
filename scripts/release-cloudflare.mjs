@@ -140,9 +140,26 @@ function shouldPromoteStagingContent(args) {
   return args.env === "production" && readEnv("PROMOTE_STAGING_CONTENT") === "1";
 }
 
+// Env vars whose CLI-set value must survive loadProjectEnv({override:true}) —
+// i.e. the caller wants to opt into db mode (or a different DB env) for a
+// single release without editing .env. Without this, shell exports of these
+// keys get silently clobbered by .env defaults.
+const CLI_ENV_OVERRIDES = [
+  "SITE_ADMIN_STORAGE",
+  "SITE_ADMIN_DB_ENV",
+  "SITE_ADMIN_DB_LOCATION",
+];
+
 async function main() {
   const args = parseArgs();
+  const cliEnv = {};
+  for (const key of CLI_ENV_OVERRIDES) {
+    if (Object.prototype.hasOwnProperty.call(process.env, key)) {
+      cliEnv[key] = process.env[key];
+    }
+  }
   loadProjectEnv({ cwd: ROOT, override: true });
+  Object.assign(process.env, cliEnv);
   const git = readGitState();
   const promoteStagingContent = shouldPromoteStagingContent(args);
   // SITE_ADMIN_STORAGE=db makes D1 the source of truth, so the git-branch
