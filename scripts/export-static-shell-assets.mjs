@@ -7,6 +7,7 @@ const cwd = process.cwd();
 const appHtmlRoot = path.join(cwd, ".next", "server", "app");
 const outRoot = path.join(cwd, ".open-next", "assets", "__static");
 const manifestPath = path.join(outRoot, "routes.json");
+const protectedPolicyPath = path.join(outRoot, "protected-routes-policy.json");
 
 function walkHtmlFiles(rootDir) {
   const out = [];
@@ -49,6 +50,51 @@ function ensureCleanDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+function readJsonFile(relPath, fallback) {
+  const abs = path.join(cwd, relPath);
+  try {
+    return JSON.parse(fs.readFileSync(abs, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function compactId(value) {
+  return String(value || "").replace(/-/g, "").trim().toLowerCase();
+}
+
+function buildParentByPageId(routesManifest) {
+  const out = {};
+  const items = Array.isArray(routesManifest) ? routesManifest : [];
+  for (const item of items) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const id = compactId(item.id);
+    if (!id) continue;
+    out[id] = compactId(item.parentId);
+  }
+  return out;
+}
+
+function buildProtectedPolicy() {
+  const filesystemProtected = readJsonFile("content/filesystem/protected-routes.json", []);
+  const generatedProtected = readJsonFile("content/generated/protected-routes.json", []);
+  const rules = Array.isArray(filesystemProtected)
+    ? filesystemProtected
+    : Array.isArray(generatedProtected)
+      ? generatedProtected
+      : [];
+  const routesMap = readJsonFile("content/generated/routes.json", {});
+  const routesManifest = readJsonFile("content/generated/routes-manifest.json", []);
+  return {
+    generatedAt: new Date().toISOString(),
+    rules,
+    routesMap: routesMap && typeof routesMap === "object" && !Array.isArray(routesMap)
+      ? routesMap
+      : {},
+    parentByPageId: buildParentByPageId(routesManifest),
+  };
+}
+
 function main() {
   if (!fs.existsSync(appHtmlRoot)) {
     throw new Error(`Missing Next app html root: ${appHtmlRoot}`);
@@ -77,6 +123,11 @@ function main() {
     routes: uniqRoutes,
   };
   fs.writeFileSync(manifestPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  fs.writeFileSync(
+    protectedPolicyPath,
+    `${JSON.stringify(buildProtectedPolicy(), null, 2)}\n`,
+    "utf8",
+  );
 
   console.log(
     JSON.stringify(
@@ -85,6 +136,7 @@ function main() {
         copiedHtml: uniqRoutes.length,
         outDir: path.relative(cwd, outRoot),
         manifest: path.relative(cwd, manifestPath),
+        protectedPolicy: path.relative(cwd, protectedPolicyPath),
       },
       null,
       2,

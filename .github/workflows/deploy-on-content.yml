@@ -95,11 +95,16 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.sha }}
         run: |
-          # wrangler@latest started rejecting multi-word --message values
-          # (parses past the value and treats trailing tokens as positional
-          # args). Pass the SHA via env + a hyphen-joined single-token
-          # message so wrangler gets exactly one word per flag.
-          npx --yes wrangler@latest deploy --env "$TARGET_ENV" --message "auto-deploy-${DEPLOY_SHA}"
+          if [ "$TARGET_ENV" = "staging" ]; then
+            npm run release:staging -- --skip-checks --skip-build
+          else
+            # Production dispatch remains manual-only. Keep a single-token
+            # message, but include source metadata so /api/site-admin/status
+            # can associate the active Worker deployment with the source SHA.
+            npx --yes wrangler@latest deploy \
+              --env "$TARGET_ENV" \
+              --message "manual-deploy-source=${DEPLOY_SHA}-branch=${GITHUB_REF_NAME}"
+          fi
 
       - name: Smoke ping
         run: |
