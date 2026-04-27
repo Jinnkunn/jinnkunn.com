@@ -50,6 +50,17 @@ const value = 1;
     const source = "```js\nconst a = 1;\n\nconst b = 2;\n```\n";
     expect(serializeMdxBlocks(parseMdxBlocks(source))).toBe(source);
   });
+
+  it("normalizes spaces at inline color boundaries", () => {
+    const source =
+      '<span data-color="gray">focuses on </span>**Explainable AI**<span data-color="gray">, and </span>**Visualization**\n';
+    const expected =
+      '<span data-color="gray">focuses on</span> **Explainable AI**<span data-color="gray">, and</span> **Visualization**';
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("paragraph");
+    expect(blocks[0].text).toBe(expected);
+    expect(serializeMdxBlocks(blocks)).toBe(`${expected}\n`);
+  });
 });
 
 describe("legacy Notion HTML blocks", () => {

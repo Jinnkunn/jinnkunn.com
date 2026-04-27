@@ -38,7 +38,11 @@ import Underline from "@tiptap/extension-underline";
 
 import { InlineColor } from "./inline-color-mark";
 import { InlineLinkStyle } from "./inline-link-style-mark";
-import { inlineMarkdownToHtml, tiptapDocToMarkdown } from "./markdown-inline";
+import {
+  INLINE_MARKDOWN_PARSE_OPTIONS,
+  inlineMarkdownToHtml,
+  tiptapDocToMarkdown,
+} from "./markdown-inline";
 
 export interface RichTextInputHandle {
   /** Focus the contenteditable + place caret at end (or current selection
@@ -152,6 +156,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
     const editor = useEditor({
       extensions,
       content: inlineMarkdownToHtml(value),
+      parseOptions: INLINE_MARKDOWN_PARSE_OPTIONS,
       // Each EditorContent renders inside a contenteditable. We hand ProseMirror
       // an explicit class on its host element so existing block CSS still
       // applies. ariaLabel goes on the contenteditable for screen readers.
@@ -189,7 +194,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       // Second arg `false` skips firing onUpdate so we don't re-emit and
       // trigger an infinite loop. (TipTap v2 signature:
       // setContent(content, emitUpdate?, parseOptions?))
-      editor.commands.setContent(inlineMarkdownToHtml(value), false);
+      editor.commands.setContent(
+        inlineMarkdownToHtml(value),
+        false,
+        INLINE_MARKDOWN_PARSE_OPTIONS,
+      );
     }, [editor, value]);
 
     // Fire onEditorReady when the editor becomes available (or is

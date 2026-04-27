@@ -18,9 +18,33 @@
 // reference-style links). The Source mode is the escape hatch for power users.
 
 import type { JSONContent } from "@tiptap/core";
+import type { ParseOptions } from "@tiptap/pm/model";
 
 const PLACEHOLDER_PREFIX = "%%MDXINLINE";
 const PLACEHOLDER_SUFFIX = "%%";
+const INLINE_MARK_SPAN_RE = /<span\b([^>]*)>([\s\S]*?)<\/span>/gi;
+const INLINE_MARK_ATTR_RE = /\bdata-(?:color|bg|link-style|link-icon)\b/i;
+
+// TipTap/ProseMirror's default DOM parser normalizes away whitespace-only
+// text nodes between inline elements. Our generated editor HTML intentionally
+// uses those nodes for markdown boundaries such as:
+// `<span data-color="gray">on</span> <strong>Explainable AI</strong>`.
+// Keep this parse contract shared by the initial editor mount and setContent.
+export const INLINE_MARKDOWN_PARSE_OPTIONS = {
+  preserveWhitespace: "full",
+} as const satisfies ParseOptions;
+
+export function normalizeInlineBoundaryWhitespace(input: string): string {
+  return input.replace(INLINE_MARK_SPAN_RE, (match, rawAttrs: string, inner: string) => {
+    if (!INLINE_MARK_ATTR_RE.test(rawAttrs)) return match;
+    const leading = /^\s+/.exec(inner)?.[0] ?? "";
+    const trailing = /\s+$/.exec(inner)?.[0] ?? "";
+    if (!leading && !trailing) return match;
+    const body = inner.slice(leading.length, inner.length - trailing.length);
+    if (!body) return match;
+    return `${leading}<span${rawAttrs}>${body}</span>${trailing}`;
+  });
+}
 
 function escapeHtml(input: string): string {
   return input
@@ -73,6 +97,11 @@ export function inlineMarkdownToHtml(input: string): string {
     codeSpans.push(inner);
     return `${PLACEHOLDER_PREFIX}${idx}${PLACEHOLDER_SUFFIX}`;
   });
+
+  // Step 1.5 — canonicalize legacy editor output that stored boundary
+  // spaces inside inline mark spans. The move must happen after code
+  // extraction so code examples containing `<span ...>` stay literal.
+  text = normalizeInlineBoundaryWhitespace(text);
 
   // Step 2 — extract passthrough HTML tags (`<u>`, `</u>`, `<span ...>`,
   // `</span>`) BEFORE the escape pass so their `<` / `>` / `"` chars

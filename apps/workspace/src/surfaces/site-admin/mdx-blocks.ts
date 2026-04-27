@@ -1,3 +1,5 @@
+import { normalizeInlineBoundaryWhitespace } from "./markdown-inline";
+
 export type MdxBlockType =
   | "paragraph"
   | "heading"
@@ -513,7 +515,7 @@ function notionColorFromClassName(className: string, prefix: "color" | "bg"): Md
 }
 
 function legacyInlineHtmlToMarkdown(input: string): string {
-  let text = input.replace(LEGACY_HEADING_ANCHOR_RE, "");
+  let text = normalizeInlineBoundaryWhitespace(input).replace(LEGACY_HEADING_ANCHOR_RE, "");
   text = text.replace(/<br\s*\/?>/gi, "\n");
   text = text.replace(/<span\b([^>]*)\/>/gi, "");
   text = text.replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_match, rawAttrs: string, inner: string) => {
