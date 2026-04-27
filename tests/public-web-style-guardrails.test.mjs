@@ -383,33 +383,51 @@ test("public-web-style-guardrails: classic list page CSS does not reintroduce ca
   }
 });
 
-test("public-web-style-guardrails: homepage classic link icons stay part of the contract", async () => {
-  const homeCss = await read("app/(classic)/home.css");
+test("public-web-style-guardrails: classic icon links are explicit variants of Notion links", async () => {
   const publicInlineCss = await read("public/styles/super-inline.css");
   const iconContract = await read("scripts/_lib/classic-link-icons.mjs");
+  const blogIndexView = await read("components/blog-index/blog-index-view.tsx");
 
-  const homepageCssHrefs = [
-    'href="/blog"',
-    'href="/chen"',
-    'href="https://twitter.com/_jinnkunn"',
-    'href="https://www.linkedin.com/in/jinkun-chen/"',
-  ];
-  const iconContractHrefs = [
-    ...homepageCssHrefs,
-    'href="https://www.dal.ca/"',
+  const explicitIconSelectors = [
+    'span[data-link-style="icon"] > a[href="/blog"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href="/chen"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href="https://twitter.com/_jinnkunn"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href="https://www.dal.ca/"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href*="researchgate.net"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href^="https://orcid.org/"].notion-link.link:before',
+    'span[data-link-style="icon"] > a[href*="semanticscholar.org/"].notion-link.link:before',
   ];
 
-  for (const href of homepageCssHrefs) {
-    assertIncludes(homeCss, href, "Homepage CSS link icon selectors");
-  }
-  for (const href of iconContractHrefs) {
-    assertIncludes(publicInlineCss, href, "Public inline icon selectors");
+  assertIncludes(publicInlineCss, "a.notion-link.link {", "Shared Notion link style");
+  assertIncludes(publicInlineCss, "background-image:", "Shared Notion link style");
+  assertIncludes(publicInlineCss, "opacity: 1;", "Shared Notion link style");
+  assertIncludes(
+    publicInlineCss,
+    "Icon-prefixed links: only the icon slot differs",
+    "Inline icon link contract",
+  );
+  assertIncludes(blogIndexView, 'data-link-style="icon"', "Blog RSS link");
+  assert.doesNotMatch(
+    publicInlineCss,
+    /(^|,)\s*a\[href[^\n,{]*\.notion-link\.link::?before/m,
+    "Public icon CSS should not turn links into icons by URL alone",
+  );
+  assert.doesNotMatch(
+    iconContract,
+    /selector:\s*['"]a\[href/,
+    "Runtime icon contract should query explicit icon links, not every matching URL",
+  );
+
+  for (const selector of explicitIconSelectors) {
+    assertIncludes(publicInlineCss, selector, "Explicit inline icon selectors");
     assertIncludes(
-      publicInlineCss,
-      `span[data-link-style="icon"] > a[${href}].notion-link.link:before`,
-      "Explicit inline icon selectors",
+      iconContract,
+      selector.replace(":before", ""),
+      "Classic link icon runtime contract",
     );
-    assertIncludes(iconContract, href, "Classic link icon runtime contract");
   }
 });
 

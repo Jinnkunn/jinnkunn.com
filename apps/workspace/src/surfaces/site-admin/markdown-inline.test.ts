@@ -55,6 +55,24 @@ describe("inlineMarkdownToHtml", () => {
     );
   });
 
+  it("does not treat underscores inside links as italic delimiters", () => {
+    expect(
+      inlineMarkdownToHtml(
+        '<span data-link-style="icon">[@_jinnkunn](https://twitter.com/_jinnkunn)</span>',
+      ),
+    ).toBe(
+      '<p><span data-link-style="icon"><a href="https://twitter.com/_jinnkunn">@_jinnkunn</a></span></p>',
+    );
+  });
+
+  it("keeps bold link labels inside the link instead of leaking markdown stars", () => {
+    expect(
+      inlineMarkdownToHtml("**a co-founder of [Exorcat Technologies Ltd.](https://exorcat.com/)**"),
+    ).toBe(
+      '<p><strong>a co-founder of <a href="https://exorcat.com/">Exorcat Technologies Ltd.</a></strong></p>',
+    );
+  });
+
   it("preserves underscores in mid-word identifiers (no italic)", () => {
     expect(inlineMarkdownToHtml("foo_bar_baz")).toBe("<p>foo_bar_baz</p>");
   });
@@ -91,14 +109,27 @@ describe("tiptapDocToMarkdown", () => {
     expect(tiptapDocToMarkdown(doc)).toBe("[text](https://x)");
   });
 
-  it("nests bold inside link as outermost mark", () => {
+  it("groups bold outside a bold link to avoid split markdown delimiters", () => {
     const doc = makeDoc(
       makeText("bold", [
         { type: "bold" },
         { type: "link", attrs: { href: "/y" } },
       ]),
     );
-    expect(tiptapDocToMarkdown(doc)).toBe("[**bold**](/y)");
+    expect(tiptapDocToMarkdown(doc)).toBe("**[bold](/y)**");
+  });
+
+  it("keeps a continuous bold run across adjacent text and links", () => {
+    const doc = makeDoc(
+      makeText("a co-founder of ", [{ type: "bold" }]),
+      makeText("Exorcat Technologies Ltd.", [
+        { type: "bold" },
+        { type: "link", attrs: { href: "https://exorcat.com/" } },
+      ]),
+    );
+    expect(tiptapDocToMarkdown(doc)).toBe(
+      "**a co-founder of [Exorcat Technologies Ltd.](https://exorcat.com/)**",
+    );
   });
 
   it("hardBreak becomes a newline", () => {
