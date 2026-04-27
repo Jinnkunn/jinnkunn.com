@@ -69,6 +69,40 @@ const CLASSIC_ROUTES = [
   },
 ];
 
+const BLOG_RSS_LINK_BASELINE = {
+  path: "/blog",
+  name: "Blog RSS",
+  selector: 'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link',
+  icon: true,
+};
+
+const CONTENT_LINK_STYLE_SAMPLES = [
+  {
+    path: "/",
+    name: "Home regular link",
+    selector: 'a[href="https://exorcat.com/"].notion-link.link',
+    icon: false,
+  },
+  {
+    path: "/",
+    name: "Home icon link",
+    selector: 'span[data-link-style="icon"] > a[href="/blog"].notion-link.link',
+    icon: true,
+  },
+  {
+    path: "/publications",
+    name: "Publications icon link",
+    selector: 'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link',
+    icon: true,
+  },
+  {
+    path: "/teaching",
+    name: "Teaching icon link",
+    selector: 'span[data-link-style="icon"] > a[href="/teaching/archive"].notion-link.link',
+    icon: true,
+  },
+];
+
 function assert(condition, message, details = {}) {
   if (condition) return;
   const suffix = Object.keys(details).length
@@ -384,6 +418,95 @@ async function assertIcon(page, item) {
   );
 }
 
+async function readLinkStyle(page, selector) {
+  return await page.evaluate((targetSelector) => {
+    const node = document.querySelector(targetSelector);
+    if (!node) return null;
+    const style = window.getComputedStyle(node);
+    const before = window.getComputedStyle(node, "::before");
+    return {
+      color: style.color,
+      opacity: style.opacity,
+      backgroundImage: style.backgroundImage,
+      backgroundSize: style.backgroundSize,
+      textDecorationColor: style.textDecorationColor,
+      textDecorationLine: style.textDecorationLine,
+      before: {
+        content: before.content,
+        display: before.display,
+        backgroundImage: before.backgroundImage,
+      },
+    };
+  }, selector);
+}
+
+async function readLinkInteraction(page, item) {
+  await page.waitForSelector(item.selector, { timeout: 10_000 });
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(80);
+  const normal = await readLinkStyle(page, item.selector);
+  await page.hover(item.selector);
+  await page.waitForTimeout(700);
+  const hover = await readLinkStyle(page, item.selector);
+  await page.mouse.move(1, 1);
+  return { normal, hover };
+}
+
+function assertContentLinkBaseline(item, state) {
+  assert(state.normal, `${item.name} link was not found`, item);
+  assert(state.hover, `${item.name} hover state was not readable`, item);
+  assert(
+    state.normal.opacity === "0.7",
+    `${item.name} default opacity drifted from the Blog RSS baseline`,
+    state.normal,
+  );
+  assert(
+    state.hover.opacity === "1",
+    `${item.name} hover opacity drifted from the Blog RSS baseline`,
+    state.hover,
+  );
+  assert(
+    String(state.normal.textDecorationLine || "").includes("underline"),
+    `${item.name} underline drifted from the Blog RSS baseline`,
+    state.normal,
+  );
+  assert(
+    String(state.normal.backgroundImage || "").includes("linear-gradient"),
+    `${item.name} ink-rise highlight disappeared`,
+    state.normal,
+  );
+  assert(
+    state.hover.backgroundSize !== state.normal.backgroundSize,
+    `${item.name} hover highlight animation no longer expands`,
+    { normal: state.normal.backgroundSize, hover: state.hover.backgroundSize },
+  );
+  if (item.icon) {
+    assert(
+      state.normal.before.content === '""' &&
+        state.normal.before.display !== "none" &&
+        state.normal.before.backgroundImage !== "none",
+      `${item.name} icon link lost its icon slot`,
+      state.normal.before,
+    );
+  }
+}
+
+async function assertSharedContentLinkBaseline(page, baseURL) {
+  await gotoWithFallback(page, `${baseURL}${BLOG_RSS_LINK_BASELINE.path}?theme=light`, {
+    waitUntil: "networkidle",
+  });
+  const baseline = await readLinkInteraction(page, BLOG_RSS_LINK_BASELINE);
+  assertContentLinkBaseline(BLOG_RSS_LINK_BASELINE, baseline);
+
+  for (const item of CONTENT_LINK_STYLE_SAMPLES) {
+    await gotoWithFallback(page, `${baseURL}${item.path}?theme=light`, {
+      waitUntil: "networkidle",
+    });
+    const state = await readLinkInteraction(page, item);
+    assertContentLinkBaseline(item, state);
+  }
+}
+
 async function runContracts(baseURL, options = {}) {
   const targets = routeTargets(options);
   const browser = await launchBrowser();
@@ -413,6 +536,7 @@ async function runContracts(baseURL, options = {}) {
         await assertIcon(desktopPage, item);
       }
     }
+    await assertSharedContentLinkBaseline(desktopPage, baseURL);
     await desktop.close();
 
     const mobile = await browser.newContext({

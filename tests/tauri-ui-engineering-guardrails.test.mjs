@@ -138,6 +138,11 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   );
   assert.match(
     styles,
+    /\.mdx-document-text-block\.ProseMirror a,[\s\S]*opacity: 0\.7;/,
+    "Workspace editor links should preserve the Blog RSS default opacity baseline",
+  );
+  assert.match(
+    styles,
     /span\[data-link-style="icon"\] > a\.notion-link\.link,\s*\na\[data-link-style="icon"\]\.notion-link\.link/,
     "Workspace preview icon links should only add the icon slot to Notion links",
   );

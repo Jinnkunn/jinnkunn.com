@@ -403,7 +403,8 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
 
   assertIncludes(publicInlineCss, "a.notion-link.link {", "Shared Notion link style");
   assertIncludes(publicInlineCss, "background-image:", "Shared Notion link style");
-  assertIncludes(publicInlineCss, "opacity: 1;", "Shared Notion link style");
+  assertIncludes(publicInlineCss, "opacity: 0.7;", "Shared Notion link default state");
+  assertIncludes(publicInlineCss, "opacity: 1;", "Shared Notion link hover state");
   assertIncludes(
     publicInlineCss,
     "Icon-prefixed links: only the icon slot differs",
@@ -503,6 +504,16 @@ test("public-web-style-guardrails: classic body copy keeps production gray tone"
 test("public-web-style-guardrails: MDX heading links inherit heading color", async () => {
   const postsCss = await read("app/(classic)/posts-mdx.css");
 
+  assert.doesNotMatch(
+    postsCss,
+    /\.mdx-post__body\s+:is\(p,\s*li,\s*blockquote\)\s+a\.notion-link\.link/,
+    "MDX body links should inherit the shared Blog RSS link baseline",
+  );
+  assert.doesNotMatch(
+    postsCss,
+    /\.mdx-post__body\s+:is\(strong,\s*b\)\s+a\.notion-link\.link/,
+    "Bold MDX links should inherit the shared Blog RSS link baseline",
+  );
   assertIncludes(
     postsCss,
     ".mdx-post__body :is(h1, h2, h3, h4, h5, h6) a",

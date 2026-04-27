@@ -112,14 +112,6 @@
   word-break: break-word;
 }
 
-.mdx-post__body :is(p, li, blockquote) a.notion-link.link {
-  color: var(--color-text-default-light);
-}
-
-.mdx-post__body :is(strong, b) a.notion-link.link {
-  color: var(--color-text-default);
-}
-
 .mdx-post__body :is(h1, h2, h3, h4, h5, h6) a {
   color: inherit;
   padding: 0;
