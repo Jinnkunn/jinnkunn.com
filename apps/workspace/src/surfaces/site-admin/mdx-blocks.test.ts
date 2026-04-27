@@ -52,6 +52,67 @@ const value = 1;
   });
 });
 
+describe("legacy Notion HTML blocks", () => {
+  it("converts old Notion JSX into editable visual blocks", () => {
+    const source = `<span className="notion-heading__anchor" />
+<h1 className="notion-heading notion-semantic-string">Foundations/Data Science</h1>
+
+<hr />
+
+<blockquote className="notion-quote">
+
+<span className="highlighted-color color-gray">2024/2025 Fall<br />Faculty of Computer Science<br />Dalhousie University</span>
+
+</blockquote>
+
+<details>
+<summary><em><strong>In Memoriam: Dr. Luis Torgo</strong></em></summary>
+
+<p className="notion-text notion-text__content notion-semantic-string"><span className="highlighted-background bg-yellow"><strong><a href="https://dal.brightspace.com/" className="notion-link link" target="_blank" rel="noopener noreferrer">BrightSpace</a></strong></span></p>
+
+</details>
+`;
+    const blocks = parseMdxBlocks(source);
+
+    expect(blocks.map((block) => block.type)).toEqual([
+      "heading",
+      "divider",
+      "quote",
+      "toggle",
+    ]);
+    expect(blocks[0].level).toBe(1);
+    expect(blocks[0].text).toBe("Foundations/Data Science");
+    expect(blocks[2].quoteClassName).toBe("notion-quote");
+    expect(blocks[2].text).toBe(
+      '<span data-color="gray">2024/2025 Fall\nFaculty of Computer Science\nDalhousie University</span>',
+    );
+    expect(blocks[3].text).toBe("***In Memoriam: Dr. Luis Torgo***");
+    expect(blocks[3].children?.[0].type).toBe("paragraph");
+    expect(blocks[3].children?.[0].text).toBe(
+      '<span data-bg="yellow">**[BrightSpace](https://dal.brightspace.com/)**</span>',
+    );
+  });
+
+  it("serializes converted legacy blocks as clean editor MDX", () => {
+    const source = `<h2 className="notion-heading">Schedule</h2>
+
+<hr />
+
+<p className="notion-text"><strong><a href="/teaching">Teaching</a></strong></p>
+`;
+    expect(serializeMdxBlocks(parseMdxBlocks(source))).toBe(
+      "## Schedule\n\n---\n\n**[Teaching](/teaching)**\n",
+    );
+  });
+
+  it("does not swallow custom JSX components that contain inline tags", () => {
+    const source = "<CustomCallout><strong>Important</strong></CustomCallout>\n";
+    const blocks = parseMdxBlocks(source);
+    expect(blocks[0].type).toBe("raw");
+    expect(serializeMdxBlocks(blocks)).toBe(source);
+  });
+});
+
 describe("todo blocks", () => {
   it("round-trips a mixed checked / unchecked list", () => {
     const source = "- [ ] write tests\n- [x] ship feature\n- [ ] update docs\n";

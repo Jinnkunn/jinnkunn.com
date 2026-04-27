@@ -474,6 +474,12 @@ const TABLE_DIVIDER_RE = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|\s*$/;
 // authors freely use **bold**, links, etc. Closed by `</blockquote>`.
 const BLOCKQUOTE_OPEN_RE = /^<blockquote(?:\s+className="([^"]*)")?\s*>$/;
 const SELF_CLOSING_TAG_RE = /^<(\w+)([\s\S]*?)\/>$/;
+const LEGACY_HEADING_ANCHOR_RE = /<span\b[^>]*\bnotion-heading__anchor\b[^>]*\/>\s*/gi;
+const LEGACY_HEADING_RE = /^(?:<span\b[^>]*\bnotion-heading__anchor\b[^>]*\/>\s*)?<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>$/i;
+const LEGACY_PARAGRAPH_RE = /^<p\b([^>]*)>([\s\S]*?)<\/p>$/i;
+const LEGACY_HR_RE = /^<hr\s*\/?>$/i;
+const LEGACY_INLINE_TAG_RE = /<(?:span|strong|b|em|i|a|u|code|br)\b/i;
+const JSX_COMPONENT_TAG_RE = /<\/?[A-Z][A-Za-z0-9.]*(?:\s|\/?>)/;
 // JSX attribute values: double-quoted string, single-quoted string, or
 // `{N}` numeric literal. Single-quoted form lets data-bearing attributes
 // (e.g. JSON arrays) embed double-quotes without escaping.
@@ -486,6 +492,102 @@ function parseAttrs(raw: string): Record<string, string> {
     out[name] = match[2] ?? match[3] ?? match[4] ?? "";
   }
   return out;
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function notionColorFromClassName(className: string, prefix: "color" | "bg"): MdxBlockColor | "" {
+  const match = new RegExp(`(?:^|\\s)${prefix}-(gray|brown|orange|yellow|green|blue|purple|pink|red)(?:\\s|$)`).exec(
+    className,
+  );
+  return match ? (match[1] as MdxBlockColor) : "";
+}
+
+function legacyInlineHtmlToMarkdown(input: string): string {
+  let text = input.replace(LEGACY_HEADING_ANCHOR_RE, "");
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<span\b([^>]*)\/>/gi, "");
+  text = text.replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_match, rawAttrs: string, inner: string) => {
+    const attrs = parseAttrs(rawAttrs);
+    const className = attrs.className || attrs.class || "";
+    const bg = notionColorFromClassName(className, "bg");
+    const fg = notionColorFromClassName(className, "color");
+    const body = legacyInlineHtmlToMarkdown(inner);
+    if (bg) return `<span data-bg="${bg}">${body}</span>`;
+    if (fg) return `<span data-color="${fg}">${body}</span>`;
+    return body;
+  });
+  text = text.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (_match, rawAttrs: string, inner: string) => {
+    const attrs = parseAttrs(rawAttrs);
+    const href = attrs.href || "";
+    const label = legacyInlineHtmlToMarkdown(inner);
+    return href ? `[${label}](${href})` : label;
+  });
+  text = text.replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, (_match, inner: string) => {
+    return `**${legacyInlineHtmlToMarkdown(inner)}**`;
+  });
+  text = text.replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, (_match, inner: string) => {
+    return `*${legacyInlineHtmlToMarkdown(inner)}*`;
+  });
+  text = text.replace(/<u\b[^>]*>([\s\S]*?)<\/u>/gi, (_match, inner: string) => {
+    return `<u>${legacyInlineHtmlToMarkdown(inner)}</u>`;
+  });
+  text = text.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_match, inner: string) => {
+    return `\`${decodeHtmlEntities(inner)}\``;
+  });
+  text = text.replace(/<\/?[^>]+>/g, (tag) => {
+    const normalized = tag.toLowerCase();
+    if (/^<span\b[^>]*\bdata-(?:bg|color)=/i.test(tag) || normalized === "</span>") {
+      return tag;
+    }
+    if (/^<u\b/i.test(tag) || normalized === "</u>") {
+      return tag;
+    }
+    return "";
+  });
+  return decodeHtmlEntities(text).replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n").trim();
+}
+
+function parseLegacyHeading(paragraph: string): MdxBlock | null {
+  const match = LEGACY_HEADING_RE.exec(paragraph.trim());
+  if (!match) return null;
+  return makeBlock("heading", {
+    level: Number(match[1]) as 1 | 2 | 3,
+    text: legacyInlineHtmlToMarkdown(match[2] ?? ""),
+  });
+}
+
+function parseLegacyParagraph(paragraph: string): MdxBlock | null {
+  const match = LEGACY_PARAGRAPH_RE.exec(paragraph.trim());
+  if (!match) return null;
+  return makeBlock("paragraph", {
+    text: legacyInlineHtmlToMarkdown(match[2] ?? ""),
+  });
+}
+
+function parseLegacyInlineParagraph(paragraph: string): MdxBlock | null {
+  const trimmed = paragraph.trim();
+  if (JSX_COMPONENT_TAG_RE.test(trimmed)) return null;
+  if (!LEGACY_INLINE_TAG_RE.test(trimmed)) return null;
+  const text = legacyInlineHtmlToMarkdown(trimmed);
+  if (!text) return null;
+  return makeBlock("paragraph", { text });
+}
+
+function normalizeParagraphText(paragraph: string): string {
+  if (!LEGACY_INLINE_TAG_RE.test(paragraph) || JSX_COMPONENT_TAG_RE.test(paragraph)) {
+    return paragraph;
+  }
+  return legacyInlineHtmlToMarkdown(paragraph);
 }
 
 /** Decode a JSON-attribute value into a typed link items array. Bad
@@ -682,7 +784,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       const firstInner = innerLines[bodyStart]?.trim() ?? "";
       const summaryMatch = SUMMARY_RE.exec(firstInner);
       if (summaryMatch) {
-        summaryText = summaryMatch[1];
+        summaryText = legacyInlineHtmlToMarkdown(summaryMatch[1]);
         bodyStart += 1;
         while (bodyStart < innerLines.length && !innerLines[bodyStart]?.trim()) {
           bodyStart += 1;
@@ -890,8 +992,20 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
     }
     const paragraph = paragraphLines.join("\n").trim();
 
-    if (/^---+$/.test(paragraph)) {
+    if (/^---+$/.test(paragraph) || LEGACY_HR_RE.test(paragraph)) {
       pushBlock(makeBlock("divider"));
+      continue;
+    }
+
+    const legacyHeading = parseLegacyHeading(paragraph);
+    if (legacyHeading) {
+      pushBlock(legacyHeading);
+      continue;
+    }
+
+    const legacyParagraph = parseLegacyParagraph(paragraph);
+    if (legacyParagraph) {
+      pushBlock(legacyParagraph);
       continue;
     }
 
@@ -928,7 +1042,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       pushBlock(
         makeBlock("heading", {
           level: headingMatch[1].length as 1 | 2 | 3,
-          text: headingMatch[2],
+          text: legacyInlineHtmlToMarkdown(headingMatch[2]),
         }),
       );
       continue;
@@ -940,7 +1054,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
     if (todoMatches.every(Boolean)) {
       const items = todoMatches.map((match) => ({
         checked: (match?.[1] ?? "").toLowerCase() === "x",
-        text: match?.[2] ?? "",
+        text: legacyInlineHtmlToMarkdown(match?.[2] ?? ""),
       }));
       const checkedLines = items
         .map((item, idx) => (item.checked ? idx : -1))
@@ -970,7 +1084,9 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
           makeBlock("list", {
             listStyle: numbered ? "numbered" : "bulleted",
             markers: listMatches.map((match) => match?.[1] ?? "- "),
-            text: listMatches.map((match) => match?.[2] ?? "").join("\n"),
+            text: listMatches
+              .map((match) => legacyInlineHtmlToMarkdown(match?.[2] ?? ""))
+              .join("\n"),
           }),
         );
         continue;
@@ -989,7 +1105,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       }
       pushBlock(
         makeBlock("quote", {
-          text: quoteLines.join("\n"),
+          text: legacyInlineHtmlToMarkdown(quoteLines.join("\n")),
         }),
       );
       continue;
@@ -1021,7 +1137,9 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         // Strip the leading + trailing blank lines MDX requires
         // around the JSX-wrapped markdown body so they don't show up
         // as edit-time padding.
-        const body = innerLines.join("\n").replace(/^\n+|\n+$/g, "");
+        const body = legacyInlineHtmlToMarkdown(
+          innerLines.join("\n").replace(/^\n+|\n+$/g, ""),
+        );
         pushBlock(
           makeBlock("quote", {
             text: body,
@@ -1276,12 +1394,18 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       }
     }
 
+    const legacyInlineParagraph = parseLegacyInlineParagraph(paragraph);
+    if (legacyInlineParagraph) {
+      pushBlock(legacyInlineParagraph);
+      continue;
+    }
+
     if (isRawMdxParagraph(paragraphLines)) {
       pushBlock(makeBlock("raw", { text: paragraph }));
       continue;
     }
 
-    pushBlock(makeBlock("paragraph", { text: paragraph }));
+    pushBlock(makeBlock("paragraph", { text: normalizeParagraphText(paragraph) }));
   }
 
   if (blocks.length > 0) return blocks;
