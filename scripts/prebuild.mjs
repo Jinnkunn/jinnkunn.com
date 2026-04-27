@@ -95,6 +95,34 @@ function writeComponentSourceManifest() {
   });
 }
 
+function resolveMode() {
+  // Explicit env always wins. When unset, infer `db` from
+  // SITE_ADMIN_STORAGE=db so users only need one knob to flip the whole
+  // content pipeline; everything else falls through to the legacy `stubs`
+  // default.
+  const explicit = String(process.env.CONTENT_SYNC_MODE || "").trim().toLowerCase();
+  if (explicit === "notion" || explicit === "stubs" || explicit === "db") {
+    return explicit;
+  }
+  const storage = String(process.env.SITE_ADMIN_STORAGE || "").trim().toLowerCase();
+  if (storage === "db") return "db";
+  return "stubs";
+}
+
+async function dumpFromD1() {
+  // Pass through the deploy env + location so the same prebuild can target
+  // dev / staging / production D1 instances. Defaults (no env, --remote)
+  // match `npm run build` from a developer machine.
+  const args = ["scripts/dump-content-from-db.mjs"];
+  const envName = String(process.env.SITE_ADMIN_DB_ENV || "").trim();
+  if (envName) args.push(`--env=${envName}`);
+  const location = String(process.env.SITE_ADMIN_DB_LOCATION || "remote").trim().toLowerCase();
+  if (location === "local") args.push("--local");
+  else args.push("--remote");
+  args.push("--quiet");
+  await run("node", args);
+}
+
 async function main() {
   const skipSync = process.env.SKIP_SYNC === "1" || process.env.SKIP_SYNC === "true";
   if (skipSync) {
@@ -102,9 +130,7 @@ async function main() {
     return;
   }
 
-  const modeRaw = String(process.env.CONTENT_SYNC_MODE || "stubs").trim().toLowerCase();
-  const mode =
-    modeRaw === "notion" || modeRaw === "stubs" ? modeRaw : "stubs";
+  const mode = resolveMode();
 
   if (mode === "notion") {
     const hasNotion =
@@ -116,6 +142,14 @@ async function main() {
     }
     console.log("[prebuild] CONTENT_SYNC_MODE=notion; running Notion sync...");
     await run("npm", ["run", "sync:notion"]);
+    ensureGeneratedStubs();
+    writeComponentSourceManifest();
+    return;
+  }
+
+  if (mode === "db") {
+    console.log("[prebuild] CONTENT_SYNC_MODE=db; dumping content from D1...");
+    await dumpFromD1();
     ensureGeneratedStubs();
     writeComponentSourceManifest();
     return;
