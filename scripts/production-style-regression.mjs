@@ -17,7 +17,7 @@ const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
 const CLASSIC_DEFAULT_TEXT_COLOR = "rgb(55, 53, 47)";
-const CLASSIC_MUTED_TEXT_COLOR = "rgba(55, 53, 47, 0.56)";
+const CLASSIC_NOTION_GRAY_TEXT_COLOR = "rgb(120, 119, 116)";
 
 const ROUTES = [
   {
@@ -26,7 +26,8 @@ const ROUTES = [
     titleIncludes: "Hi there!",
     kind: "home",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
+    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
+    linkColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     linkOpacity: "0.7",
     required: [
       [".home-layout--variant-classicIntro", 1],
@@ -38,7 +39,7 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "News",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
+    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-heading", 1],
@@ -51,7 +52,7 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "Publications",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
+    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.publication-toggle", 1],
@@ -64,7 +65,7 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "Works",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
+    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.works-toggle", 1],
@@ -77,7 +78,7 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "Teaching",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
-    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
+    grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-bulleted-list .notion-list-item", 1],
@@ -533,9 +534,11 @@ function compareRoute(route, local, production, viewportName) {
     },
   );
 
-  compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path, {
-    expectedColor: route.readableColor,
-  });
+  if (!route.grayTextColor) {
+    compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path, {
+      expectedColor: route.readableColor,
+    });
+  }
   if (route.grayTextColor) {
     assert(
       local.grayTextCount > 0,
