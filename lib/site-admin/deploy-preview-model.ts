@@ -1,4 +1,5 @@
 import type {
+  SiteAdminDeployPreviewComponentChange,
   SiteAdminDeployPreviewPayload,
   SiteAdminDeployPreviewProtectedChange,
   SiteAdminDeployPreviewRedirectChange,
@@ -29,6 +30,7 @@ export type BuildDeployPreviewDiffInput = {
   liveOverrides: Record<string, string>;
   currentProtected: DeployPreviewProtectedEntry[];
   liveProtected: DeployPreviewProtectedEntry[];
+  componentChanges?: SiteAdminDeployPreviewComponentChange[];
 };
 
 type DeployPreviewDiff = Omit<SiteAdminDeployPreviewPayload, "ok" | "generatedAt">;
@@ -123,6 +125,12 @@ function sortProtectedChanges(items: SiteAdminDeployPreviewProtectedChange[]): S
     if (byPath !== 0) return byPath;
     return a.pageId.localeCompare(b.pageId);
   });
+}
+
+function sortComponentChanges(
+  items: SiteAdminDeployPreviewComponentChange[],
+): SiteAdminDeployPreviewComponentChange[] {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function mergeRedirectSource(
@@ -290,12 +298,14 @@ export function buildDeployPreviewDiff(input: BuildDeployPreviewDiffInput): Depl
   const protectedAdded = protectedSorted.filter((it) => it.kind === "added").length;
   const protectedRemoved = protectedSorted.filter((it) => it.kind === "removed").length;
   const protectedChanged = protectedSorted.filter((it) => it.kind === "changed").length;
+  const componentChanges = sortComponentChanges(input.componentChanges ?? []);
 
   const hasChanges =
     pagesAdded.length > 0 ||
     pagesRemoved.length > 0 ||
     redirects.length > 0 ||
-    protectedSorted.length > 0;
+    protectedSorted.length > 0 ||
+    componentChanges.length > 0;
 
   return {
     hasChanges,
@@ -308,12 +318,14 @@ export function buildDeployPreviewDiff(input: BuildDeployPreviewDiffInput): Depl
       protectedAdded,
       protectedRemoved,
       protectedChanged,
+      componentsChanged: componentChanges.length,
     },
     samples: {
       pagesAdded: pagesAdded.slice(0, 12),
       pagesRemoved: pagesRemoved.slice(0, 12),
       redirects: redirects.slice(0, 16),
       protected: protectedSorted.slice(0, 16),
+      components: componentChanges.slice(0, 16),
     },
   };
 }

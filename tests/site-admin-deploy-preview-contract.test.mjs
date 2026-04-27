@@ -20,6 +20,7 @@ test("site-admin-deploy-preview-contract: parses valid success payload", () => {
       protectedAdded: 1,
       protectedRemoved: 0,
       protectedChanged: 0,
+      componentsChanged: 1,
     },
     samples: {
       pagesAdded: ["/new"],
@@ -43,6 +44,15 @@ test("site-admin-deploy-preview-contract: parses valid success payload", () => {
           auth: "github",
         },
       ],
+      components: [
+        {
+          name: "news",
+          label: "News",
+          sourcePath: "content/components/news.mdx",
+          embedTag: "NewsBlock",
+          affectedRoutes: ["/news"],
+        },
+      ],
     },
   });
   assert.ok(out);
@@ -50,6 +60,7 @@ test("site-admin-deploy-preview-contract: parses valid success payload", () => {
   if (!out || !out.ok) return;
   assert.equal(out.summary.pagesAdded, 1);
   assert.equal(out.samples.redirects.length, 1);
+  assert.equal(out.samples.components.length, 1);
 });
 
 test("site-admin-deploy-preview-contract: parses success payload in data envelope", () => {
@@ -67,6 +78,7 @@ test("site-admin-deploy-preview-contract: parses success payload in data envelop
         protectedAdded: 1,
         protectedRemoved: 0,
         protectedChanged: 0,
+        componentsChanged: 0,
       },
       samples: {
         pagesAdded: ["/new"],
@@ -90,6 +102,7 @@ test("site-admin-deploy-preview-contract: parses success payload in data envelop
             auth: "github",
           },
         ],
+        components: [],
       },
     },
   });

@@ -673,6 +673,20 @@ describe("link-list block (inline-config with item array)", () => {
   });
 });
 
+describe("legacy decorative link rows", () => {
+  it("loads PublicationsProfileLinks as editable inline icon links", () => {
+    const source =
+      `<PublicationsProfileLinks links='[{"label":"Google Scholar","href":"https://scholar.google.ca/citations?user=x"},{"label":"ORCID","href":"https://orcid.org/0000"}]' />\n`;
+    const blocks = parseMdxBlocks(source);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("paragraph");
+    expect(blocks[0].text).toBe(
+      '<span data-link-style="icon">[Google Scholar](https://scholar.google.ca/citations?user=x)</span> **|** <span data-link-style="icon">[ORCID](https://orcid.org/0000)</span>',
+    );
+    expect(serializeMdxBlocks(blocks)).toBe(`${blocks[0].text}\n`);
+  });
+});
+
 describe("featured-pages block", () => {
   it("round-trips a FeaturedPagesBlock with title + columns + cards", () => {
     const source =

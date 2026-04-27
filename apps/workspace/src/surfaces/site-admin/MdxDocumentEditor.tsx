@@ -62,9 +62,8 @@ import {
 import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
 import type { NormalizedApiResponse } from "./types";
 import { normalizeString } from "./utils";
-import { usePreview } from "./use-preview";
 
-type DocumentEditorMode = "blocks" | "source" | "preview";
+type DocumentEditorMode = "blocks" | "source";
 type DocumentExitAction = "saved" | "deleted" | "cancel";
 
 type RequestFn = (
@@ -73,11 +72,10 @@ type RequestFn = (
   body?: unknown,
 ) => Promise<NormalizedApiResponse>;
 
-const DOCUMENT_EDITOR_MODES: DocumentEditorMode[] = ["blocks", "preview", "source"];
+const DOCUMENT_EDITOR_MODES: DocumentEditorMode[] = ["blocks", "source"];
 
 const DOCUMENT_EDITOR_MODE_LABELS: Record<DocumentEditorMode, string> = {
   blocks: "Write",
-  preview: "Preview",
   source: "MDX",
 };
 
@@ -115,22 +113,32 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   raw: "Raw MDX",
 };
 
-// Types that can appear in the "Turn into" submenu, in display order.
+type TurnIntoOption = {
+  label: string;
+  level?: 1 | 2 | 3;
+  listStyle?: "bulleted" | "numbered";
+  type: MdxBlockType;
+};
+
+// Options that can appear in the "Turn into" submenu, in display order.
 // Block types whose data lives outside the `text` field (table, bookmark,
 // embed, file, page-link) are intentionally omitted — turning to them from
 // a text block would discard meaningful data.
-const TURN_INTO_TYPES: MdxBlockType[] = [
-  "paragraph",
-  "heading",
-  "todo",
-  "toggle",
-  "list",
-  "quote",
-  "callout",
-  "code",
-  "divider",
-  "image",
-  "raw",
+const TURN_INTO_OPTIONS: TurnIntoOption[] = [
+  { label: "Text", type: "paragraph" },
+  { label: "Heading 1", type: "heading", level: 1 },
+  { label: "Heading 2", type: "heading", level: 2 },
+  { label: "Heading 3", type: "heading", level: 3 },
+  { label: "Bulleted list", type: "list", listStyle: "bulleted" },
+  { label: "Numbered list", type: "list", listStyle: "numbered" },
+  { label: "To-do list", type: "todo" },
+  { label: "Toggle", type: "toggle" },
+  { label: "Quote", type: "quote" },
+  { label: "Callout", type: "callout" },
+  { label: "Code", type: "code" },
+  { label: "Divider", type: "divider" },
+  { label: "Image", type: "image" },
+  { label: "Raw MDX", type: "raw" },
 ];
 
 interface SlashCommand extends BlockEditorCommand {
@@ -431,6 +439,7 @@ function isDocumentEditorMode(value: unknown): value is DocumentEditorMode {
 }
 
 export interface MdxDocumentPropertiesProps<TForm> {
+  body: string;
   form: TForm;
   mode: "create" | "edit";
   setForm: Dispatch<SetStateAction<TForm>>;
@@ -455,6 +464,10 @@ export interface MdxDocumentEditorAdapter<TForm> {
   getTitle: (form: TForm) => string;
   kind: EditorKind;
   parseSource: (source: string) => { body: string; form: TForm };
+  renderDocumentTools?: (props: {
+    body: string;
+    setBody: Dispatch<SetStateAction<string>>;
+  }) => ReactNode;
   renderProperties: (props: MdxDocumentPropertiesProps<TForm>) => ReactNode;
   routeBase: string;
   loadDocument?: (input: {
@@ -803,13 +816,21 @@ function EditableBlocksList({
   );
 
   const changeBlockType = useCallback(
-    (id: string, type: MdxBlockType, level?: 1 | 2 | 3) => {
+    (
+      id: string,
+      type: MdxBlockType,
+      level?: 1 | 2 | 3,
+      listStyle?: "bulleted" | "numbered",
+    ) => {
       commitBlocks(
         blocks.map((block) => {
           if (block.id !== id) return block;
           const next = replaceBlockType(block, type);
           if (type === "heading" && level) {
             return { ...next, level };
+          }
+          if (type === "list" && listStyle) {
+            return { ...next, listStyle, markers: undefined };
           }
           return next;
         }),
@@ -1028,8 +1049,8 @@ function EditableBlocksList({
             patchBlock(actionMenu.blockId, (b) => ({ ...b, color }));
             setActionMenu(null);
           }}
-          onTurnInto={(type) => {
-            changeBlockType(actionMenu.blockId, type);
+          onTurnInto={(type, level, listStyle) => {
+            changeBlockType(actionMenu.blockId, type, level, listStyle);
             setActionMenu(null);
           }}
         />
@@ -1092,10 +1113,28 @@ interface BlockActionMenuProps {
   onMoveDown: () => void;
   onMoveUp: () => void;
   onSetColor: (color: MdxBlockColor) => void;
-  onTurnInto: (type: MdxBlockType) => void;
+  onTurnInto: (
+    type: MdxBlockType,
+    level?: 1 | 2 | 3,
+    listStyle?: "bulleted" | "numbered",
+  ) => void;
 }
 
 type ActionMenuPanel = "main" | "turnInto" | "color";
+
+function isTurnIntoOptionActive(
+  block: MdxBlock | null,
+  option: TurnIntoOption,
+): boolean {
+  if (!block || block.type !== option.type) return false;
+  if (option.type === "heading") {
+    return (block.level ?? 2) === option.level;
+  }
+  if (option.type === "list") {
+    return (block.listStyle ?? "bulleted") === option.listStyle;
+  }
+  return true;
+}
 
 function BlockActionMenu({
   anchor,
@@ -1135,15 +1174,19 @@ function BlockActionMenu({
           >
             ← Turn into…
           </button>
-          {TURN_INTO_TYPES.map((type) => (
+          {TURN_INTO_OPTIONS.map((option) => (
             <button
               type="button"
               className="block-popover__item"
-              key={type}
-              onClick={() => onTurnInto(type)}
-              aria-current={block?.type === type ? "true" : undefined}
+              key={`${option.type}-${option.level ?? option.listStyle ?? "default"}`}
+              onClick={() =>
+                onTurnInto(option.type, option.level, option.listStyle)
+              }
+              aria-current={
+                isTurnIntoOptionActive(block, option) ? "true" : undefined
+              }
             >
-              {BLOCK_TYPE_LABELS[type]}
+              {option.label}
             </button>
           ))}
         </div>
@@ -1728,7 +1771,6 @@ export function MdxDocumentEditor<TForm>({
 
   const source = useMemo(() => adapter.buildSource(form, body), [adapter, body, form]);
   const dirty = source !== lastSavedSource || (mode === "create" && Boolean(slug.trim()));
-  const preview = usePreview(source, editorMode === "preview", request);
   const imageDrop = useMdxImageUploadDrop({ request, setError, setMessage });
   const { confirmBack, leaveEditor } = useConfirmingBack({
     dirty,
@@ -2076,17 +2118,11 @@ export function MdxDocumentEditor<TForm>({
             <span className="mdx-document-editor__mode-hint">
               {editorMode === "blocks"
                 ? "Visual editor"
-                : editorMode === "source"
-                  ? imageDrop.uploading
-                    ? "Uploading image…"
-                    : imageDrop.dragDepth > 0
-                      ? "Drop to upload"
-                      : "Raw MDX"
-                  : preview.loading
-                    ? "Rendering preview…"
-                    : preview.error
-                      ? `Preview error: ${preview.error}`
-                      : "Rendered MDX preview"}
+                : imageDrop.uploading
+                  ? "Uploading image…"
+                  : imageDrop.dragDepth > 0
+                    ? "Drop to upload"
+                    : "Raw MDX"}
             </span>
           </div>
 
@@ -2103,9 +2139,15 @@ export function MdxDocumentEditor<TForm>({
                 required
               />
 
+              {adapter.renderDocumentTools ? (
+                <div className="mdx-document-editor__document-tools">
+                  {adapter.renderDocumentTools({ body, setBody })}
+                </div>
+              ) : null}
+
               {editorMode === "blocks" ? (
                 <BlocksEditor value={body} onChange={setBody} />
-              ) : editorMode === "source" ? (
+              ) : (
                 <div
                   className="editor-drop-zone mdx-document-editor__source"
                   data-drag-active={imageDrop.dragDepth > 0 ? "true" : undefined}
@@ -2130,24 +2172,6 @@ export function MdxDocumentEditor<TForm>({
                     }}
                   />
                 </div>
-              ) : (
-                <div className="mdx-document-editor__preview">
-                  {preview.loading ? (
-                    <div className="loading-inline" role="status">
-                      <span className="loading-spinner" aria-hidden="true" />
-                      <span>Rendering preview…</span>
-                    </div>
-                  ) : preview.error ? (
-                    <p className="m-0 text-[12px] text-[color:var(--color-danger)]">
-                      {preview.error}
-                    </p>
-                  ) : (
-                    <div
-                      className="notion-root mdx-post__body"
-                      dangerouslySetInnerHTML={{ __html: preview.html }}
-                    />
-                  )}
-                </div>
               )}
             </main>
 
@@ -2168,6 +2192,7 @@ export function MdxDocumentEditor<TForm>({
                   </button>
                 </div>
                 {adapter.renderProperties({
+                  body,
                   form,
                   mode,
                   setForm,

@@ -519,9 +519,15 @@ function legacyInlineHtmlToMarkdown(input: string): string {
   text = text.replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_match, rawAttrs: string, inner: string) => {
     const attrs = parseAttrs(rawAttrs);
     const className = attrs.className || attrs.class || "";
+    const directBg = /\bdata-bg\s*=\s*["']([a-z-]+)["']/i.exec(rawAttrs)?.[1] ?? "";
+    const directFg = /\bdata-color\s*=\s*["']([a-z-]+)["']/i.exec(rawAttrs)?.[1] ?? "";
+    const directLinkStyle = /\bdata-link-style\s*=\s*["']icon["']/i.test(rawAttrs);
     const bg = notionColorFromClassName(className, "bg");
     const fg = notionColorFromClassName(className, "color");
     const body = legacyInlineHtmlToMarkdown(inner);
+    if (directLinkStyle) return `<span data-link-style="icon">${body}</span>`;
+    if (directBg) return `<span data-bg="${directBg}">${body}</span>`;
+    if (directFg) return `<span data-color="${directFg}">${body}</span>`;
     if (bg) return `<span data-bg="${bg}">${body}</span>`;
     if (fg) return `<span data-color="${fg}">${body}</span>`;
     return body;
@@ -546,7 +552,10 @@ function legacyInlineHtmlToMarkdown(input: string): string {
   });
   text = text.replace(/<\/?[^>]+>/g, (tag) => {
     const normalized = tag.toLowerCase();
-    if (/^<span\b[^>]*\bdata-(?:bg|color)=/i.test(tag) || normalized === "</span>") {
+    if (
+      /^<span\b[^>]*\b(?:data-(?:bg|color)|data-link-style)=/i.test(tag) ||
+      normalized === "</span>"
+    ) {
       return tag;
     }
     if (/^<u\b/i.test(tag) || normalized === "</u>") {
@@ -620,6 +629,24 @@ function parseLinkItems(raw: string | undefined): MdxLinkItem[] {
     out.push(item);
   }
   return out;
+}
+
+function iconLinkMarkdown(item: MdxLinkItem): string {
+  const label = item.label || item.href;
+  const href = item.href || "#";
+  return `<span data-link-style="icon">[${label}](${href})</span>`;
+}
+
+function iconLinksToInlineMarkdown(items: MdxLinkItem[], separator: string): string {
+  return items.map(iconLinkMarkdown).join(separator);
+}
+
+function teachingLinksToInlineMarkdown(
+  items: MdxLinkItem[],
+  variant: "header" | "footer",
+): string {
+  const separator = variant === "footer" ? " · " : " **|** ";
+  return iconLinksToInlineMarkdown(items, separator);
 }
 
 function parseTableCells(line: string): string[] {
@@ -1374,20 +1401,19 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       }
       if (tagName === "TeachingLinks") {
         const variant = attrs.variant === "footer" ? "footer" : "header";
+        const items = parseLinkItems(attrs.links);
         pushBlock(
-          makeBlock("teaching-links", {
-            text: "",
-            teachingLinksVariant: variant,
-            linkItems: parseLinkItems(attrs.links),
+          makeBlock("paragraph", {
+            text: teachingLinksToInlineMarkdown(items, variant),
           }),
         );
         continue;
       }
       if (tagName === "PublicationsProfileLinks") {
+        const items = parseLinkItems(attrs.links);
         pushBlock(
-          makeBlock("publications-profile-links", {
-            text: "",
-            linkItems: parseLinkItems(attrs.links),
+          makeBlock("paragraph", {
+            text: iconLinksToInlineMarkdown(items, " **|** "),
           }),
         );
         continue;

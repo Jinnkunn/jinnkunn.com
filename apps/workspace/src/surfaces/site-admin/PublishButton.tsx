@@ -10,7 +10,8 @@ type DeployPreviewSummaryKey =
   | "redirectsChanged"
   | "protectedAdded"
   | "protectedRemoved"
-  | "protectedChanged";
+  | "protectedChanged"
+  | "componentsChanged";
 
 type DeployPreviewRedirectChange = {
   kind?: string;
@@ -31,6 +32,14 @@ type DeployPreviewProtectedChange = {
   previousAuth?: string;
 };
 
+type DeployPreviewComponentChange = {
+  name?: string;
+  label?: string;
+  sourcePath?: string;
+  embedTag?: string;
+  affectedRoutes?: string[];
+};
+
 type DeployPreviewData = {
   generatedAt?: string;
   hasChanges?: boolean;
@@ -40,6 +49,7 @@ type DeployPreviewData = {
     pagesRemoved?: string[];
     redirects?: DeployPreviewRedirectChange[];
     protected?: DeployPreviewProtectedChange[];
+    components?: DeployPreviewComponentChange[];
   };
 };
 
@@ -60,6 +70,7 @@ const SUMMARY_LABELS: Array<[DeployPreviewSummaryKey, string]> = [
   ["protectedAdded", "Protected added"],
   ["protectedRemoved", "Protected removed"],
   ["protectedChanged", "Protected changed"],
+  ["componentsChanged", "Shared content changed"],
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -113,6 +124,18 @@ function parseDeployPreview(raw: unknown): DeployPreviewData {
               auth: normalizeString(record.auth),
               previousMode: normalizeString(record.previousMode),
               previousAuth: normalizeString(record.previousAuth),
+            };
+          })
+        : [],
+      components: Array.isArray(samples.components)
+        ? samples.components.map((item) => {
+            const record = asRecord(item);
+            return {
+              name: normalizeString(record.name),
+              label: normalizeString(record.label),
+              sourcePath: normalizeString(record.sourcePath),
+              embedTag: normalizeString(record.embedTag),
+              affectedRoutes: asStringArray(record.affectedRoutes),
             };
           })
         : [],
@@ -322,6 +345,21 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
                     .filter(Boolean)
                     .join(" "),
                 )}
+              />
+              <ChangeList
+                title="Shared content changes"
+                rows={(previewData.samples?.components ?? []).map((item) => {
+                  const routes = item.affectedRoutes?.length
+                    ? `affects ${item.affectedRoutes.join(", ")}`
+                    : "no page usage found";
+                  return [
+                    item.label || item.name,
+                    item.embedTag ? `<${item.embedTag} />` : "",
+                    routes,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                })}
               />
               {sourceSnapshot?.pendingDeployReason && (
                 <p className="publish-preview__note">

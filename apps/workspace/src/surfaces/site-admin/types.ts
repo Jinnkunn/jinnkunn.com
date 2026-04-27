@@ -183,9 +183,9 @@ export type ItemSelection =
   | { kind: "edit"; slug: string };
 
 // Publications migrated to inline `<PublicationsEntry data='...' />`
-// blocks inside `content/pages/publications.mdx`. Profile links live as
-// a sibling `<PublicationsProfileLinks links='...' />` block. Block-
-// level fields live on MdxBlock (`pubData`).
+// blocks inside the publications component source. Profile links are
+// ordinary inline icon links in `content/pages/publications.mdx`.
+// Block-level fields live on MdxBlock (`pubData`).
 
 // Teaching migrated to inline `<TeachingEntry>` blocks inside
 // `content/pages/teaching.mdx`. Fields live on MdxBlock (`teachingTerm`,

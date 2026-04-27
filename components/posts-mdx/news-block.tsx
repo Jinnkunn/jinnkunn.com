@@ -5,7 +5,9 @@ import type { ReactElement } from "react";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { parseNewsEntries } from "@/lib/components/parse";
 import { compilePostMdx } from "@/lib/posts/compile";
+import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
 
 import { postMdxComponents } from "./components";
 import { NewsEntry } from "./news-entry";
@@ -15,47 +17,19 @@ interface NewsBlockProps {
   limit?: number;
 }
 
-interface NewsEntryRecord {
-  dateIso: string;
-  body: string;
-}
-
 const NEWS_SOURCE_PATH = resolve(
   process.cwd(),
-  "content/components/news.mdx",
+  getSiteComponentDefinition("news").sourcePath,
 );
 
-// Match `<NewsEntry date="...">…</NewsEntry>` blocks in the news
-// component file. Content between the opening tag and `</NewsEntry>`
-// is the entry's markdown body — compiled by `compilePostMdx` per
-// entry on the public site. Same shape the editor's parser produces
-// (apps/workspace/.../mdx-blocks.ts), so nothing diverges as long as
-// both stay in sync.
-const NEWS_ENTRY_RE =
-  /<NewsEntry\s+date="([^"]*)"[^>]*>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
-
-async function loadEntries(): Promise<NewsEntryRecord[]> {
+async function loadEntries() {
   let raw = "";
   try {
     raw = await readFile(NEWS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
-  // Strip leading frontmatter so the regex doesn't trip on something
-  // weird in the YAML.
-  const body = raw.replace(/^---[\s\S]*?---\s*/m, "");
-  const out: NewsEntryRecord[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = NEWS_ENTRY_RE.exec(body)) !== null) {
-    const dateIso = m[1] ?? "";
-    const entryBody = m[2] ?? "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) continue;
-    out.push({ dateIso, body: entryBody });
-  }
-  // Newest first — same order normalizeNewsData used to apply against
-  // the legacy news.json shape.
-  out.sort((a, b) => b.dateIso.localeCompare(a.dateIso));
-  return out;
+  return parseNewsEntries(raw);
 }
 
 /** Server component for `<NewsBlock />` in MDX. Reads the canonical
