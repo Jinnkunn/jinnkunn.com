@@ -19,6 +19,7 @@ import { buildSiteAdminStatusPayload } from "@/lib/server/site-admin-status-serv
 import {
   getSiteAdminSourceStore,
   isSiteAdminSourceConflictError,
+  isSiteAdminSourceWriteError,
 } from "@/lib/server/site-admin-source-store";
 import { triggerDeployHook } from "@/lib/server/deploy-hook";
 import {
@@ -65,6 +66,9 @@ function toBackendResultFromUnknown(err: unknown): SiteAdminBackendError {
   if (isSiteAdminSourceConflictError(err)) {
     return backendError(err.message, 409, err.code);
   }
+  if (isSiteAdminSourceWriteError(err)) {
+    return backendError(err.message, err.status, err.code);
+  }
   return backendError(err instanceof Error ? err.message : String(err), 500, "REQUEST_FAILED");
 }
 
@@ -89,6 +93,7 @@ export async function postSiteAdminConfigBackend(
             command.rowId,
             command.patch,
             command.expectedSiteConfigSha,
+            command.allowStaleSiteConfigSha,
           ),
         });
       case "nav-update":

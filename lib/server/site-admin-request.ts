@@ -9,6 +9,7 @@ import {
 import type { ParseResult } from "@/lib/site-admin/request-types";
 import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
 import { normalizeDepthString } from "@/lib/shared/depth";
+import { normalizeGoogleAnalyticsId } from "@/lib/shared/google-analytics";
 import {
   getBoolean,
   getEnum,
@@ -28,6 +29,7 @@ export type SiteAdminConfigCommand =
       rowId: string;
       patch: SiteAdminSettingsPatch;
       expectedSiteConfigSha: string;
+      allowStaleSiteConfigSha: boolean;
     }
   | {
       kind: "nav-update";
@@ -48,6 +50,7 @@ const configCommandSchema = z.discriminatedUnion("kind", [
       rowId: z.unknown().optional(),
       patch: z.record(z.unknown()).optional(),
       expectedSiteConfigSha: z.unknown().optional(),
+      allowStaleSiteConfigSha: z.unknown().optional(),
     })
     .passthrough(),
   z
@@ -148,7 +151,13 @@ export function parseSiteAdminConfigCommand(
       outPatch.seoPageOverrides = getString(patch, "seoPageOverrides", { maxLen: 1800 });
     }
     if (patch.googleAnalyticsId !== undefined) {
-      outPatch.googleAnalyticsId = getString(patch, "googleAnalyticsId", { maxLen: 64 });
+      const googleAnalyticsId = normalizeGoogleAnalyticsId(
+        getString(patch, "googleAnalyticsId", { maxLen: 64 }),
+      );
+      if (googleAnalyticsId === null) {
+        return bad("Invalid Google Analytics ID", 400);
+      }
+      outPatch.googleAnalyticsId = googleAnalyticsId;
     }
     if (patch.contentGithubUsers !== undefined) {
       outPatch.contentGithubUsers = getString(patch, "contentGithubUsers", { maxLen: 800 });
@@ -192,7 +201,17 @@ export function parseSiteAdminConfigCommand(
       outPatch.homePageId = getString(patch, "homePageId", { maxLen: 64 });
     }
 
-    return { ok: true, value: { kind, rowId, patch: outPatch, expectedSiteConfigSha } };
+    return {
+      ok: true,
+      value: {
+        kind,
+        rowId,
+        patch: outPatch,
+        expectedSiteConfigSha,
+        allowStaleSiteConfigSha:
+          getBoolean(command, "allowStaleSiteConfigSha") ?? false,
+      },
+    };
   }
 
   if (kind === "nav-update") {

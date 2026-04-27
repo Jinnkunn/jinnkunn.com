@@ -15,6 +15,7 @@ import {
 } from "../shared/access.ts";
 import { parseDepthNumber } from "../shared/depth.ts";
 import { DEFAULT_SITE_CONFIG } from "../shared/default-site-config.ts";
+import { normalizeGoogleAnalyticsId } from "../shared/google-analytics.ts";
 import { parseGithubUserCsv } from "../shared/github-users.ts";
 import { compactId, normalizeRoutePath } from "../shared/route-utils.ts";
 import { normalizeSeoPageOverrides } from "../shared/seo-page-overrides.ts";
@@ -126,6 +127,22 @@ export function isSiteAdminSourceConflictError(
   return err instanceof SiteAdminSourceConflictError;
 }
 
+export class SiteAdminSourceWriteError extends Error {
+  readonly code = "SOURCE_WRITE_FAILED";
+  readonly status = 502;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "SiteAdminSourceWriteError";
+  }
+}
+
+export function isSiteAdminSourceWriteError(
+  err: unknown,
+): err is SiteAdminSourceWriteError {
+  return err instanceof SiteAdminSourceWriteError;
+}
+
 export interface SiteAdminSourceStore {
   readonly kind: "local" | "github";
   loadConfig(): Promise<SiteAdminConfigSnapshot>;
@@ -133,6 +150,7 @@ export interface SiteAdminSourceStore {
     rowId: string;
     patch: Partial<Omit<SiteSettings, "rowId">>;
     expectedSiteConfigSha: string;
+    allowStaleSiteConfigSha?: boolean;
   }): Promise<SiteAdminConfigSourceVersion>;
   updateNavRow(input: {
     rowId: string;
@@ -301,15 +319,18 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     rowId: string;
     patch: Partial<Omit<SiteSettings, "rowId">>;
     expectedSiteConfigSha: string;
+    allowStaleSiteConfigSha?: boolean;
   }): Promise<SiteAdminConfigSourceVersion> {
     if (compactId(input.rowId) !== SITE_SETTINGS_ROW_ID) {
       throw new Error("Missing Site Settings row");
     }
     const source = this.loadSourceSnapshot();
-    assertExpectedSha({
-      expected: input.expectedSiteConfigSha,
-      actual: source.version.siteConfigSha,
-    });
+    if (!input.allowStaleSiteConfigSha) {
+      assertExpectedSha({
+        expected: input.expectedSiteConfigSha,
+        actual: source.version.siteConfigSha,
+      });
+    }
 
     const nextSiteConfig = applySettingsPatch(source.siteConfig, input.patch);
     this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
@@ -746,19 +767,32 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     rowId: string;
     patch: Partial<Omit<SiteSettings, "rowId">>;
     expectedSiteConfigSha: string;
+    allowStaleSiteConfigSha?: boolean;
   }): Promise<SiteAdminConfigSourceVersion> {
     if (compactId(input.rowId) !== SITE_SETTINGS_ROW_ID) {
       throw new Error("Missing Site Settings row");
     }
 
-    const source = await this.loadSourceSnapshot();
-    assertExpectedSha({
-      expected: input.expectedSiteConfigSha,
-      actual: source.version.siteConfigSha,
-    });
+    let source = await this.loadSourceSnapshot();
+    if (!input.allowStaleSiteConfigSha) {
+      assertExpectedSha({
+        expected: input.expectedSiteConfigSha,
+        actual: source.version.siteConfigSha,
+      });
+    }
 
-    const nextSiteConfig = applySettingsPatch(source.siteConfig, input.patch);
-    const write = await this.writeSiteConfig(nextSiteConfig, input.expectedSiteConfigSha);
+    let nextSiteConfig = applySettingsPatch(source.siteConfig, input.patch);
+    let write: { fileSha: string; commitSha: string };
+    try {
+      write = await this.writeSiteConfig(nextSiteConfig, input.expectedSiteConfigSha);
+    } catch (err: unknown) {
+      if (!input.allowStaleSiteConfigSha || !isSiteAdminSourceConflictError(err)) {
+        throw err;
+      }
+      source = await this.loadSourceSnapshot();
+      nextSiteConfig = applySettingsPatch(source.siteConfig, input.patch);
+      write = await this.writeSiteConfig(nextSiteConfig, source.version.siteConfigSha);
+    }
     return {
       siteConfigSha: write.fileSha,
       branchSha: write.commitSha,
@@ -1034,6 +1068,11 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     } catch (err: unknown) {
       if (err instanceof GitHubApiError && (err.status === 409 || err.status === 422)) {
         const latest = await this.readPreferredRepoJson(input.relPath, null);
+        if (!isGitHubContentWriteConflictMessage(githubApiErrorMessage(err))) {
+          throw new SiteAdminSourceWriteError(
+            `GitHub refused to write ${repoPath} (${err.status}): ${githubApiErrorMessage(err)}`,
+          );
+        }
         throw new SiteAdminSourceConflictError({
           expectedSha: input.expectedSha,
           currentSha: latest.sha,
@@ -1170,6 +1209,11 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     } catch (err: unknown) {
       if (err instanceof GitHubApiError && (err.status === 409 || err.status === 422)) {
         const latest = await this.getRepoFile(input.relPath);
+        if (!isGitHubContentWriteConflictMessage(githubApiErrorMessage(err))) {
+          throw new SiteAdminSourceWriteError(
+            `GitHub refused to write ${input.relPath} (${err.status}): ${githubApiErrorMessage(err)}`,
+          );
+        }
         throw new SiteAdminSourceConflictError({
           expectedSha: input.expectedSha ?? "",
           currentSha: latest?.sha ?? "",
@@ -1340,6 +1384,17 @@ function asStringKeepWhitespace(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function githubApiErrorMessage(err: GitHubApiError): string {
+  const detail = asString(asRecord(err.responseBody).message);
+  return detail || err.message || "unknown GitHub API error";
+}
+
+function isGitHubContentWriteConflictMessage(message: string): boolean {
+  return /\bsha\b|does not match|already exists|not a fast-forward|conflict/i.test(
+    message,
+  );
+}
+
 function asBoolean(value: unknown, fallback = true): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -1491,7 +1546,9 @@ function applySettingsPatch(
   }
 
   if (patch.googleAnalyticsId !== undefined) {
-    integrations.googleAnalyticsId = String(patch.googleAnalyticsId || "").trim();
+    const googleAnalyticsId = normalizeGoogleAnalyticsId(patch.googleAnalyticsId);
+    if (googleAnalyticsId === null) throw new Error("Invalid Google Analytics ID");
+    integrations.googleAnalyticsId = googleAnalyticsId;
   }
   if (patch.contentGithubUsers !== undefined) {
     security.contentGithubUsers = parseGithubUserCsv(patch.contentGithubUsers);

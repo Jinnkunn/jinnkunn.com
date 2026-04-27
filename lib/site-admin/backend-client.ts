@@ -44,6 +44,7 @@ export type SiteAdminConfigCommand =
       rowId: string;
       patch: Partial<Omit<SiteSettings, "rowId">>;
       expectedSiteConfigSha: string;
+      allowStaleSiteConfigSha?: boolean;
     }
   | {
       kind: "nav-update";

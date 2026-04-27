@@ -2,6 +2,7 @@ import filesystemSiteConfig from "@/content/filesystem/site-config.json";
 import generatedSiteConfig from "@/content/generated/site-config.json";
 import { readContentJson } from "@/lib/server/content-json";
 import { DEFAULT_SITE_CONFIG } from "@/lib/shared/default-site-config";
+import { normalizeGoogleAnalyticsId } from "@/lib/shared/google-analytics";
 import { normalizeGithubUserList } from "@/lib/shared/github-users";
 import {
   type SitemapAutoExcludeConfig,
@@ -120,9 +121,12 @@ function normalizeConfig(input: unknown): SiteConfig {
 
   if (isObject(input.integrations)) {
     cfg.integrations = cfg.integrations ?? {};
-    cfg.integrations.googleAnalyticsId =
-      asString(input.integrations.googleAnalyticsId) ??
-      cfg.integrations.googleAnalyticsId;
+    const googleAnalyticsId = normalizeGoogleAnalyticsId(
+      input.integrations.googleAnalyticsId,
+    );
+    if (googleAnalyticsId !== null) {
+      cfg.integrations.googleAnalyticsId = googleAnalyticsId;
+    }
   }
 
   if (isObject(input.security)) {

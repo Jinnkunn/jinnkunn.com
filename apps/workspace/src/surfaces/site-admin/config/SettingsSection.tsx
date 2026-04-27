@@ -1,5 +1,9 @@
 import { SeoOverridesEditor } from "../SeoOverridesEditor";
 import type { SiteSettings } from "../types";
+import {
+  isGoogleAnalyticsIdDraftValid,
+  normalizeGoogleAnalyticsIdDraft,
+} from "../utils";
 
 /** The raw list of text/textarea settings fields. Boolean fields and the
  * SEO-override JSON editor are rendered separately below. Extracted as a
@@ -43,25 +47,12 @@ export function SettingsSection({ settingsDraft, onUpdate }: SettingsSectionProp
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
       >
         {TEXT_FIELDS.map((field) => (
-          <label
+          <SettingsTextField
             key={field.key}
-            className="flex flex-col gap-1 text-[12px] text-text-secondary"
-            style={field.wide ? { gridColumn: "1 / -1" } : undefined}
-          >
-            {field.label}
-            {field.textarea ? (
-              <textarea
-                rows={3}
-                value={settingsDraft[field.key] as string}
-                onChange={(e) => onUpdate(field.key, e.target.value as never)}
-              />
-            ) : (
-              <input
-                value={settingsDraft[field.key] as string}
-                onChange={(e) => onUpdate(field.key, e.target.value as never)}
-              />
-            )}
-          </label>
+            field={field}
+            settingsDraft={settingsDraft}
+            onUpdate={onUpdate}
+          />
         ))}
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Sitemap Auto Exclude Enabled
@@ -84,5 +75,55 @@ export function SettingsSection({ settingsDraft, onUpdate }: SettingsSectionProp
         />
       </div>
     </details>
+  );
+}
+
+function SettingsTextField({
+  field,
+  settingsDraft,
+  onUpdate,
+}: {
+  field: (typeof TEXT_FIELDS)[number];
+  settingsDraft: SiteSettings;
+  onUpdate: <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => void;
+}) {
+  const value = settingsDraft[field.key] as string;
+  const isGoogleAnalyticsField = field.key === "googleAnalyticsId";
+  const invalidGoogleAnalyticsId =
+    isGoogleAnalyticsField && !isGoogleAnalyticsIdDraftValid(value);
+  const normalizeOnBlur = () => {
+    if (!isGoogleAnalyticsField) return;
+    const normalized = normalizeGoogleAnalyticsIdDraft(value);
+    if (normalized !== value) onUpdate(field.key, normalized as never);
+  };
+
+  return (
+    <label
+      className="flex flex-col gap-1 text-[12px] text-text-secondary"
+      style={field.wide ? { gridColumn: "1 / -1" } : undefined}
+    >
+      {field.label}
+      {field.textarea ? (
+        <textarea
+          rows={3}
+          value={value}
+          onChange={(e) => onUpdate(field.key, e.target.value as never)}
+        />
+      ) : (
+        <input
+          aria-invalid={invalidGoogleAnalyticsId || undefined}
+          className={isGoogleAnalyticsField ? "font-mono" : undefined}
+          placeholder={isGoogleAnalyticsField ? "G-XXXXXXXXXX" : undefined}
+          value={value}
+          onBlur={normalizeOnBlur}
+          onChange={(e) => onUpdate(field.key, e.target.value as never)}
+        />
+      )}
+      {invalidGoogleAnalyticsId ? (
+        <span className="text-[11px] text-red-700">
+          Use a GA4 measurement ID like G-XXXXXXXXXX, or leave blank.
+        </span>
+      ) : null}
+    </label>
   );
 }

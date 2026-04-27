@@ -4,14 +4,43 @@ import { SettingsSection } from "./config/SettingsSection";
 import { useSiteAdmin } from "./state";
 import type { ConfigSourceVersion, NavRow, SiteSettings } from "./types";
 import {
+  applySettingsPatch,
   clone,
   defaultSettings,
   isNavDirty,
+  isGoogleAnalyticsIdDraftValid,
   navPatch,
+  normalizeGoogleAnalyticsIdDraft,
   normalizeNavRow,
   normalizeSettings,
   settingsPatch,
+  settingsPatchConflictKeys,
 } from "./utils";
+
+type ConfigSnapshot = {
+  sourceVersion: ConfigSourceVersion;
+  settings: SiteSettings;
+  nav: NavRow[];
+};
+
+function parseConfigSnapshot(payload: Record<string, unknown>): ConfigSnapshot | null {
+  const srcVersion = payload.sourceVersion as
+    | { siteConfigSha?: string; branchSha?: string }
+    | undefined;
+  if (!srcVersion?.siteConfigSha || !srcVersion.branchSha) return null;
+  return {
+    sourceVersion: {
+      siteConfigSha: srcVersion.siteConfigSha,
+      branchSha: srcVersion.branchSha,
+    },
+    settings: normalizeSettings(payload.settings),
+    nav: Array.isArray(payload.nav) ? payload.nav.map(normalizeNavRow) : [],
+  };
+}
+
+function isSourceConflictResponse(response: { ok: boolean; code?: string; status: number }) {
+  return !response.ok && response.code === "SOURCE_CONFLICT";
+}
 
 /** Orchestrator for the Config surface: owns load/save state + dirty
  * tracking + conflict handling, and delegates the two visual sections
@@ -54,43 +83,53 @@ export function ConfigPanel() {
     [setMessage],
   );
 
-  const loadConfig = useCallback(
+  const applyConfigSnapshot = useCallback(
+    (snapshot: ConfigSnapshot, options: { settingsDraft?: SiteSettings } = {}) => {
+      setSourceVersion(snapshot.sourceVersion);
+      setBaseSettings(snapshot.settings);
+      setSettingsDraft(options.settingsDraft ?? clone(snapshot.settings));
+      setNavRows(snapshot.nav);
+      setNavDrafts(Object.fromEntries(snapshot.nav.map((row) => [row.rowId, clone(row)])));
+      setNavSaving({});
+      setConflict(false);
+    },
+    [],
+  );
+
+  const fetchConfigSnapshot = useCallback(
     async (options: { silent?: boolean } = {}) => {
-      setLoading(true);
       const response = await request("/api/site-admin/config", "GET");
-      setLoading(false);
       if (!response.ok) {
         if (!options.silent) {
           setMessage("error", `Load config failed: ${response.code}: ${response.error}`);
         }
-        return false;
+        return null;
       }
-      const payload = (response.data ?? {}) as Record<string, unknown>;
-      const srcVersion = payload.sourceVersion as
-        | { siteConfigSha?: string; branchSha?: string }
-        | undefined;
-      if (!srcVersion?.siteConfigSha || !srcVersion.branchSha) {
+      const snapshot = parseConfigSnapshot((response.data ?? {}) as Record<string, unknown>);
+      if (!snapshot) {
         if (!options.silent) {
           setMessage("error", "Load config failed: missing sourceVersion");
         }
+        return null;
+      }
+      return snapshot;
+    },
+    [request, setMessage],
+  );
+
+  const loadConfig = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      setLoading(true);
+      const snapshot = await fetchConfigSnapshot(options);
+      setLoading(false);
+      if (!snapshot) {
         return false;
       }
-      const settings = normalizeSettings(payload.settings);
-      const nav = Array.isArray(payload.nav) ? payload.nav.map(normalizeNavRow) : [];
-      setSourceVersion({
-        siteConfigSha: srcVersion.siteConfigSha,
-        branchSha: srcVersion.branchSha,
-      });
-      setBaseSettings(settings);
-      setSettingsDraft(clone(settings));
-      setNavRows(nav);
-      setNavDrafts(Object.fromEntries(nav.map((row) => [row.rowId, clone(row)])));
-      setNavSaving({});
-      setConflict(false);
+      applyConfigSnapshot(snapshot);
       if (!options.silent) setMessage("success", "Config loaded.");
       return true;
     },
-    [request, setMessage],
+    [applyConfigSnapshot, fetchConfigSnapshot, setMessage],
   );
 
   const saveSettings = useCallback(async () => {
@@ -102,7 +141,20 @@ export function ConfigPanel() {
       setMessage("error", "Config sourceVersion missing. Reload config first.");
       return;
     }
-    const patch = settingsPatch(baseSettings, settingsDraft);
+    if (!isGoogleAnalyticsIdDraftValid(settingsDraft.googleAnalyticsId)) {
+      setMessage(
+        "error",
+        "Google Analytics ID must look like G-XXXXXXXXXX, or be blank.",
+      );
+      return;
+    }
+    const normalizedDraft = {
+      ...settingsDraft,
+      googleAnalyticsId: normalizeGoogleAnalyticsIdDraft(
+        settingsDraft.googleAnalyticsId,
+      ),
+    };
+    const patch = settingsPatch(baseSettings, normalizedDraft);
     if (!Object.keys(patch).length) {
       setMessage("warn", "No setting changes to save.");
       return;
@@ -111,19 +163,75 @@ export function ConfigPanel() {
       setMessage("error", "Settings rowId missing. Reload config first.");
       return;
     }
+    const postSettingsPatch = (
+      rowId: string,
+      nextPatch: Partial<SiteSettings>,
+      expectedSiteConfigSha: string,
+    ) =>
+      request("/api/site-admin/config", "POST", {
+        kind: "settings",
+        rowId,
+        patch: nextPatch,
+        expectedSiteConfigSha,
+        allowStaleSiteConfigSha: true,
+      });
+
     setSavingSettings(true);
-    const response = await request("/api/site-admin/config", "POST", {
-      kind: "settings",
-      rowId: baseSettings.rowId,
+    const response = await postSettingsPatch(
+      baseSettings.rowId,
       patch,
-      expectedSiteConfigSha: sourceVersion.siteConfigSha,
-    });
-    setSavingSettings(false);
-    if (!response.ok) {
-      if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
-        applyConflict("Save settings failed with SOURCE_CONFLICT.");
+      sourceVersion.siteConfigSha,
+    );
+    if (isSourceConflictResponse(response)) {
+      setMessage("warn", "Config changed on source branch. Reloading latest and retrying your setting change.");
+      const latest = await fetchConfigSnapshot({ silent: true });
+      if (!latest) {
+        setSavingSettings(false);
+        applyConflict("Save settings failed with SOURCE_CONFLICT and latest config could not be loaded.");
         return;
       }
+      const conflictKeys = settingsPatchConflictKeys(baseSettings, latest.settings, patch);
+      const mergedDraft = applySettingsPatch(latest.settings, patch);
+      if (conflictKeys.length > 0) {
+        applyConfigSnapshot(latest, { settingsDraft: mergedDraft });
+        setSavingSettings(false);
+        applyConflict(
+          `Save settings stopped because latest config changed the same field(s): ${conflictKeys.join(", ")}.`,
+        );
+        return;
+      }
+      const retryPatch = settingsPatch(latest.settings, mergedDraft);
+      if (!Object.keys(retryPatch).length) {
+        applyConfigSnapshot(latest);
+        setSavingSettings(false);
+        setMessage("success", "Latest config already contains your settings.");
+        return;
+      }
+      const retryResponse = await postSettingsPatch(
+        latest.settings.rowId,
+        retryPatch,
+        latest.sourceVersion.siteConfigSha,
+      );
+      if (!retryResponse.ok) {
+        applyConfigSnapshot(latest, { settingsDraft: mergedDraft });
+        setSavingSettings(false);
+        if (isSourceConflictResponse(retryResponse)) {
+          applyConflict("Save settings failed with SOURCE_CONFLICT after reloading latest.");
+          return;
+        }
+        setMessage(
+          "error",
+          `Save settings failed after reload: ${retryResponse.code}: ${retryResponse.error}`,
+        );
+        return;
+      }
+      setSavingSettings(false);
+      setMessage("success", "Settings saved to source branch after refreshing latest config. Deploy separately.");
+      await loadConfig({ silent: true });
+      return;
+    }
+    setSavingSettings(false);
+    if (!response.ok) {
       setMessage("error", `Save settings failed: ${response.code}: ${response.error}`);
       return;
     }
@@ -137,6 +245,8 @@ export function ConfigPanel() {
     request,
     setMessage,
     applyConflict,
+    applyConfigSnapshot,
+    fetchConfigSnapshot,
     loadConfig,
   ]);
 
