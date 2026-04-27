@@ -318,16 +318,6 @@
   color: var(--color-text-default-light);
 }
 
-.page__index .home-section__body a.notion-link.link:not([href="/chen"]):not([href="/blog"]):not([href="https://twitter.com/_jinnkunn"]):not([href="https://www.linkedin.com/in/jinkun-chen/"]) {
-  --link-icon-space: 0px;
-  padding-left: 0.08em;
-}
-
-.page__index .home-section__body a.notion-link.link:not([href="/chen"]):not([href="/blog"]):not([href="https://twitter.com/_jinnkunn"]):not([href="https://www.linkedin.com/in/jinkun-chen/"])::before {
-  display: none;
-  content: none;
-}
-
 .page__index .home-section__body span[data-link-style="icon"] > a.notion-link.link {
   --link-icon-space: 28px !important;
   padding-left: calc(var(--link-icon-space) + 0.08em) !important;

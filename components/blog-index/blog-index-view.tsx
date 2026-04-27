@@ -42,7 +42,9 @@ export function BlogIndexView({
               )}
               <span className="highlighted-background bg-yellow">
                 <strong>
-                  <ClassicLink href={link.href}>{link.label}</ClassicLink>
+                  <span data-link-style="icon">
+                    <ClassicLink href={link.href}>{link.label}</ClassicLink>
+                  </span>
                 </strong>
               </span>
             </Fragment>
