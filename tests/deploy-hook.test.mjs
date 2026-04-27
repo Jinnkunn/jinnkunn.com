@@ -3,6 +3,23 @@ import test from "node:test";
 
 import { triggerDeployHook } from "../lib/server/deploy-hook-core.ts";
 
+const DEPLOY_ENV_KEYS = [
+  "DEPLOY_PROVIDER",
+  "DEPLOY_HOOK_URL",
+  "DEPLOY_ENV",
+  "CLOUDFLARE_DEPLOY_ENV",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "CF_ACCOUNT_ID",
+  "CLOUDFLARE_API_TOKEN",
+  "CF_API_TOKEN",
+  "CLOUDFLARE_WORKER_NAME",
+  "CLOUDFLARE_WORKER_NAME_STAGING",
+  "CLOUDFLARE_WORKER_NAME_PRODUCTION",
+  "SITE_ADMIN_REPO_BRANCH",
+  "SITE_ADMIN_REPO_BRANCH_STAGING",
+  "SITE_ADMIN_REPO_BRANCH_PRODUCTION",
+];
+
 function withMockFetch(t, impl) {
   const original = globalThis.fetch;
   globalThis.fetch = impl;
@@ -11,7 +28,23 @@ function withMockFetch(t, impl) {
   });
 }
 
-test("deploy-hook: missing hook url fails fast", async () => {
+function withCleanDeployEnv(t) {
+  const previous = {};
+  for (const key of DEPLOY_ENV_KEYS) {
+    previous[key] = process.env[key];
+    delete process.env[key];
+  }
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
+test("deploy-hook: missing hook url fails fast", async (t) => {
+  withCleanDeployEnv(t);
+
   const out = await triggerDeployHook("");
   assert.equal(out.ok, false);
   assert.equal(out.status, 500);
@@ -19,6 +52,8 @@ test("deploy-hook: missing hook url fails fast", async () => {
 });
 
 test("deploy-hook: succeeds on first attempt", async (t) => {
+  withCleanDeployEnv(t);
+
   let calls = 0;
   withMockFetch(t, async () => {
     calls += 1;
@@ -39,6 +74,8 @@ test("deploy-hook: succeeds on first attempt", async (t) => {
 });
 
 test("deploy-hook: retries retryable status and then succeeds", async (t) => {
+  withCleanDeployEnv(t);
+
   let calls = 0;
   withMockFetch(t, async () => {
     calls += 1;
@@ -60,6 +97,8 @@ test("deploy-hook: retries retryable status and then succeeds", async (t) => {
 });
 
 test("deploy-hook: does not retry non-retryable status", async (t) => {
+  withCleanDeployEnv(t);
+
   let calls = 0;
   withMockFetch(t, async () => {
     calls += 1;
@@ -79,6 +118,8 @@ test("deploy-hook: does not retry non-retryable status", async (t) => {
 });
 
 test("deploy-hook: timeout returns 504", async (t) => {
+  withCleanDeployEnv(t);
+
   let calls = 0;
   withMockFetch(t, async (_url, init = {}) => {
     calls += 1;
