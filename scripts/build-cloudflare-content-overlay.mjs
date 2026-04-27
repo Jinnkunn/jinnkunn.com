@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -177,7 +176,11 @@ async function main() {
     return;
   }
 
-  const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "jinnkunn-cf-overlay-"));
+  const worktreeBaseDir = process.env.CONTENT_OVERLAY_WORKTREE_DIR
+    ? path.resolve(ROOT, process.env.CONTENT_OVERLAY_WORKTREE_DIR)
+    : path.dirname(ROOT);
+  fs.mkdirSync(worktreeBaseDir, { recursive: true });
+  const worktree = fs.mkdtempSync(path.join(worktreeBaseDir, ".jinnkunn-cf-overlay-"));
   fs.rmSync(worktree, { recursive: true, force: true });
   let worktreeAdded = false;
   try {
