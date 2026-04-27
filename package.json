@@ -13,6 +13,8 @@
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.mjs'",
     "check:scripts": "node scripts/check-scripts.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:migrate:files": "node scripts/migrate-files-to-db.mjs",
     "migrate:home:v3": "node scripts/migrate-home-to-sections.mjs",
     "sync:notion": "node scripts/sync-notion.mjs",
     "provision:admin": "node scripts/provision-site-admin.mjs",
@@ -79,6 +81,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@libsql/client": "^0.17.3",
     "@next/bundle-analyzer": "^16.2.4",
     "@types/node": "^20",
     "@types/react": "^19",

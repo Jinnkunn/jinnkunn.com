@@ -22,6 +22,15 @@ binding = "SITE_ASSETS"
 bucket_name = "jinnkunn"
 preview_bucket_name = "jinnkunn"
 
+# D1-backed ContentStore (SITE_ADMIN_STORAGE="db"). Bindings are looked up
+# from getCloudflareContext().env.SITE_ADMIN_DB in
+# lib/server/content-store-resolver.ts. Default env points at the dev DB; the
+# staging / production blocks below override it per environment.
+[[d1_databases]]
+binding = "SITE_ADMIN_DB"
+database_name = "jinnkunn-content-dev"
+database_id = "019ccb92-d904-4a66-b25e-4e208b0c6b2c"
+
 [vars]
 SITE_ADMIN_STORAGE = "github"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
@@ -77,6 +86,11 @@ binding = "SITE_ASSETS"
 bucket_name = "jinnkunn"
 preview_bucket_name = "jinnkunn"
 
+[[env.staging.d1_databases]]
+binding = "SITE_ADMIN_DB"
+database_name = "jinnkunn-content-staging"
+database_id = "adb6f272-f7e6-471a-9c22-b257184b3adf"
+
 [env.production]
 name = "jinnkunn-site"
 
@@ -101,6 +115,11 @@ SITE_ADMIN_SERVICE_TOKENS = "861cdfad2e676fb177cd85bef18351da.access"
 binding = "SITE_ASSETS"
 bucket_name = "jinnkunn"
 preview_bucket_name = "jinnkunn"
+
+[[env.production.d1_databases]]
+binding = "SITE_ADMIN_DB"
+database_name = "jinnkunn-content"
+database_id = "d48dd516-1a2c-4769-a678-8acab485cf11"
 
 [[env.production.routes]]
 pattern = "jinkunchen.com/*"
