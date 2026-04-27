@@ -219,6 +219,22 @@ describe("tiptapDocToMarkdown", () => {
       '<span data-link-style="icon">[Archive](/teaching/archive)</span>',
     );
   });
+
+  it("preserves bold on icon links", () => {
+    const doc = makeDoc(
+      makeText("Blog", [
+        { type: "bold" },
+        { type: "inlineLinkStyle", attrs: { style: "icon" } },
+        { type: "link", attrs: { href: "/blog" } },
+      ]),
+    );
+    expect(tiptapDocToMarkdown(doc)).toBe(
+      '**<span data-link-style="icon">[Blog](/blog)</span>**',
+    );
+    expect(
+      inlineMarkdownToHtml('**<span data-link-style="icon">[Blog](/blog)</span>**'),
+    ).toBe('<p><strong><span data-link-style="icon"><a href="/blog">Blog</a></span></strong></p>');
+  });
 });
 
 // Round-trip: markdown -> html -> (parsed by TipTap, but we can sketch the

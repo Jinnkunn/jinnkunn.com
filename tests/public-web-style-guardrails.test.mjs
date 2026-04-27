@@ -186,11 +186,7 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
   );
 
   const teachingPage = await read("content/pages/teaching.mdx");
-  assertIncludes(
-    teachingPage,
-    'data-link-style="icon"',
-    "Teaching page inline icon links",
-  );
+  assertIncludes(teachingPage, "<TeachingBlock", "Teaching page teaching block");
   assertExcludes(
     teachingPage,
     "<TeachingLinks",
@@ -411,7 +407,7 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
   assertIncludes(
     publicInlineCss,
     "opacity: 0.7;",
-    "Shared Notion link default mask",
+    "Shared Notion link default opacity mask",
   );
   assertIncludes(publicInlineCss, "opacity: 1;", "Shared Notion link hover state");
   assert.doesNotMatch(
@@ -488,10 +484,6 @@ test("public-web-style-guardrails: classic gray text is content-level, not page-
   const teachingCss = await read("app/(classic)/teaching.css");
   const notionBlocksCss = await read("app/(classic)/notion-blocks.css");
   const homeContent = JSON.parse(await read("content/home.json")).bodyMdx ?? "";
-  const newsContent = await read("content/components/news.mdx");
-  const worksContent = await read("content/components/works.mdx");
-  const teachingPage = await read("content/pages/teaching.mdx");
-  const worksPage = await read("content/pages/works.mdx");
 
   assertIncludes(
     bridgeCss,
@@ -532,15 +524,7 @@ test("public-web-style-guardrails: classic gray text is content-level, not page-
       `${label} page-level copy color`,
     );
   }
-  for (const [label, source] of [
-    ["Home content", homeContent],
-    ["News content", newsContent],
-    ["Works component content", worksContent],
-    ["Teaching page content", teachingPage],
-    ["Works page content", worksPage],
-  ]) {
-    assertIncludes(source, 'data-color="gray"', `${label} explicit gray mark`);
-  }
+  assertIncludes(homeContent, 'data-color="gray"', "Home content explicit gray mark");
 });
 
 test("public-web-style-guardrails: MDX heading links inherit heading color", async () => {

@@ -2756,7 +2756,6 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .mdx-document-text-block.ProseMirror span[data-link-style="icon"] a {
   color: inherit;
-  font-weight: inherit;
   opacity: 1;
 }
 
