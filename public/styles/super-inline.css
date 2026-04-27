@@ -139,6 +139,13 @@ a[data-link-style="icon"][href*="semanticscholar.org/"].notion-link.link:before 
   box-shadow: none;
 }
 
+span[data-link-style="icon"][data-link-icon] > a.notion-link.link:before,
+a[data-link-style="icon"][data-link-icon].notion-link.link:before {
+  background-image: var(--link-icon-image, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E"));
+  background-size: 20px 20px;
+  box-shadow: none;
+}
+
 .katex-html {
   font-family: Noto Sans !important;
   font-size: 16px !important;

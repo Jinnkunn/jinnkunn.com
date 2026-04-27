@@ -140,11 +140,6 @@
   line-height: 1.5;
 }
 
-.page__index .home-layout--variant-classicIntro .home-section__body,
-.page__index .home-rich-text--variant-classicBody .home-section__body {
-  color: var(--color-text-default-light);
-}
-
 .page__index .home-layout--variant-classicIntro .home-section__body strong,
 .page__index .home-rich-text--variant-classicBody .home-section__body strong {
   color: var(--color-text-default);
@@ -312,10 +307,6 @@
 .page__index .mdx-post__body strong {
   color: var(--color-text-default);
   font-weight: 600;
-}
-
-.page__index .mdx-post__body {
-  color: var(--color-text-default-light);
 }
 
 .home-link-list__items,

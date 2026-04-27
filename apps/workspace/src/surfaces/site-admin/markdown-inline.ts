@@ -236,7 +236,10 @@ function serializeInlineUngrouped(nodes: JSONContent[]): string {
     }
     const linkStyle = marks.find((m) => m.type === "inlineLinkStyle");
     if (linkStyle && linkStyle.attrs && linkStyle.attrs.style === "icon") {
-      text = `<span data-link-style="icon">${text}</span>`;
+      const icon =
+        typeof linkStyle.attrs.icon === "string" ? linkStyle.attrs.icon.trim() : "";
+      const iconAttr = icon ? ` data-link-icon="${escapeAttr(icon)}"` : "";
+      text = `<span data-link-style="icon"${iconAttr}>${text}</span>`;
     }
     buffer += text;
   }

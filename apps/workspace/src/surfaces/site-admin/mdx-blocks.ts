@@ -522,10 +522,14 @@ function legacyInlineHtmlToMarkdown(input: string): string {
     const directBg = /\bdata-bg\s*=\s*["']([a-z-]+)["']/i.exec(rawAttrs)?.[1] ?? "";
     const directFg = /\bdata-color\s*=\s*["']([a-z-]+)["']/i.exec(rawAttrs)?.[1] ?? "";
     const directLinkStyle = /\bdata-link-style\s*=\s*["']icon["']/i.test(rawAttrs);
+    const directLinkIcon = /\bdata-link-icon\s*=\s*["']([^"']+)["']/i.exec(rawAttrs)?.[1] ?? "";
     const bg = notionColorFromClassName(className, "bg");
     const fg = notionColorFromClassName(className, "color");
     const body = legacyInlineHtmlToMarkdown(inner);
-    if (directLinkStyle) return `<span data-link-style="icon">${body}</span>`;
+    if (directLinkStyle) {
+      const iconAttr = directLinkIcon ? ` data-link-icon="${directLinkIcon}"` : "";
+      return `<span data-link-style="icon"${iconAttr}>${body}</span>`;
+    }
     if (directBg) return `<span data-bg="${directBg}">${body}</span>`;
     if (directFg) return `<span data-color="${directFg}">${body}</span>`;
     if (bg) return `<span data-bg="${bg}">${body}</span>`;

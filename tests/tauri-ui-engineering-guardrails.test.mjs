@@ -30,6 +30,7 @@ test("tauri-ui-engineering: Home uses the shared MDX document editor", async () 
     "parseHomeSource",
     "/api/site-admin/home",
     "content/home.json",
+    "PublishButton",
   ]) {
     assert.match(homePanel, new RegExp(symbol), `HomePanel should use ${symbol}`);
   }
@@ -118,7 +119,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(richTextBlock, /mdx-document-slash-menu/);
   assert.match(richTextInput, /InlineLinkStyle/);
   assert.match(inlineLinkStyleMark, /data-link-style/);
+  assert.match(inlineLinkStyleMark, /data-link-icon/);
   assert.match(richTextBlock, /setInlineLinkStyle/);
+  assert.match(richTextBlock, /uploadImageFile/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
   assert.match(blocks, /type === "raw"/);

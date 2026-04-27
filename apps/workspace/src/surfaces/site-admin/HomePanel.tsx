@@ -10,6 +10,7 @@ import {
   parseHomeSource,
   type HomeFrontmatterForm,
 } from "./mdx-source";
+import { PublishButton } from "./PublishButton";
 
 function blankForm(): HomeFrontmatterForm {
   return { title: "Hi there!" };
@@ -99,13 +100,28 @@ export function HomePanel() {
   );
 
   return (
-    <MdxDocumentEditor
-      adapter={adapter}
-      mode="edit"
-      slug="home"
-      onExit={() => {
-        // Home is the root document; it stays mounted after save.
-      }}
-    />
+    <section className="panel-shell">
+      <header className="panel-shell__header">
+        <div className="panel-shell__titleblock">
+          <h1 className="panel-shell__title">Home</h1>
+          <p className="panel-shell__description">
+            Root page content stored in content/home.json.
+          </p>
+        </div>
+        <div className="panel-shell__actions">
+          <PublishButton />
+        </div>
+      </header>
+      <div className="panel-shell__body">
+        <MdxDocumentEditor
+          adapter={adapter}
+          mode="edit"
+          slug="home"
+          onExit={() => {
+            // Home is the root document; it stays mounted after save.
+          }}
+        />
+      </div>
+    </section>
   );
 }
