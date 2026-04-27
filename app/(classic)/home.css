@@ -296,11 +296,11 @@
   line-height: 1.5;
 }
 
-.page__index .mdx-post__body > p {
+.page__index .mdx-post__body > :is(p, span[data-color]) {
   margin: 0 0 32px;
 }
 
-.page__index .mdx-post__body > p:last-child {
+.page__index .mdx-post__body > :is(p, span[data-color]):last-child {
   margin-bottom: 0;
 }
 

@@ -105,9 +105,8 @@ const CONTENT_LINK_STYLE_SAMPLES = [
 
 function assert(condition, message, details = {}) {
   if (condition) return;
-  const suffix = Object.keys(details).length
-    ? `\n${JSON.stringify(details, null, 2)}`
-    : "";
+  const payload = details && typeof details === "object" ? details : {};
+  const suffix = Object.keys(payload).length ? `\n${JSON.stringify(payload, null, 2)}` : "";
   throw new Error(`${message}${suffix}`);
 }
 
@@ -229,10 +228,10 @@ async function readHomeContract(page) {
         ".home-layout--variant-classicIntro .home-layout__column:nth-child(2)",
       ),
       introParagraph: styleOf(
-        ".home-layout--variant-classicIntro .home-layout__column:nth-child(2) p",
+        ".home-layout--variant-classicIntro .home-layout__column:nth-child(2) :is(p, span[data-color])",
       ),
       bodyParagraph: styleOf(
-        ".page__index .mdx-post__body > p",
+        ".page__index .mdx-post__body > :is(p, span[data-color])",
       ),
     };
   });
