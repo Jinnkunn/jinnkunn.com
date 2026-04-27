@@ -136,11 +136,17 @@ function refreshStagingContentBranch(contentRef) {
   });
 }
 
+function shouldPromoteStagingContent(args) {
+  return args.env === "production" && readEnv("PROMOTE_STAGING_CONTENT") === "1";
+}
+
 async function main() {
   const args = parseArgs();
   loadProjectEnv({ cwd: ROOT, override: true });
   const git = readGitState();
-  const stagingContentRef = args.env === "staging" ? pickStagingContentRef() : "";
+  const promoteStagingContent = shouldPromoteStagingContent(args);
+  const stagingContentRef =
+    args.env === "staging" || promoteStagingContent ? pickStagingContentRef() : "";
   if (stagingContentRef) refreshStagingContentBranch(stagingContentRef);
   const stagingContentSha = stagingContentRef
     ? gitValue(["rev-parse", stagingContentRef])
@@ -163,7 +169,7 @@ async function main() {
       ...baseReport,
       wouldRun: [
         ...(args.skipChecks ? [] : CHECKS.map(([name]) => name)),
-        ...(args.env === "staging"
+        ...(args.env === "staging" || promoteStagingContent
           ? args.skipBuild && args.skipUpload
             ? []
             : ["content overlay build/upload"]
@@ -199,17 +205,17 @@ async function main() {
   let uploadedVersionId = null;
   let overlayRelease = null;
 
-  if (args.env === "staging") {
+  if (args.env === "staging" || promoteStagingContent) {
     if (args.skipBuild && !args.skipUpload) {
       throw new Error(
-        "Staging release cannot upload without an overlay build. Use --skip-upload too, or run npm run release:staging normally.",
+        "Content-overlay release cannot upload without an overlay build. Use --skip-upload too, or run the release normally.",
       );
     }
     if (!args.skipBuild || !args.skipUpload) {
-      console.log("[release-cloudflare] running staging content-overlay build");
+      console.log(`[release-cloudflare] running ${args.env} content-overlay build`);
       const overlayArgs = [
         "scripts/build-cloudflare-content-overlay.mjs",
-        "--env=staging",
+        `--env=${args.env}`,
         `--code-ref=${git.sha}`,
         `--content-ref=${stagingContentRef}`,
         ...(args.skipBuild ? ["--skip-build"] : []),
@@ -227,7 +233,7 @@ async function main() {
     run("npm", ["run", "build:cf"], { label: "build:cf" });
   }
 
-  if (args.env !== "staging" && !args.skipUpload) {
+  if (args.env !== "staging" && !promoteStagingContent && !args.skipUpload) {
     console.log(`[release-cloudflare] uploading ${args.env} Worker version`);
     const uploadOutput = run(
       "npx",
@@ -247,11 +253,13 @@ async function main() {
 
   console.log(`[release-cloudflare] deploying ${args.env}`);
   const deployScript = args.env === "production" ? "deploy:cf:prod" : "deploy:cf:staging";
+  const deployedContentSha = stagingContentSha || git.sha;
+  const deployedContentBranch = stagingContentRef || git.branch;
   const deployEnv = {
-    DEPLOY_SOURCE_SHA: args.env === "staging" ? stagingContentSha : git.sha,
-    DEPLOY_SOURCE_BRANCH: args.env === "staging" ? stagingContentRef : git.branch,
-    DEPLOY_CONTENT_SHA: args.env === "staging" ? stagingContentSha : git.sha,
-    DEPLOY_CONTENT_BRANCH: args.env === "staging" ? stagingContentRef : git.branch,
+    DEPLOY_SOURCE_SHA: deployedContentSha,
+    DEPLOY_SOURCE_BRANCH: deployedContentBranch,
+    DEPLOY_CONTENT_SHA: deployedContentSha,
+    DEPLOY_CONTENT_BRANCH: deployedContentBranch,
     DEPLOY_CODE_SHA: git.sha,
     DEPLOY_SOURCE_DIRTY: git.dirty ? "1" : "0",
   };
