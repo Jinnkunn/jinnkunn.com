@@ -76,7 +76,7 @@
 
   /* Layout */
   --spacing-titlebar: 40px;
-  --spacing-sidebar: 248px;
+  --spacing-sidebar: 272px;
   --spacing-shell-gap: 8px;
 
   --radius-card: 16px;
@@ -537,42 +537,53 @@ body[data-window-focused="true"] .sidebar-surface {
 .sidebar-tree__items {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   margin: 0;
-  padding: 2px 0;
+  padding: 1px 0;
   list-style: none;
 }
 
 .sidebar-tree__item {
-  padding-inline-start: 20px; /* align under chevron + indent under group */
-  font-size: 12.5px;
+  min-height: 28px;
+  padding: 4px 7px 4px 4px;
+  border-radius: 6px;
+  font-size: 13px;
   flex: 1;
   min-width: 0;
+}
+
+.sidebar-tree__item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 /* Wrapper around an expandable nav item: keeps the row clickable while
  * giving the disclosure chevron its own hit target. The CSS variable
  * `--sidebar-depth` (set inline by the renderer) drives Notion-style
- * indent for nested children — each level adds 18px of left padding;
- * combined with the indent guide line on `.sidebar-tree__items--nested`
- * the hierarchy reads as a tree at a glance. */
+ * indent for nested children — each level adds 16px of left padding. */
 .sidebar-tree__item-row {
+  position: relative;
   display: flex;
-  align-items: stretch;
-  gap: 0;
-  padding-inline-start: calc(var(--sidebar-depth, 0) * 18px);
+  align-items: center;
+  gap: 1px;
+  min-height: 30px;
+  padding-inline-start: min(calc(var(--sidebar-depth, 0) * 16px), 56px);
+  padding-inline-end: 2px;
   border-radius: 6px;
+  transition:
+    background-color 100ms ease,
+    box-shadow 100ms ease;
 }
 
-/* Indent guide for nested children — a thin left border on the
- * <ul> wrapper visually anchors the sub-tree to its parent the way
- * Notion / Finder / VS Code do. Lives on the wrapper rather than on
- * each row so it spans the whole sub-tree as a single line. The
- * left margin pulls the line into the indent gutter created by the
- * parent's depth-padding. */
+/* Notion-style nesting: indentation carries hierarchy; avoid connector
+ * lines so deep archive trees don't read as a stack of unrelated rails. */
 .sidebar-tree__items--nested {
-  margin-inline-start: 12px;
-  border-inline-start: 1px solid var(--color-border-subtle);
+  margin-inline-start: 0;
+  border-inline-start: 0;
 }
 
 .sidebar-tree__item-row[data-dragging="true"] {
@@ -584,6 +595,15 @@ body[data-window-focused="true"] .sidebar-surface {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent);
 }
 
+.sidebar-tree__item-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.sidebar-tree__item-row[data-selected="true"] .sidebar-tree__item-disclosure {
+  color: var(--color-text-primary);
+}
+
 .sidebar-tree__item[draggable="true"] {
   cursor: grab;
 }
@@ -592,18 +612,33 @@ body[data-window-focused="true"] .sidebar-surface {
   cursor: grabbing;
 }
 
+.sidebar-tree__item[data-selectable="false"] {
+  color: var(--color-text-muted);
+}
+
+.sidebar-tree__item[data-selectable="false"]:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  color: var(--color-text-secondary);
+}
+
+.sidebar-tree__item[aria-current="page"] {
+  background: transparent;
+  border-color: transparent;
+}
+
 .sidebar-tree__item-disclosure {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
+  width: 18px;
+  height: 28px;
   flex-shrink: 0;
   border: 0;
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 6px;
-  margin-inline-end: 2px;
+  margin: 0;
   transition: background-color 80ms ease, color 80ms ease;
 }
 
@@ -614,9 +649,10 @@ body[data-window-focused="true"] .sidebar-surface {
  * the parent's label, breaking the tree look. */
 .sidebar-tree__item-disclosure-placeholder {
   display: inline-block;
-  width: 22px;
+  width: 18px;
+  height: 28px;
   flex-shrink: 0;
-  margin-inline-end: 2px;
+  margin: 0;
 }
 
 .sidebar-tree__item-disclosure:hover,
@@ -626,12 +662,6 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-primary);
 }
 
-/* "+" / "✎" / "★" affordances — appear on hover for nav items that opt
- * in via canAddChild / draggable / always (star). Click handlers fan
- * out via the surface's registered handlers. */
-.sidebar-tree__item-add,
-.sidebar-tree__item-rename,
-.sidebar-tree__item-reorder-btn,
 .sidebar-tree__item-star {
   display: inline-flex;
   align-items: center;
@@ -650,22 +680,106 @@ body[data-window-focused="true"] .sidebar-surface {
   transition: opacity 100ms ease, background-color 80ms ease, color 80ms ease;
 }
 
-.sidebar-tree__item-reorder {
+.sidebar-tree__item-menu {
+  position: relative;
   display: inline-flex;
   flex-shrink: 0;
-  gap: 1px;
+  align-items: center;
 }
 
-/* Reveal on row hover or when keyboard focus lands inside the row. */
-.sidebar-tree__item-row:hover .sidebar-tree__item-add,
-.sidebar-tree__item-row:hover .sidebar-tree__item-rename,
-.sidebar-tree__item-row:hover .sidebar-tree__item-reorder-btn,
-.sidebar-tree__item-row:hover .sidebar-tree__item-star,
-.sidebar-tree__item-row:focus-within .sidebar-tree__item-add,
-.sidebar-tree__item-row:focus-within .sidebar-tree__item-rename,
-.sidebar-tree__item-row:focus-within .sidebar-tree__item-reorder-btn,
-.sidebar-tree__item-row:focus-within .sidebar-tree__item-star {
+.sidebar-tree__item-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  list-style: none;
+  opacity: 0;
+  transition: opacity 100ms ease, background-color 80ms ease, color 80ms ease;
+}
+
+.sidebar-tree__item-more::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-tree__item-more::marker {
+  content: "";
+}
+
+.sidebar-tree__item-row:hover .sidebar-tree__item-more,
+.sidebar-tree__item-row:focus-within .sidebar-tree__item-more,
+.sidebar-tree__item-menu[open] .sidebar-tree__item-more {
   opacity: 1;
+}
+
+.sidebar-tree__item-more:hover,
+.sidebar-tree__item-more:focus-visible,
+.sidebar-tree__item-menu[open] .sidebar-tree__item-more {
+  outline: none;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.sidebar-tree__item-menu-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  display: flex;
+  min-width: 152px;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 9px;
+  background: var(--color-bg-sidebar);
+  box-shadow:
+    0 16px 28px rgba(15, 15, 15, 0.12),
+    0 2px 8px rgba(15, 15, 15, 0.08);
+}
+
+.sidebar-tree__item-menu-action {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-tree__item-menu-action:hover,
+.sidebar-tree__item-menu-action:focus-visible {
+  outline: none;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.sidebar-tree__item-menu-action:disabled {
+  cursor: default;
+  color: var(--color-text-muted);
+  opacity: 0.45;
+}
+
+.sidebar-tree__item-menu-icon {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
 }
 
 /* Stars stay visible when the item is favorited regardless of hover. */
@@ -674,22 +788,11 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-accent);
 }
 
-.sidebar-tree__item-add:hover,
-.sidebar-tree__item-add:focus-visible,
-.sidebar-tree__item-rename:hover,
-.sidebar-tree__item-rename:focus-visible,
-.sidebar-tree__item-reorder-btn:hover,
-.sidebar-tree__item-reorder-btn:focus-visible,
 .sidebar-tree__item-star:hover,
 .sidebar-tree__item-star:focus-visible {
   outline: none;
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
-}
-
-.sidebar-tree__item-reorder-btn:disabled {
-  cursor: default;
-  color: var(--color-text-muted);
 }
 
 /* Inline rename input replaces the label button while active. The
@@ -771,11 +874,11 @@ body[data-window-focused="true"] .sidebar-surface {
  * the slightly smaller font for nested rows so deep trees stay
  * readable; let the inner button inherit its baseline padding. */
 .sidebar-tree__items--nested {
-  padding: 1px 0 1px;
+  padding: 0;
 }
 
 .sidebar-tree__items--nested .sidebar-tree__item {
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .sidebar-tree__badge {
@@ -1573,13 +1676,66 @@ body[data-window-focused="true"] .sidebar-surface {
  * Unified MDX document editor (posts + pages)
  * ------------------------------------------------------------------ */
 .mdx-document-editor-card {
-  gap: 12px;
+  gap: 10px;
+  padding: 0 0 28px;
+  border: 0;
+  background: transparent;
+}
+
+.mdx-document-editor__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 42px;
+  padding: 4px 2px 8px;
+}
+
+.mdx-document-editor__context {
+  min-width: 0;
+}
+
+.mdx-document-editor__context-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-document-editor__context-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.mdx-document-editor__crumb {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-document-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .mdx-document-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -1587,18 +1743,36 @@ body[data-window-focused="true"] .sidebar-surface {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  background: var(--color-bg-surface-alt);
+  gap: 10px;
+  width: min(860px, 100%);
+  margin-inline: auto;
+  padding: 0 4px;
+  color: var(--color-text-muted);
 }
 
-.mdx-document-editor__toolbar > span {
+.mdx-document-editor__mode-switch {
+  border-color: transparent;
+  background: transparent;
+}
+
+.mdx-document-editor__mode-switch button {
+  min-width: 58px;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+
+.mdx-document-editor__mode-switch button[data-active="true"] {
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+  box-shadow: none;
+}
+
+.mdx-document-editor__mode-hint {
   margin-left: auto;
   color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 11.5px;
+  font-weight: 500;
 }
 
 .mdx-document-editor__layout {
@@ -1610,19 +1784,26 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-editor[data-properties-open="true"] .mdx-document-editor__layout {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
 }
 
 .mdx-document-editor__canvas,
 .mdx-document-editor__properties {
   min-width: 0;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  background: var(--color-bg-surface);
 }
 
 .mdx-document-editor__canvas {
-  padding: 20px;
+  width: min(860px, 100%);
+  justify-self: center;
+  padding: 34px min(7vw, 56px) 72px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mdx-document-editor[data-properties-open="true"] .mdx-document-editor__canvas {
+  width: 100%;
+  padding-inline: min(5vw, 40px);
 }
 
 .mdx-document-editor__properties {
@@ -1635,6 +1816,8 @@ body[data-window-focused="true"] .sidebar-surface {
   overflow: auto;
   padding: 12px;
   background: var(--color-bg-surface-alt);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
 }
 
 .mdx-document-editor__properties-head {
@@ -1671,27 +1854,27 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-editor__title {
   width: 100%;
   min-width: 0;
-  margin: 0 0 18px;
+  margin: 0 0 22px;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 3px 5px;
+  padding: 2px 4px;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 30px;
-  font-weight: 760;
+  font-size: 42px;
+  font-weight: 780;
   letter-spacing: 0;
-  line-height: 1.15;
+  line-height: 1.04;
 }
 
 .mdx-document-editor__title:hover {
-  background: color-mix(in srgb, var(--color-text-primary) 3%, transparent);
+  background: transparent;
 }
 
 .mdx-document-editor__title:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 46%, var(--color-border-default));
-  background: var(--color-bg-surface);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .mdx-document-editor__source {
@@ -1709,18 +1892,18 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-editor__preview {
   min-height: 520px;
   overflow: auto;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  padding: 18px 22px;
-  background: var(--color-bg-surface);
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .mdx-document-blocks {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border-radius: 12px;
-  padding: 6px 0;
+  border-radius: 8px;
+  padding: 2px 0;
   transition:
     background-color 130ms ease,
     box-shadow 130ms ease;
@@ -1734,10 +1917,10 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-block {
   position: relative;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 4px;
-  padding: 1px 8px 1px 0;
-  border-radius: 6px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 2px;
+  padding: 0;
+  border-radius: 5px;
   transition:
     background-color 120ms ease,
     box-shadow 120ms ease;
@@ -1754,7 +1937,7 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-block:hover {
-  background: var(--mdx-block-row-hover-bg);
+  background: color-mix(in srgb, var(--color-text-primary) 2.5%, transparent);
 }
 
 /* Notion-style left gutter: + on the left, ⋮⋮ on the right. Both fade in
@@ -1765,8 +1948,8 @@ body[data-window-focused="true"] .sidebar-surface {
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-  gap: 2px;
-  padding-top: 4px;
+  gap: 1px;
+  padding-top: 3px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -1781,14 +1964,14 @@ body[data-window-focused="true"] .sidebar-surface {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
+  width: 16px;
   height: 22px;
   border: 0;
   border-radius: 4px;
   padding: 0;
   background: transparent;
   color: var(--mdx-handle-color);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
@@ -1806,7 +1989,7 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .mdx-document-block__handle--menu {
   cursor: grab;
-  font-size: 14px;
+  font-size: 12px;
   letter-spacing: -1px;
 }
 
@@ -2065,9 +2248,8 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-secondary);
   font: inherit;
   transition:
-    border-color 120ms ease,
     background-color 120ms ease,
-    box-shadow 120ms ease;
+    color 120ms ease;
 }
 
 .mdx-document-text-block-shell {
@@ -2075,11 +2257,12 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-text-block {
-  min-height: 40px;
-  padding: 7px 8px;
+  min-height: 30px;
+  padding: 3px 5px;
   resize: none;
-  font-size: 13.5px;
-  line-height: 1.6;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.62;
 }
 
 .mdx-document-text-block--quote {
@@ -2089,12 +2272,12 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-text-block--callout {
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-surface));
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
 }
 
 .mdx-document-text-block--code {
-  background: var(--color-bg-surface-alt);
+  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
@@ -2102,7 +2285,7 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .mdx-document-text-block--raw {
-  background: color-mix(in srgb, var(--color-warn) 6%, var(--color-bg-surface-alt));
+  background: color-mix(in srgb, var(--color-warn) 7%, transparent);
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
@@ -3419,12 +3602,12 @@ span[data-bg="red"] { background: var(--color-bg-red); }
 .mdx-document-heading-block {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
 .mdx-document-heading-block__input {
-  padding: 4px 6px;
+  padding: 2px 4px;
   color: var(--color-text-primary);
   font-weight: 740;
   line-height: 1.2;
@@ -3445,7 +3628,7 @@ span[data-bg="red"] { background: var(--color-bg-red); }
 .mdx-document-text-block:hover,
 .mdx-document-heading-block__input:hover,
 .mdx-document-image-block__fields input:hover {
-  background: color-mix(in srgb, var(--color-text-primary) 3%, transparent);
+  background: transparent;
 }
 
 .mdx-document-text-block:focus,
@@ -3453,7 +3636,7 @@ span[data-bg="red"] { background: var(--color-bg-red); }
 .mdx-document-image-block__fields input:focus {
   outline: none;
   border-color: transparent;
-  background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
+  background: transparent;
   box-shadow: none;
 }
 

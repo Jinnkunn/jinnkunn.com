@@ -272,6 +272,7 @@ function buildPagesTree(rows: PageListRow[], savedOrder: string[] = []): Surface
     return Array.from(level.values()).map((n) => ({
       id: n.id,
       label: n.label,
+      selectable: n.hasPage,
       // Notion-style sub-pages: every page row gets the "+" affordance
       // so the user can add a sub-page under any leaf or folder. The
       // surface decodes "add:pages:<prefix>" into a fresh PageEditor
@@ -414,6 +415,7 @@ function SiteAdminContent() {
   const [postRows, setPostRows] = useState<PostListRow[]>([]);
   const [pageRows, setPageRows] = useState<PageListRow[]>([]);
   const [pagesTree, setPagesTree] = useState<readonly SurfaceNavItem[]>([]);
+  const [pageIndexLoaded, setPageIndexLoaded] = useState(false);
   const [pageOrderSlugs, setPageOrderSlugs] = useState<string[]>([]);
   const [pageTreeFileSha, setPageTreeFileSha] = useState("");
   const [pageTreeConflict, setPageTreeConflict] = useState(false);
@@ -451,11 +453,19 @@ function SiteAdminContent() {
     if (decodedItem.tab === "posts") {
       setPostsSelected({ kind: "edit", slug: decodedItem.slug });
     } else if (decodedItem.tab === "pages") {
-      setPagesSelected({ kind: "edit", slug: decodedItem.slug });
+      if (!pageIndexLoaded) return;
+      if (pageRows.some((row) => row.slug === decodedItem.slug)) {
+        setPagesSelected({ kind: "edit", slug: decodedItem.slug });
+      } else {
+        setPagesSelected(null);
+        if (activeNavItemId === `pages:${decodedItem.slug}`) {
+          setActiveNavItemId("pages");
+        }
+      }
     } else if (decodedItem.tab === "components") {
       setComponentsSelected(decodedItem.name);
     }
-  }, [decodedItem]);
+  }, [activeNavItemId, decodedItem, pageIndexLoaded, pageRows, setActiveNavItemId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Synthetic "add:<itemId>" ids fired by the sidebar's "+" button.
@@ -505,6 +515,7 @@ function SiteAdminContent() {
       setPostRows([]);
       setPageRows([]);
       setPagesTree([]);
+      setPageIndexLoaded(false);
       setPageOrderSlugs([]);
       setPageTreeFileSha("");
       setPageTreeConflict(false);
@@ -559,6 +570,7 @@ function SiteAdminContent() {
         setPagesTree(buildPagesTree(parsed, completeOrder));
         setPagesIndex(parsed);
       }
+      setPageIndexLoaded(true);
     })();
     return () => {
       cancelled = true;
