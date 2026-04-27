@@ -5,7 +5,9 @@ import type { ReactElement } from "react";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { parseWorksEntries, type WorksComponentEntry } from "@/lib/components/parse";
 import { compilePostMdx } from "@/lib/posts/compile";
+import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
 
 import { postMdxComponents } from "./components";
 import { WorksEntry } from "./works-entry";
@@ -15,61 +17,19 @@ interface WorksBlockProps {
   limit?: number;
 }
 
-interface WorksEntryRecord {
-  category: "recent" | "passed";
-  role: string;
-  affiliation?: string;
-  affiliationUrl?: string;
-  location?: string;
-  period: string;
-  body: string;
-}
-
 const WORKS_SOURCE_PATH = resolve(
   process.cwd(),
-  "content/components/works.mdx",
+  getSiteComponentDefinition("works").sourcePath,
 );
 
-// Match `<WorksEntry ...>...</WorksEntry>` blocks. Same parsing the
-// editor's mdx-blocks.ts does, but inline here to avoid importing
-// admin-side code into the public bundle. Attribute parser allows any
-// order and tolerates extra whitespace.
-const WORKS_ENTRY_RE = /<WorksEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/WorksEntry>/g;
-const ATTR_RE = /(\w+)\s*=\s*"([^"]*)"/g;
-
-function parseAttrs(raw: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const m of raw.matchAll(ATTR_RE)) {
-    out[m[1]] = m[2];
-  }
-  return out;
-}
-
-async function loadEntries(): Promise<WorksEntryRecord[]> {
+async function loadEntries() {
   let raw = "";
   try {
     raw = await readFile(WORKS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
-  const body = raw.replace(/^---[\s\S]*?---\s*/m, "");
-  const out: WorksEntryRecord[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = WORKS_ENTRY_RE.exec(body)) !== null) {
-    const attrs = parseAttrs(m[1] ?? "");
-    const category =
-      attrs.category === "passed" ? "passed" : "recent";
-    out.push({
-      category,
-      role: attrs.role ?? "",
-      affiliation: attrs.affiliation || undefined,
-      affiliationUrl: attrs.affiliationUrl || undefined,
-      location: attrs.location || undefined,
-      period: attrs.period ?? "",
-      body: m[2] ?? "",
-    });
-  }
-  return out;
+  return parseWorksEntries(raw);
 }
 
 function NotionSpacer() {
@@ -100,7 +60,7 @@ export async function WorksBlock({ limit }: WorksBlockProps): Promise<ReactEleme
     );
   }
 
-  const renderRow = async (entry: WorksEntryRecord, key: string) => {
+  const renderRow = async (entry: WorksComponentEntry, key: string) => {
     const { Content } = entry.body
       ? await compilePostMdx(entry.body)
       : { Content: null };

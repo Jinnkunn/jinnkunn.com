@@ -278,6 +278,14 @@ export type SiteAdminDeployPreviewProtectedChange = {
   previousAuth?: ProtectedAccessMode;
 };
 
+export type SiteAdminDeployPreviewComponentChange = {
+  name: string;
+  label: string;
+  sourcePath: string;
+  embedTag: string;
+  affectedRoutes: string[];
+};
+
 export type SiteAdminDeployPreviewPayload = {
   ok: true;
   generatedAt: string;
@@ -291,12 +299,14 @@ export type SiteAdminDeployPreviewPayload = {
     protectedAdded: number;
     protectedRemoved: number;
     protectedChanged: number;
+    componentsChanged: number;
   };
   samples: {
     pagesAdded: string[];
     pagesRemoved: string[];
     redirects: SiteAdminDeployPreviewRedirectChange[];
     protected: SiteAdminDeployPreviewProtectedChange[];
+    components: SiteAdminDeployPreviewComponentChange[];
   };
 };
 

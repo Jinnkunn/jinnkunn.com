@@ -102,7 +102,6 @@ export function RichTextEditableBlock({
   onTurnInto,
   request,
 }: RichTextEditableBlockProps) {
-  const isHeading = block.type === "heading";
   const richRef = useRef<RichTextInputHandle>(null);
   // The editor lives in RichTextInput's `useEditor`. We track it as
   // reactive state via the `onEditorReady` callback so the
@@ -402,64 +401,10 @@ export function RichTextEditableBlock({
     </>
   );
 
-  // Heading carries its own outer wrapper that lays the H1/H2/H3 selector
-  // beside the input. The other kinds reuse the same shell the textarea
-  // path used so block-level chrome (drag handle, popover anchor, etc.)
-  // stays unchanged.
-  if (isHeading) {
-    return (
-      <div className="mdx-document-heading-block">
-        <select
-          aria-label="Heading level"
-          value={block.level ?? 2}
-          onChange={(event) =>
-            onPatch((current) => ({
-              ...current,
-              level: Number(event.target.value) as 1 | 2 | 3,
-            }))
-          }
-        >
-          <option value={1}>H1</option>
-          <option value={2}>H2</option>
-          <option value={3}>H3</option>
-        </select>
-        <div className="mdx-document-text-block-shell">
-          {inner}
-          {overlays}
-        </div>
-      </div>
-    );
-  }
-
-  // list reuses the existing two-column wrapper from the textarea path:
-  // the bulleted/numbered selector on the left, the editor on the right.
-  // CSS keys off `--list-bulleted` / `--list-numbered` to render the marker
-  // on each TipTap paragraph via a `::before` pseudo-element.
-  if (block.type === "list") {
-    return (
-      <div className="mdx-document-list-block">
-        <select
-          aria-label="List style"
-          value={block.listStyle ?? "bulleted"}
-          onChange={(event) =>
-            onPatch((current) => ({
-              ...current,
-              markers: undefined,
-              listStyle: event.target.value as "bulleted" | "numbered",
-            }))
-          }
-        >
-          <option value="bulleted">Bulleted</option>
-          <option value="numbered">Numbered</option>
-        </select>
-        <div className="mdx-document-text-block-shell">
-          {inner}
-          {overlays}
-        </div>
-      </div>
-    );
-  }
-
+  // Heading level and list style now live in the block action menu /
+  // slash commands rather than persistent inline selects. This keeps the
+  // canvas content-first like Notion: controls appear from the left gutter
+  // when the row is hovered or focused.
   return (
     <div className="mdx-document-text-block-shell">
       {inner}
@@ -523,10 +468,35 @@ function InlineFormatToolbar({
         : null;
     if (url === null) return;
     if (!url) {
-      editor.chain().focus().unsetLink().run();
+      editor.chain().focus().unsetLink().unsetInlineLinkStyle().run();
       return;
     }
     editor.chain().focus().setLink({ href: url }).run();
+  };
+  const onIconLink = () => {
+    const active = editor.isActive("inlineLinkStyle", { style: "icon" });
+    if (active) {
+      editor.chain().focus().unsetInlineLinkStyle().run();
+      return;
+    }
+
+    const existing = editor.getAttributes("link").href as string | undefined;
+    if (!existing) {
+      const url =
+        typeof window !== "undefined"
+          ? window.prompt("Link URL", "https://")
+          : null;
+      if (!url) return;
+      editor
+        .chain()
+        .focus()
+        .setLink({ href: url })
+        .setInlineLinkStyle({ style: "icon" })
+        .run();
+      return;
+    }
+
+    editor.chain().focus().setInlineLinkStyle({ style: "icon" }).run();
   };
 
   // Read the current color attrs so the picker shows what's already
@@ -636,6 +606,19 @@ function InlineFormatToolbar({
           data-active={editor.isActive("link") || undefined}
         >
           🔗
+        </button>
+        <button
+          type="button"
+          className="block-popover__inline-btn"
+          aria-label="Icon link"
+          title="Icon link"
+          onMouseDown={preserve}
+          onClick={onIconLink}
+          data-active={
+            editor.isActive("inlineLinkStyle", { style: "icon" }) || undefined
+          }
+        >
+          ↗
         </button>
         <span className="block-popover__inline-divider" aria-hidden="true" />
         {/* Color picker — opens a small palette popover below the toolbar

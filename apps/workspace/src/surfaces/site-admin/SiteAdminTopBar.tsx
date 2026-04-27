@@ -1,4 +1,5 @@
 import type { SurfaceNavGroup, SurfaceNavItem } from "../types";
+import { handleWindowDragMouseDown } from "../../shell/windowDrag";
 import { useSiteAdmin } from "./state";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
 import type { SiteAdminTab } from "./types";
@@ -17,7 +18,7 @@ const TAB_FALLBACK_LABELS: Record<SiteAdminTab, string> = {
   home: "Home",
   posts: "Blog",
   pages: "Pages",
-  components: "Components",
+  components: "Shared",
   settings: "Settings",
 };
 
@@ -64,7 +65,12 @@ export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
   const crumbs = findCrumbs(sections, activeTab);
 
   return (
-    <header className="site-admin-topbar" role="banner">
+    <header
+      className="site-admin-topbar"
+      role="banner"
+      data-tauri-drag-region
+      onMouseDown={handleWindowDragMouseDown}
+    >
       <nav className="site-admin-topbar__crumbs" aria-label="Breadcrumb">
         <span className="site-admin-topbar__crumb-section">
           {crumbs.section}
@@ -75,7 +81,7 @@ export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
         <span className="site-admin-topbar__crumb-tab">{crumbs.tab}</span>
       </nav>
 
-      <div className="site-admin-topbar__right">
+      <div className="site-admin-topbar__right" data-window-drag-exclude>
         <SiteAdminConnectionPill />
         <button
           type="button"

@@ -78,6 +78,15 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const richTextBlock = await read(
     "apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx",
   );
+  const richTextInput = await read(
+    "apps/workspace/src/surfaces/site-admin/RichTextInput.tsx",
+  );
+  const inlineLinkStyleMark = await read(
+    "apps/workspace/src/surfaces/site-admin/inline-link-style-mark.ts",
+  );
+  const topbar = await read(
+    "apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx",
+  );
   const styles = await read("apps/workspace/src/index.css");
 
   assert.match(documentEditor, /export function MdxDocumentEditor/);
@@ -88,6 +97,12 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /parseMdxBlocks/);
   assert.match(documentEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
+  assert.match(
+    documentEditor,
+    /const DOCUMENT_EDITOR_MODES: DocumentEditorMode\[\] = \["blocks", "source"\]/,
+  );
+  assert.doesNotMatch(documentEditor, /usePreview/);
+  assert.doesNotMatch(documentEditor, /mdx-document-editor__preview/);
   assert.match(documentEditor, /SLASH_COMMANDS/);
   assert.match(documentEditor, /getMatchingSlashCommands/);
   assert.match(documentEditor, /getMatchingBlockEditorCommands/);
@@ -101,6 +116,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   // emitted from RichTextEditableBlock.
   assert.match(richTextBlock, /BlockEditorCommandMenu/);
   assert.match(richTextBlock, /mdx-document-slash-menu/);
+  assert.match(richTextInput, /InlineLinkStyle/);
+  assert.match(inlineLinkStyleMark, /data-link-style/);
+  assert.match(richTextBlock, /setInlineLinkStyle/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
   assert.match(blocks, /type === "raw"/);
@@ -112,6 +130,7 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /\.mdx-document-editor__layout/);
   assert.match(styles, /\.mdx-document-block/);
   assert.match(styles, /\.mdx-document-slash-menu/);
+  assert.match(styles, /data-link-style="icon"/);
   // Notion-style refactor: gutter handle column slimmed to 36px; slash menu
   // uses a single-column flex layout (with grouped sections + icons) instead
   // of the old 2-column grid.
@@ -121,6 +140,10 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(blockEditor, /export interface BlockEditorCommand/);
   assert.match(blockEditor, /export function getMatchingBlockEditorCommands/);
   assert.match(blockEditor, /export function BlockEditorCommandMenu/);
+  assert.match(topbar, /handleWindowDragMouseDown/);
+  assert.match(topbar, /data-tauri-drag-region/);
+  assert.doesNotMatch(richTextBlock, /aria-label="Heading level"/);
+  assert.doesNotMatch(richTextBlock, /aria-label="List style"/);
 
   for (const relPath of [
     "apps/workspace/src/surfaces/site-admin/PostEditor.tsx",
@@ -152,6 +175,27 @@ test("tauri-ui-engineering: workspace primitives exist for future UI migration",
   ]) {
     assert.match(source, new RegExp(`export function ${symbol}`));
   }
+});
+
+test("tauri-ui-engineering: shared content editor stays visual-first", async () => {
+  const componentEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/ComponentEditor.tsx",
+  );
+  const blockRenderers = await read(
+    "apps/workspace/src/surfaces/site-admin/mdx-block-renderers.tsx",
+  );
+  const previewRoute = await read(
+    "app/api/site-admin/components/[name]/preview/route.ts",
+  );
+
+  assert.match(componentEditor, /component-collection-table/);
+  assert.match(componentEditor, /component-embed-preview/);
+  assert.match(componentEditor, /ENABLE_COMPONENT_COLLECTION_TABLE = false/);
+  assert.match(componentEditor, /\/api\/site-admin\/components\/\$\{encodeURIComponent\(name\)\}\/preview/);
+  assert.match(previewRoute, /renderComponentPreviewElement/);
+  assert.match(blockRenderers, /More details/);
+  assert.doesNotMatch(blockRenderers, /JSON array/);
+  assert.doesNotMatch(blockRenderers, /authorsRich \(JSON/);
 });
 
 test("tauri-ui-engineering: static Notion toggles do not expose fake buttons", async () => {

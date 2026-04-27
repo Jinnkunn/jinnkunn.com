@@ -15,8 +15,8 @@ const DEFAULT_ROUTES = [
   { path: "/teaching/archive", contains: "CSCI3141", minBreadcrumbs: 3 },
   {
     path: "/teaching/archive/2024-25-fall/csci3141",
-    contains: "Foundations/Data Science",
-    minBreadcrumbs: 4,
+    contains: "Enter the password",
+    protected: true,
   },
   { path: "/blog", contains: "Blog" },
   { path: "/bio", contains: "BIO" },
@@ -154,7 +154,14 @@ async function createSessionCookie() {
   return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
 }
 
-async function checkStaticRoute({ origin, cookie, path, contains, minBreadcrumbs = 0 }) {
+async function checkStaticRoute({
+  origin,
+  cookie,
+  path,
+  contains,
+  minBreadcrumbs = 0,
+  protected: isProtected = false,
+}) {
   const url = `${origin}${path}`;
   const res = await fetch(url, {
     redirect: "manual",
@@ -168,7 +175,15 @@ async function checkStaticRoute({ origin, cookie, path, contains, minBreadcrumbs
     `[staging-authenticated-qa] ${path}: ${res.status} x-static-shell=${staticShell} ${staticPath}`,
   );
   assert(res.status === 200, "route returned wrong status", { path, status: res.status });
-  assert(staticShell === "1", "route did not use static shell", { path, staticShell, staticPath });
+  if (isProtected) {
+    assert(staticShell !== "1", "protected route bypassed middleware via static shell", {
+      path,
+      staticShell,
+      staticPath,
+    });
+  } else {
+    assert(staticShell === "1", "route did not use static shell", { path, staticShell, staticPath });
+  }
   if (contains) {
     assert(text.includes(contains), "route content check failed", { path, contains });
   }

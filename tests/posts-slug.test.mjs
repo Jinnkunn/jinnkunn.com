@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { assertValidSlug, isValidSlug, slugifyTitle } from "../lib/posts/slug.ts";
+import fs from "node:fs";
+import path from "node:path";
+
+import {
+  POST_SLUG_MAX_LENGTH,
+  assertValidSlug,
+  isValidSlug,
+  slugifyTitle,
+} from "../lib/posts/slug.ts";
 
 test("posts-slug: accepts lowercase alphanumeric + internal dashes", () => {
   assert.equal(isValidSlug("hello-world"), true);
@@ -19,8 +27,17 @@ test("posts-slug: rejects leading/trailing dashes, uppercase, and invalid chars"
 });
 
 test("posts-slug: enforces length cap", () => {
-  assert.equal(isValidSlug("a".repeat(60)), true);
-  assert.equal(isValidSlug("a".repeat(61)), false);
+  assert.equal(isValidSlug("a".repeat(POST_SLUG_MAX_LENGTH)), true);
+  assert.equal(isValidSlug("a".repeat(POST_SLUG_MAX_LENGTH + 1)), false);
+});
+
+test("posts-slug: accepts existing content post filenames", () => {
+  const postsDir = path.join(process.cwd(), "content", "posts");
+  const files = fs.readdirSync(postsDir).filter((file) => file.endsWith(".mdx"));
+  for (const file of files) {
+    const slug = file.replace(/\.mdx$/, "");
+    assert.equal(isValidSlug(slug), true, `${slug} should be a valid post slug`);
+  }
 });
 
 test("posts-slug: assertValidSlug throws on invalid", () => {
@@ -36,8 +53,8 @@ test("posts-slug: slugifyTitle converts titles to safe slugs", () => {
   assert.equal(slugifyTitle(""), "post");
 });
 
-test("posts-slug: slugifyTitle caps at 60 chars", () => {
+test("posts-slug: slugifyTitle caps at max chars", () => {
   const long = slugifyTitle("x".repeat(200));
-  assert.ok(long.length <= 60);
+  assert.ok(long.length <= POST_SLUG_MAX_LENGTH);
   assert.equal(isValidSlug(long), true);
 });

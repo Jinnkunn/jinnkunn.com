@@ -45,6 +45,16 @@ describe("inlineMarkdownToHtml", () => {
     );
   });
 
+  it("preserves <span data-link-style> so icon links round-trip", () => {
+    expect(
+      inlineMarkdownToHtml(
+        '<span data-link-style="icon">[Archive](/teaching/archive)</span>',
+      ),
+    ).toBe(
+      '<p><span data-link-style="icon"><a href="/teaching/archive">Archive</a></span></p>',
+    );
+  });
+
   it("preserves underscores in mid-word identifiers (no italic)", () => {
     expect(inlineMarkdownToHtml("foo_bar_baz")).toBe("<p>foo_bar_baz</p>");
   });
@@ -142,6 +152,18 @@ describe("tiptapDocToMarkdown", () => {
         ),
       ),
     ).toBe("plain");
+  });
+
+  it("wraps icon-link presentation outside the markdown link", () => {
+    const doc = makeDoc(
+      makeText("Archive", [
+        { type: "inlineLinkStyle", attrs: { style: "icon" } },
+        { type: "link", attrs: { href: "/teaching/archive" } },
+      ]),
+    );
+    expect(tiptapDocToMarkdown(doc)).toBe(
+      '<span data-link-style="icon">[Archive](/teaching/archive)</span>',
+    );
   });
 });
 
