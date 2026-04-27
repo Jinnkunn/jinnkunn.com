@@ -92,10 +92,15 @@
 
 .mdx-post__body p,
 .mdx-post__body li,
-.mdx-post__body blockquote {
+.mdx-post__body blockquote,
+.mdx-post__body > span[data-color] {
   font-size: 16px;
   line-height: 1.5;
   overflow-wrap: break-word;
+}
+
+.mdx-post__body > span[data-color] {
+  display: block;
 }
 
 .mdx-post__body strong,

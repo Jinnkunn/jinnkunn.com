@@ -495,6 +495,16 @@ test("public-web-style-guardrails: classic gray text is content-level, not page-
     ".mdx-post__body strong,",
     "MDX emphasized copy",
   );
+  assertIncludes(
+    mdxCss,
+    ".mdx-post__body > span[data-color]",
+    "MDX direct inline color block",
+  );
+  assertIncludes(
+    homeCss,
+    ".page__index .mdx-post__body > :is(p, span[data-color])",
+    "Homepage direct inline color rhythm",
+  );
   for (const [label, source] of [
     ["Homepage CSS", homeCss],
     ["MDX CSS", mdxCss],
