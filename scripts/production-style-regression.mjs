@@ -16,6 +16,7 @@ import { loadProjectEnv } from "./load-project-env.mjs";
 const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
+const CLASSIC_DEFAULT_TEXT_COLOR = "rgb(55, 53, 47)";
 const CLASSIC_MUTED_TEXT_COLOR = "rgba(55, 53, 47, 0.56)";
 
 const ROUTES = [
@@ -24,8 +25,9 @@ const ROUTES = [
     pageClass: "page__index",
     titleIncludes: "Hi there!",
     kind: "home",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
-    linkColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
+    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
+    linkOpacity: "0.7",
     required: [
       [".home-layout--variant-classicIntro", 1],
       [".page__index .mdx-post__body", 1],
@@ -35,7 +37,8 @@ const ROUTES = [
     path: "/news",
     pageClass: "page__mdx-page",
     titleIncludes: "News",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
+    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-heading", 1],
@@ -47,7 +50,8 @@ const ROUTES = [
     path: "/publications",
     pageClass: "page__mdx-page",
     titleIncludes: "Publications",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
+    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.publication-toggle", 1],
@@ -59,7 +63,8 @@ const ROUTES = [
     path: "/works",
     pageClass: "page__mdx-page",
     titleIncludes: "Works",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
+    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-toggle.works-toggle", 1],
@@ -71,7 +76,8 @@ const ROUTES = [
     path: "/teaching",
     pageClass: "page__mdx-page",
     titleIncludes: "Teaching",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
+    grayTextColor: CLASSIC_MUTED_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".notion-bulleted-list .notion-list-item", 1],
@@ -93,7 +99,7 @@ const ROUTES = [
     path: "/bio",
     pageClass: "page__mdx-page",
     titleIncludes: "BIO",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
@@ -103,7 +109,7 @@ const ROUTES = [
     path: "/connect",
     pageClass: "page__mdx-page",
     titleIncludes: "Connect",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
@@ -113,7 +119,7 @@ const ROUTES = [
     path: "/chen",
     pageClass: "page__mdx-page",
     titleIncludes: "Yimen Chen",
-    readableColor: CLASSIC_MUTED_TEXT_COLOR,
+    readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
@@ -243,7 +249,7 @@ function compareTextStyle(local, production, label, options = {}) {
   assert(
     normalizeStyleValue(local.color) === normalizeStyleValue(expectedColor),
     options.expectedColor
-      ? `${label} text color drifted from the classic muted-text contract`
+      ? `${label} text color drifted from the classic text-color contract`
       : `${label} text color drifted from production`,
     { local, production, expectedColor },
   );
@@ -259,6 +265,16 @@ function compareLinkStyle(local, production, label, options = {}) {
       : `${label} link color drifted from production`,
     { local, production, expectedColor },
   );
+  const expectedOpacity = options.expectedOpacity || production.opacity;
+  if (expectedOpacity) {
+    assert(
+      normalizeStyleValue(local.opacity) === normalizeStyleValue(expectedOpacity),
+      options.expectedOpacity
+        ? `${label} link opacity drifted from the Blog RSS baseline`
+        : `${label} link opacity drifted from production`,
+      { local, production, expectedOpacity },
+    );
+  }
   assert(
     normalizeStyleValue(local.textDecorationLine) ===
       normalizeStyleValue(production.textDecorationLine),
@@ -323,6 +339,7 @@ async function readSnapshot(page, route, origin, viewportName) {
         const style = window.getComputedStyle(node);
         return {
           color: style.color,
+          opacity: style.opacity,
           backgroundColor: style.backgroundColor,
           fontSize: style.fontSize,
           lineHeight: style.lineHeight,
@@ -352,6 +369,12 @@ async function readSnapshot(page, route, origin, viewportName) {
           ".notion-root .notion-text__content a.notion-link.link",
         ].join(", "),
       );
+      const firstGrayText = document.querySelector(
+        [
+          ".notion-root span[data-color='gray']",
+          ".notion-root .highlighted-color.color-gray",
+        ].join(", "),
+      );
 
       return {
         pathname: window.location.pathname,
@@ -379,8 +402,19 @@ async function readSnapshot(page, route, origin, viewportName) {
         firstLinkStyle: firstLink
           ? {
               color: getComputedStyle(firstLink).color,
+              opacity: getComputedStyle(firstLink).opacity,
               backgroundColor: getComputedStyle(firstLink).backgroundColor,
               textDecorationLine: getComputedStyle(firstLink).textDecorationLine,
+            }
+          : null,
+        grayTextCount: document.querySelectorAll(
+          ".notion-root span[data-color='gray'], .notion-root .highlighted-color.color-gray",
+        ).length,
+        firstGrayTextStyle: firstGrayText
+          ? {
+              color: getComputedStyle(firstGrayText).color,
+              fontSize: getComputedStyle(firstGrayText).fontSize,
+              lineHeight: getComputedStyle(firstGrayText).lineHeight,
             }
           : null,
         home: {
@@ -502,9 +536,23 @@ function compareRoute(route, local, production, viewportName) {
   compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path, {
     expectedColor: route.readableColor,
   });
-  if (!route.readableColor || route.linkColor) {
+  if (route.grayTextColor) {
+    assert(
+      local.grayTextCount > 0,
+      `${route.path} lost explicit Notion gray text marks`,
+      { grayTextCount: local.grayTextCount },
+    );
+    assert(
+      normalizeStyleValue(local.firstGrayTextStyle?.color) ===
+        normalizeStyleValue(route.grayTextColor),
+      `${route.path} gray text color drifted from the Notion gray mark contract`,
+      { firstGrayTextStyle: local.firstGrayTextStyle, expectedColor: route.grayTextColor },
+    );
+  }
+  if (!route.readableColor || route.linkColor || route.linkOpacity) {
     compareLinkStyle(local.firstLinkStyle, production.firstLinkStyle, route.path, {
       expectedColor: route.linkColor,
+      expectedOpacity: route.linkOpacity,
     });
   }
 

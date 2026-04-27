@@ -55,6 +55,16 @@ describe("inlineMarkdownToHtml", () => {
     );
   });
 
+  it("preserves custom icon URLs on icon links", () => {
+    expect(
+      inlineMarkdownToHtml(
+        '<span data-link-style="icon" data-link-icon="https://cdn.example/icon.svg">[Archive](/teaching/archive)</span>',
+      ),
+    ).toBe(
+      '<p><span data-link-style="icon" data-link-icon="https://cdn.example/icon.svg"><a href="/teaching/archive">Archive</a></span></p>',
+    );
+  });
+
   it("does not treat underscores inside links as italic delimiters", () => {
     expect(
       inlineMarkdownToHtml(
@@ -107,6 +117,19 @@ describe("tiptapDocToMarkdown", () => {
   it("emits link with [label](href)", () => {
     const doc = makeDoc(makeText("text", [{ type: "link", attrs: { href: "https://x" } }]));
     expect(tiptapDocToMarkdown(doc)).toBe("[text](https://x)");
+  });
+
+  it("serializes custom icon URLs on icon links", () => {
+    const doc = makeDoc(makeText("Archive", [
+      { type: "link", attrs: { href: "/teaching/archive" } },
+      {
+        type: "inlineLinkStyle",
+        attrs: { style: "icon", icon: "https://cdn.example/icon.svg" },
+      },
+    ]));
+    expect(tiptapDocToMarkdown(doc)).toBe(
+      '<span data-link-style="icon" data-link-icon="https://cdn.example/icon.svg">[Archive](/teaching/archive)</span>',
+    );
   });
 
   it("groups bold outside a bold link to avoid split markdown delimiters", () => {

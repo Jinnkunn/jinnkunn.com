@@ -410,6 +410,8 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
     "Icon-prefixed links: only the icon slot differs",
     "Inline icon link contract",
   );
+  assertIncludes(publicInlineCss, "data-link-icon", "Custom inline icon link contract");
+  assertIncludes(publicInlineCss, "--link-icon-image", "Custom inline icon link contract");
   assertIncludes(blogIndexView, 'data-link-style="icon"', "Blog RSS link");
   assert.doesNotMatch(
     publicInlineCss,
@@ -463,24 +465,26 @@ test("public-web-style-guardrails: CDN home media bypasses Next image optimizer"
   assertIncludes(heroBlock, "unoptimized={isCdnMediaSrc(imageUrl)}", "HeroBlock CDN media guard");
 });
 
-test("public-web-style-guardrails: classic body copy keeps production gray tone", async () => {
+test("public-web-style-guardrails: classic gray text is content-level, not page-level", async () => {
   const bridgeCss = await read("app/(classic)/design-system-bridge.css");
   const homeCss = await read("app/(classic)/home.css");
   const mdxCss = await read("app/(classic)/posts-mdx.css");
   const newsCss = await read("app/(classic)/news.css");
   const worksCss = await read("app/(classic)/works.css");
   const teachingCss = await read("app/(classic)/teaching.css");
+  const notionBlocksCss = await read("app/(classic)/notion-blocks.css");
+  const homeContent = JSON.parse(await read("content/home.json")).bodyMdx ?? "";
+  const newsContent = await read("content/components/news.mdx");
+  const worksContent = await read("content/components/works.mdx");
+  const teachingPage = await read("content/pages/teaching.mdx");
+  const worksPage = await read("content/pages/works.mdx");
 
   assertIncludes(
     bridgeCss,
     "--color-text-gray: var(--ds-text-faint)",
     "Classic design-system bridge",
   );
-  assertIncludes(
-    homeCss,
-    ".page__index .home-layout--variant-classicIntro .home-section__body,\n.page__index .home-rich-text--variant-classicBody .home-section__body {\n  color: var(--color-text-default-light);",
-    "Homepage classic copy",
-  );
+  assertIncludes(notionBlocksCss, 'span[data-color="gray"]', "Classic inline gray mark CSS");
   assertIncludes(
     homeCss,
     ".page__index .home-layout--variant-classicIntro .home-section__body strong,\n.page__index .home-rich-text--variant-classicBody .home-section__body strong {\n  color: var(--color-text-default);",
@@ -488,17 +492,31 @@ test("public-web-style-guardrails: classic body copy keeps production gray tone"
   );
   assertIncludes(
     mdxCss,
-    "color: var(--color-text-default-light);",
-    "MDX body copy",
-  );
-  assertIncludes(
-    mdxCss,
     ".mdx-post__body strong,",
     "MDX emphasized copy",
   );
-  assertIncludes(newsCss, "color: var(--color-text-default-light);", "News copy");
-  assertIncludes(worksCss, "color: var(--color-text-default-light);", "Works copy");
-  assertIncludes(teachingCss, "color: var(--color-text-default-light);", "Teaching copy");
+  for (const [label, source] of [
+    ["Homepage CSS", homeCss],
+    ["MDX CSS", mdxCss],
+    ["News CSS", newsCss],
+    ["Works CSS", worksCss],
+    ["Teaching CSS", teachingCss],
+  ]) {
+    assertExcludes(
+      source,
+      "color: var(--color-text-default-light);",
+      `${label} page-level copy color`,
+    );
+  }
+  for (const [label, source] of [
+    ["Home content", homeContent],
+    ["News content", newsContent],
+    ["Works component content", worksContent],
+    ["Teaching page content", teachingPage],
+    ["Works page content", worksPage],
+  ]) {
+    assertIncludes(source, 'data-color="gray"', `${label} explicit gray mark`);
+  }
 });
 
 test("public-web-style-guardrails: MDX heading links inherit heading color", async () => {

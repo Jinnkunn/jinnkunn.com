@@ -2914,6 +2914,24 @@ body[data-window-focused="true"] .sidebar-surface {
   box-shadow: none;
 }
 
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"][data-link-icon]::before {
+  background:
+    var(--link-icon-image, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E"))
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+}
+
 .mdx-document-text-block.ProseMirror strong {
   color: var(--color-text-primary);
   font-weight: 600;
@@ -3039,6 +3057,14 @@ a[data-link-style="icon"].notion-link.link::before {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E")
     center / 15px 15px no-repeat;
   box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+span[data-link-style="icon"][data-link-icon] > a.notion-link.link::before,
+a[data-link-style="icon"][data-link-icon].notion-link.link::before {
+  background:
+    var(--link-icon-image, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E"))
+    center / 20px 20px no-repeat;
+  box-shadow: none;
 }
 
 /* Color picker — opens beneath the toolbar's "A▾" button. Two rows

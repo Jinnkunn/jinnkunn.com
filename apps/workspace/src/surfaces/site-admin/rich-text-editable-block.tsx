@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -31,6 +32,7 @@ import { BlockPopover, type BlockPopoverAnchor } from "./block-popover";
 import { MentionPicker, type MentionTarget } from "./mention-picker";
 import type { MdxBlock, MdxBlockType } from "./mdx-blocks";
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
+import { uploadImageFile } from "./assets-upload";
 import type { NormalizedApiResponse } from "./types";
 
 type RequestFn = (
@@ -386,6 +388,7 @@ export function RichTextEditableBlock({
           anchor={inlineAnchor}
           editor={editor}
           onClose={() => setSelection(null)}
+          request={request}
           onTurnInto={onTurnInto}
         />
       ) : null}
@@ -417,6 +420,7 @@ interface InlineFormatToolbarProps {
   anchor: BlockPopoverAnchor;
   editor: Editor | null;
   onClose: () => void;
+  request: RequestFn;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
 }
 
@@ -443,6 +447,7 @@ function InlineFormatToolbar({
   anchor,
   editor,
   onClose,
+  request,
   onTurnInto,
 }: InlineFormatToolbarProps) {
   // Same focus-preserving trick the textarea version uses — mousedown on
@@ -452,6 +457,8 @@ function InlineFormatToolbar({
     event.preventDefault();
   };
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const iconFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!editor) return null;
 
@@ -497,6 +504,54 @@ function InlineFormatToolbar({
     }
 
     editor.chain().focus().setInlineLinkStyle({ style: "icon" }).run();
+  };
+  const ensureLinkForIcon = () => {
+    const existing = editor.getAttributes("link").href as string | undefined;
+    if (existing) return true;
+    const url =
+      typeof window !== "undefined"
+        ? window.prompt("Link URL", "https://")
+        : null;
+    if (!url) return false;
+    editor.chain().focus().setLink({ href: url }).run();
+    return true;
+  };
+  const onIconUrl = () => {
+    if (!ensureLinkForIcon()) return;
+    const attrs = editor.getAttributes("inlineLinkStyle") as {
+      icon?: string | null;
+    };
+    const next =
+      typeof window !== "undefined"
+        ? window.prompt("Icon image URL (blank uses automatic icon)", attrs.icon || "")
+        : null;
+    if (next === null) return;
+    editor.chain().focus().setInlineLinkStyle({ style: "icon", icon: next.trim() || null }).run();
+  };
+  const onUploadIcon = () => {
+    if (!ensureLinkForIcon()) return;
+    editor.chain().focus().setInlineLinkStyle({ style: "icon" }).run();
+    iconFileInputRef.current?.click();
+  };
+  const onIconFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) return;
+    setUploadingIcon(true);
+    const result = await uploadImageFile({
+      file,
+      request: (path, method, body) => request(path, method, body),
+    });
+    setUploadingIcon(false);
+    if (!result.ok) {
+      if (typeof window !== "undefined") window.alert(`Icon upload failed: ${result.error}`);
+      return;
+    }
+    editor
+      .chain()
+      .focus()
+      .setInlineLinkStyle({ style: "icon", icon: result.asset.url })
+      .run();
   };
 
   // Read the current color attrs so the picker shows what's already
@@ -620,6 +675,38 @@ function InlineFormatToolbar({
         >
           ↗
         </button>
+        <button
+          type="button"
+          className="block-popover__inline-btn"
+          aria-label="Icon URL"
+          title="Icon URL"
+          onMouseDown={preserve}
+          onClick={onIconUrl}
+          data-active={
+            Boolean(editor.getAttributes("inlineLinkStyle").icon) || undefined
+          }
+        >
+          ◫
+        </button>
+        <button
+          type="button"
+          className="block-popover__inline-btn"
+          aria-label="Upload link icon"
+          title="Upload link icon"
+          onMouseDown={preserve}
+          onClick={onUploadIcon}
+          disabled={uploadingIcon}
+        >
+          {uploadingIcon ? "…" : "▣"}
+        </button>
+        <input
+          ref={iconFileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif"
+          className="mdx-document-hidden-file-input"
+          tabIndex={-1}
+          onChange={onIconFileChange}
+        />
         <span className="block-popover__inline-divider" aria-hidden="true" />
         {/* Color picker — opens a small palette popover below the toolbar
          * with separate rows for text color and background color. The

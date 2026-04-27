@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, HTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, CSSProperties, HTMLAttributes } from "react";
 import type { MDXComponents } from "mdx/types";
 
 import { ClassicLink } from "@/components/classic/classic-link";
@@ -28,6 +28,41 @@ import { WorksEntry } from "./works-entry";
 
 function joinClassNames(...classNames: (string | undefined)[]): string {
   return classNames.filter(Boolean).join(" ");
+}
+
+type IconStyleProperties = CSSProperties & {
+  "--link-icon-image"?: string;
+};
+
+function isSafeIconUrl(value: string): boolean {
+  return (
+    value.startsWith("/") ||
+    /^https:\/\/[^\s"')]+$/i.test(value)
+  );
+}
+
+function MdxSpan({
+  children,
+  style,
+  ...props
+}: HTMLAttributes<HTMLSpanElement> & {
+  "data-link-icon"?: string;
+  "data-link-style"?: string;
+}) {
+  const iconUrl =
+    typeof props["data-link-icon"] === "string" ? props["data-link-icon"].trim() : "";
+  const nextStyle: IconStyleProperties =
+    props["data-link-style"] === "icon" && iconUrl && isSafeIconUrl(iconUrl)
+      ? {
+          ...style,
+          "--link-icon-image": `url(${JSON.stringify(iconUrl)})`,
+        }
+      : style ?? {};
+  return (
+    <span {...props} style={nextStyle}>
+      {children}
+    </span>
+  );
 }
 
 function MdxLink({
@@ -82,6 +117,7 @@ function MdxPre({ children, className, ...props }: HTMLAttributes<HTMLPreElement
 export const postMdxComponents: MDXComponents = {
   a: MdxLink,
   pre: MdxPre,
+  span: MdxSpan,
   Bookmark,
   Callout,
   Color,

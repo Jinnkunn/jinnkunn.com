@@ -2,9 +2,9 @@
   "components": {
     "news": {
       "path": "content/components/news.mdx",
-      "sha": "48eaee4097ec0bc76d0f27d394421b475ad53b4f",
-      "contentSha": "4ac368a19f11dbf2ec7394d9432bb29db41a4dad",
-      "size": 2526
+      "sha": "dfb671cbc734bd768cf3137d8de895cdeec5146b",
+      "contentSha": "e58bd35055ac7222b33efd0331ce9ac790709efa",
+      "size": 2805
     },
     "publications": {
       "path": "content/components/publications.mdx",
@@ -20,9 +20,9 @@
     },
     "works": {
       "path": "content/components/works.mdx",
-      "sha": "8d391fe9bed79da31dc72d5161cbad7606dcde71",
-      "contentSha": "a72254f53a0f3066e125a3e707f5eded4ec7069c",
-      "size": 5589
+      "sha": "cd27c10f67e81cc26cc96ac5f319ae20106930dc",
+      "contentSha": "7a5d34cf8317eb622b007258a783efc4877f0f6b",
+      "size": 5775
     }
   }
 }
