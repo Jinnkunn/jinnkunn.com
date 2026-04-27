@@ -279,6 +279,26 @@ test("tauri-ui-engineering: root package exposes workspace UI smoke", async () =
   );
 });
 
+test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebuild step", async () => {
+  const publishButton = await read(
+    "apps/workspace/src/surfaces/site-admin/PublishButton.tsx",
+  );
+  const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
+
+  assert.match(publishButton, /isDeployCandidateBlocked/);
+  assert.match(publishButton, /DEPLOY_VERSION_STALE/);
+  assert.match(publishButton, /GitHub Actions “Deploy \(auto\)”/);
+  assert.match(publishButton, /npm run release:staging/);
+  assert.match(publishButton, /Recheck/);
+  assert.doesNotMatch(
+    publishButton,
+    /Publish failed: \$\{response\.code\}: \$\{response\.error\}[\s\S]*DEPLOY_VERSION_STALE/,
+    "DEPLOY_VERSION_STALE should be translated into a rebuild/recheck message, not shown as a raw failure",
+  );
+  assert.match(statusPanel, /GitHub Actions “Deploy \(auto\)”/);
+  assert.match(statusPanel, /npm run release:staging/);
+});
+
 test("tauri-ui-engineering: manual QA runbook covers release-critical editor flows", async () => {
   const runbook = await read("docs/runbooks/tauri-site-admin-qa.md");
 

@@ -194,6 +194,34 @@ function isStagingOrigin(baseUrl: string): boolean {
   return /\/\/staging\./i.test(baseUrl);
 }
 
+function shortSha(value?: string): string {
+  return normalizeString(value).slice(0, 7);
+}
+
+function deployCandidateBlockedMessage(source: SourceSnapshot | null): string {
+  const content = shortSha(source?.contentSha);
+  const branch = normalizeString(source?.contentBranch || source?.branch);
+  const detail = source?.deployableVersionReason
+    ? ` ${source.deployableVersionReason}`
+    : "";
+  const target = [content ? `content ${content}` : "", branch ? `branch ${branch}` : ""]
+    .filter(Boolean)
+    .join(" on ");
+  return [
+    target
+      ? `Staging needs a rebuilt Worker candidate for ${target}.`
+      : "Staging needs a rebuilt Worker candidate for the latest content.",
+    "Wait for GitHub Actions “Deploy (auto)” to finish, or run npm run release:staging, then Recheck.",
+    detail,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isDeployCandidateBlocked(source: SourceSnapshot | null): boolean {
+  return source?.deployableVersionReady === false;
+}
+
 /**
  * Triggers /api/site-admin/deploy. Deploy promotes the currently-uploaded
  * worker version — it does not rebuild from source. In the common workflow,
@@ -218,29 +246,37 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
     return () => window.clearTimeout(timer);
   }, [confirming]);
 
+  async function loadPreview() {
+    setPreviewLoading(true);
+    setPreviewText("");
+    setPreviewData(null);
+    setSourceSnapshot(null);
+    setPreviewError("");
+    const [preview, status] = await Promise.all([
+      request("/api/site-admin/deploy-preview", "GET"),
+      request("/api/site-admin/status", "GET"),
+    ]);
+    setPreviewLoading(false);
+    const source = status.ok ? parseSourceSnapshot(status.data) : null;
+    if (status.ok) {
+      setSourceSnapshot(source);
+    }
+    if (preview.ok) {
+      const parsed = parseDeployPreview(preview.data);
+      setPreviewData(parsed);
+      setPreviewText(previewSummaryText(parsed));
+    } else {
+      setPreviewError(`${preview.code}: ${preview.error}`);
+    }
+    setConfirming(true);
+    if (isDeployCandidateBlocked(source)) {
+      setMessage("warn", deployCandidateBlockedMessage(source));
+    }
+  }
+
   async function trigger() {
-    if (!confirming) {
-      setPreviewLoading(true);
-      setPreviewText("");
-      setPreviewData(null);
-      setSourceSnapshot(null);
-      setPreviewError("");
-      const [preview, status] = await Promise.all([
-        request("/api/site-admin/deploy-preview", "GET"),
-        request("/api/site-admin/status", "GET"),
-      ]);
-      setPreviewLoading(false);
-      if (status.ok) {
-        setSourceSnapshot(parseSourceSnapshot(status.data));
-      }
-      if (preview.ok) {
-        const parsed = parseDeployPreview(preview.data);
-        setPreviewData(parsed);
-        setPreviewText(previewSummaryText(parsed));
-      } else {
-        setPreviewError(`${preview.code}: ${preview.error}`);
-      }
-      setConfirming(true);
+    if (!confirming || isDeployCandidateBlocked(sourceSnapshot)) {
+      await loadPreview();
       return;
     }
     setConfirming(false);
@@ -248,6 +284,14 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
     const response = await request("/api/site-admin/deploy", "POST", {});
     setBusy(false);
     if (!response.ok) {
+      if (response.code === "DEPLOY_VERSION_STALE") {
+        const status = await request("/api/site-admin/status", "GET");
+        const source = status.ok ? parseSourceSnapshot(status.data) : sourceSnapshot;
+        if (status.ok) setSourceSnapshot(source);
+        setMessage("warn", deployCandidateBlockedMessage(source));
+        setConfirming(true);
+        return;
+      }
       setMessage("error", `Publish failed: ${response.code}: ${response.error}`);
       return;
     }
@@ -280,22 +324,36 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
     );
   }
 
+  const deployCandidateBlocked = isDeployCandidateBlocked(sourceSnapshot);
+
   return (
     <div className="publish-control">
       <button
-        className={confirming ? "btn btn--danger" : "btn btn--primary"}
+        className={
+          deployCandidateBlocked
+            ? "btn btn--secondary"
+            : confirming
+              ? "btn btn--danger"
+              : "btn btn--primary"
+        }
         type="button"
         onClick={() => void trigger()}
         disabled={!ready || busy || previewLoading}
-        title="Promote the current worker version via Cloudflare API"
+        title={
+          deployCandidateBlocked
+            ? "Wait for the staging candidate rebuild, then recheck."
+            : "Promote the current worker version via Cloudflare API"
+        }
       >
         {busy
           ? "Publishing…"
           : previewLoading
             ? "Checking…"
-            : confirming
-              ? "Confirm Publish"
-              : label}
+            : deployCandidateBlocked
+              ? "Recheck"
+              : confirming
+                ? "Confirm Publish"
+                : label}
       </button>
       {confirming && (
         <details className="publish-preview" role="status" open>
@@ -313,13 +371,13 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
                 </span>
                 {sourceSnapshot?.branch && <span>Branch {sourceSnapshot.branch}</span>}
                 {sourceSnapshot?.headSha && (
-                  <span>Head {sourceSnapshot.headSha.slice(0, 7)}</span>
+                  <span>Head {shortSha(sourceSnapshot.headSha)}</span>
                 )}
                 {sourceSnapshot?.codeSha && (
-                  <span>Code {sourceSnapshot.codeSha.slice(0, 7)}</span>
+                  <span>Code {shortSha(sourceSnapshot.codeSha)}</span>
                 )}
                 {sourceSnapshot?.contentSha && (
-                  <span>Content {sourceSnapshot.contentSha.slice(0, 7)}</span>
+                  <span>Content {shortSha(sourceSnapshot.contentSha)}</span>
                 )}
                 {typeof sourceSnapshot?.pendingDeploy === "boolean" && (
                   <span>

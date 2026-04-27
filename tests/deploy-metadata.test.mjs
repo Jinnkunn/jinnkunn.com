@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import {
   buildDeployMetadataMessage,
@@ -54,4 +56,16 @@ test("deploy metadata: reports stale deployable versions", () => {
     },
   });
   assert.match(mismatch || "", /content=cccccccc expected bbbbbbbb/);
+});
+
+test("deploy workflow: staging auto deploy uses main code plus content overlay", async () => {
+  const workflow = await fs.readFile(
+    path.join(process.cwd(), ".github/workflows/deploy-on-content.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /ref: main/);
+  assert.match(workflow, /git fetch origin site-admin-staging:site-admin-staging/);
+  assert.match(workflow, /npm run release:staging -- --skip-checks/);
+  assert.doesNotMatch(workflow, /npm run release:staging -- --skip-checks --skip-build/);
+  assert.doesNotMatch(workflow, /name: Build OpenNext bundle[\s\S]*npm run build:cf/);
 });

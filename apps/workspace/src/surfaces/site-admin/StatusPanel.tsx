@@ -152,8 +152,10 @@ export function StatusPanel() {
   }
   if (data?.source?.deployableVersionReady === false) {
     notes.push(
-      data.source.deployableVersionReason ||
-        "Latest uploaded Worker version does not match the current content.",
+      `${
+        data.source.deployableVersionReason ||
+        "Latest uploaded Worker version does not match the current content."
+      } Wait for GitHub Actions “Deploy (auto)” to finish, or run npm run release:staging, then refresh.`,
     );
   }
 
