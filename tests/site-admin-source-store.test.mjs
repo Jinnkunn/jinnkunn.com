@@ -95,6 +95,31 @@ test("site-admin-source-store: stale expected sha returns SOURCE_CONFLICT", asyn
   );
 });
 
+test("site-admin-source-store: settings patch can opt into stale sha replay", async () => {
+  const root = createFixtureRoot();
+  const store = createLocalSiteAdminSourceStore({ rootDir: root });
+
+  const before = await store.loadConfig();
+  await store.updateSettings({
+    rowId: before.settings.rowId,
+    patch: { seoTitle: "Saved Elsewhere" },
+    expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+  });
+
+  await store.updateSettings({
+    rowId: before.settings.rowId,
+    patch: { googleAnalyticsId: "G-ABC123DEF4" },
+    expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+    allowStaleSiteConfigSha: true,
+  });
+
+  const savedConfig = JSON.parse(
+    fs.readFileSync(path.join(root, "content", "filesystem", "site-config.json"), "utf8"),
+  );
+  assert.equal(savedConfig.seo.title, "Saved Elsewhere");
+  assert.equal(savedConfig.integrations.googleAnalyticsId, "G-ABC123DEF4");
+});
+
 test("site-admin-source-store: empty expected sha means file must not exist", async () => {
   const root = createFixtureRoot();
   const store = createLocalSiteAdminSourceStore({ rootDir: root });

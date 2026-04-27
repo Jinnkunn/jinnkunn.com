@@ -9,6 +9,7 @@ import {
   createGithubSiteAdminSourceStore,
   createGithubSiteAdminSourceStoreFromEnv,
   isSiteAdminSourceConflictError,
+  isSiteAdminSourceWriteError,
 } from "../lib/server/site-admin-source-store.ts";
 
 const OWNER = "acme";
@@ -112,6 +113,11 @@ function createGithubFetchMock(input) {
       if (init.method === "PUT") {
         if (config.putBehavior === "conflict") {
           return makeResponse(409, { message: "sha does not match" });
+        }
+        if (config.putBehavior === "blocked") {
+          return makeResponse(409, {
+            message: "Protected branch update failed for refs/heads/main.",
+          });
         }
         return makeResponse(200, {
           content: {
@@ -254,6 +260,63 @@ test("site-admin-source-store github: updateSettings writes minimal file and ret
   });
 });
 
+test("site-admin-source-store github: settings patch can replay over stale expected sha", async () => {
+  const { fetchMock, calls } = createGithubFetchMock({
+    filesystemFiles: {
+      "content/filesystem/site-config.json": {
+        sha: "fs-site-config-sha-current",
+        parsed: {
+          siteName: "Before",
+          lang: "en",
+          seo: { title: "Updated Elsewhere", description: "desc", favicon: "/favicon.ico" },
+          nav: { top: [{ href: "/", label: "Home" }], more: [] },
+        },
+      },
+      "content/filesystem/protected-routes.json": {
+        sha: "fs-protected-sha",
+        parsed: [],
+      },
+      "content/filesystem/routes-manifest.json": {
+        sha: "fs-manifest-sha",
+        parsed: [],
+      },
+    },
+    branchSha: "branch-before-sha",
+    putBehavior: "success",
+    putResultSha: "fs-site-config-sha-new",
+    putCommitSha: "branch-after-sha",
+  });
+
+  const store = createGithubSiteAdminSourceStore({
+    appId: "1001",
+    privateKey: createPrivateKeyPem(),
+    installationId: INSTALLATION_ID,
+    owner: OWNER,
+    repo: REPO,
+    branch: BRANCH,
+  });
+
+  await withFetchMock(fetchMock, async () => {
+    const before = await store.loadConfig();
+    const after = await store.updateSettings({
+      rowId: before.settings.rowId,
+      patch: { googleAnalyticsId: "G-ABC123DEF4" },
+      expectedSiteConfigSha: "stale-site-config-sha",
+      allowStaleSiteConfigSha: true,
+    });
+    assert.equal(after.siteConfigSha, "fs-site-config-sha-new");
+    assert.equal(after.branchSha, "branch-after-sha");
+  });
+
+  const putCall = calls.find((call) => call.init?.method === "PUT");
+  assert.ok(putCall, "expected a GitHub contents PUT");
+  const body = JSON.parse(String(putCall.init.body));
+  assert.equal(body.sha, "fs-site-config-sha-current");
+  const saved = JSON.parse(Buffer.from(body.content, "base64").toString("utf8"));
+  assert.equal(saved.seo.title, "Updated Elsewhere");
+  assert.equal(saved.integrations.googleAnalyticsId, "G-ABC123DEF4");
+});
+
 test("site-admin-source-store github: unchanged structured write does not create a commit", async () => {
   const { fetchMock, calls } = createGithubFetchMock({
     filesystemFiles: {
@@ -391,6 +454,57 @@ test("site-admin-source-store github: write conflict maps to SOURCE_CONFLICT", a
           assert.equal(err.expectedSha, before.sourceVersion.siteConfigSha);
           assert.equal(err.currentSha, "fs-site-config-sha");
         }
+        return true;
+      },
+    );
+  });
+});
+
+test("site-admin-source-store github: branch write rejection is not reported as SOURCE_CONFLICT", async () => {
+  const { fetchMock } = createGithubFetchMock({
+    filesystemFiles: {
+      "content/filesystem/site-config.json": {
+        sha: "fs-site-config-sha",
+        parsed: {
+          siteName: "Before",
+          lang: "en",
+          seo: { title: "Before", description: "desc", favicon: "/favicon.ico" },
+          nav: { top: [{ href: "/", label: "Home" }], more: [] },
+        },
+      },
+      "content/filesystem/protected-routes.json": {
+        sha: "fs-protected-sha",
+        parsed: [],
+      },
+      "content/filesystem/routes-manifest.json": {
+        sha: "fs-manifest-sha",
+        parsed: [],
+      },
+    },
+    putBehavior: "blocked",
+  });
+
+  const store = createGithubSiteAdminSourceStore({
+    appId: "1001",
+    privateKey: createPrivateKeyPem(),
+    installationId: INSTALLATION_ID,
+    owner: OWNER,
+    repo: REPO,
+    branch: BRANCH,
+  });
+
+  await withFetchMock(fetchMock, async () => {
+    const before = await store.loadConfig();
+    await assert.rejects(
+      () =>
+        store.updateSettings({
+          rowId: before.settings.rowId,
+          patch: { siteName: "After" },
+          expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+        }),
+      (err) => {
+        assert.equal(isSiteAdminSourceConflictError(err), false);
+        assert.equal(isSiteAdminSourceWriteError(err), true);
         return true;
       },
     );

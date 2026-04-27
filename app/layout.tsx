@@ -2,6 +2,10 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { designViewportThemeColors } from "@/lib/design-system/tokens";
 import { getDesignThemeInitScript } from "@/lib/design-system/theme";
+import {
+  buildGoogleAnalyticsInitScript,
+  normalizeGoogleAnalyticsId,
+} from "@/lib/shared/google-analytics";
 import { getSiteConfig } from "@/lib/site-config";
 import { buildRootMetadata } from "@/lib/seo/metadata";
 import Providers from "@/components/providers";
@@ -24,7 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const cfg = getSiteConfig();
-  const gaId = cfg.integrations?.googleAnalyticsId?.trim() || "";
+  const gaId = normalizeGoogleAnalyticsId(cfg.integrations?.googleAnalyticsId) || "";
+  const gaInitScript = buildGoogleAnalyticsInitScript(gaId);
   return (
     <html lang={cfg.lang || "en"} dir="ltr" data-theme="light" className="theme-light">
       <body>
@@ -41,12 +46,7 @@ export default function RootLayout({
               strategy="afterInteractive"
             />
             <Script id="gtag-init" strategy="afterInteractive">
-              {`
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${gaId}', { anonymize_ip: true });
-              `.trim()}
+              {gaInitScript}
             </Script>
           </>
         ) : null}

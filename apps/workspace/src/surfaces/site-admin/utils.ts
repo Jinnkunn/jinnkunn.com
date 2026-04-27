@@ -11,6 +11,17 @@ export function normalizeString(input: unknown): string {
   return String(input ?? "").trim();
 }
 
+const GA4_MEASUREMENT_ID_PATTERN = /^G-[A-Z0-9]{10}$/;
+
+export function normalizeGoogleAnalyticsIdDraft(input: unknown): string {
+  return normalizeString(input).toUpperCase();
+}
+
+export function isGoogleAnalyticsIdDraftValid(input: unknown): boolean {
+  const value = normalizeGoogleAnalyticsIdDraft(input);
+  return !value || GA4_MEASUREMENT_ID_PATTERN.test(value);
+}
+
 export function toInteger(input: unknown, fallback = 0): number {
   const parsed = Number.parseInt(String(input ?? ""), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -178,6 +189,23 @@ export function settingsPatch(
     }
   }
   return patch;
+}
+
+export function applySettingsPatch(
+  base: SiteSettings,
+  patch: Partial<SiteSettings>,
+): SiteSettings {
+  return { ...base, ...patch };
+}
+
+export function settingsPatchConflictKeys(
+  base: SiteSettings,
+  latest: SiteSettings,
+  patch: Partial<SiteSettings>,
+): Array<keyof SiteSettings> {
+  return (Object.keys(patch) as Array<keyof SiteSettings>).filter(
+    (key) => base[key] !== latest[key],
+  );
 }
 
 export function navPatch(base: NavRow, draft: NavRow): Partial<NavRow> {

@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySettingsPatch,
   clone,
   decodeJwtPayload,
   defaultSettings,
   formatPendingDeploy,
+  isGoogleAnalyticsIdDraftValid,
   isNavDirty,
   isOverrideDirty,
   isProtectedDirty,
   navPatch,
+  normalizeGoogleAnalyticsIdDraft,
   normalizeNavRow,
   normalizeOverride,
   normalizeProtected,
@@ -15,6 +18,7 @@ import {
   normalizeString,
   serializeJson,
   settingsPatch,
+  settingsPatchConflictKeys,
   stripTrailingSlash,
   toInteger,
   toIsoFromEpochSeconds,
@@ -33,6 +37,21 @@ describe("normalizeString", () => {
 
   it("coerces numbers to trimmed strings", () => {
     expect(normalizeString(42)).toBe("42");
+  });
+});
+
+describe("Google Analytics ID helpers", () => {
+  it("normalizes draft values to uppercase", () => {
+    expect(normalizeGoogleAnalyticsIdDraft(" g-abc123def4 ")).toBe("G-ABC123DEF4");
+  });
+
+  it("accepts blank or GA4 measurement ids only", () => {
+    expect(isGoogleAnalyticsIdDraftValid("")).toBe(true);
+    expect(isGoogleAnalyticsIdDraftValid("G-ABC123DEF4")).toBe(true);
+    expect(isGoogleAnalyticsIdDraftValid("G-ABCD")).toBe(false);
+    expect(isGoogleAnalyticsIdDraftValid("G-ABC123DEF45")).toBe(false);
+    expect(isGoogleAnalyticsIdDraftValid("UA-123456-1")).toBe(false);
+    expect(isGoogleAnalyticsIdDraftValid("G-ABC 123")).toBe(false);
   });
 });
 
@@ -182,6 +201,34 @@ describe("settingsPatch", () => {
     const base = defaultSettings();
     const draft = { ...base, siteName: "New", lang: "zh" };
     expect(settingsPatch(base, draft)).toEqual({ siteName: "New", lang: "zh" });
+  });
+
+  it("replays a settings patch on top of the latest config", () => {
+    const base = defaultSettings();
+    const latest = { ...base, seoTitle: "Updated elsewhere" };
+    const patch = settingsPatch(base, {
+      ...base,
+      googleAnalyticsId: "G-ABC123DEF4",
+    });
+
+    expect(settingsPatchConflictKeys(base, latest, patch)).toEqual([]);
+    expect(applySettingsPatch(latest, patch)).toMatchObject({
+      seoTitle: "Updated elsewhere",
+      googleAnalyticsId: "G-ABC123DEF4",
+    });
+  });
+
+  it("detects same-field conflicts before replaying a settings patch", () => {
+    const base = defaultSettings();
+    const latest = { ...base, googleAnalyticsId: "G-OLD1234567" };
+    const patch = settingsPatch(base, {
+      ...base,
+      googleAnalyticsId: "G-ABC123DEF4",
+    });
+
+    expect(settingsPatchConflictKeys(base, latest, patch)).toEqual([
+      "googleAnalyticsId",
+    ]);
   });
 });
 

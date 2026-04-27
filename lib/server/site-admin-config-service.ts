@@ -27,11 +27,13 @@ export async function updateSiteSettingsRow(
   rowId: string,
   patch: Partial<Omit<SiteSettings, "rowId">>,
   expectedSiteConfigSha: string,
+  allowStaleSiteConfigSha = false,
 ): Promise<SiteAdminConfigSourceVersion> {
   return sourceStore.updateSettings({
     rowId,
     patch,
     expectedSiteConfigSha,
+    allowStaleSiteConfigSha,
   });
 }
 
