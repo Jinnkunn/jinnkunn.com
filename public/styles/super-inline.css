@@ -57,7 +57,7 @@ a[data-link-style="icon"].notion-link.link:before {
 span[data-link-style="icon"] > a.notion-link.link,
 a[data-link-style="icon"].notion-link.link {
   --link-icon-size: 24px;
-  --link-icon-space: 28px;
+  --link-icon-space: 25px;
 }
 
 span[data-link-style="icon"] > a.notion-link.link:before,
