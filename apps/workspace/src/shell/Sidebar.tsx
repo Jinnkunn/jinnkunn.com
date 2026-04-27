@@ -239,10 +239,33 @@ function ReorderIcon({ direction }: { direction: "up" | "down" }) {
   );
 }
 
-// Recursive renderer for one nav row + its descendants. Indent doubles
-// per depth via the `--depth` CSS variable; the parent row stays clickable
-// and the chevron is a separate hit target. Children that include the
-// active id are force-opened so the user can always see what's selected.
+function MoreIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 8h.01M8 8h.01M12 8h.01" />
+    </svg>
+  );
+}
+
+function closeActionMenu(start: HTMLElement | null) {
+  start?.closest("details")?.removeAttribute("open");
+}
+
+// Recursive renderer for one nav row + its descendants. The row gets a
+// depth variable for compact tree indentation; the parent row stays
+// clickable and the chevron is a separate hit target. Children that
+// include the active id are force-opened so the user can always see
+// what's selected.
 function renderNavItem({
   activeNavItemId,
   depth,
@@ -270,7 +293,8 @@ function renderNavItem({
   itemKey,
 }: RenderNavItemArgs) {
   const isRenaming = renamingItemId === item.id;
-  const selected = activeNavItemId === item.id;
+  const selectable = item.selectable !== false;
+  const selected = selectable && activeNavItemId === item.id;
   const hasChildren = Boolean(item.children?.length);
   const containsActive = hasChildren
     ? Boolean(
@@ -286,12 +310,19 @@ function renderNavItem({
   const treeId = `sidebar-item-tree-${surfaceId}-${item.id.replace(/[^a-z0-9-]/gi, "_")}`;
   const isDragging = draggingItemId === item.id;
   const isDragOver = dragOverItemId === item.id && draggingItemId !== item.id;
+  const hasFavoriteAction = selectable;
+  const hasMenu =
+    item.canAddChild ||
+    item.draggable ||
+    Boolean(item.orderable && onReorderNavItem) ||
+    hasFavoriteAction;
   return (
     <li key={item.id}>
       <div
         className="sidebar-tree__item-row"
         data-dragging={isDragging ? "true" : undefined}
         data-drag-over={isDragOver ? "true" : undefined}
+        data-selected={selected ? "true" : undefined}
         style={{ ["--sidebar-depth" as string]: depth }}
         onDragOver={
           item.droppable
@@ -330,6 +361,23 @@ function renderNavItem({
             : undefined
         }
       >
+        {hasChildren ? (
+          <button
+            type="button"
+            className="sidebar-tree__item-disclosure"
+            onClick={() => toggleItemTree(treeKey)}
+            aria-expanded={treeOpen}
+            aria-controls={treeId}
+            aria-label={treeOpen ? `Collapse ${item.label}` : `Expand ${item.label}`}
+            title={treeOpen ? "Collapse" : "Expand"}
+          >
+            <ChevronIcon open={treeOpen} />
+          </button>
+        ) : (
+          // Reserve the chevron column even on leaf rows so labels stay
+          // vertically aligned with rows that do have children.
+          <span className="sidebar-tree__item-disclosure-placeholder" aria-hidden="true" />
+        )}
         {isRenaming ? (
           <RenameInput
             initial={(() => {
@@ -361,13 +409,21 @@ function renderNavItem({
                 : undefined
             }
             onDragEnd={item.draggable ? () => onDragEnd() : undefined}
-            onClick={() => onSelectNavItem(surfaceId, item.id)}
+            onClick={() => {
+              if (selectable) {
+                onSelectNavItem(surfaceId, item.id);
+                return;
+              }
+              if (hasChildren) toggleItemTree(treeKey);
+            }}
             aria-current={selected ? "page" : undefined}
+            data-selectable={selectable ? undefined : "false"}
+            title={selectable ? item.label : `${item.label} folder`}
           >
             {item.icon && (
               <span className="sidebar-nav-item-icon">{item.icon}</span>
             )}
-            <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="sidebar-tree__item-label">
               {item.label}
             </span>
             {item.badge !== undefined && item.badge !== null && (
@@ -375,94 +431,117 @@ function renderNavItem({
             )}
           </button>
         )}
-        {hasChildren ? (
-          <button
-            type="button"
-            className="sidebar-tree__item-disclosure"
-            onClick={() => toggleItemTree(treeKey)}
-            aria-expanded={treeOpen}
-            aria-controls={treeId}
-            aria-label={treeOpen ? `Collapse ${item.label}` : `Expand ${item.label}`}
-            title={treeOpen ? "Collapse" : "Expand"}
-          >
-            <ChevronIcon open={treeOpen} />
-          </button>
-        ) : (
-          // Reserve the chevron column even on leaf rows so labels stay
-          // vertically aligned with their parent's. Without this, a
-          // nested child without children renders flush-left of its
-          // parent (parent has chevron + icon, child has neither) and
-          // the hierarchy stops reading as a tree.
-          <span className="sidebar-tree__item-disclosure-placeholder" aria-hidden="true" />
-        )}
-        {item.canAddChild && !isRenaming && (
-          <button
-            type="button"
-            className="sidebar-tree__item-add"
-            onClick={() => onSelectNavItem(surfaceId, `add:${item.id}`)}
-            aria-label={`Add under ${item.label}`}
-            title={`Add under ${item.label}`}
-          >
-            +
-          </button>
-        )}
-        {item.draggable && !isRenaming && (
-          <button
-            type="button"
-            className="sidebar-tree__item-rename"
-            onClick={() => onStartRename(item.id)}
-            aria-label={`Rename ${item.label}`}
-            title="Rename"
-          >
-            ✎
-          </button>
-        )}
-        {item.orderable && !isRenaming && onReorderNavItem && (
-          <span className="sidebar-tree__item-reorder" aria-label={`Reorder ${item.label}`}>
-            <button
-              type="button"
-              className="sidebar-tree__item-reorder-btn"
-              disabled={siblingIndex <= 0}
-              onClick={() => onReorderNavItem(surfaceId, item.id, "up")}
-              aria-label={`Move ${item.label} up`}
-              title="Move up"
+        {!isRenaming && hasMenu ? (
+          <details className="sidebar-tree__item-menu">
+            <summary
+              className="sidebar-tree__item-more"
+              aria-label={`Actions for ${item.label}`}
+              title="Actions"
             >
-              <ReorderIcon direction="up" />
-            </button>
-            <button
-              type="button"
-              className="sidebar-tree__item-reorder-btn"
-              disabled={siblingIndex >= siblingCount - 1}
-              onClick={() => onReorderNavItem(surfaceId, item.id, "down")}
-              aria-label={`Move ${item.label} down`}
-              title="Move down"
-            >
-              <ReorderIcon direction="down" />
-            </button>
-          </span>
-        )}
-        <button
-          type="button"
-          className="sidebar-tree__item-star"
-          data-active={isFavorite(surfaceId, item.id) ? "true" : undefined}
-          onClick={() =>
-            onToggleFavorite({
-              surfaceId,
-              itemId: item.id,
-              label: item.label,
-            })
-          }
-          aria-label={
-            isFavorite(surfaceId, item.id)
-              ? `Unpin ${item.label} from favorites`
-              : `Pin ${item.label} to favorites`
-          }
-          title={
-            isFavorite(surfaceId, item.id) ? "Unpin from favorites" : "Pin to favorites"
-          }
-        >
-          <StarIcon filled={isFavorite(surfaceId, item.id)} />
-        </button>
+              <MoreIcon />
+            </summary>
+            <div className="sidebar-tree__item-menu-popover" role="menu">
+              {item.canAddChild ? (
+                <button
+                  type="button"
+                  className="sidebar-tree__item-menu-action"
+                  onClick={(event) => {
+                    closeActionMenu(event.currentTarget);
+                    onSelectNavItem(surfaceId, `add:${item.id}`);
+                  }}
+                  aria-label={`Add under ${item.label}`}
+                  role="menuitem"
+                >
+                  <span className="sidebar-tree__item-menu-icon" aria-hidden="true">
+                    +
+                  </span>
+                  <span>Add sub-page</span>
+                </button>
+              ) : null}
+              {item.draggable ? (
+                <button
+                  type="button"
+                  className="sidebar-tree__item-menu-action"
+                  onClick={(event) => {
+                    closeActionMenu(event.currentTarget);
+                    onStartRename(item.id);
+                  }}
+                  aria-label={`Rename ${item.label}`}
+                  role="menuitem"
+                >
+                  <span className="sidebar-tree__item-menu-icon" aria-hidden="true">
+                    ✎
+                  </span>
+                  <span>Rename</span>
+                </button>
+              ) : null}
+              {item.orderable && onReorderNavItem ? (
+                <>
+                  <button
+                    type="button"
+                    className="sidebar-tree__item-menu-action"
+                    disabled={siblingIndex <= 0}
+                    onClick={(event) => {
+                      closeActionMenu(event.currentTarget);
+                      onReorderNavItem(surfaceId, item.id, "up");
+                    }}
+                    aria-label={`Move ${item.label} up`}
+                    role="menuitem"
+                  >
+                    <span className="sidebar-tree__item-menu-icon" aria-hidden="true">
+                      <ReorderIcon direction="up" />
+                    </span>
+                    <span>Move up</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="sidebar-tree__item-menu-action"
+                    disabled={siblingIndex >= siblingCount - 1}
+                    onClick={(event) => {
+                      closeActionMenu(event.currentTarget);
+                      onReorderNavItem(surfaceId, item.id, "down");
+                    }}
+                    aria-label={`Move ${item.label} down`}
+                    role="menuitem"
+                  >
+                    <span className="sidebar-tree__item-menu-icon" aria-hidden="true">
+                      <ReorderIcon direction="down" />
+                    </span>
+                    <span>Move down</span>
+                  </button>
+                </>
+              ) : null}
+              {hasFavoriteAction ? (
+                <button
+                  type="button"
+                  className="sidebar-tree__item-menu-action"
+                  data-active={isFavorite(surfaceId, item.id) ? "true" : undefined}
+                  onClick={(event) => {
+                    closeActionMenu(event.currentTarget);
+                    onToggleFavorite({
+                      surfaceId,
+                      itemId: item.id,
+                      label: item.label,
+                    });
+                  }}
+                  aria-label={
+                    isFavorite(surfaceId, item.id)
+                      ? `Unpin ${item.label} from favorites`
+                      : `Pin ${item.label} to favorites`
+                  }
+                  role="menuitem"
+                >
+                  <span className="sidebar-tree__item-menu-icon" aria-hidden="true">
+                    <StarIcon filled={isFavorite(surfaceId, item.id)} />
+                  </span>
+                  <span>
+                    {isFavorite(surfaceId, item.id) ? "Unpin" : "Pin"}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
       </div>
       {hasChildren && treeOpen && (
         <ul
