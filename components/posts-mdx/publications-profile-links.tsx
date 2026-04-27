@@ -55,14 +55,16 @@ export function PublicationsProfileLinks({
             {index > 0 && <strong className="teaching-link-divider"> | </strong>}
             <span className="highlighted-background bg-yellow">
               <strong>
-                <ClassicLink
-                  href={link.href}
-                  {...(isExternal
-                    ? { target: "_blank", rel: "noopener noreferrer" }
-                    : {})}
-                >
-                  {link.label}
-                </ClassicLink>
+                <span data-link-style="icon">
+                  <ClassicLink
+                    href={link.href}
+                    {...(isExternal
+                      ? { target: "_blank", rel: "noopener noreferrer" }
+                      : {})}
+                  >
+                    {link.label}
+                  </ClassicLink>
+                </span>
               </strong>
             </span>
           </Fragment>

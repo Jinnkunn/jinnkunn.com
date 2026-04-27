@@ -61,14 +61,16 @@ export function TeachingLinks({
           return (
             <Fragment key={`${link.href}-${index}`}>
               {index > 0 && <span className="teaching-link-divider"> · </span>}
-              <ClassicLink
-                href={link.href}
-                {...(isExternal
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-              >
-                {link.label}
-              </ClassicLink>
+              <span data-link-style="icon">
+                <ClassicLink
+                  href={link.href}
+                  {...(isExternal
+                    ? { target: "_blank", rel: "noopener noreferrer" }
+                    : {})}
+                >
+                  {link.label}
+                </ClassicLink>
+              </span>
             </Fragment>
           );
         })}
@@ -83,14 +85,16 @@ export function TeachingLinks({
           <Fragment key={`${link.href}-${index}`}>
             {index > 0 && <strong className="teaching-link-divider"> | </strong>}
             <strong>
-              <ClassicLink
-                href={link.href}
-                {...(isExternal
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-              >
-                {link.label}
-              </ClassicLink>
+              <span data-link-style="icon">
+                <ClassicLink
+                  href={link.href}
+                  {...(isExternal
+                    ? { target: "_blank", rel: "noopener noreferrer" }
+                    : {})}
+                >
+                  {link.label}
+                </ClassicLink>
+              </span>
             </strong>
           </Fragment>
         );

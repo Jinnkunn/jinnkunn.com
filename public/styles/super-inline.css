@@ -37,20 +37,8 @@ html {
       font-size: 16px;
     }
 
-    /*a[href="https://exorcat.com"].notion-link.link:before,
-a[href="/"].notion-link.link:before,*/
-a[href="/chen"].notion-link.link:before,
-a[href="https://twitter.com/_jinnkunn"].notion-link.link:before,
-a[href="/blog"].notion-link.link:before,
-a[href="/blog.rss"].notion-link.link:before,
-a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before,
-a[href="https://dal.ca/"].notion-link.link:before,
-a[href="https://www.dal.ca/"].notion-link.link:before,
-a[href*="scholar.google"].notion-link.link:before,
-a[href*="researchgate.net"].notion-link.link:before,
-a[href^="https://orcid.org/"].notion-link.link:before,
-a[href*="semanticscholar.org/"].notion-link.link:before,
-span[data-link-style="icon"] > a.notion-link.link:before {
+span[data-link-style="icon"] > a.notion-link.link:before,
+a[data-link-style="icon"].notion-link.link:before {
   content: "";
   position: absolute;
   left: 0;
@@ -65,144 +53,87 @@ span[data-link-style="icon"] > a.notion-link.link:before {
   border-radius: 6px;
 }
 
-/* Icon-prefixed links: reserve padding for the icon so highlights/underline start at the text. */
-a[href="/chen"].notion-link.link,
-a[href="https://twitter.com/_jinnkunn"].notion-link.link,
-a[href="/blog"].notion-link.link,
-a[href="/blog.rss"].notion-link.link,
-a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link,
-a[href="https://dal.ca/"].notion-link.link,
-a[href="https://www.dal.ca/"].notion-link.link,
-a[href*="scholar.google"].notion-link.link,
-a[href*="researchgate.net"].notion-link.link,
-a[href^="https://orcid.org/"].notion-link.link,
-a[href*="semanticscholar.org/"].notion-link.link,
-span[data-link-style="icon"] > a.notion-link.link {
+/* Icon-prefixed links: only the icon slot differs; text styling stays on `a.notion-link.link`. */
+span[data-link-style="icon"] > a.notion-link.link,
+a[data-link-style="icon"].notion-link.link {
   --link-icon-size: 24px;
   --link-icon-space: 28px;
 }
 
-span[data-link-style="icon"] > a.notion-link.link:before {
+span[data-link-style="icon"] > a.notion-link.link:before,
+a[data-link-style="icon"].notion-link.link:before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E");
   background-size: 15px 15px;
   box-shadow: inset 0 0 0 1px rgba(55, 53, 47, 0.12);
 }
 
-/*a[href="https://exorcat.com"].notion-link.link:before {*/
-/*  background-image: url(/web_image/exorcat.svg);*/
-/*  background-size: 26px 26px;*/
-/*  padding-right: 5px;*/
-/*}*/
-/*a[href="/"].notion-link.link:before {*/
-/*  background-image: url(/web_image/jinnkunn.svg);*/
-/*    padding-right: 5px;*/
-/*}*/
-a[href="https://twitter.com/_jinnkunn"].notion-link.link:before {
-  background-image: url(/web_image/x.svg);
-  background-size: 26px 26px;
-}
-
-a[href="/blog"].notion-link.link:before {
-  background-image: url(/web_image/blog-b.svg);
-}
-
-a[href="/blog.rss"].notion-link.link:before {
-  background-image: url(/web_image/rss.svg);
-  background-size: 20px 20px;
-}
-
-a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before {
-  background-image: url(/web_image/linkedin-blue.svg);
-}
-
-a[href="/chen"].notion-link.link:before {
-  background-image: url(/web_image/chen-seal.svg);
-}
-
-a[href="https://dal.ca/"].notion-link.link:before {
-  background-image: url(/web_image/dal-seal.svg);
-}
-
-a[href="https://www.dal.ca/"].notion-link.link:before {
-  background-image: url(/web_image/dal-seal.svg);
-}
-
-a[href*="scholar.google"].notion-link.link:before {
-  background-image: url(/web_image/google-scholar.svg);
-  background-size: 23px 23px;
-}
-
-a[href*="researchgate.net"].notion-link.link:before {
-  background-image: url(/web_image/researchgate.svg);
-  background-size: 24px 24px;
-}
-
-a[href^="https://orcid.org/"].notion-link.link:before {
-  background-image: url(/web_image/orcid.svg);
-  background-size: 22px 22px;
-}
-
-a[href*="semanticscholar.org/"].notion-link.link:before {
-  background-image: url(/web_image/semantic_scholar.svg);
-  background-size: 22px 22px;
-}
-
-span[data-link-style="icon"] > a[href="https://twitter.com/_jinnkunn"].notion-link.link:before {
+span[data-link-style="icon"] > a[href="https://twitter.com/_jinnkunn"].notion-link.link:before,
+a[data-link-style="icon"][href="https://twitter.com/_jinnkunn"].notion-link.link:before {
   background-image: url(/web_image/x.svg);
   background-size: 26px 26px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href="/blog"].notion-link.link:before {
+span[data-link-style="icon"] > a[href="/blog"].notion-link.link:before,
+a[data-link-style="icon"][href="/blog"].notion-link.link:before {
   background-image: url(/web_image/blog-b.svg);
   background-size: 20px 20px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link:before {
+span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link:before,
+a[data-link-style="icon"][href="/blog.rss"].notion-link.link:before {
   background-image: url(/web_image/rss.svg);
   background-size: 20px 20px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before {
+span[data-link-style="icon"] > a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before,
+a[data-link-style="icon"][href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before {
   background-image: url(/web_image/linkedin-blue.svg);
   background-size: 20px 20px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href="/chen"].notion-link.link:before {
+span[data-link-style="icon"] > a[href="/chen"].notion-link.link:before,
+a[data-link-style="icon"][href="/chen"].notion-link.link:before {
   background-image: url(/web_image/chen-seal.svg);
   background-size: 20px 20px;
   box-shadow: none;
 }
 
 span[data-link-style="icon"] > a[href="https://dal.ca/"].notion-link.link:before,
-span[data-link-style="icon"] > a[href="https://www.dal.ca/"].notion-link.link:before {
+span[data-link-style="icon"] > a[href="https://www.dal.ca/"].notion-link.link:before,
+a[data-link-style="icon"][href="https://dal.ca/"].notion-link.link:before,
+a[data-link-style="icon"][href="https://www.dal.ca/"].notion-link.link:before {
   background-image: url(/web_image/dal-seal.svg);
   background-size: 20px 20px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link:before {
+span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link:before,
+a[data-link-style="icon"][href*="scholar.google"].notion-link.link:before {
   background-image: url(/web_image/google-scholar.svg);
   background-size: 23px 23px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href*="researchgate.net"].notion-link.link:before {
+span[data-link-style="icon"] > a[href*="researchgate.net"].notion-link.link:before,
+a[data-link-style="icon"][href*="researchgate.net"].notion-link.link:before {
   background-image: url(/web_image/researchgate.svg);
   background-size: 24px 24px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href^="https://orcid.org/"].notion-link.link:before {
+span[data-link-style="icon"] > a[href^="https://orcid.org/"].notion-link.link:before,
+a[data-link-style="icon"][href^="https://orcid.org/"].notion-link.link:before {
   background-image: url(/web_image/orcid.svg);
   background-size: 22px 22px;
   box-shadow: none;
 }
 
-span[data-link-style="icon"] > a[href*="semanticscholar.org/"].notion-link.link:before {
+span[data-link-style="icon"] > a[href*="semanticscholar.org/"].notion-link.link:before,
+a[data-link-style="icon"][href*="semanticscholar.org/"].notion-link.link:before {
   background-image: url(/web_image/semantic_scholar.svg);
   background-size: 22px 22px;
   box-shadow: none;
@@ -1081,6 +1012,8 @@ html.theme-light {
 	a.notion-link.link {
 	  position: relative;
 	  z-index: 0;
+	  color: inherit;
+	  opacity: 1;
 	  /* Icon links set `--link-icon-space` so the icon lives in padding, not under the highlight. */
 	  --link-icon-space: 0px;
 	  --link-icon-size: 24px;
