@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required by macOS Sonoma+ before EKEventStore.requestFullAccessToEventsWithCompletion
+         is allowed to prompt. Without this key, the call traps with a TCC violation
+         message and the user never sees a dialog. -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Show your calendar events from iCloud, Outlook, Google, and other accounts you've already added in System Settings — Calendar.</string>
+
+    <!-- Older fallback key, still consulted on macOS 13 and earlier. Same wording so
+         the dialog reads the same on either OS. -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>Show your calendar events from iCloud, Outlook, Google, and other accounts you've already added in System Settings — Calendar.</string>
+</dict>
+</plist>

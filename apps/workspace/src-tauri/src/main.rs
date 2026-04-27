@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod calendar;
+
 use keyring::Entry;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE};
 use reqwest::header::AUTHORIZATION;
@@ -437,13 +439,18 @@ fn main() {
             secure_store_get,
             secure_store_delete,
             site_admin_browser_login,
-            debug_set_traffic_lights
+            debug_set_traffic_lights,
+            calendar::commands::calendar_authorization_status,
+            calendar::commands::calendar_request_access,
+            calendar::commands::calendar_list_sources,
+            calendar::commands::calendar_list_calendars,
+            calendar::commands::calendar_fetch_events,
         ]);
 
     #[cfg(target_os = "macos")]
     {
         builder = builder.setup(|app| {
-            use tauri::Manager;
+            use tauri::{Emitter, Manager};
             use tauri_plugin_decorum::WebviewWindowExt;
             use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
@@ -469,6 +476,15 @@ fn main() {
                     None,
                 );
             }
+
+            // Bridge EventKit's change notification to a Tauri event.
+            // Registered once for the app's lifetime; the calendar
+            // surface listens for `calendar://changed` and refetches.
+            let app_handle = app.app_handle().clone();
+            calendar::eventkit::install_change_observer(move || {
+                let _ = app_handle.emit("calendar://changed", ());
+            });
+
             Ok(())
         });
 

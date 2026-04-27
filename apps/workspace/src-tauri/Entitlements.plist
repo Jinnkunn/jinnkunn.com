@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required when the app runs under App Sandbox (Mac App Store distribution
+         or `--sandbox` builds). Outside the sandbox this key is harmless — TCC
+         alone gates access via the Info.plist usage description. We declare it
+         here so a future App Store build doesn't silently lose calendar access. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
+
+    <!-- Hardened Runtime requires explicit JIT permission for the JS engine
+         backing the WebView. Tauri sets this automatically for hardened
+         builds, but listing it here keeps the entitlement surface visible in
+         a single file. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Outbound HTTP for site-admin API + reqwest's TLS stack. Without this
+         under App Sandbox, every fetch fails with NSURLErrorNotConnectedToInternet. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
