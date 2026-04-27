@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@tiptap/core";
 
-import { inlineMarkdownToHtml, tiptapDocToMarkdown } from "./markdown-inline";
+import {
+  INLINE_MARKDOWN_PARSE_OPTIONS,
+  inlineMarkdownToHtml,
+  normalizeInlineBoundaryWhitespace,
+  tiptapDocToMarkdown,
+} from "./markdown-inline";
 
 // Mimic the JSON shape TipTap emits via editor.getJSON() so we can assert
 // round-trip behaviour without instantiating a real editor in the test.
@@ -17,8 +22,29 @@ function makeDoc(...content: JSONContent[]): JSONContent {
 }
 
 describe("inlineMarkdownToHtml", () => {
+  it("keeps TipTap parsing in whitespace-preserving mode", () => {
+    expect(INLINE_MARKDOWN_PARSE_OPTIONS).toEqual({ preserveWhitespace: "full" });
+  });
+
   it("wraps plain text in a single paragraph", () => {
     expect(inlineMarkdownToHtml("hello")).toBe("<p>hello</p>");
+  });
+
+  it("moves inline mark edge spaces outside spans before rendering", () => {
+    expect(
+      normalizeInlineBoundaryWhitespace(
+        '<span data-color="gray">focuses on </span>**Explainable AI**<span data-color="gray">, and </span>**Visualization**',
+      ),
+    ).toBe(
+      '<span data-color="gray">focuses on</span> **Explainable AI**<span data-color="gray">, and</span> **Visualization**',
+    );
+    expect(
+      inlineMarkdownToHtml(
+        '<span data-color="gray">focuses on </span>**Explainable AI**<span data-color="gray">, and </span>**Visualization**',
+      ),
+    ).toBe(
+      '<p><span data-color="gray">focuses on</span> <strong>Explainable AI</strong><span data-color="gray">, and</span> <strong>Visualization</strong></p>',
+    );
   });
 
   it("converts bold + italic + code + strike + link", () => {
@@ -99,6 +125,12 @@ describe("inlineMarkdownToHtml", () => {
 
   it("does not interpret markdown chars inside inline code", () => {
     expect(inlineMarkdownToHtml("`**not bold**`")).toBe("<p><code>**not bold**</code></p>");
+  });
+
+  it("does not normalize passthrough tags inside inline code", () => {
+    expect(inlineMarkdownToHtml('`<span data-color="gray"> x </span>`')).toBe(
+      '<p><code>&lt;span data-color=&quot;gray&quot;&gt; x &lt;/span&gt;</code></p>',
+    );
   });
 
   it("html-escapes user-typed angle brackets", () => {
