@@ -69,3 +69,13 @@ test("deploy workflow: staging auto deploy uses main code plus content overlay",
   assert.doesNotMatch(workflow, /npm run release:staging -- --skip-checks --skip-build/);
   assert.doesNotMatch(workflow, /name: Build OpenNext bundle[\s\S]*npm run build:cf/);
 });
+
+test("release script refreshes staging content branch before resolving sha", async () => {
+  const script = await fs.readFile(
+    path.join(process.cwd(), "scripts/release-cloudflare.mjs"),
+    "utf8",
+  );
+  assert.match(script, /refreshStagingContentBranch\(stagingContentRef\)/);
+  assert.match(script, /git", \["fetch", remote, `\$\{contentRef\}:\$\{contentRef\}`\]/);
+  assert.match(script, /gitValue\(\["rev-parse", stagingContentRef\]\)/);
+});
