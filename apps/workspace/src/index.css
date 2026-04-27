@@ -2776,6 +2776,102 @@ body[data-window-focused="true"] .sidebar-surface {
   box-shadow: none;
 }
 
+/* Keep explicit icon links in the editor aligned with the public-site icons. */
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://twitter.com/_jinnkunn"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://twitter.com/_jinnkunn"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/x.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="/blog"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="/blog"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/blog-b.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="/blog.rss"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="/blog.rss"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/rss.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://www.linkedin.com/in/jinkun-chen/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://www.linkedin.com/in/jinkun-chen/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/linkedin-blue.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="/chen"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="/chen"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/chen-seal.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://dal.ca/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://dal.ca/"]
+  span[data-link-style="icon"]::before,
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://www.dal.ca/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://www.dal.ca/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/dal-seal.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="scholar.google"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="scholar.google"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/google-scholar.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="researchgate.net"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="researchgate.net"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/researchgate.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href^="https://orcid.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href^="https://orcid.org/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/orcid.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="semanticscholar.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="semanticscholar.org/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/semantic_scholar.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
 .mdx-document-text-block.ProseMirror strong {
   color: var(--color-text-primary);
   font-weight: 600;

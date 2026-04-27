@@ -17,6 +17,59 @@ function assertExcludes(source, forbidden, label) {
   assert.ok(!source.includes(forbidden), `${label} should not include ${forbidden}`);
 }
 
+async function collectFiles(dirPath, predicate) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectFiles(entryPath, predicate)));
+      continue;
+    }
+    if (predicate(entryPath)) {
+      files.push(entryPath);
+    }
+  }
+
+  return files;
+}
+
+async function collectEditableContentSources() {
+  const sources = [
+    {
+      relPath: "content/home.json",
+      source: JSON.parse(await read("content/home.json")).bodyMdx ?? "",
+    },
+  ];
+
+  for (const dir of ["content/pages", "content/components", "content/posts"]) {
+    const absDir = path.join(ROOT, dir);
+    const files = await collectFiles(absDir, (filePath) => filePath.endsWith(".mdx"));
+    for (const filePath of files) {
+      sources.push({
+        relPath: path.relative(ROOT, filePath),
+        source: await fs.readFile(filePath, "utf8"),
+      });
+    }
+  }
+
+  return sources;
+}
+
+const KNOWN_ICON_LINK_TARGETS = [
+  /^\/chen(?:[#?].*)?$/,
+  /^\/blog(?:[#?].*)?$/,
+  /^\/blog\.rss(?:[#?].*)?$/,
+  /^https:\/\/twitter\.com\/_jinnkunn\/?$/,
+  /^https:\/\/www\.linkedin\.com\/in\/jinkun-chen\/?$/,
+  /^https:\/\/(?:www\.)?dal\.ca\/?$/,
+  /^https:\/\/scholar\.google/,
+  /^https:\/\/www\.researchgate\.net\//,
+  /^https:\/\/orcid\.org\//,
+  /^https:\/\/www\.semanticscholar\.org\//,
+];
+
 test("public-web-style-guardrails: public content links keep Notion link classes", async () => {
   const richTextRenderer = await read("scripts/notion-sync/render-rich-text.mjs");
   const mdxComponents = await read("components/posts-mdx/components.tsx");
@@ -332,19 +385,52 @@ test("public-web-style-guardrails: classic list page CSS does not reintroduce ca
 
 test("public-web-style-guardrails: homepage classic link icons stay part of the contract", async () => {
   const homeCss = await read("app/(classic)/home.css");
+  const publicInlineCss = await read("public/styles/super-inline.css");
   const iconContract = await read("scripts/_lib/classic-link-icons.mjs");
 
-  const requiredHrefs = [
+  const homepageCssHrefs = [
     'href="/blog"',
     'href="/chen"',
     'href="https://twitter.com/_jinnkunn"',
     'href="https://www.linkedin.com/in/jinkun-chen/"',
   ];
+  const iconContractHrefs = [
+    ...homepageCssHrefs,
+    'href="https://www.dal.ca/"',
+  ];
 
-  for (const href of requiredHrefs) {
+  for (const href of homepageCssHrefs) {
     assertIncludes(homeCss, href, "Homepage CSS link icon selectors");
+  }
+  for (const href of iconContractHrefs) {
+    assertIncludes(publicInlineCss, href, "Public inline icon selectors");
+    assertIncludes(
+      publicInlineCss,
+      `span[data-link-style="icon"] > a[${href}].notion-link.link:before`,
+      "Explicit inline icon selectors",
+    );
     assertIncludes(iconContract, href, "Classic link icon runtime contract");
   }
+});
+
+test("public-web-style-guardrails: known icon links use explicit inline icon marks", async () => {
+  const sources = await collectEditableContentSources();
+  const missingMarks = [];
+  const markdownLinkPattern =
+    /(<span\s+data-link-style="icon">\s*)?\[([^\]\n]+)\]\(([^)\n]+)\)(\s*<\/span>)?/g;
+
+  for (const { relPath, source } of sources) {
+    for (const match of source.matchAll(markdownLinkPattern)) {
+      const [, openingMark, label, href, closingMark] = match;
+      const shouldBeIconLink = KNOWN_ICON_LINK_TARGETS.some((pattern) => pattern.test(href));
+      const isMarked = Boolean(openingMark && closingMark);
+      if (shouldBeIconLink && !isMarked) {
+        missingMarks.push(`${relPath}: ${label} -> ${href}`);
+      }
+    }
+  }
+
+  assert.deepEqual(missingMarks, []);
 });
 
 test("public-web-style-guardrails: CDN home media bypasses Next image optimizer", async () => {
