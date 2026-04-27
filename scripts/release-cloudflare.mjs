@@ -123,11 +123,25 @@ function pickStagingContentRef() {
   );
 }
 
+function isGitShaLike(value) {
+  return /^[a-f0-9]{7,40}$/i.test(String(value || "").trim());
+}
+
+function refreshStagingContentBranch(contentRef) {
+  if (!contentRef || isGitShaLike(contentRef)) return;
+  const remote = readEnv("SITE_ADMIN_REPO_REMOTE") || "origin";
+  console.log(`[release-cloudflare] fetching staging content branch ${remote}/${contentRef}`);
+  run("git", ["fetch", remote, `${contentRef}:${contentRef}`], {
+    label: `git fetch ${remote} ${contentRef}:${contentRef}`,
+  });
+}
+
 async function main() {
   const args = parseArgs();
   loadProjectEnv({ cwd: ROOT, override: true });
   const git = readGitState();
   const stagingContentRef = args.env === "staging" ? pickStagingContentRef() : "";
+  if (stagingContentRef) refreshStagingContentBranch(stagingContentRef);
   const stagingContentSha = stagingContentRef
     ? gitValue(["rev-parse", stagingContentRef])
     : "";
