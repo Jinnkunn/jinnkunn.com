@@ -403,8 +403,22 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
 
   assertIncludes(publicInlineCss, "a.notion-link.link {", "Shared Notion link style");
   assertIncludes(publicInlineCss, "background-image:", "Shared Notion link style");
-  assertIncludes(publicInlineCss, "opacity: 0.7;", "Shared Notion link default state");
+  assertIncludes(
+    publicInlineCss,
+    "color: inherit;",
+    "Shared Notion link default state",
+  );
+  assertIncludes(
+    publicInlineCss,
+    "opacity: 0.7;",
+    "Shared Notion link default mask",
+  );
   assertIncludes(publicInlineCss, "opacity: 1;", "Shared Notion link hover state");
+  assert.doesNotMatch(
+    publicInlineCss,
+    /a\.notion-link\.link\s*\{[^}]*color:\s*var\(--color-text-(?:gray|default)\);/,
+    "Shared Notion links should inherit user-set text color instead of forcing gray/black",
+  );
   assertIncludes(
     publicInlineCss,
     "Icon-prefixed links: only the icon slot differs",

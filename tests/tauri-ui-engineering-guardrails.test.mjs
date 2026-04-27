@@ -141,8 +141,23 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   );
   assert.match(
     styles,
-    /\.mdx-document-text-block\.ProseMirror a,[\s\S]*opacity: 0\.7;/,
-    "Workspace editor links should preserve the Blog RSS default opacity baseline",
+    /\.mdx-document-text-block\.ProseMirror a,[\s\S]*color: inherit;/,
+    "Workspace editor links should inherit user-set text color",
+  );
+  assert.match(
+    styles,
+    /\.mdx-document-text-block\.ProseMirror a,[^}]*opacity: 0\.7;/,
+    "Workspace editor links should use the same default mask as public links",
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.mdx-document-text-block\.ProseMirror a,[^}]*color: var\(--color-text-(?:gray|primary)\);/,
+    "Workspace editor links should not force gray/black over user-set text color",
+  );
+  assert.match(
+    styles,
+    /span\[data-link-style="icon"\]\s*\{[\s\S]*opacity: 0\.7;/,
+    "Workspace editor icon links should apply the default mask to the icon slot too",
   );
   assert.match(
     styles,

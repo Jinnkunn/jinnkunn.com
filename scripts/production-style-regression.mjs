@@ -27,7 +27,6 @@ const ROUTES = [
     kind: "home",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
     grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
-    linkColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,
     linkOpacity: "0.7",
     required: [
       [".home-layout--variant-classicIntro", 1],
@@ -258,14 +257,16 @@ function compareTextStyle(local, production, label, options = {}) {
 
 function compareLinkStyle(local, production, label, options = {}) {
   if (!local || !production) return;
-  const expectedColor = options.expectedColor || production.color;
-  assert(
-    normalizeStyleValue(local.color) === normalizeStyleValue(expectedColor),
-    options.expectedColor
-      ? `${label} link color drifted from the classic muted-text contract`
-      : `${label} link color drifted from production`,
-    { local, production, expectedColor },
-  );
+  if (options.expectedColor !== false) {
+    const expectedColor = options.expectedColor || production.color;
+    assert(
+      normalizeStyleValue(local.color) === normalizeStyleValue(expectedColor),
+      options.expectedColor
+        ? `${label} link color drifted from the classic link contract`
+        : `${label} link color drifted from production`,
+      { local, production, expectedColor },
+    );
+  }
   const expectedOpacity = options.expectedOpacity || production.opacity;
   if (expectedOpacity) {
     assert(
@@ -552,11 +553,16 @@ function compareRoute(route, local, production, viewportName) {
       { firstGrayTextStyle: local.firstGrayTextStyle, expectedColor: route.grayTextColor },
     );
   }
-  if (!route.readableColor || route.linkColor || route.linkOpacity) {
-    compareLinkStyle(local.firstLinkStyle, production.firstLinkStyle, route.path, {
-      expectedColor: route.linkColor,
-      expectedOpacity: route.linkOpacity,
-    });
+  if (local.firstLinkStyle) {
+    compareLinkStyle(
+      local.firstLinkStyle,
+      production.firstLinkStyle || local.firstLinkStyle,
+      route.path,
+      {
+        expectedColor: route.linkColor || false,
+        expectedOpacity: route.linkOpacity || "0.7",
+      },
+    );
   }
 
   for (const [selector, min] of route.required || []) {
