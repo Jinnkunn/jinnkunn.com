@@ -99,7 +99,15 @@ test("site-admin-routes-contract: filters malformed list rows", () => {
   assert.equal(parsed?.ok, true);
   if (!parsed || !isSiteAdminRoutesOk(parsed)) throw new Error("Expected success payload");
   assert.equal(parsed.overrides.length, 1);
-  assert.equal(parsed.protectedRoutes.length, 1);
+  assert.equal(parsed.protectedRoutes.length, 2);
+  assert.deepEqual(parsed.protectedRoutes[1], {
+    rowId: "3",
+    pageId: "",
+    path: "/bad",
+    mode: "prefix",
+    auth: "github",
+    enabled: true,
+  });
 });
 
 test("site-admin-routes-contract: preserves api error payload", () => {

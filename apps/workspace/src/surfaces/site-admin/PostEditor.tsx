@@ -122,7 +122,7 @@ function PostProperties({
         * created post needs a slug on disk before routing it. */}
       {mode === "edit" ? (
         <>
-          <PageRoutingProperties slug={slug} />
+          <PageRoutingProperties slug={slug} publicPath={`/blog/${slug}`} />
           <PageSeoProperties pathname={`/blog/${slug}`} />
         </>
       ) : null}

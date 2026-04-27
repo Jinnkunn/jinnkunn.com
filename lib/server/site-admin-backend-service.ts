@@ -166,15 +166,6 @@ export async function postSiteAdminRoutesBackend(
           }),
         });
       }
-      if (command.authKind === "password" && !command.password) {
-        return backendOk({
-          sourceVersion: await disableProtected({
-            pageId: command.pageId,
-            path: command.path,
-            expectedProtectedRoutesSha: command.expectedProtectedRoutesSha,
-          }),
-        });
-      }
       return backendOk(
         await upsertProtected({
           pageId: command.pageId,

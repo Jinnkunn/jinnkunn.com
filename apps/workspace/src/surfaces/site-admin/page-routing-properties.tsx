@@ -11,6 +11,8 @@ import { normalizeOverride, normalizeProtected, normalizeString } from "./utils"
 interface PageRoutingPropertiesProps {
   /** The page's slug (used as the pageId key against /api/site-admin/routes). */
   slug: string;
+  /** Public path rendered by the website, for example /about or /blog/post-slug. */
+  publicPath?: string;
 }
 
 interface OverrideDraft {
@@ -33,6 +35,17 @@ const BLANK_PROTECTED: ProtectedDraft = {
   enabled: true,
 };
 
+function normalizeRoutePathInput(path: string): string {
+  const raw = path.trim();
+  if (!raw) return "";
+  const withSlash = raw.startsWith("/") ? raw : `/${raw}`;
+  return withSlash.replace(/\/+$/, "") || "/";
+}
+
+function publicPathForSlug(slug: string): string {
+  return normalizeRoutePathInput(slug);
+}
+
 /** Compact "URL & Protection" panel rendered next to the page's
  * frontmatter inside the page editor. Talks to the same
  * `/api/site-admin/routes` endpoint as RoutesPanel — just scoped to one
@@ -40,7 +53,7 @@ const BLANK_PROTECTED: ProtectedDraft = {
  * custom URL or password-protect it. Independent save per section to
  * keep the UX simple (no shared draft / dirty bookkeeping with the page
  * MDX save). */
-export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
+export function PageRoutingProperties({ slug, publicPath }: PageRoutingPropertiesProps) {
   const { request, setMessage } = useSiteAdmin();
   const [loading, setLoading] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
@@ -48,10 +61,15 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
   const [sourceVersion, setSourceVersion] = useState<RoutesSourceVersion | null>(null);
   const [override, setOverride] = useState<OverrideDraft>(BLANK_OVERRIDE);
   const [protectedRow, setProtectedRow] = useState<ProtectedDraft>(BLANK_PROTECTED);
+  const [protectedBasePath, setProtectedBasePath] = useState("");
   const [hasOverride, setHasOverride] = useState(false);
   const [hasProtected, setHasProtected] = useState(false);
 
   const pageId = useMemo(() => slug.trim(), [slug]);
+  const defaultProtectedPath = useMemo(
+    () => normalizeRoutePathInput(publicPath || publicPathForSlug(slug)),
+    [publicPath, slug],
+  );
 
   const load = useCallback(async () => {
     if (!pageId) return;
@@ -96,7 +114,10 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
       setHasOverride(false);
     }
 
-    const matchingProtected = protectedRows.find((row) => row.pageId === pageId);
+    const matchingProtected = protectedRows.find((row) =>
+      row.pageId === pageId ||
+      normalizeRoutePathInput(row.path) === defaultProtectedPath,
+    );
     if (matchingProtected) {
       setProtectedRow({
         path: matchingProtected.path,
@@ -106,12 +127,14 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
         password: "",
         enabled: matchingProtected.enabled,
       });
+      setProtectedBasePath(matchingProtected.path);
       setHasProtected(true);
     } else {
-      setProtectedRow(BLANK_PROTECTED);
+      setProtectedRow({ ...BLANK_PROTECTED, path: defaultProtectedPath });
+      setProtectedBasePath("");
       setHasProtected(false);
     }
-  }, [pageId, request, setMessage]);
+  }, [defaultProtectedPath, pageId, request, setMessage]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- Route properties are fetched from the admin API whenever the edited page changes. */
   useEffect(() => {
@@ -149,15 +172,24 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
 
   const saveProtected = useCallback(async () => {
     if (!pageId || !sourceVersion) return;
-    if (protectedRow.auth === "password" && !protectedRow.password.trim() && !hasProtected) {
+    const nextPath = normalizeRoutePathInput(protectedRow.path) || defaultProtectedPath;
+    const basePath = normalizeRoutePathInput(protectedBasePath);
+    const passwordRequired =
+      protectedRow.auth === "password" &&
+      !protectedRow.password.trim() &&
+      (!hasProtected || (basePath && nextPath !== basePath));
+    if (passwordRequired) {
       setMessage("error", "Password required when auth mode is 'password'.");
       return;
     }
     setSavingProtected(true);
     const response = await request("/api/site-admin/routes", "POST", {
       kind: "protected",
-      pageId,
-      path: normalizeString(protectedRow.path),
+      // MDX pages are slug/path based, not Notion page-id based. Sending
+      // an empty pageId makes the backend write a path-key rule, which
+      // is stable for ordinary content/pages/*.mdx pages.
+      pageId: "",
+      path: nextPath,
       auth: protectedRow.auth,
       password: normalizeString(protectedRow.password),
       expectedProtectedRoutesSha: sourceVersion.protectedRoutesSha,
@@ -179,7 +211,17 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
     }
     setMessage("success", `Protection saved for ${pageId}.`);
     await load();
-  }, [pageId, sourceVersion, protectedRow, hasProtected, request, setMessage, load]);
+  }, [
+    defaultProtectedPath,
+    pageId,
+    sourceVersion,
+    protectedRow,
+    protectedBasePath,
+    hasProtected,
+    request,
+    setMessage,
+    load,
+  ]);
 
   if (!pageId) return null;
 
@@ -188,7 +230,7 @@ export function PageRoutingProperties({ slug }: PageRoutingPropertiesProps) {
       <details className="surface-details">
         <summary>URL override</summary>
         <p className="page-routing-properties__hint">
-          By default the page renders at <code>/pages/{pageId}</code>.
+          By default the page renders at <code>{defaultProtectedPath}</code>.
           Provide a custom path here to route requests for that path to
           this page (e.g. <code>/about</code>). Leave empty to disable.
         </p>

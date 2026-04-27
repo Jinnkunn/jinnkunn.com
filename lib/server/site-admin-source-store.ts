@@ -177,6 +177,7 @@ export interface SiteAdminSourceStore {
     mode: "exact" | "prefix";
     auth: ProtectedAccessMode;
     password: string;
+    delete?: boolean;
     expectedProtectedRoutesSha: string;
   }): Promise<SiteAdminRoutesSourceVersion>;
   getSourceState(): Promise<SiteAdminSourceState>;
@@ -445,10 +446,10 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     mode: "exact" | "prefix";
     auth: ProtectedAccessMode;
     password: string;
+    delete?: boolean;
     expectedProtectedRoutesSha: string;
   }): Promise<SiteAdminRoutesSourceVersion> {
     const pageId = compactId(input.pageId);
-    if (!pageId) throw new Error("Missing pageId");
     const routePath = normalizeRoutePath(input.path);
     if (!routePath) throw new Error("Missing path");
     const mode = input.mode === "prefix" ? "prefix" : "exact";
@@ -467,6 +468,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
       mode,
       auth,
       password,
+      delete: input.delete,
     });
     this.writeFilesystemJson(PROTECTED_ROUTES_REL_PATH, next);
 
@@ -882,10 +884,10 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     mode: "exact" | "prefix";
     auth: ProtectedAccessMode;
     password: string;
+    delete?: boolean;
     expectedProtectedRoutesSha: string;
   }): Promise<SiteAdminRoutesSourceVersion> {
     const pageId = compactId(input.pageId);
-    if (!pageId) throw new Error("Missing pageId");
     const routePath = normalizeRoutePath(input.path);
     if (!routePath) throw new Error("Missing path");
     const mode = input.mode === "prefix" ? "prefix" : "exact";
@@ -904,6 +906,7 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
       mode,
       auth,
       password,
+      delete: input.delete,
     });
     const write = await this.writeProtectedRoutes(
       nextProtected,
@@ -1634,34 +1637,48 @@ function upsertProtectedRoute(
     mode: "exact" | "prefix";
     auth: ProtectedAccessMode;
     password: string;
+    delete?: boolean;
   },
 ): StoredProtectedRoute[] {
   const pageId = compactId(input.pageId);
   const pathValue = normalizeRoutePath(input.path);
-  if (!pageId || !pathValue) return rules;
+  if (!pathValue) return rules;
 
   const auth = normalizeProtectedAccessMode(input.auth, "password");
-  if (auth === "password" && !input.password) {
-    return rules.filter(
-      (it) => !(compactId(it.pageId) === pageId && normalizeRoutePath(it.path) === pathValue),
-    );
-  }
-
+  const key: "pageId" | "path" = pageId ? "pageId" : "path";
   const idx = rules.findIndex(
-    (it) => compactId(it.pageId) === pageId && normalizeRoutePath(it.path) === pathValue,
+    (it) =>
+      (pageId
+        ? compactId(it.pageId) === pageId
+        : (it.key || "path") === "path") &&
+      normalizeRoutePath(it.path) === pathValue,
   );
-  const key: "pageId" | "path" = "pageId";
-  const secret = pageId;
+  if (input.delete) {
+    if (idx < 0) return rules;
+    return normalizeStoredProtectedRoutes(rules.filter((_it, index) => index !== idx));
+  }
+  const previous = idx >= 0 ? rules[idx] : null;
+  const secret = pageId || pathValue;
+  const previousPasswordToken =
+    previous?.auth === "password" && previous.token ? previous.token : "";
+  if (auth === "password" && !input.password && !previousPasswordToken) {
+    return rules;
+  }
   const token =
     auth === "password"
-      ? sha256Hex(`${secret}\n${input.password}`)
+      ? input.password
+        ? sha256Hex(`${secret}\n${input.password}`)
+        : previousPasswordToken
       : sha256Hex(`${secret}\n__github__`);
 
   const row: StoredProtectedRoute = {
-    id: idx >= 0 ? rules[idx].id : hashRowId(`protected:${pageId}:${pathValue}`),
+    id:
+      idx >= 0
+        ? rules[idx].id
+        : hashRowId(pageId ? `protected:${pageId}:${pathValue}` : `protected:path:${pathValue}`),
     auth,
     key,
-    pageId,
+    pageId: pageId || "",
     path: pathValue,
     mode: input.mode,
     token,

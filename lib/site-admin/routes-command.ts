@@ -84,11 +84,9 @@ export function parseSiteAdminRoutesCommand(
     return { ok: true, value: { kind, pageId, routePath, expectedSiteConfigSha } };
   }
 
-  const pageId = compactId(readString(command.pageId));
-  if (!pageId) return bad("Missing pageId", 400);
-
   const path = normalizeRoutePath(readString(command.path, { maxLen: 300 }));
   if (!path) return bad("Missing path", 400);
+  const pageId = compactId(readString(command.pageId));
 
   const authKind = normalizeAccessMode(command.auth, "password");
   const password = readString(command.password, { maxLen: 160 });
