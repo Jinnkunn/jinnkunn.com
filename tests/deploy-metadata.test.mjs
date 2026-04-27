@@ -79,3 +79,24 @@ test("release script refreshes staging content branch before resolving sha", asy
   assert.match(script, /git", \["fetch", remote, `\$\{contentRef\}:\$\{contentRef\}`\]/);
   assert.match(script, /gitValue\(\["rev-parse", stagingContentRef\]\)/);
 });
+
+test("release script can promote staging content through the guarded production path", async () => {
+  const script = await fs.readFile(
+    path.join(process.cwd(), "scripts/release-cloudflare.mjs"),
+    "utf8",
+  );
+  assert.match(script, /PROMOTE_STAGING_CONTENT/);
+  assert.match(script, /args\.env === "staging" \|\| promoteStagingContent/);
+  assert.match(script, /`--env=\$\{args\.env\}`/);
+  assert.match(script, /DEPLOY_CONTENT_SHA: deployedContentSha/);
+});
+
+test("content overlay production uploads require explicit production confirmation", async () => {
+  const script = await fs.readFile(
+    path.join(process.cwd(), "scripts/build-cloudflare-content-overlay.mjs"),
+    "utf8",
+  );
+  assert.match(script, /CONFIRM_PRODUCTION_DEPLOY=1 is required/);
+  assert.match(script, /CONFIRM_PRODUCTION_SHA=\$\{codeSha\} is required/);
+  assert.match(script, /CONFIRM_PRODUCTION_SHA does not match code ref/);
+});

@@ -184,12 +184,23 @@ function buildUploadMessage({ env, codeSha, codeBranch, contentSha, contentBranc
   ].join(" ");
 }
 
+function assertProductionOverlayAllowed({ env, dryRun, codeSha }) {
+  if (env !== "production" || dryRun) return;
+  if (String(process.env.CONFIRM_PRODUCTION_DEPLOY || "").trim() !== "1") {
+    throw new Error("CONFIRM_PRODUCTION_DEPLOY=1 is required for production content-overlay builds.");
+  }
+  const confirmedSha = String(process.env.CONFIRM_PRODUCTION_SHA || "").trim();
+  if (!confirmedSha) {
+    throw new Error(`CONFIRM_PRODUCTION_SHA=${codeSha} is required for production content-overlay builds.`);
+  }
+  if (confirmedSha !== codeSha) {
+    throw new Error(`CONFIRM_PRODUCTION_SHA does not match code ref ${codeSha}.`);
+  }
+}
+
 async function main() {
   loadProjectEnv({ cwd: ROOT, override: true });
   const args = parseArgs();
-  if (args.env !== "staging") {
-    throw new Error("Content-overlay builds are only enabled for staging.");
-  }
 
   const relPaths = readOverlayPaths();
   for (const relPath of relPaths) assertSafeOverlayPath(relPath);
@@ -199,6 +210,7 @@ async function main() {
   const codeBranch = codeBranchRaw === "HEAD" ? args.codeRef : codeBranchRaw;
   const contentSha = git(["rev-parse", args.contentRef], { capture: true });
   const contentBranch = args.contentRef;
+  assertProductionOverlayAllowed({ env: args.env, dryRun: args.dryRun, codeSha });
 
   if (args.dryRun) {
     console.log(JSON.stringify({
