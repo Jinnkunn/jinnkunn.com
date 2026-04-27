@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "auth": "password",
+    "id": "2c471c63bb05fa6f80bcce5d73f7bb60",
+    "key": "path",
+    "mode": "prefix",
+    "pageId": "",
+    "path": "/teaching/archive/2024-25-fall/csci3141",
+    "token": "fed87b3713262c9eb31d7821b7ac44eb7eeb4490540a329f06f977174b6bb3f3"
+  }
+]

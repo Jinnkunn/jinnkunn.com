@@ -78,7 +78,7 @@ function buildParentByPageId(routesManifest) {
 function buildProtectedPolicy() {
   const filesystemProtected = readJsonFile("content/filesystem/protected-routes.json", []);
   const generatedProtected = readJsonFile("content/generated/protected-routes.json", []);
-  const rules = Array.isArray(filesystemProtected)
+  const rules = Array.isArray(filesystemProtected) && filesystemProtected.length > 0
     ? filesystemProtected
     : Array.isArray(generatedProtected)
       ? generatedProtected

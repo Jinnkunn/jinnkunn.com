@@ -24,7 +24,7 @@ const filesystemProtectedRoutes: ProtectedRoute[] = Array.isArray(filesystemProt
   ? (filesystemProtectedRoutesData as ProtectedRoute[])
   : [];
 const activeProtectedRoutes =
-  Array.isArray(filesystemProtectedRoutesData) ? filesystemProtectedRoutes : protectedRoutes;
+  filesystemProtectedRoutes.length > 0 ? filesystemProtectedRoutes : protectedRoutes;
 
 const routesMap: Record<string, unknown> =
   routesData && typeof routesData === "object" && !Array.isArray(routesData)

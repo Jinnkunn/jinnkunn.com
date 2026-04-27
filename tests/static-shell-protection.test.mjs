@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -66,4 +67,16 @@ test("static shell protection allows password rule only with matching cookie", (
 
 test("static shell protection does not match unrelated routes", () => {
   assert.equal(pickStaticProtectedRule("/teaching/archive", POLICY), null);
+});
+
+test("static shell protection includes the published CSCI3141 password route", async () => {
+  const rules = JSON.parse(await fs.readFile("content/filesystem/protected-routes.json", "utf8"));
+  const rule = pickStaticProtectedRule("/teaching/archive/2024-25-fall/csci3141", {
+    rules,
+    routesMap: {},
+    parentByPageId: {},
+  });
+  assert.equal(rule?.path, "/teaching/archive/2024-25-fall/csci3141");
+  assert.equal(rule?.auth, "password");
+  assert.ok(rule?.token);
 });
