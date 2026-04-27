@@ -1,4 +1,4 @@
-import { CalendarSurface } from "./CalendarSurface";
+import { CalendarSurface } from "./calendar/CalendarSurface";
 import { CalendarIcon, SiteAdminIcon } from "./icons";
 import {
   SITE_ADMIN_DEFAULT_TAB,
@@ -23,10 +23,9 @@ export const SURFACES: readonly SurfaceDefinition[] = [
   {
     id: "calendar",
     title: "Calendar",
-    description: "Coming soon",
+    description: "Aggregated from macOS Calendar",
     icon: <CalendarIcon />,
     Component: CalendarSurface,
-    disabled: true,
   },
 ];
 

@@ -9,6 +9,11 @@ edition = "2021"
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
+# Cross-platform date arithmetic + ISO 8601 (de)serialization. The
+# calendar surface accepts ISO strings from the webview and converts
+# them to `NSDate` for EventKit on macOS, so we need a portable type
+# in between.
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # `apple-native` is required: in keyring v3 every platform backend is
 # opt-in. Without this feature the crate silently uses an in-memory
 # mock keystore on macOS, so the site-admin token never reaches the
@@ -20,6 +25,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2.0.0", features = [] }
+# `sync` is only feature we need — the EventKit access-request callback
+# fires on a background queue, and tokio::sync::oneshot is the cleanest
+# way to bridge that into our `async` Tauri command.
+tokio = { version = "1", features = ["sync"] }
 # Decorum provides `create_overlay_titlebar()` + `set_traffic_lights_inset(x, y)`
 # on the WebviewWindow, which lets us slide the macOS traffic lights
 # into the sidebar card's top edge (matching personal-os's look).
@@ -40,3 +49,43 @@ tauri-plugin-updater = "2"
 # No-op on Linux; Windows has Mica but we only target macOS for now.
 window-vibrancy = "0.6"
 url = "2"
+
+# EventKit bindings — kept macOS-only so a future Linux/Windows build
+# still compiles. The objc2 family is the maintained successor to the
+# old `cocoa`/`objc` crates; objc2-event-kit gives us EKEventStore,
+# EKCalendar, EKEvent without writing manual selectors.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+# CGColor lets us read EKCalendar's color and turn it into the hex
+# string the webview expects. Only the CGColor feature is needed.
+objc2-core-graphics = { version = "0.3", features = ["CGColor"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSArray",
+    "NSDate",
+    "NSDictionary",
+    "NSError",
+    "NSEnumerator",
+    "NSNotification",
+    "NSObject",
+    "NSOperation",
+    "NSString",
+    "NSURL",
+    "NSValue",
+    "NSThread",
+    "block2",
+] }
+objc2-event-kit = { version = "0.3", features = [
+    "EKCalendar",
+    "EKCalendarItem",
+    "EKError",
+    "EKEvent",
+    "EKEventStore",
+    "EKObject",
+    "EKParticipant",
+    "EKSource",
+    "EKTypes",
+    # Passthrough — without this the EKCalendar `CGColor()` accessor
+    # is hidden behind its own #[cfg(feature = "objc2-core-graphics")].
+    "objc2-core-graphics",
+] }
