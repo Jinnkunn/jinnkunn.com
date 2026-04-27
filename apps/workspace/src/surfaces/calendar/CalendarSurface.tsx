@@ -137,6 +137,9 @@ export function CalendarSurface() {
   // Once authorized, kick off the initial load.
   useEffect(() => {
     if (!isAuthorized(auth)) return;
+    // Initial EventKit hydration is an async external sync; loadAll awaits
+    // native APIs before committing state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll();
   }, [auth, loadAll]);
 
@@ -274,7 +277,7 @@ function PermissionGate({
           Connect your calendars
         </h1>
         <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-          We read directly from macOS Calendar — every account you've already
+          We read directly from macOS Calendar — every account you&apos;ve already
           added in System Settings (iCloud, Outlook, Google, CalDAV) shows up
           automatically. No separate sign-in.
         </p>
