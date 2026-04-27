@@ -78,9 +78,16 @@ jobs:
             exit 1
           fi
 
+      # Always build with the reviewed main code. The pushed
+      # site-admin-staging branch is a content overlay only; it must not
+      # provide app/components/CSS/scripts for the Worker bundle.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch staging content branch
+        run: git fetch origin site-admin-staging:site-admin-staging
 
       - uses: actions/setup-node@v4
         with:
@@ -90,9 +97,6 @@ jobs:
       - name: Install deps
         run: npm ci --no-audit --no-fund
 
-      - name: Build OpenNext bundle
-        run: npm run build:cf
-
       - name: Deploy to Cloudflare (${{ env.TARGET_ENV }})
         env:
           DEPLOY_SHA: ${{ github.sha }}
@@ -101,7 +105,7 @@ jobs:
           export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
 
           if [ "$TARGET_ENV" = "staging" ]; then
-            npm run release:staging -- --skip-checks --skip-build
+            npm run release:staging -- --skip-checks
           else
             # Production dispatch remains manual-only. Keep a single-token
             # message, but include source metadata so /api/site-admin/status
