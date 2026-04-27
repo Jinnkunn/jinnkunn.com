@@ -2749,7 +2749,7 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-text-block.ProseMirror span[data-link-style="icon"] {
   position: relative;
   display: inline-block;
-  padding-left: 24px;
+  padding-left: 21px;
   opacity: 0.7;
   transition: opacity 100ms ease-in;
 }
@@ -3043,7 +3043,7 @@ span[data-bg="red"] { background: var(--color-bg-red); }
 
 span[data-link-style="icon"] > a.notion-link.link,
 a[data-link-style="icon"].notion-link.link {
-  --link-icon-space: 28px;
+  --link-icon-space: 25px;
   --link-icon-size: 24px;
   position: relative;
   padding-left: calc(var(--link-icon-space) + 0.08em);
