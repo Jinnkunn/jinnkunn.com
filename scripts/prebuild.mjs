@@ -42,6 +42,7 @@ function ensureGeneratedStubs() {
   writeIfMissing("protected-routes.json", []);
   writeIfMissing("classic-css-assets.json", { source: "", stylesheets: [] });
   writeIfMissing("site-config.json", DEFAULT_SITE_CONFIG);
+  writeIfMissing("sync-meta.json", { syncedAt: "1970-01-01T00:00:00.000Z" });
 }
 
 function sha1Hex(input) {
