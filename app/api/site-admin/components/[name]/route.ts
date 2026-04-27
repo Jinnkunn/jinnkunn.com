@@ -3,11 +3,14 @@ import type { NextRequest } from "next/server";
 import {
   ContentStoreConflictError,
   ContentStoreNotFoundError,
+  SITE_COMPONENT_DEFINITIONS,
   isValidComponentName,
   readComponent,
   updateComponent,
   type ComponentName,
 } from "@/lib/components/store";
+import { summarizeComponentEntries } from "@/lib/components/parse";
+import { loadComponentUsageMap } from "@/lib/components/usage-server";
 import {
   apiError,
   apiPayloadOk,
@@ -71,9 +74,16 @@ export async function GET(
       const detail = await readComponent(resolved.name);
       if (!detail)
         return apiError("component not found", { status: 404, code: "NOT_FOUND" });
+      const usage = await loadComponentUsageMap();
+      const definition = SITE_COMPONENT_DEFINITIONS.find(
+        (item) => item.name === resolved.name,
+      );
       return apiPayloadOk({
         name: detail.name,
         source: detail.source,
+        definition,
+        summary: summarizeComponentEntries(resolved.name, detail.source),
+        usage: usage[resolved.name] ?? [],
         version: detail.version,
       });
     },

@@ -6,6 +6,7 @@ import {
 } from "../icons";
 import type { SurfaceNavGroup, SurfaceNavItem } from "../types";
 import type { SiteAdminTab } from "./types";
+import { SITE_COMPONENT_DEFINITIONS } from "../../../../../lib/site-admin/component-registry.ts";
 
 /** Static children of the "Components" group — the four reusable MDX
  * widgets. Each leaf id is `components:<name>`; clicking it routes to
@@ -13,11 +14,11 @@ import type { SiteAdminTab } from "./types";
  * are no dynamic children to inject (no per-entry leaves) — the
  * granularity stops at the component name. */
 const COMPONENT_LEAVES: readonly SurfaceNavItem[] = [
-  { id: "components:news", label: "News" },
-  { id: "components:teaching", label: "Teaching" },
-  { id: "components:publications", label: "Publications" },
-  { id: "components:works", label: "Works" },
-];
+  ...SITE_COMPONENT_DEFINITIONS.map((definition) => ({
+    id: `components:${definition.name}`,
+    label: definition.label,
+  })),
+] as const;
 
 /** Nav tree for the Site Admin surface. Rendered by the shell sidebar
  * as collapsible groups under "Site Admin". The tree mirrors the
@@ -51,7 +52,7 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
       },
       {
         id: "components",
-        label: "Components",
+        label: "Shared",
         icon: <PostsIcon />,
         // Static four-leaf sub-tree — News / Teaching / Publications /
         // Works. No "+" affordance because the names are fixed by

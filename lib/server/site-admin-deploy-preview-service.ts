@@ -1,10 +1,17 @@
 import "server-only";
 
+import deployedComponentSources from "@/content/generated/component-sources.json";
+import { COMPONENT_NAMES, readComponent } from "@/lib/components/store";
+import { loadComponentUsageMap } from "@/lib/components/usage-server";
 import { getProtectedRoutes } from "@/lib/protected-routes";
 import { getRoutesManifest } from "@/lib/routes-manifest";
 import { getSiteConfig } from "@/lib/site-config";
 import { loadSiteAdminRouteData } from "@/lib/server/site-admin-routes-service";
-import type { SiteAdminDeployPreviewPayload } from "@/lib/site-admin/api-types";
+import type {
+  SiteAdminDeployPreviewComponentChange,
+  SiteAdminDeployPreviewPayload,
+} from "@/lib/site-admin/api-types";
+import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
 import {
   buildDeployPreviewDiff,
   type DeployPreviewProtectedEntry,
@@ -140,6 +147,57 @@ function buildLiveRoutesFromOverrides(input: {
   return normalizeRouteEntries(out);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function deployedComponentSha(name: string): { sha: string; contentSha: string } {
+  const root = asRecord(deployedComponentSources);
+  const components = asRecord(root.components);
+  const item = asRecord(components[name]);
+  return {
+    sha: asString(item.sha),
+    contentSha: asString(item.contentSha),
+  };
+}
+
+async function liveComponentChanges(): Promise<SiteAdminDeployPreviewComponentChange[]> {
+  const [usageMap, componentDetails] = await Promise.all([
+    loadComponentUsageMap(),
+    Promise.all(COMPONENT_NAMES.map((name) => readComponent(name))),
+  ]);
+  const out: SiteAdminDeployPreviewComponentChange[] = [];
+  for (let index = 0; index < COMPONENT_NAMES.length; index += 1) {
+    const name = COMPONENT_NAMES[index];
+    const detail = componentDetails[index];
+    if (!detail) continue;
+    const deployed = deployedComponentSha(name);
+    if (detail.version === deployed.sha || detail.version === deployed.contentSha) {
+      continue;
+    }
+    const definition = getSiteComponentDefinition(name);
+    const affectedRoutes = (usageMap[name] ?? [])
+      .map((usage) => usage.routePath || usage.sourcePath)
+      .filter(Boolean);
+    out.push({
+      name,
+      label: definition.label,
+      sourcePath: definition.sourcePath,
+      embedTag: definition.embedTag,
+      affectedRoutes: Array.from(new Set(affectedRoutes)).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    });
+  }
+  return out;
+}
+
 export async function buildSiteAdminDeployPreviewPayload(): Promise<
   Omit<SiteAdminDeployPreviewPayload, "ok">
 > {
@@ -154,6 +212,7 @@ export async function buildSiteAdminDeployPreviewPayload(): Promise<
     liveOverrides,
   });
   const liveProtected = liveProtectedEntries(routeData.protectedRoutes);
+  const componentChanges = await liveComponentChanges();
 
   const diff = buildDeployPreviewDiff({
     currentRoutes,
@@ -162,6 +221,7 @@ export async function buildSiteAdminDeployPreviewPayload(): Promise<
     liveOverrides,
     currentProtected,
     liveProtected,
+    componentChanges,
   });
 
   return {

@@ -31,6 +31,7 @@ node_modules/
 # when Notion sync hasn't run locally.
 !/content/generated/protected-routes.json
 !/content/generated/classic-css-assets.json
+!/content/generated/component-sources.json
 
 # `public/notion-assets/` used to live here, but `content/generated/**`
 # hardcodes `/notion-assets/<sha>.png` paths in the baked HTML — if the

@@ -42,6 +42,15 @@ test("deploy-preview-model: computes added/removed/redirect/protected changes", 
         auth: "github",
       },
     ],
+    componentChanges: [
+      {
+        name: "news",
+        label: "News",
+        sourcePath: "content/components/news.mdx",
+        embedTag: "NewsBlock",
+        affectedRoutes: ["/news", "/"],
+      },
+    ],
   });
 
   assert.equal(out.hasChanges, true);
@@ -53,9 +62,11 @@ test("deploy-preview-model: computes added/removed/redirect/protected changes", 
   assert.equal(out.summary.protectedAdded, 1);
   assert.equal(out.summary.protectedRemoved, 0);
   assert.equal(out.summary.protectedChanged, 1);
+  assert.equal(out.summary.componentsChanged, 1);
 
   assert.deepEqual(out.samples.pagesAdded, ["/new"]);
   assert.deepEqual(out.samples.pagesRemoved, ["/old"]);
+  assert.equal(out.samples.components[0].name, "news");
 });
 
 test("deploy-preview-model: returns no changes for identical snapshots", () => {
@@ -81,8 +92,10 @@ test("deploy-preview-model: returns no changes for identical snapshots", () => {
   assert.equal(out.summary.protectedAdded, 0);
   assert.equal(out.summary.protectedRemoved, 0);
   assert.equal(out.summary.protectedChanged, 0);
+  assert.equal(out.summary.componentsChanged, 0);
   assert.deepEqual(out.samples.pagesAdded, []);
   assert.deepEqual(out.samples.pagesRemoved, []);
   assert.deepEqual(out.samples.redirects, []);
   assert.deepEqual(out.samples.protected, []);
+  assert.deepEqual(out.samples.components, []);
 });

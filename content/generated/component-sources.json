@@ -1,0 +1,28 @@
+{
+  "components": {
+    "news": {
+      "path": "content/components/news.mdx",
+      "sha": "48eaee4097ec0bc76d0f27d394421b475ad53b4f",
+      "contentSha": "4ac368a19f11dbf2ec7394d9432bb29db41a4dad",
+      "size": 2526
+    },
+    "publications": {
+      "path": "content/components/publications.mdx",
+      "sha": "d299a7145f47613a4d9979a5ca41a15df0514135",
+      "contentSha": "8377e39d0d16c153645a66bf79fa028225598854",
+      "size": 6667
+    },
+    "teaching": {
+      "path": "content/components/teaching.mdx",
+      "sha": "f8bb7776c0a82a33c53ef145e406031ca1016749",
+      "contentSha": "87ac2e856a4e30f1be325e6c26fa11b5c75ba445",
+      "size": 1202
+    },
+    "works": {
+      "path": "content/components/works.mdx",
+      "sha": "8d391fe9bed79da31dc72d5161cbad7606dcde71",
+      "contentSha": "a72254f53a0f3066e125a3e707f5eded4ec7069c",
+      "size": 5589
+    }
+  }
+}
