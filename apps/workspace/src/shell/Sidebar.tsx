@@ -7,6 +7,7 @@ import type {
 } from "../surfaces/types";
 import type { SidebarFavorite } from "./favorites";
 import { handleWindowDragMouseDown } from "./windowDrag";
+import { WorkspaceIconButton, WorkspaceSidebarRow } from "../ui/primitives";
 
 interface SidebarProps {
   surfaces: readonly SurfaceDefinition[];
@@ -318,12 +319,12 @@ function renderNavItem({
     hasFavoriteAction;
   return (
     <li key={item.id}>
-      <div
+      <WorkspaceSidebarRow
         className="sidebar-tree__item-row"
-        data-dragging={isDragging ? "true" : undefined}
-        data-drag-over={isDragOver ? "true" : undefined}
-        data-selected={selected ? "true" : undefined}
-        style={{ ["--sidebar-depth" as string]: depth }}
+        depth={depth}
+        dragging={isDragging}
+        dragOver={isDragOver}
+        selected={selected}
         onDragOver={
           item.droppable
             ? (event) => {
@@ -542,7 +543,7 @@ function renderNavItem({
             </div>
           </details>
         ) : null}
-      </div>
+      </WorkspaceSidebarRow>
       {hasChildren && treeOpen && (
         <ul
           id={treeId}
@@ -731,7 +732,10 @@ export function Sidebar({
                   activeNavItemId === fav.itemId;
                 return (
                   <li key={`${fav.surfaceId}:${fav.itemId}`}>
-                    <div className="sidebar-tree__item-row">
+                    <WorkspaceSidebarRow
+                      className="sidebar-tree__item-row"
+                      selected={selected}
+                    >
                       <button
                         type="button"
                         className="sidebar-nav-item sidebar-tree__item"
@@ -747,8 +751,7 @@ export function Sidebar({
                           {fav.label}
                         </span>
                       </button>
-                      <button
-                        type="button"
+                      <WorkspaceIconButton
                         className="sidebar-tree__item-star"
                         data-active="true"
                         onClick={() => onToggleFavorite(fav)}
@@ -756,8 +759,8 @@ export function Sidebar({
                         title="Unpin from favorites"
                       >
                         <StarIcon filled />
-                      </button>
-                    </div>
+                      </WorkspaceIconButton>
+                    </WorkspaceSidebarRow>
                   </li>
                 );
               })}

@@ -90,6 +90,12 @@ export type SiteAdminStatusPayload = {
     headCommitTime: string | null;
     pendingDeploy: boolean | null;
     pendingDeployReason?: string | null;
+    codeSha?: string | null;
+    contentSha?: string | null;
+    contentBranch?: string | null;
+    deployableVersionReady?: boolean | null;
+    deployableVersionReason?: string | null;
+    deployableVersionId?: string | null;
     error?: string;
   };
   preflight?: {
@@ -255,6 +261,9 @@ export type SiteAdminDeployPayload = {
   status: number;
   provider?: "generic" | "vercel" | "cloudflare";
   deploymentId?: string;
+  codeSha?: string;
+  contentSha?: string;
+  contentBranch?: string;
 };
 
 export type SiteAdminDeployResult = SiteAdminDeployPayload | SiteAdminApiError;

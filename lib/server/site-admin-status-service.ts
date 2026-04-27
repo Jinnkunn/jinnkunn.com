@@ -14,6 +14,12 @@ import {
   hasCloudflareApiDeployConfig,
   resolveCloudflareWorkerName,
 } from "./cloudflare-deploy-env.ts";
+import {
+  describeDeployMetadataMismatch,
+  parseDeployMetadataMessage,
+  pickRuntimeCodeSha,
+  type DeployVersionMetadata,
+} from "./deploy-metadata.ts";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
@@ -126,14 +132,7 @@ function readCloudflareStatusConfig(): {
   return { accountId, apiToken, workerName };
 }
 
-function parseSourceShaFromDeployMessage(messageRaw: unknown): string | null {
-  const message = asString(messageRaw);
-  if (!message) return null;
-  const hit = /\bsource(?:sha)?=([a-f0-9]{7,40})\b/i.exec(message);
-  return hit?.[1] ? hit[1].toLowerCase() : null;
-}
-
-async function fetchCloudflareActiveDeployedSourceSha(): Promise<string | null> {
+async function fetchCloudflareActiveDeploymentMetadata(): Promise<DeployVersionMetadata | null> {
   const cfg = readCloudflareStatusConfig();
   if (!cfg) return null;
 
@@ -177,7 +176,47 @@ async function fetchCloudflareActiveDeployedSourceSha(): Promise<string | null> 
   if (!latest) return null;
 
   const annotations = asRecord(latest.annotations);
-  return parseSourceShaFromDeployMessage(annotations["workers/message"]);
+  return parseDeployMetadataMessage(annotations["workers/message"]);
+}
+
+async function fetchCloudflareLatestVersionMetadata(): Promise<
+  (DeployVersionMetadata & { versionId: string | null }) | null
+> {
+  const cfg = readCloudflareStatusConfig();
+  if (!cfg) return null;
+
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+      cfg.accountId,
+    )}/workers/scripts/${encodeURIComponent(cfg.workerName)}/versions`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${cfg.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    },
+  ).catch(() => null);
+  if (!(res instanceof Response) || !res.ok) return null;
+
+  const raw = (await res.json().catch(() => null)) as unknown;
+  const payload = asRecord(raw);
+  if (payload.success !== true) return null;
+  const result = asRecord(payload.result);
+  const items = Array.isArray(result.items)
+    ? result.items
+    : Array.isArray(payload.result)
+      ? (payload.result as unknown[])
+      : [];
+  const first = asRecord(items[0]);
+  const versionId = asString(first.id) || null;
+  if (!versionId) return null;
+  const annotations = asRecord(first.annotations);
+  return {
+    ...parseDeployMetadataMessage(annotations["workers/message"]),
+    versionId,
+  };
 }
 
 function derivePendingDeployReason(input: {
@@ -415,10 +454,42 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     const sourceState = await getSiteAdminSourceStore().getSourceState();
     const headSha = sourceState.headSha ? sourceState.headSha.toLowerCase() : null;
     const runtimeProvider = pickRuntimeProvider();
-    const deployedSourceSha =
+    const activeDeployment =
       runtimeProvider === "cloudflare"
-        ? await fetchCloudflareActiveDeployedSourceSha().catch(() => null)
+        ? await fetchCloudflareActiveDeploymentMetadata().catch(() => null)
         : null;
+    const deployedSourceSha = activeDeployment?.contentSha || activeDeployment?.sourceSha || null;
+    const codeSha = pickRuntimeCodeSha();
+    const latestVersion =
+      runtimeProvider === "cloudflare"
+        ? await fetchCloudflareLatestVersionMetadata().catch(() => null)
+        : null;
+    const deployableVersionMismatch = latestVersion
+      ? describeDeployMetadataMismatch({
+          actual: latestVersion,
+          expected: {
+            codeSha,
+            contentSha: headSha,
+            contentBranch: sourceState.branch ?? null,
+          },
+        })
+      : null;
+    const deployableVersionReady =
+      runtimeProvider === "cloudflare"
+        ? latestVersion
+          ? deployableVersionMismatch
+            ? false
+            : true
+          : null
+        : null;
+    const deployableVersionReason =
+      runtimeProvider !== "cloudflare"
+        ? null
+        : latestVersion
+          ? deployableVersionMismatch
+            ? `DEPLOY_VERSION_STALE: ${deployableVersionMismatch}`
+            : null
+          : "LATEST_WORKER_VERSION_UNAVAILABLE";
     const pendingDeploy =
       headSha && deployedSourceSha
         ? headSha !== deployedSourceSha
@@ -441,6 +512,12 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       headSha: sourceState.headSha,
       headCommitTime: sourceState.headCommitTime,
       pendingDeploy,
+      codeSha,
+      contentSha: headSha,
+      contentBranch: sourceState.branch ?? null,
+      deployableVersionReady,
+      ...(deployableVersionReason ? { deployableVersionReason } : {}),
+      ...(latestVersion?.versionId ? { deployableVersionId: latestVersion.versionId } : {}),
       ...(pendingDeployReason ? { pendingDeployReason } : {}),
     };
   } catch (err: unknown) {

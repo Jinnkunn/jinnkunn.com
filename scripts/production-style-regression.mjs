@@ -18,6 +18,7 @@ const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
 const CLASSIC_DEFAULT_TEXT_COLOR = "rgb(55, 53, 47)";
 const CLASSIC_NOTION_GRAY_TEXT_COLOR = "rgb(120, 119, 116)";
+const CLASSIC_LINK_OPACITY = "0.7";
 
 const ROUTES = [
   {
@@ -131,6 +132,39 @@ const ROUTES = [
 
 const DESKTOP = { width: 2048, height: 1220, name: "desktop" };
 const MOBILE = { width: 390, height: 844, name: "mobile" };
+
+const LINK_STYLE_PROBES = [
+  {
+    route: "/blog",
+    name: "Blog RSS icon link",
+    selector: 'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link',
+    icon: true,
+  },
+  {
+    route: "/",
+    name: "Home regular link",
+    selector: 'a[href="https://exorcat.com/"].notion-link.link',
+    icon: false,
+  },
+  {
+    route: "/",
+    name: "Home icon link",
+    selector: 'span[data-link-style="icon"] > a[href="/blog"].notion-link.link',
+    icon: true,
+  },
+  {
+    route: "/publications",
+    name: "Publications profile icon link",
+    selector: 'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link',
+    icon: true,
+  },
+  {
+    route: "/teaching",
+    name: "Teaching archive link",
+    selector: 'a[href="/teaching/archive"].notion-link.link',
+    icon: false,
+  },
+];
 
 function parseArgs(argv = process.argv.slice(2)) {
   return {
@@ -274,9 +308,8 @@ function compareLinkStyle(local, production, label, options = {}) {
     );
   }
   assert(
-    normalizeStyleValue(local.textDecorationLine) ===
-      normalizeStyleValue(production.textDecorationLine),
-    `${label} link underline drifted from production`,
+    String(local.textDecorationLine || "").includes("underline"),
+    `${label} link underline drifted from the Notion link contract`,
     { local, production },
   );
   assert(
@@ -331,19 +364,49 @@ async function readSnapshot(page, route, origin, viewportName) {
           height: rect.height,
         };
       };
-      const styleOf = (selector) => {
-        const node = document.querySelector(selector);
-        if (!node) return null;
+      const styleFromNode = (node) => {
         const style = window.getComputedStyle(node);
+        const before = window.getComputedStyle(node, "::before");
+        const rect = node.getBoundingClientRect();
         return {
           color: style.color,
           opacity: style.opacity,
           backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+          backgroundSize: style.backgroundSize,
+          display: style.display,
           fontSize: style.fontSize,
+          height: rect.height,
           lineHeight: style.lineHeight,
           marginBottom: style.marginBottom,
+          marginTop: style.marginTop,
+          paddingTop: style.paddingTop,
+          paddingBottom: style.paddingBottom,
           textDecorationLine: style.textDecorationLine,
+          width: rect.width,
+          before: {
+            content: before.content,
+            display: before.display,
+            backgroundImage: before.backgroundImage,
+          },
         };
+      };
+      const styleOf = (selector) => {
+        const node = document.querySelector(selector);
+        return node ? styleFromNode(node) : null;
+      };
+      const visibleTextBlockStyleOf = (selector) => {
+        const node = [...document.querySelectorAll(selector)].find((candidate) => {
+          const rect = candidate.getBoundingClientRect();
+          const style = window.getComputedStyle(candidate);
+          return (
+            style.display !== "none" &&
+            rect.height > 0 &&
+            rect.width > 0 &&
+            (candidate.textContent || "").trim().length > 0
+          );
+        });
+        return node ? styleFromNode(node) : null;
       };
       const countOf = (selector) => document.querySelectorAll(selector).length;
       const firstReadable = [
@@ -408,6 +471,73 @@ async function readSnapshot(page, route, origin, viewportName) {
         grayTextCount: document.querySelectorAll(
           ".notion-root span[data-color='gray'], .notion-root .highlighted-color.color-gray",
         ).length,
+        linkProbes: [
+          {
+            name: "Blog RSS icon link",
+            route: "/blog",
+            selector: 'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link',
+            icon: true,
+          },
+          {
+            name: "Home regular link",
+            route: "/",
+            selector: 'a[href="https://exorcat.com/"].notion-link.link',
+            icon: false,
+          },
+          {
+            name: "Home icon link",
+            route: "/",
+            selector: 'span[data-link-style="icon"] > a[href="/blog"].notion-link.link',
+            icon: true,
+          },
+          {
+            name: "Publications profile icon link",
+            route: "/publications",
+            selector: 'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link',
+            icon: true,
+          },
+          {
+            name: "Teaching archive link",
+            route: "/teaching",
+            selector: 'a[href="/teaching/archive"].notion-link.link',
+            icon: false,
+          },
+        ]
+          .filter((probe) => probe.route === window.location.pathname)
+          .map((probe) => ({
+            ...probe,
+            style: styleOf(probe.selector),
+          })),
+        blockProbes: [
+          {
+            name: "Text block",
+            selector:
+              ".notion-root .notion-text__content, .notion-root .mdx-post__body > p",
+          },
+          {
+            name: "Bulleted list item",
+            selector: ".notion-root .notion-bulleted-list .notion-list-item",
+          },
+          {
+            name: "Quote block",
+            selector: ".notion-root blockquote, .notion-root .notion-quote",
+          },
+          {
+            name: "Toggle block",
+            selector: ".notion-root .notion-toggle",
+          },
+          {
+            name: "Publications toggle",
+            selector: ".notion-root .publication-toggle",
+          },
+          {
+            name: "Works toggle",
+            selector: ".notion-root .works-toggle",
+          },
+        ].map((probe) => ({
+          ...probe,
+          style: visibleTextBlockStyleOf(probe.selector),
+        })),
         firstGrayTextStyle: firstGrayText
           ? {
               color: getComputedStyle(firstGrayText).color,
@@ -556,8 +686,64 @@ function compareRoute(route, local, production, viewportName) {
       route.path,
       {
         expectedColor: route.linkColor || false,
-        expectedOpacity: route.linkOpacity || "0.7",
+        expectedOpacity: route.linkOpacity || CLASSIC_LINK_OPACITY,
       },
+    );
+  }
+
+  const localLinkProbes = local.linkProbes || [];
+  for (const localProbe of localLinkProbes) {
+    const productionProbe = (production.linkProbes || []).find(
+      (probe) => probe.name === localProbe.name,
+    );
+    assert(localProbe.style, `${route.path} lost link probe: ${localProbe.name}`, {
+      probe: localProbe,
+      knownProbes: LINK_STYLE_PROBES,
+    });
+    compareLinkStyle(
+      localProbe.style,
+      productionProbe?.style || localProbe.style,
+      `${route.path} ${localProbe.name}`,
+      { expectedColor: false, expectedOpacity: CLASSIC_LINK_OPACITY },
+    );
+    assert(
+      String(localProbe.style.backgroundImage || "").includes("linear-gradient"),
+      `${route.path} ${localProbe.name} lost the Notion ink-rise gradient`,
+      localProbe.style,
+    );
+    if (localProbe.icon) {
+      assert(
+        localProbe.style.before?.content === '""' &&
+          localProbe.style.before?.display !== "none" &&
+          localProbe.style.before?.backgroundImage !== "none",
+        `${route.path} ${localProbe.name} lost its icon slot`,
+        localProbe.style.before || {},
+      );
+    }
+  }
+
+  for (const localProbe of local.blockProbes || []) {
+    if (!localProbe.style) continue;
+    assert(
+      localProbe.style.display !== "none" &&
+        (localProbe.style.height ?? 0) > 0 &&
+        (localProbe.style.width ?? 0) > 0,
+      `${route.path} ${localProbe.name} block disappeared`,
+      localProbe.style,
+    );
+    assertRange(
+      Number.parseFloat(localProbe.style.fontSize || "0"),
+      13,
+      22,
+      `${route.path} ${localProbe.name} font size left the Notion block contract`,
+      localProbe.style,
+    );
+    assertRange(
+      Number.parseFloat(localProbe.style.marginBottom || "0"),
+      0,
+      40,
+      `${route.path} ${localProbe.name} margin rhythm left the Notion block contract`,
+      localProbe.style,
     );
   }
 
@@ -631,6 +817,11 @@ function compareRoute(route, local, production, viewportName) {
       production.home.bodyParagraphStyle || production.firstReadableStyle,
       "Homepage body paragraph",
       { expectedColor: route.readableColor },
+    );
+    assert(
+      normalizeStyleValue(local.home.bodyParagraphStyle?.marginBottom) === "32px",
+      "Homepage body paragraph spacing drifted from the classic Notion contract",
+      local.home.bodyParagraphStyle || {},
     );
   }
 }

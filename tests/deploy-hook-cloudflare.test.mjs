@@ -117,6 +117,54 @@ test("deploy-hook cloudflare: allows custom deployment message", async (t) => {
   assert.equal(out.deploymentId, "33333333-3333-3333-3333-333333333333");
 });
 
+test("deploy-hook cloudflare: refuses stale latest worker version metadata", async (t) => {
+  withEnv(t, {
+    DEPLOY_PROVIDER: "cloudflare",
+    CLOUDFLARE_ACCOUNT_ID: "acc-1",
+    CLOUDFLARE_API_TOKEN: "cf-token",
+    CLOUDFLARE_WORKER_NAME: "site-worker",
+  });
+
+  let deploymentCalls = 0;
+  withMockFetch(t, async (url) => {
+    if (String(url).includes("/workers/scripts/site-worker/versions")) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          result: {
+            items: [
+              {
+                id: "11111111-1111-1111-1111-111111111111",
+                annotations: {
+                  "workers/message":
+                    "Release upload (staging) source=cccccccc content=cccccccc branch=site-admin-staging contentBranch=site-admin-staging code=aaaaaaaa",
+                },
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (String(url).includes("/workers/scripts/site-worker/deployments")) {
+      deploymentCalls += 1;
+    }
+    return new Response("Not Found", { status: 404 });
+  });
+
+  const out = await triggerDeployHook(undefined, {
+    expectedCloudflareVersion: {
+      codeSha: "aaaaaaaa",
+      contentSha: "bbbbbbbb",
+      contentBranch: "site-admin-staging",
+    },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.status, 409);
+  assert.match(out.text, /DEPLOY_VERSION_STALE/);
+  assert.equal(deploymentCalls, 0);
+});
+
 test("deploy-hook cloudflare: prefers staging worker name on staging source branch", async (t) => {
   withEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",

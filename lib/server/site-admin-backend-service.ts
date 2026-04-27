@@ -21,6 +21,10 @@ import {
   isSiteAdminSourceConflictError,
 } from "@/lib/server/site-admin-source-store";
 import { triggerDeployHook } from "@/lib/server/deploy-hook";
+import {
+  buildDeployMetadataMessage,
+  pickRuntimeCodeSha,
+} from "@/lib/server/deploy-metadata";
 import type {
   SiteAdminConfigGetPayload,
   SiteAdminConfigPostPayload,
@@ -204,29 +208,35 @@ export async function getSiteAdminDeployPreviewBackend():
   }
 }
 
-function buildDeployMessage(branch: string | null, headSha: string | null): string {
-  const safeBranch = String(branch || "").trim();
-  const safeHeadSha = String(headSha || "").trim().toLowerCase();
-  const headToken = /^[a-f0-9]{7,40}$/.test(safeHeadSha) ? safeHeadSha : "";
-  if (headToken && safeBranch) return `Deploy from site-admin source=${headToken} branch=${safeBranch}`;
-  if (headToken) return `Deploy from site-admin source=${headToken}`;
-  if (safeBranch) return `Deploy from site-admin branch=${safeBranch}`;
-  return "Deploy from site-admin";
-}
-
 export async function postSiteAdminDeployBackend():
   Promise<SiteAdminBackendResult<Omit<SiteAdminDeployPayload, "ok">>> {
   try {
     const triggeredAtIso = new Date().toISOString();
     const sourceState = await getSiteAdminSourceStore().getSourceState().catch(() => null);
-    const message = buildDeployMessage(sourceState?.branch ?? null, sourceState?.headSha ?? null);
-    const out = await triggerDeployHook(undefined, message ? { message } : undefined);
+    const codeSha = pickRuntimeCodeSha();
+    const contentSha = sourceState?.headSha?.toLowerCase() ?? null;
+    const contentBranch = sourceState?.branch ?? null;
+    const message = buildDeployMetadataMessage({
+      label: "Deploy from site-admin",
+      codeSha,
+      contentSha,
+      contentBranch,
+    });
+    const out = await triggerDeployHook(undefined, {
+      message,
+      expectedCloudflareVersion: {
+        codeSha,
+        contentSha,
+        contentBranch,
+      },
+    });
 
     if (!out.ok) {
+      const isStaleVersion = out.status === 409 && out.text.includes("DEPLOY_VERSION_STALE");
       return backendError(
         formatDeployTriggerError(out.status, out.attempts, trimErrorDetail(out.text)),
-        502,
-        "DEPLOY_TRIGGER_FAILED",
+        isStaleVersion ? 409 : 502,
+        isStaleVersion ? "DEPLOY_VERSION_STALE" : "DEPLOY_TRIGGER_FAILED",
       );
     }
 
@@ -235,6 +245,9 @@ export async function postSiteAdminDeployBackend():
       status: out.status,
       ...(out.provider ? { provider: out.provider } : {}),
       ...(out.deploymentId ? { deploymentId: out.deploymentId } : {}),
+      ...(codeSha ? { codeSha } : {}),
+      ...(contentSha ? { contentSha } : {}),
+      ...(contentBranch ? { contentBranch } : {}),
     });
   } catch (err: unknown) {
     return toBackendResultFromUnknown(err);

@@ -66,10 +66,47 @@ function main() {
   assertIncludes(documentEditor, "useUnsavedChangesBeforeUnload", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useConfirmingBack", "MdxDocumentEditor");
   assertIncludes(documentEditor, "usePersistentUiState", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "data-controls-open", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "controlsActive", "MdxDocumentEditor");
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
     "mdx-document-slash-menu",
     "RichTextEditableBlock",
+  );
+  assertIncludes(
+    read("apps/workspace/src/ui/primitives.tsx"),
+    "WorkspaceSidebarRow",
+    "workspace primitives",
+  );
+  assertIncludes(
+    read("apps/workspace/src/ui/primitives.tsx"),
+    "WorkspaceIconButton",
+    "workspace primitives",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/block-popover.tsx"),
+    "WorkspacePopover",
+    "BlockPopover primitive migration",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Sidebar.tsx"),
+    "WorkspaceSidebarRow",
+    "Sidebar primitive migration",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Sidebar.tsx"),
+    "WorkspaceIconButton",
+    "Sidebar primitive migration",
+  );
+  assertIncludes(
+    read("apps/workspace/src/index.css"),
+    ".workspace-sidebar-row",
+    "workspace primitive CSS",
+  );
+  assertIncludes(
+    read("apps/workspace/src/index.css"),
+    ".workspace-icon-button",
+    "workspace primitive CSS",
   );
 
   const mdxBlocks = read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");

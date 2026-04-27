@@ -6,6 +6,7 @@ import {
   useState,
   type Dispatch,
   type DragEvent,
+  type FocusEvent,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -703,6 +704,7 @@ function EditableBlocksList({
   const [draggingBlockId, setDraggingBlockId] = useState("");
   const [dragOverBlockId, setDragOverBlockId] = useState("");
   const [uploadingId, setUploadingId] = useState("");
+  const [focusedBlockId, setFocusedBlockId] = useState("");
   const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
   const [actionMenu, setActionMenu] = useState<{
     anchor: HTMLElement;
@@ -922,6 +924,15 @@ function EditableBlocksList({
     [blocks, commitBlocks, depth, requestBlockFocus],
   );
 
+  const clearFocusedBlockIfLeaving = useCallback(
+    (blockId: string, event: FocusEvent<HTMLDivElement>) => {
+      const nextTarget = event.relatedTarget;
+      if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+      setFocusedBlockId((current) => (current === blockId ? "" : current));
+    },
+    [],
+  );
+
   if (blocks.length === 0) {
     // Empty nested list (e.g. an empty toggle body) — show a click-to-add
     // affordance so users have a way in. Only reachable when depth > 0.
@@ -947,7 +958,16 @@ function EditableBlocksList({
           data-color={block.color && block.color !== "default" ? block.color : undefined}
           data-drag-over={dragOverBlockId === block.id ? "true" : undefined}
           data-dragging={draggingBlockId === block.id ? "true" : undefined}
+          data-controls-open={
+            actionMenu?.blockId === block.id ||
+            draggingBlockId === block.id ||
+            focusedBlockId === block.id
+              ? "true"
+              : undefined
+          }
           key={block.id}
+          onFocusCapture={() => setFocusedBlockId(block.id)}
+          onBlurCapture={(event) => clearFocusedBlockIfLeaving(block.id, event)}
           onDragOver={
             enableDrag
               ? (event) => {
@@ -972,6 +992,11 @@ function EditableBlocksList({
           }
         >
           <BlockGutterHandles
+            controlsActive={
+              actionMenu?.blockId === block.id ||
+              draggingBlockId === block.id ||
+              focusedBlockId === block.id
+            }
             isDragging={draggingBlockId === block.id}
             onAdd={() => insertSlashTrigger(index)}
             onDragStart={(event) => {
@@ -1065,6 +1090,7 @@ function EditableBlocksList({
 }
 
 interface BlockGutterHandlesProps {
+  controlsActive: boolean;
   isDragging: boolean;
   onAdd: () => void;
   onDragEnd: () => void;
@@ -1073,6 +1099,7 @@ interface BlockGutterHandlesProps {
 }
 
 function BlockGutterHandles({
+  controlsActive,
   isDragging,
   onAdd,
   onDragEnd,
@@ -1084,6 +1111,7 @@ function BlockGutterHandles({
       <button
         type="button"
         className="mdx-document-block__handle mdx-document-block__handle--add"
+        tabIndex={controlsActive ? 0 : -1}
         onClick={onAdd}
         aria-label="Add block below"
         title="Click to add a block below"
@@ -1093,6 +1121,7 @@ function BlockGutterHandles({
       <button
         type="button"
         className="mdx-document-block__handle mdx-document-block__handle--menu"
+        tabIndex={controlsActive ? 0 : -1}
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}

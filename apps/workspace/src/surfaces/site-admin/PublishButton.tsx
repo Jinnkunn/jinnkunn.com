@@ -59,6 +59,12 @@ type SourceSnapshot = {
   headSha?: string;
   pendingDeploy?: boolean | null;
   pendingDeployReason?: string;
+  codeSha?: string;
+  contentSha?: string;
+  contentBranch?: string;
+  deployableVersionReady?: boolean | null;
+  deployableVersionReason?: string;
+  deployableVersionId?: string;
 };
 
 const SUMMARY_LABELS: Array<[DeployPreviewSummaryKey, string]> = [
@@ -158,6 +164,17 @@ function parseSourceSnapshot(raw: unknown): SourceSnapshot | null {
           ? null
           : undefined,
     pendingDeployReason: normalizeString(source.pendingDeployReason),
+    codeSha: normalizeString(source.codeSha),
+    contentSha: normalizeString(source.contentSha),
+    contentBranch: normalizeString(source.contentBranch),
+    deployableVersionReady:
+      typeof source.deployableVersionReady === "boolean"
+        ? source.deployableVersionReady
+        : source.deployableVersionReady === null
+          ? null
+          : undefined,
+    deployableVersionReason: normalizeString(source.deployableVersionReason),
+    deployableVersionId: normalizeString(source.deployableVersionId),
   };
 }
 
@@ -298,9 +315,21 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
                 {sourceSnapshot?.headSha && (
                   <span>Head {sourceSnapshot.headSha.slice(0, 7)}</span>
                 )}
+                {sourceSnapshot?.codeSha && (
+                  <span>Code {sourceSnapshot.codeSha.slice(0, 7)}</span>
+                )}
+                {sourceSnapshot?.contentSha && (
+                  <span>Content {sourceSnapshot.contentSha.slice(0, 7)}</span>
+                )}
                 {typeof sourceSnapshot?.pendingDeploy === "boolean" && (
                   <span>
                     Pending deploy {sourceSnapshot.pendingDeploy ? "yes" : "no"}
+                  </span>
+                )}
+                {typeof sourceSnapshot?.deployableVersionReady === "boolean" && (
+                  <span>
+                    Deployable version{" "}
+                    {sourceSnapshot.deployableVersionReady ? "ready" : "stale"}
                   </span>
                 )}
               </div>
@@ -364,6 +393,11 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
               {sourceSnapshot?.pendingDeployReason && (
                 <p className="publish-preview__note">
                   {sourceSnapshot.pendingDeployReason}
+                </p>
+              )}
+              {sourceSnapshot?.deployableVersionReason && (
+                <p className="publish-preview__note">
+                  {sourceSnapshot.deployableVersionReason}
                 </p>
               )}
             </div>

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadProjectEnv } from "./load-project-env.mjs";
+import { spawnSync } from "node:child_process";
 
 function readArgEnvName() {
   const arg = process.argv.find((it) => it.startsWith("--env="));
@@ -120,10 +121,79 @@ async function cfRequest({ accountId, apiToken, method, path, body }) {
 
 function pickSourceShaOverride() {
   const raw = readStringEnv("DEPLOY_SOURCE_SHA").toLowerCase();
-  return /^[a-f0-9]{40}$/.test(raw) ? raw : "";
+  return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
 }
 
-function pickLatestVersionId(result) {
+function pickCodeShaOverride() {
+  const raw = readStringEnv("DEPLOY_CODE_SHA").toLowerCase();
+  return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
+}
+
+function pickContentShaOverride() {
+  const raw = (readStringEnv("DEPLOY_CONTENT_SHA") || readStringEnv("DEPLOY_SOURCE_SHA")).toLowerCase();
+  return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
+}
+
+function readLocalGitHeadSha() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  const raw = String(result.stdout || "").trim().toLowerCase();
+  return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
+}
+
+function parseDeployMetadataMessage(messageRaw) {
+  const message = asString(messageRaw);
+  const token = (name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const hit = new RegExp(`\\b${escaped}=([^\\s]+)`, "i").exec(message);
+    return hit?.[1] || "";
+  };
+  const sha = (value) => {
+    const raw = asString(value).toLowerCase();
+    return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
+  };
+  const sourceSha = sha(token("source")) || sha(token("sourcesha"));
+  const sourceBranch = asString(token("branch"));
+  return {
+    sourceSha,
+    sourceBranch,
+    codeSha: sha(token("code")),
+    codeBranch: asString(token("codeBranch")),
+    contentSha: sha(token("content")) || sourceSha,
+    contentBranch: asString(token("contentBranch")) || sourceBranch,
+  };
+}
+
+function describeMetadataMismatch({ actual, expected }) {
+  if (expected.codeSha && actual.codeSha && actual.codeSha !== expected.codeSha) {
+    return `code=${actual.codeSha} expected ${expected.codeSha}`;
+  }
+  if (expected.codeSha && !actual.codeSha) {
+    return `code metadata missing; expected ${expected.codeSha}`;
+  }
+  if (
+    expected.contentSha &&
+    actual.contentSha &&
+    actual.contentSha !== expected.contentSha
+  ) {
+    return `content=${actual.contentSha} expected ${expected.contentSha}`;
+  }
+  if (expected.contentSha && !actual.contentSha) {
+    return `content metadata missing; expected ${expected.contentSha}`;
+  }
+  if (
+    expected.contentBranch &&
+    actual.contentBranch &&
+    actual.contentBranch !== expected.contentBranch
+  ) {
+    return `contentBranch=${actual.contentBranch} expected ${expected.contentBranch}`;
+  }
+  return "";
+}
+
+function pickLatestVersion(result) {
   const payload = asRecord(result);
   const items = Array.isArray(payload.items)
     ? payload.items
@@ -131,10 +201,19 @@ function pickLatestVersionId(result) {
       ? result
       : [];
   for (const item of items) {
-    const id = asString(asRecord(item).id);
-    if (id) return id;
+    const record = asRecord(item);
+    const id = asString(record.id);
+    if (!id) continue;
+    const annotations = asRecord(record.annotations);
+    return {
+      id,
+      message:
+        asString(annotations["workers/message"]) ||
+        asString(record.message) ||
+        asString(record.tag),
+    };
   }
-  return "";
+  return null;
 }
 
 async function main() {
@@ -150,12 +229,14 @@ async function main() {
   const sourceOwner = readStringEnv("SITE_ADMIN_REPO_OWNER");
   const sourceRepo = readStringEnv("SITE_ADMIN_REPO_NAME");
   const sourceSha =
+    pickContentShaOverride() ||
     pickSourceShaOverride() ||
     (await fetchGithubBranchHeadSha({
       owner: sourceOwner,
       repo: sourceRepo,
       branch: sourceBranch,
     }));
+  const codeSha = pickCodeShaOverride() || readLocalGitHeadSha();
   if (!workerName) {
     throw new Error(
       targetEnv === "staging"
@@ -170,19 +251,34 @@ async function main() {
     method: "GET",
     path: `/workers/scripts/${encodeURIComponent(workerName)}/versions`,
   });
-  const latestVersionId = pickLatestVersionId(versions);
-  if (!latestVersionId) {
+  const latestVersion = pickLatestVersion(versions);
+  if (!latestVersion) {
     throw new Error("No Worker version available to deploy. Upload a version first.");
+  }
+  if (targetEnv === "staging") {
+    const mismatch = describeMetadataMismatch({
+      actual: parseDeployMetadataMessage(latestVersion.message),
+      expected: {
+        codeSha,
+        contentSha: sourceSha,
+        contentBranch: sourceBranch,
+      },
+    });
+    if (mismatch) {
+      throw new Error(
+        `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match current staging source (${mismatch}). Run npm run release:staging so main code is rebuilt with the content overlay.`,
+      );
+    }
   }
 
   const deployPath = `/workers/scripts/${encodeURIComponent(workerName)}/deployments`;
   const dirtySuffix = readStringEnv("DEPLOY_SOURCE_DIRTY") === "1" ? " dirty=1" : "";
   const deployMessage = sourceSha
-    ? `Manual deploy (${targetEnv}) source=${sourceSha} branch=${sourceBranch}${dirtySuffix}`
+    ? `Manual deploy (${targetEnv}) source=${sourceSha} branch=${sourceBranch} content=${sourceSha} contentBranch=${sourceBranch}${codeSha ? ` code=${codeSha}` : ""}${dirtySuffix}`
     : `Manual deploy (${targetEnv}) branch=${sourceBranch}`;
   const baseDeployBody = {
     strategy: "percentage",
-    versions: [{ percentage: 100, version_id: latestVersionId }],
+    versions: [{ percentage: 100, version_id: latestVersion.id }],
   };
 
   let result;
@@ -220,8 +316,9 @@ async function main() {
         worker: workerName,
         sourceBranch,
         sourceSha: sourceSha || null,
+        codeSha: codeSha || null,
         message: deployMessage,
-        versionId: latestVersionId,
+        versionId: latestVersion.id,
         deploymentId: deploymentId || null,
       },
       null,

@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { WorkspacePopover } from "../../ui/primitives";
 
 export type BlockPopoverPlacement =
   | "bottom-start"
@@ -186,7 +187,7 @@ export function BlockPopover({
   if (!open || !anchor) return null;
 
   return (
-    <div
+    <WorkspacePopover
       aria-label={ariaLabel}
       className={["block-popover", className].filter(Boolean).join(" ")}
       ref={popoverRef}
@@ -194,6 +195,6 @@ export function BlockPopover({
       style={{ position: "fixed", ...style }}
     >
       {children}
-    </div>
+    </WorkspacePopover>
   );
 }

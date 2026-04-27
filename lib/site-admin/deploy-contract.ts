@@ -14,6 +14,11 @@ export function parseSiteAdminDeployResult(x: unknown): SiteAdminDeployResult | 
     const provider = typeof payload.provider === "string" ? payload.provider.trim() : "";
     const deploymentId =
       typeof payload.deploymentId === "string" ? payload.deploymentId.trim() : "";
+    const codeSha = typeof payload.codeSha === "string" ? payload.codeSha.trim() : "";
+    const contentSha =
+      typeof payload.contentSha === "string" ? payload.contentSha.trim() : "";
+    const contentBranch =
+      typeof payload.contentBranch === "string" ? payload.contentBranch.trim() : "";
     return {
       ok: true,
       triggeredAt: payload.triggeredAt,
@@ -22,6 +27,9 @@ export function parseSiteAdminDeployResult(x: unknown): SiteAdminDeployResult | 
         ? { provider }
         : {}),
       ...(deploymentId ? { deploymentId } : {}),
+      ...(codeSha ? { codeSha } : {}),
+      ...(contentSha ? { contentSha } : {}),
+      ...(contentBranch ? { contentBranch } : {}),
     };
   });
 }

@@ -31,18 +31,13 @@ import {
 } from "react";
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
-import Underline from "@tiptap/extension-underline";
 
-import { InlineColor } from "./inline-color-mark";
-import { InlineLinkStyle } from "./inline-link-style-mark";
 import {
   INLINE_MARKDOWN_PARSE_OPTIONS,
   inlineMarkdownToHtml,
   tiptapDocToMarkdown,
 } from "./markdown-inline";
+import { createRichTextExtensions } from "./rich-text-extensions";
 
 export interface RichTextInputHandle {
   /** Focus the contenteditable + place caret at end (or current selection
@@ -105,51 +100,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
     // back through setContent and steal the cursor mid-keystroke.
     const lastEmittedRef = useRef(value);
 
-    // Memoize the extension list. Disable everything in StarterKit that
-    // implies block-level structure (headings, lists, blockquotes, code
-    // blocks) — those are owned by the MdxBlock model. We keep just the
-    // inline marks plus history + hardbreak.
     const extensions = useMemo(
-      () => [
-        StarterKit.configure({
-          heading: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-          blockquote: false,
-          codeBlock: false,
-          horizontalRule: false,
-        }),
-        Link.configure({
-          openOnClick: false,
-          autolink: false,
-          // Allow the contenteditable to render `<a href="...">` for marks
-          // without auto-converting bare URLs in the user's text — the user
-          // explicitly asks for links via Cmd+K or by pasting a markdown
-          // link, so autolink would surprise more than help.
-          HTMLAttributes: { rel: "noreferrer noopener" },
-        }),
-        // Underline is the only common inline mark StarterKit doesn't
-        // bundle — markdown has no `**`-style syntax for it, so we
-        // round-trip via literal `<u>` HTML tags in the markdown source.
-        Underline,
-        // Inline color (foreground + background tint), matching the
-        // Notion selection-toolbar "Color" entry. Round-trips via
-        // `<span data-color="..." data-bg="...">` inline HTML.
-        InlineColor,
-        // Icon-prefixed link presentation. This is intentionally an inline
-        // mark, not a block component, so content like Teaching header/footer
-        // rows remains ordinary editable text with ordinary markdown links.
-        InlineLinkStyle,
-        // The extension adds an `is-editor-empty` class on the empty <p>
-        // node when the doc has no content; CSS keys off it to render the
-        // placeholder string we pass in via the `placeholder` prop.
-        Placeholder.configure({
-          placeholder: ({ editor: ed }) => (ed.isEmpty ? placeholder ?? "" : ""),
-          showOnlyWhenEditable: true,
-          showOnlyCurrent: false,
-        }),
-      ],
+      () => createRichTextExtensions({ placeholder }),
       [placeholder],
     );
 
