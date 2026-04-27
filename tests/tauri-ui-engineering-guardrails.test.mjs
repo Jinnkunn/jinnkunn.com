@@ -131,6 +131,21 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /\.mdx-document-block/);
   assert.match(styles, /\.mdx-document-slash-menu/);
   assert.match(styles, /data-link-style="icon"/);
+  assert.match(
+    styles,
+    /\.mdx-document-text-block\.ProseMirror a,[\s\S]*background-image:/,
+    "Workspace editor links should use the same Notion highlight treatment as public links",
+  );
+  assert.match(
+    styles,
+    /span\[data-link-style="icon"\] > a\.notion-link\.link,\s*\na\[data-link-style="icon"\]\.notion-link\.link/,
+    "Workspace preview icon links should only add the icon slot to Notion links",
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.mdx-document-text-block\.ProseMirror a\s*\{\s*color: var\(--color-accent\)/,
+    "Workspace editor links should not use a separate accent-link style",
+  );
   // Notion-style refactor: gutter handle column slimmed to 36px; slash menu
   // uses a single-column flex layout (with grouped sections + icons) instead
   // of the old 2-column grid.

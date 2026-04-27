@@ -2695,10 +2695,52 @@ body[data-window-focused="true"] .sidebar-surface {
   color: var(--color-text-primary);
 }
 
+.mdx-document-text-block.ProseMirror a,
+.component-embed-preview__body a.notion-link.link,
+.mdx-preview-entry a.notion-link.link {
+  --link-icon-space: 0px;
+  color: inherit;
+  opacity: 1;
+  padding: 0.04em 0.08em;
+  border-radius: 4px;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.22em;
+  text-decoration-skip-ink: auto;
+  text-decoration-color: rgba(55, 53, 47, 0.55);
+  background-image:
+    linear-gradient(to top, rgba(246, 228, 183, 0.88), rgba(246, 228, 183, 0.88)),
+    linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 55%,
+      rgba(246, 228, 183, 0.88) 55%,
+      rgba(246, 228, 183, 0.88) 100%
+    );
+  background-repeat: no-repeat;
+  background-size:
+    calc(100% - var(--link-icon-space)) 0px,
+    calc(100% - var(--link-icon-space)) 0.42em;
+  background-position:
+    var(--link-icon-space) 100%,
+    var(--link-icon-space) 100%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition:
+    background-size 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    text-decoration-color 180ms ease;
+}
+
+.mdx-document-text-block.ProseMirror a:hover,
+.component-embed-preview__body a.notion-link.link:hover,
+.mdx-preview-entry a.notion-link.link:hover {
+  background-size:
+    calc(100% - var(--link-icon-space)) 1.35em,
+    calc(100% - var(--link-icon-space)) 0.42em;
+  text-decoration-color: rgba(55, 53, 47, 0.78);
+}
+
 .mdx-document-text-block.ProseMirror a {
-  color: var(--color-accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
   cursor: text;
 }
 
@@ -2706,8 +2748,6 @@ body[data-window-focused="true"] .sidebar-surface {
   position: relative;
   display: inline-block;
   padding-left: 24px;
-  color: var(--color-text-primary);
-  font-weight: 600;
 }
 
 .mdx-document-text-block.ProseMirror span[data-link-style="icon"] a {
@@ -2974,15 +3014,16 @@ span[data-bg="purple"] { background: var(--color-bg-purple); }
 span[data-bg="pink"] { background: var(--color-bg-pink); }
 span[data-bg="red"] { background: var(--color-bg-red); }
 
-span[data-link-style="icon"] > a.notion-link.link {
+span[data-link-style="icon"] > a.notion-link.link,
+a[data-link-style="icon"].notion-link.link {
   --link-icon-space: 28px;
   --link-icon-size: 24px;
   position: relative;
   padding-left: calc(var(--link-icon-space) + 0.08em);
-  font-weight: 600;
 }
 
-span[data-link-style="icon"] > a.notion-link.link::before {
+span[data-link-style="icon"] > a.notion-link.link::before,
+a[data-link-style="icon"].notion-link.link::before {
   content: "";
   position: absolute;
   left: 0;
