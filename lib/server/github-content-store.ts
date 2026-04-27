@@ -192,6 +192,9 @@ export function createGithubContentStore(
           throw new ContentStoreConflictError({ expected, actual });
         }
       }
+      if (existing?.content === content) {
+        return { sha: existing.sha };
+      }
       const repoPathStr = repoPath(relPath);
       const message =
         opts?.commitMessage ?? `chore(site-admin): update ${repoPathStr}`;
