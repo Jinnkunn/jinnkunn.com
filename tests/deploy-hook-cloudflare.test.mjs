@@ -3,6 +3,23 @@ import test from "node:test";
 
 import { triggerDeployHook } from "../lib/server/deploy-hook-core.ts";
 
+const DEPLOY_ENV_KEYS = [
+  "DEPLOY_PROVIDER",
+  "DEPLOY_HOOK_URL",
+  "DEPLOY_ENV",
+  "CLOUDFLARE_DEPLOY_ENV",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "CF_ACCOUNT_ID",
+  "CLOUDFLARE_API_TOKEN",
+  "CF_API_TOKEN",
+  "CLOUDFLARE_WORKER_NAME",
+  "CLOUDFLARE_WORKER_NAME_STAGING",
+  "CLOUDFLARE_WORKER_NAME_PRODUCTION",
+  "SITE_ADMIN_REPO_BRANCH",
+  "SITE_ADMIN_REPO_BRANCH_STAGING",
+  "SITE_ADMIN_REPO_BRANCH_PRODUCTION",
+];
+
 function withMockFetch(t, impl) {
   const original = globalThis.fetch;
   globalThis.fetch = impl;
@@ -11,9 +28,11 @@ function withMockFetch(t, impl) {
   });
 }
 
-function withEnv(t, patch) {
+function withCleanDeployEnv(t, patch = {}) {
   const previous = {};
-  for (const [key, value] of Object.entries(patch)) {
+  const keys = new Set([...DEPLOY_ENV_KEYS, ...Object.keys(patch)]);
+  for (const key of keys) {
+    const value = Object.hasOwn(patch, key) ? patch[key] : null;
     previous[key] = process.env[key];
     if (value === null) delete process.env[key];
     else process.env[key] = String(value);
@@ -27,7 +46,7 @@ function withEnv(t, patch) {
 }
 
 test("deploy-hook cloudflare: promotes latest worker version via API", async (t) => {
-  withEnv(t, {
+  withCleanDeployEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",
     CLOUDFLARE_ACCOUNT_ID: "acc-1",
     CLOUDFLARE_API_TOKEN: "cf-token",
@@ -76,7 +95,7 @@ test("deploy-hook cloudflare: promotes latest worker version via API", async (t)
 });
 
 test("deploy-hook cloudflare: allows custom deployment message", async (t) => {
-  withEnv(t, {
+  withCleanDeployEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",
     CLOUDFLARE_ACCOUNT_ID: "acc-1",
     CLOUDFLARE_API_TOKEN: "cf-token",
@@ -118,7 +137,7 @@ test("deploy-hook cloudflare: allows custom deployment message", async (t) => {
 });
 
 test("deploy-hook cloudflare: refuses stale latest worker version metadata", async (t) => {
-  withEnv(t, {
+  withCleanDeployEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",
     CLOUDFLARE_ACCOUNT_ID: "acc-1",
     CLOUDFLARE_API_TOKEN: "cf-token",
@@ -166,7 +185,7 @@ test("deploy-hook cloudflare: refuses stale latest worker version metadata", asy
 });
 
 test("deploy-hook cloudflare: prefers staging worker name on staging source branch", async (t) => {
-  withEnv(t, {
+  withCleanDeployEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",
     CLOUDFLARE_ACCOUNT_ID: "acc-1",
     CLOUDFLARE_API_TOKEN: "cf-token",
@@ -211,7 +230,7 @@ test("deploy-hook cloudflare: prefers staging worker name on staging source bran
 });
 
 test("deploy-hook cloudflare: falls back to DEPLOY_HOOK_URL when cloudflare env is incomplete", async (t) => {
-  withEnv(t, {
+  withCleanDeployEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",
     CLOUDFLARE_ACCOUNT_ID: "acc-1",
     CLOUDFLARE_API_TOKEN: null,
