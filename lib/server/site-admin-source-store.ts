@@ -633,13 +633,14 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     message?: string;
   }): Promise<{ fileSha: string; commitSha: string }> {
     const filePath = path.join(this.rootDir, input.relPath);
+    let existingContent: string | null = null;
     // Check expected sha against current file content (best-effort
     // optimistic concurrency in local mode; real enforcement happens in
     // the GitHub store path).
     if (input.expectedSha !== undefined) {
       try {
-        const current = fs.readFileSync(filePath, "utf8");
-        const currentSha = jsonSha(current);
+        existingContent = fs.readFileSync(filePath, "utf8");
+        const currentSha = jsonSha(existingContent);
         if (currentSha !== input.expectedSha) {
           throw new SiteAdminSourceConflictError({
             expectedSha: input.expectedSha,
@@ -656,6 +657,17 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
           });
         }
       }
+    }
+    if (existingContent === null) {
+      try {
+        existingContent = fs.readFileSync(filePath, "utf8");
+      } catch {
+        existingContent = null;
+      }
+    }
+    if (existingContent === input.content) {
+      const sha = jsonSha(input.content);
+      return { fileSha: sha, commitSha: sha };
     }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, input.content, "utf8");
@@ -991,6 +1003,10 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     const repoPath = `${CONTENT_FILESYSTEM_DIR}/${input.relPath}`;
     const existing = await this.getRepoFile(repoPath);
     const content = `${JSON.stringify(sortJson(input.value), null, 2)}\n`;
+    if (existing?.content === content) {
+      const head = await this.fetchBranchHead();
+      return { fileSha: existing.sha, commitSha: head.sha };
+    }
 
     try {
       const payload = await this.githubJsonRequest<unknown>({
@@ -1124,6 +1140,10 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
           currentSha,
         });
       }
+    }
+    if (existing?.content === input.content) {
+      const head = await this.fetchBranchHead();
+      return { fileSha: existing.sha, commitSha: head.sha };
     }
     try {
       const payload = await this.githubJsonRequest<unknown>({

@@ -202,6 +202,19 @@ test("github-content-store: update requires correct ifMatch sha", async () => {
   assert.equal(read.content, "body v2");
 });
 
+test("github-content-store: unchanged text write returns existing sha without PUT", async () => {
+  const { store, mock } = makeStore(
+    new Map([["content/posts/hello.mdx", { sha: "sha-existing", content: "same body" }]]),
+  );
+
+  const result = await store.writeFile("posts/hello.mdx", "same body", {
+    ifMatch: "sha-existing",
+  });
+
+  assert.equal(result.sha, "sha-existing");
+  assert.equal(mock.calls.filter((call) => call.method === "PUT").length, 0);
+});
+
 test("github-content-store: delete requires correct ifMatch and errors when missing", async () => {
   const { store } = makeStore();
   const { sha } = await store.writeFile("posts/hello.mdx", "body", { ifMatch: null });

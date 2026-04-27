@@ -21,13 +21,17 @@ function encodeBase64Json(value) {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
 }
 
-function makeGithubFileResponse(path, sha, parsed) {
+function encodeBase64Text(value) {
+  return Buffer.from(value, "utf8").toString("base64");
+}
+
+function makeGithubFileResponse(path, sha, parsed, content) {
   return {
     type: "file",
     path,
     sha,
     encoding: "base64",
-    content: encodeBase64Json(parsed),
+    content: content === undefined ? encodeBase64Json(parsed) : encodeBase64Text(content),
   };
 }
 
@@ -121,12 +125,12 @@ function createGithubFetchMock(input) {
 
       const fsFile = config.filesystemFiles[relPath];
       if (fsFile) {
-        return makeResponse(200, makeGithubFileResponse(relPath, fsFile.sha, fsFile.parsed));
+        return makeResponse(200, makeGithubFileResponse(relPath, fsFile.sha, fsFile.parsed, fsFile.content));
       }
 
       const generatedFile = config.generatedFiles[relPath];
       if (generatedFile) {
-        return makeResponse(200, makeGithubFileResponse(relPath, generatedFile.sha, generatedFile.parsed));
+        return makeResponse(200, makeGithubFileResponse(relPath, generatedFile.sha, generatedFile.parsed, generatedFile.content));
       }
 
       return makeResponse(404, { message: "Not Found" });
@@ -248,6 +252,94 @@ test("site-admin-source-store github: updateSettings writes minimal file and ret
     assert.equal(after.siteConfigSha, "fs-site-config-sha-new");
     assert.equal(after.branchSha, "branch-after-sha");
   });
+});
+
+test("site-admin-source-store github: unchanged structured write does not create a commit", async () => {
+  const { fetchMock, calls } = createGithubFetchMock({
+    filesystemFiles: {
+      "content/filesystem/site-config.json": {
+        sha: "fs-site-config-sha",
+        parsed: {
+          siteName: "Before",
+          lang: "en",
+          seo: { title: "Before", description: "desc", favicon: "/favicon.ico" },
+          nav: { top: [{ href: "/", label: "Home" }], more: [] },
+        },
+      },
+      "content/filesystem/protected-routes.json": {
+        sha: "fs-protected-sha",
+        parsed: [],
+        content: "[]\n",
+      },
+      "content/filesystem/routes-manifest.json": {
+        sha: "fs-manifest-sha",
+        parsed: [],
+      },
+    },
+    branchSha: "branch-before-sha",
+  });
+
+  const store = createGithubSiteAdminSourceStore({
+    appId: "1001",
+    privateKey: createPrivateKeyPem(),
+    installationId: INSTALLATION_ID,
+    owner: OWNER,
+    repo: REPO,
+    branch: BRANCH,
+  });
+
+  await withFetchMock(fetchMock, async () => {
+    const before = await store.loadRoutes();
+    const after = await store.updateProtected({
+      pageId: "abc123",
+      path: "/already-public",
+      mode: "prefix",
+      auth: "password",
+      password: "",
+      delete: true,
+      expectedProtectedRoutesSha: before.sourceVersion.protectedRoutesSha,
+    });
+    assert.equal(after.protectedRoutesSha, "fs-protected-sha");
+    assert.equal(after.branchSha, "branch-before-sha");
+  });
+
+  assert.equal(calls.filter((call) => call.init?.method === "PUT").length, 0);
+});
+
+test("site-admin-source-store github: unchanged text file write does not create a commit", async () => {
+  const homeContent = '{ "title": "Home" }\n';
+  const { fetchMock, calls } = createGithubFetchMock({
+    filesystemFiles: {
+      "content/home.json": {
+        sha: "home-file-sha",
+        parsed: { title: "Home" },
+        content: homeContent,
+      },
+    },
+    branchSha: "branch-before-sha",
+  });
+
+  const store = createGithubSiteAdminSourceStore({
+    appId: "1001",
+    privateKey: createPrivateKeyPem(),
+    installationId: INSTALLATION_ID,
+    owner: OWNER,
+    repo: REPO,
+    branch: BRANCH,
+  });
+
+  await withFetchMock(fetchMock, async () => {
+    const after = await store.writeTextFile({
+      relPath: "content/home.json",
+      content: homeContent,
+      expectedSha: "home-file-sha",
+      message: "chore(site-admin): update content/home.json",
+    });
+    assert.equal(after.fileSha, "home-file-sha");
+    assert.equal(after.commitSha, "branch-before-sha");
+  });
+
+  assert.equal(calls.filter((call) => call.init?.method === "PUT").length, 0);
 });
 
 test("site-admin-source-store github: write conflict maps to SOURCE_CONFLICT", async () => {
