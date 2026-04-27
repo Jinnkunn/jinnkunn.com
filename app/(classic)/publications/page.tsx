@@ -5,51 +5,31 @@ import { resolve } from "node:path";
 
 import JsonLdScript from "@/components/seo/json-ld-script";
 import { PageView } from "@/components/posts-mdx/page-view";
+import { parsePublicationsEntries } from "@/lib/components/parse";
 import { getPageEntry, readPageSource } from "@/lib/pages/index";
-import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildPublicationsStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
+import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
 
 export const dynamic = "force-static";
 
 const PUBLICATIONS_SOURCE_PATH = resolve(
   process.cwd(),
-  "content/components/publications.mdx",
+  getSiteComponentDefinition("publications").sourcePath,
 );
-
-const ENTRY_RE = /<PublicationsEntry\s+data='([^']*)'\s*\/>/g;
-
-function unescapeJsonAttr(raw: string): string {
-  // Mirrors the editor's serializer escape for `'` inside the
-  // single-quoted `data` attr.
-  return raw.replace(/\\u0027/g, "'");
-}
 
 // Read the publications data from the components file (the page MDX
 // only embeds `<PublicationsBlock />`; entries live in the dedicated
 // component file). Used to materialize JSON-LD for SEO.
-async function readPublicationsEntries(): Promise<PublicationStructuredEntry[]> {
+async function readPublicationsEntries() {
   let raw = "";
   try {
     raw = await readFile(PUBLICATIONS_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
-  const body = raw.replace(/^---[\s\S]*?---\s*/m, "");
-  const out: PublicationStructuredEntry[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = ENTRY_RE.exec(body)) !== null) {
-    try {
-      const parsed = JSON.parse(unescapeJsonAttr(m[1] ?? ""));
-      if (parsed && typeof parsed === "object") {
-        out.push(parsed as PublicationStructuredEntry);
-      }
-    } catch {
-      // skip bad rows; keep page rendering
-    }
-  }
-  return out;
+  return parsePublicationsEntries(raw);
 }
 
 export async function generateMetadata(): Promise<Metadata> {

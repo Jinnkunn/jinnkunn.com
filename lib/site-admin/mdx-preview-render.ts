@@ -200,6 +200,44 @@ function renderJsxBlockquote(lines: string[], index: number): RenderRangeResult 
   };
 }
 
+function renderNewsEntry(lines: string[], index: number): RenderRangeResult {
+  const opener = lines[index] || "";
+  const attrs = parseAttrs(opener.replace(/^<NewsEntry\b/, "").replace(/>$/, ""));
+  const closeIndex = findClosingTag(lines, index + 1, "NewsEntry");
+  if (closeIndex === -1) {
+    return {
+      html: `<pre class="notion-code mdx-code"><code>${escapeHtml(opener)}</code></pre>`,
+      nextIndex: index + 1,
+    };
+  }
+  const body = lines.slice(index + 1, closeIndex).join("\n").trim();
+  return {
+    html: `<section class="mdx-preview-entry mdx-preview-entry--news"><h2 class="notion-heading notion-semantic-string">${renderInline(attrs.date || "Undated")}</h2><div class="news-entry__body">${renderMdxPreviewHtml(body)}</div></section>`,
+    nextIndex: closeIndex + 1,
+  };
+}
+
+function renderWorksEntry(lines: string[], index: number): RenderRangeResult {
+  const opener = lines[index] || "";
+  const attrs = parseAttrs(opener.replace(/^<WorksEntry\b/, "").replace(/>$/, ""));
+  const closeIndex = findClosingTag(lines, index + 1, "WorksEntry");
+  if (closeIndex === -1) {
+    return {
+      html: `<pre class="notion-code mdx-code"><code>${escapeHtml(opener)}</code></pre>`,
+      nextIndex: index + 1,
+    };
+  }
+  const body = lines.slice(index + 1, closeIndex).join("\n").trim();
+  const title = attrs.role || "Untitled role";
+  const detail = [attrs.affiliation, attrs.period, attrs.location]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    html: `<section class="mdx-preview-entry mdx-preview-entry--works"><h2 class="notion-heading notion-semantic-string">${renderInline(title)}</h2>${detail ? `<p class="notion-text notion-text__content notion-semantic-string">${renderInline(detail)}</p>` : ""}${body ? renderMdxPreviewHtml(body) : ""}</section>`,
+    nextIndex: closeIndex + 1,
+  };
+}
+
 function renderSelfClosingJsx(trimmed: string): string {
   const match = /^<([A-Z][\w]*)([\s\S]*?)\/>$/.exec(trimmed);
   if (!match) return `<pre class="notion-code mdx-code"><code>${escapeHtml(trimmed)}</code></pre>`;
@@ -241,6 +279,32 @@ function renderSelfClosingJsx(trimmed: string): string {
   if (tag === "Embed" || tag === "Video") {
     const url = safeUrl(attrs.src || attrs.url || "");
     return `<p class="notion-text notion-text__content notion-semantic-string"><a class="notion-link link" href="${escapeAttr(url)}">${renderInline(attrs.title || url || tag)}</a></p>`;
+  }
+  if (tag === "TeachingEntry") {
+    const title = [attrs.courseCode, attrs.courseName].filter(Boolean).join(" · ") || "Untitled course";
+    const detail = [attrs.term, attrs.role, attrs.period, attrs.instructor]
+      .filter(Boolean)
+      .join(" · ");
+    const href = safeUrl(attrs.courseUrl || "");
+    const titleHtml = href
+      ? `<a class="notion-link link" href="${escapeAttr(href)}">${renderInline(title)}</a>`
+      : renderInline(title);
+    return `<p class="notion-text notion-text__content notion-semantic-string"><strong>${titleHtml}</strong>${detail ? `<br /><span>${renderInline(detail)}</span>` : ""}</p>`;
+  }
+  if (tag === "PublicationsEntry") {
+    let entry: Record<string, unknown> = {};
+    try {
+      entry = JSON.parse((attrs.data || "{}").replace(/\\u0027/g, "'"));
+    } catch {
+      entry = {};
+    }
+    const title = typeof entry.title === "string" ? entry.title : "Untitled publication";
+    const year = typeof entry.year === "string" ? entry.year : "";
+    const url = typeof entry.url === "string" ? safeUrl(entry.url) : "";
+    const titleHtml = url
+      ? `<a class="notion-link link" href="${escapeAttr(url)}">${renderInline(title)}</a>`
+      : renderInline(title);
+    return `<p class="notion-text notion-text__content notion-semantic-string"><strong>${titleHtml}</strong>${year ? ` <span>${renderInline(year)}</span>` : ""}</p>`;
   }
   return `<pre class="notion-code mdx-code"><code>${escapeHtml(trimmed)}</code></pre>`;
 }
@@ -288,6 +352,20 @@ function renderRange(lines: string[], startIndex = 0): RenderRangeResult {
 
     if (trimmed.startsWith("<blockquote")) {
       const result = renderJsxBlockquote(lines, index);
+      html.push(result.html);
+      index = result.nextIndex;
+      continue;
+    }
+
+    if (trimmed.startsWith("<NewsEntry")) {
+      const result = renderNewsEntry(lines, index);
+      html.push(result.html);
+      index = result.nextIndex;
+      continue;
+    }
+
+    if (trimmed.startsWith("<WorksEntry")) {
+      const result = renderWorksEntry(lines, index);
       html.push(result.html);
       index = result.nextIndex;
       continue;

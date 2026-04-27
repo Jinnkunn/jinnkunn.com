@@ -4,6 +4,9 @@ import type { ReactElement } from "react";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { parseTeachingEntries } from "@/lib/components/parse";
+import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
+
 import { TeachingEntry } from "./teaching-entry";
 
 interface TeachingBlockProps {
@@ -12,56 +15,19 @@ interface TeachingBlockProps {
   limit?: number;
 }
 
-interface TeachingEntryRecord {
-  term: string;
-  period: string;
-  role: string;
-  courseCode: string;
-  courseName: string;
-  courseUrl?: string;
-  instructor?: string;
-}
-
 const TEACHING_SOURCE_PATH = resolve(
   process.cwd(),
-  "content/components/teaching.mdx",
+  getSiteComponentDefinition("teaching").sourcePath,
 );
 
-// Same self-closing-JSX pattern as the editor's mdx-blocks.ts parser.
-const TEACHING_ENTRY_RE = /<TeachingEntry\b([\s\S]*?)\/>/g;
-const ATTR_RE = /(\w+)\s*=\s*"([^"]*)"/g;
-
-function parseAttrs(raw: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const m of raw.matchAll(ATTR_RE)) {
-    out[m[1]] = m[2];
-  }
-  return out;
-}
-
-async function loadEntries(): Promise<TeachingEntryRecord[]> {
+async function loadEntries() {
   let raw = "";
   try {
     raw = await readFile(TEACHING_SOURCE_PATH, "utf8");
   } catch {
     return [];
   }
-  const body = raw.replace(/^---[\s\S]*?---\s*/m, "");
-  const out: TeachingEntryRecord[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = TEACHING_ENTRY_RE.exec(body)) !== null) {
-    const attrs = parseAttrs(m[1] ?? "");
-    out.push({
-      term: attrs.term ?? "",
-      period: attrs.period ?? "",
-      role: attrs.role ?? "",
-      courseCode: attrs.courseCode ?? "",
-      courseName: attrs.courseName ?? "",
-      courseUrl: attrs.courseUrl || undefined,
-      instructor: attrs.instructor || undefined,
-    });
-  }
-  return out;
+  return parseTeachingEntries(raw);
 }
 
 /** Embeddable view over content/components/teaching.mdx — the

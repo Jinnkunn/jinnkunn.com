@@ -943,6 +943,8 @@ body[data-window-focused="true"] .sidebar-surface {
   border-radius: 12px;
   background: var(--color-bg-surface);
   min-width: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .site-admin-topbar__crumbs {
@@ -977,6 +979,8 @@ body[data-window-focused="true"] .sidebar-surface {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .site-admin-topbar__drawer-btn {
@@ -1877,6 +1881,377 @@ body[data-window-focused="true"] .sidebar-surface {
   box-shadow: none;
 }
 
+.mdx-document-editor__document-tools {
+  margin: -10px 0 18px;
+}
+
+.component-editor-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.component-editor-tools code {
+  color: var(--color-text-secondary);
+}
+
+.component-editor-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.component-editor-properties section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.component-editor-properties__list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+}
+
+.component-editor-properties__list div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.component-editor-properties__list dt {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.component-editor-properties__list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.component-editor-properties__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+}
+
+.component-editor-properties__stat strong {
+  color: var(--color-text-primary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.component-editor-properties__stat span,
+.component-editor-properties__empty,
+.component-editor-properties__warn {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.component-editor-properties__warn {
+  color: var(--color-warn);
+}
+
+.component-editor-properties__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.component-editor-properties__rows li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+}
+
+.component-editor-properties__rows strong,
+.component-editor-properties__rows span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.component-editor-properties__rows strong {
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.component-editor-properties__rows span {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.component-editor-properties__rows a {
+  width: fit-content;
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.component-editor-properties__issues {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--color-danger);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.component-collection-table,
+.component-embed-preview {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+}
+
+.component-collection-table > summary,
+.component-embed-preview > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 650;
+  list-style: none;
+}
+
+.component-collection-table > summary::-webkit-details-marker,
+.component-embed-preview > summary::-webkit-details-marker {
+  display: none;
+}
+
+.component-collection-table > summary::before,
+.component-embed-preview > summary::before {
+  content: "▸";
+  color: var(--color-text-muted);
+  font-size: 11px;
+  transition: transform 120ms ease;
+}
+
+.component-collection-table[open] > summary::before,
+.component-embed-preview[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.component-collection-table > summary span,
+.component-embed-preview > summary span {
+  flex: 1 1 auto;
+}
+
+.component-collection-table > summary strong,
+.component-embed-preview > summary strong {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.component-collection-table__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.component-collection-table__empty {
+  margin: 4px 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.component-collection-table__row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  background: var(--color-bg-surface-alt);
+}
+
+.component-collection-table__row--news {
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr) auto;
+}
+
+.component-collection-table__row--works {
+  grid-template-columns: minmax(104px, 128px) repeat(3, minmax(0, 1fr)) auto;
+}
+
+.component-collection-table__row--publication {
+  grid-template-columns: minmax(0, 2fr) minmax(76px, 96px) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.component-collection-table__row label,
+.component-collection-table__advanced label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.component-collection-table__row input,
+.component-collection-table__row select,
+.component-collection-table__row textarea,
+.component-collection-table__advanced input,
+.component-collection-table__advanced textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+  padding: 5px 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  letter-spacing: 0;
+}
+
+.component-collection-table__row textarea,
+.component-collection-table__advanced textarea {
+  min-height: 58px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.component-collection-table__row input[aria-invalid] {
+  border-color: var(--color-danger);
+}
+
+.component-collection-table__summary {
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+}
+
+.component-collection-table__summary strong {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.component-collection-table__advanced {
+  grid-column: 1 / -2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.component-collection-table__advanced > summary {
+  grid-column: 1 / -1;
+  width: fit-content;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.component-collection-table__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.component-collection-table__actions button {
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.component-collection-table__actions button:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.component-collection-table__actions button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.component-embed-preview {
+  overflow: hidden;
+}
+
+.component-embed-preview__body {
+  max-height: 540px;
+  overflow: auto;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+
+.component-embed-preview__error {
+  margin: 0;
+  padding: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .component-collection-table__row,
+  .component-collection-table__row--news,
+  .component-collection-table__row--works,
+  .component-collection-table__row--publication {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-collection-table__advanced {
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-collection-table__actions {
+    justify-content: flex-end;
+  }
+}
+
 .mdx-document-editor__source {
   display: flex;
   flex-direction: column;
@@ -1889,13 +2264,14 @@ body[data-window-focused="true"] .sidebar-surface {
   line-height: 1.4;
 }
 
-.mdx-document-editor__preview {
-  min-height: 520px;
-  overflow: auto;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
+.mdx-preview-entry {
+  margin: 0 0 18px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.mdx-preview-entry .notion-heading {
+  margin-bottom: 6px;
 }
 
 .mdx-document-blocks {
@@ -1917,7 +2293,7 @@ body[data-window-focused="true"] .sidebar-surface {
 .mdx-document-block {
   position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr);
   gap: 2px;
   padding: 0;
   border-radius: 5px;
@@ -2326,6 +2702,80 @@ body[data-window-focused="true"] .sidebar-surface {
   cursor: text;
 }
 
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"] {
+  position: relative;
+  display: inline-block;
+  padding-left: 24px;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"] a {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-52%);
+  border-radius: 5px;
+  background:
+    color-mix(in srgb, var(--color-bg-surface) 86%, white)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E")
+    center / 12px 12px no-repeat;
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+  pointer-events: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="scholar.google"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="scholar.google"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20aria-label%3D%22Google%20Scholar%22%20role%3D%22img%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%2215%25%22%20fill%3D%22%234285f4%22%2F%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M213%20111l-107%2094h69c5%2045%2041%2064%2078%2067-7%2018-4%2027%207%2039-43%201-103%2026-103%2067%204%2045%2063%2054%2092%2054%2038%201%2081-19%2090-54%204-35-10-54-31-71-23-18-28-28-21-40%2015-17%2035-27%2039-51%202-17-2-28-6-43l45-38-1%2016c-3%202-5%206-5%209v103c2%2013%2022%2011%2023%200V160c0-3-2-7-5-8v-25l16-16zm58%20141c-61%2010-87-87-38-99%2056-11%2083%2086%2038%2099zm-5%2073c60%2013%2061%2063%2010%2078-44%209-82-4-81-30%200-25%2035-48%2071-48z%22%2F%3E%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="researchgate.net"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="researchgate.net"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20aria-label%3D%22Research%20Gate%22%20role%3D%22img%22%20viewBox%3D%220%200%20512%20512%22%3E%20%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%2215%25%22%20fill%3D%22%2300d0af%22%2F%3E%20%3Cg%20fill%3D%22%23feffff%22%3E%20%3Cpath%20d%3D%22m271%20383c-15-4-23-10-36-26-9-12-26-39-35-53l-6-11h-24l0%2034c1%2043%200%2042%2019%2045l10%201%200%204%200%204h-80l0-4c0-4%201-4%209-6%2010-2%2014-5%2015-14%201-4%201-31%201-79-0-70-1-72-3-77-3-5-7-7-18-8-4-1-5-1-5-5v-4l43-1c55-1%2065%200%2081%2011%2015%2010%2022%2024%2020%2043-1%2021-17%2042-37%2050-4%201-7%203-7%203%200%202%2017%2028%2028%2043%2015%2021%2027%2032%2036%2037%204%202%209%203%2010%203%203%200%203%201%203%204%200%203-1%205-2%205-5%202-19%202-26%200zm-57-109c14-7%2022-18%2023-35%201-13-2-22-10-30-9-10-25-14-48-12l-10%201v39c0%2036%200%2040%202%2040%201%200%209%201%2018%200%2014-0%2017-1%2024-4z%22%2F%3E%20%3Cpath%20d%3D%22m321%20228c-25-4-34-20-32-61%201-21%203-30%2011-38%207-7%2013-9%2025-10%2013-1%2021%202%2029%208%205%204%209%2010%209%2013%200%201-3%202-6%204l-6%203-3-3c-5-6-9-9-14-11-10-3-20%202-25%2011-3%205-3%206-3%2029%200%2022%200%2025%203%2029%204%207%2012%2011%2021%2010%2013-1%2020-10%2020-24v-7l-10-0-10-0v-13h36l-0%2015c-0%2012-1%2016-3%2022-6%2015-23%2024-42%2022z%22%2F%3E%20%3C%2Fg%3E%20%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href^="https://orcid.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href^="https://orcid.org/"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20aria-label%3D%22Orcid%22%20role%3D%22img%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%2215%25%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%22256%22%20cy%3D%22256%22%20r%3D%22256%22%20fill%3D%22%23a6ce39%22%2F%3E%3Cpath%20d%3D%22m173%20372h-31v-214h31zm45-214h83c79%200%20114%2057%20114%20107%200%2055-43%20107-114%20107h-84zm31%20187h49c70%200%2086-53%2086-79%200-43-27-79-87-79h-47zm-71-231c0%2011-9%2020-20%2020s-20-9-20-20a20%2020%200%200%201%2020-20c11%200%2020%209%2020%2020z%22%20fill%3D%22%23ffffff%22%2F%3E%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="semanticscholar.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="semanticscholar.org/"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20width%3D%22100%22%20height%3D%22100%22%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2215%22%20fill%3D%22%23638BC4%22%2F%3E%20%3Cpath%20fill-rule%3D%22evenodd%22%20clip-rule%3D%22evenodd%22%20d%3D%22M95%2040.7957C91.863%2042.7428%2089.5914%2043.9327%2086.9952%2045.4471C71.4183%2054.8582%2056.3822%2065.351%2044.8077%2079.089L39.1827%2085.9039L22.0913%2058.6442C25.8774%2061.6731%2035.5048%2070.2188%2039.399%2072.1659L51.9471%2062.6466C60.7091%2056.4808%2085.4808%2043.0673%2095%2040.7957Z%22%20fill%3D%22white%22%2F%3E%20%3Cpath%20d%3D%22M30.0962%2061.1322C30.5288%2061.4567%2030.8534%2061.7813%2031.2861%2062.1058C27.9327%2052.6947%2021.9832%2043.2837%2013.5457%2035.1707C10.7332%2035.1707%207.92067%2035.1707%205%2035.1707C15.8173%2042.9591%2024.2548%2052.0457%2030.0962%2061.1322Z%22%20fill%3D%22white%22%2F%3E%20%3Cpath%20d%3D%22M32.9087%2063.6202C33.2332%2063.9447%2033.6659%2064.1611%2033.9904%2064.4856C33.4495%2051.7212%2028.6899%2038.6322%2019.6034%2027.3822C16.899%2027.3822%2014.1947%2027.3822%2011.4904%2027.3822C23.0649%2038.0913%2030.2043%2051.0721%2032.9087%2063.6202Z%22%20fill%3D%22white%22%2F%3E%20%3Cpath%20d%3D%22M35.1803%2065.4591C36.4784%2066.5409%2037.7764%2067.5144%2038.8582%2068.2716C41.6707%2054.5337%2039.2909%2039.7139%2031.8269%2026.8413C44.4832%2026.625%2057.1394%2026.5168%2069.6875%2026.3005C72.5%2032.5745%2074.1226%2039.2813%2074.5553%2046.2043C75.637%2045.6635%2076.7187%2045.1226%2077.9087%2044.5817C77.3678%2037.4423%2075.4207%2029.8702%2071.6346%2021C54.3269%2021%2037.1274%2021%2019.8197%2021C31.0697%2034.3053%2036.1538%2050.4231%2035.1803%2065.4591Z%22%20fill%3D%22white%22%2F%3E%20%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
 .mdx-document-text-block.ProseMirror strong {
   color: var(--color-text-primary);
   font-weight: 600;
@@ -2369,8 +2819,8 @@ body[data-window-focused="true"] .sidebar-surface {
 /* Block-level `<Color bg="...">` wrapper — emitted by the MdxBlock
  * serializer when a block carries a non-default `block.color`. The
  * compiled MDX renders as `<div class="notion-color" data-color="X">`,
- * and the editor's Preview tab needs the matching tint to look the
- * same as the published site. Selectors mirror app/(classic)/notion-
+ * and compiled MDX previews need the matching tint to look the same
+ * as the published site. Selectors mirror app/(classic)/notion-
  * blocks.css verbatim — token names differ (`--color-bg-X` vs.
  * `--ds-color-bg-X`) but resolve to identical values. */
 .notion-color {
@@ -2399,8 +2849,8 @@ body[data-window-focused="true"] .sidebar-surface {
  * emitted by the editor's selection toolbar. Selectors mirror the
  * public-site rules in app/(classic)/notion-blocks.css verbatim
  * (un-scoped global `span[data-...]`) so the contenteditable, the
- * Preview tab's compiled `.mdx-post__body` HTML, and any future
- * MDX-rendering surface inside the workspace all paint identically.
+ * compiled `.mdx-post__body` HTML, and any future MDX-rendering
+ * surface inside the workspace all paint identically.
  * Token names are the workspace-local `--color-text-X` / `--color-bg-X`
  * but resolve to the same hex/rgba values the public site's
  * `--ds-color-text-X` / `--ds-color-bg-X` resolve to. */
@@ -2427,6 +2877,30 @@ span[data-bg="blue"] { background: var(--color-bg-blue); }
 span[data-bg="purple"] { background: var(--color-bg-purple); }
 span[data-bg="pink"] { background: var(--color-bg-pink); }
 span[data-bg="red"] { background: var(--color-bg-red); }
+
+span[data-link-style="icon"] > a.notion-link.link {
+  --link-icon-space: 28px;
+  --link-icon-size: 24px;
+  position: relative;
+  padding-left: calc(var(--link-icon-space) + 0.08em);
+  font-weight: 600;
+}
+
+span[data-link-style="icon"] > a.notion-link.link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: var(--link-icon-size);
+  height: var(--link-icon-size);
+  transform: translateY(-52%);
+  border-radius: 6px;
+  background:
+    var(--color-bg-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E")
+    center / 15px 15px no-repeat;
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
 
 /* Color picker — opens beneath the toolbar's "A▾" button. Two rows
  * (text / bg) of swatches, each row showing the named-color palette.
@@ -2711,7 +3185,8 @@ span[data-bg="red"] { background: var(--color-bg-red); }
 }
 
 .mdx-document-data-entry-block__field input,
-.mdx-document-data-entry-block__field select {
+.mdx-document-data-entry-block__field select,
+.mdx-document-data-entry-block__field textarea {
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 4px 6px;
@@ -2720,6 +3195,12 @@ span[data-bg="red"] { background: var(--color-bg-red); }
   font-size: 12.5px;
   width: 100%;
   box-sizing: border-box;
+}
+
+.mdx-document-data-entry-block__field textarea {
+  min-height: 54px;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .mdx-document-data-entry-block__field input[aria-invalid] {

@@ -37,6 +37,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 
 import { InlineColor } from "./inline-color-mark";
+import { InlineLinkStyle } from "./inline-link-style-mark";
 import { inlineMarkdownToHtml, tiptapDocToMarkdown } from "./markdown-inline";
 
 export interface RichTextInputHandle {
@@ -132,6 +133,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         // Notion selection-toolbar "Color" entry. Round-trips via
         // `<span data-color="..." data-bg="...">` inline HTML.
         InlineColor,
+        // Icon-prefixed link presentation. This is intentionally an inline
+        // mark, not a block component, so content like Teaching header/footer
+        // rows remains ordinary editable text with ordinary markdown links.
+        InlineLinkStyle,
         // The extension adds an `is-editor-empty` class on the empty <p>
         // node when the doc has no content; CSS keys off it to render the
         // placeholder string we pass in via the `placeholder` prop.

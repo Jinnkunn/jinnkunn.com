@@ -21,6 +21,7 @@ import type {
   SiteAdminTab,
 } from "./types";
 import { normalizePageListRow, normalizePostListRow } from "./utils";
+import { SITE_COMPONENT_NAMES } from "../../../../../lib/site-admin/component-registry.ts";
 
 const ComponentsPanel = lazy(() =>
   import("./ComponentsPanel").then((module) => ({
@@ -55,12 +56,7 @@ type DecodedNavItem =
   | { tab: "posts" | "pages"; slug: string }
   | { tab: "components"; name: ComponentName };
 
-const COMPONENT_NAMES: readonly ComponentName[] = [
-  "news",
-  "teaching",
-  "publications",
-  "works",
-];
+const COMPONENT_NAMES: readonly ComponentName[] = SITE_COMPONENT_NAMES;
 
 function isComponentName(value: string): value is ComponentName {
   return (COMPONENT_NAMES as readonly string[]).includes(value);

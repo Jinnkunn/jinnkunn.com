@@ -132,6 +132,18 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
     "TeachingLinks footer wrapper",
   );
 
+  const teachingPage = await read("content/pages/teaching.mdx");
+  assertIncludes(
+    teachingPage,
+    'data-link-style="icon"',
+    "Teaching page inline icon links",
+  );
+  assertExcludes(
+    teachingPage,
+    "<TeachingLinks",
+    "Teaching page legacy link-row component",
+  );
+
   const publicationsEntry = await read("components/posts-mdx/publications-entry.tsx");
   assertIncludes(
     publicationsEntry,
@@ -247,8 +259,13 @@ test("public-web-style-guardrails: data-page files split between pages (shortcod
   );
   assertIncludes(
     publications,
-    "<PublicationsProfileLinks links=",
-    "publications.mdx contains profile links block",
+    'data-link-style="icon"',
+    "publications.mdx contains inline icon profile links",
+  );
+  assertExcludes(
+    publications,
+    "<PublicationsProfileLinks",
+    "publications.mdx legacy profile links block",
   );
   const publicationsComponent = await read("content/components/publications.mdx");
   assertIncludes(
@@ -273,8 +290,13 @@ test("public-web-style-guardrails: data-page embed blocks read from components, 
   for (const [name, source] of Object.entries(blocks)) {
     assertIncludes(
       source,
-      `content/components/${name}.mdx`,
-      `${name}-block reads from content/components/${name}.mdx`,
+      `getSiteComponentDefinition("${name}")`,
+      `${name}-block reads its source path from the component registry`,
+    );
+    assertIncludes(
+      source,
+      "@/lib/components/parse",
+      `${name}-block uses the shared component parser`,
     );
     assertExcludes(
       source,

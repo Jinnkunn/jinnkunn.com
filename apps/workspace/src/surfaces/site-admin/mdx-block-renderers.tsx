@@ -1691,6 +1691,78 @@ function parsePubData(raw: string | undefined): PubEntryData {
   return {};
 }
 
+function compactStrings(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items.map((value) => value.trim()).filter(Boolean)) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function formatCommaList(items: string[] | undefined): string {
+  return (items ?? []).join(", ");
+}
+
+function parseCommaList(raw: string): string[] {
+  return compactStrings(raw.split(","));
+}
+
+function formatAuthors(authors: PubEntryData["authorsRich"]): string {
+  return (authors ?? [])
+    .map((author) => `${author.name}${author.isSelf ? " *" : ""}`)
+    .join("; ");
+}
+
+function parseAuthors(raw: string): PubEntryData["authorsRich"] {
+  return compactStrings(raw.split(";")).map((item) => {
+    const isSelf = /\*$/.test(item);
+    return {
+      name: item.replace(/\*$/, "").trim(),
+      isSelf,
+    };
+  });
+}
+
+function formatVenues(venues: PubEntryData["venues"]): string {
+  return (venues ?? [])
+    .map((venue) =>
+      [venue.type ?? "", venue.text ?? "", venue.url ?? ""]
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join(" | "),
+    )
+    .join("\n");
+}
+
+function parseVenues(raw: string): PubEntryData["venues"] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [type = "", text = "", url = ""] = line
+        .split("|")
+        .map((part) => part.trim());
+      return {
+        type: type || undefined,
+        text: text || type || undefined,
+        url: url || undefined,
+      };
+    });
+}
+
+function formatLines(items: string[] | undefined): string {
+  return (items ?? []).join("\n");
+}
+
+function parseLines(raw: string): string[] {
+  return compactStrings(raw.split("\n"));
+}
+
 // One publication. Schema is rich enough that fields go through a
 // JSON-encoded `pubData` attr — the editor card decodes / re-encodes
 // it on every keystroke.
@@ -1764,80 +1836,58 @@ export function PublicationsEntryEditableBlock({
         </label>
       </div>
       <details className="mdx-document-data-entry-block__advanced">
-        <summary>Advanced (labels / authors / venues / highlights, JSON)</summary>
+        <summary>More details</summary>
         <label className="mdx-document-data-entry-block__field">
-          <span>labels (JSON array of strings)</span>
-          <textarea
-            rows={2}
-            value={JSON.stringify(data.labels ?? [])}
-            onChange={(event) => {
-              try {
-                const next = JSON.parse(event.target.value);
-                if (Array.isArray(next)) setData({ ...data, labels: next });
-              } catch {
-                // ignore invalid JSON until user finishes typing
-              }
-            }}
+          <span>Labels</span>
+          <input
+            value={formatCommaList(data.labels)}
+            placeholder="Conference, Paper"
+            onChange={(event) =>
+              setData({ ...data, labels: parseCommaList(event.target.value) })
+            }
           />
         </label>
         <label className="mdx-document-data-entry-block__field">
-          <span>authorsRich (JSON [{`{name,isSelf?}`}])</span>
+          <span>Authors</span>
+          <textarea
+            rows={2}
+            value={formatAuthors(data.authorsRich)}
+            placeholder="Yimen Chen *; Collaborator"
+            onChange={(event) =>
+              setData({ ...data, authorsRich: parseAuthors(event.target.value) })
+            }
+          />
+        </label>
+        <label className="mdx-document-data-entry-block__field">
+          <span>Venues</span>
           <textarea
             rows={3}
-            value={JSON.stringify(data.authorsRich ?? [])}
-            onChange={(event) => {
-              try {
-                const next = JSON.parse(event.target.value);
-                if (Array.isArray(next)) setData({ ...data, authorsRich: next });
-              } catch {
-                // ignore
-              }
-            }}
+            value={formatVenues(data.venues)}
+            placeholder="conference | NeurIPS 2026 | https://..."
+            onChange={(event) =>
+              setData({ ...data, venues: parseVenues(event.target.value) })
+            }
           />
         </label>
         <label className="mdx-document-data-entry-block__field">
-          <span>venues (JSON [{`{type,text,url?}`}])</span>
-          <textarea
-            rows={3}
-            value={JSON.stringify(data.venues ?? [])}
-            onChange={(event) => {
-              try {
-                const next = JSON.parse(event.target.value);
-                if (Array.isArray(next)) setData({ ...data, venues: next });
-              } catch {
-                // ignore
-              }
-            }}
+          <span>Highlights</span>
+          <input
+            value={formatCommaList(data.highlights)}
+            placeholder="Best paper, Oral"
+            onChange={(event) =>
+              setData({ ...data, highlights: parseCommaList(event.target.value) })
+            }
           />
         </label>
         <label className="mdx-document-data-entry-block__field">
-          <span>highlights (JSON array of strings)</span>
+          <span>External URLs</span>
           <textarea
             rows={2}
-            value={JSON.stringify(data.highlights ?? [])}
-            onChange={(event) => {
-              try {
-                const next = JSON.parse(event.target.value);
-                if (Array.isArray(next)) setData({ ...data, highlights: next });
-              } catch {
-                // ignore
-              }
-            }}
-          />
-        </label>
-        <label className="mdx-document-data-entry-block__field">
-          <span>externalUrls (JSON array of strings)</span>
-          <textarea
-            rows={2}
-            value={JSON.stringify(data.externalUrls ?? [])}
-            onChange={(event) => {
-              try {
-                const next = JSON.parse(event.target.value);
-                if (Array.isArray(next)) setData({ ...data, externalUrls: next });
-              } catch {
-                // ignore
-              }
-            }}
+            value={formatLines(data.externalUrls)}
+            placeholder="https://..."
+            onChange={(event) =>
+              setData({ ...data, externalUrls: parseLines(event.target.value) })
+            }
           />
         </label>
       </details>

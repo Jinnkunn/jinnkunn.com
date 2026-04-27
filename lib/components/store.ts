@@ -15,31 +15,28 @@ import {
   type ContentVersion,
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
-
-const COMPONENTS_DIR = "components";
+import {
+  SITE_COMPONENT_DEFINITIONS,
+  SITE_COMPONENT_NAMES,
+  getSiteComponentDefinition,
+  isSiteComponentName,
+  type SiteComponentName,
+} from "@/lib/site-admin/component-registry";
 
 /** Fixed list of editable components — kept in sync with the
  * `<{Name}Block />` server components in `components/posts-mdx/*`
  * and the admin Components panel leaves. Adding a new entry here
  * requires the matching block, MDX file, and panel wiring. */
-export const COMPONENT_NAMES = [
-  "news",
-  "teaching",
-  "publications",
-  "works",
-] as const;
+export const COMPONENT_NAMES = SITE_COMPONENT_NAMES;
 
-export type ComponentName = (typeof COMPONENT_NAMES)[number];
+export type ComponentName = SiteComponentName;
 
 export function isValidComponentName(value: unknown): value is ComponentName {
-  return (
-    typeof value === "string"
-    && (COMPONENT_NAMES as readonly string[]).includes(value)
-  );
+  return isSiteComponentName(value);
 }
 
 function componentRelPath(name: ComponentName): string {
-  return `${COMPONENTS_DIR}/${name}.mdx`;
+  return getSiteComponentDefinition(name).contentRelPath;
 }
 
 export type ComponentDetail = {
@@ -74,3 +71,5 @@ export async function updateComponent(
   });
   return { name, source, version: sha };
 }
+
+export { SITE_COMPONENT_DEFINITIONS };
