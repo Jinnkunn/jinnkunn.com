@@ -132,6 +132,46 @@ function shellEnvForCloudflare(extra = {}) {
   };
 }
 
+function materializeNodeModules(worktree) {
+  const rootNodeModules = path.join(ROOT, "node_modules");
+  const worktreeNodeModules = path.join(worktree, "node_modules");
+  if (!fs.existsSync(rootNodeModules) || fs.existsSync(worktreeNodeModules)) return;
+
+  console.log("[content-overlay] materializing node_modules for overlay build");
+  if (process.platform === "darwin") {
+    const clone = spawnSync("cp", ["-cR", rootNodeModules, worktreeNodeModules], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (clone.status === 0 && fs.existsSync(worktreeNodeModules)) {
+      if (!fs.lstatSync(worktreeNodeModules).isSymbolicLink()) return;
+      fs.rmSync(worktreeNodeModules, { recursive: true, force: true });
+    }
+    const output = `${clone.stdout || ""}${clone.stderr || ""}`.trim();
+    if (output) console.warn(`[content-overlay] APFS clone copy failed, falling back to fs.cpSync\n${output}`);
+  }
+
+  fs.cpSync(rootNodeModules, worktreeNodeModules, {
+    recursive: true,
+    dereference: false,
+    verbatimSymlinks: true,
+  });
+  if (fs.lstatSync(worktreeNodeModules).isSymbolicLink()) {
+    throw new Error("Content overlay node_modules must be a real directory, not a symlink.");
+  }
+}
+
+function assertMaterializedOpenNextOutput(worktree) {
+  const outputNodeModules = path.join(worktree, ".open-next", "server-functions", "default", "node_modules");
+  if (!fs.existsSync(outputNodeModules)) return;
+  if (fs.lstatSync(outputNodeModules).isSymbolicLink()) {
+    throw new Error(
+      "OpenNext emitted a symlinked server node_modules directory. Refusing to upload an overlay build that can fail dynamic require resolution on Cloudflare.",
+    );
+  }
+}
+
 function buildUploadMessage({ env, codeSha, codeBranch, contentSha, contentBranch }) {
   return [
     `Release upload (${env})`,
@@ -186,12 +226,7 @@ async function main() {
   try {
     git(["worktree", "add", "--detach", worktree, codeSha]);
     worktreeAdded = true;
-
-    const rootNodeModules = path.join(ROOT, "node_modules");
-    const worktreeNodeModules = path.join(worktree, "node_modules");
-    if (fs.existsSync(rootNodeModules) && !fs.existsSync(worktreeNodeModules)) {
-      fs.symlinkSync(rootNodeModules, worktreeNodeModules, "dir");
-    }
+    materializeNodeModules(worktree);
 
     removeOverlayTargets(worktree, relPaths);
     const overlaidPaths = overlayContent({ worktree, contentRef: contentSha, relPaths });
@@ -210,6 +245,7 @@ async function main() {
         env: shellEnvForCloudflare(metadataEnv),
         label: "overlay build:cf",
       });
+      assertMaterializedOpenNextOutput(worktree);
     }
 
     let uploadedVersionId = null;
