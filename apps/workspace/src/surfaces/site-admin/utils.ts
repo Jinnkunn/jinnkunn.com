@@ -22,6 +22,29 @@ export function isGoogleAnalyticsIdDraftValid(input: unknown): boolean {
   return !value || GA4_MEASUREMENT_ID_PATTERN.test(value);
 }
 
+export function isProductionSiteAdminConnection(baseUrl: unknown): boolean {
+  const value = normalizeString(baseUrl);
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return host === "jinkunchen.com" || host === "www.jinkunchen.com";
+  } catch {
+    const normalized = value.replace(/\/+$/, "").toLowerCase();
+    return (
+      normalized === "https://jinkunchen.com" ||
+      normalized === "http://jinkunchen.com" ||
+      normalized === "https://www.jinkunchen.com" ||
+      normalized === "http://www.jinkunchen.com"
+    );
+  }
+}
+
+export function isMutatingHttpMethod(method: unknown): boolean {
+  const normalized = normalizeString(method || "GET").toUpperCase();
+  return !["GET", "HEAD", "OPTIONS"].includes(normalized);
+}
+
 export function toInteger(input: unknown, fallback = 0): number {
   const parsed = Number.parseInt(String(input ?? ""), 10);
   return Number.isFinite(parsed) ? parsed : fallback;

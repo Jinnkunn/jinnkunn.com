@@ -7,8 +7,10 @@ import {
   formatPendingDeploy,
   isGoogleAnalyticsIdDraftValid,
   isNavDirty,
+  isMutatingHttpMethod,
   isOverrideDirty,
   isProtectedDirty,
+  isProductionSiteAdminConnection,
   navPatch,
   normalizeGoogleAnalyticsIdDraft,
   normalizeNavRow,
@@ -52,6 +54,22 @@ describe("Google Analytics ID helpers", () => {
     expect(isGoogleAnalyticsIdDraftValid("G-ABC123DEF45")).toBe(false);
     expect(isGoogleAnalyticsIdDraftValid("UA-123456-1")).toBe(false);
     expect(isGoogleAnalyticsIdDraftValid("G-ABC 123")).toBe(false);
+  });
+});
+
+describe("site-admin environment helpers", () => {
+  it("detects production site-admin connections", () => {
+    expect(isProductionSiteAdminConnection("https://jinkunchen.com")).toBe(true);
+    expect(isProductionSiteAdminConnection("https://www.jinkunchen.com/")).toBe(true);
+    expect(isProductionSiteAdminConnection("https://staging.jinkunchen.com")).toBe(false);
+    expect(isProductionSiteAdminConnection("http://localhost:3000")).toBe(false);
+  });
+
+  it("classifies mutating HTTP methods", () => {
+    expect(isMutatingHttpMethod("GET")).toBe(false);
+    expect(isMutatingHttpMethod("head")).toBe(false);
+    expect(isMutatingHttpMethod("POST")).toBe(true);
+    expect(isMutatingHttpMethod("DELETE")).toBe(true);
   });
 });
 

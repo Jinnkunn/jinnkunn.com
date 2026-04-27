@@ -11,6 +11,7 @@ export interface RedirectsSectionProps {
   pendingDelete: { kind: "pages" | "posts"; from: string } | null;
   onRefresh: () => void;
   onDelete: (kind: "pages" | "posts", from: string) => void;
+  readOnly?: boolean;
 }
 
 export function RedirectsSection({
@@ -21,6 +22,7 @@ export function RedirectsSection({
   pendingDelete,
   onRefresh,
   onDelete,
+  readOnly = false,
 }: RedirectsSectionProps) {
   const pageEntries = Object.entries(pages).sort(([a], [b]) => a.localeCompare(b));
   const postEntries = Object.entries(posts).sort(([a], [b]) => a.localeCompare(b));
@@ -60,6 +62,7 @@ export function RedirectsSection({
                 pendingDelete={pendingDelete}
                 onDelete={onDelete}
                 urlBase="/pages/"
+                readOnly={readOnly}
               />
             )}
             {postEntries.length > 0 && (
@@ -70,6 +73,7 @@ export function RedirectsSection({
                 pendingDelete={pendingDelete}
                 onDelete={onDelete}
                 urlBase="/blog/"
+                readOnly={readOnly}
               />
             )}
           </div>
@@ -86,6 +90,7 @@ function RedirectGroup({
   pendingDelete,
   onDelete,
   urlBase,
+  readOnly,
 }: {
   kind: "pages" | "posts";
   label: string;
@@ -93,6 +98,7 @@ function RedirectGroup({
   pendingDelete: { kind: "pages" | "posts"; from: string } | null;
   onDelete: (kind: "pages" | "posts", from: string) => void;
   urlBase: string;
+  readOnly: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -122,7 +128,7 @@ function RedirectGroup({
                 type="button"
                 className="btn btn--secondary"
                 onClick={() => onDelete(kind, from)}
-                disabled={isDeleting}
+                disabled={readOnly || isDeleting}
                 aria-label={`Delete redirect from ${urlBase}${from}`}
               >
                 {isDeleting ? "Deleting…" : "Delete"}

@@ -36,9 +36,14 @@ const TEXT_FIELDS: readonly {
 export interface SettingsSectionProps {
   settingsDraft: SiteSettings;
   onUpdate: <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => void;
+  readOnly?: boolean;
 }
 
-export function SettingsSection({ settingsDraft, onUpdate }: SettingsSectionProps) {
+export function SettingsSection({
+  settingsDraft,
+  onUpdate,
+  readOnly = false,
+}: SettingsSectionProps) {
   return (
     <details className="surface-details" open>
       <summary>Site Settings</summary>
@@ -52,11 +57,13 @@ export function SettingsSection({ settingsDraft, onUpdate }: SettingsSectionProp
             field={field}
             settingsDraft={settingsDraft}
             onUpdate={onUpdate}
+            readOnly={readOnly}
           />
         ))}
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Sitemap Auto Exclude Enabled
           <select
+            disabled={readOnly}
             value={settingsDraft.sitemapAutoExcludeEnabled ? "true" : "false"}
             onChange={(e) =>
               onUpdate("sitemapAutoExcludeEnabled", e.target.value === "true")
@@ -72,6 +79,7 @@ export function SettingsSection({ settingsDraft, onUpdate }: SettingsSectionProp
         <SeoOverridesEditor
           value={settingsDraft.seoPageOverrides}
           onChange={(next) => onUpdate("seoPageOverrides", next as never)}
+          readOnly={readOnly}
         />
       </div>
     </details>
@@ -82,10 +90,12 @@ function SettingsTextField({
   field,
   settingsDraft,
   onUpdate,
+  readOnly,
 }: {
   field: (typeof TEXT_FIELDS)[number];
   settingsDraft: SiteSettings;
   onUpdate: <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => void;
+  readOnly: boolean;
 }) {
   const value = settingsDraft[field.key] as string;
   const isGoogleAnalyticsField = field.key === "googleAnalyticsId";
@@ -105,6 +115,7 @@ function SettingsTextField({
       {field.label}
       {field.textarea ? (
         <textarea
+          disabled={readOnly}
           rows={3}
           value={value}
           onChange={(e) => onUpdate(field.key, e.target.value as never)}
@@ -113,6 +124,7 @@ function SettingsTextField({
         <input
           aria-invalid={invalidGoogleAnalyticsId || undefined}
           className={isGoogleAnalyticsField ? "font-mono" : undefined}
+          disabled={readOnly}
           placeholder={isGoogleAnalyticsField ? "G-XXXXXXXXXX" : undefined}
           value={value}
           onBlur={normalizeOnBlur}

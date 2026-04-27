@@ -50,6 +50,7 @@ export interface ProtectedSectionProps {
   ) => void;
   saveProtected: (rowId: string) => void;
   createProtected: () => void;
+  readOnly?: boolean;
 }
 
 export function ProtectedSection({
@@ -65,6 +66,7 @@ export function ProtectedSection({
   updateProtectedDraft,
   saveProtected,
   createProtected,
+  readOnly = false,
 }: ProtectedSectionProps) {
   return (
     <details className="surface-details" open>
@@ -90,11 +92,13 @@ export function ProtectedSection({
                 <div className="grid-row routes-protected" key={row.rowId}>
                   <span>{row.pageId}</span>
                   <input
+                    disabled={readOnly}
                     value={draft.path}
                     placeholder="/path"
                     onChange={(e) => updateProtectedDraft(row.rowId, "path", e.target.value)}
                   />
                   <select
+                    disabled={readOnly}
                     value={draft.auth}
                     onChange={(e) =>
                       updateProtectedDraft(
@@ -114,7 +118,7 @@ export function ProtectedSection({
                     placeholder={
                       passwordDisabled ? "unused" : "required for password auth"
                     }
-                    disabled={passwordDisabled}
+                    disabled={readOnly || passwordDisabled}
                     onChange={(e) =>
                       updateProtectedDraft(row.rowId, "password", e.target.value)
                     }
@@ -123,7 +127,7 @@ export function ProtectedSection({
                     <button
                       className="btn btn--secondary"
                       type="button"
-                      disabled={conflict || saving}
+                      disabled={readOnly || conflict || saving}
                       onClick={() => saveProtected(row.rowId)}
                     >
                       {saving ? "Saving…" : "Save"}
@@ -149,6 +153,7 @@ export function ProtectedSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Page ID
           <input
+            disabled={readOnly}
             value={newProtected.pageId}
             onChange={(e) =>
               setNewProtected({ ...newProtected, pageId: e.target.value })
@@ -158,6 +163,7 @@ export function ProtectedSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Path
           <input
+            disabled={readOnly}
             value={newProtected.path}
             placeholder="/private"
             onChange={(e) =>
@@ -168,6 +174,7 @@ export function ProtectedSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Auth
           <select
+            disabled={readOnly}
             value={newProtected.auth}
             onChange={(e) =>
               setNewProtected({
@@ -188,7 +195,7 @@ export function ProtectedSection({
           <input
             type="password"
             value={newProtected.password}
-            disabled={newProtected.auth !== "password"}
+            disabled={readOnly || newProtected.auth !== "password"}
             onChange={(e) =>
               setNewProtected({ ...newProtected, password: e.target.value })
             }
@@ -199,7 +206,7 @@ export function ProtectedSection({
         <button
           className="btn"
           type="button"
-          disabled={loading || creatingProtected || conflict || !sourceVersion}
+          disabled={readOnly || loading || creatingProtected || conflict || !sourceVersion}
           onClick={() => createProtected()}
         >
           Create Protected Route

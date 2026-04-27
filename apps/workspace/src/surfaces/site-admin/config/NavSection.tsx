@@ -30,6 +30,7 @@ export interface NavSectionProps {
   updateNavDraft: <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => void;
   saveNavRow: (rowId: string) => void;
   createNavRow: () => void;
+  readOnly?: boolean;
 }
 
 export function NavSection({
@@ -45,6 +46,7 @@ export function NavSection({
   updateNavDraft,
   saveNavRow,
   createNavRow,
+  readOnly = false,
 }: NavSectionProps) {
   return (
     <details className="surface-details" open>
@@ -69,16 +71,19 @@ export function NavSection({
               return (
                 <div className="grid-row" key={row.rowId}>
                   <input
+                    disabled={readOnly}
                     value={draft.label}
                     placeholder="Label"
                     onChange={(e) => updateNavDraft(row.rowId, "label", e.target.value)}
                   />
                   <input
+                    disabled={readOnly}
                     value={draft.href}
                     placeholder="/path"
                     onChange={(e) => updateNavDraft(row.rowId, "href", e.target.value)}
                   />
                   <select
+                    disabled={readOnly}
                     value={draft.group}
                     onChange={(e) =>
                       updateNavDraft(
@@ -92,6 +97,7 @@ export function NavSection({
                     <option value="more">more</option>
                   </select>
                   <input
+                    disabled={readOnly}
                     type="number"
                     value={draft.order}
                     onChange={(e) =>
@@ -99,6 +105,7 @@ export function NavSection({
                     }
                   />
                   <select
+                    disabled={readOnly}
                     value={draft.enabled ? "true" : "false"}
                     onChange={(e) =>
                       updateNavDraft(row.rowId, "enabled", e.target.value === "true")
@@ -111,7 +118,7 @@ export function NavSection({
                     <button
                       className="btn btn--secondary"
                       type="button"
-                      disabled={conflict || saving}
+                      disabled={readOnly || conflict || saving}
                       onClick={() => saveNavRow(row.rowId)}
                     >
                       {saving ? "Saving…" : "Save"}
@@ -137,6 +144,7 @@ export function NavSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Label
           <input
+            disabled={readOnly}
             value={newNav.label}
             onChange={(e) => setNewNav({ ...newNav, label: e.target.value })}
           />
@@ -144,6 +152,7 @@ export function NavSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Href
           <input
+            disabled={readOnly}
             value={newNav.href}
             onChange={(e) => setNewNav({ ...newNav, href: e.target.value })}
           />
@@ -151,6 +160,7 @@ export function NavSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Group
           <select
+            disabled={readOnly}
             value={newNav.group}
             onChange={(e) =>
               setNewNav({
@@ -166,6 +176,7 @@ export function NavSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Order
           <input
+            disabled={readOnly}
             type="number"
             value={newNav.order}
             onChange={(e) =>
@@ -176,6 +187,7 @@ export function NavSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Enabled
           <select
+            disabled={readOnly}
             value={newNav.enabled ? "true" : "false"}
             onChange={(e) => setNewNav({ ...newNav, enabled: e.target.value === "true" })}
           >
@@ -188,7 +200,7 @@ export function NavSection({
         <button
           className="btn"
           type="button"
-          disabled={loading || creatingNav || conflict || !sourceVersion}
+          disabled={readOnly || loading || creatingNav || conflict || !sourceVersion}
           onClick={() => createNavRow()}
         >
           Create Nav Row

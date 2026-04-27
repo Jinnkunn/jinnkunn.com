@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import {
   clone,
+  isProductionSiteAdminConnection,
   isOverrideDirty,
   isProtectedDirty,
   normalizeOverride,
@@ -31,7 +32,7 @@ import {
  * each render their own table + create-form via components under
  * `routes/`. */
 export function RoutesPanel() {
-  const { request, setMessage } = useSiteAdmin();
+  const { connection, request, setMessage } = useSiteAdmin();
 
   const [sourceVersion, setSourceVersion] = useState<RoutesSourceVersion | null>(null);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
@@ -56,6 +57,7 @@ export function RoutesPanel() {
     kind: "pages" | "posts";
     from: string;
   } | null>(null);
+  const productionReadOnly = isProductionSiteAdminConnection(connection.baseUrl);
 
   const anyDirty = useMemo(() => {
     const overrideDirty = overrides.some((row) => {
@@ -132,6 +134,13 @@ export function RoutesPanel() {
 
   const saveOverride = useCallback(
     async (pageId: string) => {
+      if (productionReadOnly) {
+        setMessage(
+          "warn",
+          "Production profile is read-only. Switch to Staging to save route overrides, then promote to production.",
+        );
+        return;
+      }
       if (conflict) {
         setMessage("warn", "Routes are in conflict state. Reload latest before saving.");
         return;
@@ -171,6 +180,7 @@ export function RoutesPanel() {
     },
     [
       conflict,
+      productionReadOnly,
       sourceVersion,
       overrideDrafts,
       overrides,
@@ -182,6 +192,13 @@ export function RoutesPanel() {
   );
 
   const createOverride = useCallback(async () => {
+    if (productionReadOnly) {
+      setMessage(
+        "warn",
+        "Production profile is read-only. Switch to Staging to create route overrides, then promote to production.",
+      );
+      return;
+    }
     if (conflict) {
       setMessage("warn", "Routes are in conflict state. Reload latest before creating overrides.");
       return;
@@ -215,10 +232,26 @@ export function RoutesPanel() {
     setNewOverride(BLANK_NEW_OVERRIDE);
     setMessage("success", `Override created for ${pageId}.`);
     await loadRoutes({ silent: true });
-  }, [conflict, sourceVersion, newOverride, request, setMessage, applyConflict, loadRoutes]);
+  }, [
+    conflict,
+    productionReadOnly,
+    sourceVersion,
+    newOverride,
+    request,
+    setMessage,
+    applyConflict,
+    loadRoutes,
+  ]);
 
   const saveProtected = useCallback(
     async (rowId: string) => {
+      if (productionReadOnly) {
+        setMessage(
+          "warn",
+          "Production profile is read-only. Switch to Staging to save protected routes, then promote to production.",
+        );
+        return;
+      }
       if (conflict) {
         setMessage("warn", "Routes are in conflict state. Reload latest before saving.");
         return;
@@ -268,6 +301,7 @@ export function RoutesPanel() {
     },
     [
       conflict,
+      productionReadOnly,
       sourceVersion,
       protectedDrafts,
       protectedRows,
@@ -279,6 +313,13 @@ export function RoutesPanel() {
   );
 
   const createProtected = useCallback(async () => {
+    if (productionReadOnly) {
+      setMessage(
+        "warn",
+        "Production profile is read-only. Switch to Staging to create protected routes, then promote to production.",
+      );
+      return;
+    }
     if (conflict) {
       setMessage(
         "warn",
@@ -321,7 +362,16 @@ export function RoutesPanel() {
     setNewProtected(BLANK_NEW_PROTECTED);
     setMessage("success", `Protected route created for ${newProtected.pageId}.`);
     await loadRoutes({ silent: true });
-  }, [conflict, sourceVersion, newProtected, request, setMessage, applyConflict, loadRoutes]);
+  }, [
+    conflict,
+    productionReadOnly,
+    sourceVersion,
+    newProtected,
+    request,
+    setMessage,
+    applyConflict,
+    loadRoutes,
+  ]);
 
   const loadRedirects = useCallback(
     async (options: { silent?: boolean; refresh?: boolean } = {}) => {
@@ -361,6 +411,13 @@ export function RoutesPanel() {
 
   const deleteRedirectEntry = useCallback(
     async (kind: "pages" | "posts", fromSlug: string) => {
+      if (productionReadOnly) {
+        setMessage(
+          "warn",
+          "Production profile is read-only. Switch to Staging to delete redirects, then promote to production.",
+        );
+        return;
+      }
       setPendingDelete({ kind, from: fromSlug });
       const response = await request("/api/site-admin/redirects", "DELETE", {
         kind,
@@ -377,7 +434,7 @@ export function RoutesPanel() {
       setMessage("success", `Redirect deleted: /${kind === "posts" ? "blog" : "pages"}/${fromSlug}.`);
       await loadRedirects({ silent: true, refresh: true });
     },
-    [request, setMessage, loadRedirects],
+    [productionReadOnly, request, setMessage, loadRedirects],
   );
 
   /* eslint-disable react-hooks/set-state-in-effect -- Redirects are loaded from the admin API on mount; the loader owns loading state. */
@@ -450,6 +507,12 @@ export function RoutesPanel() {
           ? `siteConfigSha=${sourceVersion.siteConfigSha} | protectedRoutesSha=${sourceVersion.protectedRoutesSha} | branchSha=${sourceVersion.branchSha}`
           : "sourceVersion: -"}
       </p>
+      {productionReadOnly ? (
+        <div className="workspace-status-banner workspace-status-banner--warn">
+          Production is read-only in the desktop editor. Edit routes in
+          Staging, then promote the validated staging version to production.
+        </div>
+      ) : null}
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
       <OverridesSection
@@ -465,6 +528,7 @@ export function RoutesPanel() {
         updateOverrideDraft={updateOverrideDraft}
         saveOverride={(pageId) => void saveOverride(pageId)}
         createOverride={() => void createOverride()}
+        readOnly={productionReadOnly}
       />
 
       <ProtectedSection
@@ -480,6 +544,7 @@ export function RoutesPanel() {
         updateProtectedDraft={updateProtectedDraft}
         saveProtected={(rowId) => void saveProtected(rowId)}
         createProtected={() => void createProtected()}
+        readOnly={productionReadOnly}
       />
 
       <RedirectsSection
@@ -490,6 +555,7 @@ export function RoutesPanel() {
         pendingDelete={pendingDelete}
         onRefresh={() => void loadRedirects({ refresh: true })}
         onDelete={(kind, from) => void deleteRedirectEntry(kind, from)}
+        readOnly={productionReadOnly}
       />
     </section>
   );

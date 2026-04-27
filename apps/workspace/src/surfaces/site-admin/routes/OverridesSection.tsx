@@ -21,6 +21,7 @@ export interface OverridesSectionProps {
   updateOverrideDraft: (pageId: string, value: string) => void;
   saveOverride: (pageId: string) => void;
   createOverride: () => void;
+  readOnly?: boolean;
 }
 
 export function OverridesSection({
@@ -36,6 +37,7 @@ export function OverridesSection({
   updateOverrideDraft,
   saveOverride,
   createOverride,
+  readOnly = false,
 }: OverridesSectionProps) {
   return (
     <details className="surface-details" open>
@@ -58,6 +60,7 @@ export function OverridesSection({
                 <div className="grid-row routes-override" key={row.pageId}>
                   <span>{row.pageId}</span>
                   <input
+                    disabled={readOnly}
                     value={draft.routePath}
                     placeholder="/custom-path (empty disables)"
                     onChange={(e) => updateOverrideDraft(row.pageId, e.target.value)}
@@ -66,7 +69,7 @@ export function OverridesSection({
                     <button
                       className="btn btn--secondary"
                       type="button"
-                      disabled={conflict || saving}
+                      disabled={readOnly || conflict || saving}
                       onClick={() => saveOverride(row.pageId)}
                     >
                       {saving ? "Saving…" : "Save"}
@@ -92,6 +95,7 @@ export function OverridesSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Page ID
           <input
+            disabled={readOnly}
             value={newOverride.pageId}
             onChange={(e) =>
               setNewOverride({ ...newOverride, pageId: e.target.value })
@@ -101,6 +105,7 @@ export function OverridesSection({
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Route Path
           <input
+            disabled={readOnly}
             value={newOverride.routePath}
             placeholder="/new-path"
             onChange={(e) =>
@@ -113,7 +118,7 @@ export function OverridesSection({
         <button
           className="btn"
           type="button"
-          disabled={loading || creatingOverride || conflict || !sourceVersion}
+          disabled={readOnly || loading || creatingOverride || conflict || !sourceVersion}
           onClick={() => createOverride()}
         >
           Create Override
