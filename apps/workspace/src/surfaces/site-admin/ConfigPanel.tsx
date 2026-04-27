@@ -9,6 +9,7 @@ import {
   defaultSettings,
   isNavDirty,
   isGoogleAnalyticsIdDraftValid,
+  isProductionSiteAdminConnection,
   navPatch,
   normalizeGoogleAnalyticsIdDraft,
   normalizeNavRow,
@@ -47,7 +48,7 @@ function isSourceConflictResponse(response: { ok: boolean; code?: string; status
  * (Site Settings form, Navigation Rows table + create form) to
  * dedicated presentational components under `config/`. */
 export function ConfigPanel() {
-  const { request, setMessage } = useSiteAdmin();
+  const { connection, request, setMessage } = useSiteAdmin();
 
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseSettings, setBaseSettings] = useState<SiteSettings>(defaultSettings());
@@ -60,6 +61,7 @@ export function ConfigPanel() {
   const [creatingNav, setCreatingNav] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [newNav, setNewNav] = useState<NewNavInput>(BLANK_NEW_NAV);
+  const productionReadOnly = isProductionSiteAdminConnection(connection.baseUrl);
 
   const settingsDirty = useMemo(
     () => Object.keys(settingsPatch(baseSettings, settingsDraft)).length > 0,
@@ -133,6 +135,13 @@ export function ConfigPanel() {
   );
 
   const saveSettings = useCallback(async () => {
+    if (productionReadOnly) {
+      setMessage(
+        "warn",
+        "Production profile is read-only. Switch to Staging to save settings, then promote to production.",
+      );
+      return;
+    }
     if (conflict) {
       setMessage("warn", "Config is in conflict state. Reload latest before saving.");
       return;
@@ -239,6 +248,7 @@ export function ConfigPanel() {
     await loadConfig({ silent: true });
   }, [
     conflict,
+    productionReadOnly,
     sourceVersion,
     baseSettings,
     settingsDraft,
@@ -252,6 +262,13 @@ export function ConfigPanel() {
 
   const saveNavRow = useCallback(
     async (rowId: string) => {
+      if (productionReadOnly) {
+        setMessage(
+          "warn",
+          "Production profile is read-only. Switch to Staging to save navigation, then promote to production.",
+        );
+        return;
+      }
       if (conflict) {
         setMessage("warn", "Config is in conflict state. Reload latest before saving.");
         return;
@@ -290,10 +307,27 @@ export function ConfigPanel() {
       setMessage("success", `Navigation row ${rowId} saved to source branch.`);
       await loadConfig({ silent: true });
     },
-    [conflict, sourceVersion, navRows, navDrafts, request, setMessage, applyConflict, loadConfig],
+    [
+      conflict,
+      productionReadOnly,
+      sourceVersion,
+      navRows,
+      navDrafts,
+      request,
+      setMessage,
+      applyConflict,
+      loadConfig,
+    ],
   );
 
   const createNavRow = useCallback(async () => {
+    if (productionReadOnly) {
+      setMessage(
+        "warn",
+        "Production profile is read-only. Switch to Staging to create navigation rows, then promote to production.",
+      );
+      return;
+    }
     if (conflict) {
       setMessage(
         "warn",
@@ -327,7 +361,16 @@ export function ConfigPanel() {
     setNewNav(BLANK_NEW_NAV);
     setMessage("success", "Navigation row created on source branch.");
     await loadConfig({ silent: true });
-  }, [conflict, sourceVersion, newNav, request, setMessage, applyConflict, loadConfig]);
+  }, [
+    conflict,
+    productionReadOnly,
+    sourceVersion,
+    newNav,
+    request,
+    setMessage,
+    applyConflict,
+    loadConfig,
+  ]);
 
   const updateDraft = useCallback(
     <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => {
@@ -379,12 +422,18 @@ export function ConfigPanel() {
             className="btn"
             type="button"
             onClick={() => void saveSettings()}
-            disabled={loading || savingSettings || conflict || !sourceVersion}
+            disabled={loading || savingSettings || conflict || !sourceVersion || productionReadOnly}
           >
             Save Site Settings
           </button>
         </div>
       </header>
+      {productionReadOnly ? (
+        <div className="workspace-status-banner workspace-status-banner--warn">
+          Production is read-only in the desktop editor. Save site settings in
+          Staging, then promote the validated staging version to production.
+        </div>
+      ) : null}
       <p className="m-0 text-[12px] text-text-muted">
         {sourceVersion
           ? `sourceVersion.siteConfigSha=${sourceVersion.siteConfigSha} | branchSha=${sourceVersion.branchSha}`
@@ -392,7 +441,11 @@ export function ConfigPanel() {
       </p>
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
-      <SettingsSection settingsDraft={settingsDraft} onUpdate={updateDraft} />
+      <SettingsSection
+        settingsDraft={settingsDraft}
+        onUpdate={updateDraft}
+        readOnly={productionReadOnly}
+      />
 
       <NavSection
         navRows={navRows}
@@ -407,6 +460,7 @@ export function ConfigPanel() {
         updateNavDraft={updateNavDraft}
         saveNavRow={(rowId) => void saveNavRow(rowId)}
         createNavRow={() => void createNavRow()}
+        readOnly={productionReadOnly}
       />
     </section>
   );

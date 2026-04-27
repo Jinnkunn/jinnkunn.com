@@ -94,9 +94,11 @@ function blankRow(): SeoOverrideRow {
 export function SeoOverridesEditor({
   value,
   onChange,
+  readOnly = false,
 }: {
   value: string;
   onChange: (nextJson: string) => void;
+  readOnly?: boolean;
 }) {
   const rows = useMemo(() => parseOverrides(value), [value]);
   const [showRaw, setShowRaw] = useState(false);
@@ -189,6 +191,7 @@ export function SeoOverridesEditor({
                 <td className="px-2 py-1">
                   <input
                     className="ds-input"
+                    disabled={readOnly}
                     style={{ fontSize: 12 }}
                     value={row.path}
                     onChange={(event) => updateRow(index, { path: event.target.value })}
@@ -197,6 +200,7 @@ export function SeoOverridesEditor({
                 <td className="px-2 py-1">
                   <input
                     className="ds-input"
+                    disabled={readOnly}
                     style={{ fontSize: 12 }}
                     value={row.title}
                     onChange={(event) => updateRow(index, { title: event.target.value })}
@@ -205,6 +209,7 @@ export function SeoOverridesEditor({
                 <td className="px-2 py-1">
                   <input
                     className="ds-input"
+                    disabled={readOnly}
                     style={{ fontSize: 12 }}
                     value={row.description}
                     onChange={(event) =>
@@ -215,6 +220,7 @@ export function SeoOverridesEditor({
                 <td className="px-2 py-1">
                   <input
                     className="ds-input"
+                    disabled={readOnly}
                     style={{ fontSize: 12 }}
                     value={row.ogImage}
                     onChange={(event) => updateRow(index, { ogImage: event.target.value })}
@@ -223,6 +229,7 @@ export function SeoOverridesEditor({
                 <td className="px-2 py-1 text-center">
                   <input
                     type="checkbox"
+                    disabled={readOnly}
                     checked={row.noindex}
                     onChange={(event) =>
                       updateRow(index, { noindex: event.target.checked })
@@ -233,6 +240,7 @@ export function SeoOverridesEditor({
                   <button
                     type="button"
                     className="btn btn--secondary"
+                    disabled={readOnly}
                     style={{ padding: "2px 8px", fontSize: 11.5 }}
                     onClick={() => removeRow(index)}
                   >
@@ -245,6 +253,7 @@ export function SeoOverridesEditor({
               <td className="px-2 py-1">
                 <input
                   className="ds-input"
+                  disabled={readOnly}
                   style={{ fontSize: 12 }}
                   value={newRow.path}
                   placeholder="/path"
@@ -254,6 +263,7 @@ export function SeoOverridesEditor({
               <td className="px-2 py-1">
                 <input
                   className="ds-input"
+                  disabled={readOnly}
                   style={{ fontSize: 12 }}
                   value={newRow.title}
                   placeholder="Title"
@@ -265,6 +275,7 @@ export function SeoOverridesEditor({
               <td className="px-2 py-1">
                 <input
                   className="ds-input"
+                  disabled={readOnly}
                   style={{ fontSize: 12 }}
                   value={newRow.description}
                   placeholder="Description"
@@ -276,6 +287,7 @@ export function SeoOverridesEditor({
               <td className="px-2 py-1">
                 <input
                   className="ds-input"
+                  disabled={readOnly}
                   style={{ fontSize: 12 }}
                   value={newRow.ogImage}
                   placeholder="/og.png"
@@ -287,6 +299,7 @@ export function SeoOverridesEditor({
               <td className="px-2 py-1 text-center">
                 <input
                   type="checkbox"
+                  disabled={readOnly}
                   checked={newRow.noindex}
                   onChange={(event) =>
                     setNewRow((r) => ({ ...r, noindex: event.target.checked }))
@@ -299,7 +312,7 @@ export function SeoOverridesEditor({
                   className="btn btn--primary"
                   style={{ padding: "2px 8px", fontSize: 11.5 }}
                   onClick={addRow}
-                  disabled={!normalizeRoutePath(newRow.path)}
+                  disabled={readOnly || !normalizeRoutePath(newRow.path)}
                 >
                   Add
                 </button>

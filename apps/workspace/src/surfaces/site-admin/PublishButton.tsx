@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSiteAdmin } from "./state";
-import { normalizeString } from "./utils";
+import { isProductionSiteAdminConnection, normalizeString } from "./utils";
 
 type DeployPreviewSummaryKey =
   | "pagesAdded"
@@ -239,6 +239,7 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
   const [previewError, setPreviewError] = useState("");
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
+  const productionReadOnly = isProductionSiteAdminConnection(connection.baseUrl);
 
   useEffect(() => {
     if (!confirming) return;
@@ -247,6 +248,13 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
   }, [confirming]);
 
   async function loadPreview() {
+    if (productionReadOnly) {
+      setMessage(
+        "warn",
+        "Production profile is read-only. Promote production with the release runbook after staging validation.",
+      );
+      return;
+    }
     setPreviewLoading(true);
     setPreviewText("");
     setPreviewData(null);
@@ -275,6 +283,13 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
   }
 
   async function trigger() {
+    if (productionReadOnly) {
+      setMessage(
+        "warn",
+        "Production profile is read-only. Promote production with the release runbook after staging validation.",
+      );
+      return;
+    }
     if (!confirming || isDeployCandidateBlocked(sourceSnapshot)) {
       await loadPreview();
       return;
@@ -338,9 +353,11 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
         }
         type="button"
         onClick={() => void trigger()}
-        disabled={!ready || busy || previewLoading}
+        disabled={!ready || productionReadOnly || busy || previewLoading}
         title={
-          deployCandidateBlocked
+          productionReadOnly
+            ? "Production profile is read-only. Use the release runbook after staging validation."
+            : deployCandidateBlocked
             ? "Wait for the staging candidate rebuild, then recheck."
             : "Promote the current worker version via Cloudflare API"
         }

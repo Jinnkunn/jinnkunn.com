@@ -28,6 +28,8 @@ import type {
 } from "./types";
 import {
   decodeJwtPayload,
+  isMutatingHttpMethod,
+  isProductionSiteAdminConnection,
   normalizeString,
   serializeJson,
   toIsoFromEpochSeconds,
@@ -701,6 +703,23 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       method = "GET",
       body: unknown = null,
     ): Promise<NormalizedApiResponse> => {
+      if (
+        isProductionSiteAdminConnection(connection.baseUrl) &&
+        isMutatingHttpMethod(method) &&
+        !path.startsWith("/api/site-admin/app-auth/")
+      ) {
+        const normalizedMethod = normalizeString(method || "GET").toUpperCase();
+        const err: NormalizedApiResponse = {
+          ok: false,
+          status: 0,
+          code: "PRODUCTION_READ_ONLY",
+          error:
+            "Production profile is read-only. Switch to Staging to save content/settings, then promote to production.",
+          raw: null,
+        };
+        writeDebugResponse(`${normalizedMethod} ${path} (blocked)`, err);
+        return err;
+      }
       const first = await requestOnce(path, method, body, connection.authToken);
       const firstResp = first.result.response;
       const wasUnauthorized =
