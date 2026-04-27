@@ -24,6 +24,12 @@ export const CLASSIC_LINK_ICON_CONTRACT = [
     asset: "/web_image/chen-seal.svg",
   },
   {
+    name: "Dalhousie",
+    route: "/",
+    selector: 'a[href="https://www.dal.ca/"].notion-link.link',
+    asset: "/web_image/dal-seal.svg",
+  },
+  {
     name: "RSS",
     route: "/blog",
     selector: 'a[href="/blog.rss"].notion-link.link',
