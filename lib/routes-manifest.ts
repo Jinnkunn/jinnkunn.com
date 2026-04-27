@@ -1,3 +1,4 @@
+import generatedRoutesManifest from "@/content/generated/routes-manifest.json";
 import { readContentJson } from "@/lib/server/content-json";
 
 export type RouteManifestItem = {
@@ -12,7 +13,7 @@ export type RouteManifestItem = {
 };
 
 export function getRoutesManifest(): RouteManifestItem[] {
-  const parsed = readContentJson("routes-manifest.json");
+  const parsed = readContentJson("routes-manifest.json") ?? generatedRoutesManifest;
   if (!Array.isArray(parsed)) return [];
   return parsed
     .map((x) => {

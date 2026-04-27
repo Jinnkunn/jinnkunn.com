@@ -1,5 +1,6 @@
 import "server-only";
 
+import generatedSearchIndex from "@/content/generated/search-index.json";
 import { readContentJsonWithStat } from "@/lib/server/content-json";
 
 export type SearchIndexItem = {
@@ -42,11 +43,11 @@ let __cache: Cached | null = null;
 
 export function getSearchIndex(): SearchIndexItem[] {
   const data = readContentJsonWithStat("search-index.json");
-  if (!data) return [];
+  const cacheKey = data?.file ?? "static:search-index.json";
+  const cacheMtime = data?.mtimeMs ?? 0;
+  if (__cache && __cache.file === cacheKey && __cache.mtimeMs === cacheMtime) return __cache.items;
 
-  if (__cache && __cache.file === data.file && __cache.mtimeMs === data.mtimeMs) return __cache.items;
-
-  const parsed = data.parsed;
+  const parsed = data?.parsed ?? generatedSearchIndex;
   const items: SearchIndexItem[] = Array.isArray(parsed)
     ? parsed
         .map((x): SearchIndexItem | null => {
@@ -71,6 +72,6 @@ export function getSearchIndex(): SearchIndexItem[] {
         .filter((x): x is SearchIndexItem => Boolean(x))
     : [];
 
-  __cache = { file: data.file, mtimeMs: data.mtimeMs, items };
+  __cache = { file: cacheKey, mtimeMs: cacheMtime, items };
   return items;
 }
