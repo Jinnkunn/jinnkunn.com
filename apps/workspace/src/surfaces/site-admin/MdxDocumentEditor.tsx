@@ -79,6 +79,11 @@ const DOCUMENT_EDITOR_MODE_LABELS: Record<DocumentEditorMode, string> = {
   source: "MDX",
 };
 
+const SLUG_HINTS: Partial<Record<EditorKind, string>> = {
+  page: "Each segment 1–60 lowercase chars, separated by '/' (max 4 levels)",
+  post: "1–120 chars, lowercase letters / digits / hyphens, no leading or trailing dash",
+};
+
 const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   paragraph: "Text",
   heading: "Heading",
@@ -2198,8 +2203,7 @@ export function MdxDocumentEditor<TForm>({
                   setForm,
                   setSlug,
                   slug,
-                  slugHint:
-                    "1–60 chars, lowercase letters / digits / hyphens, no leading or trailing dash",
+                  slugHint: SLUG_HINTS[adapter.kind] ?? "",
                 })}
               </aside>
             ) : null}

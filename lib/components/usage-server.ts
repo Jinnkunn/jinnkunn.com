@@ -37,7 +37,7 @@ export async function loadComponentUsageMap(): Promise<ComponentUsageMap> {
   const pages = await listPages({ includeDrafts: true });
   await Promise.all(
     pages.map(async ({ entry }) => {
-      const detail = await readPage(entry.slug);
+      const detail = await readPage(entry.slug).catch(() => null);
       if (!detail) return;
       sources.push({
         kind: "page",
@@ -52,7 +52,7 @@ export async function loadComponentUsageMap(): Promise<ComponentUsageMap> {
   const posts = await listPosts({ includeDrafts: true });
   await Promise.all(
     posts.map(async ({ entry }) => {
-      const detail = await readPost(entry.slug);
+      const detail = await readPost(entry.slug).catch(() => null);
       if (!detail) return;
       sources.push({
         kind: "post",
