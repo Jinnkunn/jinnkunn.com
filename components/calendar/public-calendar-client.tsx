@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import { PublicCalendarView } from "@/components/calendar/public-calendar-view";
+import {
+  PublicCalendarView,
+  type PublicCalendarViewMode,
+} from "@/components/calendar/public-calendar-view";
 import {
   normalizePublicCalendarData,
   type PublicCalendarData,
@@ -14,6 +17,8 @@ export function PublicCalendarClient({
   initialData: PublicCalendarData;
 }) {
   const [data, setData] = useState<PublicCalendarData>(initialData);
+  const [view, setView] = useState<PublicCalendarViewMode>("month");
+  const [anchorIso, setAnchorIso] = useState(() => new Date().toISOString());
 
   useEffect(() => {
     let cancelled = false;
@@ -40,5 +45,13 @@ export function PublicCalendarClient({
     };
   }, []);
 
-  return <PublicCalendarView data={data} />;
+  return (
+    <PublicCalendarView
+      data={data}
+      view={view}
+      anchorIso={anchorIso}
+      onViewChange={setView}
+      onAnchorChange={(date) => setAnchorIso(date.toISOString())}
+    />
+  );
 }
