@@ -226,20 +226,31 @@ export function CalendarSurface() {
     const starts = startOfDay(new Date());
     const ends = new Date(starts);
     ends.setFullYear(ends.getFullYear() + 1);
-    const range = {
+    const publishWindow = {
       startsAt: starts.toISOString(),
       endsAt: ends.toISOString(),
     };
     try {
       const snapshotEvents = await calendarFetchEvents({
-        ...range,
+        ...publishWindow,
         calendarIds: [...selectedCalendarIds],
       });
+      const mergedEvents = mergeCalendarEvents(snapshotEvents, visibleEvents);
+      const projectedRange = {
+        startsAt:
+          Date.parse(range.startsAt) < Date.parse(publishWindow.startsAt)
+            ? range.startsAt
+            : publishWindow.startsAt,
+        endsAt:
+          Date.parse(range.endsAt) > Date.parse(publishWindow.endsAt)
+            ? range.endsAt
+            : publishWindow.endsAt,
+      };
       const payload = buildPublicCalendarPayload({
-        events: snapshotEvents,
+        events: mergedEvents,
         calendarsById,
         metadata: publishMetadata,
-        range,
+        range: projectedRange,
       });
       const result = await publishPublicCalendarSnapshot(payload);
       if (!result.ok) {
@@ -249,13 +260,21 @@ export function CalendarSurface() {
       }
       setPublishState("success");
       setPublishMessage(
-        `Published ${payload.events.length} public events to ${result.baseUrl}. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
+        `Published ${payload.events.length} public events to ${result.baseUrl}. Included current view plus the next 12 months. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
       );
     } catch (err) {
       setPublishState("error");
       setPublishMessage(`Publish failed: ${String(err)}`);
     }
-  }, [auth, calendarsById, publishMetadata, selectedCalendarIds]);
+  }, [
+    auth,
+    calendarsById,
+    publishMetadata,
+    range.endsAt,
+    range.startsAt,
+    selectedCalendarIds,
+    visibleEvents,
+  ]);
 
   if (auth === "notDetermined") {
     return <PermissionGate onRequest={requestAccess} error={errorMessage} />;
@@ -414,6 +433,21 @@ function ViewPane({
         />
       );
   }
+}
+
+function mergeCalendarEvents(
+  primary: CalendarEvent[],
+  secondary: CalendarEvent[],
+): CalendarEvent[] {
+  const seen = new Set<string>();
+  const out: CalendarEvent[] = [];
+  for (const event of [...primary, ...secondary]) {
+    const key = `${calendarEventKey(event)}::${event.startsAt}::${event.endsAt}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(event);
+  }
+  return out;
 }
 
 function CalendarEventInspector({
