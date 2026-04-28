@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createNamespacedSecureStorage } from "../../lib/secureStorage";
 import { siteAdminBrowserLogin } from "../../lib/tauri";
+import { maybeSyncAfterWrite } from "./sync-on-write";
 import {
   cfAccessIdStoreKeyForBase,
   cfAccessSecretStoreKeyForBase,
@@ -737,6 +738,24 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
         path.startsWith("/api/site-admin/app-auth/");
       if (skipRetry) {
         writeDebugResponse(first.result.debugTitle, first.result.debugBody);
+        // Phase 5a — kick the local mirror so a save → reopen-same-file
+        // round-trip in MdxDocumentEditor reads the post-write state,
+        // not the pre-write cached body. Fire-and-forget; allowlisted
+        // to D1-write paths so e.g. /api/site-admin/og-fetch doesn't
+        // trigger a useless extra pull.
+        maybeSyncAfterWrite({
+          ok: first.result.response.ok,
+          method,
+          path,
+          credentials: connection.authToken
+            ? {
+                baseUrl: connection.baseUrl,
+                authToken: connection.authToken,
+                cfAccessClientId: connection.cfAccessClientId || undefined,
+                cfAccessClientSecret: connection.cfAccessClientSecret || undefined,
+              }
+            : null,
+        });
         return first.result.response;
       }
       // Single-flight: if a reauth is already in flight, await it; else
@@ -756,11 +775,27 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       // Retry exactly once with the freshly-issued token.
       const second = await requestOnce(path, method, body, newToken);
       writeDebugResponse(second.result.debugTitle, second.result.debugBody);
+      // Same sync hook as the skipRetry branch above — fire on success.
+      maybeSyncAfterWrite({
+        ok: second.result.response.ok,
+        method,
+        path,
+        credentials: newToken
+          ? {
+              baseUrl: connection.baseUrl,
+              authToken: newToken,
+              cfAccessClientId: connection.cfAccessClientId || undefined,
+              cfAccessClientSecret: connection.cfAccessClientSecret || undefined,
+            }
+          : null,
+      });
       return second.result.response;
     },
     [
       connection.authToken,
       connection.baseUrl,
+      connection.cfAccessClientId,
+      connection.cfAccessClientSecret,
       requestOnce,
       signInWithBrowser,
       writeDebugResponse,
