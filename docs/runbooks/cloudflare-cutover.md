@@ -36,6 +36,9 @@
 - Avoid ad-hoc `wrangler deploy` without deployment message metadata.
 - Preferred staging release command:
   - `npm run release:staging`
+- Staging release refuses dirty worktrees by default. Local-only site settings
+  belong in ignored `content/local/site-config.json`; keep
+  `content/filesystem/site-config.json` as the tracked release fallback.
 - Preferred promotion commands after a matching version is uploaded:
   - `npm run deploy:cf:staging`
   - `npm run deploy:cf:prod`
@@ -51,11 +54,13 @@
 4. If a version has already been uploaded and status shows `deployableVersionReady=true`, promote with:
    - `npm run deploy:cf:staging` (script auto-loads `.env` and overrides stale shell values)
 5. Open `/api/site-admin/status` and confirm:
-   - `source.storeKind=github`
-   - `source.branch=site-admin-staging`
+   - `source.storeKind=github` with `source.branch=site-admin-staging`, or
+     `source.storeKind=db` with `source.repo=d1:SITE_ADMIN_DB` when staging is
+     using the D1 content backend
    - `source.deployableVersionReady=true`
    - `env.runtimeProvider=cloudflare` (or expected runtime provider)
-   - `source.pendingDeploy=false`
+   - `source.pendingDeploy=false` for Git-backed content, or
+     `source.pendingDeploy=null` for DB-backed content
 
 ## 4. Staging Smoke
 

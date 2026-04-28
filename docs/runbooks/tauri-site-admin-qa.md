@@ -121,8 +121,15 @@ Run the desktop app against staging and record pass/fail notes for each item.
   exposes Recheck, Open Deploy Action, and Copy release command.
 - Open Status and confirm the Publish pipeline card exposes the same recovery
   actions.
+- Confirm Status shows Content source, Runtime code, Worker candidate, and Next
+  action in human-readable terms. For DB-backed staging, `pendingDeploy=null`
+  should read as a DB-source limitation, not as an error.
+- Confirm Status shows Release Health with content source, runtime code, content
+  revision, Worker candidate, staging deploy, and production promotion status.
 - Confirm Deploy/Publish stays disabled in Production and points back to the
   staging-first workflow.
+- Confirm Settings in Production clearly shows a read-only lock and the save
+  button reads `Read-only in Production`.
 
 ### Asset Library
 

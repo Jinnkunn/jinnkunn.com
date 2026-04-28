@@ -61,11 +61,18 @@ function readGitState() {
   const branchRaw = gitValue(["rev-parse", "--abbrev-ref", "HEAD"]);
   const branch = branchRaw === "HEAD" ? "detached" : branchRaw;
   const status = gitValue(["status", "--porcelain"]);
+  const dirtyFiles = status
+    ? status
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => line.slice(3).trim())
+    : [];
   return {
     sha,
     branch,
     dirty: status.length > 0,
-    dirtyFileCount: status ? status.split(/\r?\n/).filter(Boolean).length : 0,
+    dirtyFileCount: dirtyFiles.length,
+    dirtyFiles,
   };
 }
 
@@ -144,6 +151,21 @@ function shouldPromoteStagingContent(args) {
   return args.env === "production" && readEnv("PROMOTE_STAGING_CONTENT") === "1";
 }
 
+function evaluateStagingDirtyGuard(git) {
+  const reasons = [];
+  if (readEnv("ALLOW_DIRTY_STAGING") === "1") return { ok: true, reasons };
+  if (!git.dirty) return { ok: true, reasons };
+  reasons.push(
+    `working tree is dirty (${git.dirtyFileCount} file${git.dirtyFileCount === 1 ? "" : "s"})`,
+  );
+  if (git.dirtyFiles.includes("content/filesystem/site-config.json")) {
+    reasons.push(
+      "content/filesystem/site-config.json is release-owned; put local-only settings in content/local/site-config.json instead",
+    );
+  }
+  return { ok: false, reasons };
+}
+
 // Env vars whose CLI-set value must survive loadProjectEnv({override:true}) —
 // i.e. the caller wants to opt into db mode (or a different DB env) for a
 // single release without editing .env. Without this, shell exports of these
@@ -174,6 +196,8 @@ async function main() {
     String(process.env.SITE_ADMIN_STORAGE || "").trim().toLowerCase() === "db";
   const useContentOverlay =
     !dbContentSource && (args.env === "staging" || promoteStagingContent);
+  const stagingDirtyGuard =
+    args.env === "staging" ? evaluateStagingDirtyGuard(git) : null;
   const stagingContentRef = useContentOverlay ? pickStagingContentRef() : "";
   if (stagingContentRef) refreshStagingContentBranch(stagingContentRef);
   const stagingContentSha = stagingContentRef
@@ -190,6 +214,7 @@ async function main() {
     dryRun: args.dryRun,
     source: git,
     productionGuard,
+    stagingDirtyGuard,
   };
 
   if (args.dryRun) {
@@ -216,6 +241,11 @@ async function main() {
   }
 
   if (productionGuard && !productionGuard.ok) {
+    reportAndExit({ ...baseReport, ok: false });
+    process.exitCode = 1;
+    return;
+  }
+  if (stagingDirtyGuard && !stagingDirtyGuard.ok) {
     reportAndExit({ ...baseReport, ok: false });
     process.exitCode = 1;
     return;

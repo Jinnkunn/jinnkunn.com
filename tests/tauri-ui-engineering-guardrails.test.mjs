@@ -331,10 +331,31 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(statusPanel, /GitHub Actions “Deploy \(auto\)”/);
   assert.match(statusPanel, /npm run release:staging/);
   assert.match(statusPanel, /PublishPipelineCard/);
+  assert.match(statusPanel, /Content source/);
+  assert.match(statusPanel, /Next action/);
+  assert.match(statusPanel, /D1 content database/);
+  assert.match(statusPanel, /Release Health/);
+  assert.match(statusPanel, /Site sync and release health/);
   assert.match(pipeline, /Saved source/);
   assert.match(pipeline, /Worker candidate/);
   assert.match(pipeline, /Staging deploy/);
   assert.match(pipeline, /Production promotion remains explicit/);
+  assert.match(pipeline, /D1 source has no branch diff/);
+});
+
+test("tauri-ui-engineering: production settings are visibly locked", async () => {
+  const configPanel = await fs.readFile(
+    path.join(process.cwd(), "apps/workspace/src/surfaces/site-admin/ConfigPanel.tsx"),
+    "utf8",
+  );
+  const workspaceCss = await fs.readFile(
+    path.join(process.cwd(), "apps/workspace/src/styles/surfaces/site-admin-content.css"),
+    "utf8",
+  );
+  assert.match(configPanel, /Read-only in Production/);
+  assert.match(configPanel, /Production settings are locked in Workspace/);
+  assert.match(configPanel, /settings-readonly-callout/);
+  assert.match(workspaceCss, /\.settings-readonly-callout/);
 });
 
 test("tauri-ui-engineering: link audit is a first-class Site Admin surface", async () => {

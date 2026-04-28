@@ -67,6 +67,61 @@ test("site-admin-source-store: config save updates sourceVersion and writes file
   assert.equal(savedConfig.siteName, "Updated Fixture Site");
 });
 
+test("site-admin-source-store: local override keeps dev config outside tracked filesystem", async () => {
+  const previous = process.env.SITE_CONTENT_LOCAL_OVERRIDES;
+  process.env.SITE_CONTENT_LOCAL_OVERRIDES = "1";
+  try {
+    const root = createFixtureRoot();
+    writeJson(path.join(root, "content", "local", "site-config.json"), {
+      siteName: "Local Fixture Site",
+      lang: "en",
+      seo: {
+        title: "Local Fixture",
+        description: "local desc",
+        favicon: "/favicon.ico",
+      },
+      nav: {
+        top: [{ href: "/", label: "Home" }],
+        more: [],
+      },
+      content: {
+        routeOverrides: {},
+        sitemapExcludes: [],
+        sitemapAutoExclude: {
+          enabled: true,
+          excludeSections: [],
+          maxDepthBySection: {},
+        },
+      },
+    });
+    const store = createLocalSiteAdminSourceStore({ rootDir: root });
+
+    const before = await store.loadConfig();
+    assert.equal(before.settings.siteName, "Local Fixture Site");
+
+    await store.updateSettings({
+      rowId: before.settings.rowId,
+      patch: { siteName: "Updated Local Fixture Site" },
+      expectedSiteConfigSha: before.sourceVersion.siteConfigSha,
+    });
+
+    const localConfig = JSON.parse(
+      fs.readFileSync(path.join(root, "content", "local", "site-config.json"), "utf8"),
+    );
+    assert.equal(localConfig.siteName, "Updated Local Fixture Site");
+    assert.equal(
+      fs.existsSync(path.join(root, "content", "filesystem", "site-config.json")),
+      false,
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.SITE_CONTENT_LOCAL_OVERRIDES;
+    } else {
+      process.env.SITE_CONTENT_LOCAL_OVERRIDES = previous;
+    }
+  }
+});
+
 test("site-admin-source-store: stale expected sha returns SOURCE_CONFLICT", async () => {
   const root = createFixtureRoot();
   const store = createLocalSiteAdminSourceStore({ rootDir: root });

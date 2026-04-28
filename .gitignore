@@ -23,6 +23,7 @@ node_modules/
 # local artifacts
 /.playwright-cli/
 /output/
+/content/local/
 
 # notion generated content/assets (synced at build time)
 /content/generated/*

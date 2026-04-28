@@ -198,6 +198,27 @@
   flex-shrink: 0;
 }
 
+.settings-readonly-callout {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 24%, var(--color-border-subtle));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-bg-surface));
+}
+
+.settings-readonly-callout strong {
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.settings-readonly-callout span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .publish-control {
   position: relative;
   display: inline-flex;
@@ -520,6 +541,182 @@
 
   .publish-pipeline__actions {
     justify-content: flex-start;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Status readiness summary
+ * ------------------------------------------------------------------ */
+.status-readiness {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.status-readiness > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.status-readiness span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-readiness strong {
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.status-readiness code {
+  min-width: 0;
+  color: var(--color-text-muted);
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 920px) {
+  .status-readiness {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .status-readiness {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Release health (Status surface)
+ * ------------------------------------------------------------------ */
+.release-health {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface-alt);
+}
+
+.release-health__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-health__head h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.release-health__head p {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.release-health__head > strong {
+  max-width: 360px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.release-health__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.release-health__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.release-health__item[data-tone="ok"] {
+  border-left-color: var(--color-success);
+}
+
+.release-health__item[data-tone="warn"] {
+  border-left-color: var(--color-warn);
+}
+
+.release-health__item[data-tone="blocked"] {
+  border-left-color: var(--color-danger);
+}
+
+.release-health__item[data-tone="muted"] {
+  border-left-color: var(--color-border-default);
+}
+
+.release-health__item span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.release-health__item strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.release-health__item p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 920px) {
+  .release-health__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .release-health__head {
+    flex-direction: column;
+  }
+
+  .release-health__head > strong {
+    max-width: none;
+    text-align: left;
+  }
+
+  .release-health__grid {
+    grid-template-columns: 1fr;
   }
 }
 

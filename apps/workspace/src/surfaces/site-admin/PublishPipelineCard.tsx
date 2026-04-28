@@ -19,21 +19,63 @@ interface PublishPipelineCardProps {
   status: StatusPayload | null;
 }
 
-function shortSha(value?: string): string {
+function shortSha(value?: string | null): string {
   return normalizeString(value).slice(0, 7) || "-";
+}
+
+function sourceDetail(source: StatusPayload["source"] | undefined): {
+  detail: string;
+  tone: PipelineTone;
+  value: string;
+} {
+  const storeKind = normalizeString(source?.storeKind).toLowerCase();
+  if (!source) {
+    return { detail: "Waiting for source metadata", tone: "muted", value: "-" };
+  }
+  if (storeKind === "db") {
+    return {
+      detail: source.repo || "D1 content database",
+      tone: "done",
+      value: "D1",
+    };
+  }
+  const branch = normalizeString(source.contentBranch || source.branch);
+  return {
+    detail: branch ? `Content branch ${branch}` : "Waiting for source metadata",
+    tone: source.contentSha || source.headSha ? "done" : "muted",
+    value: shortSha(source.contentSha || source.headSha),
+  };
+}
+
+function deployDetail(source: StatusPayload["source"] | undefined): {
+  detail: string;
+  value: string;
+} {
+  if (!source) return { detail: "No status loaded", value: "Unknown" };
+  if (normalizeString(source.storeKind).toLowerCase() === "db" && source.pendingDeploy === null) {
+    return {
+      detail: "D1 source has no branch diff; use Worker candidate readiness.",
+      value: "Ready",
+    };
+  }
+  return {
+    detail: formatPendingDeploy(source),
+    value: source.pendingDeploy === true ? "Pending" : "Current",
+  };
 }
 
 function pipelineSteps(status: StatusPayload | null): PipelineStep[] {
   const source = status?.source;
-  const branch = normalizeString(source?.contentBranch || source?.branch);
   const pending = source?.pendingDeploy === true;
   const deployable = source?.deployableVersionReady;
+  const sourceStep = sourceDetail(source);
+  const deployStep = deployDetail(source);
   return [
     {
-      detail: branch ? `Content branch ${branch}` : "Waiting for source metadata",
+      detail: sourceStep.detail,
       label: "Saved source",
-      tone: source?.contentSha || source?.headSha ? "done" : "muted",
-      value: shortSha(source?.contentSha || source?.headSha),
+      tone: sourceStep.tone,
+      value: sourceStep.value,
     },
     {
       detail:
@@ -53,10 +95,10 @@ function pipelineSteps(status: StatusPayload | null): PipelineStep[] {
             : "Unknown",
     },
     {
-      detail: source ? formatPendingDeploy(source) : "No status loaded",
+      detail: deployStep.detail,
       label: "Staging deploy",
       tone: pending ? "pending" : deployable === false ? "blocked" : "done",
-      value: pending ? "Pending" : deployable === false ? "Blocked" : "Current",
+      value: pending ? "Pending" : deployable === false ? "Blocked" : deployStep.value,
     },
     {
       detail: "Production promotion remains explicit and runbook-driven.",
