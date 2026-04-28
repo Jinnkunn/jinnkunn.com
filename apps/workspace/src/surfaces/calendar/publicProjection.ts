@@ -83,7 +83,7 @@ export function metadataForEvent(
   store: CalendarPublishMetadataStore,
   event: CalendarEvent,
 ): CalendarPublishMetadata {
-  return store.byEventKey[calendarEventKey(event)] ?? { visibility: "hidden" };
+  return store.byEventKey[calendarEventKey(event)] ?? { visibility: "busy" };
 }
 
 export function updateMetadataForEvent(

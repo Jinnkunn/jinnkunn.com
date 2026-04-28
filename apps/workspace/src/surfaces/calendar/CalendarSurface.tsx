@@ -578,19 +578,19 @@ function CalendarEventInspector({
             checked={metadata.visibility !== "hidden"}
             onChange={(e) =>
               onMetadataChange({
-                visibility: e.currentTarget.checked ? "titleOnly" : "hidden",
+                visibility: e.currentTarget.checked ? "busy" : "hidden",
               })
             }
-            hint="Hidden events are never written into content/calendar-public.json."
+            hint="Busy events publish only the blocked time. Hidden events are never written into content/calendar-public.json."
           >
             Include this event on /calendar
           </WorkspaceCheckboxField>
         </WorkspaceInspectorSection>
         <WorkspaceInspectorSection heading="Publish">
           <p className="m-0 text-[12px] text-text-muted">
-            {publicEventCount} visible events in the current view are marked public.
-            Publish writes the next 12 months of selected calendars to the staging
-            content branch.
+            {publicEventCount} visible events in the current view will appear on
+            /calendar. Unconfigured events publish as Busy by default, with no
+            title, notes, location, or URL.
           </p>
           <button
             type="button"

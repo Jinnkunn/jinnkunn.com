@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildPublicCalendarPayload,
+  emptyMetadataStore,
+  metadataForEvent,
+} from "./publicProjection";
+import type { Calendar, CalendarEvent } from "./types";
+
+const event: CalendarEvent = {
+  eventIdentifier: "event-1",
+  externalIdentifier: "external-1",
+  calendarId: "calendar-1",
+  title: "Private appointment",
+  notes: "private notes",
+  location: "private room",
+  url: "https://example.com/private",
+  startsAt: "2026-04-28T14:00:00.000Z",
+  endsAt: "2026-04-28T15:00:00.000Z",
+  isAllDay: false,
+  isRecurring: false,
+};
+
+const calendar: Calendar = {
+  id: "calendar-1",
+  sourceId: "source-1",
+  title: "Work",
+  colorHex: "#3366AA",
+  allowsModifications: true,
+};
+
+describe("calendar public projection", () => {
+  it("defaults unconfigured events to busy without leaking details", () => {
+    const metadata = emptyMetadataStore();
+    expect(metadataForEvent(metadata, event).visibility).toBe("busy");
+
+    const payload = buildPublicCalendarPayload({
+      events: [event],
+      calendarsById: new Map([[calendar.id, calendar]]),
+      metadata,
+      range: {
+        startsAt: "2026-04-28T00:00:00.000Z",
+        endsAt: "2026-04-29T00:00:00.000Z",
+      },
+    });
+
+    expect(payload.events).toHaveLength(1);
+    expect(payload.events[0]).toMatchObject({
+      id: "external-1",
+      title: "Busy",
+      visibility: "busy",
+      description: null,
+      location: null,
+      url: null,
+    });
+  });
+});
