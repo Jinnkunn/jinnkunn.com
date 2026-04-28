@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 
-import calendarData from "@/content/calendar-public.json";
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { PublicCalendarView } from "@/components/calendar/public-calendar-view";
 import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getPublicCalendarData } from "@/lib/server/public-calendar-data";
 import { getSiteConfig } from "@/lib/site-config";
-import { normalizePublicCalendarData } from "@/lib/shared/public-calendar";
 
 export const dynamic = "force-static";
 
@@ -21,7 +20,7 @@ export function generateMetadata(): Metadata {
 }
 
 export default function CalendarPage() {
-  const data = normalizePublicCalendarData(calendarData);
+  const data = getPublicCalendarData();
   return (
     <ClassicPageShell
       title="Calendar"
