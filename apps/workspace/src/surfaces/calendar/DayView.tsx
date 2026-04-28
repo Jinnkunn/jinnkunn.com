@@ -11,10 +11,12 @@ export function DayView({
   day,
   events,
   calendarsById,
+  onEventSelect,
 }: {
   day: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const allDayEvents = useMemo(
     () => events.filter((e) => e.isAllDay && touchesDay(e, day)),
@@ -35,10 +37,19 @@ export function DayView({
     <div className="flex flex-col flex-1 min-h-0">
       <DayHeader day={day} isToday={isToday} />
       {allDayEvents.length > 0 ? (
-        <AllDayStrip events={allDayEvents} calendarsById={calendarsById} />
+        <AllDayStrip
+          events={allDayEvents}
+          calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
+        />
       ) : null}
       <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto">
-        <TimeGrid days={[day]} events={events} calendarsById={calendarsById} />
+        <TimeGrid
+          days={[day]}
+          events={events}
+          calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
+        />
       </div>
     </div>
   );
@@ -77,9 +88,11 @@ function DayHeader({ day, isToday }: { day: Date; isToday: boolean }) {
 function AllDayStrip({
   events,
   calendarsById,
+  onEventSelect,
 }: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   return (
     <div
@@ -94,9 +107,11 @@ function AllDayStrip({
           const cal = calendarsById.get(ev.calendarId);
           const color = cal?.colorHex ?? "#7A7A7A";
           return (
-            <span
+            <button
+              type="button"
               key={ev.eventIdentifier}
-              className="text-[11.5px] truncate px-1.5 py-0.5 rounded"
+              className="text-[11.5px] truncate px-1.5 py-0.5 rounded border-0 text-left cursor-pointer"
+              onClick={() => onEventSelect?.(ev)}
               title={ev.title || "(No title)"}
               style={{
                 background: tint(color),
@@ -105,7 +120,7 @@ function AllDayStrip({
               }}
             >
               {ev.title || "(No title)"}
-            </span>
+            </button>
           );
         })}
       </div>

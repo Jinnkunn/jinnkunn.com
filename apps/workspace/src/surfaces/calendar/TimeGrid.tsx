@@ -21,10 +21,12 @@ export function TimeGrid({
   days,
   events,
   calendarsById,
+  onEventSelect,
 }: {
   days: Date[];
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const totalHeight = HOUR_HEIGHT * HOURS_PER_DAY;
   const now = useNow();
@@ -49,6 +51,7 @@ export function TimeGrid({
             day={day}
             positioned={positioned}
             calendarsById={calendarsById}
+            onEventSelect={onEventSelect}
             totalHeight={totalHeight}
             nowTopPx={isToday ? nowTopPx : null}
             // Right edge of each column except the last gets a vertical
@@ -112,6 +115,7 @@ function DayColumn({
   day,
   positioned,
   calendarsById,
+  onEventSelect,
   totalHeight,
   nowTopPx,
   withRightBorder,
@@ -119,6 +123,7 @@ function DayColumn({
   day: Date;
   positioned: PositionedEvent[];
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
   totalHeight: number;
   nowTopPx: number | null;
   withRightBorder: boolean;
@@ -147,6 +152,7 @@ function DayColumn({
           key={`${p.event.eventIdentifier}-${day.toISOString()}`}
           positioned={p}
           calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
         />
       ))}
       {nowTopPx !== null ? (
@@ -175,9 +181,11 @@ function DayColumn({
 function EventBlock({
   positioned,
   calendarsById,
+  onEventSelect,
 }: {
   positioned: PositionedEvent;
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const { event, column, totalColumns, startMinute, endMinute } = positioned;
   const cal = calendarsById.get(event.calendarId);
@@ -192,8 +200,10 @@ function EventBlock({
   );
 
   return (
-    <article
-      className="absolute overflow-hidden text-[11.5px] leading-tight rounded-[4px]"
+    <button
+      type="button"
+      className="absolute overflow-hidden text-left text-[11.5px] leading-tight rounded-[4px] border-0 p-0 cursor-pointer"
+      onClick={() => onEventSelect?.(event)}
       title={event.title || "(No title)"}
       style={{
         left: `calc(${leftPct}% + 1px)`,
@@ -216,7 +226,7 @@ function EventBlock({
           </div>
         ) : null}
       </div>
-    </article>
+    </button>
   );
 }
 
