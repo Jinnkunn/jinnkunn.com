@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WorkspaceCheckboxField,
@@ -31,14 +31,17 @@ import { MonthView } from "./MonthView";
 import {
   buildPublicCalendarPayload,
   calendarEventKey,
-  loadCalendarPublishMetadata,
   metadataForEvent,
-  saveCalendarPublishMetadata,
+  emptyMetadataStore,
   updateMetadataForEvent,
   type CalendarPublishMetadataStore,
   type CalendarPublicVisibility,
 } from "./publicProjection";
-import { publishPublicCalendarSnapshot } from "./siteAdminBridge";
+import {
+  loadCalendarPublishRules,
+  saveCalendarPublishRules,
+} from "./publishRulesStore";
+import { syncPublicCalendarProjection } from "./siteAdminBridge";
 import { SourceSidebar } from "./SourceSidebar";
 import type {
   Calendar,
@@ -51,6 +54,8 @@ import { WeekView } from "./WeekView";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = "idle" | "publishing" | "success" | "error";
+type PublishSummary = Record<CalendarPublicVisibility, number>;
+type CalendarSyncReason = "auto" | "manual";
 
 function isAuthorized(status: CalendarAuthorizationStatus): boolean {
   return status === "fullAccess" || status === "writeOnly";
@@ -75,9 +80,11 @@ export function CalendarSurface() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [publishMetadata, setPublishMetadata] =
-    useState<CalendarPublishMetadataStore>(() => loadCalendarPublishMetadata());
+    useState<CalendarPublishMetadataStore>(() => emptyMetadataStore());
+  const [rulesLoaded, setRulesLoaded] = useState(false);
   const [publishState, setPublishState] = useState<PublishState>("idle");
   const [publishMessage, setPublishMessage] = useState<string>("");
+  const lastAutoSyncKeyRef = useRef("");
 
   // Refetch whenever the user pages forward/back or switches view —
   // each combination implies a different EventKit query window.
@@ -96,6 +103,18 @@ export function CalendarSurface() {
           setErrorMessage(String(err));
         }
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCalendarPublishRules().then((store) => {
+      if (cancelled) return;
+      setPublishMetadata(store);
+      setRulesLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -180,13 +199,12 @@ export function CalendarSurface() {
     [events, selectedCalendarIds],
   );
 
-  const publicEventCount = useMemo(
-    () =>
-      visibleEvents.filter(
-        (event) => metadataForEvent(publishMetadata, event).visibility !== "hidden",
-      ).length,
+  const publishSummary = useMemo(
+    () => summarizePublishVisibility(visibleEvents, publishMetadata),
     [publishMetadata, visibleEvents],
   );
+  const publicEventCount =
+    publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
 
   const toggleCalendar = (id: string) => {
     setSelectedCalendarIds((prev) => {
@@ -212,14 +230,18 @@ export function CalendarSurface() {
       if (!selectedEvent) return;
       setPublishMetadata((prev) => {
         const next = updateMetadataForEvent(prev, selectedEvent, patch);
-        saveCalendarPublishMetadata(next);
+        void saveCalendarPublishRules(next).catch((err) => {
+          setPublishState("error");
+          setPublishMessage(`Failed to save calendar publish rule: ${String(err)}`);
+        });
         return next;
       });
     },
     [selectedEvent],
   );
 
-  const publishSnapshot = useCallback(async () => {
+  const syncCalendarProjection = useCallback(async (reason: CalendarSyncReason) => {
+    if (!rulesLoaded) return;
     if (!isAuthorized(auth)) return;
     setPublishState("publishing");
     setPublishMessage("");
@@ -252,19 +274,19 @@ export function CalendarSurface() {
         metadata: publishMetadata,
         range: projectedRange,
       });
-      const result = await publishPublicCalendarSnapshot(payload);
+      const result = await syncPublicCalendarProjection(payload);
       if (!result.ok) {
         setPublishState("error");
-        setPublishMessage(`Publish failed via ${result.baseUrl}: ${result.error}`);
+        setPublishMessage(`Calendar sync failed via ${result.baseUrl}: ${result.error}`);
         return;
       }
       setPublishState("success");
       setPublishMessage(
-        `Published ${payload.events.length} public events to ${result.baseUrl}. Included current view plus the next 12 months. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
+        `${reason === "auto" ? "Auto-synced" : "Synced"} ${payload.events.length} public events to ${result.baseUrl}. The website calendar reads this projection dynamically. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
       );
     } catch (err) {
       setPublishState("error");
-      setPublishMessage(`Publish failed: ${String(err)}`);
+      setPublishMessage(`Calendar sync failed: ${String(err)}`);
     }
   }, [
     auth,
@@ -272,8 +294,39 @@ export function CalendarSurface() {
     publishMetadata,
     range.endsAt,
     range.startsAt,
+    rulesLoaded,
     selectedCalendarIds,
     visibleEvents,
+  ]);
+
+  const autoSyncKey = useMemo(
+    () =>
+      JSON.stringify({
+        calendarIds: [...selectedCalendarIds].sort(),
+        metadata: publishMetadata,
+        rulesLoaded,
+        loadState,
+      }),
+    [loadState, publishMetadata, rulesLoaded, selectedCalendarIds],
+  );
+
+  useEffect(() => {
+    if (!rulesLoaded || loadState !== "ready" || !isAuthorized(auth)) return;
+    if (selectedCalendarIds.size === 0 || calendarsById.size === 0) return;
+    if (lastAutoSyncKeyRef.current === autoSyncKey) return;
+    const id = window.setTimeout(() => {
+      lastAutoSyncKeyRef.current = autoSyncKey;
+      void syncCalendarProjection("auto");
+    }, 2_000);
+    return () => window.clearTimeout(id);
+  }, [
+    auth,
+    autoSyncKey,
+    calendarsById.size,
+    loadState,
+    rulesLoaded,
+    selectedCalendarIds.size,
+    syncCalendarProjection,
   ]);
 
   if (auth === "notDetermined") {
@@ -296,8 +349,30 @@ export function CalendarSurface() {
       <header className="panel-shell__header">
         <div className="flex items-center justify-between flex-wrap gap-2 w-full">
           <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
-          <ViewSwitcher view={view} onChange={setView} />
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <CalendarPublishSummary summary={publishSummary} />
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={publishState === "publishing" || !rulesLoaded}
+              onClick={() => void syncCalendarProjection("manual")}
+            >
+              {publishState === "publishing" ? "Syncing..." : "Sync now"}
+            </button>
+            <ViewSwitcher view={view} onChange={setView} />
+          </div>
         </div>
+        {publishMessage ? (
+          <p
+            className={
+              publishState === "error"
+                ? "m-0 mt-2 text-[12px] text-text-danger"
+                : "m-0 mt-2 text-[12px] text-text-muted"
+            }
+          >
+            {publishMessage}
+          </p>
+        ) : null}
       </header>
       <div
         className="panel-shell__body flex flex-1 min-h-0 overflow-hidden"
@@ -347,10 +422,11 @@ export function CalendarSurface() {
                 metadata={metadataForEvent(publishMetadata, selectedEvent)}
                 publicEventCount={publicEventCount}
                 publishMessage={publishMessage}
+                rulesLoaded={rulesLoaded}
                 publishState={publishState}
                 onClose={() => setSelectedEvent(null)}
                 onMetadataChange={updateSelectedMetadata}
-                onPublish={publishSnapshot}
+                onPublish={() => void syncCalendarProjection("manual")}
               />
             ) : null}
           </div>
@@ -450,12 +526,53 @@ function mergeCalendarEvents(
   return out;
 }
 
+function summarizePublishVisibility(
+  events: CalendarEvent[],
+  store: CalendarPublishMetadataStore,
+): PublishSummary {
+  const summary: PublishSummary = {
+    hidden: 0,
+    busy: 0,
+    titleOnly: 0,
+    full: 0,
+  };
+  for (const event of events) {
+    summary[metadataForEvent(store, event).visibility] += 1;
+  }
+  return summary;
+}
+
+function CalendarPublishSummary({ summary }: { summary: PublishSummary }) {
+  return (
+    <div
+      className="flex items-center gap-1 text-[11.5px] text-text-muted"
+      aria-label="Calendar publish summary for current view"
+    >
+      <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
+        Busy {summary.busy}
+      </span>
+      <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
+        Title {summary.titleOnly}
+      </span>
+      <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
+        Full {summary.full}
+      </span>
+      {summary.hidden > 0 ? (
+        <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
+          Hidden {summary.hidden}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function CalendarEventInspector({
   event,
   calendar,
   metadata,
   publicEventCount,
   publishMessage,
+  rulesLoaded,
   publishState,
   onClose,
   onMetadataChange,
@@ -472,6 +589,7 @@ function CalendarEventInspector({
   };
   publicEventCount: number;
   publishMessage: string;
+  rulesLoaded: boolean;
   publishState: PublishState;
   onClose: () => void;
   onMetadataChange: (patch: Partial<typeof metadata>) => void;
@@ -581,24 +699,29 @@ function CalendarEventInspector({
                 visibility: e.currentTarget.checked ? "busy" : "hidden",
               })
             }
-            hint="Busy events publish only the blocked time. Hidden events are never written into content/calendar-public.json."
+            hint="Busy events sync only the blocked time. Hidden events are never written to the public calendar projection."
           >
             Include this event on /calendar
           </WorkspaceCheckboxField>
         </WorkspaceInspectorSection>
-        <WorkspaceInspectorSection heading="Publish">
+        <WorkspaceInspectorSection heading="Website sync">
           <p className="m-0 text-[12px] text-text-muted">
-            {publicEventCount} visible events in the current view will appear on
-            /calendar. Unconfigured events publish as Busy by default, with no
-            title, notes, location, or URL.
+            {publicEventCount} visible events are eligible for /calendar. The app
+            auto-syncs the public projection; unconfigured events sync as Busy
+            by default, with no title, notes, location, or URL.
           </p>
+          {!rulesLoaded ? (
+            <p className="m-0 text-[12px] text-text-muted">
+              Loading saved disclosure rules...
+            </p>
+          ) : null}
           <button
             type="button"
             className="btn btn--primary"
-            disabled={publishState === "publishing"}
+            disabled={publishState === "publishing" || !rulesLoaded}
             onClick={onPublish}
           >
-            {publishState === "publishing" ? "Publishing..." : "Publish calendar snapshot"}
+            {publishState === "publishing" ? "Syncing..." : "Sync calendar now"}
           </button>
           {publishMessage ? (
             <p

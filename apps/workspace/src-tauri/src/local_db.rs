@@ -71,6 +71,17 @@ fn run_migrations(conn: &Connection) -> Result<(), String> {
             key   TEXT PRIMARY KEY,
             value INTEGER NOT NULL
         );
+
+        -- Per-calendar-event public publishing rules. This stores only
+        -- disclosure policy and public overrides, never raw EventKit
+        -- notes/location/details by default.
+        CREATE TABLE IF NOT EXISTS calendar_publish_rules (
+            event_key     TEXT PRIMARY KEY,
+            metadata_json TEXT NOT NULL,
+            updated_at    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_calendar_publish_rules_updated_at
+            ON calendar_publish_rules (updated_at DESC);
         "#,
     )
     .map_err(|err| format!("failed to run local DB migrations: {err}"))?;

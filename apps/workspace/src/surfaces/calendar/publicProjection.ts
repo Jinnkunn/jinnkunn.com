@@ -40,43 +40,12 @@ export interface PublicCalendarPayload {
   events: PublicCalendarEventPayload[];
 }
 
-const STORAGE_KEY = "workspace.calendar.public-metadata.v1";
-
 export function calendarEventKey(event: CalendarEvent): string {
   return event.externalIdentifier || event.eventIdentifier;
 }
 
 export function emptyMetadataStore(): CalendarPublishMetadataStore {
   return { schemaVersion: 1, byEventKey: {} };
-}
-
-export function loadCalendarPublishMetadata(): CalendarPublishMetadataStore {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyMetadataStore();
-    const parsed = JSON.parse(raw) as Partial<CalendarPublishMetadataStore>;
-    const byEventKey =
-      parsed.byEventKey && typeof parsed.byEventKey === "object"
-        ? parsed.byEventKey
-        : {};
-    return {
-      schemaVersion: 1,
-      byEventKey: Object.fromEntries(
-        Object.entries(byEventKey).map(([key, value]) => [
-          key,
-          normalizeMetadata(value),
-        ]),
-      ),
-    };
-  } catch {
-    return emptyMetadataStore();
-  }
-}
-
-export function saveCalendarPublishMetadata(
-  store: CalendarPublishMetadataStore,
-): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 
 export function metadataForEvent(
@@ -97,7 +66,7 @@ export function updateMetadataForEvent(
     schemaVersion: 1,
     byEventKey: {
       ...store.byEventKey,
-      [key]: normalizeMetadata({ ...current, ...patch }),
+      [key]: normalizeCalendarPublishMetadata({ ...current, ...patch }),
     },
   };
 }
@@ -151,7 +120,7 @@ export function buildPublicCalendarPayload(input: {
   };
 }
 
-function normalizeMetadata(raw: unknown): CalendarPublishMetadata {
+export function normalizeCalendarPublishMetadata(raw: unknown): CalendarPublishMetadata {
   const obj =
     raw && typeof raw === "object" && !Array.isArray(raw)
       ? (raw as Record<string, unknown>)

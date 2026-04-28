@@ -37,7 +37,7 @@ function calendarPublishBaseUrl(): string {
   return baseUrl;
 }
 
-export async function publishPublicCalendarSnapshot(
+export async function syncPublicCalendarProjection(
   data: PublicCalendarPayload,
 ): Promise<{ ok: true; fileSha: string; baseUrl: string } | { ok: false; error: string; baseUrl: string }> {
   const baseUrl = calendarPublishBaseUrl();
@@ -75,3 +75,5 @@ export async function publishPublicCalendarSnapshot(
       typeof sourceVersion?.fileSha === "string" ? sourceVersion.fileSha : "",
   };
 }
+
+export const publishPublicCalendarSnapshot = syncPublicCalendarProjection;
