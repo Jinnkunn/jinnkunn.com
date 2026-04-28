@@ -43,11 +43,12 @@ name = "jinnkunn-site-staging"
 workers_dev = false
 
 [env.staging.vars]
-# Reverted from "db" to "github" pending a D1 implementation of
-# lib/server/site-admin-source-store.ts. ContentStore (posts/pages/blob)
-# already has a db backend and the staging D1 is provisioned + populated,
-# but the higher-level structured-source store still throws on db mode.
-SITE_ADMIN_STORAGE = "github"
+# Both ContentStore (posts/pages/blob) and SiteAdminSourceStore
+# (structured config) now route through D1 in db mode — Phase 3a closed
+# the source-store gap that forced the previous revert. The
+# SITE_ADMIN_REPO_BRANCH below is no-op in db mode but kept for
+# fallback / read-only compatibility while we verify the cutover.
+SITE_ADMIN_STORAGE = "db"
 SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
