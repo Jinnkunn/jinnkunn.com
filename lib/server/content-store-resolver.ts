@@ -12,6 +12,7 @@ import {
 } from "./db-content-store.ts";
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
 import { createGithubContentStoreFromEnv } from "./github-content-store.ts";
+import { getCurrentSiteAdminActor } from "./site-admin-actor-context.ts";
 
 function isD1Like(value: unknown): value is D1DatabaseLike {
   return (
@@ -38,7 +39,12 @@ export function getContentStore(): ContentStore {
   const kind = String(process.env.SITE_ADMIN_STORAGE || "local").trim().toLowerCase();
   if (kind === "db") {
     const executor = tryGetD1Executor();
-    if (executor) return createDbContentStore({ executor });
+    if (executor) {
+      return createDbContentStore({
+        executor,
+        getActor: getCurrentSiteAdminActor,
+      });
+    }
     // No D1 binding (build, dev without wrangler, missing config) → local.
   }
   if (kind === "github") {

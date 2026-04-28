@@ -314,6 +314,9 @@ export function createFsFileBackend(
 
 export type DbFileBackendConfig = {
   executor: DbExecutor;
+  // Optional: tags writes with the actor for the audit trail. Called per
+  // write so request-scoped values (AsyncLocalStorage) can be threaded in.
+  getActor?: () => string | null | undefined;
 };
 
 const CONTENT_PREFIX = "content/";
@@ -333,7 +336,10 @@ function toContentRel(repoRel: string): string {
 export function createDbFileBackend(
   config: DbFileBackendConfig,
 ): SiteAdminFileBackend {
-  const contentStore = createDbContentStore({ executor: config.executor });
+  const contentStore = createDbContentStore({
+    executor: config.executor,
+    ...(config.getActor ? { getActor: config.getActor } : {}),
+  });
   const executor = config.executor;
 
   return {
