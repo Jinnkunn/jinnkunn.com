@@ -221,10 +221,16 @@ async function fetchCloudflareLatestVersionMetadata(): Promise<
 
 function derivePendingDeployReason(input: {
   runtimeProvider: SiteAdminStatusPayload["env"]["runtimeProvider"];
+  storeKind: SiteAdminStatusPayload["source"]["storeKind"];
   headSha: string | null;
   deployedSourceSha: string | null;
   deployedCommitSha: string | null;
 }): string | null {
+  // db mode has no commit timeline — headSha is intentionally null and
+  // there's no git-vs-deployed comparison to make. The deploy panel checks
+  // freshness via the standalone `db published_at vs latest D1 updated_at`
+  // signal added in buildContentSync, so we don't need a warning here.
+  if (input.storeKind === "db") return null;
   if (!input.headSha) return "SOURCE_HEAD_UNAVAILABLE";
   if (input.deployedSourceSha || input.deployedCommitSha) return null;
   if (input.runtimeProvider === "cloudflare") return "ACTIVE_DEPLOYMENT_SOURCE_SHA_UNAVAILABLE";
@@ -391,10 +397,29 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
   const manifest = getRoutesManifest();
   const generatedDir = getGeneratedContentDir();
 
+  // For db mode, override siteConfig + protectedRoutes with the real
+  // filesystem/* row metadata in D1 — that's the source of truth (the
+  // generated/* path on disk holds default-shaped stubs only). For every
+  // other entry the on-disk safeStat (with the Workers readFileSync
+  // fallback in lib/server/fs-stats.ts) reflects what the runtime can
+  // actually serve, regardless of storage mode.
+  const sourceStore = getSiteAdminSourceStore();
+  const dbStat = sourceStore.kind === "db"
+    ? {
+        siteConfig: await sourceStore
+          .statFile("content/filesystem/site-config.json")
+          .catch(() => ({ exists: false })),
+        protectedRoutes: await sourceStore
+          .statFile("content/filesystem/protected-routes.json")
+          .catch(() => ({ exists: false })),
+      }
+    : null;
   const baseFiles = {
-    siteConfig: safeStat(path.join(generatedDir, "site-config.json")),
+    siteConfig: dbStat?.siteConfig
+      ?? safeStat(path.join(generatedDir, "site-config.json")),
     routesManifest: safeStat(path.join(generatedDir, "routes-manifest.json")),
-    protectedRoutes: safeStat(path.join(generatedDir, "protected-routes.json")),
+    protectedRoutes: dbStat?.protectedRoutes
+      ?? safeStat(path.join(generatedDir, "protected-routes.json")),
     syncMeta: safeStat(path.join(generatedDir, "sync-meta.json")),
     searchIndex: safeStat(path.join(generatedDir, "search-index.json")),
     routesJson: safeStat(path.join(generatedDir, "routes.json")),
@@ -500,6 +525,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       pendingDeploy === null
         ? derivePendingDeployReason({
             runtimeProvider,
+            storeKind: sourceState.storeKind,
             headSha,
             deployedSourceSha,
             deployedCommitSha,

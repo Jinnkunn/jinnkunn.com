@@ -10,6 +10,7 @@ import {
   createFsFileBackend,
   isSiteAdminFileBackendConflictError,
   type SiteAdminFileBackend,
+  type SiteAdminFileStat,
 } from "./site-admin-file-backend.ts";
 
 import type {
@@ -152,6 +153,11 @@ export function isSiteAdminSourceWriteError(
 
 export interface SiteAdminSourceStore {
   readonly kind: "local" | "github" | "db";
+  /** Lightweight existence + size + mtime probe for a repo-relative file.
+   * Used by the Status panel to render the GENERATED FILES card without
+   * pulling full bodies. github backend returns `{ exists: false }` since
+   * stat-style probes don't map cleanly onto the Contents API. */
+  statFile(repoRel: string): Promise<SiteAdminFileStat>;
   loadConfig(): Promise<SiteAdminConfigSnapshot>;
   updateSettings(input: {
     rowId: string;
@@ -548,6 +554,23 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
   }
 
   async getSourceState(): Promise<SiteAdminSourceState> {
+    if (this.kind === "db") {
+      // D1 has no notion of repo/branch/commit. Returning the SITE_ADMIN_REPO_*
+      // env values here would mislead the Status panel into showing a git
+      // branch / commit-style identity that doesn't reflect the actual source
+      // of truth (the D1 binding). Surface the binding name as the "repo" so
+      // operators can see which D1 instance the worker is talking to, and
+      // leave the git-shaped fields null so downstream "head sha unavailable"
+      // warnings are correctly suppressed (see derivePendingDeployReason).
+      const dbName = String(process.env.SITE_ADMIN_DB_NAME || "").trim();
+      return {
+        storeKind: "db",
+        repo: dbName ? `d1:${dbName}` : "d1:SITE_ADMIN_DB",
+        branch: null,
+        headSha: null,
+        headCommitTime: null,
+      };
+    }
     const branch =
       String(process.env.SITE_ADMIN_REPO_BRANCH || "").trim() ||
       String(process.env.VERCEL_GIT_COMMIT_REF || process.env.GITHUB_REF_NAME || "").trim() ||
@@ -632,6 +655,10 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
 
   private async writeFilesystemJson(relPath: string, value: unknown): Promise<void> {
     await this.backend.writeJsonFile(`${CONTENT_FILESYSTEM_DIR}/${relPath}`, value);
+  }
+
+  async statFile(relPath: string): Promise<SiteAdminFileStat> {
+    return this.backend.statFile(relPath);
   }
 
   async readTextFile(relPath: string): Promise<{ content: string; sha: string } | null> {
@@ -1096,6 +1123,17 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
       sha: jsonSha(fallback),
       parsed: structuredClone(fallback),
     };
+  }
+
+  async statFile(relPath: string): Promise<SiteAdminFileStat> {
+    // Github mode is content-overlay-driven: the bundled worker has the
+    // files on disk, so the status panel's existing fs.statSync code path
+    // (with the readFileSync fallback added in lib/server/fs-stats.ts)
+    // covers github mode. We only override statFile here so the interface
+    // is satisfied — returning `{ exists: false }` makes the github branch
+    // a no-op that the status caller will not use.
+    void relPath;
+    return { exists: false };
   }
 
   async readTextFile(relPath: string): Promise<{ content: string; sha: string } | null> {

@@ -36,8 +36,20 @@ export type SiteAdminFileHistoryEntry = {
   message: string;
 };
 
+export type SiteAdminFileStat = {
+  exists: boolean;
+  size?: number;
+  mtimeMs?: number;
+};
+
 export interface SiteAdminFileBackend {
   readonly kind: "fs" | "db";
+
+  /** Lightweight existence + size + mtime probe. Used by the Status panel
+   * to render the GENERATED FILES card without parsing every JSON. The fs
+   * backend uses fs.statSync (with a readFileSync fallback for bundled
+   * Workers files); the db backend queries content_files row metadata. */
+  statFile(repoRel: string): Promise<SiteAdminFileStat>;
 
   /** Read a JSON file by repo-root-relative path. Returns null when the file
    * doesn't exist or doesn't parse. */
@@ -163,6 +175,27 @@ export function createFsFileBackend(
 
   return {
     kind: "fs",
+
+    async statFile(repoRel) {
+      const filePath = resolve(repoRel);
+      try {
+        const st = fs.statSync(filePath);
+        return {
+          exists: st.isFile(),
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+        };
+      } catch {
+        // See lib/server/fs-stats.ts for context: Workers fs can fail to
+        // stat bundled Data files even though readFileSync works.
+        try {
+          const data = fs.readFileSync(filePath);
+          return { exists: true, size: data.length };
+        } catch {
+          return { exists: false };
+        }
+      }
+    },
 
     async readJsonFile(repoRel) {
       const filePath = pickExistingFile(resolve(repoRel));
@@ -301,9 +334,29 @@ export function createDbFileBackend(
   config: DbFileBackendConfig,
 ): SiteAdminFileBackend {
   const contentStore = createDbContentStore({ executor: config.executor });
+  const executor = config.executor;
 
   return {
     kind: "db",
+
+    async statFile(repoRel) {
+      const contentRel = toContentRel(repoRel);
+      // Direct executor query (instead of contentStore.readFile) so we get
+      // size + updated_at without pulling the whole body across the wire.
+      const result = await executor.execute({
+        sql: "SELECT size, updated_at FROM content_files WHERE rel_path = ?",
+        args: [contentRel],
+      });
+      const row = result.rows[0];
+      if (!row) return { exists: false };
+      const size = Number(row.size);
+      const updatedAt = Number(row.updated_at);
+      return {
+        exists: true,
+        ...(Number.isFinite(size) ? { size } : {}),
+        ...(Number.isFinite(updatedAt) ? { mtimeMs: updatedAt } : {}),
+      };
+    },
 
     async readJsonFile(repoRel) {
       const contentRel = toContentRel(repoRel);
