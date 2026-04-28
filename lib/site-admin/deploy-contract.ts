@@ -19,17 +19,26 @@ export function parseSiteAdminDeployResult(x: unknown): SiteAdminDeployResult | 
       typeof payload.contentSha === "string" ? payload.contentSha.trim() : "";
     const contentBranch =
       typeof payload.contentBranch === "string" ? payload.contentBranch.trim() : "";
+    const workflowEventType =
+      typeof payload.workflowEventType === "string" ? payload.workflowEventType.trim() : "";
+    const workflowRunsListUrl =
+      typeof payload.workflowRunsListUrl === "string" ? payload.workflowRunsListUrl.trim() : "";
     return {
       ok: true,
       triggeredAt: payload.triggeredAt,
       status: payload.status,
-      ...(provider === "generic" || provider === "vercel" || provider === "cloudflare"
+      ...(provider === "generic" ||
+      provider === "vercel" ||
+      provider === "cloudflare" ||
+      provider === "github-actions"
         ? { provider }
         : {}),
       ...(deploymentId ? { deploymentId } : {}),
       ...(codeSha ? { codeSha } : {}),
       ...(contentSha ? { contentSha } : {}),
       ...(contentBranch ? { contentBranch } : {}),
+      ...(workflowEventType ? { workflowEventType } : {}),
+      ...(workflowRunsListUrl ? { workflowRunsListUrl } : {}),
     };
   });
 }

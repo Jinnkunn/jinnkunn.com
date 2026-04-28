@@ -26,6 +26,10 @@ import {
   buildDeployMetadataMessage,
   pickRuntimeCodeSha,
 } from "@/lib/server/deploy-metadata";
+import {
+  dispatchWorkflow,
+  isWorkflowDispatchConfigured,
+} from "@/lib/server/github-workflow-dispatch";
 import type {
   SiteAdminConfigGetPayload,
   SiteAdminConfigPostPayload,
@@ -221,6 +225,48 @@ export async function postSiteAdminDeployBackend():
     const codeSha = pickRuntimeCodeSha();
     const contentSha = sourceState?.headSha?.toLowerCase() ?? null;
     const contentBranch = sourceState?.branch ?? null;
+
+    // db mode has no static "latest uploaded version with this content" to
+    // promote — the worker bundle was built before the most recent D1
+    // edits. So instead of poking the CF promote API, we dispatch a fresh
+    // build via the release-from-dispatch GitHub Actions workflow.
+    // github mode keeps the original promote-existing-version path.
+    if (sourceState?.storeKind === "db" && isWorkflowDispatchConfigured()) {
+      const eventType =
+        String(process.env.SITE_ADMIN_STORAGE_DEPLOY_ENV || "").trim().toLowerCase() === "production"
+          ? "release-production"
+          : "release-staging";
+      const dispatched = await dispatchWorkflow({
+        eventType,
+        clientPayload: {
+          triggeredAt: triggeredAtIso,
+          ...(codeSha ? { codeSha } : {}),
+        },
+      });
+      if (!dispatched.ok) {
+        return backendError(
+          formatDeployTriggerError(
+            dispatched.status,
+            1,
+            trimErrorDetail(dispatched.error),
+          ),
+          dispatched.status >= 400 && dispatched.status < 500 ? dispatched.status : 502,
+          "DEPLOY_TRIGGER_FAILED",
+        );
+      }
+      return backendOk({
+        triggeredAt: triggeredAtIso,
+        // 202 Accepted reflects what really happened: the worker fires off
+        // a build, it's not a synchronous deploy. The UI can use this to
+        // render a "queued" state instead of "deployed".
+        status: 202,
+        provider: dispatched.provider,
+        workflowEventType: dispatched.eventType,
+        workflowRunsListUrl: dispatched.runsListUrl,
+        ...(codeSha ? { codeSha } : {}),
+      });
+    }
+
     const message = buildDeployMetadataMessage({
       label: "Deploy from site-admin",
       codeSha,

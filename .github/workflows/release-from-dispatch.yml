@@ -1,0 +1,136 @@
+name: Release on dispatch (db mode)
+
+# Triggered by the site-admin Deploy button when SITE_ADMIN_STORAGE=db.
+# Builds + uploads + deploys the Cloudflare Worker so the worker bundle
+# picks up the latest D1 content (prebuild dumps from D1 into content/*
+# at the start of the build).
+#
+# Github mode keeps using deploy-on-content.yml (push-triggered overlay
+# build); the two workflows do not overlap.
+#
+# Trigger from CF Worker:
+#   POST https://api.github.com/repos/<owner>/<repo>/dispatches
+#   { event_type: "release-staging" }   or "release-production"
+#
+# Required GitHub Repo Secrets:
+#   CLOUDFLARE_API_TOKEN
+#   CLOUDFLARE_ACCOUNT_ID
+#   GITHUB_APP_ID                      (also used by build/runtime)
+#   GITHUB_APP_INSTALLATION_ID         (same)
+#   GITHUB_APP_PRIVATE_KEY             (same)
+#   NEXTAUTH_SECRET                    (signs the desktop app token)
+#   FLAGS_SECRET                       (Vercel Flags SDK)
+#   DEPLOY_TOKEN                       (admin -> deploy hook signer)
+#   DEPLOY_HOOK_URL                    (optional, see DEPLOY_PROVIDER below)
+# Optional:
+#   CLOUDFLARE_WORKER_NAME_STAGING / CLOUDFLARE_WORKER_NAME_PRODUCTION
+#   SITE_ADMIN_GITHUB_USERS            (auth allowlist; only needed if any
+#                                       GET-protected route is hit during
+#                                       the verify step)
+
+on:
+  repository_dispatch:
+    types:
+      - release-staging
+      - release-production
+  # Manual fallback — same behavior, env picked from the workflow input.
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Target environment (staging or production)"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dispatch-${{ github.event.action || inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # repository_dispatch types map directly to env names; workflow_dispatch
+      # provides it via input. Default to staging if neither is set so the
+      # workflow can never silently target production.
+      TARGET_ENV: |
+        ${{ github.event_name == 'repository_dispatch'
+            && (github.event.action == 'release-production' && 'production' || 'staging')
+            || inputs.env || 'staging' }}
+      SITE_ADMIN_STORAGE: db
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_WORKER_NAME_STAGING: ${{ secrets.CLOUDFLARE_WORKER_NAME_STAGING }}
+      CLOUDFLARE_WORKER_NAME_PRODUCTION: ${{ secrets.CLOUDFLARE_WORKER_NAME_PRODUCTION }}
+      GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
+      GITHUB_APP_INSTALLATION_ID: ${{ secrets.GITHUB_APP_INSTALLATION_ID }}
+      GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      FLAGS_SECRET: ${{ secrets.FLAGS_SECRET }}
+      DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+      SITE_ADMIN_GITHUB_USERS: ${{ secrets.SITE_ADMIN_GITHUB_USERS }}
+    steps:
+      - name: Guard — required secrets present
+        run: |
+          missing=""
+          for k in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY NEXTAUTH_SECRET; do
+            v="$(eval echo \$$k)"
+            if [ -z "$v" ]; then missing="$missing $k"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Release (${{ env.TARGET_ENV }}) via db-mode build
+        env:
+          # Tells prebuild's dump-content-from-db.mjs which D1 to pull from.
+          SITE_ADMIN_DB_ENV: ${{ env.TARGET_ENV }}
+        run: |
+          export CLOUDFLARE_WORKER_NAME_STAGING="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
+          export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
+
+          if [ "$TARGET_ENV" = "staging" ]; then
+            npm run release:staging -- --skip-checks
+          else
+            # Production guardrails (CONFIRM_PRODUCTION_DEPLOY etc) are
+            # enforced inside release-cloudflare.mjs; we set CONFIRM_* here
+            # because dispatch implies operator intent.
+            export CONFIRM_PRODUCTION_DEPLOY=1
+            export CONFIRM_PRODUCTION_SHA="$GITHUB_SHA"
+            npm run release:prod -- --skip-checks
+          fi
+
+      - name: Smoke ping
+        run: |
+          URL="https://staging.jinkunchen.com"
+          if [ "$TARGET_ENV" = "production" ]; then URL="https://jinkunchen.com"; fi
+          echo "Pinging $URL/robots.txt"
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL/robots.txt" || echo 000)
+            if [ "$CODE" = "200" ]; then echo "OK ($CODE)"; exit 0; fi
+            echo "try $i: $CODE"; sleep 6
+          done
+          echo "::error::smoke ping did not reach 200 after retries"
+          exit 1
