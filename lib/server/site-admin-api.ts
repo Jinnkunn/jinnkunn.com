@@ -22,6 +22,7 @@ import {
   noStoreFailFromUnknown,
 } from "@/lib/server/api-response";
 import { checkRateLimit, requestIpFromHeaders } from "@/lib/server/rate-limit";
+import { runWithSiteAdminActor } from "@/lib/server/site-admin-actor-context";
 
 type RequireSiteAdminOptions = {
   requireAllowlist?: boolean;
@@ -255,11 +256,16 @@ export async function withSiteAdminContext(
   if (throttled) return throttled;
   const auth = await requireSiteAdminContext(req, opts);
   if (!auth.ok) return auth.res;
-  try {
-    return await run(auth.value);
-  } catch (e: unknown) {
-    return apiErrorFromUnknown(e);
-  }
+  // Bind the authenticated login into request-scoped storage so deep
+  // writers (DbContentStore.upsert -> updated_by, audit hooks, …) can
+  // recover the actor without threading it through every signature.
+  return runWithSiteAdminActor(auth.value.login, async () => {
+    try {
+      return await run(auth.value);
+    } catch (e: unknown) {
+      return apiErrorFromUnknown(e);
+    }
+  });
 }
 
 export function fromParsedCommand<T>(parsed: ParseResult<T>): SiteAdminGuardResult<T> {

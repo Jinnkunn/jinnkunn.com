@@ -5,6 +5,7 @@ import path from "node:path";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
+import { getCurrentSiteAdminActor } from "./site-admin-actor-context.ts";
 import {
   createDbFileBackend,
   createFsFileBackend,
@@ -233,7 +234,10 @@ function tryCreateDbBackend(): SiteAdminFileBackend | null {
     const { env } = getCloudflareContext();
     const binding = (env as Record<string, unknown>).SITE_ADMIN_DB;
     if (!isD1Like(binding)) return null;
-    return createDbFileBackend({ executor: createD1Executor(binding) });
+    return createDbFileBackend({
+      executor: createD1Executor(binding),
+      getActor: getCurrentSiteAdminActor,
+    });
   } catch {
     return null;
   }
