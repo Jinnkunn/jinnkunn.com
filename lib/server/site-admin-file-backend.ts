@@ -385,21 +385,20 @@ export function createDbFileBackend(
       const contentRel = toContentRel(repoRel);
       const result = await contentStore.readFile(contentRel);
       if (!result) return null;
-      // Recompute jsonShaOfText from content rather than reusing the
-      // ContentStore sha. The two happen to differ — DbContentStore stores
-      // sha1(bytes) while the source store's optimistic lock keys are
-      // sha1(JSON.stringify(content)). Recomputing keeps lock semantics
-      // backwards compatible with the fs backend.
-      return { content: result.content, sha: jsonShaOfText(result.content) };
+      // Pass through the row sha — the SiteAdminFileBackend contract
+      // treats the returned value as an opaque optimistic-lock token, and
+      // using the row's own sha keeps writeTextFile / listTextFileHistory /
+      // readTextFileAtCommit all on one identifier (the body's sha1) so
+      // /api/site-admin/versions can round-trip an entry's commitSha back
+      // through the restore path.
+      return { content: result.content, sha: result.sha };
     },
 
     async writeTextFile(input) {
       const contentRel = toContentRel(input.repoRel);
       const existing = await contentStore.readFile(contentRel);
       if (input.expectedSha !== undefined) {
-        const currentSha = existing
-          ? jsonShaOfText(existing.content)
-          : "";
+        const currentSha = existing ? existing.sha : "";
         if (currentSha !== input.expectedSha) {
           throw new SiteAdminFileBackendConflictError({
             expectedSha: input.expectedSha,
@@ -408,26 +407,87 @@ export function createDbFileBackend(
         }
       }
       if (existing && existing.content === input.content) {
-        const sha = jsonShaOfText(input.content);
-        return { fileSha: sha, commitSha: sha };
+        return { fileSha: existing.sha, commitSha: existing.sha };
       }
-      await contentStore.writeFile(contentRel, input.content);
-      const sha = jsonShaOfText(input.content);
-      return { fileSha: sha, commitSha: sha };
+      const written = await contentStore.writeFile(contentRel, input.content);
+      return { fileSha: written.sha, commitSha: written.sha };
     },
 
-    async listTextFileHistory(_repoRel, _limit) {
-      // D1 has no native commit timeline. Stub for now; an audit-log-backed
-      // implementation can drop in here later.
-      void _repoRel;
-      void _limit;
-      return [];
+    async listTextFileHistory(repoRel, limit) {
+      // Pull recent versions out of content_files_history (populated on
+      // every successful upsert in db-content-store.ts). The
+      // SiteAdminFileHistoryEntry contract uses commitSha as the version
+      // identifier — in db mode that's the body sha (sha1 of bytes), the
+      // same value the optimistic-lock + restore-by-sha path use, so all
+      // three API surfaces share one identifier.
+      const contentRel = toContentRel(repoRel);
+      const max = Math.max(1, Math.min(50, Math.floor(limit)));
+      try {
+        const result = await executor.execute({
+          sql: `SELECT sha, updated_at, updated_by
+                  FROM content_files_history
+                 WHERE rel_path = ?
+                 ORDER BY updated_at DESC, id DESC
+                 LIMIT ?`,
+          args: [contentRel, max],
+        });
+        return result.rows.map((row) => {
+          const sha = String(row.sha || "");
+          const updatedAtMs = Number(row.updated_at);
+          const author = row.updated_by == null ? "" : String(row.updated_by);
+          return {
+            commitSha: sha,
+            commitShort: sha.slice(0, 7),
+            committedAt: Number.isFinite(updatedAtMs)
+              ? new Date(updatedAtMs).toISOString()
+              : null,
+            authorName: author,
+            // We don't currently capture an edit message — the action that
+            // produced this history row (config.save / posts.update / …)
+            // lives in site_admin_audit_logs but joining tables across the
+            // separate audit-log D1 binding is a bigger change. Leave empty.
+            message: "",
+          };
+        });
+      } catch {
+        // Table missing (DB hasn't run migration 002) or read failure —
+        // degrade gracefully to "no history" instead of blowing up the
+        // whole Status / Versions panel render.
+        return [];
+      }
     },
 
-    async readTextFileAtCommit(_repoRel, _commitSha) {
-      void _repoRel;
-      void _commitSha;
-      return null;
+    async readTextFileAtCommit(repoRel, commitSha) {
+      const contentRel = toContentRel(repoRel);
+      const sha = String(commitSha || "").trim().toLowerCase();
+      if (!/^[a-f0-9]{7,40}$/i.test(sha)) return null;
+      try {
+        const result = await executor.execute({
+          sql: `SELECT lower(hex(body)) AS body_hex, sha
+                  FROM content_files_history
+                 WHERE rel_path = ? AND sha = ?
+                 ORDER BY id DESC
+                 LIMIT 1`,
+          args: [contentRel, sha],
+        });
+        const row = result.rows[0];
+        if (!row) return null;
+        const bodyHex = String(row.body_hex || "");
+        const bytes = Buffer.from(bodyHex, "hex");
+        const content = bytes.toString("utf8");
+        const rowSha = String(row.sha);
+        return {
+          content,
+          // sha === commitSha in db mode (both are sha1 of the body bytes,
+          // matching what writeTextFile + readTextFile + listTextFileHistory
+          // return). Keeping them equal lets restore-by-commitSha use the
+          // same value for the post-restore optimistic lock.
+          sha: rowSha,
+          commitSha: rowSha,
+        };
+      } catch {
+        return null;
+      }
     },
   };
 }
