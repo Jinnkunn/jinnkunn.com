@@ -7,7 +7,17 @@ export function safeStat(filePath: string): { exists: boolean; mtimeMs?: number;
     const st = fs.statSync(filePath);
     return { exists: st.isFile(), mtimeMs: st.mtimeMs, size: st.size };
   } catch {
-    return { exists: false };
+    // Cloudflare Workers (with nodejs_compat + opennextjs) bundles
+    // content/**/*.json as Data modules; fs.statSync can fail for those even
+    // when the file is reachable via readFileSync. Fall through to a read so
+    // the Status panel doesn't lie about bundled files being absent. We lose
+    // mtimeMs in that path because there's no stat to read it from.
+    try {
+      const data = fs.readFileSync(filePath);
+      return { exists: true, size: data.length };
+    } catch {
+      return { exists: false };
+    }
   }
 }
 
