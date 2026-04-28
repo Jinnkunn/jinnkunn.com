@@ -149,11 +149,43 @@ export default function SiteAdminDeployClient() {
       </Button>
 
       {res ? (
-        <StatusNotice tone={res.ok ? "success" : "danger"}>
+        <StatusNotice
+          tone={
+            res.ok
+              ? res.provider === "github-actions"
+                ? "info"
+                : "success"
+              : "danger"
+          }
+        >
           {res.ok ? (
-            <>
-              Deploy triggered ({res.status}) at <code className="code">{res.triggeredAt}</code>.
-            </>
+            res.provider === "github-actions" ? (
+              // db mode dispatches a build to GitHub Actions; the worker
+              // doesn't promote anything synchronously. Surface that with
+              // a queued-state message + link so the user knows where to
+              // watch progress instead of refreshing the live site early.
+              <>
+                Build queued ({res.status}) at <code className="code">{res.triggeredAt}</code>.
+                {res.workflowRunsListUrl ? (
+                  <>
+                    {" "}
+                    Track progress on{" "}
+                    <a
+                      href={res.workflowRunsListUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      GitHub Actions
+                    </a>
+                    . The site will update once the build finishes (~3–5 min).
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <>
+                Deploy triggered ({res.status}) at <code className="code">{res.triggeredAt}</code>.
+              </>
+            )
           ) : (
             <>{res.error}</>
           )}
