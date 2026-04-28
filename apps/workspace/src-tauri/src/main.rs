@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod calendar;
+mod local_db;
+mod sync;
 
 use keyring::Entry;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE};
@@ -445,6 +447,13 @@ fn main() {
             calendar::commands::calendar_list_sources,
             calendar::commands::calendar_list_calendars,
             calendar::commands::calendar_fetch_events,
+            // Phase 5a — local SQLite mirror of D1 content_files. Sync
+            // pulls the delta on demand; the read commands serve the
+            // editor without a network round-trip.
+            sync::sync_pull,
+            sync::local_get_file,
+            sync::local_list_files,
+            sync::local_sync_status,
         ]);
 
     #[cfg(target_os = "macos")]
