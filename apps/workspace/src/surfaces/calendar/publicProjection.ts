@@ -2,6 +2,8 @@ import type { Calendar, CalendarEvent } from "./types";
 
 export type CalendarPublicVisibility = "hidden" | "busy" | "titleOnly" | "full";
 
+const PUBLIC_BUSY_COLOR = "#9B9A97";
+
 export interface CalendarPublishMetadata {
   visibility: CalendarPublicVisibility;
   titleOverride?: string;
@@ -89,9 +91,9 @@ export function buildPublicCalendarPayload(input: {
         : meta.titleOverride?.trim() || event.title || "(No title)";
     projected.push({
       id: calendarEventKey(event),
-      calendarId: event.calendarId,
-      calendarTitle: calendar?.title,
-      colorHex: calendar?.colorHex,
+      calendarId: visibility === "busy" ? undefined : event.calendarId,
+      calendarTitle: visibility === "busy" ? undefined : calendar?.title,
+      colorHex: visibility === "busy" ? PUBLIC_BUSY_COLOR : calendar?.colorHex,
       title,
       startsAt: event.startsAt,
       endsAt: event.endsAt,
