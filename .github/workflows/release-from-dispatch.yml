@@ -15,9 +15,13 @@ name: Release on dispatch (db mode)
 # Required GitHub Repo Secrets:
 #   CLOUDFLARE_API_TOKEN
 #   CLOUDFLARE_ACCOUNT_ID
-#   GITHUB_APP_ID                      (also used by build/runtime)
-#   GITHUB_APP_INSTALLATION_ID         (same)
-#   GITHUB_APP_PRIVATE_KEY             (same)
+#   SITE_ADMIN_GH_APP_ID               (re-mapped to GITHUB_APP_ID in env;
+#                                       GitHub forbids secret names starting
+#                                       with GITHUB_)
+#   SITE_ADMIN_GH_APP_INSTALLATION_ID  (-> GITHUB_APP_INSTALLATION_ID)
+#   SITE_ADMIN_GH_APP_PRIVATE_KEY      (-> GITHUB_APP_PRIVATE_KEY; multi-line
+#                                       PEM is fine, GitHub Secrets keeps the
+#                                       newlines verbatim)
 #   NEXTAUTH_SECRET                    (signs the desktop app token)
 #   FLAGS_SECRET                       (Vercel Flags SDK)
 #   DEPLOY_TOKEN                       (admin -> deploy hook signer)
@@ -69,9 +73,12 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_WORKER_NAME_STAGING: ${{ secrets.CLOUDFLARE_WORKER_NAME_STAGING }}
       CLOUDFLARE_WORKER_NAME_PRODUCTION: ${{ secrets.CLOUDFLARE_WORKER_NAME_PRODUCTION }}
-      GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
-      GITHUB_APP_INSTALLATION_ID: ${{ secrets.GITHUB_APP_INSTALLATION_ID }}
-      GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+      # Remapped from SITE_ADMIN_GH_APP_* — GitHub rejects secret names
+      # that start with GITHUB_, but the build / runtime read these env
+      # vars under the unprefixed names so we rebind them here.
+      GITHUB_APP_ID: ${{ secrets.SITE_ADMIN_GH_APP_ID }}
+      GITHUB_APP_INSTALLATION_ID: ${{ secrets.SITE_ADMIN_GH_APP_INSTALLATION_ID }}
+      GITHUB_APP_PRIVATE_KEY: ${{ secrets.SITE_ADMIN_GH_APP_PRIVATE_KEY }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       FLAGS_SECRET: ${{ secrets.FLAGS_SECRET }}
       DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
