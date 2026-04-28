@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
-import { PublicCalendarView } from "@/components/calendar/public-calendar-view";
+import { PublicCalendarClient } from "@/components/calendar/public-calendar-client";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getPublicCalendarData } from "@/lib/server/public-calendar-data";
 import { getSiteConfig } from "@/lib/site-config";
@@ -26,7 +26,7 @@ export default function CalendarPage() {
       title="Calendar"
       className="super-content page__calendar parent-page__calendar"
     >
-      <PublicCalendarView data={data} />
+      <PublicCalendarClient initialData={data} />
     </ClassicPageShell>
   );
 }

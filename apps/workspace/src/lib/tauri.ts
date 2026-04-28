@@ -64,6 +64,22 @@ export function secureStoreDelete(key: string): Promise<void> {
   return invoke("secure_store_delete", { key });
 }
 
+export interface CalendarPublishRuleRow {
+  eventKey: string;
+  metadataJson: string;
+  updatedAt: number;
+}
+
+export function calendarPublishRulesLoad(): Promise<CalendarPublishRuleRow[]> {
+  return invoke("calendar_publish_rules_load");
+}
+
+export function calendarPublishRulesSave(
+  rows: CalendarPublishRuleRow[],
+): Promise<void> {
+  return invoke("calendar_publish_rules_save", { rows });
+}
+
 // ---------------------------------------------------------------------------
 // Phase 5a — local SQLite mirror of D1 content_files. The Rust side opens
 // a per-call connection to ~/Library/Application Support/...workspace.db

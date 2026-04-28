@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use url::Url;
 
 const KEYRING_SERVICE: &str = "com.jinnkunn.workspace.site-admin";
@@ -46,6 +46,14 @@ struct SiteAdminBrowserLoginResult {
     token: String,
     login: String,
     expires_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CalendarPublishRuleRow {
+    event_key: String,
+    metadata_json: String,
+    updated_at: i64,
 }
 
 fn normalize_base_url(input: &str) -> String {
@@ -219,6 +227,85 @@ fn secure_store_delete(key: String) -> Result<(), String> {
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("Failed to delete secure credential: {}", e)),
     }
+}
+
+fn now_unix_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn normalize_calendar_rule_key(input: &str) -> Result<String, String> {
+    let key = input.trim();
+    if key.is_empty() {
+        return Err("Missing calendar publish rule event key".to_string());
+    }
+    if key.len() > 512 {
+        return Err("Calendar publish rule event key too long".to_string());
+    }
+    Ok(key.to_string())
+}
+
+#[tauri::command]
+fn calendar_publish_rules_load(
+    app: tauri::AppHandle,
+) -> Result<Vec<CalendarPublishRuleRow>, String> {
+    let conn = local_db::open(&app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT event_key, metadata_json, updated_at
+             FROM calendar_publish_rules
+             ORDER BY event_key ASC",
+        )
+        .map_err(|err| format!("failed to prepare calendar rules query: {err}"))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CalendarPublishRuleRow {
+                event_key: row.get(0)?,
+                metadata_json: row.get(1)?,
+                updated_at: row.get(2)?,
+            })
+        })
+        .map_err(|err| format!("failed to query calendar publish rules: {err}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("failed to read calendar publish rules: {err}"))
+}
+
+#[tauri::command]
+fn calendar_publish_rules_save(
+    app: tauri::AppHandle,
+    rows: Vec<CalendarPublishRuleRow>,
+) -> Result<(), String> {
+    let mut conn = local_db::open(&app)?;
+    let tx = conn
+        .transaction()
+        .map_err(|err| format!("failed to begin calendar rules transaction: {err}"))?;
+    tx.execute("DELETE FROM calendar_publish_rules", [])
+        .map_err(|err| format!("failed to clear calendar publish rules: {err}"))?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO calendar_publish_rules (event_key, metadata_json, updated_at)
+                 VALUES (?, ?, ?)",
+            )
+            .map_err(|err| format!("failed to prepare calendar rules insert: {err}"))?;
+        for row in rows {
+            let event_key = normalize_calendar_rule_key(&row.event_key)?;
+            let metadata_json = row.metadata_json.trim();
+            if metadata_json.is_empty() {
+                continue;
+            }
+            stmt.execute(rusqlite::params![
+                event_key,
+                metadata_json,
+                if row.updated_at > 0 { row.updated_at } else { now_unix_ms() }
+            ])
+            .map_err(|err| format!("failed to write calendar publish rule: {err}"))?;
+        }
+    }
+    tx.commit()
+        .map_err(|err| format!("failed to commit calendar rules transaction: {err}"))
 }
 
 fn write_browser_callback_response(
@@ -440,6 +527,8 @@ fn main() {
             secure_store_set,
             secure_store_get,
             secure_store_delete,
+            calendar_publish_rules_load,
+            calendar_publish_rules_save,
             site_admin_browser_login,
             debug_set_traffic_lights,
             calendar::commands::calendar_authorization_status,
