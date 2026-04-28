@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { WorkspaceSurfaceFrame } from "../../ui/primitives";
+import {
+  WorkspaceCheckboxField,
+  WorkspaceInspector,
+  WorkspaceInspectorHeader,
+  WorkspaceInspectorSection,
+  WorkspaceSelectField,
+  WorkspaceSurfaceFrame,
+  WorkspaceTextareaField,
+  WorkspaceTextField,
+} from "../../ui/primitives";
 import { AgendaView } from "./AgendaView";
 import {
   calendarAuthorizationStatus,
@@ -19,6 +28,17 @@ import {
 import { DateNav } from "./DateNav";
 import { DayView } from "./DayView";
 import { MonthView } from "./MonthView";
+import {
+  buildPublicCalendarPayload,
+  calendarEventKey,
+  loadCalendarPublishMetadata,
+  metadataForEvent,
+  saveCalendarPublishMetadata,
+  updateMetadataForEvent,
+  type CalendarPublishMetadataStore,
+  type CalendarPublicVisibility,
+} from "./publicProjection";
+import { publishPublicCalendarSnapshot } from "./siteAdminBridge";
 import { SourceSidebar } from "./SourceSidebar";
 import type {
   Calendar,
@@ -30,6 +50,7 @@ import { ViewSwitcher } from "./ViewSwitcher";
 import { WeekView } from "./WeekView";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
+type PublishState = "idle" | "publishing" | "success" | "error";
 
 function isAuthorized(status: CalendarAuthorizationStatus): boolean {
   return status === "fullAccess" || status === "writeOnly";
@@ -52,6 +73,11 @@ export function CalendarSurface() {
     new Set(),
   );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [publishMetadata, setPublishMetadata] =
+    useState<CalendarPublishMetadataStore>(() => loadCalendarPublishMetadata());
+  const [publishState, setPublishState] = useState<PublishState>("idle");
+  const [publishMessage, setPublishMessage] = useState<string>("");
 
   // Refetch whenever the user pages forward/back or switches view —
   // each combination implies a different EventKit query window.
@@ -154,6 +180,14 @@ export function CalendarSurface() {
     [events, selectedCalendarIds],
   );
 
+  const publicEventCount = useMemo(
+    () =>
+      visibleEvents.filter(
+        (event) => metadataForEvent(publishMetadata, event).visibility !== "hidden",
+      ).length,
+    [publishMetadata, visibleEvents],
+  );
+
   const toggleCalendar = (id: string) => {
     setSelectedCalendarIds((prev) => {
       const next = new Set(prev);
@@ -172,6 +206,56 @@ export function CalendarSurface() {
       setErrorMessage(String(err));
     }
   };
+
+  const updateSelectedMetadata = useCallback(
+    (patch: Parameters<typeof updateMetadataForEvent>[2]) => {
+      if (!selectedEvent) return;
+      setPublishMetadata((prev) => {
+        const next = updateMetadataForEvent(prev, selectedEvent, patch);
+        saveCalendarPublishMetadata(next);
+        return next;
+      });
+    },
+    [selectedEvent],
+  );
+
+  const publishSnapshot = useCallback(async () => {
+    if (!isAuthorized(auth)) return;
+    setPublishState("publishing");
+    setPublishMessage("");
+    const starts = startOfDay(new Date());
+    const ends = new Date(starts);
+    ends.setFullYear(ends.getFullYear() + 1);
+    const range = {
+      startsAt: starts.toISOString(),
+      endsAt: ends.toISOString(),
+    };
+    try {
+      const snapshotEvents = await calendarFetchEvents({
+        ...range,
+        calendarIds: [...selectedCalendarIds],
+      });
+      const payload = buildPublicCalendarPayload({
+        events: snapshotEvents,
+        calendarsById,
+        metadata: publishMetadata,
+        range,
+      });
+      const result = await publishPublicCalendarSnapshot(payload);
+      if (!result.ok) {
+        setPublishState("error");
+        setPublishMessage(`Publish failed via ${result.baseUrl}: ${result.error}`);
+        return;
+      }
+      setPublishState("success");
+      setPublishMessage(
+        `Published ${payload.events.length} public events to ${result.baseUrl}. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
+      );
+    } catch (err) {
+      setPublishState("error");
+      setPublishMessage(`Publish failed: ${String(err)}`);
+    }
+  }, [auth, calendarsById, publishMetadata, selectedCalendarIds]);
 
   if (auth === "notDetermined") {
     return <PermissionGate onRequest={requestAccess} error={errorMessage} />;
@@ -214,7 +298,14 @@ export function CalendarSurface() {
             overflow: "hidden",
           }}
         >
-          <div className="grid grid-cols-[220px_1fr] flex-1 min-h-0">
+          <div
+            className="grid flex-1 min-h-0"
+            style={{
+              gridTemplateColumns: selectedEvent
+                ? "220px minmax(0, 1fr) minmax(280px, 340px)"
+                : "220px minmax(0, 1fr)",
+            }}
+          >
             <SourceSidebar
               sources={sources}
               calendarsBySource={calendarsBySource}
@@ -228,7 +319,21 @@ export function CalendarSurface() {
               calendarsById={calendarsById}
               loadState={loadState}
               errorMessage={errorMessage}
+              onEventSelect={setSelectedEvent}
             />
+            {selectedEvent ? (
+              <CalendarEventInspector
+                event={selectedEvent}
+                calendar={calendarsById.get(selectedEvent.calendarId)}
+                metadata={metadataForEvent(publishMetadata, selectedEvent)}
+                publicEventCount={publicEventCount}
+                publishMessage={publishMessage}
+                publishState={publishState}
+                onClose={() => setSelectedEvent(null)}
+                onMetadataChange={updateSelectedMetadata}
+                onPublish={publishSnapshot}
+              />
+            ) : null}
           </div>
         </section>
       </div>
@@ -243,6 +348,7 @@ function ViewPane({
   calendarsById,
   loadState,
   errorMessage,
+  onEventSelect,
 }: {
   view: ViewKind;
   anchor: Date;
@@ -250,6 +356,7 @@ function ViewPane({
   calendarsById: Map<string, Calendar>;
   loadState: LoadState;
   errorMessage: string | null;
+  onEventSelect: (event: CalendarEvent) => void;
 }) {
   if (loadState === "error") {
     return (
@@ -272,7 +379,12 @@ function ViewPane({
   switch (view) {
     case "day":
       return (
-        <DayView day={anchor} events={events} calendarsById={calendarsById} />
+        <DayView
+          day={anchor}
+          events={events}
+          calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
+        />
       );
     case "week":
       return (
@@ -280,6 +392,7 @@ function ViewPane({
           anchor={anchor}
           events={events}
           calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
         />
       );
     case "month":
@@ -288,6 +401,7 @@ function ViewPane({
           anchor={anchor}
           events={events}
           calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
         />
       );
     case "agenda":
@@ -296,9 +410,186 @@ function ViewPane({
           events={events}
           calendarsById={calendarsById}
           rangeLabel={formatViewTitle("agenda", anchor)}
+          onEventSelect={onEventSelect}
         />
       );
   }
+}
+
+function CalendarEventInspector({
+  event,
+  calendar,
+  metadata,
+  publicEventCount,
+  publishMessage,
+  publishState,
+  onClose,
+  onMetadataChange,
+  onPublish,
+}: {
+  event: CalendarEvent;
+  calendar: Calendar | undefined;
+  metadata: {
+    visibility: CalendarPublicVisibility;
+    titleOverride?: string;
+    descriptionOverride?: string;
+    locationOverride?: string;
+    urlOverride?: string;
+  };
+  publicEventCount: number;
+  publishMessage: string;
+  publishState: PublishState;
+  onClose: () => void;
+  onMetadataChange: (patch: Partial<typeof metadata>) => void;
+  onPublish: () => void;
+}) {
+  const showPublicFields = metadata.visibility === "titleOnly" || metadata.visibility === "full";
+  const showDetailsFields = metadata.visibility === "full";
+  return (
+    <WorkspaceInspector
+      className="calendar-inspector"
+      label="Calendar event publishing"
+      style={{
+        borderTop: 0,
+        borderRight: 0,
+        borderBottom: 0,
+        borderRadius: 0,
+        padding: "14px",
+      }}
+    >
+      <WorkspaceInspectorHeader
+        heading={event.title || "(No title)"}
+        kicker={calendar?.title ?? "Calendar event"}
+        actions={
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Close
+          </button>
+        }
+      />
+      <div className="workspace-inspector__body">
+        <WorkspaceInspectorSection heading="Event">
+          <dl className="workspace-inspector__meta">
+            <div>
+              <dt>Time</dt>
+              <dd>{event.isAllDay ? "All day" : `${formatDateTime(event.startsAt)} - ${formatDateTime(event.endsAt)}`}</dd>
+            </div>
+            {event.location ? (
+              <div>
+                <dt>Location</dt>
+                <dd>{event.location}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Key</dt>
+              <dd>
+                <code>{calendarEventKey(event)}</code>
+              </dd>
+            </div>
+          </dl>
+        </WorkspaceInspectorSection>
+        <WorkspaceInspectorSection
+          heading="Website"
+          description="Only this sanitized projection is sent to the public site."
+        >
+          <WorkspaceSelectField
+            label="Public visibility"
+            value={metadata.visibility}
+            onChange={(e) =>
+              onMetadataChange({
+                visibility: e.currentTarget.value as CalendarPublicVisibility,
+              })
+            }
+          >
+            <option value="hidden">Hidden</option>
+            <option value="busy">Busy only</option>
+            <option value="titleOnly">Title only</option>
+            <option value="full">Full details</option>
+          </WorkspaceSelectField>
+          {showPublicFields ? (
+            <WorkspaceTextField
+              label="Public title override"
+              placeholder={event.title || "(No title)"}
+              value={metadata.titleOverride ?? ""}
+              onChange={(e) => onMetadataChange({ titleOverride: e.currentTarget.value })}
+            />
+          ) : null}
+          {showDetailsFields ? (
+            <>
+              <WorkspaceTextareaField
+                label="Public description"
+                placeholder={event.notes ?? "Uses event notes when empty"}
+                rows={4}
+                value={metadata.descriptionOverride ?? ""}
+                onChange={(e) =>
+                  onMetadataChange({ descriptionOverride: e.currentTarget.value })
+                }
+              />
+              <WorkspaceTextField
+                label="Public location"
+                placeholder={event.location ?? ""}
+                value={metadata.locationOverride ?? ""}
+                onChange={(e) =>
+                  onMetadataChange({ locationOverride: e.currentTarget.value })
+                }
+              />
+              <WorkspaceTextField
+                label="Public URL"
+                placeholder={event.url ?? ""}
+                value={metadata.urlOverride ?? ""}
+                onChange={(e) => onMetadataChange({ urlOverride: e.currentTarget.value })}
+              />
+            </>
+          ) : null}
+          <WorkspaceCheckboxField
+            checked={metadata.visibility !== "hidden"}
+            onChange={(e) =>
+              onMetadataChange({
+                visibility: e.currentTarget.checked ? "titleOnly" : "hidden",
+              })
+            }
+            hint="Hidden events are never written into content/calendar-public.json."
+          >
+            Include this event on /calendar
+          </WorkspaceCheckboxField>
+        </WorkspaceInspectorSection>
+        <WorkspaceInspectorSection heading="Publish">
+          <p className="m-0 text-[12px] text-text-muted">
+            {publicEventCount} visible events in the current view are marked public.
+            Publish writes the next 12 months of selected calendars to the staging
+            content branch.
+          </p>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={publishState === "publishing"}
+            onClick={onPublish}
+          >
+            {publishState === "publishing" ? "Publishing..." : "Publish calendar snapshot"}
+          </button>
+          {publishMessage ? (
+            <p
+              className={
+                publishState === "error"
+                  ? "m-0 text-[12px] text-text-danger"
+                  : "m-0 text-[12px] text-text-muted"
+              }
+            >
+              {publishMessage}
+            </p>
+          ) : null}
+        </WorkspaceInspectorSection>
+      </div>
+    </WorkspaceInspector>
+  );
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function PermissionGate({

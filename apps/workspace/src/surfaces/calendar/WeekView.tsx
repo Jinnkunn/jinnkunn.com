@@ -16,10 +16,12 @@ export function WeekView({
   anchor,
   events,
   calendarsById,
+  onEventSelect,
 }: {
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const days = useMemo(() => weekDays(anchor), [anchor]);
 
@@ -47,10 +49,16 @@ export function WeekView({
           bars={allDayBars}
           calendarsById={calendarsById}
           stripHeight={stripHeight}
+          onEventSelect={onEventSelect}
         />
       ) : null}
       <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto">
-        <TimeGrid days={days} events={events} calendarsById={calendarsById} />
+        <TimeGrid
+          days={days}
+          events={events}
+          calendarsById={calendarsById}
+          onEventSelect={onEventSelect}
+        />
       </div>
     </div>
   );
@@ -97,11 +105,13 @@ function AllDayStrip({
   bars,
   calendarsById,
   stripHeight,
+  onEventSelect,
 }: {
   days: Date[];
   bars: ReturnType<typeof layoutAllDayEvents>;
   calendarsById: Map<string, Calendar>;
   stripHeight: number;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   // Stack bars into rows so two events on the same day don't overlap.
   const rows = stackRows(bars);
@@ -127,9 +137,11 @@ function AllDayStrip({
             const widthPct = (bar.length / days.length) * 100;
             const leftPct = (bar.startIndex / days.length) * 100;
             return (
-              <span
+              <button
+                type="button"
                 key={`${bar.event.eventIdentifier}-${bar.startIndex}`}
-                className="absolute text-[11px] truncate px-1.5 rounded leading-[16px]"
+                className="absolute text-[11px] truncate px-1.5 rounded leading-[16px] border-0 text-left cursor-pointer pointer-events-auto"
+                onClick={() => onEventSelect?.(bar.event)}
                 title={bar.event.title || "(No title)"}
                 style={{
                   left: `calc(${leftPct}% + 2px)`,
@@ -142,7 +154,7 @@ function AllDayStrip({
                 }}
               >
                 {bar.event.title || "(No title)"}
-              </span>
+              </button>
             );
           }),
         )}

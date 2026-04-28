@@ -12,6 +12,7 @@ const EXPECTED_LAYOUT_IMPORTS = [
   "toc.css",
   "lightbox.css",
   "publications.css",
+  "calendar.css",
   "blog-index.css",
   "news.css",
   "teaching.css",
