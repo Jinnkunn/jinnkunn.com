@@ -90,6 +90,27 @@ export interface StatusPayload {
     deployableVersionReason?: string;
     deployableVersionId?: string;
   };
+  deployments?: {
+    active: null | {
+      deploymentId?: string | null;
+      versionId: string | null;
+      createdOn: string | null;
+      message: string | null;
+      sourceSha: string | null;
+      codeSha: string | null;
+      contentSha: string | null;
+      contentBranch: string | null;
+    };
+    latestUploaded: null | {
+      versionId: string | null;
+      createdOn: string | null;
+      message: string | null;
+      sourceSha: string | null;
+      codeSha: string | null;
+      contentSha: string | null;
+      contentBranch: string | null;
+    };
+  };
   env: {
     runtimeProvider?: string;
     hasDeployTarget?: boolean;

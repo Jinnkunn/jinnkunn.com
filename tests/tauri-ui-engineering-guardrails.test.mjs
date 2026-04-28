@@ -336,6 +336,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(statusPanel, /D1 content database/);
   assert.match(statusPanel, /Release Health/);
   assert.match(statusPanel, /Site sync and release health/);
+  assert.match(statusPanel, /Active deploy/);
+  assert.match(statusPanel, /Latest upload/);
+  assert.match(statusPanel, /Latest Uploaded Version/);
   assert.match(pipeline, /Saved source/);
   assert.match(pipeline, /Worker candidate/);
   assert.match(pipeline, /Staging deploy/);

@@ -138,6 +138,16 @@ function main() {
     "Status release health panel",
   );
   assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    "Active deploy",
+    "Status active deploy version",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    "Latest Uploaded Version",
+    "Status latest upload version",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ConfigPanel.tsx"),
     "Read-only in Production",
     "Production settings lock",

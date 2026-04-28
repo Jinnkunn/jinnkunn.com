@@ -98,6 +98,27 @@ export type SiteAdminStatusPayload = {
     deployableVersionId?: string | null;
     error?: string;
   };
+  deployments?: {
+    active: null | {
+      deploymentId: string | null;
+      versionId: string | null;
+      createdOn: string | null;
+      message: string | null;
+      sourceSha: string | null;
+      codeSha: string | null;
+      contentSha: string | null;
+      contentBranch: string | null;
+    };
+    latestUploaded: null | {
+      versionId: string | null;
+      createdOn: string | null;
+      message: string | null;
+      sourceSha: string | null;
+      codeSha: string | null;
+      contentSha: string | null;
+      contentBranch: string | null;
+    };
+  };
   preflight?: {
     generatedFiles: {
       ok: boolean;

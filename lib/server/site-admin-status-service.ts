@@ -132,7 +132,31 @@ function readCloudflareStatusConfig(): {
   return { accountId, apiToken, workerName };
 }
 
-async function fetchCloudflareActiveDeploymentMetadata(): Promise<DeployVersionMetadata | null> {
+type CloudflareDeploySnapshot = {
+  createdOn: string | null;
+  deploymentId?: string | null;
+  message: string | null;
+  metadata: DeployVersionMetadata;
+  versionId: string | null;
+};
+
+function metadataSnapshot(input: CloudflareDeploySnapshot | null) {
+  if (!input) return null;
+  return {
+    ...(input.deploymentId !== undefined
+      ? { deploymentId: input.deploymentId ?? null }
+      : {}),
+    versionId: input.versionId,
+    createdOn: input.createdOn,
+    message: input.message,
+    sourceSha: input.metadata.sourceSha || null,
+    codeSha: input.metadata.codeSha || null,
+    contentSha: input.metadata.contentSha || input.metadata.sourceSha || null,
+    contentBranch: input.metadata.contentBranch || input.metadata.branch || null,
+  };
+}
+
+async function fetchCloudflareActiveDeploymentSnapshot(): Promise<CloudflareDeploySnapshot | null> {
   const cfg = readCloudflareStatusConfig();
   if (!cfg) return null;
 
@@ -176,12 +200,20 @@ async function fetchCloudflareActiveDeploymentMetadata(): Promise<DeployVersionM
   if (!latest) return null;
 
   const annotations = asRecord(latest.annotations);
-  return parseDeployMetadataMessage(annotations["workers/message"]);
+  const versions = Array.isArray(latest.versions) ? latest.versions.map((it) => asRecord(it)) : [];
+  const fullTrafficVersion =
+    versions.find((it) => Number(it.percentage) === 100) || versions[0] || {};
+  const message = asString(annotations["workers/message"]) || null;
+  return {
+    createdOn: asString(latest.created_on) || null,
+    deploymentId: asString(latest.id) || null,
+    message,
+    metadata: parseDeployMetadataMessage(message),
+    versionId: asString(fullTrafficVersion.version_id) || null,
+  };
 }
 
-async function fetchCloudflareLatestVersionMetadata(): Promise<
-  (DeployVersionMetadata & { versionId: string | null }) | null
-> {
+async function fetchCloudflareLatestVersionSnapshot(): Promise<CloudflareDeploySnapshot | null> {
   const cfg = readCloudflareStatusConfig();
   if (!cfg) return null;
 
@@ -213,8 +245,11 @@ async function fetchCloudflareLatestVersionMetadata(): Promise<
   const versionId = asString(first.id) || null;
   if (!versionId) return null;
   const annotations = asRecord(first.annotations);
+  const message = asString(annotations["workers/message"]) || null;
   return {
-    ...parseDeployMetadataMessage(annotations["workers/message"]),
+    createdOn: asString(first.created_on) || null,
+    message,
+    metadata: parseDeployMetadataMessage(message),
     versionId,
   };
 }
@@ -474,21 +509,26 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     headCommitTime: null,
     pendingDeploy: null,
   };
+  let deployments: SiteAdminStatusResponsePayload["deployments"] | undefined;
 
   try {
     const sourceState = await getSiteAdminSourceStore().getSourceState();
     const headSha = sourceState.headSha ? sourceState.headSha.toLowerCase() : null;
     const runtimeProvider = pickRuntimeProvider();
-    const activeDeployment =
+    const activeDeploymentSnapshot =
       runtimeProvider === "cloudflare"
-        ? await fetchCloudflareActiveDeploymentMetadata().catch(() => null)
+        ? await fetchCloudflareActiveDeploymentSnapshot().catch(() => null)
         : null;
+    const activeDeployment = activeDeploymentSnapshot?.metadata ?? null;
     const deployedSourceSha = activeDeployment?.contentSha || activeDeployment?.sourceSha || null;
     const codeSha = pickRuntimeCodeSha();
-    const latestVersion =
+    const latestVersionSnapshot =
       runtimeProvider === "cloudflare"
-        ? await fetchCloudflareLatestVersionMetadata().catch(() => null)
+        ? await fetchCloudflareLatestVersionSnapshot().catch(() => null)
         : null;
+    const latestVersion = latestVersionSnapshot
+      ? { ...latestVersionSnapshot.metadata, versionId: latestVersionSnapshot.versionId }
+      : null;
     const deployableVersionMismatch = latestVersion
       ? describeDeployMetadataMismatch({
           actual: latestVersion,
@@ -546,6 +586,12 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       ...(latestVersion?.versionId ? { deployableVersionId: latestVersion.versionId } : {}),
       ...(pendingDeployReason ? { pendingDeployReason } : {}),
     };
+    deployments = runtimeProvider === "cloudflare"
+      ? {
+          active: metadataSnapshot(activeDeploymentSnapshot),
+          latestUploaded: metadataSnapshot(latestVersionSnapshot),
+        }
+      : undefined;
   } catch (err: unknown) {
     const rawKind = String(process.env.SITE_ADMIN_STORAGE || "local")
       .trim()
@@ -602,6 +648,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     },
     notion,
     source,
+    ...(deployments ? { deployments } : {}),
     preflight,
     freshness: {
       stale,

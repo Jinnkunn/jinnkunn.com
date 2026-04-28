@@ -32,6 +32,11 @@ function shortSha(value?: string | null): string {
   return normalizeString(value).slice(0, 7) || "-";
 }
 
+function shortId(value?: string | null): string {
+  const safe = normalizeString(value);
+  return safe ? safe.slice(0, 8) : "-";
+}
+
 function sourceStoreLabel(source: StatusPayload["source"] | undefined): string {
   const kind = normalizeString(source?.storeKind).toLowerCase();
   if (kind === "db") return "D1 content database";
@@ -96,8 +101,11 @@ interface ReleaseHealthItem {
 function releaseHealthItems(
   data: StatusPayload | null,
   productionReadOnly: boolean,
+  environmentLabel: string,
 ): ReleaseHealthItem[] {
   const source = data?.source;
+  const active = data?.deployments?.active;
+  const latestUploaded = data?.deployments?.latestUploaded;
   const storeKind = normalizeString(source?.storeKind).toLowerCase();
   const hasCode = Boolean(normalizeString(source?.codeSha));
   const hasContent = Boolean(normalizeString(source?.contentSha)) || storeKind === "db";
@@ -133,6 +141,26 @@ function releaseHealthItems(
       label: "Worker candidate",
       tone: candidateReady === false ? "blocked" : candidateReady === true ? "ok" : "warn",
       value: candidateLabel(source),
+    },
+    {
+      detail: active?.createdOn
+        ? `${environmentLabel} active deployment from ${new Date(active.createdOn).toLocaleString()}`
+        : `${environmentLabel} active deployment metadata is unavailable.`,
+      label: "Active deploy",
+      tone: active?.versionId ? "ok" : "warn",
+      value: shortId(active?.versionId),
+    },
+    {
+      detail: latestUploaded?.createdOn
+        ? `Latest uploaded Worker candidate from ${new Date(latestUploaded.createdOn).toLocaleString()}`
+        : "Latest uploaded Worker candidate metadata is unavailable.",
+      label: "Latest upload",
+      tone: latestUploaded?.versionId
+        ? candidateReady === false
+          ? "blocked"
+          : "ok"
+        : "warn",
+      value: shortId(latestUploaded?.versionId),
     },
     {
       detail: deployStateLabel(source),
@@ -379,12 +407,12 @@ export function StatusPanel() {
         <div className="release-health__head">
           <div>
             <h2>Release Health</h2>
-            <p>Source, content, Worker candidate, and deploy readiness in one view.</p>
+            <p>Source, content, active deploy, Worker candidate, and release readiness.</p>
           </div>
           <strong>{nextActionLabel(data, productionReadOnly)}</strong>
         </div>
         <div className="release-health__grid">
-          {releaseHealthItems(data, productionReadOnly).map((item) => (
+          {releaseHealthItems(data, productionReadOnly, environment.label).map((item) => (
             <div
               className="release-health__item"
               data-tone={item.tone}
@@ -432,6 +460,14 @@ export function StatusPanel() {
         <div>
           <dt>Deployable Version</dt>
           <dd>{candidateLabel(data?.source)}</dd>
+        </div>
+        <div>
+          <dt>Active Version</dt>
+          <dd>{shortId(data?.deployments?.active?.versionId)}</dd>
+        </div>
+        <div>
+          <dt>Latest Uploaded Version</dt>
+          <dd>{shortId(data?.deployments?.latestUploaded?.versionId)}</dd>
         </div>
         <div>
           <dt>Deploy State</dt>
