@@ -1,7 +1,12 @@
+import { useMemo } from "react";
+
 import type { SurfaceNavGroup, SurfaceNavItem } from "../types";
 import { handleWindowDragMouseDown } from "../../shell/windowDrag";
 import { useSiteAdmin } from "./state";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
+import { SyncStatusPill } from "./SyncStatusPill";
+import type { LocalSyncCredentials } from "./local-content";
+import { useLocalSync } from "./use-local-sync";
 import type { SiteAdminTab } from "./types";
 
 interface TopBarProps {
@@ -61,8 +66,29 @@ function findCrumbs(
  * a user collapses the parent group in the sidebar (the active item
  * stops being visible there). */
 export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
-  const { drawerOpen, toggleDrawer } = useSiteAdmin();
+  const { drawerOpen, toggleDrawer, connection } = useSiteAdmin();
   const crumbs = findCrumbs(sections, activeTab);
+
+  // Phase 5a — drive the local SQLite mirror at one stable mount point so
+  // we have one timer + one in-flight pull per app instance regardless of
+  // how often editor tabs unmount/remount. Credentials are memoized so a
+  // re-render that doesn't change the connection identity doesn't
+  // re-arm the interval.
+  const syncCredentials = useMemo<LocalSyncCredentials | null>(() => {
+    if (!connection.baseUrl || !connection.authToken) return null;
+    return {
+      baseUrl: connection.baseUrl,
+      authToken: connection.authToken,
+      cfAccessClientId: connection.cfAccessClientId || undefined,
+      cfAccessClientSecret: connection.cfAccessClientSecret || undefined,
+    };
+  }, [
+    connection.baseUrl,
+    connection.authToken,
+    connection.cfAccessClientId,
+    connection.cfAccessClientSecret,
+  ]);
+  const sync = useLocalSync(syncCredentials);
 
   return (
     <header
@@ -82,6 +108,7 @@ export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
       </nav>
 
       <div className="site-admin-topbar__right" data-window-drag-exclude>
+        <SyncStatusPill sync={sync} />
         <SiteAdminConnectionPill />
         <button
           type="button"

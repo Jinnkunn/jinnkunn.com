@@ -63,3 +63,74 @@ export function secureStoreGet(key: string): Promise<string | null> {
 export function secureStoreDelete(key: string): Promise<void> {
   return invoke("secure_store_delete", { key });
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5a — local SQLite mirror of D1 content_files. The Rust side opens
+// a per-call connection to ~/Library/Application Support/...workspace.db
+// and serves these commands without any network unless `sync_pull` is
+// invoked. See src-tauri/src/sync.rs for the implementation.
+// ---------------------------------------------------------------------------
+
+export interface SyncPullParams {
+  base_url: string;
+  bearer_token?: string;
+  session_cookie?: string;
+  cf_access_client_id?: string;
+  cf_access_client_secret?: string;
+  /** Override per-pull batch size; server clamps to 1000. */
+  batch_limit?: number;
+  /** Force a full resync, ignoring the local watermark. */
+  reset_watermark?: boolean;
+}
+
+export interface SyncPullSummary {
+  rows_applied: number;
+  iterations: number;
+  last_since: number;
+  finished_at_ms: number;
+}
+
+export function syncPull(params: SyncPullParams): Promise<SyncPullSummary> {
+  return invoke("sync_pull", { params });
+}
+
+export interface LocalFileRow {
+  rel_path: string;
+  is_binary: boolean;
+  sha: string;
+  size: number;
+  updated_at: number;
+  updated_by: string | null;
+  /** UTF-8-decoded body when is_binary=false, else null. */
+  body_text: string | null;
+  /** Lowercase hex of the raw body. Always present. */
+  body_hex: string;
+}
+
+export function localGetFile(relPath: string): Promise<LocalFileRow | null> {
+  return invoke("local_get_file", { relPath });
+}
+
+export interface LocalFileEntry {
+  rel_path: string;
+  sha: string;
+  size: number;
+  updated_at: number;
+}
+
+export function localListFiles(
+  prefix: string,
+  recursive: boolean,
+): Promise<LocalFileEntry[]> {
+  return invoke("local_list_files", { prefix, recursive });
+}
+
+export interface LocalSyncStatus {
+  last_sync_since: number;
+  last_sync_at_ms: number;
+  row_count: number;
+}
+
+export function localSyncStatus(): Promise<LocalSyncStatus> {
+  return invoke("local_sync_status");
+}
