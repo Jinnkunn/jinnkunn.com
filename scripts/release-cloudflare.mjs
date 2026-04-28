@@ -108,7 +108,11 @@ function parseDeployJson(output) {
 
 function uploadMessage(env, git) {
   const dirty = git.dirty ? " dirty=1" : "";
-  return `Release upload (${env}) source=${git.sha} branch=${git.branch}${dirty}`;
+  // The deploy:cf:* guard parses code=/content=/contentBranch= tokens from
+  // this message and refuses to deploy when the latest uploaded version
+  // doesn't match the deploying source. Without overlay there's no separate
+  // content branch, so code and content collapse onto the same git SHA.
+  return `Release upload (${env}) source=${git.sha} branch=${git.branch} code=${git.sha} codeBranch=${git.branch} content=${git.sha} contentBranch=${git.branch}${dirty}`;
 }
 
 function reportAndExit(report) {
