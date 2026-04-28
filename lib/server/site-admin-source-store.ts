@@ -1,8 +1,16 @@
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
+
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
+import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
+import {
+  createDbFileBackend,
+  createFsFileBackend,
+  isSiteAdminFileBackendConflictError,
+  type SiteAdminFileBackend,
+} from "./site-admin-file-backend.ts";
 
 import type {
   SiteAdminProtectedRoute,
@@ -35,7 +43,6 @@ const SITE_SETTINGS_ROW_ID = "00000000000000000000000000000001";
 const SOURCE_ADMIN_PAGE_ID = "filesystem-admin";
 const SOURCE_OVERRIDES_DB_ID = "filesystem-overrides";
 const SOURCE_PROTECTED_DB_ID = "filesystem-protected";
-const execFileAsync = promisify(execFile);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -89,7 +96,7 @@ export type SiteAdminRoutesSnapshot = {
 };
 
 export type SiteAdminSourceState = {
-  storeKind: "local" | "github";
+  storeKind: "local" | "github" | "db";
   repo: string | null;
   branch: string | null;
   headSha: string | null;
@@ -144,7 +151,7 @@ export function isSiteAdminSourceWriteError(
 }
 
 export interface SiteAdminSourceStore {
-  readonly kind: "local" | "github";
+  readonly kind: "local" | "github" | "db";
   loadConfig(): Promise<SiteAdminConfigSnapshot>;
   updateSettings(input: {
     rowId: string;
@@ -203,11 +210,48 @@ export interface SiteAdminSourceStore {
 
 let __siteAdminSourceStore: SiteAdminSourceStore | null = null;
 
+function isD1Like(value: unknown): value is D1DatabaseLike {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { prepare?: unknown }).prepare === "function"
+  );
+}
+
+function tryCreateDbBackend(): SiteAdminFileBackend | null {
+  // getCloudflareContext throws outside a request lifecycle (build, scripts,
+  // tests). Fall back to fs in those cases — same forgiving behavior the
+  // content-store-resolver uses, and matches what the existing local store
+  // does when content/filesystem/* is on disk.
+  try {
+    const { env } = getCloudflareContext();
+    const binding = (env as Record<string, unknown>).SITE_ADMIN_DB;
+    if (!isD1Like(binding)) return null;
+    return createDbFileBackend({ executor: createD1Executor(binding) });
+  } catch {
+    return null;
+  }
+}
+
 export function getSiteAdminSourceStore(): SiteAdminSourceStore {
   if (__siteAdminSourceStore) return __siteAdminSourceStore;
   const kind = String(process.env.SITE_ADMIN_STORAGE || "local")
     .trim()
     .toLowerCase();
+  if (kind === "db") {
+    const dbBackend = tryCreateDbBackend();
+    if (dbBackend) {
+      __siteAdminSourceStore = createLocalSiteAdminSourceStore({
+        backend: dbBackend,
+      });
+      return __siteAdminSourceStore;
+    }
+    // No CF binding (build time, scripts, tests) → fall through to fs so
+    // build-time route handlers can still execute against the disk content
+    // that prebuild dumped from D1. Don't cache so a later request-time
+    // call can re-attempt and pick up the binding.
+    return createLocalSiteAdminSourceStore();
+  }
   if (kind === "local" || !kind) {
     __siteAdminSourceStore = createLocalSiteAdminSourceStore();
     return __siteAdminSourceStore;
@@ -221,8 +265,12 @@ export function getSiteAdminSourceStore(): SiteAdminSourceStore {
 
 export function createLocalSiteAdminSourceStore(opts?: {
   rootDir?: string;
+  backend?: SiteAdminFileBackend;
 }): SiteAdminSourceStore {
-  return new LocalSiteAdminSourceStore(opts?.rootDir || process.cwd());
+  return new LocalSiteAdminSourceStore(
+    opts?.rootDir || process.cwd(),
+    opts?.backend,
+  );
 }
 
 export function createGithubSiteAdminSourceStoreFromEnv(): SiteAdminSourceStore {
@@ -292,20 +340,22 @@ export function createGithubSiteAdminSourceStore(input: {
 }
 
 class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
-  readonly kind = "local" as const;
+  readonly kind: "local" | "db";
 
   private readonly rootDir: string;
-  private readonly filesystemDir: string;
-  private readonly generatedDir: string;
+  private readonly backend: SiteAdminFileBackend;
 
-  constructor(rootDir: string) {
+  constructor(rootDir: string, backend?: SiteAdminFileBackend) {
     this.rootDir = rootDir;
-    this.filesystemDir = path.join(rootDir, "content", "filesystem");
-    this.generatedDir = path.join(rootDir, "content", "generated");
+    this.backend = backend ?? createFsFileBackend({ rootDir });
+    // Surface the backend kind on the store so consumers (status panel,
+    // /api responses) reflect the actual storage source. "fs" maps back
+    // to "local" — historical callers still expect that label.
+    this.kind = this.backend.kind === "db" ? "db" : "local";
   }
 
   async loadConfig(): Promise<SiteAdminConfigSnapshot> {
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     const settings = mapSiteSettings(source.siteConfig);
     const nav = mapNavRows(source.siteConfig);
     return {
@@ -324,7 +374,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     if (compactId(input.rowId) !== SITE_SETTINGS_ROW_ID) {
       throw new Error("Missing Site Settings row");
     }
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     if (!input.allowStaleSiteConfigSha) {
       assertExpectedSha({
         expected: input.expectedSiteConfigSha,
@@ -333,9 +383,9 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     }
 
     const nextSiteConfig = applySettingsPatch(source.siteConfig, input.patch);
-    this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
+    await this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
 
-    const refreshed = this.loadSourceSnapshot();
+    const refreshed = await this.loadSourceSnapshot();
     return pickConfigVersion(refreshed.version);
   }
 
@@ -347,7 +397,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     const targetRowId = compactId(input.rowId);
     if (!targetRowId) throw new Error("Missing rowId");
 
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     assertExpectedSha({
       expected: input.expectedSiteConfigSha,
       actual: source.version.siteConfigSha,
@@ -374,9 +424,9 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     };
 
     const nextSiteConfig = writeNavRowsToSiteConfig(source.siteConfig, navRows);
-    this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
+    await this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
 
-    const refreshed = this.loadSourceSnapshot();
+    const refreshed = await this.loadSourceSnapshot();
     return pickConfigVersion(refreshed.version);
   }
 
@@ -384,7 +434,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     row: Omit<NavItemRow, "rowId">;
     expectedSiteConfigSha: string;
   }): Promise<{ created: NavItemRow; sourceVersion: SiteAdminConfigSourceVersion }> {
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     assertExpectedSha({
       expected: input.expectedSiteConfigSha,
       actual: source.version.siteConfigSha,
@@ -406,9 +456,9 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     navRows.push(created);
 
     const nextSiteConfig = writeNavRowsToSiteConfig(source.siteConfig, navRows);
-    this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
+    await this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
 
-    const refreshed = this.loadSourceSnapshot();
+    const refreshed = await this.loadSourceSnapshot();
     return {
       created,
       sourceVersion: pickConfigVersion(refreshed.version),
@@ -416,7 +466,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
   }
 
   async loadRoutes(): Promise<SiteAdminRoutesSnapshot> {
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     return {
       adminPageId: SOURCE_ADMIN_PAGE_ID,
       databases: {
@@ -445,7 +495,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     if (!pageId) throw new Error("Missing pageId");
 
     const routePath = normalizeRoutePath(input.routePath);
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     assertExpectedSha({
       expected: input.expectedSiteConfigSha,
       actual: source.version.siteConfigSha,
@@ -455,9 +505,9 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
       pageId,
       routePath,
     });
-    this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
+    await this.writeFilesystemJson(SITE_CONFIG_REL_PATH, nextSiteConfig);
 
-    const refreshed = this.loadSourceSnapshot();
+    const refreshed = await this.loadSourceSnapshot();
     return refreshed.version;
   }
 
@@ -477,7 +527,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     const auth = normalizeProtectedAccessMode(input.auth, "password");
     const password = String(input.password || "").trim();
 
-    const source = this.loadSourceSnapshot();
+    const source = await this.loadSourceSnapshot();
     assertExpectedSha({
       expected: input.expectedProtectedRoutesSha,
       actual: source.version.protectedRoutesSha,
@@ -491,9 +541,9 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
       password,
       delete: input.delete,
     });
-    this.writeFilesystemJson(PROTECTED_ROUTES_REL_PATH, next);
+    await this.writeFilesystemJson(PROTECTED_ROUTES_REL_PATH, next);
 
-    const refreshed = this.loadSourceSnapshot();
+    const refreshed = await this.loadSourceSnapshot();
     return refreshed.version;
   }
 
@@ -508,7 +558,7 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     const owner = String(process.env.SITE_ADMIN_REPO_OWNER || "").trim();
     const repo = String(process.env.SITE_ADMIN_REPO_NAME || "").trim();
     return {
-      storeKind: "local",
+      storeKind: this.kind,
       repo: owner && repo ? `${owner}/${repo}` : null,
       branch,
       headSha,
@@ -516,10 +566,14 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     };
   }
 
-  private loadSourceSnapshot(): RawSourceSnapshot {
-    const siteConfig = this.readSiteConfig();
-    const protectedRoutes = this.readProtectedRoutes();
-    const routesManifest = this.readRoutesManifest();
+  private async loadSourceSnapshot(): Promise<RawSourceSnapshot> {
+    // Run the three reads in parallel — the backend may or may not pipeline
+    // them, but it's free correctness either way.
+    const [siteConfig, protectedRoutes, routesManifest] = await Promise.all([
+      this.readSiteConfig(),
+      this.readProtectedRoutes(),
+      this.readRoutesManifest(),
+    ]);
 
     const siteConfigSha = jsonSha(siteConfig);
     const protectedRoutesSha = jsonSha(protectedRoutes);
@@ -540,111 +594,62 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     };
   }
 
-  private readSiteConfig(): JsonRecord {
-    const raw = this.readPreferredJson(
+  private async readSiteConfig(): Promise<JsonRecord> {
+    const raw = await this.readPreferredJson(
       SITE_CONFIG_REL_PATH,
       structuredClone(DEFAULT_SITE_CONFIG),
     );
     return isRecord(raw) ? raw : structuredClone(DEFAULT_SITE_CONFIG);
   }
 
-  private readProtectedRoutes(): StoredProtectedRoute[] {
-    const raw = this.readPreferredJson(PROTECTED_ROUTES_REL_PATH, []);
+  private async readProtectedRoutes(): Promise<StoredProtectedRoute[]> {
+    const raw = await this.readPreferredJson(PROTECTED_ROUTES_REL_PATH, []);
     return normalizeStoredProtectedRoutes(raw);
   }
 
-  private readRoutesManifest(): unknown[] {
-    const raw = this.readPreferredJson(ROUTES_MANIFEST_REL_PATH, []);
+  private async readRoutesManifest(): Promise<unknown[]> {
+    const raw = await this.readPreferredJson(ROUTES_MANIFEST_REL_PATH, []);
     return Array.isArray(raw) ? raw : [];
   }
 
-  private readPreferredJson(relPath: string, fallback: unknown): unknown {
-    const fsPath = path.join(this.filesystemDir, relPath);
-    const generatedPath = path.join(this.generatedDir, relPath);
-    const filePath =
-      pickExistingFile(fsPath) || pickExistingFile(generatedPath) || "";
-
-    if (!filePath) return structuredClone(fallback);
-    try {
-      const raw = fs.readFileSync(filePath, "utf8");
-      return JSON.parse(raw);
-    } catch {
-      return structuredClone(fallback);
+  private async readPreferredJson(relPath: string, fallback: unknown): Promise<unknown> {
+    // Try content/filesystem/X.json first (real data) then fall back to the
+    // prebuild stub at content/generated/X.json. Either backend handles the
+    // path the same way; for the db backend the generated lookup just
+    // returns null (stubs aren't imported into D1).
+    const fsResult = await this.backend.readJsonFile(
+      `${CONTENT_FILESYSTEM_DIR}/${relPath}`,
+    );
+    if (fsResult !== null && fsResult !== undefined) return fsResult;
+    const generatedResult = await this.backend.readJsonFile(
+      `${CONTENT_GENERATED_DIR}/${relPath}`,
+    );
+    if (generatedResult !== null && generatedResult !== undefined) {
+      return generatedResult;
     }
+    return structuredClone(fallback);
   }
 
-  private writeFilesystemJson(relPath: string, value: unknown) {
-    fs.mkdirSync(this.filesystemDir, { recursive: true });
-    const outPath = path.join(this.filesystemDir, relPath);
-    fs.writeFileSync(outPath, `${JSON.stringify(sortJson(value), null, 2)}\n`, "utf8");
+  private async writeFilesystemJson(relPath: string, value: unknown): Promise<void> {
+    await this.backend.writeJsonFile(`${CONTENT_FILESYSTEM_DIR}/${relPath}`, value);
   }
 
   async readTextFile(relPath: string): Promise<{ content: string; sha: string } | null> {
-    const filePath = path.join(this.rootDir, relPath);
-    try {
-      const content = fs.readFileSync(filePath, "utf8");
-      return { content, sha: jsonSha(content) };
-    } catch {
-      return null;
-    }
+    return this.backend.readTextFile(relPath);
   }
 
   async listTextFileHistory(
     relPath: string,
     limit = 12,
   ): Promise<SiteAdminFileHistoryEntry[]> {
-    const maxCount = Math.max(1, Math.min(50, Math.floor(limit)));
-    try {
-      const { stdout } = await execFileAsync(
-        "git",
-        [
-          "log",
-          `--max-count=${maxCount}`,
-          "--format=%H%x1f%h%x1f%ct%x1f%an%x1f%s",
-          "--",
-          relPath,
-        ],
-        { cwd: this.rootDir, maxBuffer: 1024 * 1024 },
-      );
-      return stdout
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [commitSha, commitShort, epoch, authorName, ...messageParts] =
-            line.split("\x1f");
-          const timestampMs = Number(epoch) * 1000;
-          return {
-            commitSha: commitSha || "",
-            commitShort: commitShort || (commitSha || "").slice(0, 7),
-            committedAt: Number.isFinite(timestampMs)
-              ? new Date(timestampMs).toISOString()
-              : null,
-            authorName: authorName || "",
-            message: messageParts.join("\x1f") || "",
-          };
-        })
-        .filter((entry) => Boolean(entry.commitSha));
-    } catch {
-      return [];
-    }
+    return this.backend.listTextFileHistory(relPath, limit);
   }
 
   async readTextFileAtCommit(
     relPath: string,
     commitSha: string,
   ): Promise<{ content: string; sha: string; commitSha: string } | null> {
-    if (!/^[a-f0-9]{7,40}$/i.test(commitSha)) return null;
-    try {
-      const { stdout } = await execFileAsync(
-        "git",
-        ["show", `${commitSha}:${relPath}`],
-        { cwd: this.rootDir, maxBuffer: 8 * 1024 * 1024 },
-      );
-      return { content: stdout, sha: jsonSha(stdout), commitSha };
-    } catch {
-      return null;
-    }
+    return this.backend.readTextFileAtCommit(relPath, commitSha);
   }
 
   async writeTextFile(input: {
@@ -653,47 +658,24 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
     expectedSha?: string;
     message?: string;
   }): Promise<{ fileSha: string; commitSha: string }> {
-    const filePath = path.join(this.rootDir, input.relPath);
-    let existingContent: string | null = null;
-    // Check expected sha against current file content (best-effort
-    // optimistic concurrency in local mode; real enforcement happens in
-    // the GitHub store path).
-    if (input.expectedSha !== undefined) {
-      try {
-        existingContent = fs.readFileSync(filePath, "utf8");
-        const currentSha = jsonSha(existingContent);
-        if (currentSha !== input.expectedSha) {
-          throw new SiteAdminSourceConflictError({
-            expectedSha: input.expectedSha,
-            currentSha,
-          });
-        }
-      } catch (err) {
-        if (err instanceof SiteAdminSourceConflictError) throw err;
-        // File missing — treat empty sha as mismatch unless caller sent "".
-        if (input.expectedSha !== "") {
-          throw new SiteAdminSourceConflictError({
-            expectedSha: input.expectedSha,
-            currentSha: "",
-          });
-        }
+    try {
+      return await this.backend.writeTextFile({
+        repoRel: input.relPath,
+        content: input.content,
+        expectedSha: input.expectedSha,
+      });
+    } catch (err) {
+      if (isSiteAdminFileBackendConflictError(err)) {
+        // Re-raise as the source-store-level conflict so callers' existing
+        // catch sites (which look for SiteAdminSourceConflictError) keep
+        // working unchanged.
+        throw new SiteAdminSourceConflictError({
+          expectedSha: err.expectedSha,
+          currentSha: err.currentSha,
+        });
       }
+      throw err;
     }
-    if (existingContent === null) {
-      try {
-        existingContent = fs.readFileSync(filePath, "utf8");
-      } catch {
-        existingContent = null;
-      }
-    }
-    if (existingContent === input.content) {
-      const sha = jsonSha(input.content);
-      return { fileSha: sha, commitSha: sha };
-    }
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, input.content, "utf8");
-    const sha = jsonSha(input.content);
-    return { fileSha: sha, commitSha: sha };
   }
 }
 
@@ -1357,14 +1339,6 @@ class GitHubSiteAdminSourceStore implements SiteAdminSourceStore {
     signer.end();
     const signature = signer.sign(this.privateKey, "base64url");
     return `${signingInput}.${signature}`;
-  }
-}
-
-function pickExistingFile(filePath: string): string {
-  try {
-    return fs.statSync(filePath).isFile() ? filePath : "";
-  } catch {
-    return "";
   }
 }
 
