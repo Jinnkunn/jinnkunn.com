@@ -83,7 +83,7 @@ export type SiteAdminStatusPayload = {
     rootPage: null | { id: string; lastEdited: string; title: string };
   };
   source: {
-    storeKind: "local" | "github";
+    storeKind: "local" | "github" | "db";
     repo: string | null;
     branch: string | null;
     headSha: string | null;
