@@ -53,6 +53,7 @@ import {
   type MdxBlockColor,
   type MdxBlockType,
 } from "./mdx-blocks";
+import { localContent } from "./local-content";
 import { useSiteAdmin } from "./state";
 import { formatDraftAge, useEditorDraft, type EditorKind } from "./use-editor-draft";
 import {
@@ -1845,21 +1846,45 @@ export function MdxDocumentEditor<TForm>({
         loadedSource = custom.source;
         loadedVersion = custom.version;
       } else {
-        const response = await request(
-          `${adapter.routeBase}/${encodeURIComponent(initialSlug)}`,
-          "GET",
-        );
-        if (cancelled) return;
-        setLoading(false);
-        if (!response.ok) {
-          const msg = `${response.code}: ${response.error}`;
-          setError(msg);
-          setMessage("error", `Load ${adapter.titleNoun} failed: ${msg}`);
-          return;
+        // Phase 5a — local-first: try the SQLite mirror primed by
+        // useLocalSync. The local row's `body_text` is the same MDX
+        // string the server returns as `source`, and the `sha` matches
+        // what the server returns as `version` (Phase #2 sha alignment).
+        // On hit we open instantly and skip HTTP entirely. The mirror
+        // refreshes every 30s in the background; the next save's
+        // optimistic-lock check catches any actual D1 divergence.
+        let localHit: { source: string; version: string } | null = null;
+        try {
+          const row = await localContent.getFile(adapter.contentPath(initialSlug));
+          if (row && !row.is_binary && row.body_text != null) {
+            localHit = { source: row.body_text, version: row.sha };
+          }
+        } catch {
+          // local read failed (mirror missing / DB locked) — fall through
+          // to the HTTP path so the editor still opens.
         }
-        const data = (response.data ?? {}) as Record<string, unknown>;
-        loadedSource = typeof data.source === "string" ? data.source : "";
-        loadedVersion = normalizeString(data.version);
+        if (localHit) {
+          if (cancelled) return;
+          loadedSource = localHit.source;
+          loadedVersion = localHit.version;
+          setLoading(false);
+        } else {
+          const response = await request(
+            `${adapter.routeBase}/${encodeURIComponent(initialSlug)}`,
+            "GET",
+          );
+          if (cancelled) return;
+          setLoading(false);
+          if (!response.ok) {
+            const msg = `${response.code}: ${response.error}`;
+            setError(msg);
+            setMessage("error", `Load ${adapter.titleNoun} failed: ${msg}`);
+            return;
+          }
+          const data = (response.data ?? {}) as Record<string, unknown>;
+          loadedSource = typeof data.source === "string" ? data.source : "";
+          loadedVersion = normalizeString(data.version);
+        }
       }
       const parsed = adapter.parseSource(loadedSource);
       const nextBody = parsed.body.replace(/^\n+/, "");
