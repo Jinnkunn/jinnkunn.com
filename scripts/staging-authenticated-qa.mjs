@@ -211,7 +211,12 @@ async function checkStatus({ origin, cookie }) {
   );
   assert(res.status === 200, "status endpoint returned wrong status", { status: res.status, raw });
   assert(source && typeof source === "object", "status payload missing source", { raw });
-  assert(source.pendingDeploy === false, "staging source is pending deploy", { source });
+  assert(source.pendingDeploy !== true, "staging source is pending deploy", { source });
+  assert(
+    source.deployableVersionReady !== false,
+    "staging deployable Worker candidate is stale",
+    { source },
+  );
 }
 
 async function fetchApiPayload({ origin, cookie, path }) {
