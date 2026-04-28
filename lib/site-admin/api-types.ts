@@ -259,11 +259,15 @@ export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;
   status: number;
-  provider?: "generic" | "vercel" | "cloudflare";
+  provider?: "generic" | "vercel" | "cloudflare" | "github-actions";
   deploymentId?: string;
   codeSha?: string;
   contentSha?: string;
   contentBranch?: string;
+  // db-mode dispatch returns these so the UI can link the user to the
+  // running build instead of pretending the worker promoted instantly.
+  workflowEventType?: string;
+  workflowRunsListUrl?: string;
 };
 
 export type SiteAdminDeployResult = SiteAdminDeployPayload | SiteAdminApiError;
