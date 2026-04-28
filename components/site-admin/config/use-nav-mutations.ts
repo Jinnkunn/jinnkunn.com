@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { NavItemRow } from "./types";
 import { errorFromUnknown } from "./utils";
@@ -26,10 +26,16 @@ export function useSiteAdminNavMutations({
   const [openNav, setOpenNav] = useState<Record<string, boolean>>({});
   const [navDraft, setNavDraft] = useState<Record<string, Partial<NavItemRow>>>({});
 
-  const resetNavEditorState = () => {
+  // useCallback so use-config-data.ts can safely depend on this in its
+  // mount-time useEffect without re-firing the fetch every render. Without
+  // memoization the inline arrow recreates each render → effect deps shift
+  // → getConfig() runs in a tight loop. Latent in github mode (slow GitHub
+  // API throttled the loop) but exposed by D1's ~10ms reads, which trip
+  // the 60-req/min admin rate limit immediately.
+  const resetNavEditorState = useCallback(() => {
     setNavDraft({});
     setOpenNav({});
-  };
+  }, []);
 
   const updateNavDraftField = (rowId: string, patch: Partial<NavItemRow>) => {
     setNavDraft((prev) => ({ ...prev, [rowId]: { ...(prev[rowId] || {}), ...patch } }));
