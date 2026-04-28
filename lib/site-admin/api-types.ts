@@ -110,6 +110,7 @@ export type SiteAdminStatusPayload = {
       contentBranch: string | null;
     };
     latestUploaded: null | {
+      deploymentId: string | null;
       versionId: string | null;
       createdOn: string | null;
       message: string | null;

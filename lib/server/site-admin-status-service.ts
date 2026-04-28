@@ -143,16 +143,14 @@ type CloudflareDeploySnapshot = {
 function metadataSnapshot(input: CloudflareDeploySnapshot | null) {
   if (!input) return null;
   return {
-    ...(input.deploymentId !== undefined
-      ? { deploymentId: input.deploymentId ?? null }
-      : {}),
+    deploymentId: input.deploymentId ?? null,
     versionId: input.versionId,
     createdOn: input.createdOn,
     message: input.message,
     sourceSha: input.metadata.sourceSha || null,
     codeSha: input.metadata.codeSha || null,
     contentSha: input.metadata.contentSha || input.metadata.sourceSha || null,
-    contentBranch: input.metadata.contentBranch || input.metadata.branch || null,
+    contentBranch: input.metadata.contentBranch || input.metadata.sourceBranch || null,
   };
 }
 
