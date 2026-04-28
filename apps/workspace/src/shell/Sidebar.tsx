@@ -6,6 +6,7 @@ import type {
   SurfaceNavItem,
 } from "../surfaces/types";
 import type { SidebarFavorite } from "./favorites";
+import type { SidebarRecentItem } from "./recent";
 import { handleWindowDragMouseDown } from "./windowDrag";
 import { WorkspaceIconButton, WorkspaceSidebarRow } from "../ui/primitives";
 
@@ -14,8 +15,10 @@ interface SidebarProps {
   activeSurfaceId: string;
   activeNavItemId: string | null;
   favorites: readonly SidebarFavorite[];
+  recentItems: readonly SidebarRecentItem[];
   onSelectSurface: (id: string) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
+  onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   isFavorite: (surfaceId: string, itemId: string) => boolean;
   /** Drop handler for drag-reparent. Sidebar fires this when a row
@@ -50,7 +53,6 @@ interface SidebarProps {
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
-const SURFACE_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.surfaceTrees.v1";
 const ITEM_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.itemTrees.v1";
 
 type CollapseMap = Record<string, boolean>;
@@ -137,6 +139,7 @@ interface RenderNavItemArgs {
   onDragStart: (itemId: string) => void;
   onDrop: (targetItemId: string) => void;
   onReorderNavItem?: (surfaceId: string, itemId: string, direction: "up" | "down") => void;
+  onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   onStartRename: (itemId: string) => void;
@@ -147,6 +150,7 @@ interface RenderNavItemArgs {
   siblingCount: number;
   siblingIndex: number;
   surfaceId: string;
+  surfaceTitle: string;
   toggleItemTree: (key: string) => void;
   itemKey: (surfaceId: string, itemId: string) => string;
 }
@@ -280,6 +284,7 @@ function renderNavItem({
   onDragStart,
   onDrop,
   onReorderNavItem,
+  onRecordRecent,
   onSelectNavItem,
   onToggleFavorite,
   onStartRename,
@@ -290,6 +295,7 @@ function renderNavItem({
   siblingCount,
   siblingIndex,
   surfaceId,
+  surfaceTitle,
   toggleItemTree,
   itemKey,
 }: RenderNavItemArgs) {
@@ -412,6 +418,12 @@ function renderNavItem({
             onDragEnd={item.draggable ? () => onDragEnd() : undefined}
             onClick={() => {
               if (selectable) {
+                onRecordRecent({
+                  itemId: item.id,
+                  label: item.label,
+                  surfaceId,
+                  surfaceTitle,
+                });
                 onSelectNavItem(surfaceId, item.id);
                 return;
               }
@@ -566,6 +578,7 @@ function renderNavItem({
               onDragStart,
               onDrop,
               onReorderNavItem,
+              onRecordRecent,
               onSelectNavItem,
               onToggleFavorite,
               onStartRename,
@@ -576,6 +589,7 @@ function renderNavItem({
               siblingCount: child.orderable ? reorderSiblings.length : item.children!.length,
               siblingIndex: child.orderable ? reorderIndex : childIndex,
               surfaceId,
+              surfaceTitle,
               toggleItemTree,
               itemKey,
             });
@@ -591,8 +605,10 @@ export function Sidebar({
   activeSurfaceId,
   activeNavItemId,
   favorites,
+  recentItems,
   onSelectSurface,
   onSelectNavItem,
+  onRecordRecent,
   onToggleFavorite,
   isFavorite,
   onMoveNavItem,
@@ -653,9 +669,6 @@ export function Sidebar({
   const [groupCollapsed, setGroupCollapsed] = useState<CollapseMap>(() =>
     loadCollapseMap(GROUP_COLLAPSE_STORAGE_KEY),
   );
-  const [surfaceTreeCollapsed, setSurfaceTreeCollapsed] = useState<CollapseMap>(
-    () => loadCollapseMap(SURFACE_TREE_COLLAPSE_STORAGE_KEY),
-  );
   const [itemTreeCollapsed, setItemTreeCollapsed] = useState<CollapseMap>(() =>
     loadCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY),
   );
@@ -665,22 +678,11 @@ export function Sidebar({
   }, [groupCollapsed]);
 
   useEffect(() => {
-    persistCollapseMap(SURFACE_TREE_COLLAPSE_STORAGE_KEY, surfaceTreeCollapsed);
-  }, [surfaceTreeCollapsed]);
-
-  useEffect(() => {
     persistCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY, itemTreeCollapsed);
   }, [itemTreeCollapsed]);
 
   const toggleGroup = useCallback((key: string) => {
     setGroupCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  const toggleSurfaceTree = useCallback((surfaceId: string) => {
-    setSurfaceTreeCollapsed((prev) => ({
-      ...prev,
-      [surfaceId]: !prev[surfaceId],
-    }));
   }, []);
 
   const toggleItemTree = useCallback((key: string) => {
@@ -702,27 +704,128 @@ export function Sidebar({
     if (
       activeForSurface &&
       activeNavItemId !== null &&
-      group.items.some((item) => item.id === activeNavItemId)
+      group.items.some((item) => itemContainsActive(item, activeNavItemId))
     ) {
       return true;
     }
     return !groupCollapsed[groupKey(surfaceId, group.id)];
   };
 
+  const activeSurface =
+    surfaces.find((surface) => surface.id === activeSurfaceId) ?? surfaces[0];
+
+  if (!activeSurface) {
+    return null;
+  }
+
   return (
     <aside className="sidebar-surface" aria-label="Primary navigation">
-      {/* 52px drag strip. The native macOS traffic lights are positioned
-          inside this by `set_traffic_lights_inset` in src-tauri/main.rs. */}
-      <div
-        className="sidebar-header-strip"
-        data-tauri-drag-region
-        onMouseDown={handleWindowDragMouseDown}
-        aria-hidden="true"
-      />
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-2 pb-3 flex flex-col gap-4">
+      <div className="sidebar-app-rail" aria-label="Workspace apps">
+        {/* Native macOS traffic lights are positioned inside this strip by
+            `set_traffic_lights_inset` in src-tauri/main.rs. The height is
+            controlled by --workspace-traffic-light-strip-height. */}
+        <div
+          className="sidebar-header-strip"
+          data-tauri-drag-region
+          onMouseDown={handleWindowDragMouseDown}
+          aria-hidden="true"
+        />
+        <nav className="sidebar-app-rail__nav" aria-label="Workspace apps">
+          {surfaces.map((surface) => {
+            const active = surface.id === activeSurfaceId;
+            return (
+              <button
+                key={surface.id}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                className="sidebar-app-rail__button"
+                onClick={() => onSelectSurface(surface.id)}
+                disabled={surface.disabled}
+                title={surface.description ?? surface.title}
+                aria-label={surface.title}
+              >
+                <span className="sidebar-app-rail__icon" aria-hidden="true">
+                  {surface.icon}
+                </span>
+                {surface.disabled ? (
+                  <span className="sidebar-app-rail__soon" aria-hidden="true">
+                    soon
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+      <div className="sidebar-context-pane">
+        <header
+          className="sidebar-context-header"
+          data-tauri-drag-region
+          onMouseDown={handleWindowDragMouseDown}
+        >
+          <p className="sidebar-context-header__eyebrow">Workspace</p>
+          <h2 className="sidebar-context-header__title">{activeSurface.title}</h2>
+          {activeSurface.description ? (
+            <p className="sidebar-context-header__description">
+              {activeSurface.description}
+            </p>
+          ) : null}
+        </header>
+        <div className="sidebar-context-scroll">
+        {recentItems.length > 0 && (
+          <section className="sidebar-context-section">
+            <p className="sidebar-context-section__label">
+              Recent
+            </p>
+            <ul className="sidebar-recent" role="list">
+              {recentItems.slice(0, 5).map((recent) => {
+                const selected =
+                  activeSurfaceId === recent.surfaceId &&
+                  activeNavItemId === recent.itemId;
+                return (
+                  <li key={`${recent.surfaceId}:${recent.itemId}`}>
+                    <WorkspaceSidebarRow
+                      className="sidebar-tree__item-row"
+                      selected={selected}
+                    >
+                      <button
+                        type="button"
+                        className="sidebar-nav-item sidebar-tree__item sidebar-recent__item"
+                        onClick={() =>
+                          {
+                            onRecordRecent({
+                              itemId: recent.itemId,
+                              label: recent.label,
+                              surfaceId: recent.surfaceId,
+                              surfaceTitle: recent.surfaceTitle,
+                            });
+                            onSelectNavItem(recent.surfaceId, recent.itemId);
+                          }
+                        }
+                        aria-current={selected ? "page" : undefined}
+                      >
+                        <span className="sidebar-recent__clock" aria-hidden="true">
+                          ◷
+                        </span>
+                        <span className="sidebar-recent__body">
+                          <span className="sidebar-tree__item-label">
+                            {recent.label}
+                          </span>
+                          <span className="sidebar-recent__meta">
+                            {recent.surfaceTitle}
+                          </span>
+                        </span>
+                      </button>
+                    </WorkspaceSidebarRow>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
         {favorites.length > 0 && (
-          <div>
-            <p className="m-0 mb-1.5 px-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-text-muted">
+          <section className="sidebar-context-section">
+            <p className="sidebar-context-section__label">
               Favorites
             </p>
             <ul className="sidebar-favorites" role="list">
@@ -740,7 +843,18 @@ export function Sidebar({
                         type="button"
                         className="sidebar-nav-item sidebar-tree__item"
                         onClick={() =>
-                          onSelectNavItem(fav.surfaceId, fav.itemId)
+                          {
+                            const surface = surfaces.find(
+                              (entry) => entry.id === fav.surfaceId,
+                            );
+                            onRecordRecent({
+                              itemId: fav.itemId,
+                              label: fav.label,
+                              surfaceId: fav.surfaceId,
+                              surfaceTitle: surface?.title ?? fav.surfaceId,
+                            });
+                            onSelectNavItem(fav.surfaceId, fav.itemId);
+                          }
                         }
                         aria-current={selected ? "page" : undefined}
                       >
@@ -765,150 +879,99 @@ export function Sidebar({
                 );
               })}
             </ul>
-          </div>
+          </section>
         )}
-        <div>
-          <p className="m-0 mb-1.5 px-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-text-muted">
-            Workspace
-          </p>
-          <nav className="flex flex-col gap-0.5" aria-label="Surfaces">
-            {surfaces.map((surface) => {
-              const active = surface.id === activeSurfaceId;
-              const hasTree = Boolean(surface.navGroups?.length);
-              const treeOpen =
-                active && hasTree && !surfaceTreeCollapsed[surface.id];
-              const treeId = `sidebar-surface-tree-${surface.id}`;
-              return (
-                <div key={surface.id} className="sidebar-surface-row">
-                  <div className="sidebar-surface-row__header">
+        <section className="sidebar-context-section">
+          <p className="sidebar-context-section__label">Navigation</p>
+          {activeSurface.navGroups?.length ? (
+            <nav className="sidebar-tree" aria-label={`${activeSurface.title} navigation`}>
+              {activeSurface.navGroups.map((group) => {
+                const open = isGroupOpen(activeSurface.id, group, true);
+                return (
+                  <div key={group.id} className="sidebar-tree__group">
                     <button
                       type="button"
-                      aria-current={active ? "page" : undefined}
-                      className="sidebar-nav-item sidebar-surface-row__select"
-                      onClick={() => onSelectSurface(surface.id)}
-                      disabled={surface.disabled}
-                      title={surface.description}
+                      className="sidebar-tree__group-header"
+                      onClick={() =>
+                        toggleGroup(groupKey(activeSurface.id, group.id))
+                      }
+                      aria-expanded={open}
+                      aria-controls={`sidebar-group-${activeSurface.id}-${group.id}`}
                     >
-                      <span className="sidebar-nav-item-icon">{surface.icon}</span>
-                      <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                        {surface.title}
-                      </span>
-                      {surface.disabled && (
-                        <span className="text-[10px] uppercase tracking-wider text-text-muted">
-                          soon
-                        </span>
-                      )}
+                      <ChevronIcon open={open} />
+                      <span>{group.label}</span>
                     </button>
-                    {active && hasTree && (
-                      <button
-                        type="button"
-                        className="sidebar-surface-row__disclosure"
-                        onClick={() => toggleSurfaceTree(surface.id)}
-                        aria-expanded={treeOpen}
-                        aria-controls={treeId}
-                        aria-label={
-                          treeOpen
-                            ? `Collapse ${surface.title}`
-                            : `Expand ${surface.title}`
-                        }
-                        title={treeOpen ? "Collapse" : "Expand"}
+                    {open && (
+                      <ul
+                        id={`sidebar-group-${activeSurface.id}-${group.id}`}
+                        className="sidebar-tree__items"
+                        role="list"
                       >
-                        <ChevronIcon open={treeOpen} />
-                      </button>
+                        {group.items.map((item, itemIndex) => {
+                          const reorderSiblings = group.items.filter((entry) =>
+                            entry.id.startsWith("pages:"),
+                          );
+                          const reorderIndex = reorderSiblings.findIndex(
+                            (entry) => entry.id === item.id,
+                          );
+                          return renderNavItem({
+                            activeNavItemId,
+                            depth: 0,
+                            dragOverItemId,
+                            draggingItemId,
+                            isFavorite,
+                            item,
+                            itemTreeCollapsed,
+                            onDragEnd: endDrag,
+                            onDragOver: setDragOverItemId,
+                            onDragStart: (id) => startDrag(activeSurface.id, id),
+                            onDrop: (targetId) => dropOnto(activeSurface.id, targetId),
+                            onReorderNavItem,
+                            onRecordRecent,
+                            onSelectNavItem,
+                            onToggleFavorite,
+                            onStartRename: (id) => startRename(activeSurface.id, id),
+                            onCancelRename: cancelRename,
+                            onSubmitRename: submitRename,
+                            renameValidate: renamingItemId
+                              ? (value) =>
+                                  validateRenameNavItem
+                                    ? validateRenameNavItem(
+                                        activeSurface.id,
+                                        renamingItemId,
+                                        value,
+                                      )
+                                    : null
+                              : undefined,
+                            renamingItemId,
+                            siblingCount: item.orderable
+                              ? reorderSiblings.length
+                              : group.items.length,
+                            siblingIndex: item.orderable ? reorderIndex : itemIndex,
+                            surfaceId: activeSurface.id,
+                            surfaceTitle: activeSurface.title,
+                            toggleItemTree,
+                            itemKey,
+                          });
+                        })}
+                      </ul>
                     )}
                   </div>
-                  {treeOpen && (
-                    <div
-                      id={treeId}
-                      className="sidebar-tree"
-                      role="list"
-                    >
-                      {surface.navGroups!.map((group) => {
-                        const open = isGroupOpen(surface.id, group, active);
-                        return (
-                          <div key={group.id} className="sidebar-tree__group">
-                            <button
-                              type="button"
-                              className="sidebar-tree__group-header"
-                              onClick={() =>
-                                toggleGroup(groupKey(surface.id, group.id))
-                              }
-                              aria-expanded={open}
-                              aria-controls={`sidebar-group-${surface.id}-${group.id}`}
-                            >
-                              <ChevronIcon open={open} />
-                              <span>{group.label}</span>
-                            </button>
-                            {open && (
-                              <ul
-                                id={`sidebar-group-${surface.id}-${group.id}`}
-                                className="sidebar-tree__items"
-                                role="list"
-                              >
-                                {group.items.map((item, itemIndex) => {
-                                  const reorderSiblings = group.items.filter((entry) =>
-                                    entry.id.startsWith("pages:"),
-                                  );
-                                  const reorderIndex = reorderSiblings.findIndex(
-                                    (entry) => entry.id === item.id,
-                                  );
-                                  return renderNavItem({
-                                    activeNavItemId,
-                                    depth: 0,
-                                    dragOverItemId,
-                                    draggingItemId,
-                                    isFavorite,
-                                    item,
-                                    itemTreeCollapsed,
-                                    onDragEnd: endDrag,
-                                    onDragOver: setDragOverItemId,
-                                    onDragStart: (id) => startDrag(surface.id, id),
-                                    onDrop: (targetId) => dropOnto(surface.id, targetId),
-                                    onReorderNavItem,
-                                    onSelectNavItem,
-                                    onToggleFavorite,
-                                    onStartRename: (id) => startRename(surface.id, id),
-                                    onCancelRename: cancelRename,
-                                    onSubmitRename: submitRename,
-                                    renameValidate: renamingItemId
-                                      ? (value) =>
-                                          validateRenameNavItem
-                                            ? validateRenameNavItem(
-                                                surface.id,
-                                                renamingItemId,
-                                                value,
-                                              )
-                                            : null
-                                      : undefined,
-                                    renamingItemId,
-                                    siblingCount: item.orderable
-                                      ? reorderSiblings.length
-                                      : group.items.length,
-                                    siblingIndex: item.orderable ? reorderIndex : itemIndex,
-                                    surfaceId: surface.id,
-                                    toggleItemTree,
-                                    itemKey,
-                                  });
-                                })}
-                              </ul>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
+                );
+              })}
+            </nav>
+          ) : (
+            <p className="sidebar-context-empty">
+              This surface uses the main workspace canvas.
+            </p>
+          )}
+        </section>
         </div>
+        <footer className="sidebar-footer">
+          <p>Jinnkunn Workspace</p>
+          <p>Personal desktop</p>
+        </footer>
       </div>
-      <footer className="sidebar-footer px-3.5 py-3 border-t border-border-subtle bg-bg-sidebar">
-        <p className="m-0 text-[12px] font-semibold text-text-primary">Jinnkunn Workspace</p>
-        <p className="m-0 mt-0.5 text-[11px] text-text-muted">
-          Personal desktop
-        </p>
-      </footer>
     </aside>
   );
 }

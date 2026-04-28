@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { WorkspaceSurfaceFrame } from "../../ui/primitives";
 import { AgendaView } from "./AgendaView";
 import {
   calendarAuthorizationStatus,
@@ -185,7 +186,10 @@ export function CalendarSurface() {
     // grid to scroll internally instead — so we lock the shell to the
     // available <main> height (flex:1 + min-height:0) and clip the
     // body, then let `WeekView` / `DayView` own a single inner scroller.
-    <section className="panel-shell" style={{ flex: 1, minHeight: 0 }}>
+    <WorkspaceSurfaceFrame
+      className="panel-shell"
+      style={{ flex: 1, minHeight: 0 }}
+    >
       <header className="panel-shell__header">
         <div className="flex items-center justify-between flex-wrap gap-2 w-full">
           <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
@@ -228,7 +232,7 @@ export function CalendarSurface() {
           </div>
         </section>
       </div>
-    </section>
+    </WorkspaceSurfaceFrame>
   );
 }
 

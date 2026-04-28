@@ -73,6 +73,7 @@ export interface RichTextInputProps {
    * variant classes via the parent (e.g. `mdx-document-text-block--paragraph`). */
   className?: string;
   ariaLabel?: string;
+  readOnly?: boolean;
   /** Placeholder shown via CSS `[data-placeholder]` when the editor is
    * empty. The component sets the data-attr; the parent's CSS owns the look
    * (see InlineRichText placeholder rule in index.css). */
@@ -90,6 +91,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       onEditorReady,
       className,
       ariaLabel,
+      readOnly = false,
       placeholder,
     },
     ref,
@@ -108,6 +110,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
     const editor = useEditor({
       extensions,
       content: inlineMarkdownToHtml(value),
+      editable: !readOnly,
       parseOptions: INLINE_MARKDOWN_PARSE_OPTIONS,
       // Each EditorContent renders inside a contenteditable. We hand ProseMirror
       // an explicit class on its host element so existing block CSS still
@@ -152,6 +155,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         INLINE_MARKDOWN_PARSE_OPTIONS,
       );
     }, [editor, value]);
+
+    useEffect(() => {
+      editor?.setEditable(!readOnly);
+    }, [editor, readOnly]);
 
     // Fire onEditorReady when the editor becomes available (or is
     // destroyed). The imperative-ref `getEditor()` would also work but

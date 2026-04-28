@@ -64,6 +64,11 @@ import {
 import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
 import type { NormalizedApiResponse } from "./types";
 import { normalizeString } from "./utils";
+import {
+  WorkspaceInspector,
+  WorkspaceInspectorHeader,
+  WorkspaceInspectorSection,
+} from "../../ui/primitives";
 
 type DocumentEditorMode = "blocks" | "source";
 type DocumentExitAction = "saved" | "deleted" | "cancel";
@@ -449,6 +454,7 @@ export interface MdxDocumentPropertiesProps<TForm> {
   body: string;
   form: TForm;
   mode: "create" | "edit";
+  readOnly: boolean;
   setForm: Dispatch<SetStateAction<TForm>>;
   setSlug: (slug: string) => void;
   slug: string;
@@ -473,6 +479,7 @@ export interface MdxDocumentEditorAdapter<TForm> {
   parseSource: (source: string) => { body: string; form: TForm };
   renderDocumentTools?: (props: {
     body: string;
+    readOnly: boolean;
     setBody: Dispatch<SetStateAction<string>>;
   }) => ReactNode;
   renderProperties: (props: MdxDocumentPropertiesProps<TForm>) => ReactNode;
@@ -550,6 +557,22 @@ function isTextEditableBlock(block: MdxBlock): boolean {
   );
 }
 
+function isBlockVisuallyEmpty(block: MdxBlock): boolean {
+  if (isTextEditableBlock(block)) return block.text.trim().length === 0;
+  if (block.type === "image") return !block.url;
+  if (block.type === "bookmark") return !block.url && !block.title;
+  if (block.type === "embed") return !block.url;
+  if (block.type === "file") return !block.url && !block.filename;
+  if (block.type === "page-link") return !block.pageSlug;
+  if (block.type === "table") {
+    return !block.tableData?.rows.some((row) => row.some((cell) => cell.trim()));
+  }
+  if (block.type === "columns" || block.type === "column") {
+    return !block.children?.some((child) => !isBlockVisuallyEmpty(child));
+  }
+  return false;
+}
+
 function isSourceConflictResponse(response: NormalizedApiResponse): boolean {
   return !response.ok && (response.code === "SOURCE_CONFLICT" || response.status === 409);
 }
@@ -561,6 +584,7 @@ export interface BlocksEditorProps {
   onChange: (next: string) => void;
   /** Min height for the canvas (matches MarkdownEditor's prop for swap-compat). */
   minHeight?: number;
+  readOnly?: boolean;
   /** Optional inline placeholder shown when the body is empty. (Future
    * enhancement — not yet wired into the canvas paint.) */
   placeholder?: string;
@@ -572,7 +596,12 @@ export interface BlocksEditorProps {
  * (block parsing/serialization, slash menu, drag-reorder, image
  * upload). Errors surface through the global site-admin message
  * banner, so callers don't need to plumb them. */
-export function BlocksEditor({ value, onChange, minHeight }: BlocksEditorProps) {
+export function BlocksEditor({
+  value,
+  onChange,
+  minHeight,
+  readOnly = false,
+}: BlocksEditorProps) {
   const { request, setMessage } = useSiteAdmin();
   // Local error sink — block-internal helpers expect a setError callback,
   // but inline use cases don't have a document-level error banner. Funnel
@@ -624,6 +653,7 @@ export function BlocksEditor({ value, onChange, minHeight }: BlocksEditorProps) 
 
   const uploadDroppedImages = useCallback(
     async (files: File[]) => {
+      if (readOnly) return;
       const nextBlocks = blocks.slice();
       for (const file of files) {
         setUploading(true);
@@ -644,22 +674,28 @@ export function BlocksEditor({ value, onChange, minHeight }: BlocksEditorProps) 
       }
       handleBlocksChange(nextBlocks);
     },
-    [blocks, handleBlocksChange, request, setError, setMessage],
+    [blocks, handleBlocksChange, readOnly, request, setError, setMessage],
   );
 
   return (
     <div
       className="mdx-document-blocks"
       data-drag-active={dragDepth > 0 ? "true" : undefined}
+      data-read-only={readOnly ? "true" : undefined}
       data-uploading={uploading ? "true" : undefined}
       style={minHeight ? { minHeight } : undefined}
       onDragEnter={(event: DragEvent<HTMLDivElement>) => {
+        if (readOnly) return;
         if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
         event.preventDefault();
         setDragDepth((depth) => depth + 1);
       }}
-      onDragLeave={() => setDragDepth((depth) => Math.max(0, depth - 1))}
+      onDragLeave={() => {
+        if (readOnly) return;
+        setDragDepth((depth) => Math.max(0, depth - 1));
+      }}
       onDrop={(event) => {
+        if (readOnly) return;
         if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
         event.preventDefault();
         setDragDepth(0);
@@ -671,16 +707,19 @@ export function BlocksEditor({ value, onChange, minHeight }: BlocksEditorProps) 
         blocks={blocks}
         depth={0}
         onBlocksChange={handleBlocksChange}
+        readOnly={readOnly}
         request={request}
         setError={setError}
         setMessage={setMessage}
       />
 
-      <AssetLibraryPicker
-        onSelect={(asset) =>
-          appendImageBlock(asset.url, asset.alt || asset.filename || "image")
-        }
-      />
+      {readOnly ? null : (
+        <AssetLibraryPicker
+          onSelect={(asset) =>
+            appendImageBlock(asset.url, asset.alt || asset.filename || "image")
+          }
+        />
+      )}
     </div>
   );
 }
@@ -689,6 +728,7 @@ interface EditableBlocksListProps {
   blocks: MdxBlock[];
   depth: number;
   onBlocksChange: (next: MdxBlock[]) => void;
+  readOnly?: boolean;
   request: RequestFn;
   setError: (error: string) => void;
   setMessage: (kind: "error" | "success", text: string) => void;
@@ -698,6 +738,7 @@ function EditableBlocksList({
   blocks,
   depth,
   onBlocksChange,
+  readOnly = false,
   request,
   setError,
   setMessage,
@@ -725,7 +766,7 @@ function EditableBlocksList({
   // because each EditableBlocksList instance owns its own draggingBlockId
   // state, and the dataTransfer payload only matches when both source and
   // drop target live in the same list.
-  const enableDrag = true;
+  const enableDrag = !readOnly;
 
   const registerBlockInput = useCallback(
     (
@@ -942,9 +983,10 @@ function EditableBlocksList({
         <button
           type="button"
           className="mdx-document-blocks-empty__btn"
+          disabled={readOnly}
           onClick={() => commitBlocks([createMdxBlock("paragraph")])}
         >
-          + Click to add a block
+          {readOnly ? "No blocks" : "+ Click to add a block"}
         </button>
       </div>
     );
@@ -956,6 +998,8 @@ function EditableBlocksList({
         <div
           className="mdx-document-block"
           data-depth={depth}
+          data-kind={block.type}
+          data-empty={isBlockVisuallyEmpty(block) ? "true" : undefined}
           data-color={block.color && block.color !== "default" ? block.color : undefined}
           data-drag-over={dragOverBlockId === block.id ? "true" : undefined}
           data-dragging={draggingBlockId === block.id ? "true" : undefined}
@@ -992,29 +1036,31 @@ function EditableBlocksList({
               : undefined
           }
         >
-          <BlockGutterHandles
-            controlsActive={
-              actionMenu?.blockId === block.id ||
-              draggingBlockId === block.id ||
-              focusedBlockId === block.id
-            }
-            isDragging={draggingBlockId === block.id}
-            onAdd={() => insertSlashTrigger(index)}
-            onDragStart={(event) => {
-              if (!enableDrag) {
-                event.preventDefault();
-                return;
+          {readOnly ? null : (
+            <BlockGutterHandles
+              controlsActive={
+                actionMenu?.blockId === block.id ||
+                draggingBlockId === block.id ||
+                focusedBlockId === block.id
               }
-              setDraggingBlockId(block.id);
-              event.dataTransfer.setData("application/x-mdx-block", block.id);
-              event.dataTransfer.effectAllowed = "move";
-            }}
-            onDragEnd={() => {
-              setDraggingBlockId("");
-              setDragOverBlockId("");
-            }}
-            onMenu={(anchor) => setActionMenu({ anchor, blockId: block.id })}
-          />
+              isDragging={draggingBlockId === block.id}
+              onAdd={() => insertSlashTrigger(index)}
+              onDragStart={(event) => {
+                if (!enableDrag) {
+                  event.preventDefault();
+                  return;
+                }
+                setDraggingBlockId(block.id);
+                event.dataTransfer.setData("application/x-mdx-block", block.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={() => {
+                setDraggingBlockId("");
+                setDragOverBlockId("");
+              }}
+              onMenu={(anchor) => setActionMenu({ anchor, blockId: block.id })}
+            />
+          )}
 
           <EditableBlock
             block={block}
@@ -1040,11 +1086,12 @@ function EditableBlocksList({
             onMoveDown={() => moveBlock(index, 1)}
             onDuplicate={() => duplicateBlockById(block.id)}
             onTurnInto={(type, level) => changeBlockType(block.id, type, level)}
+            readOnly={readOnly}
           />
         </div>
       ))}
 
-      {actionMenu ? (
+      {actionMenu && !readOnly ? (
         <BlockActionMenu
           anchor={actionMenu.anchor}
           block={blocks.find((b) => b.id === actionMenu.blockId) ?? null}
@@ -1322,6 +1369,7 @@ function EditableBlock({
   onSlashCommand,
   onTurnInto,
   onUploadImage,
+  readOnly = false,
   request,
   setError,
   setMessage,
@@ -1342,6 +1390,7 @@ function EditableBlock({
   onSlashCommand: (value: string) => boolean;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
   onUploadImage: (file: File | null) => void;
+  readOnly?: boolean;
   request: RequestFn;
   setError: (error: string) => void;
   setMessage: (kind: "error" | "success", text: string) => void;
@@ -1387,6 +1436,7 @@ function EditableBlock({
         onMoveDown={onMoveDown}
         onMoveUp={onMoveUp}
         onPatch={onPatch}
+        readOnly={readOnly}
         onRemoveEmpty={onRemoveEmpty}
         onSlashCommand={onSlashCommand}
         onTurnInto={onTurnInto}
@@ -1407,6 +1457,7 @@ function EditableBlock({
   // to-new-block are intentionally absent — code / raw shouldn't auto-wrap
   // markdown chars and Enter should insert a literal newline.
   const onTextKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (readOnly) return;
     const meta = event.metaKey || event.ctrlKey;
     if (meta && event.shiftKey && event.key === "ArrowUp") {
       event.preventDefault();
@@ -1454,7 +1505,7 @@ function EditableBlock({
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif"
-            disabled={uploading}
+            disabled={uploading || readOnly}
             onChange={(event) => {
               onUploadImage(event.target.files?.[0] ?? null);
               event.currentTarget.value = "";
@@ -1464,6 +1515,7 @@ function EditableBlock({
         <div className="mdx-document-image-block__fields">
           <input
             aria-label="Image URL"
+            readOnly={readOnly}
             value={block.url || ""}
             placeholder="/uploads/image.png"
             onChange={(event) =>
@@ -1472,6 +1524,7 @@ function EditableBlock({
           />
           <input
             aria-label="Image alt text"
+            readOnly={readOnly}
             value={block.alt || ""}
             placeholder="Alt text"
             onChange={(event) =>
@@ -1480,25 +1533,28 @@ function EditableBlock({
           />
           <input
             aria-label="Image caption"
+            readOnly={readOnly}
             value={block.caption || ""}
             placeholder="Caption"
             onChange={(event) =>
               onPatch((current) => ({ ...current, caption: event.target.value }))
             }
           />
-          <div className="mdx-document-image-block__asset-picker">
-            <AssetLibraryPicker
-              currentUrl={block.url}
-              onSelect={(asset) => {
-                onPatch((current) => ({
-                  ...current,
-                  alt: current.alt || asset.alt || asset.filename || "image",
-                  url: asset.url,
-                }));
-                setMessage("success", "Image asset selected.");
-              }}
-            />
-          </div>
+          {readOnly ? null : (
+            <div className="mdx-document-image-block__asset-picker">
+              <AssetLibraryPicker
+                currentUrl={block.url}
+                onSelect={(asset) => {
+                  onPatch((current) => ({
+                    ...current,
+                    alt: current.alt || asset.alt || asset.filename || "image",
+                    url: asset.url,
+                  }));
+                  setMessage("success", "Image asset selected.");
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1542,6 +1598,7 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            readOnly={readOnly}
             request={request}
             setError={setError}
             setMessage={setMessage}
@@ -1562,6 +1619,7 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            readOnly={readOnly}
             request={request}
             setError={setError}
             setMessage={setMessage}
@@ -1585,6 +1643,7 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            readOnly={readOnly}
             request={request}
             setError={setError}
             setMessage={setMessage}
@@ -1605,6 +1664,7 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            readOnly={readOnly}
             request={request}
             setError={setError}
             setMessage={setMessage}
@@ -1625,6 +1685,7 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            readOnly={readOnly}
             request={request}
             setError={setError}
             setMessage={setMessage}
@@ -1763,6 +1824,7 @@ function EditableBlock({
         rows={block.type === "code" || block.type === "raw" ? 6 : Math.max(3, block.text.split("\n").length + 1)}
         value={block.text}
         placeholder={nativePlaceholder}
+        readOnly={readOnly}
         onChange={(event) =>
           onPatch((current) => ({ ...current, text: event.target.value }))
         }
@@ -1778,7 +1840,13 @@ export function MdxDocumentEditor<TForm>({
   onExit,
   slug: initialSlug,
 }: MdxDocumentEditorProps<TForm>) {
-  const { bumpContentRevision, request, setMessage } = useSiteAdmin();
+  const {
+    bumpContentRevision,
+    environment,
+    productionReadOnly,
+    request,
+    setMessage,
+  } = useSiteAdmin();
   const [slug, setSlug] = useState(initialSlug ?? "");
   const [form, setForm] = useState<TForm>(() => adapter.createBlankForm());
   const [body, setBody] = useState(adapter.defaultBody);
@@ -1806,6 +1874,18 @@ export function MdxDocumentEditor<TForm>({
 
   const source = useMemo(() => adapter.buildSource(form, body), [adapter, body, form]);
   const dirty = source !== lastSavedSource || (mode === "create" && Boolean(slug.trim()));
+  const sourcePath = slug.trim() ? adapter.contentPath(slug.trim()) : "Pending slug";
+  const statusLabel = loading
+    ? "Loading"
+    : saving
+      ? "Saving"
+      : deleting
+        ? "Deleting"
+        : conflict
+          ? "Conflict"
+          : dirty
+            ? "Unsaved changes"
+            : "Saved";
   const imageDrop = useMdxImageUploadDrop({ request, setError, setMessage });
   const { confirmBack, leaveEditor } = useConfirmingBack({
     dirty,
@@ -1910,6 +1990,10 @@ export function MdxDocumentEditor<TForm>({
     async (event: FormEvent) => {
       event.preventDefault();
       if (!canSave || saving) return;
+      if (productionReadOnly) {
+        setMessage("warn", environment.helpText);
+        return;
+      }
       if (conflict) {
         setMessage("warn", `${adapter.titleNoun} is in conflict state. Reload latest before saving.`);
         return;
@@ -1988,10 +2072,12 @@ export function MdxDocumentEditor<TForm>({
       canSave,
       clearDraft,
       conflict,
+      environment.helpText,
       form,
       initialSlug,
       mode,
       onExit,
+      productionReadOnly,
       request,
       saving,
       setMessage,
@@ -2002,6 +2088,10 @@ export function MdxDocumentEditor<TForm>({
 
   const remove = useCallback(async () => {
     if (adapter.allowDelete === false) return;
+    if (productionReadOnly) {
+      setMessage("warn", environment.helpText);
+      return;
+    }
     if (mode !== "edit" || !initialSlug || !version) return;
     setDeleting(true);
     setError("");
@@ -2027,9 +2117,11 @@ export function MdxDocumentEditor<TForm>({
     adapter,
     bumpContentRevision,
     clearDraft,
+    environment.helpText,
     initialSlug,
     mode,
     onExit,
+    productionReadOnly,
     request,
     setMessage,
     version,
@@ -2084,7 +2176,7 @@ export function MdxDocumentEditor<TForm>({
                 if (confirmDelete) void remove();
                 else setConfirmDelete(true);
               }}
-              disabled={saving || deleting || loading || !version}
+              disabled={saving || deleting || loading || !version || productionReadOnly}
             >
               {deleting ? "Deleting…" : confirmDelete ? "Click again to confirm" : "Delete"}
             </button>
@@ -2093,7 +2185,7 @@ export function MdxDocumentEditor<TForm>({
             type="submit"
             form={formId}
             className="btn btn--primary"
-            disabled={!canSave || saving || loading || imageDrop.uploading || conflict}
+            disabled={!canSave || saving || loading || imageDrop.uploading || conflict || productionReadOnly}
           >
             {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
           </button>
@@ -2117,6 +2209,12 @@ export function MdxDocumentEditor<TForm>({
           </button>
         </div>
       )}
+
+      {productionReadOnly ? (
+        <div className="workspace-status-banner workspace-status-banner--warn">
+          {environment.helpText}
+        </div>
+      ) : null}
 
       {error && (
         <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>
@@ -2159,6 +2257,7 @@ export function MdxDocumentEditor<TForm>({
           onSubmit={save}
           className="mdx-document-editor"
           data-properties-open={propertiesOpen ? "true" : undefined}
+          data-read-only={productionReadOnly ? "true" : undefined}
         >
           <div className="mdx-document-editor__toolbar" aria-label="Document editor mode">
             <div className="home-builder__segmented mdx-document-editor__mode-switch">
@@ -2192,6 +2291,7 @@ export function MdxDocumentEditor<TForm>({
                 className="mdx-document-editor__title"
                 value={adapter.getTitle(form)}
                 placeholder="Untitled"
+                readOnly={productionReadOnly}
                 onChange={(event) =>
                   setForm((current) => adapter.setTitle(current, event.target.value))
                 }
@@ -2200,23 +2300,38 @@ export function MdxDocumentEditor<TForm>({
 
               {adapter.renderDocumentTools ? (
                 <div className="mdx-document-editor__document-tools">
-                  {adapter.renderDocumentTools({ body, setBody })}
+                  {adapter.renderDocumentTools({
+                    body,
+                    readOnly: productionReadOnly,
+                    setBody,
+                  })}
                 </div>
               ) : null}
 
               {editorMode === "blocks" ? (
-                <BlocksEditor value={body} onChange={setBody} />
+                <BlocksEditor
+                  value={body}
+                  onChange={setBody}
+                  readOnly={productionReadOnly}
+                />
               ) : (
                 <div
                   className="editor-drop-zone mdx-document-editor__source"
-                  data-drag-active={imageDrop.dragDepth > 0 ? "true" : undefined}
-                  onDragEnter={imageDrop.onDragEnter}
-                  onDragLeave={imageDrop.onDragLeave}
+                  data-drag-active={
+                    !productionReadOnly && imageDrop.dragDepth > 0 ? "true" : undefined
+                  }
+                  onDragEnter={
+                    productionReadOnly ? undefined : imageDrop.onDragEnter
+                  }
+                  onDragLeave={
+                    productionReadOnly ? undefined : imageDrop.onDragLeave
+                  }
                 >
                   <MarkdownEditor
                     value={body}
                     onChange={setBody}
-                    onDrop={imageDrop.handleDrop}
+                    disabled={productionReadOnly}
+                    onDrop={productionReadOnly ? undefined : imageDrop.handleDrop}
                     onReady={imageDrop.onEditorReady}
                     minHeight={520}
                   />
@@ -2224,42 +2339,71 @@ export function MdxDocumentEditor<TForm>({
                     Drop an image onto the source editor to upload; a{" "}
                     <code>![alt](/uploads/...)</code> tag is inserted at the cursor.
                   </span>
-                  <AssetLibraryPicker
-                    onSelect={(asset) => {
-                      const alt = asset.alt || asset.filename || "image";
-                      imageDrop.insertAssetImage(asset.url, alt);
-                    }}
-                  />
+                  {productionReadOnly ? null : (
+                    <AssetLibraryPicker
+                      onSelect={(asset) => {
+                        const alt = asset.alt || asset.filename || "image";
+                        imageDrop.insertAssetImage(asset.url, alt);
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </main>
 
             {propertiesOpen ? (
-              <aside className="mdx-document-editor__properties" aria-label="Document properties">
-                <div className="mdx-document-editor__properties-head">
-                  <div>
-                    <span className="home-builder__eyebrow">Properties</span>
-                    <strong>{adapter.titleNoun}</strong>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    onClick={() => setPropertiesOpen(false)}
-                    aria-label="Close properties"
-                  >
-                    ×
-                  </button>
+              <WorkspaceInspector
+                className="mdx-document-editor__properties"
+                label="Document properties"
+              >
+                <WorkspaceInspectorHeader
+                  className="mdx-document-editor__properties-head"
+                  heading={adapter.titleNoun}
+                  kicker="Properties"
+                  actions={
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => setPropertiesOpen(false)}
+                      aria-label="Close properties"
+                    >
+                      ×
+                    </button>
+                  }
+                />
+                <div className="workspace-inspector__body">
+                  {adapter.renderProperties({
+                    body,
+                    form,
+                    mode,
+                    readOnly: productionReadOnly,
+                    setForm,
+                    setSlug,
+                    slug,
+                    slugHint: SLUG_HINTS[adapter.kind] ?? "",
+                  })}
+                  <WorkspaceInspectorSection heading="Status">
+                    <dl className="workspace-inspector__meta">
+                      <div>
+                        <dt>State</dt>
+                        <dd>{statusLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>Source</dt>
+                        <dd>
+                          <code>{sourcePath}</code>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Version</dt>
+                        <dd>
+                          <code>{version || "Not saved yet"}</code>
+                        </dd>
+                      </div>
+                    </dl>
+                  </WorkspaceInspectorSection>
                 </div>
-                {adapter.renderProperties({
-                  body,
-                  form,
-                  mode,
-                  setForm,
-                  setSlug,
-                  slug,
-                  slugHint: SLUG_HINTS[adapter.kind] ?? "",
-                })}
-              </aside>
+              </WorkspaceInspector>
             ) : null}
           </div>
         </form>

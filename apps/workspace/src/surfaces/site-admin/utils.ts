@@ -40,6 +40,81 @@ export function isProductionSiteAdminConnection(baseUrl: unknown): boolean {
   }
 }
 
+export type SiteAdminEnvironmentKind =
+  | "staging"
+  | "production"
+  | "local"
+  | "custom"
+  | "missing";
+
+export interface SiteAdminEnvironment {
+  kind: SiteAdminEnvironmentKind;
+  label: string;
+  readOnly: boolean;
+  helpText: string;
+}
+
+export function getSiteAdminEnvironment(baseUrl: unknown): SiteAdminEnvironment {
+  const value = normalizeString(baseUrl);
+  if (!value) {
+    return {
+      kind: "missing",
+      label: "No endpoint",
+      readOnly: false,
+      helpText: "Choose a Staging or local profile before editing.",
+    };
+  }
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (host === "jinkunchen.com" || host === "www.jinkunchen.com") {
+      return {
+        kind: "production",
+        label: "Production",
+        readOnly: true,
+        helpText:
+          "Production is inspect-only in the desktop editor. Edit in Staging, validate, then promote with the production runbook.",
+      };
+    }
+    if (host === "staging.jinkunchen.com") {
+      return {
+        kind: "staging",
+        label: "Staging",
+        readOnly: false,
+        helpText: "Daily editing target. Save content here, then publish to staging.",
+      };
+    }
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+      return {
+        kind: "local",
+        label: "Local",
+        readOnly: false,
+        helpText: "Local development target.",
+      };
+    }
+  } catch {
+    if (isProductionSiteAdminConnection(value)) {
+      return {
+        kind: "production",
+        label: "Production",
+        readOnly: true,
+        helpText:
+          "Production is inspect-only in the desktop editor. Edit in Staging, validate, then promote with the production runbook.",
+      };
+    }
+  }
+  return {
+    kind: "custom",
+    label: "Custom",
+    readOnly: false,
+    helpText: "Custom site-admin endpoint.",
+  };
+}
+
+export function productionReadOnlyMessage(action = "save changes"): string {
+  return `Production profile is read-only. Switch to Staging to ${action}, then promote the validated staging version to production.`;
+}
+
 export function isMutatingHttpMethod(method: unknown): boolean {
   const normalized = normalizeString(method || "GET").toUpperCase();
   return !["GET", "HEAD", "OPTIONS"].includes(normalized);

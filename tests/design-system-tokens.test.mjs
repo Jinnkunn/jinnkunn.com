@@ -20,10 +20,26 @@ const CLASSIC_BRIDGE_CSS = fs.readFileSync(
   path.join(ROOT, "app/(classic)/design-system-bridge.css"),
   "utf8",
 );
-const WORKSPACE_CSS = fs.readFileSync(
-  path.join(ROOT, "apps/workspace/src/index.css"),
-  "utf8",
-);
+function readWorkspaceCssBundle() {
+  const stylesRoot = path.join(ROOT, "apps/workspace/src/styles");
+  const parts = [
+    fs.readFileSync(path.join(ROOT, "apps/workspace/src/index.css"), "utf8"),
+  ];
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(abs);
+      else if (entry.isFile() && entry.name.endsWith(".css")) {
+        parts.push(fs.readFileSync(abs, "utf8"));
+      }
+    }
+  };
+  walk(stylesRoot);
+  return parts.join("\n");
+}
+
+const WORKSPACE_CSS = readWorkspaceCssBundle();
 
 test("design-system-tokens: each theme exposes foundation, semantic, and component sections", () => {
   assert.deepEqual([...DESIGN_THEMES], ["light", "dark"]);

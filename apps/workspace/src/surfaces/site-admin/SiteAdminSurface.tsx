@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
+import { WorkspaceSurfaceFrame } from "../../ui/primitives";
 import type { SurfaceNavItem } from "../types";
 import { CommandPalette } from "./CommandPalette";
 import type { ComponentName } from "./ComponentEditor";
@@ -972,7 +973,7 @@ function SiteAdminContent() {
   }, [selectTab]);
 
   return (
-    <div className="site-admin-shell">
+    <WorkspaceSurfaceFrame className="site-admin-shell">
       <SiteAdminTopBar sections={SITE_ADMIN_NAV_GROUPS} activeTab={activeTab} />
       <div className="site-admin-layout__main">
         <MessageBar />
@@ -1041,7 +1042,7 @@ function SiteAdminContent() {
         onNewPost={newPost}
         onNewPage={newPage}
       />
-    </div>
+    </WorkspaceSurfaceFrame>
   );
 }
 

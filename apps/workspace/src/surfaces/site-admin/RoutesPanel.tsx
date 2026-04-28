@@ -19,12 +19,12 @@ import type {
 } from "./types";
 import {
   clone,
-  isProductionSiteAdminConnection,
   isOverrideDirty,
   isProtectedDirty,
   normalizeOverride,
   normalizeProtected,
   normalizeString,
+  productionReadOnlyMessage,
 } from "./utils";
 
 /** Orchestrator for the Routes surface: owns load/save state + conflict
@@ -32,7 +32,7 @@ import {
  * each render their own table + create-form via components under
  * `routes/`. */
 export function RoutesPanel() {
-  const { connection, request, setMessage } = useSiteAdmin();
+  const { productionReadOnly, request, setMessage } = useSiteAdmin();
 
   const [sourceVersion, setSourceVersion] = useState<RoutesSourceVersion | null>(null);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
@@ -57,8 +57,6 @@ export function RoutesPanel() {
     kind: "pages" | "posts";
     from: string;
   } | null>(null);
-  const productionReadOnly = isProductionSiteAdminConnection(connection.baseUrl);
-
   const anyDirty = useMemo(() => {
     const overrideDirty = overrides.some((row) => {
       const draft = overrideDrafts[row.pageId];
@@ -137,7 +135,7 @@ export function RoutesPanel() {
       if (productionReadOnly) {
         setMessage(
           "warn",
-          "Production profile is read-only. Switch to Staging to save route overrides, then promote to production.",
+          productionReadOnlyMessage("save route overrides"),
         );
         return;
       }
@@ -195,7 +193,7 @@ export function RoutesPanel() {
     if (productionReadOnly) {
       setMessage(
         "warn",
-        "Production profile is read-only. Switch to Staging to create route overrides, then promote to production.",
+        productionReadOnlyMessage("create route overrides"),
       );
       return;
     }
@@ -248,7 +246,7 @@ export function RoutesPanel() {
       if (productionReadOnly) {
         setMessage(
           "warn",
-          "Production profile is read-only. Switch to Staging to save protected routes, then promote to production.",
+          productionReadOnlyMessage("save protected routes"),
         );
         return;
       }
@@ -316,7 +314,7 @@ export function RoutesPanel() {
     if (productionReadOnly) {
       setMessage(
         "warn",
-        "Production profile is read-only. Switch to Staging to create protected routes, then promote to production.",
+        productionReadOnlyMessage("create protected routes"),
       );
       return;
     }
@@ -414,7 +412,7 @@ export function RoutesPanel() {
       if (productionReadOnly) {
         setMessage(
           "warn",
-          "Production profile is read-only. Switch to Staging to delete redirects, then promote to production.",
+          productionReadOnlyMessage("delete redirects"),
         );
         return;
       }

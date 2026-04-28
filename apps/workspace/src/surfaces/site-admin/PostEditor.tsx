@@ -13,6 +13,12 @@ import {
 import { PageRoutingProperties } from "./page-routing-properties";
 import { PageSeoProperties } from "./page-seo-properties";
 import { localDateIso } from "./utils";
+import {
+  WorkspaceCheckboxField,
+  WorkspaceInspectorSection,
+  WorkspaceTextareaField,
+  WorkspaceTextField,
+} from "../../ui/primitives";
 
 export type PostEditorMode = "create" | "edit";
 
@@ -46,6 +52,7 @@ function tagsFromInput(raw: string): string[] {
 function PostProperties({
   form,
   mode,
+  readOnly,
   setForm,
   setSlug,
   slug,
@@ -53,48 +60,46 @@ function PostProperties({
 }: MdxDocumentPropertiesProps<PostFrontmatterForm>) {
   return (
     <>
-      {mode === "create" ? (
-        <label className="home-builder__field">
-          <span>Slug</span>
-          <input
+      <WorkspaceInspectorSection heading="Document">
+        {mode === "create" ? (
+          <WorkspaceTextField
+            autoFocus
+            hint={slugHint}
+            label="Slug"
+            readOnly={readOnly}
             value={slug}
             onChange={(event) => setSlug(event.target.value)}
             placeholder="my-new-post"
-            autoFocus
           />
-          <em>{slugHint}</em>
-        </label>
-      ) : null}
+        ) : null}
 
-      <label className="home-builder__field">
-        <span>Date</span>
-        <input
+        <WorkspaceTextField
+          label="Date"
           value={form.dateIso}
           type="date"
           required
+          readOnly={readOnly}
           onChange={(event) =>
             setForm((current) => ({ ...current, dateIso: event.target.value }))
           }
         />
-      </label>
 
-      <label className="home-builder__field">
-        <span>Description</span>
-        <textarea
+        <WorkspaceTextareaField
+          label="Description"
           rows={3}
+          readOnly={readOnly}
           value={form.description}
           placeholder="Optional excerpt for the blog index."
           onChange={(event) =>
             setForm((current) => ({ ...current, description: event.target.value }))
           }
         />
-      </label>
 
-      <label className="home-builder__field">
-        <span>Tags</span>
-        <input
+        <WorkspaceTextField
+          label="Tags"
           value={tagsToInput(form.tags)}
           placeholder="research, notes"
+          readOnly={readOnly}
           onChange={(event) =>
             setForm((current) => ({
               ...current,
@@ -102,18 +107,17 @@ function PostProperties({
             }))
           }
         />
-      </label>
 
-      <label className="home-builder__toggle">
-        <input
-          type="checkbox"
+        <WorkspaceCheckboxField
           checked={form.draft}
+          disabled={readOnly}
           onChange={(event) =>
             setForm((current) => ({ ...current, draft: event.target.checked }))
           }
-        />
-        Draft (hidden from public index)
-      </label>
+        >
+          Draft (hidden from public index)
+        </WorkspaceCheckboxField>
+      </WorkspaceInspectorSection>
 
       {/* Same per-page URL override + password protection drawer the
         * page editor surfaces. The component talks to the routes API

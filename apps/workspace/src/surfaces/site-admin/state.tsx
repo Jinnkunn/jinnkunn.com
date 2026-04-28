@@ -29,11 +29,13 @@ import type {
 } from "./types";
 import {
   decodeJwtPayload,
+  getSiteAdminEnvironment,
   isMutatingHttpMethod,
-  isProductionSiteAdminConnection,
   normalizeString,
+  productionReadOnlyMessage,
   serializeJson,
   toIsoFromEpochSeconds,
+  type SiteAdminEnvironment,
 } from "./utils";
 
 const STAGING_BASE_URL = "https://staging.jinkunchen.com";
@@ -93,6 +95,8 @@ interface DebugResponseState {
 export interface SiteAdminContextValue {
   // Connection
   connection: ConnectionState;
+  environment: SiteAdminEnvironment;
+  productionReadOnly: boolean;
   setBaseUrl: (next: string) => void;
   saveConnectionLocally: () => void;
   signInWithBrowser: () => Promise<string>;
@@ -325,6 +329,11 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
   const [postsGrouping, setPostsGroupingState] = useState<PostsGrouping>(() =>
     loadPostsGrouping(),
   );
+  const environment = useMemo(
+    () => getSiteAdminEnvironment(connection.baseUrl),
+    [connection.baseUrl],
+  );
+  const productionReadOnly = environment.readOnly;
 
   const bumpContentRevision = useCallback(() => {
     setContentRevisionState((prev) => prev + 1);
@@ -705,7 +714,7 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       body: unknown = null,
     ): Promise<NormalizedApiResponse> => {
       if (
-        isProductionSiteAdminConnection(connection.baseUrl) &&
+        productionReadOnly &&
         isMutatingHttpMethod(method) &&
         !path.startsWith("/api/site-admin/app-auth/")
       ) {
@@ -714,8 +723,7 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
           ok: false,
           status: 0,
           code: "PRODUCTION_READ_ONLY",
-          error:
-            "Production profile is read-only. Switch to Staging to save content/settings, then promote to production.",
+          error: productionReadOnlyMessage("save content/settings"),
           raw: null,
         };
         writeDebugResponse(`${normalizedMethod} ${path} (blocked)`, err);
@@ -796,6 +804,7 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       connection.baseUrl,
       connection.cfAccessClientId,
       connection.cfAccessClientSecret,
+      productionReadOnly,
       requestOnce,
       signInWithBrowser,
       writeDebugResponse,
@@ -805,6 +814,8 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SiteAdminContextValue>(
     () => ({
       connection,
+      environment,
+      productionReadOnly,
       setBaseUrl,
       saveConnectionLocally,
       signInWithBrowser,
@@ -837,6 +848,8 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     }),
     [
       connection,
+      environment,
+      productionReadOnly,
       setBaseUrl,
       saveConnectionLocally,
       signInWithBrowser,

@@ -8,12 +8,20 @@ import {
   removeFavorite,
   type SidebarFavorite,
 } from "./shell/favorites";
+import {
+  loadRecentItems,
+  persistRecentItems,
+  touchRecentItem,
+  type SidebarRecentItem,
+} from "./shell/recent";
 import { Sidebar } from "./shell/Sidebar";
 import { SurfaceNavProvider } from "./shell/surface-nav-context";
 import { Titlebar } from "./shell/Titlebar";
+import { WorkspaceCommandPalette } from "./shell/WorkspaceCommandPalette";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { SURFACES, findSurface } from "./surfaces/registry";
 import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
+import { WorkspaceMain } from "./ui/primitives";
 
 const DEFAULT_SURFACE_ID = "site-admin";
 const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
@@ -238,9 +246,18 @@ export function App() {
   const [favorites, setFavoritesState] = useState<SidebarFavorite[]>(() =>
     loadFavorites(),
   );
+  const [recentItems, setRecentItems] = useState<SidebarRecentItem[]>(() =>
+    loadRecentItems(),
+  );
+  const [workspacePaletteOpen, setWorkspacePaletteOpen] = useState(false);
+
   useEffect(() => {
     persistFavorites(favorites);
   }, [favorites]);
+
+  useEffect(() => {
+    persistRecentItems(recentItems);
+  }, [recentItems]);
 
   const toggleFavorite = useCallback(
     (entry: SidebarFavorite) => {
@@ -249,6 +266,13 @@ export function App() {
           ? removeFavorite(prev, entry.surfaceId, entry.itemId)
           : addFavorite(prev, entry),
       );
+    },
+    [],
+  );
+
+  const recordRecentItem = useCallback(
+    (entry: Omit<SidebarRecentItem, "visitedAt">) => {
+      setRecentItems((current) => touchRecentItem(current, entry));
     },
     [],
   );
@@ -275,6 +299,21 @@ export function App() {
     });
   }, [navItemChildren]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const meta = event.metaKey || event.ctrlKey;
+      if (!meta || event.altKey) return;
+      if (event.key.toLowerCase() !== "k") return;
+
+      if (event.shiftKey || activeSurfaceId !== "site-admin") {
+        event.preventDefault();
+        setWorkspacePaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeSurfaceId]);
+
   if (!activeSurface) {
     // SURFACES is statically non-empty (site-admin is always registered),
     // so this is mostly a type-narrowing guard. Falling through with a
@@ -290,6 +329,8 @@ export function App() {
       <Titlebar
         activeSurface={activeSurface}
         activeNavItemId={activeNavItemId}
+        favoriteCount={favorites.length}
+        recentCount={recentItems.length}
       />
       <div className="app-body">
         <Sidebar
@@ -297,26 +338,37 @@ export function App() {
           activeSurfaceId={activeSurface.id}
           activeNavItemId={activeNavItemId}
           favorites={favorites}
+          recentItems={recentItems}
           onSelectSurface={selectSurface}
           onSelectNavItem={selectNavItem}
           onToggleFavorite={toggleFavorite}
+          onRecordRecent={recordRecentItem}
           isFavorite={isFavorite}
           onMoveNavItem={handleMoveNavItem}
           onReorderNavItem={handleReorderNavItem}
           onRenameNavItem={handleRenameNavItem}
           validateRenameNavItem={validateRenameNavItem}
         />
-        <main
-          className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden px-6 pt-5 pb-8 flex flex-col gap-4"
-          aria-label={activeSurface.title}
-        >
+        <WorkspaceMain label={activeSurface.title}>
           <ErrorBoundary label={activeSurface.title} key={activeSurface.id}>
             <SurfaceNavProvider value={navContextValue}>
               <ActiveComponent />
             </SurfaceNavProvider>
           </ErrorBoundary>
-        </main>
+        </WorkspaceMain>
       </div>
+      <WorkspaceCommandPalette
+        open={workspacePaletteOpen}
+        onClose={() => setWorkspacePaletteOpen(false)}
+        surfaces={derivedSurfaces}
+        activeSurfaceId={activeSurface.id}
+        activeNavItemId={activeNavItemId}
+        favorites={favorites}
+        recentItems={recentItems}
+        onRecordRecent={recordRecentItem}
+        onSelectSurface={selectSurface}
+        onSelectNavItem={selectNavItem}
+      />
     </div>
   );
 }

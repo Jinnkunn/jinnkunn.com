@@ -2,6 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useSiteAdmin } from "./state";
 import { normalizeString } from "./utils";
+import {
+  WorkspaceCheckboxField,
+  WorkspaceInspectorSection,
+  WorkspaceTextareaField,
+  WorkspaceTextField,
+} from "../../ui/primitives";
 
 interface PageSeoPropertiesProps {
   /** Canonical URL path this page renders at (e.g. `/pages/about`).
@@ -185,59 +191,50 @@ export function PageSeoProperties({ pathname }: PageSeoPropertiesProps) {
   if (!pathname) return null;
 
   return (
-    <details className="surface-details">
-      <summary>SEO</summary>
+    <WorkspaceInspectorSection heading="SEO">
       <p className="page-routing-properties__hint">
         Per-page overrides for the canonical URL <code>{pathname}</code>.
         Empty fields fall back to the site-wide defaults (Settings →
         Site & Navigation). Clearing every field removes the override.
       </p>
-      <label className="home-builder__field">
-        <span>SEO title</span>
-        <input
-          value={draft.title}
-          placeholder="(default: page title)"
-          disabled={loading}
-          onChange={(event) =>
-            setDraft((prev) => ({ ...prev, title: event.target.value }))
-          }
-        />
-      </label>
-      <label className="home-builder__field">
-        <span>Description</span>
-        <textarea
-          rows={3}
-          value={draft.description}
-          placeholder="Short summary for search results + link previews."
-          disabled={loading}
-          onChange={(event) =>
-            setDraft((prev) => ({ ...prev, description: event.target.value }))
-          }
-        />
-      </label>
-      <label className="home-builder__field">
-        <span>OG image URL</span>
-        <input
-          value={draft.ogImage}
-          placeholder="https://… or /og/page.png"
-          spellCheck={false}
-          disabled={loading}
-          onChange={(event) =>
-            setDraft((prev) => ({ ...prev, ogImage: event.target.value }))
-          }
-        />
-      </label>
-      <label className="home-builder__toggle">
-        <input
-          type="checkbox"
-          checked={draft.noindex}
-          disabled={loading}
-          onChange={(event) =>
-            setDraft((prev) => ({ ...prev, noindex: event.target.checked }))
-          }
-        />
+      <WorkspaceTextField
+        label="SEO title"
+        value={draft.title}
+        placeholder="(default: page title)"
+        disabled={loading}
+        onChange={(event) =>
+          setDraft((prev) => ({ ...prev, title: event.target.value }))
+        }
+      />
+      <WorkspaceTextareaField
+        label="Description"
+        rows={3}
+        value={draft.description}
+        placeholder="Short summary for search results + link previews."
+        disabled={loading}
+        onChange={(event) =>
+          setDraft((prev) => ({ ...prev, description: event.target.value }))
+        }
+      />
+      <WorkspaceTextField
+        label="OG image URL"
+        value={draft.ogImage}
+        placeholder="https://… or /og/page.png"
+        spellCheck={false}
+        disabled={loading}
+        onChange={(event) =>
+          setDraft((prev) => ({ ...prev, ogImage: event.target.value }))
+        }
+      />
+      <WorkspaceCheckboxField
+        checked={draft.noindex}
+        disabled={loading}
+        onChange={(event) =>
+          setDraft((prev) => ({ ...prev, noindex: event.target.checked }))
+        }
+      >
         Hide from search engines (<code>noindex</code>)
-      </label>
+      </WorkspaceCheckboxField>
       <div className="flex gap-2 pt-2">
         <button
           type="button"
@@ -252,6 +249,6 @@ export function PageSeoProperties({ pathname }: PageSeoPropertiesProps) {
               : "Save SEO override"}
         </button>
       </div>
-    </details>
+    </WorkspaceInspectorSection>
   );
 }

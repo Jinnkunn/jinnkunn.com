@@ -9,11 +9,11 @@ import {
   defaultSettings,
   isNavDirty,
   isGoogleAnalyticsIdDraftValid,
-  isProductionSiteAdminConnection,
   navPatch,
   normalizeGoogleAnalyticsIdDraft,
   normalizeNavRow,
   normalizeSettings,
+  productionReadOnlyMessage,
   settingsPatch,
   settingsPatchConflictKeys,
 } from "./utils";
@@ -48,7 +48,7 @@ function isSourceConflictResponse(response: { ok: boolean; code?: string; status
  * (Site Settings form, Navigation Rows table + create form) to
  * dedicated presentational components under `config/`. */
 export function ConfigPanel() {
-  const { connection, request, setMessage } = useSiteAdmin();
+  const { productionReadOnly, request, setMessage } = useSiteAdmin();
 
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseSettings, setBaseSettings] = useState<SiteSettings>(defaultSettings());
@@ -61,8 +61,6 @@ export function ConfigPanel() {
   const [creatingNav, setCreatingNav] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [newNav, setNewNav] = useState<NewNavInput>(BLANK_NEW_NAV);
-  const productionReadOnly = isProductionSiteAdminConnection(connection.baseUrl);
-
   const settingsDirty = useMemo(
     () => Object.keys(settingsPatch(baseSettings, settingsDraft)).length > 0,
     [baseSettings, settingsDraft],
@@ -138,7 +136,7 @@ export function ConfigPanel() {
     if (productionReadOnly) {
       setMessage(
         "warn",
-        "Production profile is read-only. Switch to Staging to save settings, then promote to production.",
+        productionReadOnlyMessage("save settings"),
       );
       return;
     }
@@ -265,7 +263,7 @@ export function ConfigPanel() {
       if (productionReadOnly) {
         setMessage(
           "warn",
-          "Production profile is read-only. Switch to Staging to save navigation, then promote to production.",
+          productionReadOnlyMessage("save navigation"),
         );
         return;
       }
@@ -324,7 +322,7 @@ export function ConfigPanel() {
     if (productionReadOnly) {
       setMessage(
         "warn",
-        "Production profile is read-only. Switch to Staging to create navigation rows, then promote to production.",
+        productionReadOnlyMessage("create navigation rows"),
       );
       return;
     }

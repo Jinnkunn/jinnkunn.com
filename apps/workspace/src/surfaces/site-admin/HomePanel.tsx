@@ -11,6 +11,10 @@ import {
   type HomeFrontmatterForm,
 } from "./mdx-source";
 import { PublishButton } from "./PublishButton";
+import {
+  WorkspaceInspectorSection,
+  WorkspaceTextField,
+} from "../../ui/primitives";
 
 function blankForm(): HomeFrontmatterForm {
   return { title: "Hi there!" };
@@ -20,16 +24,14 @@ function HomeProperties({
   form,
 }: MdxDocumentPropertiesProps<HomeFrontmatterForm>) {
   return (
-    <>
-      <label className="home-builder__field">
-        <span>Title</span>
-        <input value={form.title} readOnly />
-        <em>
-          The title is edited in the canvas. Home saves to content/home.json as
-          title + bodyMdx.
-        </em>
-      </label>
-    </>
+    <WorkspaceInspectorSection heading="Document">
+      <WorkspaceTextField
+        hint="The title is edited in the canvas. Home saves to content/home.json as title + bodyMdx."
+        label="Title"
+        value={form.title}
+        readOnly
+      />
+    </WorkspaceInspectorSection>
   );
 }
 
