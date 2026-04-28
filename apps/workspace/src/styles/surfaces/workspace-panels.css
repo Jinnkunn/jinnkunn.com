@@ -90,6 +90,26 @@
   font-size: 11.5px;
 }
 
+.workspace-dashboard__text-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.workspace-dashboard__text-button:hover,
+.workspace-dashboard__text-button:focus-visible {
+  outline: none;
+  color: var(--color-text-primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+
 .workspace-dashboard__action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
