@@ -521,10 +521,11 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       ...(pendingDeployReason ? { pendingDeployReason } : {}),
     };
   } catch (err: unknown) {
+    const rawKind = String(process.env.SITE_ADMIN_STORAGE || "local")
+      .trim()
+      .toLowerCase();
     const configuredKind =
-      String(process.env.SITE_ADMIN_STORAGE || "local").trim().toLowerCase() === "github"
-        ? "github"
-        : "local";
+      rawKind === "github" ? "github" : rawKind === "db" ? "db" : "local";
     source = {
       storeKind: configuredKind,
       repo: null,
