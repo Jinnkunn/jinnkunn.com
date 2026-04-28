@@ -30,6 +30,7 @@ import {
   type SiteComponentDefinition,
   type SiteComponentName,
 } from "../../../../../lib/site-admin/component-registry.ts";
+import { WorkspaceInspectorSection } from "../../ui/primitives";
 
 export type ComponentName = SiteComponentName;
 
@@ -808,10 +809,12 @@ function ComponentEmbedPreview({
 function ComponentDocumentTools({
   body,
   name,
+  readOnly,
   setBody,
 }: {
   body: string;
   name: ComponentName;
+  readOnly: boolean;
   setBody: Dispatch<SetStateAction<string>>;
 }) {
   const definition = getSiteComponentDefinition(name);
@@ -821,6 +824,7 @@ function ComponentDocumentTools({
         <button
           type="button"
           className="btn btn--secondary"
+          disabled={readOnly}
           onClick={() => setBody((current) => appendEntry(current, name))}
         >
           Add {definition.entryLabel}
@@ -828,6 +832,7 @@ function ComponentDocumentTools({
         <button
           type="button"
           className="btn btn--ghost"
+          disabled={readOnly}
           onClick={() => setBody((current) => sortEntries(current, name))}
         >
           Normalize order
@@ -863,8 +868,7 @@ function ComponentProperties({
 
   return (
     <div className="component-editor-properties">
-      <section>
-        <span className="home-builder__eyebrow">Registry</span>
+      <WorkspaceInspectorSection heading="Registry">
         <dl className="component-editor-properties__list">
           <div>
             <dt>Embed</dt>
@@ -881,10 +885,9 @@ function ComponentProperties({
             <dd>{definition.primaryRoute}</dd>
           </div>
         </dl>
-      </section>
+      </WorkspaceInspectorSection>
 
-      <section>
-        <span className="home-builder__eyebrow">Entries</span>
+      <WorkspaceInspectorSection heading="Entries">
         <div className="component-editor-properties__stat">
           <strong>{live.count}</strong>
           <span>{definition.entryLabel}s in this draft</span>
@@ -911,10 +914,9 @@ function ComponentProperties({
             ))}
           </ul>
         ) : null}
-      </section>
+      </WorkspaceInspectorSection>
 
-      <section>
-        <span className="home-builder__eyebrow">Used by</span>
+      <WorkspaceInspectorSection heading="Used by">
         {usage.length > 0 ? (
           <ul className="component-editor-properties__rows">
             {usage.map((item) => (
@@ -940,7 +942,7 @@ function ComponentProperties({
             No page currently embeds this collection.
           </p>
         )}
-      </section>
+      </WorkspaceInspectorSection>
     </div>
   );
 }
@@ -997,8 +999,13 @@ export function ComponentEditor({ name, onExit }: ComponentEditorProps) {
         return { ok: true, source, version };
       },
       parseSource: parseComponentSource,
-      renderDocumentTools: ({ body, setBody }) => (
-        <ComponentDocumentTools body={body} name={name} setBody={setBody} />
+      renderDocumentTools: ({ body, readOnly, setBody }) => (
+        <ComponentDocumentTools
+          body={body}
+          name={name}
+          readOnly={readOnly}
+          setBody={setBody}
+        />
       ),
       renderProperties: (props) => (
         <ComponentProperties name={name} info={infoRef.current} props={props} />

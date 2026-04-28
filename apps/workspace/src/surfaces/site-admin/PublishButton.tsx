@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSiteAdmin } from "./state";
-import { isProductionSiteAdminConnection, normalizeString } from "./utils";
+import { normalizeString } from "./utils";
 
 type DeployPreviewSummaryKey =
   | "pagesAdded"
@@ -229,7 +229,7 @@ function isDeployCandidateBlocked(source: SourceSnapshot | null): boolean {
  * Cloudflare promotion step after those artifacts land.
  */
 export function PublishButton({ label = "Publish" }: { label?: string }) {
-  const { connection, request, setMessage } = useSiteAdmin();
+  const { connection, environment, productionReadOnly, request, setMessage } = useSiteAdmin();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -239,8 +239,6 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
   const [previewError, setPreviewError] = useState("");
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
-  const productionReadOnly = isProductionSiteAdminConnection(connection.baseUrl);
-
   useEffect(() => {
     if (!confirming) return;
     const timer = window.setTimeout(() => setConfirming(false), 30000);
@@ -251,7 +249,7 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
     if (productionReadOnly) {
       setMessage(
         "warn",
-        "Production profile is read-only. Promote production with the release runbook after staging validation.",
+        environment.helpText,
       );
       return;
     }
@@ -286,7 +284,7 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
     if (productionReadOnly) {
       setMessage(
         "warn",
-        "Production profile is read-only. Promote production with the release runbook after staging validation.",
+        environment.helpText,
       );
       return;
     }
@@ -356,7 +354,7 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
         disabled={!ready || productionReadOnly || busy || previewLoading}
         title={
           productionReadOnly
-            ? "Production profile is read-only. Use the release runbook after staging validation."
+            ? environment.helpText
             : deployCandidateBlocked
             ? "Wait for the staging candidate rebuild, then recheck."
             : "Promote the current worker version via Cloudflare API"

@@ -49,6 +49,7 @@ export function SiteAdminConnectionPill() {
     clearAuth,
     setCfAccessServiceToken,
     clearCfAccessServiceToken,
+    environment,
     profiles,
     activeProfileId,
     switchProfile,
@@ -152,6 +153,13 @@ export function SiteAdminConnectionPill() {
       >
         <span className="site-admin-pill__dot" aria-hidden="true" />
         <span className="site-admin-pill__label">{pillLabel}</span>
+        <span
+          className="site-admin-pill__mode"
+          data-kind={environment.kind}
+          title={environment.helpText}
+        >
+          {environment.readOnly ? "Read-only" : environment.label}
+        </span>
         <svg
           viewBox="0 0 10 10"
           width="8"
@@ -179,6 +187,15 @@ export function SiteAdminConnectionPill() {
             <h3>Connection</h3>
             <p>API endpoint + app-token (browser sign-in).</p>
           </header>
+
+          <div
+            className="site-admin-pill__environment"
+            data-kind={environment.kind}
+            role={environment.readOnly ? "status" : undefined}
+          >
+            <strong>{environment.label}</strong>
+            <span>{environment.helpText}</span>
+          </div>
 
           <div
             className="site-admin-pill__field site-admin-pill__profile-field"

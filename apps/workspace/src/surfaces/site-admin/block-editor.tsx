@@ -49,6 +49,8 @@ export function getMatchingBlockEditorCommands<TCommand extends BlockEditorComma
 function renderCommandButton<TCommand extends BlockEditorCommand>(
   command: TCommand,
   onChoose: (command: TCommand) => void,
+  active: boolean,
+  onActive?: (command: TCommand) => void,
 ) {
   const icon = command.icon ?? command.label.charAt(0);
   return (
@@ -56,7 +58,10 @@ function renderCommandButton<TCommand extends BlockEditorCommand>(
       type="button"
       role="menuitem"
       key={command.id}
+      data-active={active ? "true" : undefined}
       onMouseDown={(event) => event.preventDefault()}
+      onMouseEnter={() => onActive?.(command)}
+      onFocus={() => onActive?.(command)}
       onClick={() => onChoose(command)}
     >
       <span className="block-editor-command__icon" aria-hidden="true">
@@ -71,16 +76,20 @@ function renderCommandButton<TCommand extends BlockEditorCommand>(
 }
 
 export function BlockEditorCommandMenu<TCommand extends BlockEditorCommand>({
+  activeCommandId,
   ariaLabel = "Block shortcuts",
   className,
   commands,
   empty,
+  onActiveCommandChange,
   onChoose,
 }: {
+  activeCommandId?: string;
   ariaLabel?: string;
   className: string;
   commands: TCommand[];
   empty?: ReactNode;
+  onActiveCommandChange?: (command: TCommand) => void;
   onChoose: (command: TCommand) => void;
 }) {
   if (commands.length === 0) {
@@ -107,10 +116,24 @@ export function BlockEditorCommandMenu<TCommand extends BlockEditorCommand>({
               {group ? (
                 <div className="block-editor-command__group-label">{group}</div>
               ) : null}
-              {items.map((command) => renderCommandButton(command, onChoose))}
+              {items.map((command) =>
+                renderCommandButton(
+                  command,
+                  onChoose,
+                  command.id === activeCommandId,
+                  onActiveCommandChange,
+                ),
+              )}
             </div>
           ))
-        : commands.map((command) => renderCommandButton(command, onChoose))}
+        : commands.map((command) =>
+            renderCommandButton(
+              command,
+              onChoose,
+              command.id === activeCommandId,
+              onActiveCommandChange,
+            ),
+          )}
     </div>
   );
 }

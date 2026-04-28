@@ -12,6 +12,12 @@ import {
 } from "./mdx-source";
 import { PageRoutingProperties } from "./page-routing-properties";
 import { PageSeoProperties } from "./page-seo-properties";
+import {
+  WorkspaceCheckboxField,
+  WorkspaceInspectorSection,
+  WorkspaceTextareaField,
+  WorkspaceTextField,
+} from "../../ui/primitives";
 
 export type PageEditorMode = "create" | "edit";
 
@@ -33,6 +39,7 @@ function blankForm(): PageFrontmatterForm {
 function PageProperties({
   form,
   mode,
+  readOnly,
   setForm,
   setSlug,
   slug,
@@ -40,52 +47,50 @@ function PageProperties({
 }: MdxDocumentPropertiesProps<PageFrontmatterForm>) {
   return (
     <>
-      {mode === "create" ? (
-        <label className="home-builder__field">
-          <span>Slug</span>
-          <input
+      <WorkspaceInspectorSection heading="Document">
+        {mode === "create" ? (
+          <WorkspaceTextField
+            autoFocus
+            hint={slugHint}
+            label="Slug"
+            readOnly={readOnly}
             value={slug}
             onChange={(event) => setSlug(event.target.value)}
             placeholder="about"
-            autoFocus
           />
-          <em>{slugHint}</em>
-        </label>
-      ) : null}
+        ) : null}
 
-      <label className="home-builder__field">
-        <span>Updated</span>
-        <input
+        <WorkspaceTextField
+          label="Updated"
           value={form.updated}
           type="date"
+          readOnly={readOnly}
           onChange={(event) =>
             setForm((current) => ({ ...current, updated: event.target.value }))
           }
         />
-      </label>
 
-      <label className="home-builder__field">
-        <span>Description</span>
-        <textarea
+        <WorkspaceTextareaField
+          label="Description"
           rows={3}
+          readOnly={readOnly}
           value={form.description}
           placeholder="Optional SEO description."
           onChange={(event) =>
             setForm((current) => ({ ...current, description: event.target.value }))
           }
         />
-      </label>
 
-      <label className="home-builder__toggle">
-        <input
-          type="checkbox"
+        <WorkspaceCheckboxField
           checked={form.draft}
+          disabled={readOnly}
           onChange={(event) =>
             setForm((current) => ({ ...current, draft: event.target.checked }))
           }
-        />
-        Draft / folder page (shown in Tauri, hidden from public site)
-      </label>
+        >
+          Draft / folder page (shown in Tauri, hidden from public site)
+        </WorkspaceCheckboxField>
+      </WorkspaceInspectorSection>
 
       {mode === "edit" ? (
         <>

@@ -1,0 +1,3029 @@
+/* ------------------------------------------------------------------ *
+ * Unified MDX document editor (posts + pages)
+ * ------------------------------------------------------------------ */
+.mdx-document-editor-card {
+  gap: 10px;
+  padding: 0 0 28px;
+  border: 0;
+  background: transparent;
+}
+
+.mdx-document-editor__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 42px;
+  padding: 4px 2px 8px;
+}
+
+.mdx-document-editor__context {
+  min-width: 0;
+}
+
+.mdx-document-editor__context-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-document-editor__context-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.mdx-document-editor__crumb {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-document-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mdx-document-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mdx-document-editor[data-read-only="true"] {
+  --mdx-read-only-opacity: 0.86;
+}
+
+.mdx-document-editor__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: min(860px, 100%);
+  margin-inline: auto;
+  padding: 0 4px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-editor__mode-switch {
+  border-color: transparent;
+  background: transparent;
+}
+
+.mdx-document-editor__mode-switch button {
+  min-width: 58px;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+
+.mdx-document-editor__mode-switch button[data-active="true"] {
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+  box-shadow: none;
+}
+
+.mdx-document-editor__mode-hint {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.mdx-document-editor__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.mdx-document-editor[data-properties-open="true"] .mdx-document-editor__layout {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+}
+
+.mdx-document-editor__canvas,
+.mdx-document-editor__properties {
+  min-width: 0;
+}
+
+.mdx-document-editor__canvas {
+  --mdx-canvas-inline-pad: clamp(24px, 7vw, 56px);
+  --mdx-block-gutter: 34px;
+  width: min(920px, 100%);
+  justify-self: center;
+  padding: 34px var(--mdx-canvas-inline-pad) 72px
+    calc(var(--mdx-canvas-inline-pad) + var(--mdx-block-gutter));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mdx-document-editor[data-properties-open="true"] .mdx-document-editor__canvas {
+  --mdx-canvas-inline-pad: clamp(22px, 5vw, 40px);
+  width: min(920px, 100%);
+}
+
+.mdx-document-editor__properties {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 210px);
+  overflow: auto;
+  padding: 12px;
+  background: var(--color-bg-surface-alt);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+}
+
+.mdx-document-editor__properties-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.mdx-document-editor__properties-head strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.mdx-document-editor__properties-head .btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.home-builder__field em {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.mdx-document-editor__title {
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 22px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 2px 4px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 42px;
+  font-weight: 780;
+  letter-spacing: 0;
+  line-height: 1.04;
+}
+
+.mdx-document-editor__title:hover {
+  background: transparent;
+}
+
+.mdx-document-editor__title:focus {
+  outline: none;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mdx-document-editor__title[readonly] {
+  cursor: default;
+}
+
+.mdx-document-editor__document-tools {
+  margin: -10px 0 18px;
+}
+
+.component-editor-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.component-editor-tools code {
+  color: var(--color-text-secondary);
+}
+
+.component-editor-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.component-editor-properties section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.component-editor-properties__list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+}
+
+.component-editor-properties__list div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.component-editor-properties__list dt {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.component-editor-properties__list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.component-editor-properties__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+}
+
+.component-editor-properties__stat strong {
+  color: var(--color-text-primary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.component-editor-properties__stat span,
+.component-editor-properties__empty,
+.component-editor-properties__warn {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.component-editor-properties__warn {
+  color: var(--color-warn);
+}
+
+.component-editor-properties__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.component-editor-properties__rows li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+}
+
+.component-editor-properties__rows strong,
+.component-editor-properties__rows span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.component-editor-properties__rows strong {
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+
+.component-editor-properties__rows span {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.component-editor-properties__rows a {
+  width: fit-content;
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.component-editor-properties__issues {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--color-danger);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.component-collection-table,
+.component-embed-preview {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+}
+
+.component-collection-table > summary,
+.component-embed-preview > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 650;
+  list-style: none;
+}
+
+.component-collection-table > summary::-webkit-details-marker,
+.component-embed-preview > summary::-webkit-details-marker {
+  display: none;
+}
+
+.component-collection-table > summary::before,
+.component-embed-preview > summary::before {
+  content: "▸";
+  color: var(--color-text-muted);
+  font-size: 11px;
+  transition: transform 120ms ease;
+}
+
+.component-collection-table[open] > summary::before,
+.component-embed-preview[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.component-collection-table > summary span,
+.component-embed-preview > summary span {
+  flex: 1 1 auto;
+}
+
+.component-collection-table > summary strong,
+.component-embed-preview > summary strong {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.component-collection-table__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.component-collection-table__empty {
+  margin: 4px 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.component-collection-table__row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  background: var(--color-bg-surface-alt);
+}
+
+.component-collection-table__row--news {
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr) auto;
+}
+
+.component-collection-table__row--works {
+  grid-template-columns: minmax(104px, 128px) repeat(3, minmax(0, 1fr)) auto;
+}
+
+.component-collection-table__row--publication {
+  grid-template-columns: minmax(0, 2fr) minmax(76px, 96px) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.component-collection-table__row label,
+.component-collection-table__advanced label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.component-collection-table__row input,
+.component-collection-table__row select,
+.component-collection-table__row textarea,
+.component-collection-table__advanced input,
+.component-collection-table__advanced textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+  padding: 5px 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  letter-spacing: 0;
+}
+
+.component-collection-table__row textarea,
+.component-collection-table__advanced textarea {
+  min-height: 58px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.component-collection-table__row input[aria-invalid] {
+  border-color: var(--color-danger);
+}
+
+.component-collection-table__summary {
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+}
+
+.component-collection-table__summary strong {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.component-collection-table__advanced {
+  grid-column: 1 / -2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.component-collection-table__advanced > summary {
+  grid-column: 1 / -1;
+  width: fit-content;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.component-collection-table__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.component-collection-table__actions button {
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.component-collection-table__actions button:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.component-collection-table__actions button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.component-embed-preview {
+  overflow: hidden;
+}
+
+.component-embed-preview__body {
+  max-height: 540px;
+  overflow: auto;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+
+.component-embed-preview__error {
+  margin: 0;
+  padding: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .component-collection-table__row,
+  .component-collection-table__row--news,
+  .component-collection-table__row--works,
+  .component-collection-table__row--publication {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-collection-table__advanced {
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-collection-table__actions {
+    justify-content: flex-end;
+  }
+}
+
+.mdx-document-editor__source {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mdx-document-editor__hint {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.mdx-preview-entry {
+  margin: 0 0 18px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.mdx-preview-entry .notion-heading {
+  margin-bottom: 6px;
+}
+
+.mdx-document-blocks {
+  --mdx-block-row-gutter: var(--mdx-block-gutter, 34px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: visible;
+  border-radius: 8px;
+  padding: 2px 0;
+  transition:
+    background-color 130ms ease,
+    box-shadow 130ms ease;
+}
+
+.mdx-document-blocks[data-drag-active="true"] {
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 75%, transparent) inset;
+}
+
+.mdx-document-blocks[data-read-only="true"] {
+  opacity: var(--mdx-read-only-opacity, 0.86);
+}
+
+.mdx-document-block {
+  position: relative;
+  display: block;
+  padding: 0;
+  border-radius: 5px;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.mdx-document-block[data-drag-over="true"] {
+  box-shadow:
+    inset 0 2px 0 0 var(--color-accent),
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.mdx-document-block[data-dragging="true"] {
+  opacity: 0.4;
+}
+
+.mdx-document-block:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 1.8%, transparent);
+}
+
+.mdx-document-block[data-empty="true"]:not(:hover):not(:focus-within):not([data-controls-open="true"]) {
+  background: transparent;
+}
+
+/* Notion-style left gutter. It sits outside the content column, so idle or
+ * hovered controls never compress the editable text. */
+.mdx-document-block__gutter {
+  position: absolute;
+  top: 0;
+  left: calc(-1 * var(--mdx-block-row-gutter));
+  width: calc(var(--mdx-block-row-gutter) - 2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 1px;
+  padding-top: 3px;
+  opacity: 0;
+  transform: translateX(4px);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.mdx-document-block:hover .mdx-document-block__gutter,
+.mdx-document-block:focus-within .mdx-document-block__gutter,
+.mdx-document-block[data-controls-open="true"] .mdx-document-block__gutter,
+.mdx-document-block__gutter:has(:focus-visible) {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.mdx-document-block__handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--mdx-handle-color);
+  opacity: 0.74;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease,
+    opacity 100ms ease;
+}
+
+.mdx-document-block__handle:hover,
+.mdx-document-block__handle:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+  color: var(--mdx-handle-color-hover);
+  opacity: 1;
+}
+
+.mdx-document-block__handle--menu {
+  cursor: grab;
+  font-size: 12px;
+  letter-spacing: -1px;
+}
+
+.mdx-document-block__handle--menu:active {
+  cursor: grabbing;
+}
+
+/* Action menu items (rendered inside .block-popover via BlockPopover). */
+.block-popover__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 200px;
+}
+
+.block-popover__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+.block-popover__item:hover:not(:disabled),
+.block-popover__item:focus-visible,
+.block-popover__item[aria-current="true"] {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.block-popover__item[aria-current="true"] {
+  color: var(--color-accent-strong);
+}
+
+.block-popover__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.block-popover__item kbd {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.block-popover__item--back {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: 2px;
+}
+
+.block-popover__divider {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--mdx-popover-border);
+}
+
+.block-popover__item--swatch {
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.block-popover__swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--mdx-color-bg, transparent);
+}
+
+/* Notion-ish background palette. Used both as the popover swatch via the
+ * `data-color` attribute on the swatch span, and as the tinted background on
+ * the .mdx-document-block wrapper for the editor canvas. The same colors
+ * land in notion-blocks.css for the public render. */
+.block-popover__swatch[data-color="default"] { background: transparent; }
+.block-popover__swatch[data-color="gray"] { background: rgba(120, 119, 116, 0.15); }
+.block-popover__swatch[data-color="brown"] { background: rgba(159, 107, 83, 0.18); }
+.block-popover__swatch[data-color="orange"] { background: rgba(217, 115, 13, 0.18); }
+.block-popover__swatch[data-color="yellow"] { background: rgba(203, 145, 47, 0.22); }
+.block-popover__swatch[data-color="green"] { background: rgba(68, 131, 97, 0.22); }
+.block-popover__swatch[data-color="blue"] { background: rgba(51, 126, 169, 0.22); }
+.block-popover__swatch[data-color="purple"] { background: rgba(144, 101, 176, 0.22); }
+.block-popover__swatch[data-color="pink"] { background: rgba(193, 76, 138, 0.22); }
+.block-popover__swatch[data-color="red"] { background: rgba(212, 76, 71, 0.22); }
+
+.mdx-document-block[data-color] {
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 6px;
+}
+.mdx-document-block[data-color="gray"] { background: rgba(120, 119, 116, 0.1); }
+.mdx-document-block[data-color="brown"] { background: rgba(159, 107, 83, 0.12); }
+.mdx-document-block[data-color="orange"] { background: rgba(217, 115, 13, 0.12); }
+.mdx-document-block[data-color="yellow"] { background: rgba(203, 145, 47, 0.16); }
+.mdx-document-block[data-color="green"] { background: rgba(68, 131, 97, 0.16); }
+.mdx-document-block[data-color="blue"] { background: rgba(51, 126, 169, 0.14); }
+.mdx-document-block[data-color="purple"] { background: rgba(144, 101, 176, 0.14); }
+.mdx-document-block[data-color="pink"] { background: rgba(193, 76, 138, 0.14); }
+.mdx-document-block[data-color="red"] { background: rgba(212, 76, 71, 0.14); }
+
+/* @mention picker — search box + page list. */
+.block-popover--mention {
+  padding: 4px;
+  min-width: 240px;
+}
+
+.mention-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mention-picker__input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mention-picker__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.mention-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mention-picker__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mention-picker__item:hover,
+.mention-picker__item:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mention-picker__item span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mention-picker__empty {
+  padding: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Inline format toolbar — dense single-row strip, anchored above the
+ * focused textarea while the user has a non-empty selection. */
+.block-popover--inline {
+  padding: 3px;
+  min-width: 0;
+  border-radius: 9px;
+}
+
+.block-popover__inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  /* The color picker panel positions itself absolutely relative to this
+   * row so it drops right below the "A▾" button. */
+  position: relative;
+}
+
+.block-popover__inline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 27px;
+  height: 27px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 7px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+.block-popover__inline-btn:hover,
+.block-popover__inline-btn:focus-visible {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.block-popover__inline-btn--mono {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 11px;
+}
+
+.block-popover__inline-btn[aria-pressed="true"] {
+  color: var(--color-accent);
+}
+
+.block-popover__inline-divider {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--mdx-popover-border);
+}
+
+.mdx-document-heading-block select {
+  min-height: 24px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  padding: 3px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.mdx-document-heading-block select:hover {
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.mdx-document-text-block,
+.mdx-document-heading-block__input,
+.mdx-document-image-block__fields input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.mdx-document-text-block-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.mdx-document-text-block-shell[data-empty="true"] {
+  min-height: 30px;
+}
+
+.mdx-document-text-block {
+  min-height: 30px;
+  padding: 3px 5px;
+  resize: none;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.62;
+}
+
+.mdx-document-text-block--quote {
+  border-left: 3px solid var(--color-border-default);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-text-block--callout {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+}
+
+.mdx-document-text-block--code {
+  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 12px;
+}
+
+.mdx-document-text-block--raw {
+  background: color-mix(in srgb, var(--color-warn) 7%, transparent);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 12px;
+}
+
+/* TipTap-backed paragraph blocks (ParagraphRichTextBlock). The
+ * contenteditable already carries `.mdx-document-text-block` via
+ * editorProps.attributes.class, so the base sizing / focus chrome from
+ * `.mdx-document-text-block` rules above applies directly. The selectors
+ * below add the bits a contenteditable needs that a textarea didn't:
+ * paragraph margin reset, link/code styling, and the placeholder overlay
+ * driven by the Placeholder extension. */
+.mdx-document-text-block.ProseMirror:focus,
+.mdx-document-text-block.ProseMirror-focused {
+  outline: none;
+}
+
+.mdx-document-text-block.ProseMirror p {
+  margin: 0;
+}
+
+.mdx-document-text-block.ProseMirror code {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-text-block.ProseMirror a,
+.component-embed-preview__body a.notion-link.link,
+.mdx-preview-entry a.notion-link.link {
+  --link-icon-space: 0px;
+  color: inherit;
+  opacity: 0.7;
+  padding: 0.04em 0.08em;
+  border-radius: 4px;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.22em;
+  text-decoration-skip-ink: auto;
+  text-decoration-color: rgba(55, 53, 47, 0.55);
+  background-image:
+    linear-gradient(to top, rgba(246, 228, 183, 0.88), rgba(246, 228, 183, 0.88)),
+    linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 55%,
+      rgba(246, 228, 183, 0.88) 55%,
+      rgba(246, 228, 183, 0.88) 100%
+    );
+  background-repeat: no-repeat;
+  background-size:
+    calc(100% - var(--link-icon-space)) 0px,
+    calc(100% - var(--link-icon-space)) 0.42em;
+  background-position:
+    var(--link-icon-space) 100%,
+    var(--link-icon-space) 100%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition:
+    background-size 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    text-decoration-color 180ms ease,
+    opacity 100ms ease-in;
+}
+
+.mdx-document-text-block.ProseMirror a:hover,
+.component-embed-preview__body a.notion-link.link:hover,
+.mdx-preview-entry a.notion-link.link:hover {
+  opacity: 1;
+  background-size:
+    calc(100% - var(--link-icon-space)) 1.35em,
+    calc(100% - var(--link-icon-space)) 0.42em;
+  text-decoration-color: rgba(55, 53, 47, 0.78);
+}
+
+.mdx-document-text-block.ProseMirror a {
+  cursor: text;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"] {
+  position: relative;
+  display: inline-block;
+  padding-left: 21px;
+  opacity: 0.7;
+  transition: opacity 100ms ease-in;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"] a {
+  color: inherit;
+  opacity: 1;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"]:hover,
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"]:focus-within {
+  opacity: 1;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-52%);
+  border-radius: 5px;
+  background:
+    color-mix(in srgb, var(--color-bg-surface) 86%, white)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E")
+    center / 12px 12px no-repeat;
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+  pointer-events: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="scholar.google"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="scholar.google"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20aria-label%3D%22Google%20Scholar%22%20role%3D%22img%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%2215%25%22%20fill%3D%22%234285f4%22%2F%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M213%20111l-107%2094h69c5%2045%2041%2064%2078%2067-7%2018-4%2027%207%2039-43%201-103%2026-103%2067%204%2045%2063%2054%2092%2054%2038%201%2081-19%2090-54%204-35-10-54-31-71-23-18-28-28-21-40%2015-17%2035-27%2039-51%202-17-2-28-6-43l45-38-1%2016c-3%202-5%206-5%209v103c2%2013%2022%2011%2023%200V160c0-3-2-7-5-8v-25l16-16zm58%20141c-61%2010-87-87-38-99%2056-11%2083%2086%2038%2099zm-5%2073c60%2013%2061%2063%2010%2078-44%209-82-4-81-30%200-25%2035-48%2071-48z%22%2F%3E%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="researchgate.net"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="researchgate.net"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20aria-label%3D%22Research%20Gate%22%20role%3D%22img%22%20viewBox%3D%220%200%20512%20512%22%3E%20%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%2215%25%22%20fill%3D%22%2300d0af%22%2F%3E%20%3Cg%20fill%3D%22%23feffff%22%3E%20%3Cpath%20d%3D%22m271%20383c-15-4-23-10-36-26-9-12-26-39-35-53l-6-11h-24l0%2034c1%2043%200%2042%2019%2045l10%201%200%204%200%204h-80l0-4c0-4%201-4%209-6%2010-2%2014-5%2015-14%201-4%201-31%201-79-0-70-1-72-3-77-3-5-7-7-18-8-4-1-5-1-5-5v-4l43-1c55-1%2065%200%2081%2011%2015%2010%2022%2024%2020%2043-1%2021-17%2042-37%2050-4%201-7%203-7%203%200%202%2017%2028%2028%2043%2015%2021%2027%2032%2036%2037%204%202%209%203%2010%203%203%200%203%201%203%204%200%203-1%205-2%205-5%202-19%202-26%200zm-57-109c14-7%2022-18%2023-35%201-13-2-22-10-30-9-10-25-14-48-12l-10%201v39c0%2036%200%2040%202%2040%201%200%209%201%2018%200%2014-0%2017-1%2024-4z%22%2F%3E%20%3Cpath%20d%3D%22m321%20228c-25-4-34-20-32-61%201-21%203-30%2011-38%207-7%2013-9%2025-10%2013-1%2021%202%2029%208%205%204%209%2010%209%2013%200%201-3%202-6%204l-6%203-3-3c-5-6-9-9-14-11-10-3-20%202-25%2011-3%205-3%206-3%2029%200%2022%200%2025%203%2029%204%207%2012%2011%2021%2010%2013-1%2020-10%2020-24v-7l-10-0-10-0v-13h36l-0%2015c-0%2012-1%2016-3%2022-6%2015-23%2024-42%2022z%22%2F%3E%20%3C%2Fg%3E%20%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href^="https://orcid.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href^="https://orcid.org/"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20aria-label%3D%22Orcid%22%20role%3D%22img%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%2215%25%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%22256%22%20cy%3D%22256%22%20r%3D%22256%22%20fill%3D%22%23a6ce39%22%2F%3E%3Cpath%20d%3D%22m173%20372h-31v-214h31zm45-214h83c79%200%20114%2057%20114%20107%200%2055-43%20107-114%20107h-84zm31%20187h49c70%200%2086-53%2086-79%200-43-27-79-87-79h-47zm-71-231c0%2011-9%2020-20%2020s-20-9-20-20a20%2020%200%200%201%2020-20c11%200%2020%209%2020%2020z%22%20fill%3D%22%23ffffff%22%2F%3E%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="semanticscholar.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="semanticscholar.org/"]
+  span[data-link-style="icon"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg%20width%3D%22100%22%20height%3D%22100%22%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2215%22%20fill%3D%22%23638BC4%22%2F%3E%20%3Cpath%20fill-rule%3D%22evenodd%22%20clip-rule%3D%22evenodd%22%20d%3D%22M95%2040.7957C91.863%2042.7428%2089.5914%2043.9327%2086.9952%2045.4471C71.4183%2054.8582%2056.3822%2065.351%2044.8077%2079.089L39.1827%2085.9039L22.0913%2058.6442C25.8774%2061.6731%2035.5048%2070.2188%2039.399%2072.1659L51.9471%2062.6466C60.7091%2056.4808%2085.4808%2043.0673%2095%2040.7957Z%22%20fill%3D%22white%22%2F%3E%20%3Cpath%20d%3D%22M30.0962%2061.1322C30.5288%2061.4567%2030.8534%2061.7813%2031.2861%2062.1058C27.9327%2052.6947%2021.9832%2043.2837%2013.5457%2035.1707C10.7332%2035.1707%207.92067%2035.1707%205%2035.1707C15.8173%2042.9591%2024.2548%2052.0457%2030.0962%2061.1322Z%22%20fill%3D%22white%22%2F%3E%20%3Cpath%20d%3D%22M32.9087%2063.6202C33.2332%2063.9447%2033.6659%2064.1611%2033.9904%2064.4856C33.4495%2051.7212%2028.6899%2038.6322%2019.6034%2027.3822C16.899%2027.3822%2014.1947%2027.3822%2011.4904%2027.3822C23.0649%2038.0913%2030.2043%2051.0721%2032.9087%2063.6202Z%22%20fill%3D%22white%22%2F%3E%20%3Cpath%20d%3D%22M35.1803%2065.4591C36.4784%2066.5409%2037.7764%2067.5144%2038.8582%2068.2716C41.6707%2054.5337%2039.2909%2039.7139%2031.8269%2026.8413C44.4832%2026.625%2057.1394%2026.5168%2069.6875%2026.3005C72.5%2032.5745%2074.1226%2039.2813%2074.5553%2046.2043C75.637%2045.6635%2076.7187%2045.1226%2077.9087%2044.5817C77.3678%2037.4423%2075.4207%2029.8702%2071.6346%2021C54.3269%2021%2037.1274%2021%2019.8197%2021C31.0697%2034.3053%2036.1538%2050.4231%2035.1803%2065.4591Z%22%20fill%3D%22white%22%2F%3E%20%3C%2Fsvg%3E")
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+/* Keep explicit icon links in the editor aligned with the public-site icons. */
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://twitter.com/_jinnkunn"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://twitter.com/_jinnkunn"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/x.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="/blog"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="/blog"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/blog-b.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="/blog.rss"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="/blog.rss"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/rss.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://www.linkedin.com/in/jinkun-chen/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://www.linkedin.com/in/jinkun-chen/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/linkedin-blue.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="/chen"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="/chen"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/chen-seal.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://dal.ca/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://dal.ca/"]
+  span[data-link-style="icon"]::before,
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href="https://www.dal.ca/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href="https://www.dal.ca/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/dal-seal.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="scholar.google"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="scholar.google"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/google-scholar.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="researchgate.net"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="researchgate.net"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/researchgate.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href^="https://orcid.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href^="https://orcid.org/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/orcid.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror
+  span[data-link-style="icon"]:has(a[href*="semanticscholar.org/"])::before,
+.mdx-document-text-block.ProseMirror
+  a[href*="semanticscholar.org/"]
+  span[data-link-style="icon"]::before {
+  background: url("/web_image/semantic_scholar.svg") center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-text-block.ProseMirror span[data-link-style="icon"][data-link-icon]::before {
+  background:
+    var(--link-icon-image, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E"))
+    center / 18px 18px no-repeat;
+  box-shadow: none;
+}
+
+.mdx-document-hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+}
+
+.mdx-document-text-block.ProseMirror strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+/* Placeholder rendering: the @tiptap/extension-placeholder package adds
+ * an `is-editor-empty` class on the first empty paragraph and stores the
+ * placeholder string in `data-placeholder`. The pseudo-element shows it
+ * with the same dimmed treatment the textarea overlay used. */
+.mdx-document-text-block.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--mdx-placeholder-color);
+  pointer-events: none;
+  height: 0;
+}
+
+/* When unfocused, fade out the placeholder so empty rows aren't noisy
+ * (matches the textarea overlay's :focus-within behavior). */
+.mdx-document-text-block-shell:not(:focus-within)
+  .mdx-document-text-block.ProseMirror
+  p.is-editor-empty:first-child::before {
+  opacity: 0;
+}
+
+.mdx-document-text-block-shell:focus-within
+  .mdx-document-text-block.ProseMirror
+  p.is-editor-empty:first-child::before {
+  opacity: 1;
+  transition: opacity 100ms ease;
+}
+
+.mdx-document-block[data-empty="true"]:hover
+  .mdx-document-text-block-shell:not(:focus-within)
+  .mdx-document-text-block.ProseMirror
+  p.is-editor-empty:first-child::before {
+  opacity: 0.55;
+}
+
+/* Active state for inline format toolbar buttons — the textarea version
+ * had no notion of "currently inside a bold span", so this was unset.
+ * TipTap exposes `editor.isActive(...)` and we mirror it via a data attr. */
+.block-popover__inline-btn[data-active] {
+  background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+  color: var(--color-accent-strong);
+}
+
+/* Block-level `<Color bg="...">` wrapper — emitted by the MdxBlock
+ * serializer when a block carries a non-default `block.color`. The
+ * compiled MDX renders as `<div class="notion-color" data-color="X">`,
+ * and compiled MDX previews need the matching tint to look the same
+ * as the published site. Selectors mirror app/(classic)/notion-
+ * blocks.css verbatim — token names differ (`--color-bg-X` vs.
+ * `--ds-color-bg-X`) but resolve to identical values. */
+.notion-color {
+  padding: 4px 12px;
+  border-radius: 6px;
+  margin: 0.6em 0;
+}
+
+.notion-color[data-color="default"] {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.notion-color[data-color="gray"] { background: var(--color-bg-gray); }
+.notion-color[data-color="brown"] { background: var(--color-bg-brown); }
+.notion-color[data-color="orange"] { background: var(--color-bg-orange); }
+.notion-color[data-color="yellow"] { background: var(--color-bg-yellow); }
+.notion-color[data-color="green"] { background: var(--color-bg-green); }
+.notion-color[data-color="blue"] { background: var(--color-bg-blue); }
+.notion-color[data-color="purple"] { background: var(--color-bg-purple); }
+.notion-color[data-color="pink"] { background: var(--color-bg-pink); }
+.notion-color[data-color="red"] { background: var(--color-bg-red); }
+
+/* Inline color spans — `<span data-color="X" data-bg="X">word</span>`
+ * emitted by the editor's selection toolbar. Selectors mirror the
+ * public-site rules in app/(classic)/notion-blocks.css verbatim
+ * (un-scoped global `span[data-...]`) so the contenteditable, the
+ * compiled `.mdx-post__body` HTML, and any future MDX-rendering
+ * surface inside the workspace all paint identically.
+ * Token names are the workspace-local `--color-text-X` / `--color-bg-X`
+ * but resolve to the same hex/rgba values the public site's
+ * `--ds-color-text-X` / `--ds-color-bg-X` resolve to. */
+span[data-color="gray"] { color: var(--color-text-gray); }
+span[data-color="brown"] { color: var(--color-text-brown); }
+span[data-color="orange"] { color: var(--color-text-orange); }
+span[data-color="yellow"] { color: var(--color-text-yellow); }
+span[data-color="green"] { color: var(--color-text-green); }
+span[data-color="blue"] { color: var(--color-text-blue); }
+span[data-color="purple"] { color: var(--color-text-purple); }
+span[data-color="pink"] { color: var(--color-text-pink); }
+span[data-color="red"] { color: var(--color-text-red); }
+
+span[data-bg] {
+  padding: 0 3px;
+  border-radius: 3px;
+}
+span[data-bg="gray"] { background: var(--color-bg-gray); }
+span[data-bg="brown"] { background: var(--color-bg-brown); }
+span[data-bg="orange"] { background: var(--color-bg-orange); }
+span[data-bg="yellow"] { background: var(--color-bg-yellow); }
+span[data-bg="green"] { background: var(--color-bg-green); }
+span[data-bg="blue"] { background: var(--color-bg-blue); }
+span[data-bg="purple"] { background: var(--color-bg-purple); }
+span[data-bg="pink"] { background: var(--color-bg-pink); }
+span[data-bg="red"] { background: var(--color-bg-red); }
+
+span[data-link-style="icon"] > a.notion-link.link,
+a[data-link-style="icon"].notion-link.link {
+  --link-icon-space: 25px;
+  --link-icon-size: 24px;
+  position: relative;
+  padding-left: calc(var(--link-icon-space) + 0.08em);
+}
+
+span[data-link-style="icon"] > a.notion-link.link::before,
+a[data-link-style="icon"].notion-link.link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: var(--link-icon-size);
+  height: var(--link-icon-size);
+  transform: translateY(-52%);
+  border-radius: 6px;
+  background:
+    var(--color-bg-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E")
+    center / 15px 15px no-repeat;
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+span[data-link-style="icon"][data-link-icon] > a.notion-link.link::before,
+a[data-link-style="icon"][data-link-icon].notion-link.link::before {
+  background:
+    var(--link-icon-image, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E"))
+    center / 20px 20px no-repeat;
+  box-shadow: none;
+}
+
+/* Color picker — opens beneath the toolbar's "A▾" button. Two rows
+ * (text / bg) of swatches, each row showing the named-color palette.
+ * Positioned absolutely relative to the popover so it lays out below
+ * the button row. */
+.block-popover__inline-color-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.block-popover__inline-color-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 1px;
+}
+
+.mdx-document-color-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 8px;
+  background: var(--mdx-popover-bg);
+  box-shadow: var(--mdx-popover-shadow);
+  z-index: 1;
+}
+
+.mdx-document-color-picker__row {
+  display: grid;
+  grid-template-columns: 28px repeat(10, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.mdx-document-color-picker__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.mdx-document-color-picker__swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 100ms ease,
+    background-color 100ms ease,
+    transform 80ms ease;
+}
+
+.mdx-document-color-picker__swatch:hover {
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.mdx-document-color-picker__swatch[data-active] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.mdx-document-color-picker__swatch--text[data-color="gray"] { color: var(--color-text-gray); }
+.mdx-document-color-picker__swatch--text[data-color="brown"] { color: var(--color-text-brown); }
+.mdx-document-color-picker__swatch--text[data-color="orange"] { color: var(--color-text-orange); }
+.mdx-document-color-picker__swatch--text[data-color="yellow"] { color: var(--color-text-yellow); }
+.mdx-document-color-picker__swatch--text[data-color="green"] { color: var(--color-text-green); }
+.mdx-document-color-picker__swatch--text[data-color="blue"] { color: var(--color-text-blue); }
+.mdx-document-color-picker__swatch--text[data-color="purple"] { color: var(--color-text-purple); }
+.mdx-document-color-picker__swatch--text[data-color="pink"] { color: var(--color-text-pink); }
+.mdx-document-color-picker__swatch--text[data-color="red"] { color: var(--color-text-red); }
+
+.mdx-document-color-picker__swatch--bg[data-bg="gray"] { background: var(--color-bg-gray); }
+.mdx-document-color-picker__swatch--bg[data-bg="brown"] { background: var(--color-bg-brown); }
+.mdx-document-color-picker__swatch--bg[data-bg="orange"] { background: var(--color-bg-orange); }
+.mdx-document-color-picker__swatch--bg[data-bg="yellow"] { background: var(--color-bg-yellow); }
+.mdx-document-color-picker__swatch--bg[data-bg="green"] { background: var(--color-bg-green); }
+.mdx-document-color-picker__swatch--bg[data-bg="blue"] { background: var(--color-bg-blue); }
+.mdx-document-color-picker__swatch--bg[data-bg="purple"] { background: var(--color-bg-purple); }
+.mdx-document-color-picker__swatch--bg[data-bg="pink"] { background: var(--color-bg-pink); }
+.mdx-document-color-picker__swatch--bg[data-bg="red"] { background: var(--color-bg-red); }
+
+/* List markers via ::before. Each paragraph TipTap renders inside a list
+ * block becomes a list "item" visually — we don't use the BulletList /
+ * OrderedList extensions because the MdxBlock model is the source of
+ * truth for list-style; CSS just paints the right glyph. The
+ * `:not(.is-editor-empty)` guard keeps the placeholder pseudo-element
+ * (which also lives on `p::before` of the first empty paragraph) from
+ * fighting with the marker. */
+.mdx-document-text-block--list-bulleted.ProseMirror p:not(.is-editor-empty)::before {
+  content: "•  ";
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.mdx-document-text-block--list-numbered.ProseMirror {
+  counter-reset: list-item;
+}
+
+.mdx-document-text-block--list-numbered.ProseMirror p:not(.is-editor-empty)::before {
+  counter-increment: list-item;
+  content: counter(list-item) ".  ";
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* Toggle block — collapsible details with nested children. */
+.mdx-document-toggle-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mdx-document-toggle-block__head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.mdx-document-toggle-block__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+}
+
+.mdx-document-toggle-block__chevron:hover {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-toggle-block__summary {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 5px 8px;
+}
+
+.mdx-document-toggle-block__summary:focus {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+/* News entry block — Notion-style dated entry that lives as a child of
+ * the news page. Top row carries the date input + an inline warning if
+ * the date is missing / malformed; body hosts an EditableBlocksList for
+ * the entry's prose. The body's `padding-left` mirrors the toggle's
+ * indent so visually-similar nesting reads consistently. */
+.mdx-document-news-entry-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-news-entry-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.mdx-document-news-entry-block__date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-news-entry-block__date-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mdx-document-news-entry-block__date input {
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mdx-document-news-entry-block__date input[aria-invalid] {
+  border-color: var(--color-danger);
+}
+
+.mdx-document-news-entry-block__warn {
+  font-size: 11.5px;
+  color: var(--color-danger);
+}
+
+.mdx-document-news-entry-block__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 4px;
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+/* Multi-field data entry block (works / teaching / publications).
+ * Same chrome as news-entry but each row hosts a flex of labelled
+ * inputs instead of a single date input. The body div reuses the
+ * news-entry body class to share the indent-with-borderleft rule. */
+.mdx-document-data-entry-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-data-entry-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+}
+
+.mdx-document-data-entry-block__field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 160px;
+  min-width: 120px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-data-entry-block__field--small {
+  flex: 0 0 100px;
+  min-width: 100px;
+}
+
+.mdx-document-data-entry-block__field > span {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mdx-document-data-entry-block__field input,
+.mdx-document-data-entry-block__field select,
+.mdx-document-data-entry-block__field textarea {
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mdx-document-data-entry-block__field textarea {
+  min-height: 54px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.mdx-document-data-entry-block__field input[aria-invalid] {
+  border-color: var(--color-danger);
+}
+
+.mdx-document-toggle-block__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 22px;
+  margin-left: 4px;
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+/* Columns block — Notion-style multi-column layout, side-by-side in the
+ * editor canvas so the WYSIWYG arrangement matches what the public site
+ * renders via <Columns>/<Column>. */
+.mdx-document-columns-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-columns-block__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.mdx-document-columns-block__toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.mdx-document-columns-block__toolbar select {
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.mdx-document-columns-block__grid {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+
+.mdx-document-columns-block[data-cols="2"] .mdx-document-columns-block__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mdx-document-columns-block[data-cols="3"] .mdx-document-columns-block__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mdx-document-columns-block[data-gap="compact"] .mdx-document-columns-block__grid {
+  gap: 8px;
+}
+
+.mdx-document-columns-block[data-gap="loose"] .mdx-document-columns-block__grid {
+  gap: 26px;
+}
+
+.mdx-document-columns-block[data-align="center"] .mdx-document-columns-block__grid {
+  align-items: center;
+}
+
+.mdx-document-columns-block__column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+}
+
+/* Stack columns on narrow editor panes (Tauri preview, sidebar). */
+@media (max-width: 720px) {
+  .mdx-document-columns-block[data-cols="2"] .mdx-document-columns-block__grid,
+  .mdx-document-columns-block[data-cols="3"] .mdx-document-columns-block__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Defensive fallback for stray <Column> blocks at the top level. Same
+ * column-card chrome so the user recognises it; the slash menu lets
+ * them re-wrap in a fresh Columns block. */
+.mdx-document-column-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+}
+
+/* Empty nested blocks list (e.g. an empty toggle body). Renders a small
+ * affordance so the user can seed the first child. */
+.mdx-document-blocks-empty {
+  padding: 4px 0;
+}
+
+.mdx-document-blocks-empty__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  padding: 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease;
+}
+
+.mdx-document-blocks-empty__btn:hover,
+.mdx-document-blocks-empty__btn:focus-visible {
+  outline: none;
+  background: var(--mdx-block-row-hover-bg);
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+/* Table block — GFM table editor. */
+.mdx-document-table-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdx-document-table-block__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.mdx-document-table-block__table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.mdx-document-table-block__table td {
+  border: 1px solid var(--color-border-subtle);
+  padding: 0;
+  vertical-align: top;
+}
+
+.mdx-document-table-block__table tr[data-header="true"] td {
+  background: var(--color-bg-surface-alt);
+  font-weight: 600;
+}
+
+.mdx-document-table-block__cell {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 6px 8px;
+}
+
+.mdx-document-table-block__cell:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.mdx-document-table-block__row-actions {
+  width: 28px;
+  text-align: center;
+}
+
+.mdx-document-table-block__row-actions button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.mdx-document-table-block__row-actions button:hover:not(:disabled) {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-table-block__col-controls {
+  display: flex;
+  gap: 4px;
+  margin-left: 0;
+}
+
+.mdx-document-table-block__col-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.mdx-document-table-block__col-control select {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-table-block__col-control button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mdx-document-table-block__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.mdx-document-table-block__actions button {
+  border: 1px dashed var(--color-border-default);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-document-table-block__actions button:hover {
+  background: var(--mdx-handle-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Settings surface (Phase 5): super.so-style wrapper around Site
+   config + Routes. Horizontal sub-tabs swap which underlying panel is
+   mounted; the panels themselves are unchanged. */
+.settings-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-surface__head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.settings-surface__tabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.settings-surface__tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 0;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.settings-surface__tab:hover {
+  color: var(--color-text-primary);
+}
+
+.settings-surface__tab--active {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-accent, var(--color-text-primary));
+}
+
+.settings-surface__body {
+  display: contents;
+}
+
+/* HomePanel "Notion" mode wraps the shared BlocksEditor in a single
+   centred column. Hint above explains the takeover semantics — non-
+   empty bodyMdx wins over the section list. */
+.home-builder__notion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  max-width: 840px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.home-builder__notion-hint {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-alt);
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+
+/* Hero block editor card. Inline-config block (no JSON data source);
+   reuses the dashed-card styling from the data blocks for visual
+   consistency, with a 2-column grid for the form fields. */
+.mdx-document-hero-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-hero-block__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 12px;
+}
+
+.mdx-document-hero-block__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.mdx-document-hero-block__field input,
+.mdx-document-hero-block__field select {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+/* Link list block editor card. Same dashed-card visual as Hero with
+   an item-row list (label + URL + reorder/delete buttons). */
+.mdx-document-link-list-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-link-list-block__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 12px;
+}
+
+.mdx-document-link-list-block__items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mdx-document-link-list-block__item {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 1.5fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+}
+
+/* Featured-pages variant adds a description column between URL and
+   the action buttons. */
+.mdx-document-link-list-block__item--featured {
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.3fr) minmax(160px, 1.5fr) auto;
+}
+
+.mdx-document-link-list-block__item input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 5px;
+  padding: 4px 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mdx-document-link-list-block__item-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.mdx-document-link-list-block__item-actions button {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.mdx-document-link-list-block__item-actions button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-subtle);
+}
+
+.mdx-document-link-list-block__item-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mdx-document-link-list-block__empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Per-page routing & protection panel inside PageEditor's properties.
+   Sits below the regular frontmatter form; each section is a collapsed
+   <details> using the existing surface-details style, with extra spacing
+   between them. */
+.page-routing-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.page-routing-properties__hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+/* Bookmark block */
+.mdx-document-bookmark-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-bookmark-block__row {
+  display: flex;
+  gap: 6px;
+}
+
+.mdx-document-bookmark-block__row input {
+  flex: 1;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-bookmark-block__row button {
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-document-bookmark-block__row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mdx-document-bookmark-block__preview {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.mdx-document-bookmark-block__preview img {
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--color-bg-hover);
+}
+
+.mdx-document-bookmark-block__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  grid-column: 2;
+}
+
+.mdx-document-bookmark-block__fields input,
+.mdx-document-bookmark-block__fields textarea {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  resize: vertical;
+}
+
+/* Data-source blocks (NewsBlock, future PublicationsBlock, …).
+   Compact card with an icon + label + a row of query controls. The block
+   itself only stores the query; entries live in the canonical JSON. */
+.mdx-document-data-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-data-block__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mdx-document-data-block__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mdx-document-data-block__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.mdx-document-data-block__heading strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.mdx-document-data-block__heading span {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.mdx-document-data-block__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.mdx-document-data-block__row input {
+  width: 100px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+/* Embed block */
+.mdx-document-embed-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdx-document-embed-block__row {
+  display: flex;
+  gap: 6px;
+}
+
+.mdx-document-embed-block__row select,
+.mdx-document-embed-block__row input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mdx-document-embed-block__row input {
+  flex: 1;
+}
+
+.mdx-document-embed-block__preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-embed-block__preview iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.mdx-document-embed-block__hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* File block */
+.mdx-document-file-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-document-file-block__upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-document-file-block__upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mdx-document-file-block__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mdx-document-file-block__fields input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.mdx-document-file-block__meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* Page link block */
+.mdx-document-page-link-block {
+  position: relative;
+  display: inline-block;
+}
+
+.mdx-document-page-link-block__current {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mdx-document-page-link-block__current:hover {
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-page-link-block__current span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-page-link-block__picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 8px;
+  background: var(--mdx-popover-bg);
+  box-shadow: var(--mdx-popover-shadow);
+}
+
+.mdx-document-page-link-block__picker input {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mdx-document-page-link-block__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.mdx-document-page-link-block__list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdx-document-page-link-block__list button:hover {
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-page-link-block__list button span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-page-link-block__empty {
+  padding: 6px 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* To-do block — multi-line checklist. */
+.mdx-document-todo-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.mdx-document-todo-block__row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.mdx-document-todo-block__check {
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.mdx-document-todo-block__input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  line-height: 1.6;
+  padding: 4px 6px;
+  transition: text-decoration-color 100ms ease, color 100ms ease;
+}
+
+.mdx-document-todo-block__input:focus {
+  outline: none;
+  background: var(--mdx-handle-bg-hover);
+}
+
+.mdx-document-todo-block__input[data-checked="true"],
+.mdx-document-todo-block__input--checked {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--color-text-muted);
+}
+
+.mdx-document-list-block {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.mdx-document-list-block select {
+  min-height: 30px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.mdx-document-divider-block {
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+}
+
+.mdx-document-divider-block span {
+  width: 100%;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.mdx-document-heading-block {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.mdx-document-heading-block__input {
+  padding: 2px 4px;
+  color: var(--color-text-primary);
+  font-weight: 740;
+  line-height: 1.2;
+}
+
+.mdx-document-heading-block__input--h1 {
+  font-size: 26px;
+}
+
+.mdx-document-heading-block__input--h2 {
+  font-size: 22px;
+}
+
+.mdx-document-heading-block__input--h3 {
+  font-size: 18px;
+}
+
+.mdx-document-text-block:hover,
+.mdx-document-heading-block__input:hover,
+.mdx-document-image-block__fields input:hover {
+  background: transparent;
+}
+
+.mdx-document-text-block:focus,
+.mdx-document-heading-block__input:focus,
+.mdx-document-image-block__fields input:focus {
+  outline: none;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mdx-document-image-block {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.5fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.mdx-document-image-block__preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  overflow: hidden;
+  border: 1px dashed var(--color-border-default);
+  border-radius: 10px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.mdx-document-image-block__preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mdx-document-image-block__preview input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mdx-document-image-block__fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.mdx-document-image-block__fields input {
+  padding: 7px 9px;
+  font-size: 12.5px;
+}
+
+.mdx-document-image-block__asset-picker {
+  min-width: 0;
+}
+
+.mdx-document-image-block__asset-picker .asset-library {
+  padding: 8px;
+}
+
+.mdx-document-image-block__asset-picker .asset-library__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mdx-document-slash-menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(340px, calc(100% - 16px));
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+  box-shadow: var(--mdx-popover-shadow);
+}
+
+.block-editor-command__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.block-editor-command__group-label {
+  padding: 6px 8px 2px;
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mdx-document-slash-menu button {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.mdx-document-slash-menu button:hover,
+.mdx-document-slash-menu button:focus-visible,
+.mdx-document-slash-menu button[data-active="true"] {
+  outline: none;
+  border-color: var(--color-border-subtle);
+  background: var(--color-bg-hover);
+}
+
+.mdx-document-slash-menu button[data-active="true"] .block-editor-command__icon {
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-surface-alt));
+  color: var(--color-accent-strong);
+}
+
+.block-editor-command__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 5px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-primary);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.block-editor-command__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.block-editor-command__body > strong {
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.block-editor-command__body > span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* Floating popover used by block action menus and inline format
+ * toolbars. Positioned via JS (fixed + computed left/top), styled here. */
+.block-popover {
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--mdx-popover-border);
+  border-radius: 8px;
+  background: var(--mdx-popover-bg);
+  box-shadow: var(--mdx-popover-shadow);
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+/* ------------------------------------------------------------------ *
+ * Error boundary (crash card)
+ * ------------------------------------------------------------------ */
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 20px;
+}
+
+.error-boundary__card {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  background: var(--color-bg-surface);
+}
+
+.error-boundary__icon {
+  font-size: 28px;
+  line-height: 1;
+  color: var(--color-warn);
+}
+
+.error-boundary__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+.error-boundary__message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: 8px 10px;
+  background: var(--color-bg-surface-alt);
+  border-radius: 8px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
+    monospace;
+  word-break: break-word;
+}
+
+.error-boundary__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error-boundary__details {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.error-boundary__details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.error-boundary__details pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-bg-surface-alt);
+  overflow: auto;
+  max-height: 240px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* ------------------------------------------------------------------ *
+ * Markdown editor chrome: toolbar + wrapper
+ * ------------------------------------------------------------------ */
+.mdx-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+}
+
+.editor-drop-zone {
+  border-radius: 10px;
+  transition:
+    background-color 130ms ease,
+    box-shadow 130ms ease;
+}
+
+.editor-drop-zone[data-drag-active="true"] {
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 75%, transparent) inset;
+}
+
+.editor-drop-zone[data-drag-active="true"] .mdx-editor {
+  border-color: color-mix(in srgb, var(--color-accent) 62%, var(--color-border-subtle));
+}
+
+.mdx-editor__cm {
+  min-width: 0;
+}
+
+.mdx-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-text-primary) 3%, var(--color-bg-surface));
+}
+
+.mdx-toolbar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mdx-toolbar__group + .mdx-toolbar__group {
+  margin-inline-start: 4px;
+  padding-inline-start: 4px;
+  border-inline-start: 1px solid var(--color-border-subtle);
+}
+
+.mdx-toolbar__btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  min-width: 28px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+
+.mdx-toolbar__btn:hover,
+.mdx-toolbar__btn:focus-visible {
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+}
+
+.mdx-toolbar__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.mdx-toolbar__btn code {
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.mdx-toolbar__hint {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.mdx-toolbar__hint kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  vertical-align: 1px;
+}

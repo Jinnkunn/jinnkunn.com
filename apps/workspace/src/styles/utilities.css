@@ -1,0 +1,214 @@
+/* Drag-reorder primitive ------------------------------------------------ */
+/* Applied to the drag handle; the row itself gets `data-drag-state` via
+   useDragReorder for visual feedback. */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  border-radius: 4px;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.drag-handle:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.drag-handle:active,
+.drag-handle:focus-visible {
+  cursor: grabbing;
+  outline: none;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+[data-drag-state="dragging"] {
+  opacity: 0.45;
+}
+
+[data-drag-state="over"] {
+  box-shadow:
+    0 0 0 1px var(--color-accent) inset,
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* ------------------------------------------------------------------ *
+ * Debug response pane + details
+ * ------------------------------------------------------------------ */
+pre.debug-pane {
+  margin: 0;
+  min-height: 120px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+details.surface-details {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface-alt);
+  padding: 12px 14px;
+}
+
+details.surface-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--color-text-primary);
+  padding: 2px 0;
+}
+
+details.surface-details[open] > summary {
+  margin-bottom: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Responsive desktop fallback
+ *
+ * Tauri's minimum width is intentionally wider than phone layouts. These
+ * rules keep the site-admin editor usable in narrow desktop split views
+ * without removing navigation.
+ * ------------------------------------------------------------------ */
+@media (max-width: 1120px) {
+  :root {
+    --workspace-sidebar-width: 288px;
+  }
+
+  .app-body > main {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sidebar-tree__item {
+    padding-inline-start: 16px;
+  }
+
+  .site-admin-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .site-admin-topbar__right {
+    margin-left: auto;
+  }
+
+  .surface-card {
+    padding: 16px;
+  }
+
+  .home-builder,
+  .home-builder[data-mode="structure"] {
+    grid-template-columns: 1fr;
+  }
+
+  .home-builder__inspector,
+  .home-builder__rail {
+    position: static;
+    max-height: none;
+  }
+
+  .home-builder__segmented--viewport {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 1000px) {
+  :root {
+    --workspace-sidebar-width: 260px;
+    --workspace-sidebar-rail-width: 52px;
+    --workspace-sidebar-depth-step: 14px;
+    --workspace-sidebar-depth-max: 48px;
+  }
+
+  .app-body > main {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .sidebar-surface {
+    margin-right: 6px;
+  }
+
+  .sidebar-nav-item {
+    gap: 8px;
+    padding-inline: 8px;
+    font-size: 12.5px;
+  }
+
+  .sidebar-context-header__description {
+    display: none;
+  }
+
+  .sidebar-tree__group-header {
+    padding-inline: 6px;
+  }
+
+  .site-admin-pill__label {
+    max-width: 180px;
+  }
+
+  .home-builder__toolbar {
+    align-items: stretch;
+  }
+
+  .home-builder__segmented {
+    width: 100%;
+  }
+
+  .home-builder__segmented button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .home-builder__outline-toggle {
+    width: 100%;
+  }
+
+  .home-preview__stage {
+    height: auto;
+    min-height: 520px;
+  }
+
+  .home-builder__field-grid,
+  .mdx-document-editor[data-properties-open="true"] .mdx-document-editor__layout,
+  .home-preview-links--grid .home-preview-links__items,
+  .home-preview-featured--cols-2 .home-preview-featured__items,
+  .home-preview-featured--cols-3 .home-preview-featured__items {
+    grid-template-columns: 1fr;
+  }
+
+  .mdx-document-editor__properties {
+    position: static;
+    max-height: none;
+  }
+
+  .mdx-document-image-block {
+    grid-template-columns: 1fr;
+  }
+
+  .mdx-document-list-block {
+    grid-template-columns: 1fr;
+  }
+}

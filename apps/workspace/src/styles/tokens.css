@@ -1,0 +1,206 @@
+/* ------------------------------------------------------------------ *
+ * Theme tokens (Tailwind v4 `@theme` directive)
+ *
+ * Warm neutral palette + orange accent to mirror the website's Notion-
+ * esque style. Exposed as CSS custom properties + Tailwind utility
+ * classes (e.g. `bg-bg-sidebar`, `text-text-primary`, `rounded-xl-card`).
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Surface ladder: window (tablecloth) → sidebar card → surface card.
+   * `--bg-window-blend` is the semi-translucent tint painted over
+   * NSVisualEffectView on macOS (see src-tauri/main.rs). Fallback to the
+   * solid `--bg-window` on platforms without vibrancy. */
+  --color-bg-window: #ece9e2;
+  --color-bg-window-blend: rgba(236, 233, 226, 0.68);
+  --color-bg-sidebar: #ffffff;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-alt: #f7f4ed;
+  --color-bg-hover: rgba(55, 53, 47, 0.06);
+
+  --color-text-primary: #37352f;
+  --color-text-secondary: rgba(55, 53, 47, 0.82);
+  --color-text-muted: rgba(55, 53, 47, 0.62);
+  --color-text-inverse: #ffffff;
+
+  --color-border-subtle: rgba(55, 53, 47, 0.1);
+  --color-border-default: rgba(55, 53, 47, 0.16);
+  --color-border-strong: rgba(55, 53, 47, 0.24);
+
+  /* Notion `--color-orange` at 42% lightness so white-on-orange meets
+   * WCAG AA (~4.8:1). `--color-accent-strong` is the hover tier. */
+  --color-accent: hsl(30, 87%, 42%);
+  --color-accent-strong: hsl(30, 87%, 36%);
+
+  /* MDX block editor — gutter handles (+ / ⋮⋮) and floating popovers
+   * (action menu, inline format toolbar). Consumed by PR2/PR3. */
+  --mdx-handle-color: rgba(55, 53, 47, 0.45);
+  --mdx-handle-color-hover: rgba(55, 53, 47, 0.85);
+  --mdx-handle-bg-hover: rgba(55, 53, 47, 0.06);
+  --mdx-block-row-hover-bg: rgba(55, 53, 47, 0.03);
+  --mdx-placeholder-color: rgba(55, 53, 47, 0.4);
+  --mdx-popover-bg: #ffffff;
+  --mdx-popover-border: rgba(15, 15, 15, 0.1);
+  --mdx-popover-shadow:
+    0 14px 28px rgba(15, 15, 15, 0.12), 0 2px 6px rgba(15, 15, 15, 0.08);
+
+  --color-danger: #b3261e;
+  --color-danger-strong: #8f1d17;
+  --color-warn: #b84a00;
+  --color-success: #1f7a34;
+
+  /* Notion-style named-color palette. The selection toolbar's color
+   * picker writes one of these tokens onto `<span data-color>` /
+   * `<span data-bg>` runs; the same names exist on the public site as
+   * --ds-color-{text,bg}-{name} so colored text round-trips identically
+   * between editor preview and rendered MDX. */
+  --color-text-gray: #787774;
+  --color-text-brown: #9f6b53;
+  --color-text-orange: #d9730d;
+  --color-text-yellow: #cb912f;
+  --color-text-green: #448361;
+  --color-text-blue: #337ea9;
+  --color-text-purple: #9065b0;
+  --color-text-pink: #c14c8a;
+  --color-text-red: #d44c47;
+  --color-bg-gray: rgba(120, 119, 116, 0.1);
+  --color-bg-brown: rgba(159, 107, 83, 0.12);
+  --color-bg-orange: rgba(217, 115, 13, 0.12);
+  --color-bg-yellow: rgba(203, 145, 47, 0.16);
+  --color-bg-green: rgba(68, 131, 97, 0.16);
+  --color-bg-blue: rgba(51, 126, 169, 0.14);
+  --color-bg-purple: rgba(144, 101, 176, 0.14);
+  --color-bg-pink: rgba(193, 76, 138, 0.14);
+  --color-bg-red: rgba(212, 76, 71, 0.14);
+
+  /* Workspace shell layout.
+   * Keep native macOS window controls, the floating sidebar card, and
+   * the titlebar breadcrumb in sync from one place. */
+  --workspace-titlebar-height: 40px;
+  --workspace-sidebar-width: 320px;
+  --workspace-shell-gap: 8px;
+  --workspace-sidebar-rail-width: 56px;
+  --workspace-sidebar-top-overlap: 32px;
+  --workspace-traffic-light-strip-height: 52px;
+  --workspace-traffic-light-clearance: 30px;
+  --workspace-sidebar-depth-step: 16px;
+  --workspace-sidebar-depth-max: 56px;
+
+  --spacing-titlebar: var(--workspace-titlebar-height);
+  --spacing-sidebar: var(--workspace-sidebar-width);
+  --spacing-shell-gap: var(--workspace-shell-gap);
+
+  --radius-card: 16px;
+
+  /* Tuned z-indices so sidebar card sits above titlebar (the card visually
+   * wraps the OS-rendered traffic lights via decorum). */
+  --z-titlebar: 30;
+  --z-sidebar-card: 32;
+}
+
+/* Dark mode is driven by `data-theme="dark"` on <html>, set by the
+ * useTheme hook (src/shell/useTheme.ts). Three user modes: "light",
+ * "dark", and "system". In "system" mode the hook mirrors the OS
+ * preference onto the attribute so this selector still drives the
+ * palette without any @media fallback in the CSS. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg-window: #120f0d;
+  --color-bg-window-blend: rgba(18, 15, 13, 0.65);
+  --color-bg-sidebar: #1b1816;
+  --color-bg-surface: #1b1816;
+  --color-bg-surface-alt: #25211d;
+  --color-bg-hover: rgba(242, 235, 223, 0.08);
+
+  --color-text-primary: #f2ebdf;
+  --color-text-secondary: rgba(242, 235, 223, 0.82);
+  --color-text-muted: rgba(242, 235, 223, 0.62);
+  --color-text-inverse: #171513;
+
+  --color-border-subtle: rgba(242, 235, 223, 0.08);
+  --color-border-default: rgba(242, 235, 223, 0.14);
+  --color-border-strong: rgba(242, 235, 223, 0.2);
+
+  --color-accent: hsl(30, 90%, 62%);
+  --color-accent-strong: hsl(30, 90%, 70%);
+
+  --mdx-handle-color: rgba(242, 235, 223, 0.45);
+  --mdx-handle-color-hover: rgba(242, 235, 223, 0.92);
+  --mdx-handle-bg-hover: rgba(242, 235, 223, 0.06);
+  --mdx-block-row-hover-bg: rgba(242, 235, 223, 0.04);
+  --mdx-placeholder-color: rgba(242, 235, 223, 0.42);
+  --mdx-popover-bg: #25211d;
+  --mdx-popover-border: rgba(242, 235, 223, 0.12);
+  --mdx-popover-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.45);
+
+  --color-danger: #ff8479;
+  --color-danger-strong: #ff9b91;
+  --color-warn: #f0a45a;
+  --color-success: #62cb7c;
+
+  /* Brighter foreground tones on dark to maintain contrast against the
+   * dark page background — bg tints use higher alpha for the same
+   * reason. Mirrors the dark-theme block in app/design-system.css. */
+  --color-text-gray: #9b9a97;
+  --color-text-brown: #ba856e;
+  --color-text-orange: #d98732;
+  --color-text-yellow: #d9a546;
+  --color-text-green: #60a282;
+  --color-text-blue: #56a1c8;
+  --color-text-purple: #aa82d2;
+  --color-text-pink: #dc6ea5;
+  --color-text-red: #e16e69;
+  --color-bg-gray: rgba(155, 154, 151, 0.18);
+  --color-bg-brown: rgba(186, 133, 110, 0.22);
+  --color-bg-orange: rgba(217, 135, 50, 0.22);
+  --color-bg-yellow: rgba(217, 165, 70, 0.26);
+  --color-bg-green: rgba(96, 162, 130, 0.26);
+  --color-bg-blue: rgba(86, 161, 200, 0.24);
+  --color-bg-purple: rgba(170, 130, 210, 0.24);
+  --color-bg-pink: rgba(220, 110, 165, 0.24);
+  --color-bg-red: rgba(225, 110, 105, 0.24);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* Shared design-system aliases.
+ *
+ * The desktop app keeps its Tailwind v4 `--color-*` tokens for utilities, but
+ * exposes the same semantic `--ds-*` contract as the public web surface. These
+ * aliases are intentionally non-visual: they let future Tauri components and
+ * docs speak the same language without changing the current macOS-style UI.
+ */
+:root {
+  --ds-font-body: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  --ds-font-heading: var(--ds-font-body);
+  --ds-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace;
+
+  --ds-surface-page: var(--color-bg-window);
+  --ds-surface-panel: var(--color-bg-surface);
+  --ds-surface-elevated: var(--color-bg-sidebar);
+  --ds-surface-soft: var(--color-bg-surface-alt);
+  --ds-surface-overlay: var(--color-bg-window-blend);
+
+  --ds-text-primary: var(--color-text-primary);
+  --ds-text-secondary: var(--color-text-secondary);
+  --ds-text-muted: var(--color-text-muted);
+  --ds-text-inverse: var(--color-text-inverse);
+
+  --ds-border-subtle: var(--color-border-subtle);
+  --ds-border-strong: var(--color-border-default);
+  --ds-border-emphasis: var(--color-border-strong);
+
+  --ds-interactive-hover: var(--color-bg-hover);
+  --ds-accent: var(--color-accent);
+  --ds-danger: var(--color-danger);
+  --ds-warning: var(--color-warn);
+  --ds-success: var(--color-success);
+
+  --ds-radius-sm: 10px;
+  --ds-radius-md: 12px;
+  --ds-radius-lg: var(--radius-card);
+  --ds-radius-pill: 999px;
+}

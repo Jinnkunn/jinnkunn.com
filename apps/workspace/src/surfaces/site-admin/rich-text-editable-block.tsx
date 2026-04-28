@@ -66,6 +66,7 @@ export interface RichTextEditableBlockProps {
   onRemoveEmpty: () => void;
   onSlashCommand: (value: string) => boolean;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
+  readOnly?: boolean;
   request: RequestFn;
 }
 
@@ -102,6 +103,7 @@ export function RichTextEditableBlock({
   onRemoveEmpty,
   onSlashCommand,
   onTurnInto,
+  readOnly = false,
   request,
 }: RichTextEditableBlockProps) {
   const richRef = useRef<RichTextInputHandle>(null);
@@ -113,6 +115,7 @@ export function RichTextEditableBlock({
   const [editor, setEditor] = useState<Editor | null>(null);
   const [selection, setSelection] = useState<{ from: number; to: number } | null>(null);
   const [mention, setMention] = useState<{ from: number } | null>(null);
+  const [slashCursor, setSlashCursor] = useState(0);
   // Force re-render on every selection / doc update so anchor coords stay
   // pinned to the current caret. Cheap — the editor only fires these on
   // user input.
@@ -120,6 +123,10 @@ export function RichTextEditableBlock({
 
   const showSlashMenu = slashCommands.length > 0;
   const isEmpty = !block.text;
+
+  useEffect(() => {
+    setSlashCursor(0);
+  }, [block.text, slashCommands.length]);
 
   // Subscribe to TipTap selection / doc updates so the format toolbar
   // anchors to the live caret and the rev counter forces a coords recompute.
@@ -146,6 +153,7 @@ export function RichTextEditableBlock({
     (event: KeyboardEvent) => {
       const editor = richRef.current?.getEditor();
       if (!editor) return;
+      if (readOnly) return;
       const meta = event.metaKey || event.ctrlKey;
 
       if (event.key === "@" && !meta) {
@@ -168,6 +176,31 @@ export function RichTextEditableBlock({
         onMoveDown();
         return;
       }
+
+      if (showSlashMenu && !meta && !event.altKey) {
+        if (!event.shiftKey && event.key === "ArrowDown") {
+          event.preventDefault();
+          setSlashCursor((current) =>
+            Math.min(slashCommands.length - 1, current + 1),
+          );
+          return;
+        }
+        if (!event.shiftKey && event.key === "ArrowUp") {
+          event.preventDefault();
+          setSlashCursor((current) => Math.max(0, current - 1));
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          setSlashCursor((current) =>
+            event.shiftKey
+              ? Math.max(0, current - 1)
+              : Math.min(slashCommands.length - 1, current + 1),
+          );
+          return;
+        }
+      }
+
       if (
         meta &&
         event.altKey &&
@@ -231,6 +264,12 @@ export function RichTextEditableBlock({
         if (block.type === "list") return;
         const plain = editor.getText();
         if (plain.trim().startsWith("/")) {
+          const command = slashCommands[slashCursor];
+          if (command) {
+            event.preventDefault();
+            onChooseSlashCommand(command);
+            return;
+          }
           if (onSlashCommand(plain)) {
             event.preventDefault();
             return;
@@ -253,6 +292,7 @@ export function RichTextEditableBlock({
     },
     [
       block.type,
+      onChooseSlashCommand,
       onDuplicate,
       onInsertParagraphAfter,
       onMoveDown,
@@ -261,6 +301,10 @@ export function RichTextEditableBlock({
       onRemoveEmpty,
       onSlashCommand,
       onTurnInto,
+      readOnly,
+      showSlashMenu,
+      slashCommands,
+      slashCursor,
     ],
   );
 
@@ -370,20 +414,26 @@ export function RichTextEditableBlock({
       onEditorReady={setEditor}
       className={classNameFor(block)}
       ariaLabel={`${block.type} block`}
+      readOnly={readOnly}
       placeholder={isEmpty ? placeholderFor(block) : undefined}
     />
   );
 
   const overlays = (
     <>
-      {showSlashMenu ? (
+      {showSlashMenu && !readOnly ? (
         <BlockEditorCommandMenu
+          activeCommandId={slashCommands[slashCursor]?.id}
           className="mdx-document-slash-menu"
           commands={slashCommands}
+          onActiveCommandChange={(command) => {
+            const index = slashCommands.findIndex((item) => item.id === command.id);
+            if (index >= 0) setSlashCursor(index);
+          }}
           onChoose={onChooseSlashCommand}
         />
       ) : null}
-      {selection && inlineAnchor ? (
+      {selection && inlineAnchor && !readOnly ? (
         <InlineFormatToolbar
           anchor={inlineAnchor}
           editor={editor}
@@ -392,7 +442,7 @@ export function RichTextEditableBlock({
           onTurnInto={onTurnInto}
         />
       ) : null}
-      {mention && mentionAnchor ? (
+      {mention && mentionAnchor && !readOnly ? (
         <MentionPicker
           anchor={mentionAnchor}
           initialQuery={mentionInitialQuery}
@@ -409,7 +459,7 @@ export function RichTextEditableBlock({
   // canvas content-first like Notion: controls appear from the left gutter
   // when the row is hovered or focused.
   return (
-    <div className="mdx-document-text-block-shell">
+    <div className="mdx-document-text-block-shell" data-empty={isEmpty ? "true" : undefined}>
       {inner}
       {overlays}
     </div>
@@ -660,7 +710,7 @@ function InlineFormatToolbar({
           onClick={onLink}
           data-active={editor.isActive("link") || undefined}
         >
-          🔗
+          Link
         </button>
         <button
           type="button"
@@ -686,7 +736,7 @@ function InlineFormatToolbar({
             Boolean(editor.getAttributes("inlineLinkStyle").icon) || undefined
           }
         >
-          ◫
+          Icon
         </button>
         <button
           type="button"
@@ -697,7 +747,7 @@ function InlineFormatToolbar({
           onClick={onUploadIcon}
           disabled={uploadingIcon}
         >
-          {uploadingIcon ? "…" : "▣"}
+          {uploadingIcon ? "…" : "Up"}
         </button>
         <input
           ref={iconFileInputRef}

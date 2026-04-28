@@ -9,6 +9,28 @@ async function read(relPath) {
   return await fs.readFile(path.join(ROOT, relPath), "utf8");
 }
 
+async function readWorkspaceCssBundle() {
+  const stylesRoot = path.join(ROOT, "apps/workspace/src/styles");
+  const parts = [await read("apps/workspace/src/index.css")];
+  const walk = async (dir) => {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(abs);
+        } else if (entry.isFile() && entry.name.endsWith(".css")) {
+          parts.push(await fs.readFile(abs, "utf8"));
+        }
+      }
+    } catch {
+      // Split CSS directory may not exist on older branches.
+    }
+  };
+  await walk(stylesRoot);
+  return parts.join("\n");
+}
+
 test("tauri-ui-engineering: Home uses the shared MDX document editor", async () => {
   // Section-builder UI (HomeSectionRail / HomePreviewPane /
   // HomeEditableCanvasPane / HomeInspectorShell / useHomePreview / the
@@ -91,7 +113,7 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const topbar = await read(
     "apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx",
   );
-  const styles = await read("apps/workspace/src/index.css");
+  const styles = await readWorkspaceCssBundle();
 
   assert.match(documentEditor, /export function MdxDocumentEditor/);
   // BlocksEditor is the standalone block-editing canvas, exported so other
@@ -181,7 +203,8 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   // Notion-style refactor: gutter handles live outside the content column
   // and reveal only on hover/focus/menu-open, so controls no longer compress
   // the editable text.
-  assert.match(styles, /\.mdx-document-blocks\s*\{[\s\S]*padding: 2px 0 2px 36px;/);
+  assert.match(styles, /\.mdx-document-blocks\s*\{[\s\S]*padding: 2px 0;/);
+  assert.match(styles, /--mdx-block-gutter/);
   assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*display: block;/);
   assert.match(styles, /\.mdx-document-block__gutter\s*\{[\s\S]*position: absolute;/);
   assert.match(styles, /\.mdx-document-block\[data-controls-open="true"\] \.mdx-document-block__gutter/);

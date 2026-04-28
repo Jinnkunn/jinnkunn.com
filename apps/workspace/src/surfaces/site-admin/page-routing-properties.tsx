@@ -7,6 +7,11 @@ import type {
   RoutesSourceVersion,
 } from "./types";
 import { normalizeOverride, normalizeProtected, normalizeString } from "./utils";
+import {
+  WorkspaceInspectorSection,
+  WorkspaceSelectField,
+  WorkspaceTextField,
+} from "../../ui/primitives";
 
 interface PageRoutingPropertiesProps {
   /** The page's slug (used as the pageId key against /api/site-admin/routes). */
@@ -226,25 +231,22 @@ export function PageRoutingProperties({ slug, publicPath }: PageRoutingPropertie
   if (!pageId) return null;
 
   return (
-    <div className="page-routing-properties">
-      <details className="surface-details">
-        <summary>URL override</summary>
+    <>
+      <WorkspaceInspectorSection heading="URL override">
         <p className="page-routing-properties__hint">
           By default the page renders at <code>{defaultProtectedPath}</code>.
           Provide a custom path here to route requests for that path to
           this page (e.g. <code>/about</code>). Leave empty to disable.
         </p>
-        <label className="home-builder__field">
-          <span>Custom URL</span>
-          <input
-            value={override.routePath}
-            placeholder="/about"
-            disabled={loading || !sourceVersion}
-            onChange={(event) =>
-              setOverride((prev) => ({ ...prev, routePath: event.target.value }))
-            }
-          />
-        </label>
+        <WorkspaceTextField
+          label="Custom URL"
+          value={override.routePath}
+          placeholder="/about"
+          disabled={loading || !sourceVersion}
+          onChange={(event) =>
+            setOverride((prev) => ({ ...prev, routePath: event.target.value }))
+          }
+        />
         <div className="flex gap-2 pt-2">
           <button
             type="button"
@@ -255,59 +257,52 @@ export function PageRoutingProperties({ slug, publicPath }: PageRoutingPropertie
             {savingOverride ? "Saving…" : hasOverride ? "Update override" : "Add override"}
           </button>
         </div>
-      </details>
+      </WorkspaceInspectorSection>
 
-      <details className="surface-details">
-        <summary>Protection</summary>
+      <WorkspaceInspectorSection heading="Access">
         <p className="page-routing-properties__hint">
           Restricts access to the page. <code>password</code> requires
           one shared password; <code>github</code> requires NextAuth
           login with an allowed GitHub user; <code>public</code> removes
           all restrictions.
         </p>
-        <label className="home-builder__field">
-          <span>Path to protect</span>
-          <input
-            value={protectedRow.path}
-            placeholder="/about"
+        <WorkspaceTextField
+          label="Path to protect"
+          value={protectedRow.path}
+          placeholder="/about"
+          disabled={loading || !sourceVersion}
+          onChange={(event) =>
+            setProtectedRow((prev) => ({ ...prev, path: event.target.value }))
+          }
+        />
+        <WorkspaceSelectField
+          label="Auth mode"
+          value={protectedRow.auth}
+          disabled={loading || !sourceVersion}
+          onChange={(event) =>
+            setProtectedRow((prev) => ({
+              ...prev,
+              auth: event.target.value as ProtectedDraft["auth"],
+              password: event.target.value === "password" ? prev.password : "",
+            }))
+          }
+        >
+          <option value="public">public</option>
+          <option value="password">password</option>
+          <option value="github">github</option>
+        </WorkspaceSelectField>
+        {protectedRow.auth === "password" ? (
+          <WorkspaceTextField
+            label="Password"
+            type="password"
+            value={protectedRow.password}
+            placeholder={hasProtected ? "(leave blank to keep current)" : "Set a password"}
             disabled={loading || !sourceVersion}
+            autoComplete="new-password"
             onChange={(event) =>
-              setProtectedRow((prev) => ({ ...prev, path: event.target.value }))
+              setProtectedRow((prev) => ({ ...prev, password: event.target.value }))
             }
           />
-        </label>
-        <label className="home-builder__field">
-          <span>Auth mode</span>
-          <select
-            value={protectedRow.auth}
-            disabled={loading || !sourceVersion}
-            onChange={(event) =>
-              setProtectedRow((prev) => ({
-                ...prev,
-                auth: event.target.value as ProtectedDraft["auth"],
-                password: event.target.value === "password" ? prev.password : "",
-              }))
-            }
-          >
-            <option value="public">public</option>
-            <option value="password">password</option>
-            <option value="github">github</option>
-          </select>
-        </label>
-        {protectedRow.auth === "password" ? (
-          <label className="home-builder__field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={protectedRow.password}
-              placeholder={hasProtected ? "(leave blank to keep current)" : "Set a password"}
-              disabled={loading || !sourceVersion}
-              autoComplete="new-password"
-              onChange={(event) =>
-                setProtectedRow((prev) => ({ ...prev, password: event.target.value }))
-              }
-            />
-          </label>
         ) : null}
         <div className="flex gap-2 pt-2">
           <button
@@ -319,7 +314,7 @@ export function PageRoutingProperties({ slug, publicPath }: PageRoutingPropertie
             {savingProtected ? "Saving…" : hasProtected ? "Update protection" : "Add protection"}
           </button>
         </div>
-      </details>
-    </div>
+      </WorkspaceInspectorSection>
+    </>
   );
 }

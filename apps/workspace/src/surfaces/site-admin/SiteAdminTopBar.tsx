@@ -66,7 +66,7 @@ function findCrumbs(
  * a user collapses the parent group in the sidebar (the active item
  * stops being visible there). */
 export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
-  const { drawerOpen, toggleDrawer, connection } = useSiteAdmin();
+  const { drawerOpen, toggleDrawer, connection, environment } = useSiteAdmin();
   const crumbs = findCrumbs(sections, activeTab);
 
   // Phase 5a — drive the local SQLite mirror at one stable mount point so
@@ -105,6 +105,13 @@ export function SiteAdminTopBar({ sections, activeTab }: TopBarProps) {
           ›
         </span>
         <span className="site-admin-topbar__crumb-tab">{crumbs.tab}</span>
+        <span
+          className="site-admin-topbar__environment"
+          data-kind={environment.kind}
+          title={environment.helpText}
+        >
+          {environment.readOnly ? "Production read-only" : environment.label}
+        </span>
       </nav>
 
       <div className="site-admin-topbar__right" data-window-drag-exclude>

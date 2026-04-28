@@ -45,12 +45,24 @@ Run the desktop app against staging and record pass/fail notes for each item.
 
 ### Connection And Shell
 
+- Confirm native macOS window controls do not overlap the sidebar header, app
+  rail, or context header.
+- Drag the window from the titlebar, the traffic-light strip, and the sidebar
+  context header; the app should move from each region.
 - Confirm the connection pill shows the staging profile and signed-in state.
 - Switch between Site Admin tabs; titlebar breadcrumbs and sidebar selection
   must stay aligned.
 - Toggle light/dark theme; editor panels and preview surfaces must remain
   legible.
-- Open the command palette and confirm core Site Admin commands are discoverable.
+- Open the Site Admin command palette with `⌘K` and confirm core Site Admin
+  commands are discoverable.
+- Open the global workspace command palette with `⌘⇧K`; confirm surfaces,
+  recent items, pinned shortcuts, and page titles are searchable.
+- Confirm the titlebar workspace status center opens, shows the active surface,
+  recent count, pinned count, and does not interfere with titlebar drag outside
+  the popover trigger.
+- Open several pages/posts, then confirm Recent appears in the sidebar and the
+  global command palette can jump back to those entries.
 
 ### Home WYSIWYG Editor
 
@@ -60,6 +72,10 @@ Run the desktop app against staging and record pass/fail notes for each item.
 - Reorder blocks in the Write canvas; preview order must update immediately.
 - Edit text inline in the canvas, then switch to Source and back without losing
   unsupported MDX.
+- Type `/` in an empty text block; ArrowUp/ArrowDown should move the active
+  slash-menu command and Enter should choose the highlighted command.
+- Select inline text and confirm the floating format toolbar remains compact
+  while Bold, Link, Icon Link, Upload Icon, and Color are discoverable.
 - Save, reload the app, and confirm `content/home.json` round-trips as title +
   bodyMdx and still matches the staging preview.
 
