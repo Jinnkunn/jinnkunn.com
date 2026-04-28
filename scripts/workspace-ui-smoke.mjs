@@ -108,6 +108,26 @@ function main() {
     "Site Admin connection environment summary",
   );
   assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/SiteAdminEnvironmentBanner.tsx"),
+    "Switch to Staging",
+    "Site Admin production recovery banner",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/PublishButton.tsx"),
+    "Open Deploy Action",
+    "Publish stale candidate recovery",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    "Copy release command",
+    "Status stale candidate recovery",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/use-editor-draft.ts"),
+    "saveDraftNow",
+    "Editor conflict draft preservation",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
     "data-empty",
     "RichTextEditableBlock empty-state semantics",
@@ -348,6 +368,21 @@ function main() {
     workspaceCss,
     ".mdx-document-editor[data-read-only=\"true\"]",
     "MdxDocumentEditor read-only CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".site-admin-environment-banner",
+    "Site Admin production recovery banner CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".site-admin-recovery-card",
+    "Site Admin stale candidate recovery CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".publish-preview__recovery",
+    "Publish stale candidate recovery CSS",
   );
   for (const token of [
     "--workspace-sidebar-rail-width",

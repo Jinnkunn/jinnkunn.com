@@ -11,6 +11,7 @@ import {
   validateProtected,
 } from "./routes/ProtectedSection";
 import { RedirectsSection } from "./routes/RedirectsSection";
+import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
 import type {
   OverrideRow,
@@ -173,7 +174,10 @@ export function RoutesPanel() {
         setMessage("error", `Save override failed: ${response.code}: ${response.error}`);
         return;
       }
-      setMessage("success", `Override saved for ${pageId}.`);
+      setMessage(
+        "success",
+        `Override saved for ${pageId}. Publish staging separately.`,
+      );
       await loadRoutes({ silent: true });
     },
     [
@@ -228,7 +232,7 @@ export function RoutesPanel() {
       return;
     }
     setNewOverride(BLANK_NEW_OVERRIDE);
-    setMessage("success", `Override created for ${pageId}.`);
+    setMessage("success", `Override created for ${pageId}. Publish staging separately.`);
     await loadRoutes({ silent: true });
   }, [
     conflict,
@@ -294,7 +298,10 @@ export function RoutesPanel() {
         );
         return;
       }
-      setMessage("success", `Protected route saved for ${draft.pageId}.`);
+      setMessage(
+        "success",
+        `Protected route saved for ${draft.pageId}. Publish staging separately.`,
+      );
       await loadRoutes({ silent: true });
     },
     [
@@ -358,7 +365,10 @@ export function RoutesPanel() {
       return;
     }
     setNewProtected(BLANK_NEW_PROTECTED);
-    setMessage("success", `Protected route created for ${newProtected.pageId}.`);
+    setMessage(
+      "success",
+      `Protected route created for ${newProtected.pageId}. Publish staging separately.`,
+    );
     await loadRoutes({ silent: true });
   }, [
     conflict,
@@ -429,7 +439,10 @@ export function RoutesPanel() {
         );
         return;
       }
-      setMessage("success", `Redirect deleted: /${kind === "posts" ? "blog" : "pages"}/${fromSlug}.`);
+      setMessage(
+        "success",
+        `Redirect deleted: /${kind === "posts" ? "blog" : "pages"}/${fromSlug}. Publish staging separately.`,
+      );
       await loadRedirects({ silent: true, refresh: true });
     },
     [productionReadOnly, request, setMessage, loadRedirects],
@@ -505,12 +518,7 @@ export function RoutesPanel() {
           ? `siteConfigSha=${sourceVersion.siteConfigSha} | protectedRoutesSha=${sourceVersion.protectedRoutesSha} | branchSha=${sourceVersion.branchSha}`
           : "sourceVersion: -"}
       </p>
-      {productionReadOnly ? (
-        <div className="workspace-status-banner workspace-status-banner--warn">
-          Production is read-only in the desktop editor. Edit routes in
-          Staging, then promote the validated staging version to production.
-        </div>
-      ) : null}
+      <SiteAdminEnvironmentBanner actionLabel="edit routes" />
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
       <OverridesSection

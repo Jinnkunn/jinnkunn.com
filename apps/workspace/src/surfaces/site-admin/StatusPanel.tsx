@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { formatPendingDeploy, normalizeString, serializeJson } from "./utils";
+
+const DEPLOY_ACTIONS_URL =
+  "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/deploy-on-content.yml";
+const RELEASE_STAGING_COMMAND = "npm run release:staging";
 
 // Status payload must have `source`, `env`, and `build` to be considered
 // valid. The server always returns the full shape on success.
@@ -23,7 +28,14 @@ function tokenNeedsRenewal(iso: string): boolean {
 }
 
 export function StatusPanel() {
-  const { connection, request, setMessage, signInWithBrowser } = useSiteAdmin();
+  const {
+    connection,
+    environment,
+    productionReadOnly,
+    request,
+    setMessage,
+    signInWithBrowser,
+  } = useSiteAdmin();
   const [data, setData] = useState<StatusPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [deploying, setDeploying] = useState(false);
@@ -62,6 +74,10 @@ export function StatusPanel() {
   );
 
   const deploy = useCallback(async () => {
+    if (productionReadOnly) {
+      setMessage("warn", environment.helpText);
+      return;
+    }
     if (!confirmDeploy) {
       // Precheck: deploy is the most expensive POST in the app and runs
       // without further confirmation once started. If our locally-known
@@ -113,6 +129,8 @@ export function StatusPanel() {
     confirmDeploy,
     connection.authToken,
     connection.authExpiresAt,
+    environment.helpText,
+    productionReadOnly,
     refresh,
     request,
     setMessage,
@@ -136,9 +154,21 @@ export function StatusPanel() {
   const disableDeploy =
     loading ||
     deploying ||
+    productionReadOnly ||
     !connection.baseUrl ||
     !connection.authToken ||
     data?.source?.deployableVersionReady === false;
+
+  const staleCandidate = data?.source?.deployableVersionReady === false;
+
+  const copyReleaseCommand = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(RELEASE_STAGING_COMMAND);
+      setMessage("success", `Copied: ${RELEASE_STAGING_COMMAND}`);
+    } catch {
+      setMessage("warn", `Run locally: ${RELEASE_STAGING_COMMAND}`);
+    }
+  }, [setMessage]);
 
   const notes: string[] = [];
   if (loading) notes.push("Loading status…");
@@ -190,6 +220,8 @@ export function StatusPanel() {
         </div>
       </header>
 
+      <SiteAdminEnvironmentBanner actionLabel="deploy changes" />
+
       <dl className="key-values">
         <div>
           <dt>Runtime Provider</dt>
@@ -238,6 +270,44 @@ export function StatusPanel() {
       {notes.length > 0 && (
         <p className="m-0 text-[12px] text-text-muted">{notes.join(" ")}</p>
       )}
+
+      {staleCandidate ? (
+        <div className="site-admin-recovery-card">
+          <div>
+            <strong>Staging candidate needs a rebuild</strong>
+            <span>
+              The latest uploaded Worker version does not match the current
+              code/content source. Wait for Deploy (auto), or run the staging
+              release command locally, then refresh status.
+            </span>
+          </div>
+          <div className="site-admin-recovery-card__actions">
+            <button
+              type="button"
+              className="btn btn--secondary"
+              disabled={loading}
+              onClick={() => void refresh()}
+            >
+              Recheck
+            </button>
+            <a
+              className="btn btn--ghost"
+              href={DEPLOY_ACTIONS_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Deploy Action
+            </a>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => void copyReleaseCommand()}
+            >
+              Copy release command
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <details className="surface-details">
         <summary>Raw Status Payload</summary>

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { BLANK_NEW_NAV, NavSection, type NewNavInput } from "./config/NavSection";
 import { SettingsSection } from "./config/SettingsSection";
+import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
 import type { ConfigSourceVersion, NavRow, SiteSettings } from "./types";
 import {
@@ -233,7 +234,10 @@ export function ConfigPanel() {
         return;
       }
       setSavingSettings(false);
-      setMessage("success", "Settings saved to source branch after refreshing latest config. Deploy separately.");
+      setMessage(
+        "success",
+        "Settings saved to source branch after refreshing latest config. Publish staging separately.",
+      );
       await loadConfig({ silent: true });
       return;
     }
@@ -242,7 +246,7 @@ export function ConfigPanel() {
       setMessage("error", `Save settings failed: ${response.code}: ${response.error}`);
       return;
     }
-    setMessage("success", "Settings saved to source branch. Deploy separately.");
+    setMessage("success", "Settings saved to source branch. Publish staging separately.");
     await loadConfig({ silent: true });
   }, [
     conflict,
@@ -302,7 +306,10 @@ export function ConfigPanel() {
         setMessage("error", `Save nav row failed: ${response.code}: ${response.error}`);
         return;
       }
-      setMessage("success", `Navigation row ${rowId} saved to source branch.`);
+      setMessage(
+        "success",
+        `Navigation row ${rowId} saved to source branch. Publish staging separately.`,
+      );
       await loadConfig({ silent: true });
     },
     [
@@ -357,7 +364,10 @@ export function ConfigPanel() {
       return;
     }
     setNewNav(BLANK_NEW_NAV);
-    setMessage("success", "Navigation row created on source branch.");
+    setMessage(
+      "success",
+      "Navigation row created on source branch. Publish staging separately.",
+    );
     await loadConfig({ silent: true });
   }, [
     conflict,
@@ -426,12 +436,7 @@ export function ConfigPanel() {
           </button>
         </div>
       </header>
-      {productionReadOnly ? (
-        <div className="workspace-status-banner workspace-status-banner--warn">
-          Production is read-only in the desktop editor. Save site settings in
-          Staging, then promote the validated staging version to production.
-        </div>
-      ) : null}
+      <SiteAdminEnvironmentBanner actionLabel="save site settings" />
       <p className="m-0 text-[12px] text-text-muted">
         {sourceVersion
           ? `sourceVersion.siteConfigSha=${sourceVersion.siteConfigSha} | branchSha=${sourceVersion.branchSha}`
