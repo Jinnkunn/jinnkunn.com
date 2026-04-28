@@ -32,6 +32,9 @@ const ComponentsPanel = lazy(() =>
 const HomePanel = lazy(() =>
   import("./HomePanel").then((module) => ({ default: module.HomePanel })),
 );
+const LinkAuditPanel = lazy(() =>
+  import("./LinkAuditPanel").then((module) => ({ default: module.LinkAuditPanel })),
+);
 const PagesPanel = lazy(() =>
   import("./PagesPanel").then((module) => ({ default: module.PagesPanel })),
 );
@@ -1026,6 +1029,7 @@ function SiteAdminContent() {
                   onSelectedChange={setComponentsSelected}
                 />
               )}
+              {activeTab === "links" && <LinkAuditPanel />}
               {activeTab === "settings" && <SettingsPanel />}
             </>
           )}

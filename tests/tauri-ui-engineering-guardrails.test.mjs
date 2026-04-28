@@ -101,6 +101,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const richTextBlock = await read(
     "apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx",
   );
+  const iconRegistry = await read(
+    "apps/workspace/src/surfaces/site-admin/icon-link-registry.ts",
+  );
   const richTextInput = await read(
     "apps/workspace/src/surfaces/site-admin/RichTextInput.tsx",
   );
@@ -148,6 +151,10 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(inlineLinkStyleMark, /data-link-icon/);
   assert.match(richTextBlock, /setInlineLinkStyle/);
   assert.match(richTextBlock, /uploadImageFile/);
+  assert.match(richTextBlock, /LinkInspectorPanel/);
+  assert.match(richTextBlock, /AssetLibraryPicker/);
+  assert.match(richTextBlock, /findIconLinkEntryForHref/);
+  assert.match(iconRegistry, /icon-link-registry\.json/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
   assert.match(blocks, /type === "raw"/);
@@ -307,6 +314,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
     "apps/workspace/src/surfaces/site-admin/PublishButton.tsx",
   );
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
+  const pipeline = await read(
+    "apps/workspace/src/surfaces/site-admin/PublishPipelineCard.tsx",
+  );
 
   assert.match(publishButton, /isDeployCandidateBlocked/);
   assert.match(publishButton, /DEPLOY_VERSION_STALE/);
@@ -320,6 +330,31 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   );
   assert.match(statusPanel, /GitHub Actions “Deploy \(auto\)”/);
   assert.match(statusPanel, /npm run release:staging/);
+  assert.match(statusPanel, /PublishPipelineCard/);
+  assert.match(pipeline, /Saved source/);
+  assert.match(pipeline, /Worker candidate/);
+  assert.match(pipeline, /Staging deploy/);
+  assert.match(pipeline, /Production promotion remains explicit/);
+});
+
+test("tauri-ui-engineering: link audit is a first-class Site Admin surface", async () => {
+  const types = await read("apps/workspace/src/surfaces/site-admin/types.ts");
+  const nav = await read("apps/workspace/src/surfaces/site-admin/nav.tsx");
+  const surface = await read("apps/workspace/src/surfaces/site-admin/SiteAdminSurface.tsx");
+  const commandPalette = await read(
+    "apps/workspace/src/shell/WorkspaceCommandPalette.tsx",
+  );
+  const linkAudit = await read(
+    "apps/workspace/src/surfaces/site-admin/LinkAuditPanel.tsx",
+  );
+
+  assert.match(types, /\| "links"/);
+  assert.match(nav, /id: "links"/);
+  assert.match(surface, /LinkAuditPanel/);
+  assert.match(commandPalette, /Open Link Audit/);
+  assert.match(linkAudit, /missing-icon-mark/);
+  assert.match(linkAudit, /folder-only/);
+  assert.match(linkAudit, /localContent\.syncPull/);
 });
 
 test("tauri-ui-engineering: manual QA runbook covers release-critical editor flows", async () => {

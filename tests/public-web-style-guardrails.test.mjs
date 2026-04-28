@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = process.cwd();
+const ICON_LINK_REGISTRY = JSON.parse(
+  fsSync.readFileSync(path.join(ROOT, "lib/shared/icon-link-registry.json"), "utf8"),
+);
 
 async function read(relPath) {
   return await fs.readFile(path.join(ROOT, relPath), "utf8");
@@ -57,18 +61,37 @@ async function collectEditableContentSources() {
   return sources;
 }
 
-const KNOWN_ICON_LINK_TARGETS = [
-  /^\/chen(?:[#?].*)?$/,
-  /^\/blog(?:[#?].*)?$/,
-  /^\/blog\.rss(?:[#?].*)?$/,
-  /^https:\/\/twitter\.com\/_jinnkunn\/?$/,
-  /^https:\/\/www\.linkedin\.com\/in\/jinkun-chen\/?$/,
-  /^https:\/\/(?:www\.)?dal\.ca\/?$/,
-  /^https:\/\/scholar\.google/,
-  /^https:\/\/www\.researchgate\.net\//,
-  /^https:\/\/orcid\.org\//,
-  /^https:\/\/www\.semanticscholar\.org\//,
-];
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matcherToRegExp(matcher) {
+  if (matcher.kind === "contains") {
+    return new RegExp(escapeRegExp(matcher.value));
+  }
+  if (matcher.kind === "prefix") {
+    return new RegExp(`^${escapeRegExp(matcher.value)}`);
+  }
+  return new RegExp(`^${escapeRegExp(matcher.value).replace(/\/$/, "")}\\/?(?:[#?].*)?$`);
+}
+
+const KNOWN_ICON_LINK_TARGETS = ICON_LINK_REGISTRY.flatMap((entry) =>
+  entry.matchers.map(matcherToRegExp),
+);
+
+function hrefSelector(matcher) {
+  if (matcher.kind === "contains") return `href*="${matcher.value}"`;
+  if (matcher.kind === "prefix") return `href^="${matcher.value}"`;
+  return `href="${matcher.value}"`;
+}
+
+function explicitIconSelector(entry) {
+  const preferred =
+    entry.matchers.find((matcher) => matcher.value.startsWith("https://www.")) ??
+    entry.matchers.find((matcher) => matcher.kind === "exact") ??
+    entry.matchers[0];
+  return `span[data-link-style="icon"] > a[${hrefSelector(preferred)}].notion-link.link:before`;
+}
 
 test("public-web-style-guardrails: public content links keep Notion link classes", async () => {
   const richTextRenderer = await read("scripts/notion-sync/render-rich-text.mjs");
@@ -382,22 +405,22 @@ test("public-web-style-guardrails: classic list page CSS does not reintroduce ca
 test("public-web-style-guardrails: classic icon links are explicit variants of Notion links", async () => {
   const publicInlineCss = await read("public/styles/super-inline.css");
   const iconContract = await read("scripts/_lib/classic-link-icons.mjs");
+  const { CLASSIC_LINK_ICON_CONTRACT } = await import(
+    new URL("../scripts/_lib/classic-link-icons.mjs", import.meta.url)
+  );
   const blogIndexView = await read("components/blog-index/blog-index-view.tsx");
 
-  const explicitIconSelectors = [
-    'span[data-link-style="icon"] > a[href="/blog"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href="/chen"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href="https://twitter.com/_jinnkunn"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href="https://www.linkedin.com/in/jinkun-chen/"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href="https://www.dal.ca/"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href*="researchgate.net"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href^="https://orcid.org/"].notion-link.link:before',
-    'span[data-link-style="icon"] > a[href*="semanticscholar.org/"].notion-link.link:before',
-  ];
+  const explicitIconSelectors = ICON_LINK_REGISTRY.map(explicitIconSelector);
+  const runtimeSelectors = new Set(
+    CLASSIC_LINK_ICON_CONTRACT.map((item) => item.selector),
+  );
 
   assertIncludes(publicInlineCss, "a.notion-link.link {", "Shared Notion link style");
+  assertIncludes(
+    iconContract,
+    "icon-link-registry.json",
+    "Classic icon contract source of truth",
+  );
   assertIncludes(publicInlineCss, "background-image:", "Shared Notion link style");
   assertIncludes(
     publicInlineCss,
@@ -436,10 +459,9 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
 
   for (const selector of explicitIconSelectors) {
     assertIncludes(publicInlineCss, selector, "Explicit inline icon selectors");
-    assertIncludes(
-      iconContract,
-      selector.replace(":before", ""),
-      "Classic link icon runtime contract",
+    assert.ok(
+      runtimeSelectors.has(selector.replace(":before", "")),
+      `Classic link icon runtime contract should include ${selector}`,
     );
   }
 });

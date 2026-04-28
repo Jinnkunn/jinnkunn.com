@@ -24,6 +24,7 @@ const TAB_FALLBACK_LABELS: Record<SiteAdminTab, string> = {
   posts: "Blog",
   pages: "Pages",
   components: "Shared",
+  links: "Links",
   settings: "Settings",
 };
 

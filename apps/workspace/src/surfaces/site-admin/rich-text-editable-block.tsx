@@ -19,16 +19,24 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type Dispatch,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type SetStateAction,
 } from "react";
-import type { Editor } from "@tiptap/core";
+import { getMarkRange, type Editor } from "@tiptap/core";
 
+import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
 import {
   BlockEditorCommandMenu,
   type BlockEditorCommand,
 } from "./block-editor";
 import { BlockPopover, type BlockPopoverAnchor } from "./block-popover";
+import {
+  findIconLinkEntryForHref,
+  ICON_LINK_REGISTRY,
+  type IconLinkRegistryEntry,
+} from "./icon-link-registry";
 import { MentionPicker, type MentionTarget } from "./mention-picker";
 import type { MdxBlock, MdxBlockType } from "./mdx-blocks";
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
@@ -493,6 +501,50 @@ const COLOR_PALETTE = [
 
 type ColorValue = (typeof COLOR_PALETTE)[number];
 
+type LinkDraft = {
+  href: string;
+  iconMode: boolean;
+  iconUrl: string;
+  text: string;
+};
+
+function currentLinkRange(editor: Editor) {
+  const type = editor.schema.marks.link;
+  if (!type) return null;
+  return getMarkRange(editor.state.selection.$from, type) ?? null;
+}
+
+function currentSelectionOrLinkText(editor: Editor): string {
+  const { from, to, empty } = editor.state.selection;
+  if (!empty) return editor.state.doc.textBetween(from, to, "\n");
+  const range = currentLinkRange(editor);
+  if (!range) return "";
+  return editor.state.doc.textBetween(range.from, range.to, "\n");
+}
+
+function draftFromEditor(editor: Editor, forceIcon = false): LinkDraft {
+  const linkAttrs = editor.getAttributes("link") as { href?: unknown };
+  const iconAttrs = editor.getAttributes("inlineLinkStyle") as {
+    icon?: unknown;
+    style?: unknown;
+  };
+  const href = typeof linkAttrs.href === "string" ? linkAttrs.href : "";
+  const iconUrl = typeof iconAttrs.icon === "string" ? iconAttrs.icon : "";
+  const detected = findIconLinkEntryForHref(href);
+  return {
+    href,
+    iconMode: forceIcon || iconAttrs.style === "icon" || Boolean(detected),
+    iconUrl,
+    text: currentSelectionOrLinkText(editor),
+  };
+}
+
+function textMarkNamesForEditor(editor: Editor): string[] {
+  return ["bold", "italic", "strike", "code", "underline"].filter((name) =>
+    editor.isActive(name),
+  );
+}
+
 function InlineFormatToolbar({
   anchor,
   editor,
@@ -507,6 +559,14 @@ function InlineFormatToolbar({
     event.preventDefault();
   };
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [linkInspectorOpen, setLinkInspectorOpen] = useState(false);
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [linkDraft, setLinkDraft] = useState<LinkDraft>(() => ({
+    href: "",
+    iconMode: false,
+    iconUrl: "",
+    text: "",
+  }));
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const iconFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -517,71 +577,97 @@ function InlineFormatToolbar({
   const onUnderline = () => editor.chain().focus().toggleUnderline().run();
   const onCode = () => editor.chain().focus().toggleCode().run();
   const onStrike = () => editor.chain().focus().toggleStrike().run();
-  const onLink = () => {
-    const existing = editor.getAttributes("link").href as string | undefined;
-    const url =
-      typeof window !== "undefined"
-        ? window.prompt("Link URL", existing || "https://")
-        : null;
-    if (url === null) return;
-    if (!url) {
-      editor.chain().focus().unsetLink().unsetInlineLinkStyle().run();
-      return;
-    }
-    editor.chain().focus().setLink({ href: url }).run();
+  const openLinkInspector = (forceIcon = false) => {
+    setColorPickerOpen(false);
+    setAssetPickerOpen(false);
+    setLinkDraft(draftFromEditor(editor, forceIcon));
+    setLinkInspectorOpen(true);
   };
-  const onIconLink = () => {
-    const active = editor.isActive("inlineLinkStyle", { style: "icon" });
-    if (active) {
-      editor.chain().focus().unsetInlineLinkStyle().run();
+  const onLink = () => openLinkInspector(false);
+  const onIconLink = () => openLinkInspector(true);
+  const applyLinkDraft = () => {
+    const href = linkDraft.href.trim();
+    const label = linkDraft.text || currentSelectionOrLinkText(editor) || href;
+    if (!href) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().unsetInlineLinkStyle().run();
+      setLinkInspectorOpen(false);
       return;
     }
 
-    const existing = editor.getAttributes("link").href as string | undefined;
-    if (!existing) {
-      const url =
-        typeof window !== "undefined"
-          ? window.prompt("Link URL", "https://")
-          : null;
-      if (!url) return;
+    const baseMarks = textMarkNamesForEditor(editor).map((type) => ({ type }));
+    const marks = [
+      ...baseMarks,
+      { type: "link", attrs: { href } },
+      ...(linkDraft.iconMode
+        ? [
+            {
+              type: "inlineLinkStyle",
+              attrs: {
+                icon: linkDraft.iconUrl.trim() || null,
+                style: "icon",
+              },
+            },
+          ]
+        : []),
+    ];
+    const range = currentLinkRange(editor);
+    const selection = editor.state.selection;
+    const shouldReplaceText =
+      Boolean(label) &&
+      ((!selection.empty && label !== currentSelectionOrLinkText(editor)) ||
+        (selection.empty && !range));
+
+    if (shouldReplaceText) {
       editor
         .chain()
         .focus()
-        .setLink({ href: url })
-        .setInlineLinkStyle({ style: "icon" })
+        .insertContent({
+          type: "text",
+          text: label,
+          marks,
+        })
         .run();
-      return;
+    } else if (selection.empty && range && label !== currentSelectionOrLinkText(editor)) {
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(range, {
+          type: "text",
+          text: label,
+          marks,
+        })
+        .run();
+    } else {
+      const chain = editor.chain().focus().extendMarkRange("link").setLink({ href });
+      if (linkDraft.iconMode) {
+        chain.setInlineLinkStyle({
+          icon: linkDraft.iconUrl.trim() || null,
+          style: "icon",
+        });
+      } else {
+        chain.unsetInlineLinkStyle();
+      }
+      chain.run();
     }
-
-    editor.chain().focus().setInlineLinkStyle({ style: "icon" }).run();
+    setLinkInspectorOpen(false);
+    setAssetPickerOpen(false);
   };
-  const ensureLinkForIcon = () => {
-    const existing = editor.getAttributes("link").href as string | undefined;
-    if (existing) return true;
-    const url =
-      typeof window !== "undefined"
-        ? window.prompt("Link URL", "https://")
-        : null;
-    if (!url) return false;
-    editor.chain().focus().setLink({ href: url }).run();
-    return true;
-  };
-  const onIconUrl = () => {
-    if (!ensureLinkForIcon()) return;
-    const attrs = editor.getAttributes("inlineLinkStyle") as {
-      icon?: string | null;
-    };
-    const next =
-      typeof window !== "undefined"
-        ? window.prompt("Icon image URL (blank uses automatic icon)", attrs.icon || "")
-        : null;
-    if (next === null) return;
-    editor.chain().focus().setInlineLinkStyle({ style: "icon", icon: next.trim() || null }).run();
+  const clearLink = () => {
+    editor.chain().focus().extendMarkRange("link").unsetLink().unsetInlineLinkStyle().run();
+    setLinkDraft({ href: "", iconMode: false, iconUrl: "", text: "" });
+    setLinkInspectorOpen(false);
+    setAssetPickerOpen(false);
   };
   const onUploadIcon = () => {
-    if (!ensureLinkForIcon()) return;
-    editor.chain().focus().setInlineLinkStyle({ style: "icon" }).run();
+    setLinkDraft((draft) => ({ ...draft, iconMode: true }));
     iconFileInputRef.current?.click();
+  };
+  const chooseKnownIcon = (entry: IconLinkRegistryEntry) => {
+    setLinkDraft((draft) => ({
+      ...draft,
+      iconMode: true,
+      iconUrl: entry.asset,
+    }));
   };
   const onIconFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -597,11 +683,12 @@ function InlineFormatToolbar({
       if (typeof window !== "undefined") window.alert(`Icon upload failed: ${result.error}`);
       return;
     }
-    editor
-      .chain()
-      .focus()
-      .setInlineLinkStyle({ style: "icon", icon: result.asset.url })
-      .run();
+    rememberRecentAsset(result.asset, result.filename);
+    setLinkDraft((draft) => ({
+      ...draft,
+      iconMode: true,
+      iconUrl: result.asset.url,
+    }));
   };
 
   // Read the current color attrs so the picker shows what's already
@@ -635,6 +722,8 @@ function InlineFormatToolbar({
       })
       .run();
   };
+
+  const detectedIcon = findIconLinkEntryForHref(linkDraft.href);
 
   return (
     <BlockPopover
@@ -725,30 +814,6 @@ function InlineFormatToolbar({
         >
           ↗
         </button>
-        <button
-          type="button"
-          className="block-popover__inline-btn"
-          aria-label="Icon URL"
-          title="Icon URL"
-          onMouseDown={preserve}
-          onClick={onIconUrl}
-          data-active={
-            Boolean(editor.getAttributes("inlineLinkStyle").icon) || undefined
-          }
-        >
-          Icon
-        </button>
-        <button
-          type="button"
-          className="block-popover__inline-btn"
-          aria-label="Upload link icon"
-          title="Upload link icon"
-          onMouseDown={preserve}
-          onClick={onUploadIcon}
-          disabled={uploadingIcon}
-        >
-          {uploadingIcon ? "…" : "Up"}
-        </button>
         <input
           ref={iconFileInputRef}
           type="file"
@@ -757,6 +822,25 @@ function InlineFormatToolbar({
           tabIndex={-1}
           onChange={onIconFileChange}
         />
+        {linkInspectorOpen ? (
+          <LinkInspectorPanel
+            assetPickerOpen={assetPickerOpen}
+            detectedIcon={detectedIcon}
+            draft={linkDraft}
+            onApply={applyLinkDraft}
+            onAssetPick={() => setAssetPickerOpen((open) => !open)}
+            onClear={clearLink}
+            onClose={() => {
+              setLinkInspectorOpen(false);
+              setAssetPickerOpen(false);
+            }}
+            onDraftChange={setLinkDraft}
+            onKnownIcon={chooseKnownIcon}
+            onUploadIcon={onUploadIcon}
+            preserveSelection={preserve}
+            uploadingIcon={uploadingIcon}
+          />
+        ) : null}
         <span className="block-popover__inline-divider" aria-hidden="true" />
         {/* Color picker — opens a small palette popover below the toolbar
          * with separate rows for text color and background color. The
@@ -823,6 +907,219 @@ function InlineFormatToolbar({
         ))}
       </div>
     </BlockPopover>
+  );
+}
+
+interface LinkInspectorPanelProps {
+  assetPickerOpen: boolean;
+  detectedIcon: IconLinkRegistryEntry | null;
+  draft: LinkDraft;
+  onApply: () => void;
+  onAssetPick: () => void;
+  onClear: () => void;
+  onClose: () => void;
+  onDraftChange: Dispatch<SetStateAction<LinkDraft>>;
+  onKnownIcon: (entry: IconLinkRegistryEntry) => void;
+  onUploadIcon: () => void;
+  preserveSelection: (event: ReactMouseEvent) => void;
+  uploadingIcon: boolean;
+}
+
+function iconPreviewStyle(url: string): { backgroundImage?: string } {
+  const trimmed = url.trim();
+  return trimmed ? { backgroundImage: `url(${trimmed})` } : {};
+}
+
+function shouldAllowFormFocus(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest("input, textarea, select"));
+}
+
+function LinkInspectorPanel({
+  assetPickerOpen,
+  detectedIcon,
+  draft,
+  onApply,
+  onAssetPick,
+  onClear,
+  onClose,
+  onDraftChange,
+  onKnownIcon,
+  onUploadIcon,
+  preserveSelection,
+  uploadingIcon,
+}: LinkInspectorPanelProps) {
+  const customIconUrl = draft.iconUrl.trim();
+  const previewIcon = customIconUrl || detectedIcon?.asset || "";
+  const preserveInspectorClick = (event: ReactMouseEvent) => {
+    if (shouldAllowFormFocus(event.target)) return;
+    preserveSelection(event);
+  };
+  return (
+    <div
+      className="mdx-link-inspector"
+      role="dialog"
+      aria-label="Link inspector"
+      onMouseDown={preserveInspectorClick}
+    >
+      <div className="mdx-link-inspector__head">
+        <strong>Link</strong>
+        <button type="button" onClick={onClose} aria-label="Close link inspector">
+          ×
+        </button>
+      </div>
+
+      <label className="mdx-link-inspector__field">
+        <span>Text</span>
+        <input
+          value={draft.text}
+          placeholder="Selected text"
+          onChange={(event) =>
+            onDraftChange((current) => ({ ...current, text: event.target.value }))
+          }
+        />
+      </label>
+
+      <label className="mdx-link-inspector__field">
+        <span>URL</span>
+        <input
+          value={draft.href}
+          placeholder="https:// or /internal-path"
+          onChange={(event) =>
+            onDraftChange((current) => ({ ...current, href: event.target.value }))
+          }
+        />
+      </label>
+
+      <div className="mdx-link-inspector__style-row" role="group" aria-label="Link style">
+        <button
+          type="button"
+          className="mdx-link-inspector__seg"
+          data-active={!draft.iconMode || undefined}
+          onClick={() =>
+            onDraftChange((current) => ({ ...current, iconMode: false, iconUrl: "" }))
+          }
+        >
+          Regular
+        </button>
+        <button
+          type="button"
+          className="mdx-link-inspector__seg"
+          data-active={draft.iconMode || undefined}
+          onClick={() => onDraftChange((current) => ({ ...current, iconMode: true }))}
+        >
+          Icon link
+        </button>
+      </div>
+
+      {draft.iconMode ? (
+        <div className="mdx-link-inspector__icon-panel">
+          <div className="mdx-link-inspector__icon-preview">
+            <span
+              className="mdx-link-inspector__icon-chip"
+              style={iconPreviewStyle(previewIcon)}
+              aria-hidden="true"
+            />
+            <div>
+              <strong>{customIconUrl ? "Custom icon" : detectedIcon?.label || "Generic icon"}</strong>
+              <span>
+                {customIconUrl
+                  ? customIconUrl
+                  : detectedIcon
+                    ? "Detected from URL"
+                    : "No known icon match"}
+              </span>
+            </div>
+          </div>
+
+          <label className="mdx-link-inspector__field">
+            <span>Custom icon URL</span>
+            <input
+              value={draft.iconUrl}
+              placeholder={detectedIcon ? detectedIcon.asset : "/uploads/icon.svg"}
+              onChange={(event) =>
+                onDraftChange((current) => ({
+                  ...current,
+                  iconMode: true,
+                  iconUrl: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <div className="mdx-link-inspector__icon-actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() =>
+                onDraftChange((current) => ({
+                  ...current,
+                  iconMode: true,
+                  iconUrl: "",
+                }))
+              }
+            >
+              Use auto
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={onAssetPick}
+            >
+              {assetPickerOpen ? "Hide assets" : "Pick asset"}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={onUploadIcon}
+              disabled={uploadingIcon}
+            >
+              {uploadingIcon ? "Uploading…" : "Upload"}
+            </button>
+          </div>
+
+          <div className="mdx-link-inspector__known-icons">
+            {ICON_LINK_REGISTRY.map((entry) => (
+              <button
+                type="button"
+                key={entry.id}
+                title={entry.label}
+                onClick={() => onKnownIcon(entry)}
+                data-active={draft.iconUrl === entry.asset || undefined}
+              >
+                <span
+                  className="mdx-link-inspector__known-icon"
+                  style={iconPreviewStyle(entry.asset)}
+                  aria-hidden="true"
+                />
+                <span>{entry.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {assetPickerOpen ? (
+            <AssetLibraryPicker
+              currentUrl={draft.iconUrl}
+              onSelect={(asset) => {
+                onDraftChange((current) => ({
+                  ...current,
+                  iconMode: true,
+                  iconUrl: asset.url,
+                }));
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mdx-link-inspector__actions">
+        <button type="button" className="btn btn--ghost" onClick={onClear}>
+          Remove link
+        </button>
+        <button type="button" className="btn btn--primary" onClick={onApply}>
+          Apply
+        </button>
+      </div>
+    </div>
   );
 }
 

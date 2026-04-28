@@ -1547,6 +1547,210 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 .mdx-document-color-picker__swatch--bg[data-bg="pink"] { background: var(--color-bg-pink); }
 .mdx-document-color-picker__swatch--bg[data-bg="red"] { background: var(--color-bg-red); }
 
+.mdx-link-inspector {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 2;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 120px));
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+  box-shadow: var(--mdx-popover-shadow);
+}
+
+.mdx-link-inspector__head,
+.mdx-link-inspector__actions,
+.mdx-link-inspector__icon-actions,
+.mdx-link-inspector__style-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mdx-link-inspector__head {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.mdx-link-inspector__head strong {
+  font-size: 13px;
+}
+
+.mdx-link-inspector__head button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.mdx-link-inspector__head button:hover {
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-primary);
+}
+
+.mdx-link-inspector__field {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 10px;
+}
+
+.mdx-link-inspector__field > span {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mdx-link-inspector__field input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 6px 9px;
+}
+
+.mdx-link-inspector__field input:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-border-subtle));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.mdx-link-inspector__style-row {
+  margin-bottom: 10px;
+  padding: 3px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-link-inspector__seg {
+  flex: 1 1 0;
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdx-link-inspector__seg[data-active="true"] {
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgba(55, 53, 47, 0.12);
+}
+
+.mdx-link-inspector__icon-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg-surface-alt) 70%, transparent);
+}
+
+.mdx-link-inspector__icon-preview {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.mdx-link-inspector__icon-preview strong,
+.mdx-link-inspector__icon-preview span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-link-inspector__icon-preview strong {
+  font-size: 12.5px;
+}
+
+.mdx-link-inspector__icon-preview span {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.mdx-link-inspector__icon-chip,
+.mdx-link-inspector__known-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background:
+    var(--color-bg-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2337352f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E")
+    center / 15px 15px no-repeat;
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+.mdx-link-inspector__icon-chip[style],
+.mdx-link-inspector__known-icon[style] {
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 20px 20px;
+  box-shadow: none;
+}
+
+.mdx-link-inspector__icon-actions {
+  flex-wrap: wrap;
+}
+
+.mdx-link-inspector__known-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 6px;
+}
+
+.mdx-link-inspector__known-icons button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  text-align: left;
+}
+
+.mdx-link-inspector__known-icons button:hover,
+.mdx-link-inspector__known-icons button[data-active="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-bg-surface));
+}
+
+.mdx-link-inspector__known-icons button > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-link-inspector__actions {
+  justify-content: flex-end;
+}
+
 /* List markers via ::before. Each paragraph TipTap renders inside a list
  * block becomes a list "item" visually — we don't use the BulletList /
  * OrderedList extensions because the MdxBlock model is the source of
