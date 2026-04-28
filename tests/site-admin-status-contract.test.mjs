@@ -80,6 +80,27 @@ function makeValidPayload(overrides = {}) {
       deployableVersionReady: true,
       deployableVersionId: "version-1",
     },
+    deployments: {
+      active: {
+        deploymentId: "deployment-1",
+        versionId: "version-1",
+        createdOn: "2026-02-01T00:00:00.000Z",
+        message: "Manual deploy source=0123456789abcdef0123456789abcdef01234567 code=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceSha: "0123456789abcdef0123456789abcdef01234567",
+        codeSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        contentSha: "0123456789abcdef0123456789abcdef01234567",
+        contentBranch: "main",
+      },
+      latestUploaded: {
+        versionId: "version-2",
+        createdOn: "2026-02-01T00:05:00.000Z",
+        message: "Release upload source=0123456789abcdef0123456789abcdef01234567 code=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceSha: "0123456789abcdef0123456789abcdef01234567",
+        codeSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        contentSha: "0123456789abcdef0123456789abcdef01234567",
+        contentBranch: "main",
+      },
+    },
     preflight: {
       generatedFiles: {
         ok: true,
@@ -190,6 +211,7 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
       files: payload.files,
       notion: payload.notion,
       source: payload.source,
+      deployments: payload.deployments,
       freshness: payload.freshness,
     },
   });
@@ -204,6 +226,8 @@ test("site-admin-status-contract: parses success payload in data envelope", () =
   assert.equal(parsed.source.codeSha, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   assert.equal(parsed.source.contentSha, "0123456789abcdef0123456789abcdef01234567");
   assert.equal(parsed.source.deployableVersionReady, true);
+  assert.equal(parsed.deployments?.active?.versionId, "version-1");
+  assert.equal(parsed.deployments?.latestUploaded?.versionId, "version-2");
 });
 
 test("site-admin-status-contract: preserves api error payload", () => {

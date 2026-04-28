@@ -125,7 +125,8 @@ Run the desktop app against staging and record pass/fail notes for each item.
   action in human-readable terms. For DB-backed staging, `pendingDeploy=null`
   should read as a DB-source limitation, not as an error.
 - Confirm Status shows Release Health with content source, runtime code, content
-  revision, Worker candidate, staging deploy, and production promotion status.
+  revision, active deploy, latest upload, Worker candidate, staging deploy, and
+  production promotion status.
 - Confirm Deploy/Publish stays disabled in Production and points back to the
   staging-first workflow.
 - Confirm Settings in Production clearly shows a read-only lock and the save

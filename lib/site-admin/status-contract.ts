@@ -262,6 +262,35 @@ function parseSource(
   return out;
 }
 
+function parseDeploymentSnapshot(
+  value: unknown,
+): NonNullable<SiteAdminStatusPayload["deployments"]>["active"] {
+  if (value === null) return null;
+  if (!isRecord(value)) return null;
+  return {
+    deploymentId: parseNullableString(value.deploymentId),
+    versionId: parseNullableString(value.versionId),
+    createdOn: parseNullableString(value.createdOn),
+    message: parseNullableString(value.message),
+    sourceSha: parseNullableString(value.sourceSha),
+    codeSha: parseNullableString(value.codeSha),
+    contentSha: parseNullableString(value.contentSha),
+    contentBranch: parseNullableString(value.contentBranch),
+  };
+}
+
+function parseDeployments(
+  value: unknown,
+): SiteAdminStatusPayload["deployments"] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const active = parseDeploymentSnapshot(value.active);
+  const latestUploaded = parseDeploymentSnapshot(value.latestUploaded);
+  if (active === null && value.active !== null) return null;
+  if (latestUploaded === null && value.latestUploaded !== null) return null;
+  return { active, latestUploaded };
+}
+
 function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | null {
   if (!isRecord(value)) return null;
   if (!isRecord(value.env) || !isRecord(value.build) || !isRecord(value.content)) return null;
@@ -381,6 +410,8 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
   if (preflight === null) return null;
   const diagnostics = parseDiagnostics(value.diagnostics);
   if (diagnostics === null) return null;
+  const deployments = parseDeployments(value.deployments);
+  if (deployments === null) return null;
 
   return {
     ok: true,
@@ -425,6 +456,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
       rootPage,
     },
     source,
+    ...(deployments !== undefined ? { deployments } : {}),
     ...(preflight !== undefined ? { preflight } : {}),
     ...(freshness !== undefined ? { freshness } : {}),
     ...(diagnostics !== undefined ? { diagnostics } : {}),
