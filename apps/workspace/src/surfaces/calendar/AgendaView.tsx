@@ -10,11 +10,13 @@ export function AgendaView({
   events,
   calendarsById,
   rangeLabel,
+  onEventSelect,
 }: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   /** Human-readable summary shown in the empty state, e.g. "this week". */
   rangeLabel: string;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -55,26 +57,31 @@ export function AgendaView({
               return (
                 <li
                   key={ev.eventIdentifier}
-                  className="flex items-start gap-3 px-2 py-1.5 rounded hover:bg-bg-surface-alt"
                 >
-                  <span
-                    className="mt-1 inline-block w-1 self-stretch rounded-sm flex-shrink-0"
-                    style={{ background: color }}
-                    aria-hidden="true"
-                  />
-                  <span className="w-[72px] flex-shrink-0 text-[12px] text-text-muted tabular-nums">
-                    {ev.isAllDay ? "All day" : formatTime(ev.startsAt)}
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[13px] text-text-primary truncate">
-                      {ev.title || "(No title)"}
+                  <button
+                    type="button"
+                    className="w-full flex items-start gap-3 px-2 py-1.5 rounded hover:bg-bg-surface-alt border-0 bg-transparent text-left cursor-pointer"
+                    onClick={() => onEventSelect?.(ev)}
+                  >
+                    <span
+                      className="mt-1 inline-block w-1 self-stretch rounded-sm flex-shrink-0"
+                      style={{ background: color }}
+                      aria-hidden="true"
+                    />
+                    <span className="w-[72px] flex-shrink-0 text-[12px] text-text-muted tabular-nums">
+                      {ev.isAllDay ? "All day" : formatTime(ev.startsAt)}
                     </span>
-                    {ev.location ? (
-                      <span className="block text-[11.5px] text-text-muted truncate">
-                        {ev.location}
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13px] text-text-primary truncate">
+                        {ev.title || "(No title)"}
                       </span>
-                    ) : null}
-                  </span>
+                      {ev.location ? (
+                        <span className="block text-[11.5px] text-text-muted truncate">
+                          {ev.location}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
                 </li>
               );
             })}

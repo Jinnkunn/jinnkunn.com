@@ -16,10 +16,12 @@ export function MonthView({
   anchor,
   events,
   calendarsById,
+  onEventSelect,
 }: {
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const days = useMemo(() => monthGridDays(anchor), [anchor]);
   const weekRows = useMemo(() => chunk(days, 7), [days]);
@@ -36,6 +38,7 @@ export function MonthView({
             calendarsById={calendarsById}
             anchor={anchor}
             isFirstRow={idx === 0}
+            onEventSelect={onEventSelect}
           />
         ))}
       </div>
@@ -72,12 +75,14 @@ function WeekRow({
   calendarsById,
   anchor,
   isFirstRow,
+  onEventSelect,
 }: {
   week: Date[];
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   anchor: Date;
   isFirstRow: boolean;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   // Anything that should render as a continuous bar — both multi-day
   // events and single-day all-day events. Single-day timed events
@@ -158,6 +163,7 @@ function WeekRow({
                   key={ev.eventIdentifier}
                   event={ev}
                   calendarsById={calendarsById}
+                  onEventSelect={onEventSelect}
                 />
               ))}
               {overflowCount > 0 ? (
@@ -183,6 +189,7 @@ function WeekRow({
                 rowIdx={rowIdx}
                 weekDayCount={week.length}
                 calendarsById={calendarsById}
+                onEventSelect={onEventSelect}
               />
             )),
           )}
@@ -197,19 +204,23 @@ function Bar({
   rowIdx,
   weekDayCount,
   calendarsById,
+  onEventSelect,
 }: {
   bar: AllDayBar;
   rowIdx: number;
   weekDayCount: number;
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const cal = calendarsById.get(bar.event.calendarId);
   const color = cal?.colorHex ?? "#7A7A7A";
   const widthPct = (bar.length / weekDayCount) * 100;
   const leftPct = (bar.startIndex / weekDayCount) * 100;
   return (
-    <span
-      className="absolute text-[10.5px] truncate px-1.5 rounded leading-[16px]"
+    <button
+      type="button"
+      className="absolute text-[10.5px] truncate px-1.5 rounded leading-[16px] border-0 text-left cursor-pointer pointer-events-auto"
+      onClick={() => onEventSelect?.(bar.event)}
       title={bar.event.title || "(No title)"}
       style={{
         left: `calc(${leftPct}% + 2px)`,
@@ -222,16 +233,18 @@ function Bar({
       }}
     >
       {bar.event.title || "(No title)"}
-    </span>
+    </button>
   );
 }
 
 function TimedChip({
   event,
   calendarsById,
+  onEventSelect,
 }: {
   event: CalendarEvent;
   calendarsById: Map<string, Calendar>;
+  onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const cal = calendarsById.get(event.calendarId);
   const color = cal?.colorHex ?? "#7A7A7A";
@@ -240,8 +253,10 @@ function TimedChip({
     minute: "2-digit",
   });
   return (
-    <span
-      className="flex items-center gap-1 text-[10.5px] truncate px-1 leading-[16px]"
+    <button
+      type="button"
+      className="flex items-center gap-1 text-[10.5px] truncate px-1 leading-[16px] border-0 bg-transparent text-left cursor-pointer"
+      onClick={() => onEventSelect?.(event)}
       title={event.title || "(No title)"}
       style={{ color: "var(--color-text-primary, currentColor)" }}
     >
@@ -256,7 +271,7 @@ function TimedChip({
       <span className="truncate text-text-primary">
         {event.title || "(No title)"}
       </span>
-    </span>
+    </button>
   );
 }
 
