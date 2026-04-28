@@ -29,6 +29,14 @@ tauri = { version = "2.0.0", features = [] }
 # fires on a background queue, and tokio::sync::oneshot is the cleanest
 # way to bridge that into our `async` Tauri command.
 tokio = { version = "1", features = ["sync"] }
+# Local SQLite mirror of the D1 content_files / content_files_history
+# tables (Phase 5a — read cache; 5b will reuse for write outbox).
+# `bundled` compiles SQLite from source so we don't take a system-libsqlite
+# dependency on macOS / Windows. Connection is !Send, so commands open a
+# fresh connection per call (cheap — microseconds for SQLite).
+rusqlite = { version = "0.32", features = ["bundled"] }
+# Decode hex-encoded body bytes that come back from /api/site-admin/sync/pull.
+hex = "0.4"
 # Decorum provides `create_overlay_titlebar()` + `set_traffic_lights_inset(x, y)`
 # on the WebviewWindow, which lets us slide the macOS traffic lights
 # into the sidebar card's top edge (matching personal-os's look).
