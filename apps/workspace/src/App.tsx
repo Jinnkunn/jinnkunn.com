@@ -266,6 +266,10 @@ export function App() {
     setWorkspaceEvents((current) => appendWorkspaceEvent(current, input));
   }, []);
 
+  const clearWorkspaceEvents = useCallback(() => {
+    setWorkspaceEvents([]);
+  }, []);
+
   useEffect(() => {
     persistFavorites(favorites);
   }, [favorites]);
@@ -394,6 +398,7 @@ export function App() {
                 <WorkspaceDashboard
                   events={workspaceEvents}
                   favorites={favorites}
+                  onClearEvents={clearWorkspaceEvents}
                   onOpenCommandPalette={() => setWorkspacePaletteOpen(true)}
                   onRecordRecent={recordRecentItem}
                   onSelectNavItem={selectNavItem}
@@ -414,8 +419,11 @@ export function App() {
         surfaces={derivedSurfaces}
         activeSurfaceId={activeSurface.id}
         activeNavItemId={activeNavItemId}
+        eventCount={workspaceEvents.length}
         favorites={favorites}
         recentItems={recentItems}
+        onClearWorkspaceEvents={clearWorkspaceEvents}
+        onOpenWorkspaceDashboard={() => selectSurface("workspace")}
         onRecordRecent={recordRecentItem}
         onSelectSurface={selectSurface}
         onSelectNavItem={selectNavItem}

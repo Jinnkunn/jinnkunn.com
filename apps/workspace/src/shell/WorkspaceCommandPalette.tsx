@@ -16,8 +16,11 @@ interface WorkspaceCommand {
 interface WorkspaceCommandPaletteProps {
   activeNavItemId: string | null;
   activeSurfaceId: string;
+  eventCount: number;
   favorites: readonly SidebarFavorite[];
+  onClearWorkspaceEvents: () => void;
   onClose: () => void;
+  onOpenWorkspaceDashboard: () => void;
   onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onSelectSurface: (id: string) => void;
@@ -49,8 +52,11 @@ function commandOptionId(id: string): string {
 export function WorkspaceCommandPalette({
   activeNavItemId,
   activeSurfaceId,
+  eventCount,
   favorites,
+  onClearWorkspaceEvents,
   onClose,
+  onOpenWorkspaceDashboard,
   onRecordRecent,
   onSelectNavItem,
   onSelectSurface,
@@ -111,6 +117,85 @@ export function WorkspaceCommandPalette({
       });
     };
 
+    const runNavAction = (
+      surfaceId: string,
+      itemId: string,
+      label: string,
+      surfaceTitle?: string,
+    ) => {
+      const surface = findSurface(surfaces, surfaceId);
+      if (!surface || surface.disabled) return;
+      onRecordRecent({
+        itemId,
+        label,
+        surfaceId,
+        surfaceTitle: surfaceTitle ?? surface.title,
+      });
+      onSelectNavItem(surfaceId, itemId);
+    };
+
+    items.push({
+      group: "Workspace",
+      hint: activeSurfaceId === "workspace" ? "current" : "home",
+      id: "workspace:dashboard",
+      label: "Open Workspace Dashboard",
+      keywords: "workspace dashboard command center home overview launch",
+      run: onOpenWorkspaceDashboard,
+    });
+
+    if (eventCount > 0) {
+      items.push({
+        group: "Workspace",
+        hint: `${eventCount} events`,
+        id: "workspace:clear-activity",
+        label: "Clear Workspace Activity",
+        keywords: "workspace activity notifications events clear reset",
+        run: onClearWorkspaceEvents,
+      });
+    }
+
+    for (const action of [
+      {
+        hint: "Deploy health",
+        id: "quick:site-status",
+        itemId: "status",
+        keywords: "deploy status staging production worker candidate publish",
+        label: "Open Site Status",
+        surfaceId: "site-admin",
+      },
+      {
+        hint: "Landing page",
+        id: "quick:home-editor",
+        itemId: "home",
+        keywords: "home landing editor mdx page",
+        label: "Open Home Editor",
+        surfaceId: "site-admin",
+      },
+      {
+        hint: "Reusable blocks",
+        id: "quick:shared-content",
+        itemId: "components",
+        keywords: "shared components news teaching publications works",
+        label: "Open Shared Content",
+        surfaceId: "site-admin",
+      },
+    ] as const) {
+      items.push({
+        group: "Quick Actions",
+        hint: action.hint,
+        id: action.id,
+        label: action.label,
+        keywords: action.keywords,
+        run: () =>
+          runNavAction(
+            action.surfaceId,
+            action.itemId,
+            action.label,
+            "Site Admin",
+          ),
+      });
+    }
+
     for (const recent of recentItems) {
       pushNavCommand(
         "Recent",
@@ -136,7 +221,7 @@ export function WorkspaceCommandPalette({
         group: "Surfaces",
         hint: surface.id === activeSurfaceId ? "current" : undefined,
         id: `surface:${surface.id}`,
-        label: `Switch to ${surface.title}`,
+        label: `Open ${surface.title}`,
         keywords: `${surface.title} ${surface.id} switch open tool surface`,
         run: () => onSelectSurface(surface.id),
       });
@@ -171,7 +256,10 @@ export function WorkspaceCommandPalette({
   }, [
     activeNavItemId,
     activeSurfaceId,
+    eventCount,
     favorites,
+    onClearWorkspaceEvents,
+    onOpenWorkspaceDashboard,
     onSelectNavItem,
     onRecordRecent,
     onSelectSurface,

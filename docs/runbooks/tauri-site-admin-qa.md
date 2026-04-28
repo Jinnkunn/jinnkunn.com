@@ -66,6 +66,9 @@ Run the desktop app against staging and record pass/fail notes for each item.
   commands are discoverable.
 - Open the global workspace command palette with `⌘⇧K`; confirm surfaces,
   recent items, pinned shortcuts, and page titles are searchable.
+- In the global workspace command palette, confirm Quick Actions appear before
+  the full navigation index and can open Site Status, Home Editor, and Shared
+  Content.
 - Confirm the titlebar workspace status center opens, shows the active surface,
   recent count, pinned count, recent activity, and does not interfere with
   titlebar drag outside the popover trigger.
@@ -73,6 +76,8 @@ Run the desktop app against staging and record pass/fail notes for each item.
   global command palette can jump back to those entries.
 - Trigger a Site Admin success/warn/error message and confirm it appears in the
   titlebar Activity popover and the Workspace dashboard Activity list.
+- Clear Activity from the Workspace dashboard or command palette and confirm
+  the titlebar Activity popover reflects the cleared state.
 
 ### Home WYSIWYG Editor
 

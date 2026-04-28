@@ -6,6 +6,7 @@ import type { WorkspaceEvent } from "./workspaceEvents";
 interface WorkspaceDashboardProps {
   events: readonly WorkspaceEvent[];
   favorites: readonly SidebarFavorite[];
+  onClearEvents: () => void;
   onOpenCommandPalette: () => void;
   onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
@@ -73,6 +74,7 @@ function surfaceTitle(
 export function WorkspaceDashboard({
   events,
   favorites,
+  onClearEvents,
   onOpenCommandPalette,
   onRecordRecent,
   onSelectNavItem,
@@ -233,7 +235,17 @@ export function WorkspaceDashboard({
         <section className="workspace-dashboard__panel workspace-dashboard__panel--wide">
           <div className="workspace-dashboard__panel-header">
             <h2>Activity</h2>
-            <span>{events.length}</span>
+            {events.length ? (
+              <button
+                type="button"
+                className="workspace-dashboard__text-button"
+                onClick={onClearEvents}
+              >
+                Clear
+              </button>
+            ) : (
+              <span>0</span>
+            )}
           </div>
           {events.length ? (
             <ul className="workspace-activity-list" role="list">

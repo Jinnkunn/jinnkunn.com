@@ -208,6 +208,16 @@ function main() {
     "Workspace command palette",
   );
   assertIncludes(
+    read("apps/workspace/src/shell/WorkspaceCommandPalette.tsx"),
+    "Quick Actions",
+    "Workspace command palette quick actions",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/WorkspaceCommandPalette.tsx"),
+    "Clear Workspace Activity",
+    "Workspace command palette activity command",
+  );
+  assertIncludes(
     read("apps/workspace/src/shell/Titlebar.tsx"),
     "workspace-status-center",
     "Workspace status center",
@@ -221,6 +231,11 @@ function main() {
     read("apps/workspace/src/shell/WorkspaceDashboard.tsx"),
     "workspace-dashboard__action-grid",
     "Workspace dashboard action grid",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/WorkspaceDashboard.tsx"),
+    "workspace-dashboard__text-button",
+    "Workspace dashboard activity clear action",
   );
   assertIncludes(
     read("apps/workspace/src/shell/workspaceEvents.ts"),
