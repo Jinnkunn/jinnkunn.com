@@ -1,10 +1,12 @@
 import type { SurfaceDefinition, SurfaceNavItem } from "../surfaces/types";
 import { ThemeToggle } from "./ThemeToggle";
 import { handleWindowDragMouseDown } from "./windowDrag";
+import type { WorkspaceEvent, WorkspaceEventTone } from "./workspaceEvents";
 
 interface TitlebarProps {
   activeSurface: SurfaceDefinition;
   activeNavItemId: string | null;
+  events: readonly WorkspaceEvent[];
   favoriteCount: number;
   recentCount: number;
 }
@@ -22,6 +24,24 @@ function findNavLabel(
   return null;
 }
 
+function statusTone(events: readonly WorkspaceEvent[]): WorkspaceEventTone {
+  const latest = events[0]?.tone;
+  return latest === "error" || latest === "warn" || latest === "success"
+    ? latest
+    : "info";
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+}
+
 /** Titlebar — thin strip pinned to the top of the window. The leading pad
  * reserves the sidebar's footprint so the breadcrumb starts past the
  * card's right edge. Native macOS traffic lights are repositioned into
@@ -30,6 +50,7 @@ function findNavLabel(
 export function Titlebar({
   activeSurface,
   activeNavItemId,
+  events,
   favoriteCount,
   recentCount,
 }: TitlebarProps) {
@@ -79,7 +100,11 @@ export function Titlebar({
           title="Workspace status"
           aria-label="Workspace status"
         >
-          <span className="workspace-status-center__dot" aria-hidden="true" />
+          <span
+            className="workspace-status-center__dot"
+            data-tone={statusTone(events)}
+            aria-hidden="true"
+          />
           <span>Workspace</span>
         </summary>
         <div className="workspace-status-center__popover">
@@ -95,6 +120,24 @@ export function Titlebar({
             <strong>{favoriteCount}</strong>
             <span>Pinned shortcuts</span>
           </div>
+          <section className="workspace-status-center__activity" aria-label="Recent activity">
+            <p>Activity</p>
+            {events.length ? (
+              events.slice(0, 4).map((event) => (
+                <article
+                  className="workspace-status-center__event"
+                  data-tone={event.tone}
+                  key={event.id}
+                >
+                  <span aria-hidden="true" />
+                  <strong>{event.title}</strong>
+                  <time>{formatRelativeTime(event.createdAt)}</time>
+                </article>
+              ))
+            ) : (
+              <span>No activity yet</span>
+            )}
+          </section>
           <p>Press ⌘⇧K for the global command palette.</p>
         </div>
       </details>
