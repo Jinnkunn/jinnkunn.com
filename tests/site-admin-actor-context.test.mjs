@@ -21,12 +21,17 @@ import {
   createLocalSiteAdminSourceStore,
 } from "../lib/server/site-admin-source-store.ts";
 
-const SCHEMA_PATH = path.join(process.cwd(), "migrations/001_content_files.sql");
+const SCHEMA_PATHS = [
+  path.join(process.cwd(), "migrations/001_content_files.sql"),
+  path.join(process.cwd(), "migrations/002_content_files_history.sql"),
+];
 
 async function makeStore() {
   const client = createClient({ url: ":memory:" });
-  const schema = await readFile(SCHEMA_PATH, "utf8");
-  await client.executeMultiple(schema);
+  for (const p of SCHEMA_PATHS) {
+    const schema = await readFile(p, "utf8");
+    await client.executeMultiple(schema);
+  }
   // Seed the structured config rows so updateSettings has something to read.
   const seed = (relPath, value) =>
     client.execute({

@@ -18,7 +18,10 @@ import {
 } from "../lib/server/site-admin-source-store.ts";
 import { createDbFileBackend } from "../lib/server/site-admin-file-backend.ts";
 
-const SCHEMA_PATH = path.join(process.cwd(), "migrations/001_content_files.sql");
+const SCHEMA_PATHS = [
+  path.join(process.cwd(), "migrations/001_content_files.sql"),
+  path.join(process.cwd(), "migrations/002_content_files_history.sql"),
+];
 
 const FIXTURE_SITE_CONFIG = {
   siteName: "Fixture Site",
@@ -45,8 +48,10 @@ const FIXTURE_SITE_CONFIG = {
 
 async function makeStore({ seedConfig = true } = {}) {
   const client = createClient({ url: ":memory:" });
-  const schema = await readFile(SCHEMA_PATH, "utf8");
-  await client.executeMultiple(schema);
+  for (const p of SCHEMA_PATHS) {
+    const schema = await readFile(p, "utf8");
+    await client.executeMultiple(schema);
+  }
 
   if (seedConfig) {
     // Seed both the filesystem source and the routes manifest so the store

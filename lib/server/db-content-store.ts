@@ -187,6 +187,23 @@ export function createDbContentStore(config: DbContentStoreConfig): ContentStore
         throw err;
       }
     }
+
+    // Append a row to content_files_history *after* the main upsert lands
+    // so a failed upsert doesn't pollute the history timeline. Failures
+    // here are non-fatal — the user-visible write already succeeded; we
+    // only lose the version-tracking record for that one write.
+    try {
+      await executor.execute({
+        sql: `INSERT INTO content_files_history
+                (rel_path, body, sha, size, is_binary, updated_at, updated_by)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        args: [relPath, body, sha, body.byteLength, isBinary ? 1 : 0, updatedAt, updatedBy],
+      });
+    } catch {
+      // Table missing (DB hasn't run migration 002 yet) or other
+      // transient issue. content_files itself is consistent — swallow.
+    }
+
     return { sha };
   }
 

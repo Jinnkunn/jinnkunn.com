@@ -11,7 +11,10 @@ import {
 } from "../lib/server/content-store.ts";
 import { createDbContentStore } from "../lib/server/db-content-store.ts";
 
-const SCHEMA_PATH = path.join(process.cwd(), "migrations/001_content_files.sql");
+const SCHEMA_PATHS = [
+  path.join(process.cwd(), "migrations/001_content_files.sql"),
+  path.join(process.cwd(), "migrations/002_content_files_history.sql"),
+];
 
 // Each test gets its own in-memory libSQL DB so cases stay isolated.
 // libSQL is just a SQLite implementation here — production runs against D1
@@ -19,8 +22,10 @@ const SCHEMA_PATH = path.join(process.cwd(), "migrations/001_content_files.sql")
 // DbExecutor structurally, so we pass it straight through.
 async function makeStore(opts) {
   const client = createClient({ url: ":memory:" });
-  const schema = await readFile(SCHEMA_PATH, "utf8");
-  await client.executeMultiple(schema);
+  for (const p of SCHEMA_PATHS) {
+    const schema = await readFile(p, "utf8");
+    await client.executeMultiple(schema);
+  }
   const store = createDbContentStore({ executor: client, ...opts });
   return { client, store };
 }
