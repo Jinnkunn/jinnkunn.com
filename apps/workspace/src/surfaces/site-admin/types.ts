@@ -77,13 +77,15 @@ export interface RoutesSourceVersion {
 export interface StatusPayload {
   source: {
     storeKind?: string;
-    branch?: string;
-    headSha?: string;
-    pendingDeploy?: boolean;
+    repo?: string | null;
+    branch?: string | null;
+    headSha?: string | null;
+    headCommitTime?: string | null;
+    pendingDeploy?: boolean | null;
     pendingDeployReason?: string;
-    codeSha?: string;
-    contentSha?: string;
-    contentBranch?: string;
+    codeSha?: string | null;
+    contentSha?: string | null;
+    contentBranch?: string | null;
     deployableVersionReady?: boolean | null;
     deployableVersionReason?: string;
     deployableVersionId?: string;

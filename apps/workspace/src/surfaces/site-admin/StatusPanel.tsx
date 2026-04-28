@@ -3,7 +3,7 @@ import { PublishPipelineCard } from "./PublishPipelineCard";
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
-import { formatPendingDeploy, normalizeString, serializeJson } from "./utils";
+import { normalizeString, serializeJson } from "./utils";
 
 const DEPLOY_ACTIONS_URL =
   "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/deploy-on-content.yml";
@@ -26,6 +26,129 @@ function tokenNeedsRenewal(iso: string): boolean {
   const ms = new Date(iso).getTime() - Date.now();
   if (!Number.isFinite(ms)) return false;
   return ms < 5 * 60 * 1000;
+}
+
+function shortSha(value?: string | null): string {
+  return normalizeString(value).slice(0, 7) || "-";
+}
+
+function sourceStoreLabel(source: StatusPayload["source"] | undefined): string {
+  const kind = normalizeString(source?.storeKind).toLowerCase();
+  if (kind === "db") return "D1 content database";
+  if (kind === "github") return "GitHub content branch";
+  if (kind === "local") return "Local filesystem";
+  return "Unknown source";
+}
+
+function sourceLocation(source: StatusPayload["source"] | undefined): string {
+  const kind = normalizeString(source?.storeKind).toLowerCase();
+  const repo = normalizeString(source?.repo);
+  const branch = normalizeString(source?.branch);
+  if (kind === "db") return repo || "D1 binding";
+  if (repo && branch) return `${repo}:${branch}`;
+  return branch || repo || "-";
+}
+
+function deployStateLabel(source: StatusPayload["source"] | undefined): string {
+  if (!source) return "Load status";
+  if (source.pendingDeploy === true) return "Content ahead of deployment";
+  if (source.pendingDeploy === false) return "Deployment current";
+  if (normalizeString(source.storeKind).toLowerCase() === "db") {
+    return "DB source, no branch diff";
+  }
+  const reason = normalizeString(source.pendingDeployReason);
+  return reason ? `Unknown (${reason})` : "Unknown";
+}
+
+function candidateLabel(source: StatusPayload["source"] | undefined): string {
+  if (!source) return "Unknown";
+  if (source.deployableVersionReady === true) return "Ready";
+  if (source.deployableVersionReady === false) return "Stale";
+  return "Unknown";
+}
+
+function nextActionLabel(
+  data: StatusPayload | null,
+  productionReadOnly: boolean,
+): string {
+  if (!data) return "Refresh status.";
+  if (productionReadOnly) return "Production is read-only here. Promote separately.";
+  if (data.source?.deployableVersionReady === false) {
+    return "Rebuild the staging Worker candidate, then recheck.";
+  }
+  if (data.source?.pendingDeploy === true) return "Deploy the ready staging candidate.";
+  if (data.source?.deployableVersionReady === true) return "No deploy action needed.";
+  if (normalizeString(data.source?.storeKind).toLowerCase() === "db") {
+    return "No branch diff is available for D1 source; use the candidate readiness signal.";
+  }
+  return "Refresh status before deploying.";
+}
+
+type ReleaseHealthTone = "ok" | "warn" | "blocked" | "muted";
+
+interface ReleaseHealthItem {
+  detail: string;
+  label: string;
+  tone: ReleaseHealthTone;
+  value: string;
+}
+
+function releaseHealthItems(
+  data: StatusPayload | null,
+  productionReadOnly: boolean,
+): ReleaseHealthItem[] {
+  const source = data?.source;
+  const storeKind = normalizeString(source?.storeKind).toLowerCase();
+  const hasCode = Boolean(normalizeString(source?.codeSha));
+  const hasContent = Boolean(normalizeString(source?.contentSha)) || storeKind === "db";
+  const candidateReady = source?.deployableVersionReady;
+  const pendingDeploy = source?.pendingDeploy;
+
+  return [
+    {
+      detail: sourceLocation(source),
+      label: "Content source",
+      tone: source ? "ok" : "muted",
+      value: sourceStoreLabel(source),
+    },
+    {
+      detail: "Public web code and CSS that the Worker candidate was built from.",
+      label: "Runtime code",
+      tone: hasCode ? "ok" : "warn",
+      value: shortSha(source?.codeSha),
+    },
+    {
+      detail:
+        storeKind === "db"
+          ? "D1 content rows are the current source; branch diff is not available."
+          : normalizeString(source?.contentBranch || source?.branch) || "Content branch unavailable.",
+      label: "Content revision",
+      tone: hasContent ? "ok" : "warn",
+      value: source?.contentSha ? shortSha(source.contentSha) : storeKind === "db" ? "D1 rows" : "-",
+    },
+    {
+      detail:
+        source?.deployableVersionReason ||
+        "Uploaded Worker version must match the current code and content source.",
+      label: "Worker candidate",
+      tone: candidateReady === false ? "blocked" : candidateReady === true ? "ok" : "warn",
+      value: candidateLabel(source),
+    },
+    {
+      detail: deployStateLabel(source),
+      label: "Staging deploy",
+      tone: pendingDeploy === true ? "warn" : candidateReady === false ? "blocked" : "ok",
+      value: pendingDeploy === true ? "Pending" : storeKind === "db" ? "DB source" : "Current",
+    },
+    {
+      detail: productionReadOnly
+        ? "Production is inspect-only in Workspace."
+        : "Production promotion remains explicit and runbook-driven.",
+      label: "Production",
+      tone: "muted",
+      value: "Manual",
+    },
+  ];
 }
 
 export function StatusPanel() {
@@ -230,44 +353,89 @@ export function StatusPanel() {
         status={data}
       />
 
+      <div className="status-readiness" role="status">
+        <div>
+          <span>Content source</span>
+          <strong>{sourceStoreLabel(data?.source)}</strong>
+          <code>{sourceLocation(data?.source)}</code>
+        </div>
+        <div>
+          <span>Runtime code</span>
+          <strong>{shortSha(data?.source?.codeSha)}</strong>
+          <code>main code</code>
+        </div>
+        <div>
+          <span>Worker candidate</span>
+          <strong>{candidateLabel(data?.source)}</strong>
+          <code>{shortSha(data?.source?.deployableVersionId)}</code>
+        </div>
+        <div>
+          <span>Next action</span>
+          <strong>{nextActionLabel(data, productionReadOnly)}</strong>
+        </div>
+      </div>
+
+      <section className="release-health" aria-label="Site sync and release health">
+        <div className="release-health__head">
+          <div>
+            <h2>Release Health</h2>
+            <p>Source, content, Worker candidate, and deploy readiness in one view.</p>
+          </div>
+          <strong>{nextActionLabel(data, productionReadOnly)}</strong>
+        </div>
+        <div className="release-health__grid">
+          {releaseHealthItems(data, productionReadOnly).map((item) => (
+            <div
+              className="release-health__item"
+              data-tone={item.tone}
+              key={item.label}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <p>{item.detail}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <dl className="key-values">
         <div>
           <dt>Runtime Provider</dt>
           <dd>{data?.env?.runtimeProvider || "-"}</dd>
         </div>
         <div>
-          <dt>Source Store</dt>
-          <dd>{data?.source?.storeKind || "-"}</dd>
+          <dt>Content Source</dt>
+          <dd>{sourceStoreLabel(data?.source)}</dd>
         </div>
         <div>
-          <dt>Source Branch</dt>
-          <dd>{data?.source?.branch || "-"}</dd>
+          <dt>Source Location</dt>
+          <dd>{sourceLocation(data?.source)}</dd>
         </div>
         <div>
           <dt>Source Head</dt>
-          <dd>{data?.source?.headSha || "-"}</dd>
+          <dd>{shortSha(data?.source?.headSha)}</dd>
         </div>
         <div>
           <dt>Code SHA</dt>
-          <dd>{data?.source?.codeSha || "-"}</dd>
+          <dd>{shortSha(data?.source?.codeSha)}</dd>
         </div>
         <div>
           <dt>Content SHA</dt>
-          <dd>{data?.source?.contentSha || "-"}</dd>
-        </div>
-        <div>
-          <dt>Deployable Version</dt>
           <dd>
-            {data?.source?.deployableVersionReady === true
-              ? "Ready"
-              : data?.source?.deployableVersionReady === false
-                ? "Stale"
+            {data?.source?.contentSha
+              ? shortSha(data.source.contentSha)
+              : normalizeString(data?.source?.storeKind).toLowerCase() === "db"
+                ? "D1 rows"
                 : "-"}
           </dd>
         </div>
         <div>
-          <dt>Pending Deploy</dt>
-          <dd>{data?.source ? formatPendingDeploy(data.source) : "-"}</dd>
+          <dt>Deployable Version</dt>
+          <dd>{candidateLabel(data?.source)}</dd>
+        </div>
+        <div>
+          <dt>Deploy State</dt>
+          <dd>{deployStateLabel(data?.source)}</dd>
         </div>
         <div>
           <dt>Deploy Target Ready</dt>

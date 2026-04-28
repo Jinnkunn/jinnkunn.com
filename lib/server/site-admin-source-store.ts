@@ -5,6 +5,7 @@ import path from "node:path";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
+import { localContentOverridesEnabled } from "./local-content-overrides.ts";
 import { getCurrentSiteAdminActor } from "./site-admin-actor-context.ts";
 import {
   createDbFileBackend,
@@ -37,6 +38,7 @@ import {
 
 const SITE_CONFIG_REL_PATH = "site-config.json";
 const PROTECTED_ROUTES_REL_PATH = "protected-routes.json";
+const CONTENT_LOCAL_DIR = "content/local";
 const ROUTES_MANIFEST_REL_PATH = "routes-manifest.json";
 const CONTENT_FILESYSTEM_DIR = "content/filesystem";
 const CONTENT_GENERATED_DIR = "content/generated";
@@ -640,6 +642,16 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
   }
 
   private async readPreferredJson(relPath: string, fallback: unknown): Promise<unknown> {
+    // In local development, content/local lets one-person workspace settings
+    // diverge without dirtying tracked content/filesystem files. Production
+    // builds ignore it unless explicitly enabled.
+    if (localContentOverridesEnabled()) {
+      const localResult = await this.backend.readJsonFile(
+        `${CONTENT_LOCAL_DIR}/${relPath}`,
+      );
+      if (localResult !== null && localResult !== undefined) return localResult;
+    }
+
     // Try content/filesystem/X.json first (real data) then fall back to the
     // prebuild stub at content/generated/X.json. Either backend handles the
     // path the same way; for the db backend the generated lookup just
@@ -658,7 +670,8 @@ class LocalSiteAdminSourceStore implements SiteAdminSourceStore {
   }
 
   private async writeFilesystemJson(relPath: string, value: unknown): Promise<void> {
-    await this.backend.writeJsonFile(`${CONTENT_FILESYSTEM_DIR}/${relPath}`, value);
+    const dir = localContentOverridesEnabled() ? CONTENT_LOCAL_DIR : CONTENT_FILESYSTEM_DIR;
+    await this.backend.writeJsonFile(`${dir}/${relPath}`, value);
   }
 
   async statFile(relPath: string): Promise<SiteAdminFileStat> {

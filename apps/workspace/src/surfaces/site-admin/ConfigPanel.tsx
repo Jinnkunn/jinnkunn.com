@@ -430,13 +430,27 @@ export function ConfigPanel() {
             className="btn"
             type="button"
             onClick={() => void saveSettings()}
+            title={
+              productionReadOnly
+                ? "Production is inspect-only. Switch to Staging to save site settings."
+                : undefined
+            }
             disabled={loading || savingSettings || conflict || !sourceVersion || productionReadOnly}
           >
-            Save Site Settings
+            {productionReadOnly ? "Read-only in Production" : "Save Site Settings"}
           </button>
         </div>
       </header>
       <SiteAdminEnvironmentBanner actionLabel="save site settings" />
+      {productionReadOnly ? (
+        <div className="settings-readonly-callout" role="status">
+          <strong>Production settings are locked in Workspace.</strong>
+          <span>
+            Edit Settings in Staging, publish the staging candidate, then promote
+            production with the release runbook.
+          </span>
+        </div>
+      ) : null}
       <p className="m-0 text-[12px] text-text-muted">
         {sourceVersion
           ? `sourceVersion.siteConfigSha=${sourceVersion.siteConfigSha} | branchSha=${sourceVersion.branchSha}`

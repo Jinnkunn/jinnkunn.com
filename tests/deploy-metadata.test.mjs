@@ -80,6 +80,16 @@ test("release script refreshes staging content branch before resolving sha", asy
   assert.match(script, /gitValue\(\["rev-parse", stagingContentRef\]\)/);
 });
 
+test("release script refuses dirty staging releases by default", async () => {
+  const script = await fs.readFile(
+    path.join(process.cwd(), "scripts/release-cloudflare.mjs"),
+    "utf8",
+  );
+  assert.match(script, /ALLOW_DIRTY_STAGING/);
+  assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
+  assert.match(script, /content\/local\/site-config\.json/);
+});
+
 test("release script can promote staging content through the guarded production path", async () => {
   const script = await fs.readFile(
     path.join(process.cwd(), "scripts/release-cloudflare.mjs"),

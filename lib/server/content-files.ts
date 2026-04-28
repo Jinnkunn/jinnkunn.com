@@ -3,6 +3,8 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 
+import { localContentOverridesEnabled } from "./local-content-overrides.ts";
+
 function sanitizeRelPath(relPath: string): string {
   const rel = String(relPath || "").trim().replace(/^\/+/, "");
   if (!rel) return "";
@@ -17,6 +19,24 @@ function getGeneratedContentRoots(): string[] {
     path.join(cwd, "content", "generated"),
     path.join(cwd, "server-functions", "default", "content", "generated"),
     path.join(cwd, ".open-next", "server-functions", "default", "content", "generated"),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const dir of dirs) {
+    if (!dir || seen.has(dir)) continue;
+    seen.add(dir);
+    out.push(dir);
+  }
+  return out;
+}
+
+function getLocalContentRoots(): string[] {
+  if (!localContentOverridesEnabled()) return [];
+  const cwd = process.cwd();
+  const dirs = [
+    path.join(cwd, "content", "local"),
+    path.join(cwd, "server-functions", "default", "content", "local"),
+    path.join(cwd, ".open-next", "server-functions", "default", "content", "local"),
   ];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -48,9 +68,10 @@ function getFilesystemContentRoots(): string[] {
 export function getContentFileCandidates(relPath: string): string[] {
   const rel = sanitizeRelPath(relPath);
   if (!rel) return [];
+  const local = getLocalContentRoots().map((root) => path.join(root, rel));
   const filesystem = getFilesystemContentRoots().map((root) => path.join(root, rel));
   const generated = getGeneratedContentRoots().map((root) => path.join(root, rel));
-  return [...filesystem, ...generated];
+  return [...local, ...filesystem, ...generated];
 }
 
 export function findFirstExistingFile(candidates: string[]): string | null {

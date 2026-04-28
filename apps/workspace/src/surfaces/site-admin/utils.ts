@@ -338,7 +338,7 @@ export function stripTrailingSlash(input: string): string {
 }
 
 export function formatPendingDeploy(source: {
-  pendingDeploy?: boolean;
+  pendingDeploy?: boolean | null;
   pendingDeployReason?: string;
 }): string {
   if (source.pendingDeploy === true) return "Yes";

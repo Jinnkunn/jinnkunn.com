@@ -123,9 +123,39 @@ function main() {
     "Status stale candidate recovery",
   );
   assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    "status-readiness",
+    "Status readiness summary",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    "D1 content database",
+    "Status source clarity",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    "Release Health",
+    "Status release health panel",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ConfigPanel.tsx"),
+    "Read-only in Production",
+    "Production settings lock",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/use-editor-draft.ts"),
     "saveDraftNow",
     "Editor conflict draft preservation",
+  );
+  assertIncludes(
+    read("lib/server/content-files.ts"),
+    "content\", \"local",
+    "Local content override roots",
+  );
+  assertIncludes(
+    read("scripts/release-cloudflare.mjs"),
+    "ALLOW_DIRTY_STAGING",
+    "Staging dirty guard",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
@@ -468,6 +498,21 @@ function main() {
     workspaceCss,
     ".publish-pipeline",
     "Publish pipeline CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".status-readiness",
+    "Status readiness CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".release-health",
+    "Release health CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".settings-readonly-callout",
+    "Production settings lock CSS",
   );
   assertIncludes(
     workspaceCss,
