@@ -48,11 +48,16 @@ function bytesToUtf8(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("utf8");
 }
 
-function asBytes(value: unknown): Uint8Array {
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (typeof value === "string") return new Uint8Array(Buffer.from(value, "utf8"));
-  throw new Error("db-content-store: unexpected body column type");
+// Decode a SQLite hex string (output of `hex()`) into bytes. The hand-rolled
+// loop avoids depending on Buffer in case this code ever runs in a Workers
+// context where the nodejs_compat shim isn't available.
+function hexToBytes(hex: string): Uint8Array {
+  const length = hex.length >> 1;
+  const out = new Uint8Array(length);
+  for (let i = 0; i < length; i++) {
+    out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return out;
 }
 
 function normalizeRel(relPath: string): string {
@@ -86,14 +91,21 @@ export function createDbContentStore(config: DbContentStoreConfig): ContentStore
     body: Uint8Array;
     sha: string;
   } | null> {
+    // Pull the body as a SQLite hex string (`lower(hex(body))`) instead of
+    // raw BLOB. D1's binding has shipped BLOB-column results in several
+    // shapes over time (ArrayBuffer, cross-realm ArrayBuffer, Uint8Array,
+    // even number arrays in some Worker isolation contexts) — hex sidesteps
+    // every one of those at the cost of 2x payload bytes, which is fine for
+    // the small JSON / MDX rows we read here. libSQL also supports hex(),
+    // so unit tests against in-memory libSQL exercise the same path.
     const result = await executor.execute({
-      sql: "SELECT body, sha FROM content_files WHERE rel_path = ?",
+      sql: "SELECT lower(hex(body)) AS body_hex, sha FROM content_files WHERE rel_path = ?",
       args: [relPath],
     });
     const row = result.rows[0];
     if (!row) return null;
     return {
-      body: asBytes(row.body),
+      body: hexToBytes(String(row.body_hex)),
       sha: String(row.sha),
     };
   }
