@@ -79,6 +79,10 @@ const SUMMARY_LABELS: Array<[DeployPreviewSummaryKey, string]> = [
   ["componentsChanged", "Shared content changed"],
 ];
 
+const DEPLOY_ACTIONS_URL =
+  "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/deploy-on-content.yml";
+const RELEASE_STAGING_COMMAND = "npm run release:staging";
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -222,6 +226,15 @@ function isDeployCandidateBlocked(source: SourceSnapshot | null): boolean {
   return source?.deployableVersionReady === false;
 }
 
+function deployCandidateTarget(source: SourceSnapshot | null): string {
+  const content = shortSha(source?.contentSha);
+  const branch = normalizeString(source?.contentBranch || source?.branch);
+  if (content && branch) return `content ${content} on ${branch}`;
+  if (content) return `content ${content}`;
+  if (branch) return branch;
+  return "latest content";
+}
+
 /**
  * Triggers /api/site-admin/deploy. Deploy promotes the currently-uploaded
  * worker version — it does not rebuild from source. In the common workflow,
@@ -277,6 +290,15 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
     setConfirming(true);
     if (isDeployCandidateBlocked(source)) {
       setMessage("warn", deployCandidateBlockedMessage(source));
+    }
+  }
+
+  async function copyReleaseCommand() {
+    try {
+      await navigator.clipboard.writeText(RELEASE_STAGING_COMMAND);
+      setMessage("success", `Copied: ${RELEASE_STAGING_COMMAND}`);
+    } catch {
+      setMessage("warn", `Run locally: ${RELEASE_STAGING_COMMAND}`);
     }
   }
 
@@ -473,6 +495,42 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
                   {sourceSnapshot.deployableVersionReason}
                 </p>
               )}
+              {deployCandidateBlocked ? (
+                <div className="publish-preview__recovery">
+                  <div>
+                    <strong>Staging candidate is stale</strong>
+                    <span>
+                      Rebuild the Worker candidate for{" "}
+                      {deployCandidateTarget(sourceSnapshot)}, then recheck.
+                    </span>
+                  </div>
+                  <div className="publish-preview__recovery-actions">
+                    <button
+                      type="button"
+                      className="btn btn--secondary"
+                      disabled={previewLoading}
+                      onClick={() => void loadPreview()}
+                    >
+                      Recheck
+                    </button>
+                    <a
+                      className="btn btn--ghost"
+                      href={DEPLOY_ACTIONS_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Deploy Action
+                    </a>
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => void copyReleaseCommand()}
+                    >
+                      Copy release command
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
         </details>

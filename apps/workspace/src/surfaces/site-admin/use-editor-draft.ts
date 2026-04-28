@@ -30,6 +30,8 @@ export interface UseEditorDraftResult<TForm> {
   /** Remove the draft from localStorage — call after a successful server
    * save/delete, and when the user picks "Discard". */
   clearDraft: () => void;
+  /** Persist the current edit immediately instead of waiting for debounce. */
+  saveDraftNow: () => void;
   /** Dismiss the restore banner without clearing the draft. Useful when
    * the caller has already applied the draft to its own state. */
   dismissRestore: () => void;
@@ -102,24 +104,29 @@ export function useEditorDraft<TForm>(
   // content — without it, every page open quietly creates a fake
   // draft that surfaces as "Unsaved draft" on the next visit.
   const timerRef = useRef<number | null>(null);
+  const saveDraftNow = useCallback(() => {
+    if (!enabled || !dirty) return;
+    try {
+      const envelope: DraftEnvelope<TForm> = {
+        body,
+        form,
+        slug,
+        savedAt: Date.now(),
+        version: 1,
+      };
+      localStorage.setItem(draftKey(kind, slug), JSON.stringify(envelope));
+    } catch {
+      // Quota exceeded / private mode / serialization error — drop.
+    }
+  }, [enabled, dirty, kind, slug, body, form]);
+
   useEffect(() => {
     if (!enabled || !dirty) return;
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
     }
     timerRef.current = window.setTimeout(() => {
-      try {
-        const envelope: DraftEnvelope<TForm> = {
-          body,
-          form,
-          slug,
-          savedAt: Date.now(),
-          version: 1,
-        };
-        localStorage.setItem(draftKey(kind, slug), JSON.stringify(envelope));
-      } catch {
-        // Quota exceeded / private mode / serialization error — drop.
-      }
+      saveDraftNow();
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (timerRef.current !== null) {
@@ -127,7 +134,7 @@ export function useEditorDraft<TForm>(
         timerRef.current = null;
       }
     };
-  }, [enabled, dirty, kind, slug, body, form]);
+  }, [enabled, dirty, saveDraftNow]);
 
   // Auto-discard stale drafts: when there's no active edit (`!dirty`)
   // and the persisted draft body+form already match the current
@@ -163,7 +170,7 @@ export function useEditorDraft<TForm>(
 
   const dismissRestore = useCallback(() => setRestorable(null), []);
 
-  return { restorable, clearDraft, dismissRestore };
+  return { restorable, clearDraft, dismissRestore, saveDraftNow };
 }
 
 /** Format a draft's `savedAt` as a short relative label ("just now",

@@ -43,6 +43,7 @@ import {
   WorksEntryEditableBlock,
 } from "./mdx-block-renderers";
 import { RichTextEditableBlock } from "./rich-text-editable-block";
+import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import {
   createMdxBlock,
   duplicateMdxBlock,
@@ -1885,7 +1886,7 @@ export function MdxDocumentEditor<TForm>({
           ? "Conflict"
           : dirty
             ? "Unsaved changes"
-            : "Saved";
+            : "Saved to source branch";
   const imageDrop = useMdxImageUploadDrop({ request, setError, setMessage });
   const { confirmBack, leaveEditor } = useConfirmingBack({
     dirty,
@@ -1895,7 +1896,7 @@ export function MdxDocumentEditor<TForm>({
   });
 
   const draftKeySlug = mode === "create" ? "" : (initialSlug ?? "");
-  const { restorable, clearDraft, dismissRestore } = useEditorDraft(
+  const { restorable, clearDraft, dismissRestore, saveDraftNow } = useEditorDraft(
     adapter.kind,
     draftKeySlug,
     body,
@@ -1986,6 +1987,15 @@ export function MdxDocumentEditor<TForm>({
     [adapter, body, form, mode, slug],
   );
 
+  const copyCurrentSource = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(source);
+      setMessage("success", "Current MDX copied.");
+    } catch {
+      setMessage("warn", "Could not copy current MDX. Use Source mode if you need to copy manually.");
+    }
+  }, [setMessage, source]);
+
   const save = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
@@ -2017,7 +2027,10 @@ export function MdxDocumentEditor<TForm>({
         }
         setLastSavedSource(nextSource);
         clearDraft();
-        setMessage("success", `${adapter.titleNoun} created.`);
+        setMessage(
+          "success",
+          `${adapter.titleNoun} created in source branch. Publish staging separately.`,
+        );
         bumpContentRevision();
         if (!adapter.stayAfterSave) onExit("saved", slug.trim());
         return;
@@ -2061,7 +2074,10 @@ export function MdxDocumentEditor<TForm>({
       setLastSavedSource(nextSource);
       setConflict(false);
       clearDraft();
-      setMessage("success", `${adapter.titleNoun} saved to source branch. Publish separately.`);
+      setMessage(
+        "success",
+        `${adapter.titleNoun} saved to source branch. Publish staging separately.`,
+      );
       bumpContentRevision();
       if (!adapter.stayAfterSave) onExit("saved", currentSlug);
     },
@@ -2144,7 +2160,7 @@ export function MdxDocumentEditor<TForm>({
               {mode === "create" ? "New draft" : initialSlug}
             </p>
             <span className={`editor-state ${dirty ? "editor-state--dirty" : "editor-state--clean"}`}>
-              {dirty ? "Unsaved changes" : "Saved"}
+              {dirty ? "Unsaved changes" : "Saved to source branch"}
             </span>
           </div>
         </div>
@@ -2195,12 +2211,23 @@ export function MdxDocumentEditor<TForm>({
       {conflict && (
         <div className="editor-conflict" role="alert">
           <span>
-            Remote content changed. Reload latest to continue editing this {adapter.titleNoun.toLowerCase()}.
+            Remote content changed. Reload latest to continue editing this{" "}
+            {adapter.titleNoun.toLowerCase()}. Your current edit is preserved
+            as a local draft before reload.
           </span>
+          <button
+            type="button"
+            className="btn btn--ghost draft-restore__btn"
+            onClick={() => void copyCurrentSource()}
+            disabled={loading || saving}
+          >
+            Copy current MDX
+          </button>
           <button
             type="button"
             className="btn btn--secondary draft-restore__btn"
             onClick={() => {
+              saveDraftNow();
               setReloadNonce((value) => value + 1);
             }}
             disabled={loading || saving}
@@ -2210,11 +2237,7 @@ export function MdxDocumentEditor<TForm>({
         </div>
       )}
 
-      {productionReadOnly ? (
-        <div className="workspace-status-banner workspace-status-banner--warn">
-          {environment.helpText}
-        </div>
-      ) : null}
+      <SiteAdminEnvironmentBanner actionLabel="edit content" />
 
       {error && (
         <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>

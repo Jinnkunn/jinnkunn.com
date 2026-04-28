@@ -50,6 +50,11 @@ Run the desktop app against staging and record pass/fail notes for each item.
 - Drag the window from the titlebar, the traffic-light strip, and the sidebar
   context header; the app should move from each region.
 - Confirm the connection pill shows the staging profile and signed-in state.
+- Switch to the Production profile and confirm Site Admin shows a read-only
+  environment badge plus a "Switch to Staging" action; Save/Delete/Publish
+  controls must be disabled or blocked before any GitHub write is attempted.
+- Click "Switch to Staging" from a Production read-only banner and confirm the
+  profile changes without losing the selected sidebar item.
 - Switch between Site Admin tabs; titlebar breadcrumbs and sidebar selection
   must stay aligned.
 - Toggle light/dark theme; editor panels and preview surfaces must remain
@@ -77,7 +82,8 @@ Run the desktop app against staging and record pass/fail notes for each item.
 - Select inline text and confirm the floating format toolbar remains compact
   while Bold, Link, Icon Link, Upload Icon, and Color are discoverable.
 - Save, reload the app, and confirm `content/home.json` round-trips as title +
-  bodyMdx and still matches the staging preview.
+  bodyMdx. The saved state should read "Saved to source branch" until Publish
+  runs.
 
 ### Post And Page Editors
 
@@ -91,6 +97,21 @@ Run the desktop app against staging and record pass/fail notes for each item.
 - Drag an image into the editor; the drop target should show clear visual
   feedback before upload.
 - Save, reload, and confirm the body content round-trips.
+- Simulate a stale edit conflict on a disposable page. Confirm the conflict
+  banner offers "Copy current MDX" and "Reload latest", and that Reload latest
+  preserves the current edit as a local draft before fetching remote content.
+
+### Publish And Recovery
+
+- Save a small staging-only change and confirm the success message says it was
+  saved to the source branch and still needs staging publish.
+- Open Publish, confirm deploy preview lists added/removed/changed pages,
+  redirects, protected routes, and shared content.
+- If the preview reports a stale Worker candidate, confirm the recovery card
+  exposes Recheck, Open Deploy Action, and Copy release command.
+- Open Status and confirm stale candidate recovery exposes the same actions.
+- Confirm Deploy/Publish stays disabled in Production and points back to the
+  staging-first workflow.
 
 ### Asset Library
 
@@ -149,6 +170,7 @@ Run the desktop app against staging and record pass/fail notes for each item.
 - Asset Library:
 - Drafts and Version History:
 - Public Preview:
+- Publish and recovery:
 
 ### Notes / Follow-ups
 
