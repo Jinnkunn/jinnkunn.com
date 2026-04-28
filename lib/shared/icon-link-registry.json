@@ -1,0 +1,85 @@
+[
+  {
+    "id": "linkedin",
+    "label": "LinkedIn",
+    "route": "/",
+    "asset": "/web_image/linkedin-blue.svg",
+    "backgroundSize": "20px 20px",
+    "matchers": [{ "kind": "exact", "value": "https://www.linkedin.com/in/jinkun-chen/" }]
+  },
+  {
+    "id": "blog",
+    "label": "Blog",
+    "route": "/",
+    "asset": "/web_image/blog-b.svg",
+    "backgroundSize": "20px 20px",
+    "matchers": [{ "kind": "exact", "value": "/blog" }]
+  },
+  {
+    "id": "x",
+    "label": "X",
+    "route": "/",
+    "asset": "/web_image/x.svg",
+    "backgroundSize": "26px 26px",
+    "matchers": [{ "kind": "exact", "value": "https://twitter.com/_jinnkunn" }]
+  },
+  {
+    "id": "yimen-chen",
+    "label": "Yimen Chen",
+    "route": "/",
+    "asset": "/web_image/chen-seal.svg",
+    "backgroundSize": "20px 20px",
+    "matchers": [{ "kind": "exact", "value": "/chen" }]
+  },
+  {
+    "id": "dalhousie",
+    "label": "Dalhousie",
+    "route": "/",
+    "asset": "/web_image/dal-seal.svg",
+    "backgroundSize": "20px 20px",
+    "matchers": [
+      { "kind": "exact", "value": "https://dal.ca/" },
+      { "kind": "exact", "value": "https://www.dal.ca/" }
+    ]
+  },
+  {
+    "id": "rss",
+    "label": "RSS",
+    "route": "/blog",
+    "asset": "/web_image/rss.svg",
+    "backgroundSize": "20px 20px",
+    "matchers": [{ "kind": "exact", "value": "/blog.rss" }]
+  },
+  {
+    "id": "google-scholar",
+    "label": "Google Scholar",
+    "route": "/publications",
+    "asset": "/web_image/google-scholar.svg",
+    "backgroundSize": "23px 23px",
+    "matchers": [{ "kind": "contains", "value": "scholar.google" }]
+  },
+  {
+    "id": "researchgate",
+    "label": "ResearchGate",
+    "route": "/publications",
+    "asset": "/web_image/researchgate.svg",
+    "backgroundSize": "24px 24px",
+    "matchers": [{ "kind": "contains", "value": "researchgate.net" }]
+  },
+  {
+    "id": "orcid",
+    "label": "ORCID",
+    "route": "/publications",
+    "asset": "/web_image/orcid.svg",
+    "backgroundSize": "22px 22px",
+    "matchers": [{ "kind": "prefix", "value": "https://orcid.org/" }]
+  },
+  {
+    "id": "semantic-scholar",
+    "label": "Semantic Scholar",
+    "route": "/publications",
+    "asset": "/web_image/semantic_scholar.svg",
+    "backgroundSize": "22px 22px",
+    "matchers": [{ "kind": "contains", "value": "semanticscholar.org/" }]
+  }
+]

@@ -119,7 +119,8 @@ Run the desktop app against staging and record pass/fail notes for each item.
   redirects, protected routes, and shared content.
 - If the preview reports a stale Worker candidate, confirm the recovery card
   exposes Recheck, Open Deploy Action, and Copy release command.
-- Open Status and confirm stale candidate recovery exposes the same actions.
+- Open Status and confirm the Publish pipeline card exposes the same recovery
+  actions.
 - Confirm Deploy/Publish stays disabled in Production and points back to the
   staging-first workflow.
 

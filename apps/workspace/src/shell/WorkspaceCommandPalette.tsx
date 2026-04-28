@@ -179,6 +179,14 @@ export function WorkspaceCommandPalette({
         label: "Open Shared Content",
         surfaceId: "site-admin",
       },
+      {
+        hint: "Route and icon checks",
+        id: "quick:site-links",
+        itemId: "links",
+        keywords: "links audit icon link internal route broken protected",
+        label: "Open Link Audit",
+        surfaceId: "site-admin",
+      },
     ] as const) {
       items.push({
         group: "Quick Actions",

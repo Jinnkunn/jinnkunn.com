@@ -120,6 +120,7 @@ export function CommandPalette({
       { id: "home", label: "Home" },
       { id: "posts", label: "Posts" },
       { id: "pages", label: "Pages" },
+      { id: "links", label: "Links" },
       { id: "settings", label: "Settings" },
     ];
     for (const tab of tabs) {

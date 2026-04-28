@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PublishPipelineCard } from "./PublishPipelineCard";
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
@@ -159,8 +160,6 @@ export function StatusPanel() {
     !connection.authToken ||
     data?.source?.deployableVersionReady === false;
 
-  const staleCandidate = data?.source?.deployableVersionReady === false;
-
   const copyReleaseCommand = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(RELEASE_STAGING_COMMAND);
@@ -222,6 +221,15 @@ export function StatusPanel() {
 
       <SiteAdminEnvironmentBanner actionLabel="deploy changes" />
 
+      <PublishPipelineCard
+        actionsUrl={DEPLOY_ACTIONS_URL}
+        loading={loading}
+        onCopyReleaseCommand={copyReleaseCommand}
+        onRefresh={() => void refresh()}
+        releaseCommand={RELEASE_STAGING_COMMAND}
+        status={data}
+      />
+
       <dl className="key-values">
         <div>
           <dt>Runtime Provider</dt>
@@ -270,44 +278,6 @@ export function StatusPanel() {
       {notes.length > 0 && (
         <p className="m-0 text-[12px] text-text-muted">{notes.join(" ")}</p>
       )}
-
-      {staleCandidate ? (
-        <div className="site-admin-recovery-card">
-          <div>
-            <strong>Staging candidate needs a rebuild</strong>
-            <span>
-              The latest uploaded Worker version does not match the current
-              code/content source. Wait for Deploy (auto), or run the staging
-              release command locally, then refresh status.
-            </span>
-          </div>
-          <div className="site-admin-recovery-card__actions">
-            <button
-              type="button"
-              className="btn btn--secondary"
-              disabled={loading}
-              onClick={() => void refresh()}
-            >
-              Recheck
-            </button>
-            <a
-              className="btn btn--ghost"
-              href={DEPLOY_ACTIONS_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open Deploy Action
-            </a>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => void copyReleaseCommand()}
-            >
-              Copy release command
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       <details className="surface-details">
         <summary>Raw Status Payload</summary>

@@ -118,7 +118,7 @@ function main() {
     "Publish stale candidate recovery",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    read("apps/workspace/src/surfaces/site-admin/PublishPipelineCard.tsx"),
     "Copy release command",
     "Status stale candidate recovery",
   );
@@ -136,6 +136,26 @@ function main() {
     read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
     "mdx-document-slash-menu",
     "RichTextEditableBlock",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
+    "LinkInspectorPanel",
+    "RichTextEditableBlock link inspector",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/icon-link-registry.ts"),
+    "icon-link-registry.json",
+    "shared icon link registry",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/LinkAuditPanel.tsx"),
+    "missing-icon-mark",
+    "Link audit known icon detection",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/SiteAdminSurface.tsx"),
+    "LinkAuditPanel",
+    "Site Admin link audit surface",
   );
   assertIncludes(
     read("apps/workspace/src/ui/primitives.tsx"),
@@ -441,13 +461,23 @@ function main() {
   );
   assertIncludes(
     workspaceCss,
-    ".site-admin-recovery-card",
-    "Site Admin stale candidate recovery CSS",
+    ".publish-preview__recovery",
+    "Publish stale candidate recovery CSS",
   );
   assertIncludes(
     workspaceCss,
-    ".publish-preview__recovery",
-    "Publish stale candidate recovery CSS",
+    ".publish-pipeline",
+    "Publish pipeline CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".link-audit__table",
+    "Link audit CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-link-inspector",
+    "Link inspector CSS",
   );
   for (const token of [
     "--workspace-sidebar-rail-width",

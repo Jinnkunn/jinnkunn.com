@@ -66,6 +66,7 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
     id: "site",
     label: "Site",
     items: [
+      { id: "links", label: "Links", icon: <StatusIcon /> },
       { id: "settings", label: "Settings", icon: <ConfigIcon /> },
     ],
   },
@@ -91,6 +92,7 @@ export const SITE_ADMIN_TAB_IDS: readonly SiteAdminTab[] = [
   "posts",
   "pages",
   "components",
+  "links",
   "settings",
 ];
 
