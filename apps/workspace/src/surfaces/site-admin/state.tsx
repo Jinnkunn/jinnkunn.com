@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createNamespacedSecureStorage } from "../../lib/secureStorage";
+import { emitWorkspaceEvent } from "../../shell/workspaceEvents";
 import { siteAdminBrowserLogin } from "../../lib/tauri";
 import { maybeSyncAfterWrite } from "./sync-on-write";
 import {
@@ -379,6 +380,11 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
         return;
       }
       setMessageState({ kind, text: safe });
+      emitWorkspaceEvent({
+        source: "Site Admin",
+        title: safe,
+        tone: kind || "info",
+      });
       if (kind === "success" || kind === "info") {
         autoDismissRef.current = window.setTimeout(() => {
           setMessageState({ kind: "", text: "" });

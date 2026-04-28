@@ -34,6 +34,24 @@ export const CalendarIcon = () => (
   </svg>
 );
 
+export const WorkspaceIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2.25" y="2.25" width="5" height="5" rx="1.35" />
+    <rect x="8.75" y="2.25" width="5" height="5" rx="1.35" />
+    <rect x="2.25" y="8.75" width="5" height="5" rx="1.35" />
+    <path d="M9.25 11.25h4.5M11.5 9v4.5" />
+  </svg>
+);
+
 export const StatusIcon = () => (
   <svg
     viewBox="0 0 16 16"
@@ -132,4 +150,3 @@ export const HomeIcon = () => (
     <path d="M6.5 14v-3.5h3V14" />
   </svg>
 );
-

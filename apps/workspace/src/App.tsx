@@ -18,12 +18,20 @@ import { Sidebar } from "./shell/Sidebar";
 import { SurfaceNavProvider } from "./shell/surface-nav-context";
 import { Titlebar } from "./shell/Titlebar";
 import { WorkspaceCommandPalette } from "./shell/WorkspaceCommandPalette";
+import { WorkspaceDashboard } from "./shell/WorkspaceDashboard";
+import {
+  appendWorkspaceEvent,
+  loadWorkspaceEvents,
+  persistWorkspaceEvents,
+  WORKSPACE_EVENT_NAME,
+  type WorkspaceEventInput,
+} from "./shell/workspaceEvents";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { SURFACES, findSurface } from "./surfaces/registry";
 import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
 import { WorkspaceMain } from "./ui/primitives";
 
-const DEFAULT_SURFACE_ID = "site-admin";
+const DEFAULT_SURFACE_ID = "workspace";
 const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
 
 function navItemStorageKey(surfaceId: string): string {
@@ -249,7 +257,14 @@ export function App() {
   const [recentItems, setRecentItems] = useState<SidebarRecentItem[]>(() =>
     loadRecentItems(),
   );
+  const [workspaceEvents, setWorkspaceEvents] = useState(() =>
+    loadWorkspaceEvents(),
+  );
   const [workspacePaletteOpen, setWorkspacePaletteOpen] = useState(false);
+
+  const recordWorkspaceEvent = useCallback((input: WorkspaceEventInput) => {
+    setWorkspaceEvents((current) => appendWorkspaceEvent(current, input));
+  }, []);
 
   useEffect(() => {
     persistFavorites(favorites);
@@ -259,15 +274,36 @@ export function App() {
     persistRecentItems(recentItems);
   }, [recentItems]);
 
+  useEffect(() => {
+    persistWorkspaceEvents(workspaceEvents);
+  }, [workspaceEvents]);
+
+  useEffect(() => {
+    const onWorkspaceEvent = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceEventInput>).detail;
+      if (!detail?.title) return;
+      recordWorkspaceEvent(detail);
+    };
+    window.addEventListener(WORKSPACE_EVENT_NAME, onWorkspaceEvent);
+    return () =>
+      window.removeEventListener(WORKSPACE_EVENT_NAME, onWorkspaceEvent);
+  }, [recordWorkspaceEvent]);
+
   const toggleFavorite = useCallback(
     (entry: SidebarFavorite) => {
+      const pinned = !favoritesContain(favorites, entry.surfaceId, entry.itemId);
       setFavoritesState((prev) =>
         favoritesContain(prev, entry.surfaceId, entry.itemId)
           ? removeFavorite(prev, entry.surfaceId, entry.itemId)
           : addFavorite(prev, entry),
       );
+      recordWorkspaceEvent({
+        source: "Workspace",
+        title: pinned ? `Pinned ${entry.label}` : `Unpinned ${entry.label}`,
+        tone: "info",
+      });
     },
-    [],
+    [favorites, recordWorkspaceEvent],
   );
 
   const recordRecentItem = useCallback(
@@ -323,12 +359,14 @@ export function App() {
   }
 
   const ActiveComponent = activeSurface.Component;
+  const isWorkspaceDashboard = activeSurface.id === "workspace";
 
   return (
     <div className="app-shell">
       <Titlebar
         activeSurface={activeSurface}
         activeNavItemId={activeNavItemId}
+        events={workspaceEvents}
         favoriteCount={favorites.length}
         recentCount={recentItems.length}
       />
@@ -352,7 +390,20 @@ export function App() {
         <WorkspaceMain label={activeSurface.title}>
           <ErrorBoundary label={activeSurface.title} key={activeSurface.id}>
             <SurfaceNavProvider value={navContextValue}>
-              <ActiveComponent />
+              {isWorkspaceDashboard ? (
+                <WorkspaceDashboard
+                  events={workspaceEvents}
+                  favorites={favorites}
+                  onOpenCommandPalette={() => setWorkspacePaletteOpen(true)}
+                  onRecordRecent={recordRecentItem}
+                  onSelectNavItem={selectNavItem}
+                  onSelectSurface={selectSurface}
+                  recentItems={recentItems}
+                  surfaces={derivedSurfaces}
+                />
+              ) : (
+                <ActiveComponent />
+              )}
             </SurfaceNavProvider>
           </ErrorBoundary>
         </WorkspaceMain>

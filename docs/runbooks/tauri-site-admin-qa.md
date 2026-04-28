@@ -59,15 +59,20 @@ Run the desktop app against staging and record pass/fail notes for each item.
   must stay aligned.
 - Toggle light/dark theme; editor panels and preview surfaces must remain
   legible.
+- Open the Workspace surface from the app rail. Confirm the dashboard shows
+  Launch, Tools, Recent, Pinned, and Activity sections without forcing any
+  Site Admin connection.
 - Open the Site Admin command palette with `⌘K` and confirm core Site Admin
   commands are discoverable.
 - Open the global workspace command palette with `⌘⇧K`; confirm surfaces,
   recent items, pinned shortcuts, and page titles are searchable.
 - Confirm the titlebar workspace status center opens, shows the active surface,
-  recent count, pinned count, and does not interfere with titlebar drag outside
-  the popover trigger.
+  recent count, pinned count, recent activity, and does not interfere with
+  titlebar drag outside the popover trigger.
 - Open several pages/posts, then confirm Recent appears in the sidebar and the
   global command palette can jump back to those entries.
+- Trigger a Site Admin success/warn/error message and confirm it appears in the
+  titlebar Activity popover and the Workspace dashboard Activity list.
 
 ### Home WYSIWYG Editor
 

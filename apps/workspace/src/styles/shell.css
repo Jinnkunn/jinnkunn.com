@@ -140,8 +140,23 @@ body[data-window-focused="true"] .titlebar-shell {
   width: 7px;
   height: 7px;
   border-radius: 999px;
+  background: var(--color-text-muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-text-muted) 13%, transparent);
+}
+
+.workspace-status-center__dot[data-tone="success"] {
   background: var(--color-success);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 13%, transparent);
+}
+
+.workspace-status-center__dot[data-tone="warn"] {
+  background: var(--color-warn);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 13%, transparent);
+}
+
+.workspace-status-center__dot[data-tone="error"] {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 13%, transparent);
 }
 
 .workspace-status-center__popover {
@@ -152,7 +167,7 @@ body[data-window-focused="true"] .titlebar-shell {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
-  width: 230px;
+  width: 290px;
   padding: 10px;
   border: 1px solid var(--color-border-default);
   border-radius: 10px;
@@ -184,6 +199,59 @@ body[data-window-focused="true"] .titlebar-shell {
   color: var(--color-text-muted);
   font-size: 11.5px;
   line-height: 1.35;
+}
+
+.workspace-status-center__activity {
+  display: grid;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.workspace-status-center__activity > p {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.workspace-status-center__event {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.workspace-status-center__event > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-text-muted);
+}
+
+.workspace-status-center__event[data-tone="success"] > span {
+  background: var(--color-success);
+}
+
+.workspace-status-center__event[data-tone="warn"] > span {
+  background: var(--color-warn);
+}
+
+.workspace-status-center__event[data-tone="error"] > span {
+  background: var(--color-danger);
+}
+
+.workspace-status-center__event strong {
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.workspace-status-center__event time {
+  color: var(--color-text-muted);
+  font-size: 10.5px;
 }
 
 /* Reserve the sidebar's footprint on the titlebar so breadcrumb / actions

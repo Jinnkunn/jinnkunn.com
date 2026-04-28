@@ -189,6 +189,16 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/App.tsx"),
+    "WorkspaceDashboard",
+    "App workspace dashboard",
+  );
+  assertIncludes(
+    read("apps/workspace/src/App.tsx"),
+    "loadWorkspaceEvents",
+    "App workspace event center",
+  );
+  assertIncludes(
+    read("apps/workspace/src/App.tsx"),
     "touchRecentItem",
     "App recent navigation tracking",
   );
@@ -201,6 +211,31 @@ function main() {
     read("apps/workspace/src/shell/Titlebar.tsx"),
     "workspace-status-center",
     "Workspace status center",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Titlebar.tsx"),
+    "workspace-status-center__event",
+    "Workspace activity center",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/WorkspaceDashboard.tsx"),
+    "workspace-dashboard__action-grid",
+    "Workspace dashboard action grid",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/workspaceEvents.ts"),
+    "workspace.events.v1",
+    "Workspace event persistence",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/state.tsx"),
+    "emitWorkspaceEvent",
+    "Site Admin emits workspace activity",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/registry.tsx"),
+    'id: "workspace"',
+    "Workspace dashboard registry entry",
   );
   assertIncludes(
     read("apps/workspace/src/shell/recent.ts"),
@@ -338,6 +373,21 @@ function main() {
     workspaceCss,
     ".workspace-status-center",
     "workspace status center CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-status-center__event",
+    "workspace activity center CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-dashboard",
+    "workspace dashboard CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-activity-list",
+    "workspace activity list CSS",
   );
   assertIncludes(
     workspaceCss,

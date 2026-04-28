@@ -1,5 +1,5 @@
 import { CalendarSurface } from "./calendar/CalendarSurface";
-import { CalendarIcon, SiteAdminIcon } from "./icons";
+import { CalendarIcon, SiteAdminIcon, WorkspaceIcon } from "./icons";
 import {
   SITE_ADMIN_DEFAULT_TAB,
   SITE_ADMIN_NAV_GROUPS,
@@ -7,10 +7,21 @@ import {
 import { SiteAdminSurface } from "./site-admin/SiteAdminSurface";
 import type { SurfaceDefinition } from "./types";
 
+function WorkspaceSurfacePlaceholder() {
+  return null;
+}
+
 // Adding a new tool = add a component + drop an entry here. The shell
 // doesn't know about individual surfaces — it just iterates this list
 // to render the sidebar and picks the active one.
 export const SURFACES: readonly SurfaceDefinition[] = [
+  {
+    id: "workspace",
+    title: "Workspace",
+    description: "Personal command center",
+    icon: <WorkspaceIcon />,
+    Component: WorkspaceSurfacePlaceholder,
+  },
   {
     id: "site-admin",
     title: "Site Admin",
