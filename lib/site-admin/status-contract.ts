@@ -212,8 +212,14 @@ function parseSource(
 ): SiteAdminStatusPayload["source"] | null {
   if (!isRecord(value)) return null;
   const storeKindRaw = toStringValue(value.storeKind).trim().toLowerCase();
-  const storeKind =
-    storeKindRaw === "github" ? "github" : storeKindRaw === "local" ? "local" : "";
+  const storeKind: SiteAdminStatusPayload["source"]["storeKind"] | "" =
+    storeKindRaw === "github"
+      ? "github"
+      : storeKindRaw === "local"
+        ? "local"
+        : storeKindRaw === "db"
+          ? "db"
+          : "";
   if (!storeKind) return null;
   const pendingDeploy =
     value.pendingDeploy === null ? null : toBooleanOrNull(value.pendingDeploy);
