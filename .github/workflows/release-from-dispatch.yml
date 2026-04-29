@@ -117,44 +117,24 @@ jobs:
         # `gh workflow run release-from-dispatch.yml -f env=production`,
         # which bypasses that check. Re-run the same comparison here so
         # an out-of-band trigger can't ship a code SHA that staging
-        # hasn't validated.
+        # hasn't validated. (Uses jq instead of a multiline Python
+        # heredoc — column-0 lines inside `run: |` terminate YAML's
+        # literal block scalar and silently strip workflow triggers.)
         if: env.TARGET_ENV == 'production'
         run: |
           set -euo pipefail
           worker="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
           base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker"
-
-          deployments=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "$base/deployments")
-          version_id=$(printf %s "$deployments" | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-result = data.get("result") or {}
-deployments = result.get("deployments") or []
-if not deployments:
-    sys.exit("no active staging deployment")
-versions = sorted(deployments[0].get("versions", []),
-                  key=lambda v: -int(v.get("percentage", 0) or 0))
-if not versions:
-    sys.exit("staging deployment has no versions")
-print(versions[0]["version_id"])
-')
-          version=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "$base/versions/$version_id")
-          staging_sha=$(printf %s "$version" | python3 -c '
-import json, re, sys
-data = json.load(sys.stdin)
-result = data.get("result") or {}
-annotations = result.get("annotations") or {}
-message = annotations.get("workers/message", "") or result.get("message", "")
-match = re.search(r"\bcode=([a-f0-9]{7,40})", message, re.IGNORECASE)
-if not match:
-    match = re.search(r"\bsource=([a-f0-9]{7,40})", message, re.IGNORECASE)
-if not match:
-    sys.exit("staging deployment annotation has no code/source SHA")
-print(match.group(1).lower())
-')
-          main_sha=$(echo "${GITHUB_SHA}" | tr "[:upper:]" "[:lower:]")
+          version_id=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/deployments" \
+            | jq -er '.result.deployments[0].versions | sort_by(-(.percentage // 0))[0].version_id')
+          version_msg=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/versions/$version_id" \
+            | jq -r '.result.annotations["workers/message"] // .result.message // ""')
+          staging_sha=$(printf %s "$version_msg" | grep -oiE '(code|source)=[a-f0-9]{7,40}' | head -1 | cut -d= -f2 | tr 'A-Z' 'a-z')
+          if [ -z "$staging_sha" ]; then
+            echo "::error::staging deployment annotation has no code/source SHA: $version_msg"
+            exit 1
+          fi
+          main_sha=$(printf %s "$GITHUB_SHA" | tr 'A-Z' 'a-z')
           if [ "$staging_sha" != "$main_sha" ]; then
             echo "::error::staging is on $staging_sha but main is on $main_sha; release:staging first"
             exit 1
