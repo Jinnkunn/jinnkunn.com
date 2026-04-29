@@ -35,14 +35,46 @@ Current staging release candidate:
   - force pushes and branch deletion: disabled
   - Vercel status contexts are intentionally not required.
 - Production promotion requires explicit approval and one of:
-  - local guarded release: `npm run release:prod`
+  - one-shot promote-from-staging (recommended):
+    `npm run release:prod:from-staging`
+  - the older guarded release: `npm run release:prod`
   - manual GitHub Actions `workflow_dispatch` with `target=production`
-- Prefer the local guarded release path because it runs checks, build,
-  deployment, and verification in one auditable chain.
+- Prefer `release:prod:from-staging` for routine releases. It reads the
+  staging Worker, refuses to proceed unless staging matches local
+  `main` HEAD, runs the heavy verifications automatically, snapshots the
+  outgoing production version into
+  [production-version-history.md](./production-version-history.md), then
+  invokes `release:prod --skip-checks` with the confirmation env vars
+  pre-populated. Fall back to the long-form path below if you need
+  finer-grained control or are recovering from a partial release.
 
-## Preflight Checklist
+## Routine Release (recommended)
 
-Run these from a clean `main` checkout:
+```bash
+git switch main
+git pull --ff-only
+git status --short
+npm run release:staging              # if staging is behind main
+npm run release:prod:from-staging:dry-run  # preview the plan
+npm run release:prod:from-staging          # do it
+```
+
+`release:prod:from-staging` will refuse to promote if:
+
+- the local branch is not `main`;
+- the working tree is dirty;
+- the staging worker's deployed `code=` SHA does not match local
+  `main` HEAD (i.e. you forgot to run `release:staging` after a new
+  commit landed).
+
+Pass `--skip-visual` to skip the slow Playwright pass, or
+`--note "<message>"` to annotate the version-history row. See
+`scripts/release-from-staging.mjs` for the full flag list.
+
+## Long-form Preflight Checklist (fallback)
+
+Run these from a clean `main` checkout when you need to debug a
+release manually rather than trust the wrapper:
 
 ```bash
 git switch main
@@ -191,13 +223,26 @@ npm run verify:cf:prod
 Use this when the deployed Worker is bad and the previous Worker version is
 known.
 
+The fastest way to find the previous version ID is
+[production-version-history.md](./production-version-history.md) — every
+production release writes a row there with the outgoing version's ID
+before the new one takes over. The first row under the table header is
+the most recent.
+
+If the history file is empty (or you don't trust it), fall back to
+`npx wrangler deployments status --env production` to enumerate
+versions live.
+
 ```bash
 set -a; source .env; set +a
-npx wrangler deployments status --env production
+# Either: read the previous version ID from production-version-history.md
+# Or:     npx wrangler deployments status --env production
 npx wrangler rollback --env production <previous-version-id> \
   --message "rollback production to <previous-version-id>" \
   --yes
 VERIFY_CF_EXPECT_PRODUCTION_VERSION=<previous-version-id> npm run verify:cf:prod
+# Record that we rolled back so the history reflects reality.
+npm run snapshot:prod -- --note "Rolled back to <previous-version-id>"
 ```
 
 ### Source Rollback
