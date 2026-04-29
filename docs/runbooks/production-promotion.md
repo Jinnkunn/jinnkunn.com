@@ -35,7 +35,12 @@ Current staging release candidate:
   - force pushes and branch deletion: disabled
   - Vercel status contexts are intentionally not required.
 - Production promotion requires explicit approval and one of:
-  - one-shot promote-from-staging (recommended):
+  - one-click in the workspace: **Promote to Production** button on the
+    Site Admin top bar (only visible when connected to staging). Calls
+    `/api/site-admin/promote-to-production`, which runs the same
+    staging-vs-main check as the CLI wrapper and dispatches the
+    `release-production` GitHub Action.
+  - one-shot promote-from-staging (CLI):
     `npm run release:prod:from-staging`
   - the older guarded release: `npm run release:prod`
   - manual GitHub Actions `workflow_dispatch` with `target=production`
@@ -49,6 +54,28 @@ Current staging release candidate:
   finer-grained control or are recovering from a partial release.
 
 ## Routine Release (recommended)
+
+### Workspace one-click (preferred)
+
+1. Open the Tauri workspace, connect to the **staging** profile.
+2. Confirm the editor's saved content is what you want in production
+   (e.g. via the Tauri editor acceptance checklist below).
+3. Click **Promote to Production** on the top bar. The panel shows
+   `main` HEAD, the staging Worker's deployed code SHA, and the
+   current production version. The button refuses to dispatch unless
+   staging matches main.
+4. Click again to confirm. The endpoint dispatches the
+   `release-production` Action; the panel exposes a direct link to
+   the run so you can watch the build.
+
+If the button is greyed out:
+- "Promote (staging stale)" — staging hasn't been re-released since
+  the last commit on main. Run `npm run release:staging` (or click
+  Publish on this surface) and retry.
+- "No changes vs prod" — production is already on the same code SHA
+  as staging.
+
+### CLI fallback
 
 ```bash
 git switch main
