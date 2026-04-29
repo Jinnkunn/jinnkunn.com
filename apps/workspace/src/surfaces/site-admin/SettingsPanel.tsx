@@ -8,12 +8,12 @@ const SETTINGS_SECTIONS = ["site", "routes"] as const;
 type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 const SECTION_LABELS: Record<SettingsSection, string> = {
-  site: "Site & Navigation",
+  site: "Site Settings",
   routes: "URL Routes",
 };
 
 const SECTION_HINTS: Record<SettingsSection, string> = {
-  site: "Site identity, social cards, navigation, and SEO defaults.",
+  site: "Site identity, social cards, analytics, and SEO defaults.",
   routes: "Custom URL overrides, route protection, and rename redirects.",
 };
 

@@ -1,18 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
-import { BLANK_NEW_NAV, NavSection, type NewNavInput } from "./config/NavSection";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsSection } from "./config/SettingsSection";
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
-import type { ConfigSourceVersion, NavRow, SiteSettings } from "./types";
+import type { ConfigSourceVersion, SiteSettings } from "./types";
 import {
   applySettingsPatch,
   clone,
   defaultSettings,
-  isNavDirty,
   isGoogleAnalyticsIdDraftValid,
-  navPatch,
   normalizeGoogleAnalyticsIdDraft,
-  normalizeNavRow,
   normalizeSettings,
   productionReadOnlyMessage,
   settingsPatch,
@@ -22,7 +18,6 @@ import {
 type ConfigSnapshot = {
   sourceVersion: ConfigSourceVersion;
   settings: SiteSettings;
-  nav: NavRow[];
 };
 
 function parseConfigSnapshot(payload: Record<string, unknown>): ConfigSnapshot | null {
@@ -36,7 +31,6 @@ function parseConfigSnapshot(payload: Record<string, unknown>): ConfigSnapshot |
       branchSha: srcVersion.branchSha,
     },
     settings: normalizeSettings(payload.settings),
-    nav: Array.isArray(payload.nav) ? payload.nav.map(normalizeNavRow) : [],
   };
 }
 
@@ -45,35 +39,20 @@ function isSourceConflictResponse(response: { ok: boolean; code?: string; status
 }
 
 /** Orchestrator for the Config surface: owns load/save state + dirty
- * tracking + conflict handling, and delegates the two visual sections
- * (Site Settings form, Navigation Rows table + create form) to
- * dedicated presentational components under `config/`. */
+ * tracking + conflict handling, and delegates the visual form to a
+ * dedicated presentational component under `config/`. */
 export function ConfigPanel() {
   const { productionReadOnly, request, setMessage } = useSiteAdmin();
 
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseSettings, setBaseSettings] = useState<SiteSettings>(defaultSettings());
   const [settingsDraft, setSettingsDraft] = useState<SiteSettings>(defaultSettings());
-  const [navRows, setNavRows] = useState<NavRow[]>([]);
-  const [navDrafts, setNavDrafts] = useState<Record<string, NavRow>>({});
-  const [navSaving, setNavSaving] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [creatingNav, setCreatingNav] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const [newNav, setNewNav] = useState<NewNavInput>(BLANK_NEW_NAV);
   const settingsDirty = useMemo(
     () => Object.keys(settingsPatch(baseSettings, settingsDraft)).length > 0,
     [baseSettings, settingsDraft],
-  );
-
-  const anyNavDirty = useMemo(
-    () =>
-      navRows.some((row) => {
-        const draft = navDrafts[row.rowId];
-        return draft ? isNavDirty(row, draft) : false;
-      }),
-    [navRows, navDrafts],
   );
 
   const applyConflict = useCallback(
@@ -89,9 +68,6 @@ export function ConfigPanel() {
       setSourceVersion(snapshot.sourceVersion);
       setBaseSettings(snapshot.settings);
       setSettingsDraft(options.settingsDraft ?? clone(snapshot.settings));
-      setNavRows(snapshot.nav);
-      setNavDrafts(Object.fromEntries(snapshot.nav.map((row) => [row.rowId, clone(row)])));
-      setNavSaving({});
       setConflict(false);
     },
     [],
@@ -132,6 +108,12 @@ export function ConfigPanel() {
     },
     [applyConfigSnapshot, fetchConfigSnapshot, setMessage],
   );
+
+  /* eslint-disable react-hooks/set-state-in-effect -- Initial config hydration is an async site-admin request; the state updates happen after the request resolves. */
+  useEffect(() => {
+    void loadConfig({ silent: true });
+  }, [loadConfig]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveSettings = useCallback(async () => {
     if (productionReadOnly) {
@@ -262,138 +244,9 @@ export function ConfigPanel() {
     loadConfig,
   ]);
 
-  const saveNavRow = useCallback(
-    async (rowId: string) => {
-      if (productionReadOnly) {
-        setMessage(
-          "warn",
-          productionReadOnlyMessage("save navigation"),
-        );
-        return;
-      }
-      if (conflict) {
-        setMessage("warn", "Config is in conflict state. Reload latest before saving.");
-        return;
-      }
-      if (!sourceVersion?.siteConfigSha) {
-        setMessage("error", "Config sourceVersion missing. Reload config first.");
-        return;
-      }
-      const base = navRows.find((row) => row.rowId === rowId);
-      const draft = navDrafts[rowId];
-      if (!base || !draft) {
-        setMessage("error", "Nav row not found. Reload config first.");
-        return;
-      }
-      const patch = navPatch(base, draft);
-      if (!Object.keys(patch).length) {
-        setMessage("warn", `No navigation changes for row ${rowId}.`);
-        return;
-      }
-      setNavSaving((prev) => ({ ...prev, [rowId]: true }));
-      const response = await request("/api/site-admin/config", "POST", {
-        kind: "nav-update",
-        rowId,
-        patch,
-        expectedSiteConfigSha: sourceVersion.siteConfigSha,
-      });
-      setNavSaving((prev) => ({ ...prev, [rowId]: false }));
-      if (!response.ok) {
-        if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
-          applyConflict(`Save nav row ${rowId} failed with SOURCE_CONFLICT.`);
-          return;
-        }
-        setMessage("error", `Save nav row failed: ${response.code}: ${response.error}`);
-        return;
-      }
-      setMessage(
-        "success",
-        `Navigation row ${rowId} saved to source branch. Publish staging separately.`,
-      );
-      await loadConfig({ silent: true });
-    },
-    [
-      conflict,
-      productionReadOnly,
-      sourceVersion,
-      navRows,
-      navDrafts,
-      request,
-      setMessage,
-      applyConflict,
-      loadConfig,
-    ],
-  );
-
-  const createNavRow = useCallback(async () => {
-    if (productionReadOnly) {
-      setMessage(
-        "warn",
-        productionReadOnlyMessage("create navigation rows"),
-      );
-      return;
-    }
-    if (conflict) {
-      setMessage(
-        "warn",
-        "Config is in conflict state. Reload latest before creating nav rows.",
-      );
-      return;
-    }
-    if (!sourceVersion?.siteConfigSha) {
-      setMessage("error", "Config sourceVersion missing. Reload config first.");
-      return;
-    }
-    if (!newNav.label || !newNav.href) {
-      setMessage("error", "Nav create requires both label and href.");
-      return;
-    }
-    setCreatingNav(true);
-    const response = await request("/api/site-admin/config", "POST", {
-      kind: "nav-create",
-      input: newNav,
-      expectedSiteConfigSha: sourceVersion.siteConfigSha,
-    });
-    setCreatingNav(false);
-    if (!response.ok) {
-      if (response.code === "SOURCE_CONFLICT" || response.status === 409) {
-        applyConflict("Create nav row failed with SOURCE_CONFLICT.");
-        return;
-      }
-      setMessage("error", `Create nav row failed: ${response.code}: ${response.error}`);
-      return;
-    }
-    setNewNav(BLANK_NEW_NAV);
-    setMessage(
-      "success",
-      "Navigation row created on source branch. Publish staging separately.",
-    );
-    await loadConfig({ silent: true });
-  }, [
-    conflict,
-    productionReadOnly,
-    sourceVersion,
-    newNav,
-    request,
-    setMessage,
-    applyConflict,
-    loadConfig,
-  ]);
-
   const updateDraft = useCallback(
     <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => {
       setSettingsDraft((prev) => ({ ...prev, [key]: value }));
-    },
-    [],
-  );
-
-  const updateNavDraft = useCallback(
-    <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => {
-      setNavDrafts((prev) => {
-        const existing = prev[rowId];
-        if (!existing) return prev;
-        return { ...prev, [rowId]: { ...existing, [key]: value } };
-      });
     },
     [],
   );
@@ -403,7 +256,7 @@ export function ConfigPanel() {
     : conflict
       ? "Conflict detected (SOURCE_CONFLICT). Reload latest before saving again."
       : sourceVersion
-        ? `Dirty state: settings=${settingsDirty ? "yes" : "no"}, nav=${anyNavDirty ? "yes" : "no"}`
+        ? `Dirty state: settings=${settingsDirty ? "yes" : "no"}`
         : "Config not loaded.";
 
   return (
@@ -411,10 +264,10 @@ export function ConfigPanel() {
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
-            Settings &amp; Navigation
+            Site Settings
           </h1>
           <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Site settings + navigation rows served to the public site.
+            Site identity, analytics, social cards, and SEO defaults.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -464,21 +317,6 @@ export function ConfigPanel() {
         readOnly={productionReadOnly}
       />
 
-      <NavSection
-        navRows={navRows}
-        navDrafts={navDrafts}
-        navSaving={navSaving}
-        conflict={conflict}
-        creatingNav={creatingNav}
-        loading={loading}
-        sourceVersion={sourceVersion}
-        newNav={newNav}
-        setNewNav={setNewNav}
-        updateNavDraft={updateNavDraft}
-        saveNavRow={(rowId) => void saveNavRow(rowId)}
-        createNavRow={() => void createNavRow()}
-        readOnly={productionReadOnly}
-      />
     </section>
   );
 }

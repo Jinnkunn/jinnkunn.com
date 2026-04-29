@@ -764,6 +764,16 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
               }
             : null,
         });
+        if (
+          first.result.response.ok &&
+          isMutatingHttpMethod(method) &&
+          !path.endsWith("/deploy") &&
+          typeof window !== "undefined"
+        ) {
+          window.dispatchEvent(new CustomEvent("site-admin:source-mutated", {
+            detail: { method, path },
+          }));
+        }
         return first.result.response;
       }
       // Single-flight: if a reauth is already in flight, await it; else
@@ -797,6 +807,16 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
             }
           : null,
       });
+      if (
+        second.result.response.ok &&
+        isMutatingHttpMethod(method) &&
+        !path.endsWith("/deploy") &&
+        typeof window !== "undefined"
+      ) {
+        window.dispatchEvent(new CustomEvent("site-admin:source-mutated", {
+          detail: { method, path },
+        }));
+      }
       return second.result.response;
     },
     [

@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { PostEditor } from "./PostEditor";
-import { PublishButton } from "./PublishButton";
 import { useSiteAdmin } from "./state";
 import type { ItemSelection } from "./types";
 
@@ -74,7 +73,6 @@ export function PostsPanel({ selected, onSelectedChange }: PostsPanelProps) {
           >
             New post
           </button>
-          <PublishButton />
         </div>
       </header>
       <div className="panel-shell__body">{body}</div>

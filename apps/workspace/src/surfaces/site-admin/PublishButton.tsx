@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSiteAdmin } from "./state";
 import { normalizeString } from "./utils";
 
@@ -241,7 +241,13 @@ function deployCandidateTarget(source: SourceSnapshot | null): string {
  * CI rebuilds after a content commit; this button lets you manually kick the
  * Cloudflare promotion step after those artifacts land.
  */
-export function PublishButton({ label = "Publish" }: { label?: string }) {
+export function PublishButton({
+  label = "Publish",
+  requirePendingChanges = false,
+}: {
+  label?: string;
+  requirePendingChanges?: boolean;
+}) {
   const { connection, environment, productionReadOnly, request, setMessage } = useSiteAdmin();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -249,9 +255,43 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
   const [previewText, setPreviewText] = useState("");
   const [previewData, setPreviewData] = useState<DeployPreviewData | null>(null);
   const [sourceSnapshot, setSourceSnapshot] = useState<SourceSnapshot | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
+  const loadStatusSnapshot = useCallback(async () => {
+    if (!requirePendingChanges || !ready || productionReadOnly) return;
+    setStatusLoading(true);
+    const status = await request("/api/site-admin/status", "GET");
+    setStatusLoading(false);
+    if (status.ok) setSourceSnapshot(parseSourceSnapshot(status.data));
+  }, [productionReadOnly, ready, request, requirePendingChanges]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- Publish readiness syncs from the remote deploy status endpoint. */
+  useEffect(() => {
+    if (!requirePendingChanges || !ready || productionReadOnly) return;
+    let cancelled = false;
+    setStatusLoading(true);
+    void request("/api/site-admin/status", "GET").then((status) => {
+      if (cancelled) return;
+      setStatusLoading(false);
+      if (status.ok) setSourceSnapshot(parseSourceSnapshot(status.data));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [productionReadOnly, ready, request, requirePendingChanges]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!requirePendingChanges) return;
+    const onSourceMutated = () => {
+      void loadStatusSnapshot();
+    };
+    window.addEventListener("site-admin:source-mutated", onSourceMutated);
+    return () => window.removeEventListener("site-admin:source-mutated", onSourceMutated);
+  }, [loadStatusSnapshot, requirePendingChanges]);
+
   useEffect(() => {
     if (!confirming) return;
     const timer = window.setTimeout(() => setConfirming(false), 30000);
@@ -360,12 +400,15 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
   }
 
   const deployCandidateBlocked = isDeployCandidateBlocked(sourceSnapshot);
+  const pendingChangesKnown = sourceSnapshot !== null;
+  const noPendingChanges =
+    requirePendingChanges && pendingChangesKnown && sourceSnapshot.pendingDeploy !== true;
 
   return (
     <div className="publish-control">
       <button
         className={
-          deployCandidateBlocked
+          deployCandidateBlocked || noPendingChanges
             ? "btn btn--secondary"
             : confirming
               ? "btn btn--danger"
@@ -373,24 +416,37 @@ export function PublishButton({ label = "Publish" }: { label?: string }) {
         }
         type="button"
         onClick={() => void trigger()}
-        disabled={!ready || productionReadOnly || busy || previewLoading}
+        disabled={
+          !ready ||
+          productionReadOnly ||
+          busy ||
+          previewLoading ||
+          statusLoading ||
+          noPendingChanges
+        }
         title={
           productionReadOnly
             ? environment.helpText
             : deployCandidateBlocked
             ? "Wait for the staging candidate rebuild, then recheck."
-            : "Promote the current worker version via Cloudflare API"
+            : noPendingChanges
+              ? "No saved source changes are waiting to publish."
+              : "Promote the current worker version via Cloudflare API"
         }
       >
         {busy
           ? "Publishing…"
-          : previewLoading
+          : previewLoading || statusLoading
             ? "Checking…"
+            : productionReadOnly
+              ? label
             : deployCandidateBlocked
               ? "Recheck"
               : confirming
                 ? "Confirm Publish"
-                : label}
+                : noPendingChanges
+                  ? "No changes"
+                  : label}
       </button>
       {confirming && (
         <details className="publish-preview" role="status" open>

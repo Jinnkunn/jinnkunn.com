@@ -5,7 +5,6 @@ import {
   SITE_COMPONENT_DEFINITIONS,
   type ComponentName,
 } from "./ComponentEditor";
-import { PublishButton } from "./PublishButton";
 import { useSiteAdmin } from "./state";
 
 const COMPONENT_LABELS = Object.fromEntries(
@@ -69,9 +68,6 @@ export function ComponentsPanel({
             Structured collections embedded into pages with MDX blocks like
             &lt;NewsBlock /&gt;. Entries live in content/components/*.mdx.
           </p>
-        </div>
-        <div className="panel-shell__actions">
-          <PublishButton />
         </div>
       </header>
       <div className="panel-shell__body">{body}</div>

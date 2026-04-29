@@ -12,6 +12,8 @@ export type SiteAdminTab =
   | "pages"
   | "components"
   | "links"
+  | "navigation"
+  | "release"
   | "settings";
 
 export interface SiteSettings {
