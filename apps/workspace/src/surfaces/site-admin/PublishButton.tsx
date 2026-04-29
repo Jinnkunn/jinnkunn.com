@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { openExternalUrl } from "../../lib/tauri";
 import { useSiteAdmin } from "./state";
 import { normalizeString } from "./utils";
 
@@ -569,14 +570,20 @@ export function PublishButton({
                     >
                       Recheck
                     </button>
-                    <a
+                    <button
+                      type="button"
                       className="btn btn--ghost"
-                      href={DEPLOY_ACTIONS_URL}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() => {
+                        void openExternalUrl(DEPLOY_ACTIONS_URL).catch((error) => {
+                          setMessage(
+                            "warn",
+                            `Could not open the deploy action: ${String(error)}. URL: ${DEPLOY_ACTIONS_URL}`,
+                          );
+                        });
+                      }}
                     >
                       Open Deploy Action
-                    </a>
+                    </button>
                     <button
                       type="button"
                       className="btn btn--ghost"

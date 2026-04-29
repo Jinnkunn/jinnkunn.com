@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { openExternalUrl } from "../../lib/tauri";
 import { useSiteAdmin } from "./state";
 
 // "Promote to Production" — the workspace counterpart to running
@@ -283,14 +284,22 @@ export function PromoteToProductionButton() {
                   . The Action runs build → upload → deploy → smoke ping in
                   ~8–10 min.
                 </p>
-                <a
-                  href={result.runsListUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
                   className="btn btn--primary"
+                  onClick={() => {
+                    if (!result.runsListUrl) return;
+                    void openExternalUrl(result.runsListUrl).catch((error) => {
+                      setMessage(
+                        "warn",
+                        `Could not open the run in your browser: ${String(error)}. URL: ${result.runsListUrl}`,
+                      );
+                    });
+                  }}
+                  disabled={!result.runsListUrl}
                 >
                   Open GitHub Actions run
-                </a>
+                </button>
               </div>
             )}
             {!result && (

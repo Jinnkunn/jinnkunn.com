@@ -510,6 +510,33 @@ fn debug_set_traffic_lights(_x: f32, _y: f32) -> Result<(), String> {
     Ok(())
 }
 
+/// Open a URL in the user's default browser. The webview can't honor
+/// `<a target="_blank">` on its own — `target=_blank` either no-ops or
+/// tries to load inside the webview, depending on platform — so we
+/// route every "open in browser" affordance (Promote-to-Production
+/// dispatched-run link, the Publish panel's Deploy Action link, and
+/// any future external link button) through this command. Same `open`
+/// crate the browser-login flow already uses, so no new dependency.
+///
+/// Validates the input is a real http/https URL before calling
+/// `open::that`. Refusing arbitrary strings keeps a malicious payload
+/// from ever reaching the OS shell — this command is invoked from the
+/// webview, which is rendering content the operator authored, but
+/// defense-in-depth is cheap.
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("empty url".to_string());
+    }
+    let parsed = Url::parse(trimmed).map_err(|err| format!("invalid url: {err}"))?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err(format!("unsupported url scheme: {scheme}"));
+    }
+    open::that(parsed.as_str()).map_err(|err| err.to_string())
+}
+
 /// Bring the main webview back into view from the menubar tray or a
 /// dock-click after the user closed the window. Hidden windows survive
 /// "close" because our `CloseRequested` handler swallows the close
@@ -627,6 +654,7 @@ fn main() {
             calendar_publish_rules_save,
             site_admin_browser_login,
             debug_set_traffic_lights,
+            open_external_url,
             calendar::commands::calendar_authorization_status,
             calendar::commands::calendar_request_access,
             calendar::commands::calendar_list_sources,
