@@ -187,8 +187,21 @@ jobs:
 
       - name: Release (${{ env.TARGET_ENV }}) via db-mode build
         env:
-          # Tells prebuild's dump-content-from-db.mjs which D1 to pull from.
-          SITE_ADMIN_DB_ENV: ${{ env.TARGET_ENV }}
+          # Both staging AND production builds dump from STAGING D1.
+          # Rationale: staging D1 is the operator-facing source of
+          # truth — the workspace app writes every nav / page / link
+          # edit there, and "Promote to Production" semantically means
+          # "lock whatever I'm currently looking at on staging as the
+          # new production". Production D1 receives no writes through
+          # the operator path, so dumping from it for production
+          # builds means production ships whatever stale snapshot
+          # production D1 happens to hold (which is what bit us on the
+          # 2026-04-29 promote: a workspace nav addition lived in
+          # staging D1 only, production D1 had a 1.1KB stale copy, and
+          # the production build dumped that and overwrote the git-
+          # committed fallback). Pulling staging D1 here means the
+          # operator's just-verified content is what lands.
+          SITE_ADMIN_DB_ENV: staging
         run: |
           export CLOUDFLARE_WORKER_NAME_STAGING="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
           export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
