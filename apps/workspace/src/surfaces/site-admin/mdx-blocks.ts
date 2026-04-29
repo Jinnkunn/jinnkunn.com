@@ -496,15 +496,23 @@ function parseAttrs(raw: string): Record<string, string> {
   return out;
 }
 
+// Pre-compiled at module load. legacyInlineHtmlToMarkdown calls this twice
+// per inline span and parseMdxBlocks routes lots of inline HTML through it,
+// so consolidating from 7 chained `.replace()` scans to one regex + map
+// lookup turns N×7 string passes into N×1 across a typical 100-block doc.
+const HTML_ENTITY_RE = /&(?:nbsp|amp|quot|#39|apos|lt|gt);/g;
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&lt;": "<",
+  "&gt;": ">",
+};
+
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+  return value.replace(HTML_ENTITY_RE, (match) => HTML_ENTITY_MAP[match] ?? match);
 }
 
 // Pre-compiled at module load. parseMdxBlocks calls this once per inline
@@ -574,7 +582,8 @@ function legacyInlineHtmlToMarkdown(input: string): string {
     }
     return "";
   });
-  return decodeHtmlEntities(text).replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n").trim();
+  // Trim spaces/tabs around line breaks in one pass instead of two.
+  return decodeHtmlEntities(text).replace(/[ \t]*\n[ \t]*/g, "\n").trim();
 }
 
 function parseLegacyHeading(paragraph: string): MdxBlock | null {
@@ -890,7 +899,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         if (currentColumn) currentColumn.push(innerLine);
       }
       const columnChildren = columnBodies.map((bodyLines) => {
-        const bodySource = bodyLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+        const bodySource = bodyLines.join("\n").replace(/^\n+|\n+$/g, "");
         const innerBlocks = bodySource
           ? parseBlocksAtDepth(bodySource, depth + 2)
           : [createMdxBlock("paragraph")];
@@ -957,7 +966,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
-      const bodySource = innerLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+      const bodySource = innerLines.join("\n").replace(/^\n+|\n+$/g, "");
       const children = bodySource ? parseBlocksAtDepth(bodySource, depth + 1) : [];
       const date = typeof attrs.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(attrs.date)
         ? attrs.date
@@ -994,7 +1003,7 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
         );
         continue;
       }
-      const bodySource = innerLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+      const bodySource = innerLines.join("\n").replace(/^\n+|\n+$/g, "");
       const children = bodySource ? parseBlocksAtDepth(bodySource, depth + 1) : [];
       const category =
         attrs.category === "recent" || attrs.category === "passed"
@@ -1520,8 +1529,7 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   if (block.type === "toggle") {
     const summary = block.text.trim() || "Toggle";
     const inner = block.children?.length
-      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
-      : "";
+      ? serializeBlocksWithDepth(block.children, depth + 1): "";
     const opener = `<details${block.open ? " open" : ""}>`;
     if (!inner) {
       return `${opener}\n<summary>${summary}</summary>\n</details>`;
@@ -1547,7 +1555,7 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     const columnLines: string[] = [];
     for (const col of childColumns) {
       const inner = col.children?.length
-        ? serializeBlocksWithDepth(col.children, depth + 2).replace(/\n+$/, "")
+        ? serializeBlocksWithDepth(col.children, depth + 2)
         : "";
       columnLines.push("<Column>");
       if (inner) {
@@ -1564,8 +1572,7 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     // parent — but if they leak (defensive), emit a minimal wrapper so
     // the public site still parses cleanly.
     const inner = block.children?.length
-      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
-      : "";
+      ? serializeBlocksWithDepth(block.children, depth + 1): "";
     return inner
       ? ["<Column>", "", inner, "", "</Column>"].join("\n")
       : "<Column>\n</Column>";
@@ -1577,8 +1584,7 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     const date = block.dateIso ?? "";
     const opener = `<NewsEntry date="${escapeAttr(date)}">`;
     const inner = block.children?.length
-      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
-      : "";
+      ? serializeBlocksWithDepth(block.children, depth + 1): "";
     if (!inner) {
       return [opener, "</NewsEntry>"].join("\n");
     }
@@ -1600,8 +1606,7 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     ]);
     const opener = attrs ? `<WorksEntry ${attrs}>` : `<WorksEntry>`;
     const inner = block.children?.length
-      ? serializeBlocksWithDepth(block.children, depth + 1).replace(/\n+$/, "")
-      : "";
+      ? serializeBlocksWithDepth(block.children, depth + 1): "";
     if (!inner) {
       return [opener, "</WorksEntry>"].join("\n");
     }
@@ -1793,7 +1798,13 @@ function serializeBlocksWithDepth(blocks: MdxBlock[], depth: number): string {
   }
   const source = parts.join("");
   if (!source) return "";
-  return depth === 0 ? `${source}\n` : source;
+  // Top-level entry needs exactly one trailing newline (file convention).
+  // Nested calls (depth > 0) feed their result back into a parent block's
+  // template (toggle body, column body, …) which always wraps with its own
+  // newlines, so any trailing whitespace from the last child is just noise.
+  // Stripping it here saves five `.replace(/\n+$/, "")` calls at the
+  // current call sites.
+  return depth === 0 ? `${source}\n` : source.replace(/\n+$/, "");
 }
 
 export function serializeMdxBlocks(blocks: MdxBlock[]): string {
