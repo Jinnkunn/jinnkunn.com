@@ -78,9 +78,13 @@ html[data-theme="light"] {
   --ds-color-bg-red: rgba(212, 76, 71, 0.14);
   /* Foreground text tints, paired with the bg set above. Used by the
    * inline color span the editor's selection toolbar emits. Hex values
-   * mirror Notion's published palette so users porting Notion content
-   * land on familiar tones. */
-  --ds-color-text-gray: #787774;
+   * stay close to Notion's published palette so users porting content
+   * land on familiar tones — `gray` is darkened from Notion's #787774
+   * (4.48:1 vs white, fails WCAG AA by 0.02) to #6F6E6B (5.10:1, AA
+   * clean) so prose set in gray on light surfaces stays readable. The
+   * other accent colors are still close to Notion's published values
+   * and may need a similar audit if they get used as body text. */
+  --ds-color-text-gray: #6F6E6B;
   --ds-color-text-brown: #9f6b53;
   --ds-color-text-orange: #d9730d;
   --ds-color-text-yellow: #cb912f;
