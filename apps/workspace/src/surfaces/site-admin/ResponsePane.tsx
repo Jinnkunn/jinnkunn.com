@@ -1,7 +1,7 @@
-import { useSiteAdmin } from "./state";
+import { useSiteAdminEphemeral } from "./state";
 
 export function ResponsePane() {
-  const { debugResponse } = useSiteAdmin();
+  const { debugResponse } = useSiteAdminEphemeral();
   return (
     <section className="surface-card">
       <header>

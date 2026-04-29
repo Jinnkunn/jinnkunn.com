@@ -114,22 +114,12 @@ export interface SiteAdminContextValue {
   setMessage: (kind: MessageKind, text: string) => void;
   clearMessage: () => void;
 
-  // Debug response pane (last API invocation)
-  debugResponse: DebugResponseState;
-  writeDebugResponse: (title: string, payload: unknown) => void;
-
   // Dev drawer — collapsible bottom drawer that hosts ResponsePane +
   // other debug tooling. Hidden by default; user toggles via topbar
   // button or ⌘\.
   drawerOpen: boolean;
   toggleDrawer: () => void;
   setDrawerOpen: (open: boolean) => void;
-
-  // Current panel's optional save action. Panels register this so the
-  // shell can expose one consistent topbar Save control without needing
-  // to know each panel's internal state shape.
-  topbarSaveAction: TopbarSaveAction | null;
-  setTopbarSaveAction: (action: TopbarSaveAction | null) => void;
 
   // Shared indexes — panels push their most-recently-fetched list here
   // so the command palette can search post/page titles without doing its
@@ -177,6 +167,39 @@ export function useSiteAdmin(): SiteAdminContextValue {
   if (!ctx) {
     throw new Error(
       "useSiteAdmin must be used inside <SiteAdminProvider>. Did you forget to wrap the surface?",
+    );
+  }
+  return ctx;
+}
+
+/**
+ * Per-request and per-panel scratch state. Lives in a separate context
+ * from the main SiteAdminContextValue because both fields churn fast —
+ * `debugResponse` rewrites on every API call, `topbarSaveAction`
+ * re-registers each time a panel form's dirty/saving state shifts —
+ * and bundling them with `connection` / `request` would re-render every
+ * `useSiteAdmin()` consumer (the whole editor surface, panels, sidebar)
+ * on every keystroke into a save form.
+ *
+ * Consumers that only care about these fields use `useSiteAdminEphemeral()`
+ * directly so they're decoupled from the stable-state Context above.
+ */
+export interface SiteAdminEphemeralValue {
+  debugResponse: DebugResponseState;
+  writeDebugResponse: (title: string, payload: unknown) => void;
+  topbarSaveAction: TopbarSaveAction | null;
+  setTopbarSaveAction: (action: TopbarSaveAction | null) => void;
+}
+
+const SiteAdminEphemeralContext = createContext<SiteAdminEphemeralValue | null>(
+  null,
+);
+
+export function useSiteAdminEphemeral(): SiteAdminEphemeralValue {
+  const ctx = useContext(SiteAdminEphemeralContext);
+  if (!ctx) {
+    throw new Error(
+      "useSiteAdminEphemeral must be used inside <SiteAdminProvider>.",
     );
   }
   return ctx;
@@ -900,13 +923,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       message,
       setMessage,
       clearMessage,
-      debugResponse,
-      writeDebugResponse,
       drawerOpen,
       toggleDrawer,
       setDrawerOpen,
-      topbarSaveAction,
-      setTopbarSaveAction,
       postsIndex,
       pagesIndex,
       setPostsIndex,
@@ -936,13 +955,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       message,
       setMessage,
       clearMessage,
-      debugResponse,
-      writeDebugResponse,
       drawerOpen,
       toggleDrawer,
       setDrawerOpen,
-      topbarSaveAction,
-      setTopbarSaveAction,
       postsIndex,
       pagesIndex,
       setPostsIndex,
@@ -961,7 +976,21 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const ephemeralValue = useMemo<SiteAdminEphemeralValue>(
+    () => ({
+      debugResponse,
+      writeDebugResponse,
+      topbarSaveAction,
+      setTopbarSaveAction,
+    }),
+    [debugResponse, writeDebugResponse, topbarSaveAction, setTopbarSaveAction],
+  );
+
   return (
-    <SiteAdminContext.Provider value={value}>{children}</SiteAdminContext.Provider>
+    <SiteAdminContext.Provider value={value}>
+      <SiteAdminEphemeralContext.Provider value={ephemeralValue}>
+        {children}
+      </SiteAdminEphemeralContext.Provider>
+    </SiteAdminContext.Provider>
   );
 }
