@@ -51,6 +51,12 @@ on:
 
 permissions:
   contents: read
+  # deployments:write lets us create a GitHub Deployment row for this
+  # release so the GitHub UI shows the in-progress / success / failure
+  # state under the repo's Environments tab. No external service needed
+  # for "did the last release succeed?" — the answer lives where the
+  # workflow already lives.
+  deployments: write
 
 concurrency:
   group: release-dispatch-${{ github.event.action || inputs.env }}
@@ -104,6 +110,57 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Guard — staging matches main before production releases
+        # Defense-in-depth: the workspace's "Promote to Production" button
+        # already refuses to dispatch unless staging's deployed code SHA
+        # matches main HEAD. But this workflow is also reachable via
+        # `gh workflow run release-from-dispatch.yml -f env=production`,
+        # which bypasses that check. Re-run the same comparison here so
+        # an out-of-band trigger can't ship a code SHA that staging
+        # hasn't validated.
+        if: env.TARGET_ENV == 'production'
+        run: |
+          set -euo pipefail
+          worker="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker"
+
+          deployments=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$base/deployments")
+          version_id=$(printf %s "$deployments" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+result = data.get("result") or {}
+deployments = result.get("deployments") or []
+if not deployments:
+    sys.exit("no active staging deployment")
+versions = sorted(deployments[0].get("versions", []),
+                  key=lambda v: -int(v.get("percentage", 0) or 0))
+if not versions:
+    sys.exit("staging deployment has no versions")
+print(versions[0]["version_id"])
+')
+          version=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$base/versions/$version_id")
+          staging_sha=$(printf %s "$version" | python3 -c '
+import json, re, sys
+data = json.load(sys.stdin)
+result = data.get("result") or {}
+annotations = result.get("annotations") or {}
+message = annotations.get("workers/message", "") or result.get("message", "")
+match = re.search(r"\bcode=([a-f0-9]{7,40})", message, re.IGNORECASE)
+if not match:
+    match = re.search(r"\bsource=([a-f0-9]{7,40})", message, re.IGNORECASE)
+if not match:
+    sys.exit("staging deployment annotation has no code/source SHA")
+print(match.group(1).lower())
+')
+          main_sha=$(echo "${GITHUB_SHA}" | tr "[:upper:]" "[:lower:]")
+          if [ "$staging_sha" != "$main_sha" ]; then
+            echo "::error::staging is on $staging_sha but main is on $main_sha; release:staging first"
+            exit 1
+          fi
+          echo "[guard] staging $staging_sha matches main $main_sha"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -111,6 +168,42 @@ jobs:
 
       - name: Install deps
         run: npm ci --no-audit --no-fund
+
+      - name: Open GitHub Deployment record
+        # Each release leaves an audit trail under the repo's Environments
+        # tab. Subsequent steps either flip this to "success" (after the
+        # smoke check) or "failure" (on any error) so the UI never claims
+        # success for a deploy that the smoke missed.
+        id: gh_deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = process.env.TARGET_ENV;
+            const url = env === "production"
+              ? "https://jinkunchen.com"
+              : "https://staging.jinkunchen.com";
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: env,
+              auto_merge: false,
+              required_contexts: [],
+              description: `release-from-dispatch (${context.payload.action || context.payload.inputs?.env || "manual"})`,
+              transient_environment: env === "staging",
+              production_environment: env === "production",
+            });
+            const id = deployment.data.id;
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: id,
+              state: "in_progress",
+              environment_url: url,
+              description: "build → upload → deploy → verify in flight",
+            });
+            core.setOutput("id", id);
+            core.setOutput("environment_url", url);
 
       - name: Release (${{ env.TARGET_ENV }}) via db-mode build
         env:
@@ -121,25 +214,60 @@ jobs:
           export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
 
           if [ "$TARGET_ENV" = "staging" ]; then
-            npm run release:staging -- --skip-checks
+            # Staging dispatch now runs the same CSS / design-system /
+            # production-style contract checks the local CLI runs. Skipping
+            # them previously meant a raw color literal or a layout drift
+            # could land on staging without anyone noticing until production
+            # promotion forced a rebuild. The checks add ~30 s; the safety
+            # net is worth it.
+            npm run release:staging
           else
             # Production guardrails (CONFIRM_PRODUCTION_DEPLOY etc) are
             # enforced inside release-cloudflare.mjs; we set CONFIRM_* here
-            # because dispatch implies operator intent.
+            # because dispatch implies operator intent. Production keeps
+            # --skip-checks because production-style-regression compares
+            # the candidate against jinkunchen.com itself — comparing a
+            # deploying-to-prod build against the prod we're about to
+            # replace is a self-referential trap. The staging dispatch
+            # above already exercised the same checks against the same
+            # code SHA, so the safety net is in place upstream.
             export CONFIRM_PRODUCTION_DEPLOY=1
             export CONFIRM_PRODUCTION_SHA="$GITHUB_SHA"
             npm run release:prod -- --skip-checks
           fi
 
-      - name: Smoke ping
-        run: |
-          URL="https://staging.jinkunchen.com"
-          if [ "$TARGET_ENV" = "production" ]; then URL="https://jinkunchen.com"; fi
-          echo "Pinging $URL/robots.txt"
-          for i in 1 2 3 4 5; do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL/robots.txt" || echo 000)
-            if [ "$CODE" = "200" ]; then echo "OK ($CODE)"; exit 0; fi
-            echo "try $i: $CODE"; sleep 6
-          done
-          echo "::error::smoke ping did not reach 200 after retries"
-          exit 1
+      - name: Smoke deployed routes
+        # Walks 7 real routes (/, /blog, /publications, /calendar plus
+        # the static /robots.txt /llms.txt /sitemap.xml) and asserts a
+        # known marker per page. Replaces the previous /robots.txt-only
+        # ping that would happily green-light a worker that booted but
+        # 5xx'd every actual route.
+        run: node scripts/smoke-deployed.mjs --env=$TARGET_ENV
+
+      - name: Mark GitHub Deployment status
+        # Always runs so a failed release flips the Deployment row to
+        # "failure" instead of leaving it stuck on "in_progress". Reads
+        # the prior steps' outcomes from the job context.
+        if: always() && steps.gh_deployment.outputs.id
+        uses: actions/github-script@v7
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh_deployment.outputs.id }}
+          DEPLOYMENT_URL: ${{ steps.gh_deployment.outputs.environment_url }}
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const status = process.env.JOB_STATUS;
+            const id = Number(process.env.DEPLOYMENT_ID);
+            const url = process.env.DEPLOYMENT_URL;
+            const state = status === "success" ? "success" : "failure";
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: id,
+              state,
+              environment_url: url,
+              log_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              description: state === "success"
+                ? "deploy + smoke ok"
+                : `release failed (${status})`,
+            });
