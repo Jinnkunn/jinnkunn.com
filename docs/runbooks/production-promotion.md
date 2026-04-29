@@ -53,6 +53,39 @@ Current staging release candidate:
   pre-populated. Fall back to the long-form path below if you need
   finer-grained control or are recovering from a partial release.
 
+## Content-from-D1 sync
+
+The staging worker runs `SITE_ADMIN_STORAGE=db` (per `wrangler.toml`),
+so its canonical content lives in D1 — workspace edits land there
+directly. `release:staging` is wired to dump from D1 → `content/*`
+automatically before the build step, so a fresh nav link / page
+edit / calendar projection saved through the workspace appears on
+the next staging release without any manual `dump-content-from-db`
+invocation.
+
+After a successful `npm run release:staging`, watch for the
+`content/ now differs from git` hint in the script's tail output.
+That means the D1 dump pulled bytes that `main` doesn't yet have —
+the staging worker is correct, but git hasn't caught up. Commit
+the diff to keep main in sync:
+
+```bash
+git add content/
+git commit -m "chore(content): sync from D1 staging"
+git push
+```
+
+You don't need to commit on every release — the dump is
+idempotent — but committing periodically (or before a production
+promotion) keeps git as a usable rollback target. The
+production promotion path snapshots both code and content SHAs
+into `production-version-history.md`, so a stale main makes the
+log harder to read.
+
+If you ever need the legacy `site-admin-staging`-branch overlay
+flow back (e.g. during a one-off GitHub-storage rehearsal), set
+`USE_GITHUB_OVERLAY=1` for a single release.
+
 ## Routine Release (recommended)
 
 ### Workspace one-click (preferred)

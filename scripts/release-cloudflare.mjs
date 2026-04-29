@@ -186,6 +186,24 @@ async function main() {
   }
   loadProjectEnv({ cwd: ROOT, override: true });
   Object.assign(process.env, cliEnv);
+
+  // Staging worker runs SITE_ADMIN_STORAGE=db (per wrangler.toml), so its
+  // canonical content lives in D1, not in any git branch. Force the
+  // prebuild into db mode for staging releases so D1 → content/* happens
+  // automatically — without this, a developer whose local .env has
+  // SITE_ADMIN_STORAGE=github (typical for working against the
+  // GitHub-mode dev path) would otherwise build with stale on-disk
+  // content and the staging site would visibly lag the workspace.
+  // CI hits the same default via release-from-dispatch.yml's env block,
+  // but this protects the local `npm run release:staging` path too.
+  // Set `USE_GITHUB_OVERLAY=1` to opt back into the legacy site-admin-
+  // staging-branch overlay flow.
+  if (args.env === "staging" && readEnv("USE_GITHUB_OVERLAY") !== "1") {
+    process.env.SITE_ADMIN_STORAGE = "db";
+    if (!process.env.SITE_ADMIN_DB_ENV) process.env.SITE_ADMIN_DB_ENV = "staging";
+    if (!process.env.SITE_ADMIN_DB_LOCATION) process.env.SITE_ADMIN_DB_LOCATION = "remote";
+  }
+
   const git = readGitState();
   const promoteStagingContent = shouldPromoteStagingContent(args);
   // SITE_ADMIN_STORAGE=db makes D1 the source of truth, so the git-branch
@@ -349,6 +367,33 @@ async function main() {
     }
   }
 
+  // The db-prebuild path rewrites content/* on disk to match D1. A
+  // successful release that left content/ dirty means the workspace has
+  // edits that aren't yet reflected in git — surface this so the
+  // operator can commit on their next pass instead of discovering the
+  // drift days later.
+  let contentDriftFromGit = null;
+  if (args.env === "staging" && !args.skipBuild) {
+    try {
+      const status = gitValue(["status", "--porcelain", "--", "content"]);
+      if (status) {
+        const files = status
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => line.slice(3).trim());
+        contentDriftFromGit = files;
+        console.log(
+          `[release-cloudflare] content/ now differs from git (D1 dump pulled ${files.length} file${files.length === 1 ? "" : "s"} ahead). Commit to keep main synced:`,
+        );
+        console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
+        console.log(`  git commit -m "chore(content): sync from D1 staging"`);
+        console.log(`  git push`);
+      }
+    } catch {
+      // git status outside a working tree, etc. — just skip the hint.
+    }
+  }
+
   reportAndExit({
     ...baseReport,
     checksRun,
@@ -359,6 +404,7 @@ async function main() {
     deploymentId: deployment?.deploymentId || null,
     deploymentMessage: deployment?.message || null,
     verified: verifies,
+    contentDriftFromGit,
   });
 }
 
