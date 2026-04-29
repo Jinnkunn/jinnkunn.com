@@ -1,5 +1,7 @@
 import "server-only";
 
+import { revalidatePath } from "next/cache";
+
 import {
   normalizePublicCalendarData,
   publicCalendarJson,
@@ -36,10 +38,16 @@ export async function loadSiteAdminPublicCalendarData(): Promise<{
   };
 }
 
+export type SaveSiteAdminPublicCalendarResult = {
+  fileSha: string;
+  dbStatus: "ok" | "skipped" | "failed";
+  dbError?: string;
+};
+
 export async function saveSiteAdminPublicCalendarData(input: {
   data: PublicCalendarData;
   expectedFileSha?: string;
-}): Promise<{ fileSha: string }> {
+}): Promise<SaveSiteAdminPublicCalendarResult> {
   const store = getSiteAdminSourceStore();
   const result = await store.writeTextFile({
     relPath: CALENDAR_PUBLIC_REL_PATH,
@@ -47,6 +55,24 @@ export async function saveSiteAdminPublicCalendarData(input: {
     expectedSha: input.expectedFileSha,
     message: "chore(calendar): update public calendar projection",
   });
-  await writePublicCalendarToDb(input.data);
-  return { fileSha: result.fileSha };
+  const dbResult = await writePublicCalendarToDb(input.data);
+  try {
+    revalidatePath("/calendar");
+    revalidatePath("/api/public/calendar");
+  } catch {
+    // Outside a request scope (test harness, etc.) the cache APIs throw —
+    // ignore: the public route also caps cache age at 30s, so visitors
+    // see fresh data within the next refresh.
+  }
+  if (!dbResult.ok) {
+    return {
+      fileSha: result.fileSha,
+      dbStatus: "failed",
+      dbError: dbResult.error,
+    };
+  }
+  return {
+    fileSha: result.fileSha,
+    dbStatus: dbResult.skipped ? "skipped" : "ok",
+  };
 }

@@ -22,7 +22,7 @@ async function makeCalendarDb() {
 
 test("public-calendar-db: writes and reads normalized public events", async () => {
   const client = await makeCalendarDb();
-  await writePublicCalendarToDb(
+  const writeResult = await writePublicCalendarToDb(
     {
       schemaVersion: 1,
       generatedAt: "2026-04-28T12:00:00.000Z",
@@ -59,6 +59,9 @@ test("public-calendar-db: writes and reads normalized public events", async () =
     client,
   );
 
+  assert.equal(writeResult.ok, true);
+  assert.equal(writeResult.eventsWritten, 2);
+
   const data = await readPublicCalendarFromDb(client);
   assert.ok(data);
   assert.equal(data.generatedAt, "2026-04-28T12:00:00.000Z");
@@ -72,10 +75,49 @@ test("public-calendar-db: writes and reads normalized public events", async () =
   assert.equal(data.events[1].description, "Public detail");
 });
 
-test("public-calendar-db: missing migration degrades to null/no-op", async () => {
+test("public-calendar-db: writes batches larger than INSERT_BATCH_SIZE", async () => {
+  const client = await makeCalendarDb();
+  const events = Array.from({ length: 55 }, (_, i) => ({
+    id: `e${i}`,
+    title: `Event ${i}`,
+    startsAt: new Date(Date.UTC(2026, 3, 28, i)).toISOString(),
+    endsAt: new Date(Date.UTC(2026, 3, 28, i + 1)).toISOString(),
+    isAllDay: false,
+    visibility: "titleOnly",
+  }));
+  const result = await writePublicCalendarToDb(
+    {
+      schemaVersion: 1,
+      generatedAt: "2026-04-28T12:00:00.000Z",
+      range: {
+        startsAt: "2026-04-28T00:00:00.000Z",
+        endsAt: "2026-05-28T00:00:00.000Z",
+      },
+      events,
+    },
+    client,
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.eventsWritten, 55);
+
+  const data = await readPublicCalendarFromDb(client);
+  assert.ok(data);
+  assert.equal(data.events.length, 55);
+});
+
+test("public-calendar-db: missing migration returns ok=false with error", async () => {
   const client = createClient({ url: ":memory:" });
   assert.equal(await readPublicCalendarFromDb(client), null);
-  await assert.doesNotReject(() =>
-    writePublicCalendarToDb({ events: [] }, client),
-  );
+  const result = await writePublicCalendarToDb({ events: [] }, client);
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? "", /no such table/i);
+});
+
+test("public-calendar-db: no executor returns ok with skipped flag", async () => {
+  const result = await writePublicCalendarToDb({ events: [] }, null);
+  assert.equal(result.ok, true);
+  assert.equal(result.skipped, true);
+  if (result.ok && result.skipped) {
+    assert.equal(result.reason, "no_executor");
+  }
 });
