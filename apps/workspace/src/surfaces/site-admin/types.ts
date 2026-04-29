@@ -143,6 +143,15 @@ export interface ConnectionState {
   cfAccessClientSecret: string;
 }
 
+export interface TopbarSaveAction {
+  dirty: boolean;
+  disabled?: boolean;
+  label: string;
+  onSave: () => void | Promise<void>;
+  saving?: boolean;
+  title?: string;
+}
+
 /** A named connection target — one per environment (Local, Staging,
  * Prod, …). Credentials (app token, CF Access pair) still live in the
  * system keyring keyed by `baseUrl`, so switching profiles picks up the

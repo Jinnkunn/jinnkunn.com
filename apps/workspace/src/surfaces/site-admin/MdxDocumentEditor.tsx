@@ -1662,6 +1662,7 @@ export function MdxDocumentEditor<TForm>({
     productionReadOnly,
     request,
     setMessage,
+    setTopbarSaveAction,
   } = useSiteAdmin();
   const [slug, setSlug] = useState(initialSlug ?? "");
   const [form, setForm] = useState<TForm>(() => adapter.createBlankForm());
@@ -1819,8 +1820,8 @@ export function MdxDocumentEditor<TForm>({
   }, [setMessage, source]);
 
   const save = useCallback(
-    async (event: FormEvent) => {
-      event.preventDefault();
+    async (event?: FormEvent) => {
+      event?.preventDefault();
       if (!canSave || saving) return;
       if (productionReadOnly) {
         setMessage("warn", environment.helpText);
@@ -1923,6 +1924,47 @@ export function MdxDocumentEditor<TForm>({
       version,
     ],
   );
+
+  useEffect(() => {
+    setTopbarSaveAction({
+      dirty,
+      disabled:
+        !canSave ||
+        saving ||
+        loading ||
+        imageDrop.uploading ||
+        conflict ||
+        productionReadOnly,
+      label: saving
+        ? "Saving..."
+        : mode === "create"
+          ? `Create ${adapter.titleNoun}`
+          : `Save ${adapter.titleNoun}`,
+      onSave: () => {
+        void save();
+      },
+      saving,
+      title: productionReadOnly
+        ? environment.helpText
+        : conflict
+          ? "Reload latest before saving this document."
+          : undefined,
+    });
+    return () => setTopbarSaveAction(null);
+  }, [
+    adapter.titleNoun,
+    canSave,
+    conflict,
+    dirty,
+    environment.helpText,
+    imageDrop.uploading,
+    loading,
+    mode,
+    productionReadOnly,
+    save,
+    saving,
+    setTopbarSaveAction,
+  ]);
 
   const remove = useCallback(async () => {
     if (adapter.allowDelete === false) return;

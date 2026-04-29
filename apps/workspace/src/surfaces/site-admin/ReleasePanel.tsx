@@ -19,8 +19,17 @@ const PROMOTION_COMMAND = [
   'export CONFIRM_PRODUCTION_SHA="$(git rev-parse HEAD)"',
   "PROMOTE_STAGING_CONTENT=1 npm run release:prod",
 ].join("\n");
+const RELEASE_SNAPSHOTS_KEY = "workspace.site-admin.releaseSnapshots.v1";
 
 type ReleaseTone = "ok" | "warn" | "blocked" | "muted";
+type ReleaseEnvironment = "staging" | "production";
+
+type ReleaseSnapshot = {
+  capturedAt: string;
+  status: StatusPayload;
+};
+
+type ReleaseSnapshots = Partial<Record<ReleaseEnvironment, ReleaseSnapshot>>;
 
 type ReleaseCheck = {
   detail: string;
@@ -34,6 +43,33 @@ function normalizeStatus(data: unknown): StatusPayload | null {
   const obj = data as Record<string, unknown>;
   if (!obj.source || !obj.env || !obj.build) return null;
   return obj as unknown as StatusPayload;
+}
+
+function loadReleaseSnapshots(): ReleaseSnapshots {
+  try {
+    const raw = localStorage.getItem(RELEASE_SNAPSHOTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as ReleaseSnapshots;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveReleaseSnapshot(
+  env: ReleaseEnvironment,
+  status: StatusPayload,
+): ReleaseSnapshots {
+  const next = {
+    ...loadReleaseSnapshots(),
+    [env]: { capturedAt: new Date().toISOString(), status },
+  };
+  try {
+    localStorage.setItem(RELEASE_SNAPSHOTS_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore private-mode/quota errors. The live current profile status still renders.
+  }
+  return next;
 }
 
 function shortSha(value?: string | null): string {
@@ -68,6 +104,36 @@ function productionCommandFor(status: StatusPayload | null): string {
     );
   }
   return lines.join("\n");
+}
+
+function activeVersion(status: StatusPayload | null | undefined): string {
+  return normalizeString(status?.deployments?.active?.versionId);
+}
+
+function sourceCode(status: StatusPayload | null | undefined): string {
+  return normalizeString(status?.source?.codeSha);
+}
+
+function sourceContent(status: StatusPayload | null | undefined): string {
+  return normalizeString(status?.source?.contentSha);
+}
+
+function sameRevision(
+  staging: StatusPayload | null | undefined,
+  production: StatusPayload | null | undefined,
+): boolean {
+  const stagingCode = sourceCode(staging);
+  const productionCode = sourceCode(production);
+  const stagingContent = sourceContent(staging);
+  const productionContent = sourceContent(production);
+  return Boolean(
+    stagingCode &&
+      productionCode &&
+      stagingContent &&
+      productionContent &&
+      stagingCode === productionCode &&
+      stagingContent === productionContent,
+  );
 }
 
 function releaseChecks(
@@ -138,6 +204,9 @@ export function ReleasePanel() {
     switchProfile,
   } = useSiteAdmin();
   const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [snapshots, setSnapshots] = useState<ReleaseSnapshots>(() =>
+    loadReleaseSnapshots(),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -148,14 +217,31 @@ export function ReleasePanel() {
       ) ?? null,
     [profiles],
   );
+  const productionProfile = useMemo(
+    () =>
+      profiles.find(
+        (profile) => getSiteAdminEnvironment(profile.baseUrl).kind === "production",
+      ) ?? null,
+    [profiles],
+  );
   const isStaging = environment.kind === "staging";
+  const currentReleaseEnv: ReleaseEnvironment | null =
+    environment.kind === "staging" || environment.kind === "production"
+      ? environment.kind
+      : null;
+  const stagingStatus =
+    currentReleaseEnv === "staging" ? status : snapshots.staging?.status ?? null;
+  const productionStatus =
+    currentReleaseEnv === "production" ? status : snapshots.production?.status ?? null;
   const activeDeploymentLabel =
     environment.kind === "production" ? "Active production" : "Active staging";
   const checks = releaseChecks(status, isStaging);
+  const productionAlreadyCurrent = sameRevision(stagingStatus, productionStatus);
   const readyToPromote =
     isStaging &&
     status?.source?.deployableVersionReady === true &&
-    status.source.pendingDeploy !== true;
+    status.source.pendingDeploy !== true &&
+    !productionAlreadyCurrent;
 
   const loadStatus = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -178,9 +264,12 @@ export function ReleasePanel() {
         return;
       }
       setStatus(normalized);
+      if (currentReleaseEnv) {
+        setSnapshots(saveReleaseSnapshot(currentReleaseEnv, normalized));
+      }
       if (!options.silent) setMessage("success", "Release status loaded.");
     },
-    [request, setMessage],
+    [currentReleaseEnv, request, setMessage],
   );
 
   /* eslint-disable react-hooks/set-state-in-effect -- Initial release status hydration is an async site-admin request; state updates happen after the request resolves. */
@@ -287,6 +376,48 @@ export function ReleasePanel() {
         </div>
       </div>
 
+      <section className="release-panel__env-grid" aria-label="Environment comparison">
+        <EnvironmentCard
+          capturedAt={snapshots.staging?.capturedAt}
+          current={currentReleaseEnv === "staging"}
+          label="Staging"
+          onSwitch={stagingProfile ? () => switchProfile(stagingProfile.id) : undefined}
+          status={stagingStatus}
+        />
+        <EnvironmentCard
+          capturedAt={snapshots.production?.capturedAt}
+          current={currentReleaseEnv === "production"}
+          label="Production"
+          onSwitch={
+            productionProfile ? () => switchProfile(productionProfile.id) : undefined
+          }
+          status={productionStatus}
+        />
+        <div
+          className="release-panel__comparison"
+          data-tone={
+            !stagingStatus || !productionStatus
+              ? "muted"
+              : productionAlreadyCurrent
+                ? "ok"
+                : "warn"
+          }
+        >
+          <span>Comparison</span>
+          <strong>
+            {!stagingStatus || !productionStatus
+              ? "Load both profiles"
+              : productionAlreadyCurrent
+                ? "Production current"
+                : "Production differs"}
+          </strong>
+          <p>
+            Visit both Staging and Production profiles once to cache comparable
+            release snapshots. Production promotion remains command-driven.
+          </p>
+        </div>
+      </section>
+
       <section className="release-panel__checks" aria-label="Production promotion checklist">
         <header>
           <div>
@@ -330,5 +461,56 @@ export function ReleasePanel() {
         </button>
       </footer>
     </section>
+  );
+}
+
+function EnvironmentCard({
+  capturedAt,
+  current,
+  label,
+  onSwitch,
+  status,
+}: {
+  capturedAt?: string;
+  current: boolean;
+  label: string;
+  onSwitch?: () => void;
+  status: StatusPayload | null;
+}) {
+  return (
+    <div className="release-panel__env-card" data-current={current ? "true" : "false"}>
+      <header>
+        <div>
+          <span>{label}</span>
+          <strong>{status ? shortId(activeVersion(status)) : "Not loaded"}</strong>
+        </div>
+        {!current && onSwitch ? (
+          <button className="btn btn--secondary" type="button" onClick={onSwitch}>
+            Switch
+          </button>
+        ) : null}
+      </header>
+      <dl>
+        <div>
+          <dt>Code</dt>
+          <dd>{shortSha(sourceCode(status))}</dd>
+        </div>
+        <div>
+          <dt>Content</dt>
+          <dd>{shortSha(sourceContent(status))}</dd>
+        </div>
+        <div>
+          <dt>Candidate</dt>
+          <dd>{candidateLabel(status?.source)}</dd>
+        </div>
+      </dl>
+      <p>
+        {current
+          ? "Live from current profile."
+          : capturedAt
+            ? `Cached ${new Date(capturedAt).toLocaleString()}.`
+            : "Switch to this profile to capture a snapshot."}
+      </p>
+    </div>
   );
 }

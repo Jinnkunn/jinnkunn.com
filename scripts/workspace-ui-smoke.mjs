@@ -158,6 +158,21 @@ function main() {
     "Release panel promotion action",
   );
   assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Environment comparison",
+    "Release panel staging/production comparison",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
+    "topbarSaveAction",
+    "Site Admin topbar save action",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx"),
+    "setTopbarSaveAction",
+    "MDX editor registers topbar save",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ConfigPanel.tsx"),
     "Read-only in Production",
     "Production settings lock",

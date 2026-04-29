@@ -12,8 +12,14 @@ import { useLocalSync } from "./use-local-sync";
  * the current location, so this bar is reserved for environment,
  * sync, publish, and debug controls. */
 export function SiteAdminTopBar() {
-  const { drawerOpen, environment, productionReadOnly, toggleDrawer, connection } =
-    useSiteAdmin();
+  const {
+    drawerOpen,
+    environment,
+    productionReadOnly,
+    toggleDrawer,
+    connection,
+    topbarSaveAction,
+  } = useSiteAdmin();
 
   // Phase 5a — drive the local SQLite mirror at one stable mount point so
   // we have one timer + one in-flight pull per app instance regardless of
@@ -48,6 +54,27 @@ export function SiteAdminTopBar() {
       <div className="site-admin-topbar__right" data-window-drag-exclude>
         <SyncStatusPill sync={sync} />
         <SiteAdminConnectionPill />
+        {topbarSaveAction?.dirty ? (
+          <button
+            className="btn btn--primary site-admin-topbar__save-btn"
+            disabled={
+              topbarSaveAction.disabled ||
+              topbarSaveAction.saving ||
+              productionReadOnly
+            }
+            onClick={() => {
+              void topbarSaveAction.onSave();
+            }}
+            title={
+              productionReadOnly
+                ? environment.helpText
+                : topbarSaveAction.title
+            }
+            type="button"
+          >
+            {topbarSaveAction.saving ? "Saving..." : topbarSaveAction.label}
+          </button>
+        ) : null}
         <PublishButton
           label={productionReadOnly ? "Read-only" : `Publish ${environment.label}`}
           requirePendingChanges

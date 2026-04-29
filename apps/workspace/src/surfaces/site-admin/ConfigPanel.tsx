@@ -42,7 +42,8 @@ function isSourceConflictResponse(response: { ok: boolean; code?: string; status
  * tracking + conflict handling, and delegates the visual form to a
  * dedicated presentational component under `config/`. */
 export function ConfigPanel() {
-  const { productionReadOnly, request, setMessage } = useSiteAdmin();
+  const { productionReadOnly, request, setMessage, setTopbarSaveAction } =
+    useSiteAdmin();
 
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseSettings, setBaseSettings] = useState<SiteSettings>(defaultSettings());
@@ -250,6 +251,38 @@ export function ConfigPanel() {
     },
     [],
   );
+
+  useEffect(() => {
+    setTopbarSaveAction({
+      dirty: settingsDirty,
+      disabled:
+        loading ||
+        savingSettings ||
+        conflict ||
+        !sourceVersion ||
+        productionReadOnly,
+      label: "Save Settings",
+      onSave: () => {
+        void saveSettings();
+      },
+      saving: savingSettings,
+      title: productionReadOnly
+        ? "Production is inspect-only. Switch to Staging to save site settings."
+        : conflict
+          ? "Reload latest before saving settings."
+          : undefined,
+    });
+    return () => setTopbarSaveAction(null);
+  }, [
+    conflict,
+    loading,
+    productionReadOnly,
+    saveSettings,
+    savingSettings,
+    setTopbarSaveAction,
+    settingsDirty,
+    sourceVersion,
+  ]);
 
   const stateNote = loading
     ? "Loading config…"
