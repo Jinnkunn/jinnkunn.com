@@ -204,6 +204,34 @@ async function main() {
     if (!process.env.SITE_ADMIN_DB_LOCATION) process.env.SITE_ADMIN_DB_LOCATION = "remote";
   }
 
+  // The staging release rewrites `content/*` from D1 inside the prebuild
+  // step. If the operator has uncommitted edits there (mid-experiment
+  // file edit, hand-fixed bug), the dump silently overwrites them. Refuse
+  // to start a release when the working tree has dirty content/ paths —
+  // they should commit, stash, or pass `--allow-dirty-content` first.
+  if (args.env === "staging" && !args.skipBuild && !args.dryRun) {
+    const dirty = gitValue([
+      "status",
+      "--porcelain",
+      "--",
+      "content",
+    ]);
+    if (dirty && readEnv("ALLOW_DIRTY_CONTENT") !== "1") {
+      const files = dirty
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => line.slice(3).trim());
+      console.error(
+        "[release-cloudflare] refusing to start: content/ has uncommitted changes that the D1 dump would overwrite:",
+      );
+      for (const file of files) console.error(`  - ${file}`);
+      console.error(
+        "Commit / stash these first, or pass ALLOW_DIRTY_CONTENT=1 to proceed (the dump will clobber them).",
+      );
+      process.exit(1);
+    }
+  }
+
   const git = readGitState();
   const promoteStagingContent = shouldPromoteStagingContent(args);
   // SITE_ADMIN_STORAGE=db makes D1 the source of truth, so the git-branch
@@ -347,11 +375,81 @@ async function main() {
   const deployment = parseDeployJson(deployOutput);
 
   const verifies = [];
+  // Auto-rollback target for production. If verify fails after a fresh
+  // production deploy, we'll roll back to this version ID. The
+  // release:prod:from-staging wrapper already captures the pre-deploy
+  // version into RELEASE_EXPECT_PRODUCTION_VERSION; direct
+  // `release:prod` invocations don't, so callers who want auto-rollback
+  // through that path need to set the var themselves.
+  const rollbackTarget =
+    args.env === "production"
+      ? readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
+        readEnv("VERIFY_CF_EXPECT_PRODUCTION_VERSION") ||
+        null
+      : null;
+  let rolledBack = null;
+
   if (!args.skipVerify) {
     const verifyScript = args.env === "production" ? "verify:cf:prod" : "verify:cf:staging";
     console.log(`[release-cloudflare] verifying ${args.env}`);
-    run("npm", ["run", verifyScript], { label: verifyScript });
-    verifies.push(args.env);
+    try {
+      run("npm", ["run", verifyScript], { label: verifyScript });
+      verifies.push(args.env);
+    } catch (verifyError) {
+      // Production verify failed — the bad worker is already live. If we
+      // know the pre-deploy version, roll it back automatically; the
+      // operator will see the failure either way, but they shouldn't
+      // have to fight a live regression while figuring out the version
+      // ID. The rollback gets re-verified with the expected (rolled-to)
+      // version so we don't claim success on a still-broken deploy.
+      const message = verifyError instanceof Error ? verifyError.message : String(verifyError);
+      if (args.env === "production" && rollbackTarget && readEnv("DISABLE_AUTO_ROLLBACK") !== "1") {
+        console.error(
+          `[release-cloudflare] verify:cf:prod FAILED — rolling back to ${rollbackTarget}`,
+        );
+        try {
+          run(
+            "npx",
+            [
+              "wrangler",
+              "rollback",
+              "--env",
+              "production",
+              rollbackTarget,
+              "--message",
+              `auto-rollback after verify failure during release ${git.sha}`,
+              "--yes",
+            ],
+            { label: "wrangler rollback --env production" },
+          );
+          run("npm", ["run", "verify:cf:prod"], {
+            label: "verify:cf:prod (post-rollback)",
+            env: { VERIFY_CF_EXPECT_PRODUCTION_VERSION: rollbackTarget },
+          });
+          rolledBack = {
+            target: rollbackTarget,
+            verifyFailureSummary: message.split("\n")[0]?.slice(0, 240) ?? message,
+          };
+          console.error(
+            `[release-cloudflare] auto-rolled-back to ${rollbackTarget}; original verify error above`,
+          );
+        } catch (rollbackError) {
+          const rbMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+          console.error(
+            `[release-cloudflare] auto-rollback ALSO FAILED — production is in an unknown state. Original verify error: ${message}. Rollback error: ${rbMsg}`,
+          );
+        }
+      } else if (args.env === "production" && !rollbackTarget) {
+        console.error(
+          "[release-cloudflare] verify:cf:prod failed but no rollback target was provided (RELEASE_EXPECT_PRODUCTION_VERSION). Manual rollback required — production-version-history.md has the previous version id.",
+        );
+      } else if (args.env === "production" && readEnv("DISABLE_AUTO_ROLLBACK") === "1") {
+        console.error(
+          `[release-cloudflare] verify:cf:prod failed; auto-rollback DISABLED via DISABLE_AUTO_ROLLBACK=1. Rollback target was ${rollbackTarget}.`,
+        );
+      }
+      throw verifyError;
+    }
 
     const expectedProductionVersion =
       expectedProductionVersionFromShell ||
@@ -405,6 +503,7 @@ async function main() {
     deploymentMessage: deployment?.message || null,
     verified: verifies,
     contentDriftFromGit,
+    rolledBack,
   });
 }
 
