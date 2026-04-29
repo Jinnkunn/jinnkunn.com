@@ -1,0 +1,22 @@
+<!--
+  macOS menubar tray icon. The original brand mark (~91x96, near-square)
+  is centered inside a 120x120 canvas so the artwork lands at ~80% of
+  the slot — Apple's HIG convention for menubar glyphs (~16-18pt
+  artwork in a 22pt cell).
+
+  Fill is black; the menubar will template-tint it on macOS via
+  `icon_as_template(true)` in main.rs, so the glyph adapts to light /
+  dark mode automatically. The PNG sibling (tray.png) is rendered from
+  this file at 44x44 (2x retina) — re-render via
+  `node apps/workspace/scripts/build-tray-icon.mjs` after edits.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <g transform="translate(14.5 12)">
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M90.4277 95.504C67.7217 95.34 46.9757 86.876 31.0747 72.994C21.3737 76.509 10.9087 78.426 0 78.426V66.564C39.4677 66.564 72.2537 37.732 78.4277 -7.52664e-06H90.4277C88.0457 16.804 81.0837 32.143 70.8467 44.711C76.7547 47.671 83.3987 49.376 90.4277 49.478V61.341C80.2607 61.224 70.7277 58.447 62.4927 53.676C61.1617 54.925 59.7947 56.134 58.3917 57.303C67.7257 63.065 78.6907 66.437 90.4277 66.56V78.423C74.6737 78.283 60.0857 73.227 48.1217 64.717C46.5117 65.718 44.8687 66.67 43.1947 67.571C56.3527 77.533 72.7017 83.495 90.4277 83.642V95.504ZM55.7067 -7.52664e-06C49.8477 25.346 27.1157 44.265 0 44.265V-7.52664e-06H11.8617V30.831C13.9687 30.261 16.0147 29.542 17.9877 28.686V-7.52664e-06H29.8497V21.17C36.1957 15.606 40.9767 8.29899 43.4427 -7.52664e-06H55.7067ZM73.1337 -7.52664e-06C67.0157 34.838 36.5797 61.345 0 61.345V49.483C30.0097 49.483 55.0997 28.251 61.0527 -7.52664e-06H73.1337ZM0 83.64C10.1847 83.543 19.9977 81.881 29.2107 78.884C32.8867 81.932 36.7907 84.715 40.8937 87.203C28.2767 92.438 14.4717 95.379 0 95.502V83.64Z"
+      fill="black"
+    />
+  </g>
+</svg>
