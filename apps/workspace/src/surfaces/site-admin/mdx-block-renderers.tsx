@@ -5,6 +5,7 @@
 // `renderChildren` so this file does not depend on its parent.
 
 import {
+  memo,
   useCallback,
   useEffect,
   useRef,
@@ -43,7 +44,7 @@ export interface TodoEditableBlockProps {
   onRemoveEmpty: () => void;
 }
 
-export function TodoEditableBlock({
+function BaseTodoEditableBlock({
   block,
   onFocusInput,
   onPatch,
@@ -199,7 +200,7 @@ export interface ToggleEditableBlockProps {
   renderChildren: (props: ToggleChildrenRenderProps) => ReactNode;
 }
 
-export function ToggleEditableBlock({
+function BaseToggleEditableBlock({
   block,
   depth,
   onFocusInput,
@@ -306,7 +307,7 @@ export interface TableEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-export function TableEditableBlock({ block, onPatch }: TableEditableBlockProps) {
+function BaseTableEditableBlock({ block, onPatch }: TableEditableBlockProps) {
   const data = block.tableData ?? { rows: [["", ""], ["", ""]], headerRow: true };
   const rows = data.rows;
   const colCount = rows[0]?.length ?? 0;
@@ -448,7 +449,7 @@ export interface BookmarkEditableBlockProps {
   setMessage: (kind: "error" | "success", text: string) => void;
 }
 
-export function BookmarkEditableBlock({
+function BaseBookmarkEditableBlock({
   block,
   onPatch,
   request,
@@ -572,7 +573,7 @@ export interface EmbedEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-export function EmbedEditableBlock({ block, onPatch }: EmbedEditableBlockProps) {
+function BaseEmbedEditableBlock({ block, onPatch }: EmbedEditableBlockProps) {
   const kind = block.embedKind ?? "iframe";
   const url = block.url ?? "";
   const previewSrc = previewSrcForEmbed(kind, url);
@@ -639,7 +640,7 @@ export interface FileEditableBlockProps {
   setMessage: (kind: "error" | "success", text: string) => void;
 }
 
-export function FileEditableBlock({
+function BaseFileEditableBlock({
   block,
   onPatch,
   request,
@@ -738,7 +739,7 @@ export interface PageLinkEditableBlockProps {
   request: RequestFn;
 }
 
-export function PageLinkEditableBlock({
+function BasePageLinkEditableBlock({
   block,
   onPatch,
   request,
@@ -894,7 +895,7 @@ export interface DataBlockEditableBlockProps {
   limitAriaLabel?: string;
 }
 
-export function DataBlockEditableBlock({
+function BaseDataBlockEditableBlock({
   block,
   onPatch,
   label,
@@ -952,7 +953,7 @@ export interface HeroBlockEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-export function HeroBlockEditableBlock({
+function BaseHeroBlockEditableBlock({
   block,
   onPatch,
 }: HeroBlockEditableBlockProps) {
@@ -1075,7 +1076,7 @@ function patchItems(
   return list;
 }
 
-export function LinkListBlockEditableBlock({
+function BaseLinkListBlockEditableBlock({
   block,
   onPatch,
 }: LinkListBlockEditableBlockProps) {
@@ -1231,7 +1232,7 @@ export interface FeaturedPagesBlockEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-export function FeaturedPagesBlockEditableBlock({
+function BaseFeaturedPagesBlockEditableBlock({
   block,
   onPatch,
 }: FeaturedPagesBlockEditableBlockProps) {
@@ -1401,7 +1402,7 @@ export interface ColumnsEditableBlockProps {
   renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
 }
 
-export function ColumnsEditableBlock({
+function BaseColumnsEditableBlock({
   block,
   depth,
   onPatch,
@@ -1528,7 +1529,7 @@ export interface ColumnEditableBlockProps {
   renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
 }
 
-export function ColumnEditableBlock({
+function BaseColumnEditableBlock({
   block,
   depth,
   onPatch,
@@ -1558,7 +1559,7 @@ export interface WorksEntryEditableBlockProps {
   renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
 }
 
-export function WorksEntryEditableBlock({
+function BaseWorksEntryEditableBlock({
   block,
   depth,
   onPatch,
@@ -1771,7 +1772,7 @@ export interface PublicationsEntryEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-export function PublicationsEntryEditableBlock({
+function BasePublicationsEntryEditableBlock({
   block,
   onPatch,
 }: PublicationsEntryEditableBlockProps) {
@@ -1905,7 +1906,7 @@ export interface TeachingEntryEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-export function TeachingEntryEditableBlock({
+function BaseTeachingEntryEditableBlock({
   block,
   onPatch,
 }: TeachingEntryEditableBlockProps) {
@@ -2016,7 +2017,7 @@ export interface NewsEntryEditableBlockProps {
   renderChildren: (props: ColumnsChildrenRenderProps) => ReactNode;
 }
 
-export function NewsEntryEditableBlock({
+function BaseNewsEntryEditableBlock({
   block,
   depth,
   onPatch,
@@ -2192,7 +2193,7 @@ function LinksRowEditor({
   );
 }
 
-export function TeachingLinksEditableBlock({
+function BaseTeachingLinksEditableBlock({
   block,
   onPatch,
 }: LinksRowEditableBlockProps) {
@@ -2235,7 +2236,7 @@ export function TeachingLinksEditableBlock({
   );
 }
 
-export function PublicationsProfileLinksEditableBlock({
+function BasePublicationsProfileLinksEditableBlock({
   block,
   onPatch,
 }: LinksRowEditableBlockProps) {
@@ -2257,3 +2258,72 @@ export function PublicationsProfileLinksEditableBlock({
     </div>
   );
 }
+
+// ---------- memoized public exports ----------
+//
+// Each leaf renderer is wrapped in `memo` with a comparator that ignores
+// callback identity. The key insight: every per-block callback in the parent
+// (`onPatch`, `onRemoveEmpty`, etc.) closes over the *current* `block.id`,
+// so two renders with the same `block` reference produce semantically
+// equivalent callbacks even though their function identities differ. We
+// short-circuit on `block` (and `depth` where it actually shapes the
+// output) and skip the noisy callback churn that would otherwise re-render
+// every leaf on every keystroke into a sibling.
+
+function eqByBlock<P extends { block: MdxBlock }>(a: P, b: P): boolean {
+  return a.block === b.block;
+}
+
+function eqByBlockAndDepth<P extends { block: MdxBlock; depth: number }>(
+  a: P,
+  b: P,
+): boolean {
+  return a.block === b.block && a.depth === b.depth;
+}
+
+export const TodoEditableBlock = memo(BaseTodoEditableBlock, eqByBlock);
+export const ToggleEditableBlock = memo(BaseToggleEditableBlock, eqByBlockAndDepth);
+export const TableEditableBlock = memo(BaseTableEditableBlock, eqByBlock);
+export const BookmarkEditableBlock = memo(BaseBookmarkEditableBlock, eqByBlock);
+export const EmbedEditableBlock = memo(BaseEmbedEditableBlock, eqByBlock);
+export const FileEditableBlock = memo(BaseFileEditableBlock, eqByBlock);
+export const PageLinkEditableBlock = memo(BasePageLinkEditableBlock, eqByBlock);
+export const DataBlockEditableBlock = memo(BaseDataBlockEditableBlock, eqByBlock);
+export const HeroBlockEditableBlock = memo(BaseHeroBlockEditableBlock, eqByBlock);
+export const LinkListBlockEditableBlock = memo(
+  BaseLinkListBlockEditableBlock,
+  eqByBlock,
+);
+export const FeaturedPagesBlockEditableBlock = memo(
+  BaseFeaturedPagesBlockEditableBlock,
+  eqByBlock,
+);
+export const ColumnsEditableBlock = memo(
+  BaseColumnsEditableBlock,
+  eqByBlockAndDepth,
+);
+export const ColumnEditableBlock = memo(
+  BaseColumnEditableBlock,
+  eqByBlockAndDepth,
+);
+export const WorksEntryEditableBlock = memo(
+  BaseWorksEntryEditableBlock,
+  eqByBlock,
+);
+export const PublicationsEntryEditableBlock = memo(
+  BasePublicationsEntryEditableBlock,
+  eqByBlock,
+);
+export const TeachingEntryEditableBlock = memo(
+  BaseTeachingEntryEditableBlock,
+  eqByBlock,
+);
+export const NewsEntryEditableBlock = memo(BaseNewsEntryEditableBlock, eqByBlock);
+export const TeachingLinksEditableBlock = memo(
+  BaseTeachingLinksEditableBlock,
+  eqByBlock,
+);
+export const PublicationsProfileLinksEditableBlock = memo(
+  BasePublicationsProfileLinksEditableBlock,
+  eqByBlock,
+);

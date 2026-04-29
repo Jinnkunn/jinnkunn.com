@@ -688,6 +688,16 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
   // once the in-flight reauth resolves (success or failure).
   const reauthPromiseRef = useRef<Promise<string> | null>(null);
 
+  // In-flight GET dedup. When two panels mount in quick succession and
+  // both hit the same endpoint (e.g. /api/site-admin/posts), they reuse
+  // a single Promise instead of double-fetching. Keyed by `path` since
+  // GETs have no body. Cleared when the underlying response resolves so
+  // a subsequent fetch always returns fresh data — this is dedup for
+  // concurrent fan-out, not a cache.
+  const inFlightGetsRef = useRef(
+    new Map<string, Promise<NormalizedApiResponse>>(),
+  );
+
   const requestOnce = useCallback(
     async (
       path: string,
@@ -713,28 +723,12 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const request = useCallback(
+  const requestImpl = useCallback(
     async (
       path: string,
-      method = "GET",
-      body: unknown = null,
+      method: string,
+      body: unknown,
     ): Promise<NormalizedApiResponse> => {
-      if (
-        productionReadOnly &&
-        isMutatingHttpMethod(method) &&
-        !path.startsWith("/api/site-admin/app-auth/")
-      ) {
-        const normalizedMethod = normalizeString(method || "GET").toUpperCase();
-        const err: NormalizedApiResponse = {
-          ok: false,
-          status: 0,
-          code: "PRODUCTION_READ_ONLY",
-          error: productionReadOnlyMessage("save content/settings"),
-          raw: null,
-        };
-        writeDebugResponse(`${normalizedMethod} ${path} (blocked)`, err);
-        return err;
-      }
       const first = await requestOnce(path, method, body, connection.authToken);
       const firstResp = first.result.response;
       const wasUnauthorized =
@@ -810,11 +804,53 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       connection.baseUrl,
       connection.cfAccessClientId,
       connection.cfAccessClientSecret,
-      productionReadOnly,
       requestOnce,
       signInWithBrowser,
       writeDebugResponse,
     ],
+  );
+
+  const request = useCallback(
+    (
+      path: string,
+      method = "GET",
+      body: unknown = null,
+    ): Promise<NormalizedApiResponse> => {
+      const normalizedMethod = normalizeString(method || "GET").toUpperCase();
+      if (
+        productionReadOnly &&
+        isMutatingHttpMethod(method) &&
+        !path.startsWith("/api/site-admin/app-auth/")
+      ) {
+        const err: NormalizedApiResponse = {
+          ok: false,
+          status: 0,
+          code: "PRODUCTION_READ_ONLY",
+          error: productionReadOnlyMessage("save content/settings"),
+          raw: null,
+        };
+        writeDebugResponse(`${normalizedMethod} ${path} (blocked)`, err);
+        return Promise.resolve(err);
+      }
+      // Dedup: only safe for idempotent reads (GET / HEAD). Mutating
+      // methods get unique args and side-effects, so they always bypass.
+      const dedupable = normalizedMethod === "GET" || normalizedMethod === "HEAD";
+      if (dedupable) {
+        const existing = inFlightGetsRef.current.get(path);
+        if (existing) return existing;
+        const promise = requestImpl(path, method, body).finally(() => {
+          // Drop only if the entry is still ours — guards against a clear
+          // racing with a fresh request that started after we resolved.
+          if (inFlightGetsRef.current.get(path) === promise) {
+            inFlightGetsRef.current.delete(path);
+          }
+        });
+        inFlightGetsRef.current.set(path, promise);
+        return promise;
+      }
+      return requestImpl(path, method, body);
+    },
+    [productionReadOnly, requestImpl, writeDebugResponse],
   );
 
   const value = useMemo<SiteAdminContextValue>(
