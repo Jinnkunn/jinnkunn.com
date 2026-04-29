@@ -507,10 +507,15 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&gt;/g, ">");
 }
 
+// Pre-compiled at module load. parseMdxBlocks calls this once per inline
+// span for `color-*` AND once for `bg-*`, so a 100-block document with
+// inline color marks would otherwise compile the same RegExp 200+ times.
+const NOTION_FG_COLOR_RE = /(?:^|\s)color-(gray|brown|orange|yellow|green|blue|purple|pink|red)(?:\s|$)/;
+const NOTION_BG_COLOR_RE = /(?:^|\s)bg-(gray|brown|orange|yellow|green|blue|purple|pink|red)(?:\s|$)/;
+
 function notionColorFromClassName(className: string, prefix: "color" | "bg"): MdxBlockColor | "" {
-  const match = new RegExp(`(?:^|\\s)${prefix}-(gray|brown|orange|yellow|green|blue|purple|pink|red)(?:\\s|$)`).exec(
-    className,
-  );
+  const re = prefix === "color" ? NOTION_FG_COLOR_RE : NOTION_BG_COLOR_RE;
+  const match = re.exec(className);
   return match ? (match[1] as MdxBlockColor) : "";
 }
 
