@@ -45,6 +45,12 @@ function parseArgs(argv = process.argv.slice(2)) {
   }
   return {
     auto: argv.includes("--auto"),
+    // Read-only mode: pull deployment history straight from the
+    // Cloudflare API instead of writing to the local markdown file.
+    // Useful when the local history file lags (it's per-machine, so a
+    // deploy from machine B leaves machine A's file stale) — CF API is
+    // the source of truth.
+    list: argv.includes("--list"),
     note,
   };
 }
@@ -124,6 +130,56 @@ function pickFirstItem(result) {
     if (Array.isArray(value) && value.length > 0) return value[0];
   }
   return null;
+}
+
+async function listProductionHistory({ accountId, apiToken, workerName, limit = 10 }) {
+  // CF returns deployments newest-first. Each one points at one or
+  // more versions; for our (single-strategy) deployments we just take
+  // the highest-percentage version. Annotation message has the source
+  // SHA + branch we embedded at upload time, so the result is enough
+  // for a rollback decision without a second API call per row.
+  const deployments = await cfRequest({
+    accountId,
+    apiToken,
+    method: "GET",
+    path: `/workers/scripts/${encodeURIComponent(workerName)}/deployments`,
+  });
+  const payload =
+    deployments && typeof deployments === "object" ? deployments : {};
+  const items = Array.isArray(payload.deployments)
+    ? payload.deployments
+    : Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(deployments)
+        ? deployments
+        : [];
+  const rows = [];
+  for (const raw of items.slice(0, limit)) {
+    const record = raw && typeof raw === "object" ? raw : {};
+    const deploymentId = String(record.id || "");
+    const annotations =
+      record.annotations && typeof record.annotations === "object"
+        ? record.annotations
+        : {};
+    const annotation = String(annotations["workers/message"] || "");
+    const versions = Array.isArray(record.versions) ? [...record.versions] : [];
+    versions.sort(
+      (a, b) => Number(b.percentage ?? 0) - Number(a.percentage ?? 0),
+    );
+    const primary = versions[0] || {};
+    const versionId = String(primary.version_id || "");
+    if (!versionId) continue;
+    const meta = parseDeployMessage(annotation);
+    rows.push({
+      deploymentId,
+      versionId,
+      createdOn: String(record.created_on || ""),
+      codeSha: meta.codeSha || meta.sourceSha || "",
+      codeBranch: meta.codeBranch || meta.sourceBranch || "",
+      message: annotation,
+    });
+  }
+  return rows;
 }
 
 async function readActiveProduction({ accountId, apiToken, workerName }) {
@@ -261,6 +317,42 @@ async function main() {
     }
     console.error(`[snapshot-prod] ${reason}`);
     process.exit(1);
+  }
+
+  if (args.list) {
+    // Read-only path. Bypasses the markdown file entirely so the
+    // deployment list is always live — useful when the local
+    // production-version-history.md is out of date because someone
+    // deployed from a different machine. JSON output is machine-
+    // readable; a `--list` invocation in `--auto` mode is the same
+    // shape so callers can swap freely.
+    let rows;
+    try {
+      rows = await listProductionHistory({ accountId, apiToken, workerName });
+    } catch (error) {
+      const errorMsg = String(error?.message || error);
+      if (args.auto) {
+        console.log(JSON.stringify({ ok: false, error: errorMsg }));
+        return;
+      }
+      console.error(`[snapshot-prod] list failed: ${errorMsg}`);
+      process.exit(1);
+    }
+    const result = { ok: true, workerName, deployments: rows };
+    if (args.auto) {
+      console.log(JSON.stringify(result));
+      return;
+    }
+    console.log(`[snapshot-prod] last ${rows.length} production deployment(s) for ${workerName}:`);
+    console.log("created (UTC)         deployment id                          version id                            code     branch");
+    console.log("-".repeat(140));
+    for (const row of rows) {
+      const created = (row.createdOn || "").replace("T", " ").replace(/\..+$/, "");
+      console.log(
+        `${created.padEnd(20)}  ${row.deploymentId.padEnd(36)}  ${row.versionId.padEnd(36)}  ${(row.codeSha.slice(0, 7) || "(none)").padEnd(7)}  ${row.codeBranch || "(none)"}`,
+      );
+    }
+    return;
   }
 
   let snapshot;
