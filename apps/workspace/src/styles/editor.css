@@ -620,6 +620,18 @@
     box-shadow 130ms ease;
 }
 
+.mdx-block-editor-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+.mdx-block-editor-shell[data-block-inspector-open="true"] {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+
 .mdx-document-blocks[data-drag-active="true"] {
   background: color-mix(in srgb, var(--color-accent) 5%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 75%, transparent) inset;
@@ -653,8 +665,178 @@
   background: color-mix(in srgb, var(--color-text-primary) 1.8%, transparent);
 }
 
-.mdx-document-block[data-empty="true"]:not(:hover):not(:focus-within):not([data-controls-open="true"]) {
+.mdx-document-block[data-selected="true"] {
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent) inset;
+}
+
+.mdx-document-block[data-empty="true"]:not(:hover):not(:focus-within):not([data-controls-open="true"]):not([data-selected="true"]) {
   background: transparent;
+}
+
+.mdx-block-inspector {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 230px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface-alt);
+}
+
+.mdx-block-inspector__close {
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.mdx-block-inspector__field,
+.mdx-block-inspector__items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mdx-block-inspector__field > span {
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mdx-block-inspector__field input,
+.mdx-block-inspector__field textarea,
+.mdx-block-inspector__field select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.mdx-block-inspector__field textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.mdx-block-inspector__field input:focus,
+.mdx-block-inspector__field textarea:focus,
+.mdx-block-inspector__field select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 13%, transparent);
+}
+
+.mdx-block-inspector__inline-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.mdx-block-inspector__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.mdx-block-inspector__item-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mdx-block-inspector__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mdx-block-inspector__file {
+  position: relative;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mdx-block-inspector__file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mdx-block-inspector__file:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mdx-block-inspector__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.mdx-block-inspector__check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.mdx-block-inspector__table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.mdx-block-inspector__table-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 4px;
+  min-width: 220px;
+}
+
+.mdx-block-inspector__table-row input {
+  min-width: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.mdx-block-inspector__table-row input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+@media (max-width: 1180px) {
+  .mdx-block-editor-shell[data-block-inspector-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mdx-block-inspector {
+    position: static;
+    max-height: none;
+  }
 }
 
 /* Notion-style left gutter. It sits outside the content column, so idle or
@@ -1030,6 +1212,21 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
   font-size: 12px;
+}
+
+.mdx-document-raw-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.mdx-document-raw-block__head strong {
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
 }
 
 /* TipTap-backed paragraph blocks (ParagraphRichTextBlock). The
@@ -1976,27 +2173,8 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   background: var(--color-bg-surface-alt);
 }
 
-.mdx-document-columns-block__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.mdx-document-columns-block__toolbar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
+.mdx-document-columns-block__empty {
   color: var(--color-text-muted);
-}
-
-.mdx-document-columns-block__toolbar select {
-  border: 1px solid var(--color-border-default);
-  border-radius: 4px;
-  padding: 2px 6px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
   font-size: 12px;
 }
 
@@ -2092,7 +2270,7 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   color: var(--color-text-primary);
 }
 
-/* Table block — GFM table editor. */
+/* Table block — visual canvas preview; detailed fields live in inspector. */
 .mdx-document-table-block {
   display: flex;
   flex-direction: column;
@@ -2123,88 +2301,14 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 }
 
 .mdx-document-table-block__cell {
+  display: block;
+  min-height: 20px;
   width: 100%;
   border: 0;
   background: transparent;
   color: var(--color-text-primary);
   font: inherit;
   padding: 6px 8px;
-}
-
-.mdx-document-table-block__cell:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
-
-.mdx-document-table-block__row-actions {
-  width: 28px;
-  text-align: center;
-}
-
-.mdx-document-table-block__row-actions button {
-  width: 24px;
-  height: 24px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.mdx-document-table-block__row-actions button:hover:not(:disabled) {
-  background: var(--mdx-handle-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.mdx-document-table-block__col-controls {
-  display: flex;
-  gap: 4px;
-  margin-left: 0;
-}
-
-.mdx-document-table-block__col-control {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 4px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.mdx-document-table-block__col-control select {
-  border: 0;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 11px;
-}
-
-.mdx-document-table-block__col-control button {
-  border: 0;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.mdx-document-table-block__actions {
-  display: flex;
-  gap: 6px;
-}
-
-.mdx-document-table-block__actions button {
-  border: 1px dashed var(--color-border-default);
-  border-radius: 6px;
-  padding: 4px 10px;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.mdx-document-table-block__actions button:hover {
-  background: var(--mdx-handle-bg-hover);
-  color: var(--color-text-primary);
 }
 
 /* Settings surface (Phase 5): super.so-style wrapper around Site
@@ -2763,20 +2867,82 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 }
 
 
-/* Hero block editor card. Inline-config block (no JSON data source);
-   reuses the dashed-card styling from the data blocks for visual
-   consistency, with a 2-column grid for the form fields. */
+/* Hero block canvas preview. Field editing lives in the block inspector so
+   the writing canvas stays close to the public render. */
 .mdx-document-hero-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px dashed var(--color-border-default);
-  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.36fr);
+  gap: 18px;
+  align-items: center;
+  padding: 18px 0;
+}
+
+.mdx-document-hero-block[data-image-position="left"] {
+  grid-template-columns: minmax(120px, 0.36fr) minmax(0, 1fr);
+}
+
+.mdx-document-hero-block[data-image-position="left"] .mdx-document-hero-block__media {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.mdx-document-hero-block[data-image-position="top"],
+.mdx-document-hero-block[data-image-position="none"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mdx-document-hero-block[data-text-align="center"] {
+  text-align: center;
+}
+
+.mdx-document-hero-block[data-text-align="right"] {
+  text-align: right;
+}
+
+.mdx-document-hero-block__body {
+  min-width: 0;
+}
+
+.mdx-document-hero-block__body strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: clamp(26px, 4vw, 42px);
+  font-weight: 760;
+  line-height: 1.06;
+}
+
+.mdx-document-hero-block__body p {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.mdx-document-hero-block__media {
+  overflow: hidden;
+  border-radius: 12px;
   background: var(--color-bg-surface-alt);
 }
 
-.mdx-document-hero-block__grid {
+.mdx-document-hero-block__media img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+/* Link list block canvas preview. The inspector owns title/layout/items. */
+.mdx-document-link-list-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mdx-document-link-list-block__row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px 12px;
@@ -2800,83 +2966,60 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   font: inherit;
 }
 
-/* Link list block editor card. Same dashed-card visual as Hero with
-   an item-row list (label + URL + reorder/delete buttons). */
-.mdx-document-link-list-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px dashed var(--color-border-default);
-  border-radius: 8px;
-  background: var(--color-bg-surface-alt);
-}
-
-.mdx-document-link-list-block__row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px 12px;
-}
-
 .mdx-document-link-list-block__items {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.mdx-document-link-list-block__item {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(180px, 1.5fr) auto;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  background: var(--color-bg-surface);
-}
-
-/* Featured-pages variant adds a description column between URL and
-   the action buttons. */
-.mdx-document-link-list-block__item--featured {
-  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.3fr) minmax(160px, 1.5fr) auto;
-}
-
-.mdx-document-link-list-block__item input {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
-  padding: 4px 6px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-}
-
-.mdx-document-link-list-block__item-actions {
+.mdx-document-link-list-block[data-layout="inline"] .mdx-document-link-list-block__items {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.mdx-document-link-list-block[data-layout="grid"] .mdx-document-link-list-block__items,
+.mdx-document-link-list-block--featured-preview .mdx-document-link-list-block__items {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.mdx-document-link-list-block__item {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
 }
 
-.mdx-document-link-list-block__item-actions button {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 11px;
-  color: var(--color-text-muted);
-  cursor: pointer;
+/* Featured-pages variant paints compact card previews. */
+.mdx-document-link-list-block__item--featured {
+  min-height: 82px;
 }
 
-.mdx-document-link-list-block__item-actions button:hover:not(:disabled) {
+.mdx-document-link-list-block__title,
+.mdx-document-link-list-block__item strong,
+.mdx-document-link-list-block__item span {
   color: var(--color-text-primary);
-  border-color: var(--color-border-subtle);
+  font-weight: 650;
 }
 
-.mdx-document-link-list-block__item-actions button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.mdx-document-link-list-block__item p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.mdx-document-link-list-block__item small {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mdx-document-link-list-block__empty {
@@ -2909,73 +3052,68 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 .mdx-document-bookmark-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: 0;
+  padding: 0;
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
-  background: var(--color-bg-surface-alt);
-}
-
-.mdx-document-bookmark-block__row {
-  display: flex;
-  gap: 6px;
-}
-
-.mdx-document-bookmark-block__row input {
-  flex: 1;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  padding: 6px 8px;
   background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-}
-
-.mdx-document-bookmark-block__row button {
-  border: 1px solid var(--color-border-default);
-  border-radius: 6px;
-  padding: 4px 10px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.mdx-document-bookmark-block__row button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  overflow: hidden;
 }
 
 .mdx-document-bookmark-block__preview {
   display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 10px;
-  align-items: start;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-height: 84px;
 }
 
 .mdx-document-bookmark-block__preview img {
-  width: 96px;
-  height: 64px;
+  width: 112px;
+  height: 100%;
   object-fit: cover;
-  border-radius: 6px;
   background: var(--color-bg-hover);
 }
 
-.mdx-document-bookmark-block__fields {
+.mdx-document-bookmark-block__content {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  grid-column: 2;
+  min-width: 0;
+  padding: 10px 12px;
+  justify-content: center;
 }
 
-.mdx-document-bookmark-block__fields input,
-.mdx-document-bookmark-block__fields textarea {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  padding: 5px 8px;
-  background: var(--color-bg-surface);
+.mdx-document-bookmark-block__preview:not(:has(img)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mdx-document-bookmark-block__content strong {
+  overflow: hidden;
   color: var(--color-text-primary);
-  font: inherit;
-  resize: vertical;
+  font-size: 13.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-document-bookmark-block__content p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mdx-document-bookmark-block__content span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Data-source blocks (NewsBlock, future PublicationsBlock, …).
@@ -3037,6 +3175,11 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   font: inherit;
 }
 
+.mdx-document-data-block__meta {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 /* Embed block */
 .mdx-document-embed-block {
   display: flex;
@@ -3044,23 +3187,20 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   gap: 6px;
 }
 
-.mdx-document-embed-block__row {
+.mdx-document-embed-block__summary {
   display: flex;
-  gap: 6px;
-}
-
-.mdx-document-embed-block__row select,
-.mdx-document-embed-block__row input {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  padding: 6px 8px;
-  background: var(--color-bg-surface);
+  flex-direction: column;
+  gap: 2px;
   color: var(--color-text-primary);
-  font: inherit;
+  font-size: 13px;
 }
 
-.mdx-document-embed-block__row input {
-  flex: 1;
+.mdx-document-embed-block__summary span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mdx-document-embed-block__preview {
@@ -3098,26 +3238,6 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   background: var(--color-bg-surface-alt);
 }
 
-.mdx-document-file-block__upload {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--color-border-default);
-  border-radius: 6px;
-  padding: 6px 10px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.mdx-document-file-block__upload input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
 .mdx-document-file-block__fields {
   display: flex;
   flex-direction: column;
@@ -3126,13 +3246,11 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   min-width: 0;
 }
 
-.mdx-document-file-block__fields input {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  padding: 4px 8px;
-  background: var(--color-bg-surface);
+.mdx-document-file-block__fields strong {
+  overflow: hidden;
   color: var(--color-text-primary);
-  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mdx-document-file-block__meta {
@@ -3156,7 +3274,7 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   border-radius: 8px;
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
-  cursor: pointer;
+  cursor: default;
   text-align: left;
 }
 
@@ -3167,70 +3285,6 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 .mdx-document-page-link-block__current span {
   color: var(--color-text-muted);
   font-size: 11px;
-}
-
-.mdx-document-page-link-block__picker {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 280px;
-  padding: 6px;
-  border: 1px solid var(--mdx-popover-border);
-  border-radius: 8px;
-  background: var(--mdx-popover-bg);
-  box-shadow: var(--mdx-popover-shadow);
-}
-
-.mdx-document-page-link-block__picker input {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  padding: 5px 8px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-}
-
-.mdx-document-page-link-block__list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.mdx-document-page-link-block__list button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  border: 0;
-  border-radius: 5px;
-  padding: 6px 8px;
-  background: transparent;
-  color: var(--color-text-primary);
-  text-align: left;
-  cursor: pointer;
-}
-
-.mdx-document-page-link-block__list button:hover {
-  background: var(--mdx-handle-bg-hover);
-}
-
-.mdx-document-page-link-block__list button span {
-  color: var(--color-text-muted);
-  font-size: 11px;
-}
-
-.mdx-document-page-link-block__empty {
-  padding: 6px 8px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-style: italic;
 }
 
 /* To-do block — multi-line checklist. */
@@ -3350,21 +3404,23 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 }
 
 .mdx-document-image-block {
-  display: grid;
-  grid-template-columns: minmax(160px, 0.5fr) minmax(0, 1fr);
-  gap: 10px;
-  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  align-items: center;
 }
 
 .mdx-document-image-block__preview {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 150px;
+  width: 100%;
+  min-height: 180px;
   overflow: hidden;
-  border: 1px dashed var(--color-border-default);
-  border-radius: 10px;
-  background: var(--color-bg-surface-alt);
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
   color: var(--color-text-muted);
   cursor: pointer;
   font-size: 12px;
@@ -3374,8 +3430,9 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 .mdx-document-image-block__preview img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  max-height: 520px;
+  object-fit: contain;
 }
 
 .mdx-document-image-block__preview input {
@@ -3409,6 +3466,13 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 
 .mdx-document-image-block__asset-picker .asset-library__grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mdx-document-image-block__caption {
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .mdx-document-slash-menu {

@@ -2,15 +2,13 @@
 // ~~strike~~, [links](url) the way they'll appear on the public site
 // instead of leaving raw markdown chars on screen.
 //
-// Handles every text-bearing block type whose body is "one logical paragraph
-// of styled inline text" — paragraph, heading, quote, callout. The
-// dispatcher in MdxDocumentEditor routes those four block types here BEFORE
-// the textarea fallback. Multi-item blocks (list, todo, toggle summary)
-// still go through the textarea path until a later phase migrates them.
+// Handles every text-bearing block whose body is styled inline text:
+// paragraph, heading, quote, callout, and list rows. Todo items and
+// toggle summaries use the same RichTextInput in their dedicated renderers.
 //
 // All four kinds share the same TipTap engine (RichTextInput); the only
-// differences are the wrapper chrome (heading gets a level selector;
-// paragraph hosts the slash menu) and the CSS class on the contenteditable.
+// differences are the wrapper chrome, slash-menu affordance, and the CSS
+// class on the contenteditable.
 
 import {
   useCallback,

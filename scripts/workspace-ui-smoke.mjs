@@ -76,6 +76,7 @@ function main() {
   }
 
   const documentEditor = read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx");
+  const blockInspector = read("apps/workspace/src/surfaces/site-admin/block-inspector.tsx");
   assertIncludes(documentEditor, "export function BlocksEditor", "MdxDocumentEditor");
   assertIncludes(documentEditor, "parseMdxBlocks", "MdxDocumentEditor");
   assertIncludes(documentEditor, "serializeMdxBlocks", "MdxDocumentEditor");
@@ -84,6 +85,16 @@ function main() {
   assertIncludes(documentEditor, "useUnsavedChangesBeforeUnload", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useConfirmingBack", "MdxDocumentEditor");
   assertIncludes(documentEditor, "usePersistentUiState", "MdxDocumentEditor");
+  assertIncludes(documentEditor, "BlockInspector", "MdxDocumentEditor block inspector");
+  assertExcludes(documentEditor, "function BlockInspector", "MdxDocumentEditor inline block inspector");
+  assertIncludes(blockInspector, "export function BlockInspector", "BlockInspector module");
+  assertIncludes(blockInspector, "export function blockHasInspector", "BlockInspector module");
+  assertIncludes(blockInspector, "function TableInspector", "BlockInspector table controls");
+  assertIncludes(blockInspector, "Teaching links", "BlockInspector link strip controls");
+  assertIncludes(documentEditor, "data-selected", "MdxDocumentEditor block selection");
+  assertIncludes(documentEditor, "Raw MDX fallback", "MdxDocumentEditor raw fallback");
+  assertIncludes(documentEditor, "RECENT_SLASH_COMMAND_IDS_KEY", "MdxDocumentEditor slash recents");
+  assertIncludes(documentEditor, 'source: "Advanced"', "MdxDocumentEditor advanced mode label");
   assertIncludes(documentEditor, "data-controls-open", "MdxDocumentEditor");
   assertIncludes(documentEditor, "data-kind", "MdxDocumentEditor block semantics");
   assertIncludes(documentEditor, "data-empty", "MdxDocumentEditor block semantics");
@@ -453,6 +464,31 @@ function main() {
     workspaceCss,
     "--mdx-block-gutter",
     "workspace editor low-interference block gutter",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-block-inspector",
+    "workspace editor block inspector",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-block-inspector__table",
+    "workspace editor block inspector table controls",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-document-data-block__meta",
+    "workspace editor visual data-source block",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-block-editor-shell",
+    "workspace editor block inspector shell",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-document-block[data-selected=\"true\"]",
+    "workspace editor block selection CSS",
   );
   assertIncludes(
     workspaceCss,
