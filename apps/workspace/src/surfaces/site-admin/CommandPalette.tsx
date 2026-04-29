@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -9,6 +10,15 @@ import type { JSX } from "react";
 import { useSiteAdmin } from "./state";
 import { stripTrailingSlash } from "./utils";
 import type { SiteAdminTab } from "./types";
+
+// Virtual-scroll constants. The palette never grows past a few hundred
+// items in practice, but a blog with 500+ posts adds a row per post and
+// we don't want 1000+ <li>s rebuilt on every keystroke. We render a
+// window of `OVERSCAN` rows above and below the viewport so scrolling
+// + keyboard nav don't have to wait on render.
+const ROW_HEIGHT = 36;
+const OVERSCAN = 8;
+const VIRTUALIZE_THRESHOLD = 60;
 
 interface CommandItem {
   id: string;
@@ -55,6 +65,8 @@ export function CommandPalette({
 
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
 
@@ -217,6 +229,7 @@ export function CommandPalette({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCursor(0);
+    setScrollTop(0);
   }, [query]);
 
   // Focus input on open.
@@ -226,14 +239,53 @@ export function CommandPalette({
     inputRef.current?.select();
   }, [open]);
 
-  // Scroll active row into view as cursor moves.
+  // Track the list's scroll viewport so the windowed renderer can pick the
+  // right row range. Layout effect because we read the height immediately
+  // after the list mounts, before paint.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    if (!list) return;
+    setViewportHeight(list.clientHeight);
+    const onResize = () => setViewportHeight(list.clientHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open, filtered.length]);
+
+  // Keep the active row inside the viewport. We scroll the list element
+  // imperatively (no DOM lookup-by-index) so this works for the windowed
+  // path where the matching <li> may not be mounted yet.
   useEffect(() => {
     if (!open) return;
     const list = listRef.current;
     if (!list) return;
-    const activeEl = list.children[cursor] as HTMLElement | undefined;
-    activeEl?.scrollIntoView({ block: "nearest" });
+    const rowTop = cursor * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    const visibleTop = list.scrollTop;
+    const visibleBottom = visibleTop + list.clientHeight;
+    if (rowTop < visibleTop) {
+      list.scrollTop = rowTop;
+    } else if (rowBottom > visibleBottom) {
+      list.scrollTop = rowBottom - list.clientHeight;
+    }
   }, [cursor, open, filtered]);
+
+  // Pick the windowed slice we'll actually render. Below the threshold the
+  // list is short enough that virtualizing is pure overhead; render in full.
+  const useVirtual = filtered.length >= VIRTUALIZE_THRESHOLD;
+  const windowStart = useVirtual
+    ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+    : 0;
+  const windowEnd = useVirtual
+    ? Math.min(
+        filtered.length,
+        Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
+      )
+    : filtered.length;
+  const visibleRows = useMemo(
+    () => filtered.slice(windowStart, windowEnd),
+    [filtered, windowStart, windowEnd],
+  );
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -332,17 +384,46 @@ export function CommandPalette({
             className="command-palette__list"
             role="listbox"
             ref={listRef}
+            onScroll={
+              useVirtual
+                ? (event) => setScrollTop(event.currentTarget.scrollTop)
+                : undefined
+            }
+            style={
+              useVirtual
+                ? {
+                    position: "relative",
+                    height: Math.min(
+                      filtered.length * ROW_HEIGHT,
+                      Math.max(viewportHeight, ROW_HEIGHT * 10),
+                    ),
+                  }
+                : undefined
+            }
           >
-            {filtered.map((cmd, index) => (
-              <Row
-                key={cmd.id}
-                id={commandOptionId(cmd.id)}
-                cmd={cmd}
-                active={index === cursor}
-                onHover={() => setCursor(index)}
-                onSelect={() => run(cmd.run)}
+            {useVirtual ? (
+              <li
+                aria-hidden="true"
+                style={{
+                  height: filtered.length * ROW_HEIGHT,
+                  pointerEvents: "none",
+                }}
               />
-            ))}
+            ) : null}
+            {visibleRows.map((cmd, sliceIndex) => {
+              const index = windowStart + sliceIndex;
+              return (
+                <Row
+                  key={cmd.id}
+                  id={commandOptionId(cmd.id)}
+                  cmd={cmd}
+                  active={index === cursor}
+                  onHover={() => setCursor(index)}
+                  onSelect={() => run(cmd.run)}
+                  virtualOffset={useVirtual ? index * ROW_HEIGHT : undefined}
+                />
+              );
+            })}
           </ul>
         )}
       </div>
@@ -360,13 +441,27 @@ function Row({
   active,
   onHover,
   onSelect,
+  virtualOffset,
 }: {
   id: string;
   cmd: CommandItem;
   active: boolean;
   onHover: () => void;
   onSelect: () => void;
+  /** When set, the row is absolutely positioned at this top offset (px).
+   * Drives the windowed-render path; undefined for the simple short-list path. */
+  virtualOffset?: number;
 }): JSX.Element {
+  const positioned =
+    virtualOffset !== undefined
+      ? {
+          position: "absolute" as const,
+          top: virtualOffset,
+          left: 0,
+          right: 0,
+          height: ROW_HEIGHT,
+        }
+      : undefined;
   return (
     <li
       id={id}
@@ -375,6 +470,7 @@ function Row({
       aria-selected={active}
       onMouseEnter={onHover}
       onClick={onSelect}
+      style={positioned}
     >
       <span className="command-palette__label">{cmd.label}</span>
       {cmd.hint && <span className="command-palette__hint">{cmd.hint}</span>}
