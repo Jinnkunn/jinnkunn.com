@@ -11,6 +11,7 @@ type SiteAdminAuditAction =
   | "routes.override.save"
   | "routes.protected.save"
   | "deploy.trigger"
+  | "deploy.promote-to-production"
   | "posts.create"
   | "posts.update"
   | "posts.delete"

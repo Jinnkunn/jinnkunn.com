@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { handleWindowDragMouseDown } from "../../shell/windowDrag";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
+import { PromoteToProductionButton } from "./PromoteToProductionButton";
 import { PublishButton } from "./PublishButton";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
 import { SyncStatusPill } from "./SyncStatusPill";
@@ -79,6 +80,7 @@ export function SiteAdminTopBar() {
           label={productionReadOnly ? "Read-only" : `Publish ${environment.label}`}
           requirePendingChanges
         />
+        <PromoteToProductionButton />
         <button
           type="button"
           className="site-admin-topbar__drawer-btn"
