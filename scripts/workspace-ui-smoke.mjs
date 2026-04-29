@@ -125,12 +125,12 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/PublishButton.tsx"),
-    "Open Deploy Action",
+    "workflowRecovery.openLabel",
     "Publish stale candidate recovery",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/PublishPipelineCard.tsx"),
-    "Copy release command",
+    "workflow.copyLabel",
     "Status stale candidate recovery",
   );
   assertIncludes(
@@ -139,7 +139,7 @@ function main() {
     "Status readiness summary",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
+    read("apps/workspace/src/surfaces/site-admin/release-flow-model.ts"),
     "D1 content database",
     "Status source clarity",
   );
@@ -160,8 +160,13 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "PROMOTE_STAGING_CONTENT=1 npm run release:prod",
-    "Release panel production promotion command",
+    "RELEASE_PROD_FROM_STAGING_COMMAND",
+    "Release panel routine production promotion command",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "LEGACY_RELEASE_PROD_COMMAND",
+    "Release panel legacy fallback command",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),

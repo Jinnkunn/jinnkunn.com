@@ -1,93 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { PublishPipelineCard } from "./PublishPipelineCard";
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
+import {
+  candidateLabel,
+  deployStateLabel,
+  formatSourceRevision,
+  nextActionLabel,
+  normalizeStatusPayload,
+  releaseWorkflowRecovery,
+  shortId,
+  shortSha,
+  sourceLocation,
+  sourceStoreKind,
+  sourceStoreLabel,
+} from "./release-flow-model";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { normalizeString, serializeJson } from "./utils";
-
-const DEPLOY_ACTIONS_URL =
-  "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/deploy-on-content.yml";
-const RELEASE_STAGING_COMMAND = "npm run release:staging";
-
-// Status payload must have `source`, `env`, and `build` to be considered
-// valid. The server always returns the full shape on success.
-function normalizeStatus(data: unknown): StatusPayload | null {
-  if (!data || typeof data !== "object") return null;
-  const obj = data as Record<string, unknown>;
-  if (!obj.source || !obj.env || !obj.build) return null;
-  return obj as unknown as StatusPayload;
-}
-
-// Treat a token as "needs renewal" when fewer than 5 minutes remain.
-// Wider than just `< 0` so the deploy precheck also catches the case
-// where the token expires mid-deploy.
-function tokenNeedsRenewal(iso: string): boolean {
-  if (!iso) return false;
-  const ms = new Date(iso).getTime() - Date.now();
-  if (!Number.isFinite(ms)) return false;
-  return ms < 5 * 60 * 1000;
-}
-
-function shortSha(value?: string | null): string {
-  return normalizeString(value).slice(0, 7) || "-";
-}
-
-function shortId(value?: string | null): string {
-  const safe = normalizeString(value);
-  return safe ? safe.slice(0, 8) : "-";
-}
-
-function sourceStoreLabel(source: StatusPayload["source"] | undefined): string {
-  const kind = normalizeString(source?.storeKind).toLowerCase();
-  if (kind === "db") return "D1 content database";
-  if (kind === "github") return "GitHub content branch";
-  if (kind === "local") return "Local filesystem";
-  return "Unknown source";
-}
-
-function sourceLocation(source: StatusPayload["source"] | undefined): string {
-  const kind = normalizeString(source?.storeKind).toLowerCase();
-  const repo = normalizeString(source?.repo);
-  const branch = normalizeString(source?.branch);
-  if (kind === "db") return repo || "D1 binding";
-  if (repo && branch) return `${repo}:${branch}`;
-  return branch || repo || "-";
-}
-
-function deployStateLabel(source: StatusPayload["source"] | undefined): string {
-  if (!source) return "Load status";
-  if (source.pendingDeploy === true) return "Content ahead of deployment";
-  if (source.pendingDeploy === false) return "Deployment current";
-  if (normalizeString(source.storeKind).toLowerCase() === "db") {
-    return "DB source, no branch diff";
-  }
-  const reason = normalizeString(source.pendingDeployReason);
-  return reason ? `Unknown (${reason})` : "Unknown";
-}
-
-function candidateLabel(source: StatusPayload["source"] | undefined): string {
-  if (!source) return "Unknown";
-  if (source.deployableVersionReady === true) return "Ready";
-  if (source.deployableVersionReady === false) return "Stale";
-  return "Unknown";
-}
-
-function nextActionLabel(
-  data: StatusPayload | null,
-  productionReadOnly: boolean,
-): string {
-  if (!data) return "Refresh status.";
-  if (productionReadOnly) return "Production is read-only here. Promote separately.";
-  if (data.source?.deployableVersionReady === false) {
-    return "Rebuild the staging Worker candidate, then recheck.";
-  }
-  if (data.source?.pendingDeploy === true) return "Deploy the ready staging candidate.";
-  if (data.source?.deployableVersionReady === true) return "No deploy action needed.";
-  if (normalizeString(data.source?.storeKind).toLowerCase() === "db") {
-    return "No branch diff is available for D1 source; use the candidate readiness signal.";
-  }
-  return "Refresh status before deploying.";
-}
 
 type ReleaseHealthTone = "ok" | "warn" | "blocked" | "muted";
 
@@ -106,7 +35,7 @@ function releaseHealthItems(
   const source = data?.source;
   const active = data?.deployments?.active;
   const latestUploaded = data?.deployments?.latestUploaded;
-  const storeKind = normalizeString(source?.storeKind).toLowerCase();
+  const storeKind = sourceStoreKind(source);
   const hasCode = Boolean(normalizeString(source?.codeSha));
   const hasContent = Boolean(normalizeString(source?.contentSha)) || storeKind === "db";
   const candidateReady = source?.deployableVersionReady;
@@ -132,7 +61,7 @@ function releaseHealthItems(
           : normalizeString(source?.contentBranch || source?.branch) || "Content branch unavailable.",
       label: "Content revision",
       tone: hasContent ? "ok" : "warn",
-      value: source?.contentSha ? shortSha(source.contentSha) : storeKind === "db" ? "D1 rows" : "-",
+      value: formatSourceRevision(source),
     },
     {
       detail:
@@ -181,20 +110,14 @@ function releaseHealthItems(
 
 export function StatusPanel() {
   const {
-    connection,
     environment,
     productionReadOnly,
     request,
     setMessage,
-    signInWithBrowser,
   } = useSiteAdmin();
   const [data, setData] = useState<StatusPayload | null>(null);
   const [loading, setLoading] = useState(false);
-  const [deploying, setDeploying] = useState(false);
-  const [confirmDeploy, setConfirmDeploy] = useState(false);
-  const [checkingDeploy, setCheckingDeploy] = useState(false);
   const [error, setError] = useState("");
-  const deployCheckTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -210,7 +133,7 @@ export function StatusPanel() {
         }
         return false;
       }
-      const normalized = normalizeStatus(response.data);
+      const normalized = normalizeStatusPayload(response.data);
       if (!normalized) {
         setError("Invalid status payload");
         if (!options.silent) {
@@ -225,117 +148,31 @@ export function StatusPanel() {
     [request, setMessage],
   );
 
-  const deploy = useCallback(async () => {
-    if (productionReadOnly) {
-      setMessage("warn", environment.helpText);
-      return;
-    }
-    if (!confirmDeploy) {
-      // Precheck: deploy is the most expensive POST in the app and runs
-      // without further confirmation once started. If our locally-known
-      // token expiry is past or imminent, renew up-front so the actual
-      // deploy POST doesn't trigger a mid-flight browser sign-in. (The
-      // global `request` wrapper would also auto-retry on 401, but for
-      // this one button we'd rather front-load the auth dance.)
-      if (!connection.authToken || tokenNeedsRenewal(connection.authExpiresAt)) {
-        const newToken = await signInWithBrowser();
-        if (!newToken) return;
-      }
-      setConfirmDeploy(true);
-      return;
-    }
-    setConfirmDeploy(false);
-    setDeploying(true);
-    const response = await request("/api/site-admin/deploy", "POST", {});
-    setDeploying(false);
-    if (!response.ok) {
-      setMessage("error", `Deploy failed: ${response.code}: ${response.error}`);
-      return;
-    }
-    const d = (response.data ?? {}) as Record<string, unknown>;
-    const provider = normalizeString(d.provider);
-    const deploymentId = normalizeString(d.deploymentId);
-    const details = [
-      provider ? `provider=${provider}` : "",
-      deploymentId ? `deploymentId=${deploymentId}` : "",
-    ]
-      .filter(Boolean)
-      .join(", ");
-    setMessage(
-      "success",
-      details
-        ? `Deploy triggered (${details}). Refresh status to verify convergence.`
-        : "Deploy triggered. Refresh status to verify convergence.",
-    );
-    if (deployCheckTimerRef.current !== null) {
-      window.clearTimeout(deployCheckTimerRef.current);
-    }
-    setCheckingDeploy(true);
-    deployCheckTimerRef.current = window.setTimeout(() => {
-      void refresh({ silent: true }).finally(() => {
-        setCheckingDeploy(false);
-        deployCheckTimerRef.current = null;
-      });
-    }, 2500);
-  }, [
-    confirmDeploy,
-    connection.authToken,
-    connection.authExpiresAt,
-    environment.helpText,
-    productionReadOnly,
-    refresh,
-    request,
-    setMessage,
-    signInWithBrowser,
-  ]);
-
-  useEffect(() => {
-    if (!confirmDeploy) return;
-    const timer = window.setTimeout(() => setConfirmDeploy(false), 6000);
-    return () => window.clearTimeout(timer);
-  }, [confirmDeploy]);
-
-  useEffect(() => {
-    return () => {
-      if (deployCheckTimerRef.current !== null) {
-        window.clearTimeout(deployCheckTimerRef.current);
-      }
-    };
-  }, []);
-
-  const disableDeploy =
-    loading ||
-    deploying ||
-    productionReadOnly ||
-    !connection.baseUrl ||
-    !connection.authToken ||
-    data?.source?.deployableVersionReady === false;
-
   const copyReleaseCommand = useCallback(async () => {
+    const command = releaseWorkflowRecovery(data?.source).command;
     try {
-      await navigator.clipboard.writeText(RELEASE_STAGING_COMMAND);
-      setMessage("success", `Copied: ${RELEASE_STAGING_COMMAND}`);
+      await navigator.clipboard.writeText(command);
+      setMessage("success", `Copied: ${command}`);
     } catch {
-      setMessage("warn", `Run locally: ${RELEASE_STAGING_COMMAND}`);
+      setMessage("warn", `Run locally: ${command}`);
     }
-  }, [setMessage]);
+  }, [data?.source, setMessage]);
 
   const notes: string[] = [];
   if (loading) notes.push("Loading status…");
-  if (deploying) notes.push("Triggering deploy…");
-  if (checkingDeploy) notes.push("Checking deploy status…");
   if (error) notes.push(error);
   if (!notes.length && data?.source?.pendingDeploy === true) {
     notes.push(
-      "Source has changes ahead of active deployment. Run Deploy when ready.",
+      "Source has changes ahead of active deployment. Use the global Publish button when ready.",
     );
   }
   if (data?.source?.deployableVersionReady === false) {
+    const workflow = releaseWorkflowRecovery(data.source);
     notes.push(
       `${
         data.source.deployableVersionReason ||
         "Latest uploaded Worker version does not match the current content."
-      } Wait for GitHub Actions “Deploy (auto)” to finish, or run npm run release:staging, then refresh.`,
+      } ${workflow.waitText}`,
     );
   }
 
@@ -355,17 +192,9 @@ export function StatusPanel() {
             className="btn btn--secondary"
             type="button"
             onClick={() => void refresh()}
-            disabled={loading || deploying}
+            disabled={loading}
           >
             Refresh
-          </button>
-          <button
-            className={confirmDeploy ? "btn btn--danger" : "btn btn--secondary"}
-            type="button"
-            onClick={() => void deploy()}
-            disabled={disableDeploy}
-          >
-            {deploying ? "Deploying…" : confirmDeploy ? "Confirm Deploy" : "Deploy"}
           </button>
         </div>
       </header>
@@ -373,11 +202,9 @@ export function StatusPanel() {
       <SiteAdminEnvironmentBanner actionLabel="deploy changes" />
 
       <PublishPipelineCard
-        actionsUrl={DEPLOY_ACTIONS_URL}
         loading={loading}
         onCopyReleaseCommand={copyReleaseCommand}
         onRefresh={() => void refresh()}
-        releaseCommand={RELEASE_STAGING_COMMAND}
         status={data}
       />
 
@@ -452,7 +279,7 @@ export function StatusPanel() {
           <dd>
             {data?.source?.contentSha
               ? shortSha(data.source.contentSha)
-              : normalizeString(data?.source?.storeKind).toLowerCase() === "db"
+              : sourceStoreKind(data?.source) === "db"
                 ? "D1 rows"
                 : "-"}
           </dd>

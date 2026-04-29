@@ -281,6 +281,8 @@ export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;
   status: number;
+  mode?: "workflow" | "cloudflare-version";
+  queued?: boolean;
   provider?: "generic" | "vercel" | "cloudflare" | "github-actions";
   deploymentId?: string;
   codeSha?: string;

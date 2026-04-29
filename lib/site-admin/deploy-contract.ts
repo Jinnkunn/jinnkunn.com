@@ -11,6 +11,7 @@ export function parseSiteAdminDeployResult(x: unknown): SiteAdminDeployResult | 
   return parseApiContract<SiteAdminDeployResult>(x, (payload) => {
     if (!isRecord(payload)) return null;
     if (typeof payload.triggeredAt !== "string" || typeof payload.status !== "number") return null;
+    const mode = typeof payload.mode === "string" ? payload.mode.trim() : "";
     const provider = typeof payload.provider === "string" ? payload.provider.trim() : "";
     const deploymentId =
       typeof payload.deploymentId === "string" ? payload.deploymentId.trim() : "";
@@ -27,6 +28,8 @@ export function parseSiteAdminDeployResult(x: unknown): SiteAdminDeployResult | 
       ok: true,
       triggeredAt: payload.triggeredAt,
       status: payload.status,
+      ...(mode === "workflow" || mode === "cloudflare-version" ? { mode } : {}),
+      ...(typeof payload.queued === "boolean" ? { queued: payload.queued } : {}),
       ...(provider === "generic" ||
       provider === "vercel" ||
       provider === "cloudflare" ||

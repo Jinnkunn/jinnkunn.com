@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { openExternalUrl } from "../../lib/tauri";
+import {
+  deployCandidateBlockedMessage,
+  deriveReleaseFlow,
+  parseDeployResponseSummary,
+  releaseWorkflowRecovery,
+  shortSha,
+  type DeployResponseSummary,
+} from "./release-flow-model";
 import { useSiteAdmin } from "./state";
+import type { StatusPayload } from "./types";
 import { normalizeString } from "./utils";
 
 type DeployPreviewSummaryKey =
@@ -54,20 +63,6 @@ type DeployPreviewData = {
   };
 };
 
-type SourceSnapshot = {
-  storeKind?: string;
-  branch?: string;
-  headSha?: string;
-  pendingDeploy?: boolean | null;
-  pendingDeployReason?: string;
-  codeSha?: string;
-  contentSha?: string;
-  contentBranch?: string;
-  deployableVersionReady?: boolean | null;
-  deployableVersionReason?: string;
-  deployableVersionId?: string;
-};
-
 const SUMMARY_LABELS: Array<[DeployPreviewSummaryKey, string]> = [
   ["pagesAdded", "Pages added"],
   ["pagesRemoved", "Pages removed"],
@@ -79,10 +74,6 @@ const SUMMARY_LABELS: Array<[DeployPreviewSummaryKey, string]> = [
   ["protectedChanged", "Protected changed"],
   ["componentsChanged", "Shared content changed"],
 ];
-
-const DEPLOY_ACTIONS_URL =
-  "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/deploy-on-content.yml";
-const RELEASE_STAGING_COMMAND = "npm run release:staging";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -154,7 +145,13 @@ function parseDeployPreview(raw: unknown): DeployPreviewData {
   };
 }
 
-function parseSourceSnapshot(raw: unknown): SourceSnapshot | null {
+function parseStatusPayload(raw: unknown): StatusPayload | null {
+  const data = asRecord(raw);
+  if (!data.source || !data.env || !data.build) return null;
+  return data as unknown as StatusPayload;
+}
+
+function parseSourceSnapshot(raw: unknown): StatusPayload["source"] | null {
   const data = asRecord(raw);
   const source = asRecord(data.source);
   if (!Object.keys(source).length) return null;
@@ -199,48 +196,10 @@ function isStagingOrigin(baseUrl: string): boolean {
   return /\/\/staging\./i.test(baseUrl);
 }
 
-function shortSha(value?: string): string {
-  return normalizeString(value).slice(0, 7);
-}
-
-function deployCandidateBlockedMessage(source: SourceSnapshot | null): string {
-  const content = shortSha(source?.contentSha);
-  const branch = normalizeString(source?.contentBranch || source?.branch);
-  const detail = source?.deployableVersionReason
-    ? ` ${source.deployableVersionReason}`
-    : "";
-  const target = [content ? `content ${content}` : "", branch ? `branch ${branch}` : ""]
-    .filter(Boolean)
-    .join(" on ");
-  return [
-    target
-      ? `Staging needs a rebuilt Worker candidate for ${target}.`
-      : "Staging needs a rebuilt Worker candidate for the latest content.",
-    "Wait for GitHub Actions “Deploy (auto)” to finish, or run npm run release:staging, then Recheck.",
-    detail,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function isDeployCandidateBlocked(source: SourceSnapshot | null): boolean {
-  return source?.deployableVersionReady === false;
-}
-
-function deployCandidateTarget(source: SourceSnapshot | null): string {
-  const content = shortSha(source?.contentSha);
-  const branch = normalizeString(source?.contentBranch || source?.branch);
-  if (content && branch) return `content ${content} on ${branch}`;
-  if (content) return `content ${content}`;
-  if (branch) return branch;
-  return "latest content";
-}
-
 /**
- * Triggers /api/site-admin/deploy. Deploy promotes the currently-uploaded
- * worker version — it does not rebuild from source. In the common workflow,
- * CI rebuilds after a content commit; this button lets you manually kick the
- * Cloudflare promotion step after those artifacts land.
+ * Triggers /api/site-admin/deploy. GitHub/content-branch mode promotes the
+ * currently uploaded Worker version; D1 mode dispatches the staging release
+ * workflow and returns immediately with a queued state.
  */
 export function PublishButton({
   label = "Publish",
@@ -255,18 +214,41 @@ export function PublishButton({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewText, setPreviewText] = useState("");
   const [previewData, setPreviewData] = useState<DeployPreviewData | null>(null);
-  const [sourceSnapshot, setSourceSnapshot] = useState<SourceSnapshot | null>(null);
+  const [sourceSnapshot, setSourceSnapshot] = useState<StatusPayload["source"] | null>(null);
+  const [statusPayload, setStatusPayload] = useState<StatusPayload | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [queuedDeploy, setQueuedDeploy] = useState<DeployResponseSummary | null>(null);
+  const pollTimersRef = useRef<number[]>([]);
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
+  const publishLabel = productionReadOnly ? "Read-only" : label;
+  const releaseFlow = deriveReleaseFlow(statusPayload, {
+    productionReadOnly,
+    publishLabel,
+  });
+
+  const clearPollTimers = useCallback(() => {
+    for (const timer of pollTimersRef.current) {
+      window.clearTimeout(timer);
+    }
+    pollTimersRef.current = [];
+  }, []);
+
+  const applyStatusSnapshot = useCallback((raw: unknown) => {
+    const normalized = parseStatusPayload(raw);
+    setStatusPayload(normalized);
+    setSourceSnapshot(normalized?.source ?? parseSourceSnapshot(raw));
+    return normalized;
+  }, []);
+
   const loadStatusSnapshot = useCallback(async () => {
     if (!requirePendingChanges || !ready || productionReadOnly) return;
     setStatusLoading(true);
     const status = await request("/api/site-admin/status", "GET");
     setStatusLoading(false);
-    if (status.ok) setSourceSnapshot(parseSourceSnapshot(status.data));
-  }, [productionReadOnly, ready, request, requirePendingChanges]);
+    if (status.ok) applyStatusSnapshot(status.data);
+  }, [applyStatusSnapshot, productionReadOnly, ready, request, requirePendingChanges]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- Publish readiness syncs from the remote deploy status endpoint. */
   useEffect(() => {
@@ -276,13 +258,15 @@ export function PublishButton({
     void request("/api/site-admin/status", "GET").then((status) => {
       if (cancelled) return;
       setStatusLoading(false);
-      if (status.ok) setSourceSnapshot(parseSourceSnapshot(status.data));
+      if (status.ok) applyStatusSnapshot(status.data);
     });
     return () => {
       cancelled = true;
     };
-  }, [productionReadOnly, ready, request, requirePendingChanges]);
+  }, [applyStatusSnapshot, productionReadOnly, ready, request, requirePendingChanges]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => clearPollTimers, [clearPollTimers]);
 
   useEffect(() => {
     if (!requirePendingChanges) return;
@@ -311,13 +295,16 @@ export function PublishButton({
     setPreviewText("");
     setPreviewData(null);
     setSourceSnapshot(null);
+    setStatusPayload(null);
+    setQueuedDeploy(null);
     setPreviewError("");
     const [preview, status] = await Promise.all([
       request("/api/site-admin/deploy-preview", "GET"),
       request("/api/site-admin/status", "GET"),
     ]);
     setPreviewLoading(false);
-    const source = status.ok ? parseSourceSnapshot(status.data) : null;
+    const normalizedStatus = status.ok ? applyStatusSnapshot(status.data) : null;
+    const source = normalizedStatus?.source ?? null;
     if (status.ok) {
       setSourceSnapshot(source);
     }
@@ -329,19 +316,46 @@ export function PublishButton({
       setPreviewError(`${preview.code}: ${preview.error}`);
     }
     setConfirming(true);
-    if (isDeployCandidateBlocked(source)) {
+    if (source?.deployableVersionReady === false) {
       setMessage("warn", deployCandidateBlockedMessage(source));
     }
   }
 
   async function copyReleaseCommand() {
+    const command = releaseWorkflowRecovery(sourceSnapshot).command;
     try {
-      await navigator.clipboard.writeText(RELEASE_STAGING_COMMAND);
-      setMessage("success", `Copied: ${RELEASE_STAGING_COMMAND}`);
+      await navigator.clipboard.writeText(command);
+      setMessage("success", `Copied: ${command}`);
     } catch {
-      setMessage("warn", `Run locally: ${RELEASE_STAGING_COMMAND}`);
+      setMessage("warn", `Run locally: ${command}`);
     }
   }
+
+  const scheduleWorkflowStatusPoll = useCallback(
+    (summary: DeployResponseSummary) => {
+      clearPollTimers();
+      const delays = [5000, 15000, 30000, 60000, 120000];
+      for (const delay of delays) {
+        const timer = window.setTimeout(() => {
+          void request("/api/site-admin/status", "GET").then((status) => {
+            if (status.ok) applyStatusSnapshot(status.data);
+          });
+        }, delay);
+        pollTimersRef.current.push(timer);
+      }
+      const workflow = releaseWorkflowRecovery(sourceSnapshot);
+      setQueuedDeploy(summary);
+      setConfirming(true);
+      const actionDetail = summary.workflowRunsListUrl
+        ? ` Open ${workflow.label} from the publish panel or GitHub Actions.`
+        : "";
+      setMessage(
+        "success",
+        `Staging release queued in GitHub Actions.${actionDetail} Recheck when the workflow finishes.`,
+      );
+    },
+    [applyStatusSnapshot, clearPollTimers, request, setMessage, sourceSnapshot],
+  );
 
   async function trigger() {
     if (productionReadOnly) {
@@ -351,7 +365,7 @@ export function PublishButton({
       );
       return;
     }
-    if (!confirming || isDeployCandidateBlocked(sourceSnapshot)) {
+    if (!confirming || sourceSnapshot?.deployableVersionReady === false) {
       await loadPreview();
       return;
     }
@@ -362,8 +376,8 @@ export function PublishButton({
     if (!response.ok) {
       if (response.code === "DEPLOY_VERSION_STALE") {
         const status = await request("/api/site-admin/status", "GET");
-        const source = status.ok ? parseSourceSnapshot(status.data) : sourceSnapshot;
-        if (status.ok) setSourceSnapshot(source);
+        const normalizedStatus = status.ok ? applyStatusSnapshot(status.data) : null;
+        const source = normalizedStatus?.source ?? sourceSnapshot;
         setMessage("warn", deployCandidateBlockedMessage(source));
         setConfirming(true);
         return;
@@ -371,23 +385,28 @@ export function PublishButton({
       setMessage("error", `Publish failed: ${response.code}: ${response.error}`);
       return;
     }
+    const data = parseDeployResponseSummary(response.data);
+    if (data.queued) {
+      setConfirming(false);
+      const statusAfter = await request("/api/site-admin/status", "GET");
+      if (statusAfter.ok) applyStatusSnapshot(statusAfter.data);
+      scheduleWorkflowStatusPoll(data);
+      return;
+    }
     const [statusAfter, homeCheck, blogCheck] = await Promise.all([
       request("/api/site-admin/status", "GET"),
       isStagingOrigin(connection.baseUrl) ? request("/", "GET") : Promise.resolve(null),
       isStagingOrigin(connection.baseUrl) ? request("/blog", "GET") : Promise.resolve(null),
     ]);
-    const data = (response.data ?? {}) as Record<string, unknown>;
-    const provider = normalizeString(data.provider);
-    const deploymentId = normalizeString(data.deploymentId);
     if (statusAfter.ok) {
-      setSourceSnapshot(parseSourceSnapshot(statusAfter.data));
+      applyStatusSnapshot(statusAfter.data);
     }
     const verified =
       !isStagingOrigin(connection.baseUrl) ||
       (homeCheck?.status === 200 && blogCheck?.status === 200);
     const details = [
-      provider ? `provider=${provider}` : "",
-      deploymentId ? `deploymentId=${deploymentId}` : "",
+      data.provider ? `provider=${data.provider}` : "",
+      data.deploymentId ? `deploymentId=${data.deploymentId}` : "",
       verified ? "verified" : "",
     ]
       .filter(Boolean)
@@ -400,10 +419,11 @@ export function PublishButton({
     );
   }
 
-  const deployCandidateBlocked = isDeployCandidateBlocked(sourceSnapshot);
-  const pendingChangesKnown = sourceSnapshot !== null;
+  const deployCandidateBlocked = releaseFlow.candidateBlocked;
+  const pendingChangesKnown = statusPayload !== null;
   const noPendingChanges =
-    requirePendingChanges && pendingChangesKnown && sourceSnapshot.pendingDeploy !== true;
+    requirePendingChanges && pendingChangesKnown && releaseFlow.noPendingChanges;
+  const workflowRecovery = releaseWorkflowRecovery(sourceSnapshot);
 
   return (
     <div className="publish-control">
@@ -429,9 +449,9 @@ export function PublishButton({
           productionReadOnly
             ? environment.helpText
             : deployCandidateBlocked
-            ? "Wait for the staging candidate rebuild, then recheck."
+            ? releaseFlow.disabledReason
             : noPendingChanges
-              ? "No saved source changes are waiting to publish."
+              ? releaseFlow.disabledReason
               : "Promote the current worker version via Cloudflare API"
         }
       >
@@ -440,14 +460,14 @@ export function PublishButton({
           : previewLoading || statusLoading
             ? "Checking…"
             : productionReadOnly
-              ? label
+              ? publishLabel
             : deployCandidateBlocked
-              ? "Recheck"
+              ? releaseFlow.publishLabel
               : confirming
                 ? "Confirm Publish"
-                : noPendingChanges
-                  ? "No changes"
-                  : label}
+              : noPendingChanges
+                  ? releaseFlow.publishLabel
+                  : publishLabel}
       </button>
       {confirming && (
         <details className="publish-preview" role="status" open>
@@ -557,8 +577,7 @@ export function PublishButton({
                   <div>
                     <strong>Staging candidate is stale</strong>
                     <span>
-                      Rebuild the Worker candidate for{" "}
-                      {deployCandidateTarget(sourceSnapshot)}, then recheck.
+                      {workflowRecovery.detail} {workflowRecovery.waitText}
                     </span>
                   </div>
                   <div className="publish-preview__recovery-actions">
@@ -574,22 +593,60 @@ export function PublishButton({
                       type="button"
                       className="btn btn--ghost"
                       onClick={() => {
-                        void openExternalUrl(DEPLOY_ACTIONS_URL).catch((error) => {
+                        void openExternalUrl(workflowRecovery.actionsUrl).catch((error) => {
                           setMessage(
                             "warn",
-                            `Could not open the deploy action: ${String(error)}. URL: ${DEPLOY_ACTIONS_URL}`,
+                            `Could not open the release action: ${String(error)}. URL: ${workflowRecovery.actionsUrl}`,
                           );
                         });
                       }}
                     >
-                      Open Deploy Action
+                      {workflowRecovery.openLabel}
                     </button>
                     <button
                       type="button"
                       className="btn btn--ghost"
                       onClick={() => void copyReleaseCommand()}
                     >
-                      Copy release command
+                      {workflowRecovery.copyLabel}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {queuedDeploy ? (
+                <div className="publish-preview__recovery">
+                  <div>
+                    <strong>Staging release queued</strong>
+                    <span>
+                      GitHub Actions is rebuilding staging. Recheck status when the
+                      workflow finishes.
+                    </span>
+                  </div>
+                  <div className="publish-preview__recovery-actions">
+                    <button
+                      type="button"
+                      className="btn btn--secondary"
+                      disabled={previewLoading}
+                      onClick={() => void loadPreview()}
+                    >
+                      Recheck
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      disabled={!queuedDeploy.workflowRunsListUrl}
+                      onClick={() => {
+                        const url = queuedDeploy.workflowRunsListUrl;
+                        if (!url) return;
+                        void openExternalUrl(url).catch((error) => {
+                          setMessage(
+                            "warn",
+                            `Could not open GitHub Actions: ${String(error)}. URL: ${url}`,
+                          );
+                        });
+                      }}
+                    >
+                      Open GitHub Actions
                     </button>
                   </div>
                 </div>

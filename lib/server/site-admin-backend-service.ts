@@ -256,6 +256,8 @@ export async function postSiteAdminDeployBackend():
       }
       return backendOk({
         triggeredAt: triggeredAtIso,
+        mode: "workflow",
+        queued: true,
         // 202 Accepted reflects what really happened: the worker fires off
         // a build, it's not a synchronous deploy. The UI can use this to
         // render a "queued" state instead of "deployed".
@@ -293,6 +295,8 @@ export async function postSiteAdminDeployBackend():
 
     return backendOk({
       triggeredAt: triggeredAtIso,
+      mode: "cloudflare-version",
+      queued: false,
       status: out.status,
       ...(out.provider ? { provider: out.provider } : {}),
       ...(out.deploymentId ? { deploymentId: out.deploymentId } : {}),
