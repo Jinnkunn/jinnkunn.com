@@ -42,6 +42,7 @@
     "release:prod:from-staging": "node scripts/release-from-staging.mjs",
     "release:prod:from-staging:dry-run": "node scripts/release-from-staging.mjs --dry-run",
     "snapshot:prod": "node scripts/snapshot-prod-version.mjs",
+    "snapshot:prod:list": "node scripts/snapshot-prod-version.mjs --list",
     "verify:cf:staging": "node scripts/verify-cloudflare-deployment.mjs --env=staging",
     "verify:cf:prod": "node scripts/verify-cloudflare-deployment.mjs --env=production",
     "verify:cf:both": "node scripts/verify-cloudflare-deployment.mjs --env=both",
