@@ -194,16 +194,21 @@ jobs:
           export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
 
           if [ "$TARGET_ENV" = "staging" ]; then
-            # Run the cheap static checks first so a raw color literal or
-            # a stale design-system token fails fast (well before we burn
-            # ~5 min on a Cloudflare deploy). production-style-regression
-            # is intentionally absent — it spins up `npm run start` and a
-            # Playwright comparison against jinkunchen.com, which needs a
-            # warm `.next/` directory the local CLI has but a fresh CI
-            # checkout does not. The local release path still runs it.
+            # Run the truly-static checks here so a raw color literal,
+            # missing token, lint error, broken test, or unparseable
+            # script fails fast — well before we burn ~5 min on a
+            # Cloudflare deploy. The Playwright-based checks
+            # (check:classic-style, check:production-style) are
+            # intentionally NOT in this list: both spawn `npm run start`
+            # under a child process, then in cleanup send SIGTERM to npm.
+            # On Linux CI, next-server (a grandchild) survives that
+            # signal and keeps the parent process tree alive — the
+            # script's "passed" line prints, then it hangs in cleanup
+            # until the job's 20-min timeout. Locally those scripts work
+            # because mac signal propagation is more aggressive. The
+            # local CLI release path still runs them.
             npm run check:classic-css
             npm run check:design-system
-            npm run check:classic-style
             npm run lint
             npm run test
             npm run check:scripts
