@@ -24,7 +24,11 @@ rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2.0.0", features = [] }
+# `tray-icon` enables `tauri::tray::*` so we can mount a menubar icon
+# that keeps the app reachable after the main window is closed (the
+# "background mode" pattern). Gated behind a feature in Tauri 2 to
+# keep mobile builds slim — desktop targets opt in.
+tauri = { version = "2.0.0", features = ["tray-icon"] }
 # `sync` is only feature we need — the EventKit access-request callback
 # fires on a background queue, and tokio::sync::oneshot is the cleanest
 # way to bridge that into our `async` Tauri command.
