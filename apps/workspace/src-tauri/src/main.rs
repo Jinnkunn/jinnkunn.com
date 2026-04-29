@@ -510,8 +510,97 @@ fn debug_set_traffic_lights(_x: f32, _y: f32) -> Result<(), String> {
     Ok(())
 }
 
+/// Bring the main webview back into view from the menubar tray or a
+/// dock-click after the user closed the window. Hidden windows survive
+/// "close" because our `CloseRequested` handler swallows the close
+/// instead of destroying the surface, so `show + unminimize + focus`
+/// is enough to restore them — no state rebuild required.
+fn show_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Toggle the main window's visibility from the tray icon's primary
+/// click. Falls back to "show" when the visibility query errors,
+/// because a stuck-hidden window is worse UX than a no-op show.
+fn toggle_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        let visible = window.is_visible().unwrap_or(false);
+        if visible {
+            let _ = window.hide();
+        } else {
+            show_main_window(app);
+        }
+    }
+}
+
+/// Build the menubar tray icon + its right-click menu.
+///
+/// The tray is registered once at startup. We keep the bundled app
+/// icon as the tray glyph and let macOS template-strip it (so the
+/// menubar shows a tinted silhouette instead of the colorful brand
+/// mark). On non-macOS targets `icon_as_template` is a no-op.
+fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::{
+        menu::{Menu, MenuItem, PredefinedMenuItem},
+        tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    };
+
+    let show = MenuItem::with_id(
+        app,
+        "tray-show",
+        "Open Workspace",
+        true,
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(app, "tray-quit", "Quit Jinnkunn Workspace", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&show, &separator, &quit])?;
+
+    let icon = app
+        .default_window_icon()
+        .cloned()
+        .ok_or("missing default window icon — set tauri.conf.json bundle.icon")?;
+
+    let _tray = TrayIconBuilder::with_id("jinnkunn-workspace-tray")
+        .tooltip("Jinnkunn Workspace")
+        .icon(icon)
+        // macOS expects a template (single-channel) icon for the menubar.
+        // Our brand mark is colorful; setting the flag asks AppKit to
+        // tint it with the system foreground color (light/dark adaptive).
+        // No-op on Linux / Windows.
+        .icon_as_template(true)
+        // Don't open the menu on left-click — left-click toggles the
+        // window, right-click opens the menu (standard menubar UX).
+        .show_menu_on_left_click(false)
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "tray-show" => show_main_window(app),
+            "tray-quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                toggle_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
 fn main() {
-    let mut builder = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_decorum::init())
         // Persist window position/size/maximized state across launches.
         // Writes to the OS app-data dir; no app code required.
@@ -543,73 +632,101 @@ fn main() {
             sync::local_get_file,
             sync::local_list_files,
             sync::local_sync_status,
-        ]);
+        ])
+        .setup(|app| {
+            // Tray + menubar background-mode lives at the cross-platform
+            // level so a future Linux/Windows build picks it up too.
+            install_tray(app)?;
 
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder.setup(|app| {
-            use tauri::{Emitter, Manager};
-            use tauri_plugin_decorum::WebviewWindowExt;
-            use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::{Emitter, Manager};
+                use tauri_plugin_decorum::WebviewWindowExt;
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
-            if let Some(window) = app.get_webview_window("main") {
-                // Order ported from personal-os: overlay titlebar first
-                // (so decorum hooks into the window chrome), then inset
-                // the traffic lights, then apply vibrancy.
-                if let Err(err) = window.create_overlay_titlebar() {
-                    eprintln!("[setup] failed to create overlay titlebar: {err}");
+                if let Some(window) = app.get_webview_window("main") {
+                    // Order ported from personal-os: overlay titlebar first
+                    // (so decorum hooks into the window chrome), then inset
+                    // the traffic lights, then apply vibrancy.
+                    if let Err(err) = window.create_overlay_titlebar() {
+                        eprintln!("[setup] failed to create overlay titlebar: {err}");
+                    }
+                    let (tlx, tly) = TRAFFIC_LIGHTS_INSET;
+                    if let Err(err) = window.set_traffic_lights_inset(tlx, tly) {
+                        eprintln!("[setup] failed to set traffic light inset: {err}");
+                    }
+                    // `WindowBackground` is personal-os's choice — semantically
+                    // correct for a primary application window (same material
+                    // Notion / Linear / native macOS apps use). `Sidebar` and
+                    // `HudWindow` tint noticeably more and don't match.
+                    let _ = apply_vibrancy(
+                        &window,
+                        NSVisualEffectMaterial::WindowBackground,
+                        None,
+                        None,
+                    );
                 }
-                let (tlx, tly) = TRAFFIC_LIGHTS_INSET;
-                if let Err(err) = window.set_traffic_lights_inset(tlx, tly) {
-                    eprintln!("[setup] failed to set traffic light inset: {err}");
-                }
-                // `WindowBackground` is personal-os's choice — semantically
-                // correct for a primary application window (same material
-                // Notion / Linear / native macOS apps use). `Sidebar` and
-                // `HudWindow` tint noticeably more and don't match.
-                let _ = apply_vibrancy(
-                    &window,
-                    NSVisualEffectMaterial::WindowBackground,
-                    None,
-                    None,
-                );
+
+                // Bridge EventKit's change notification to a Tauri event.
+                // Registered once for the app's lifetime; the calendar
+                // surface listens for `calendar://changed` and refetches.
+                let app_handle = app.app_handle().clone();
+                calendar::eventkit::install_change_observer(move || {
+                    let _ = app_handle.emit("calendar://changed", ());
+                });
             }
-
-            // Bridge EventKit's change notification to a Tauri event.
-            // Registered once for the app's lifetime; the calendar
-            // surface listens for `calendar://changed` and refetches.
-            let app_handle = app.app_handle().clone();
-            calendar::eventkit::install_change_observer(move || {
-                let _ = app_handle.emit("calendar://changed", ());
-            });
 
             Ok(())
-        });
+        })
+        .on_window_event(|window, event| {
+            use tauri::WindowEvent;
 
-        builder = builder.on_window_event(|window, event| {
-            // Re-apply the traffic-lights inset after events that cause
-            // macOS to reset the buttons to their system default. decorum's
-            // set_traffic_lights_inset is one-shot — without this re-apply
-            // the lights drift back to y=12 after the first resize.
-            use tauri::Manager;
-            use tauri_plugin_decorum::WebviewWindowExt;
-            let should_reapply = matches!(
-                event,
-                tauri::WindowEvent::Resized(_)
-                    | tauri::WindowEvent::Focused(_)
-                    | tauri::WindowEvent::ThemeChanged(_)
-                    | tauri::WindowEvent::ScaleFactorChanged { .. }
-            );
-            if should_reapply {
-                if let Some(webview) = window.app_handle().get_webview_window("main") {
-                    let (x, y) = TRAFFIC_LIGHTS_INSET;
-                    let _ = webview.set_traffic_lights_inset(x, y);
+            // Hide-on-close: keep the app running in the menubar instead
+            // of tearing down state when the user clicks the red traffic
+            // light or hits Cmd+W. The tray menu's "Quit" + the system
+            // Cmd+Q route stay as the only ways to actually exit.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+                return;
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                use tauri_plugin_decorum::WebviewWindowExt;
+                // Re-apply the traffic-lights inset after events that cause
+                // macOS to reset the buttons to their system default. decorum's
+                // set_traffic_lights_inset is one-shot — without this re-apply
+                // the lights drift back to y=12 after the first resize.
+                let should_reapply = matches!(
+                    event,
+                    WindowEvent::Resized(_)
+                        | WindowEvent::Focused(_)
+                        | WindowEvent::ThemeChanged(_)
+                        | WindowEvent::ScaleFactorChanged { .. }
+                );
+                if should_reapply {
+                    if let Some(webview) = window.app_handle().get_webview_window("main") {
+                        let (x, y) = TRAFFIC_LIGHTS_INSET;
+                        let _ = webview.set_traffic_lights_inset(x, y);
+                    }
                 }
             }
         });
-    }
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("failed to run tauri app");
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("failed to build tauri app");
+
+    // Run with an event callback so we can intercept macOS's "reopen"
+    // (clicking the dock icon while no window is visible) and bring the
+    // main window back instead of leaving the user staring at nothing.
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+            if !has_visible_windows {
+                show_main_window(app_handle);
+            }
+        }
+    });
 }
