@@ -20,6 +20,7 @@ import {
   getMatchingBlockEditorCommands,
   type BlockEditorCommand,
 } from "./block-editor";
+import { BlockInspector, blockHasInspector } from "./block-inspector";
 import {
   BlockActionMenu,
   BlockGutterHandles,
@@ -90,8 +91,12 @@ const DOCUMENT_EDITOR_MODES: DocumentEditorMode[] = ["blocks", "source"];
 
 const DOCUMENT_EDITOR_MODE_LABELS: Record<DocumentEditorMode, string> = {
   blocks: "Write",
-  source: "MDX",
+  source: "Advanced",
 };
+
+const RECENT_SLASH_COMMAND_IDS_KEY =
+  "workspace.site-admin.editor.recent-slash-commands.v1";
+const RECENT_SLASH_COMMAND_LIMIT = 5;
 
 const SLUG_HINTS: Partial<Record<EditorKind, string>> = {
   page: "Each segment 1–60 lowercase chars, separated by '/' (max 4 levels)",
@@ -430,6 +435,33 @@ function isDocumentEditorMode(value: unknown): value is DocumentEditorMode {
   return isString(value) && DOCUMENT_EDITOR_MODES.includes(value as DocumentEditorMode);
 }
 
+function loadRecentSlashCommandIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(RECENT_SLASH_COMMAND_IDS_KEY) ?? "[]",
+    ) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentSlashCommand(id: string) {
+  if (typeof window === "undefined") return;
+  const next = [id, ...loadRecentSlashCommandIds().filter((item) => item !== id)].slice(
+    0,
+    RECENT_SLASH_COMMAND_LIMIT,
+  );
+  try {
+    window.localStorage.setItem(RECENT_SLASH_COMMAND_IDS_KEY, JSON.stringify(next));
+  } catch {
+    // Recent commands are an affordance only; storage failure should not
+    // interrupt block insertion.
+  }
+}
+
 export interface MdxDocumentPropertiesProps<TForm> {
   body: string;
   form: TForm;
@@ -491,11 +523,27 @@ export interface MdxDocumentEditorProps<TForm> {
 }
 
 function getMatchingSlashCommands(value: string): SlashCommand[] {
-  return getMatchingBlockEditorCommands(value, SLASH_COMMANDS, { requireSlash: true });
+  const matches = getMatchingBlockEditorCommands(value, SLASH_COMMANDS, {
+    requireSlash: true,
+  });
+  const query = value.trim().replace(/^\//, "").replace(/\s+/g, "");
+  if (query || matches.length === 0) return matches;
+  const recentIds = loadRecentSlashCommandIds();
+  if (recentIds.length === 0) return matches;
+  const recent = recentIds
+    .map((id) => matches.find((command) => command.id === id))
+    .filter((command): command is SlashCommand => Boolean(command))
+    .map((command) => ({ ...command, group: "Recent" }));
+  if (recent.length === 0) return matches;
+  const recentSet = new Set(recent.map((command) => command.id));
+  return [...recent, ...matches.filter((command) => !recentSet.has(command.id))];
 }
 
 function blockFromSlashCommand(value: string): MdxBlock | null {
-  return getMatchingSlashCommands(value)[0]?.makeBlock() ?? null;
+  const command = getMatchingSlashCommands(value)[0];
+  if (!command) return null;
+  rememberRecentSlashCommand(command.id);
+  return command.makeBlock();
 }
 
 function replaceBlockType(block: MdxBlock, type: MdxBlockType): MdxBlock {
@@ -553,6 +601,46 @@ function isBlockVisuallyEmpty(block: MdxBlock): boolean {
   return false;
 }
 
+function findBlockInTree(blocks: MdxBlock[], id: string): MdxBlock | null {
+  for (const block of blocks) {
+    if (block.id === id) return block;
+    if (block.children) {
+      const child = findBlockInTree(block.children, id);
+      if (child) return child;
+    }
+  }
+  return null;
+}
+
+function patchBlockInTree(
+  blocks: MdxBlock[],
+  id: string,
+  patcher: (block: MdxBlock) => MdxBlock,
+): { changed: boolean; blocks: MdxBlock[] } {
+  let changed = false;
+  const next = blocks.map((block) => {
+    if (block.id === id) {
+      changed = true;
+      return patcher(block);
+    }
+    if (!block.children) return block;
+    const childResult = patchBlockInTree(block.children, id, patcher);
+    if (!childResult.changed) return block;
+    changed = true;
+    return { ...block, children: childResult.blocks };
+  });
+  return { changed, blocks: next };
+}
+
+function countBlocksOfType(blocks: MdxBlock[], type: MdxBlockType): number {
+  let count = 0;
+  for (const block of blocks) {
+    if (block.type === type) count += 1;
+    if (block.children) count += countBlocksOfType(block.children, type);
+  }
+  return count;
+}
+
 export interface BlocksEditorProps {
   /** Markdown body. The block editor parses this into blocks for editing
    * and serializes back on every change. */
@@ -591,6 +679,7 @@ export function BlocksEditor({
   const [blocks, setBlocks] = useState<MdxBlock[]>(() => parseMdxBlocks(value));
   const [dragDepth, setDragDepth] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [selectedBlockId, setSelectedBlockId] = useState("");
   const lastEmittedBodyRef = useRef(value);
 
   useEffect(() => {
@@ -627,6 +716,47 @@ export function BlocksEditor({
     [blocks, handleBlocksChange],
   );
 
+  const selectedBlock = useMemo(
+    () => (selectedBlockId ? findBlockInTree(blocks, selectedBlockId) : null),
+    [blocks, selectedBlockId],
+  );
+  const inspectorBlock = selectedBlock && blockHasInspector(selectedBlock)
+    ? selectedBlock
+    : null;
+
+  const patchSelectedBlock = useCallback(
+    (patcher: (block: MdxBlock) => MdxBlock) => {
+      if (!selectedBlockId || readOnly) return;
+      const result = patchBlockInTree(blocks, selectedBlockId, patcher);
+      if (result.changed) handleBlocksChange(result.blocks);
+    },
+    [blocks, handleBlocksChange, readOnly, selectedBlockId],
+  );
+
+  const uploadImageIntoSelectedBlock = useCallback(
+    async (file: File | null) => {
+      if (!file || readOnly || !selectedBlockId) return;
+      setUploading(true);
+      const result = await uploadImageFile({ file, request });
+      setUploading(false);
+      if (!result.ok) {
+        setError(result.error);
+        setMessage("error", `Upload failed: ${result.error}`);
+        return;
+      }
+      rememberRecentAsset(result.asset, result.filename);
+      const alt = file.name.replace(/\.[^.]+$/, "") || result.filename;
+      const patch = patchBlockInTree(blocks, selectedBlockId, (block) => ({
+        ...block,
+        alt: block.alt || alt,
+        url: result.asset.url,
+      }));
+      if (patch.changed) handleBlocksChange(patch.blocks);
+      setMessage("success", `Uploaded ${result.filename}.`);
+    },
+    [blocks, handleBlocksChange, readOnly, request, selectedBlockId, setError, setMessage],
+  );
+
   const uploadDroppedImages = useCallback(
     async (files: File[]) => {
       if (readOnly) return;
@@ -655,47 +785,78 @@ export function BlocksEditor({
 
   return (
     <div
-      className="mdx-document-blocks"
-      data-drag-active={dragDepth > 0 ? "true" : undefined}
-      data-read-only={readOnly ? "true" : undefined}
-      data-uploading={uploading ? "true" : undefined}
-      style={minHeight ? { minHeight } : undefined}
-      onDragEnter={(event: DragEvent<HTMLDivElement>) => {
-        if (readOnly) return;
-        if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
-        event.preventDefault();
-        setDragDepth((depth) => depth + 1);
-      }}
-      onDragLeave={() => {
-        if (readOnly) return;
-        setDragDepth((depth) => Math.max(0, depth - 1));
-      }}
-      onDrop={(event) => {
-        if (readOnly) return;
-        if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block")) return;
-        event.preventDefault();
-        setDragDepth(0);
-        const files = Array.from(event.dataTransfer?.files ?? []);
-        if (files.length > 0) void uploadDroppedImages(files);
+      className="mdx-block-editor-shell"
+      data-block-inspector-open={inspectorBlock ? "true" : undefined}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !selectedBlockId) return;
+        event.stopPropagation();
+        setSelectedBlockId("");
       }}
     >
-      <EditableBlocksList
-        blocks={blocks}
-        depth={0}
-        onBlocksChange={handleBlocksChange}
-        readOnly={readOnly}
-        request={request}
-        setError={setError}
-        setMessage={setMessage}
-      />
-
-      {readOnly ? null : (
-        <AssetLibraryPicker
-          onSelect={(asset) =>
-            appendImageBlock(asset.url, asset.alt || asset.filename || "image")
-          }
+      <div
+        className="mdx-document-blocks"
+        data-drag-active={dragDepth > 0 ? "true" : undefined}
+        data-read-only={readOnly ? "true" : undefined}
+        data-uploading={uploading ? "true" : undefined}
+        style={minHeight ? { minHeight } : undefined}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedBlockId("");
+        }}
+        onDragEnter={(event: DragEvent<HTMLDivElement>) => {
+          if (readOnly) return;
+          if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block"))
+            return;
+          event.preventDefault();
+          setDragDepth((depth) => depth + 1);
+        }}
+        onDragLeave={() => {
+          if (readOnly) return;
+          setDragDepth((depth) => Math.max(0, depth - 1));
+        }}
+        onDrop={(event) => {
+          if (readOnly) return;
+          if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block"))
+            return;
+          event.preventDefault();
+          setDragDepth(0);
+          const files = Array.from(event.dataTransfer?.files ?? []);
+          if (files.length > 0) void uploadDroppedImages(files);
+        }}
+      >
+        <EditableBlocksList
+          blocks={blocks}
+          depth={0}
+          onBlocksChange={handleBlocksChange}
+          onSelectBlock={setSelectedBlockId}
+          readOnly={readOnly}
+          request={request}
+          selectedBlockId={selectedBlockId}
+          setError={setError}
+          setMessage={setMessage}
         />
-      )}
+
+        {readOnly ? null : (
+          <AssetLibraryPicker
+            onSelect={(asset) =>
+              appendImageBlock(asset.url, asset.alt || asset.filename || "image")
+            }
+          />
+        )}
+      </div>
+
+      {inspectorBlock ? (
+        <BlockInspector
+          block={inspectorBlock}
+          onClose={() => setSelectedBlockId("")}
+          onPatch={patchSelectedBlock}
+          onUploadImage={(file) => void uploadImageIntoSelectedBlock(file)}
+          readOnly={readOnly}
+          request={request}
+          setError={setError}
+          setMessage={setMessage}
+          uploading={uploading}
+        />
+      ) : null}
     </div>
   );
 }
@@ -704,8 +865,10 @@ interface EditableBlocksListProps {
   blocks: MdxBlock[];
   depth: number;
   onBlocksChange: (next: MdxBlock[]) => void;
+  onSelectBlock?: (id: string) => void;
   readOnly?: boolean;
   request: RequestFn;
+  selectedBlockId?: string;
   setError: (error: string) => void;
   setMessage: (kind: "error" | "success", text: string) => void;
 }
@@ -714,8 +877,10 @@ function EditableBlocksList({
   blocks,
   depth,
   onBlocksChange,
+  onSelectBlock,
   readOnly = false,
   request,
+  selectedBlockId,
   setError,
   setMessage,
 }: EditableBlocksListProps) {
@@ -979,6 +1144,7 @@ function EditableBlocksList({
           data-color={block.color && block.color !== "default" ? block.color : undefined}
           data-drag-over={dragOverBlockId === block.id ? "true" : undefined}
           data-dragging={draggingBlockId === block.id ? "true" : undefined}
+          data-selected={selectedBlockId === block.id ? "true" : undefined}
           data-controls-open={
             actionMenu?.blockId === block.id ||
             draggingBlockId === block.id ||
@@ -987,7 +1153,11 @@ function EditableBlocksList({
               : undefined
           }
           key={block.id}
-          onFocusCapture={() => setFocusedBlockId(block.id)}
+          onMouseDownCapture={() => onSelectBlock?.(block.id)}
+          onFocusCapture={() => {
+            setFocusedBlockId(block.id);
+            onSelectBlock?.(block.id);
+          }}
           onBlurCapture={(event) => clearFocusedBlockIfLeaving(block.id, event)}
           onDragOver={
             enableDrag
@@ -1041,7 +1211,9 @@ function EditableBlocksList({
           <EditableBlock
             block={block}
             depth={depth}
+            onSelectBlock={onSelectBlock}
             request={request}
+            selectedBlockId={selectedBlockId}
             setError={setError}
             setMessage={setMessage}
             uploading={uploadingId === block.id}
@@ -1053,7 +1225,10 @@ function EditableBlocksList({
               replaceBlock(block.id, next);
               return true;
             }}
-            onChooseSlashCommand={(command) => replaceBlock(block.id, command.makeBlock())}
+            onChooseSlashCommand={(command) => {
+              rememberRecentSlashCommand(command.id);
+              replaceBlock(block.id, command.makeBlock());
+            }}
             onFocusInput={(node) => registerBlockInput(block.id, node)}
             onInsertParagraphAfter={() => insertParagraphAfter(index)}
             onRemoveEmpty={() => removeEmptyBlock(block.id, index)}
@@ -1113,7 +1288,6 @@ function EditableBlocksList({
   );
 }
 
-
 function EditableBlock({
   block,
   depth,
@@ -1126,10 +1300,12 @@ function EditableBlock({
   onPatch,
   onRemoveEmpty,
   onSlashCommand,
+  onSelectBlock,
   onTurnInto,
   onUploadImage,
   readOnly = false,
   request,
+  selectedBlockId,
   setError,
   setMessage,
   uploading,
@@ -1147,10 +1323,12 @@ function EditableBlock({
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
   onSlashCommand: (value: string) => boolean;
+  onSelectBlock?: (id: string) => void;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
   onUploadImage: (file: File | null) => void;
   readOnly?: boolean;
   request: RequestFn;
+  selectedBlockId?: string;
   setError: (error: string) => void;
   setMessage: (kind: "error" | "success", text: string) => void;
   uploading: boolean;
@@ -1252,7 +1430,7 @@ function EditableBlock({
 
   if (block.type === "image") {
     return (
-      <div className="mdx-document-image-block">
+      <figure className="mdx-document-image-block">
         <label className="mdx-document-image-block__preview">
           {block.url ? (
             // Tauri workspace preview renders local/admin-uploaded assets.
@@ -1271,51 +1449,12 @@ function EditableBlock({
             }}
           />
         </label>
-        <div className="mdx-document-image-block__fields">
-          <input
-            aria-label="Image URL"
-            readOnly={readOnly}
-            value={block.url || ""}
-            placeholder="/uploads/image.png"
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, url: event.target.value }))
-            }
-          />
-          <input
-            aria-label="Image alt text"
-            readOnly={readOnly}
-            value={block.alt || ""}
-            placeholder="Alt text"
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, alt: event.target.value }))
-            }
-          />
-          <input
-            aria-label="Image caption"
-            readOnly={readOnly}
-            value={block.caption || ""}
-            placeholder="Caption"
-            onChange={(event) =>
-              onPatch((current) => ({ ...current, caption: event.target.value }))
-            }
-          />
-          {readOnly ? null : (
-            <div className="mdx-document-image-block__asset-picker">
-              <AssetLibraryPicker
-                currentUrl={block.url}
-                onSelect={(asset) => {
-                  onPatch((current) => ({
-                    ...current,
-                    alt: current.alt || asset.alt || asset.filename || "image",
-                    url: asset.url,
-                  }));
-                  setMessage("success", "Image asset selected.");
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+        {block.caption ? (
+          <figcaption className="mdx-document-image-block__caption">
+            {block.caption}
+          </figcaption>
+        ) : null}
+      </figure>
     );
   }
 
@@ -1357,8 +1496,10 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            onSelectBlock={onSelectBlock}
             readOnly={readOnly}
             request={request}
+            selectedBlockId={selectedBlockId}
             setError={setError}
             setMessage={setMessage}
           />
@@ -1378,8 +1519,10 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            onSelectBlock={onSelectBlock}
             readOnly={readOnly}
             request={request}
+            selectedBlockId={selectedBlockId}
             setError={setError}
             setMessage={setMessage}
           />
@@ -1402,8 +1545,10 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            onSelectBlock={onSelectBlock}
             readOnly={readOnly}
             request={request}
+            selectedBlockId={selectedBlockId}
             setError={setError}
             setMessage={setMessage}
           />
@@ -1423,8 +1568,10 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            onSelectBlock={onSelectBlock}
             readOnly={readOnly}
             request={request}
+            selectedBlockId={selectedBlockId}
             setError={setError}
             setMessage={setMessage}
           />
@@ -1444,8 +1591,10 @@ function EditableBlock({
             blocks={props.blocks}
             depth={props.depth}
             onBlocksChange={props.onBlocksChange}
+            onSelectBlock={onSelectBlock}
             readOnly={readOnly}
             request={request}
+            selectedBlockId={selectedBlockId}
             setError={setError}
             setMessage={setMessage}
           />
@@ -1606,6 +1755,12 @@ function CodeOrRawTextarea({
   const placeholder = block.type === "code" ? "Code" : block.type === "raw" ? "Raw MDX" : "";
   return (
     <div className="mdx-document-text-block-shell">
+      {block.type === "raw" ? (
+        <div className="mdx-document-raw-block__head">
+          <strong>Raw MDX fallback</strong>
+          <span>Use when no visual block exists yet.</span>
+        </div>
+      ) : null}
       <textarea
         aria-label={`${BLOCK_TYPE_LABELS[block.type]} block`}
         className={`mdx-document-text-block mdx-document-text-block--${block.type}`}
@@ -1690,6 +1845,10 @@ export function MdxDocumentEditor<TForm>({
   );
 
   const source = useMemo(() => adapter.buildSource(form, body), [adapter, body, form]);
+  const rawBlockCount = useMemo(
+    () => countBlocksOfType(parseMdxBlocks(body), "raw"),
+    [body],
+  );
   const dirty = source !== lastSavedSource || (mode === "create" && Boolean(slug.trim()));
   const sourcePath = slug.trim() ? adapter.contentPath(slug.trim()) : "Pending slug";
   const statusLabel = loading
@@ -2163,12 +2322,14 @@ export function MdxDocumentEditor<TForm>({
             </div>
             <span className="mdx-document-editor__mode-hint">
               {editorMode === "blocks"
-                ? "Visual editor"
+                ? rawBlockCount > 0
+                  ? `${rawBlockCount} raw MDX ${rawBlockCount === 1 ? "block" : "blocks"}`
+                  : "Visual editor"
                 : imageDrop.uploading
                   ? "Uploading image…"
                   : imageDrop.dragDepth > 0
                     ? "Drop to upload"
-                    : "Raw MDX"}
+                    : "Raw MDX escape hatch"}
             </span>
           </div>
 

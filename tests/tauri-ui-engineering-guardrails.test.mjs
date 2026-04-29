@@ -102,6 +102,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const documentEditor = await read(
     "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
   );
+  const blockInspector = await read(
+    "apps/workspace/src/surfaces/site-admin/block-inspector.tsx",
+  );
   const blocks = await read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");
   const controller = await read(
     "apps/workspace/src/surfaces/site-admin/use-mdx-editor-controller.ts",
@@ -141,15 +144,30 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
     documentEditor,
     /const DOCUMENT_EDITOR_MODES: DocumentEditorMode\[\] = \["blocks", "source"\]/,
   );
+  assert.match(documentEditor, /source: "Advanced"/);
   assert.doesNotMatch(documentEditor, /usePreview/);
   assert.doesNotMatch(documentEditor, /mdx-document-editor__preview/);
   assert.match(documentEditor, /SLASH_COMMANDS/);
+  assert.match(documentEditor, /RECENT_SLASH_COMMAND_IDS_KEY/);
+  assert.match(documentEditor, /rememberRecentSlashCommand/);
   assert.match(documentEditor, /getMatchingSlashCommands/);
   assert.match(documentEditor, /getMatchingBlockEditorCommands/);
   assert.match(documentEditor, /onInsertParagraphAfter/);
   assert.match(documentEditor, /onRemoveEmpty/);
   assert.match(documentEditor, /blockInputRefs/);
   assert.match(documentEditor, /application\/x-mdx-block/);
+  assert.match(documentEditor, /BlockInspector, blockHasInspector/);
+  assert.doesNotMatch(documentEditor, /function BlockInspector/);
+  assert.match(blockInspector, /export function BlockInspector/);
+  assert.match(blockInspector, /export function blockHasInspector/);
+  assert.match(blockInspector, /function TableInspector/);
+  assert.match(blockInspector, /Upload file/);
+  assert.match(blockInspector, /Page link/);
+  assert.match(blockInspector, /Teaching links/);
+  assert.match(blockInspector, /publications-profile-links/);
+  assert.match(documentEditor, /data-selected/);
+  assert.match(documentEditor, /Raw MDX fallback/);
+  assert.match(documentEditor, /rawBlockCount/);
   // Slash-menu rendering moved into the per-block TipTap component when
   // paragraph migrated off the textarea. The dispatcher still owns
   // SLASH_COMMANDS + matching, but the menu element + className are
@@ -225,6 +243,11 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /--mdx-block-gutter/);
   assert.match(styles, /\.mdx-document-block\s*\{[\s\S]*display: block;/);
   assert.match(styles, /\.mdx-document-block__gutter\s*\{[\s\S]*position: absolute;/);
+  assert.match(styles, /\.mdx-block-editor-shell/);
+  assert.match(styles, /\.mdx-block-inspector/);
+  assert.match(styles, /\.mdx-block-inspector__table/);
+  assert.match(styles, /\.mdx-document-data-block__meta/);
+  assert.match(styles, /\.mdx-document-block\[data-selected="true"\]/);
   assert.match(styles, /\.mdx-document-block\[data-controls-open="true"\] \.mdx-document-block__gutter/);
   assert.match(styles, /\.mdx-document-slash-menu\s*\{[\s\S]*flex-direction: column;/);
   assert.match(styles, /\.block-editor-command__group-label\s*\{/);
@@ -285,6 +308,17 @@ test("tauri-ui-engineering: shared content editor stays visual-first", async () 
   assert.match(componentEditor, /\/api\/site-admin\/components\/\$\{encodeURIComponent\(name\)\}\/preview/);
   assert.match(previewRoute, /renderComponentPreviewElement/);
   assert.match(blockRenderers, /More details/);
+  assert.match(blockRenderers, /detailed editing lives in the unified BlockInspector/);
+  assert.match(blockRenderers, /Select this block to add links/);
+  assert.match(blockRenderers, /Select this block to add cards/);
+  assert.match(blockRenderers, /Select this block to configure columns/);
+  assert.match(blockRenderers, /Select this block to add teaching links/);
+  assert.match(blockRenderers, /Select this block to add profile links/);
+  assert.doesNotMatch(blockRenderers, /aria-label="Bookmark URL"/);
+  assert.doesNotMatch(blockRenderers, /aria-label="Column count"/);
+  assert.doesNotMatch(blockRenderers, /mdx-document-page-link-block__picker/);
+  assert.doesNotMatch(blockRenderers, /mdx-document-link-list-block__item-actions/);
+  assert.doesNotMatch(blockRenderers, /uploadGenericFile/);
   assert.doesNotMatch(blockRenderers, /JSON array/);
   assert.doesNotMatch(blockRenderers, /authorsRich \(JSON/);
 });
