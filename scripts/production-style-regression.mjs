@@ -17,7 +17,11 @@ const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
 const CLASSIC_DEFAULT_TEXT_COLOR = "rgb(55, 53, 47)";
-const CLASSIC_NOTION_GRAY_TEXT_COLOR = "rgb(120, 119, 116)";
+// Darkened from Notion's published #787774 (rgb 120/119/116, 4.48:1
+// vs white) to #6F6E6B (rgb 111/110/107, 5.10:1) so gray prose clears
+// WCAG AA. See app/design-system.css and the corresponding fix(a11y)
+// commit. Update production tooling alongside the design token.
+const CLASSIC_NOTION_GRAY_TEXT_COLOR = "rgb(111, 110, 107)";
 const CLASSIC_LINK_OPACITY = "0.7";
 
 const ROUTES = [
