@@ -1,5 +1,11 @@
 import type { StatusPayload } from "./types";
-import { formatPendingDeploy, normalizeString } from "./utils";
+import {
+  formatDeployDetail,
+  releaseWorkflowRecovery,
+  shortSha,
+  sourceStoreKind,
+} from "./release-flow-model";
+import { normalizeString } from "./utils";
 
 type PipelineTone = "blocked" | "done" | "muted" | "pending" | "ready";
 
@@ -11,16 +17,10 @@ interface PipelineStep {
 }
 
 interface PublishPipelineCardProps {
-  actionsUrl: string;
   loading?: boolean;
   onCopyReleaseCommand: () => void;
   onRefresh: () => void;
-  releaseCommand: string;
   status: StatusPayload | null;
-}
-
-function shortSha(value?: string | null): string {
-  return normalizeString(value).slice(0, 7) || "-";
 }
 
 function sourceDetail(source: StatusPayload["source"] | undefined): {
@@ -28,7 +28,7 @@ function sourceDetail(source: StatusPayload["source"] | undefined): {
   tone: PipelineTone;
   value: string;
 } {
-  const storeKind = normalizeString(source?.storeKind).toLowerCase();
+  const storeKind = sourceStoreKind(source);
   if (!source) {
     return { detail: "Waiting for source metadata", tone: "muted", value: "-" };
   }
@@ -47,29 +47,12 @@ function sourceDetail(source: StatusPayload["source"] | undefined): {
   };
 }
 
-function deployDetail(source: StatusPayload["source"] | undefined): {
-  detail: string;
-  value: string;
-} {
-  if (!source) return { detail: "No status loaded", value: "Unknown" };
-  if (normalizeString(source.storeKind).toLowerCase() === "db" && source.pendingDeploy === null) {
-    return {
-      detail: "D1 source has no branch diff; use Worker candidate readiness.",
-      value: "Ready",
-    };
-  }
-  return {
-    detail: formatPendingDeploy(source),
-    value: source.pendingDeploy === true ? "Pending" : "Current",
-  };
-}
-
 function pipelineSteps(status: StatusPayload | null): PipelineStep[] {
   const source = status?.source;
   const pending = source?.pendingDeploy === true;
   const deployable = source?.deployableVersionReady;
   const sourceStep = sourceDetail(source);
-  const deployStep = deployDetail(source);
+  const deployStep = formatDeployDetail(source);
   return [
     {
       detail: sourceStep.detail,
@@ -110,14 +93,13 @@ function pipelineSteps(status: StatusPayload | null): PipelineStep[] {
 }
 
 export function PublishPipelineCard({
-  actionsUrl,
   loading = false,
   onCopyReleaseCommand,
   onRefresh,
-  releaseCommand,
   status,
 }: PublishPipelineCardProps) {
   const stale = status?.source?.deployableVersionReady === false;
+  const workflow = releaseWorkflowRecovery(status?.source);
   return (
     <section className="publish-pipeline" aria-label="Publish pipeline">
       <header className="publish-pipeline__head">
@@ -153,15 +135,15 @@ export function PublishPipelineCard({
           <div>
             <strong>Candidate rebuild required</strong>
             <span>
-              Wait for Deploy (auto), or run <code>{releaseCommand}</code>, then recheck.
+              {workflow.waitText} Routine local fallback: <code>{workflow.command}</code>.
             </span>
           </div>
           <div className="publish-pipeline__actions">
-            <a className="btn btn--ghost" href={actionsUrl} target="_blank" rel="noreferrer">
-              Open Deploy Action
+            <a className="btn btn--ghost" href={workflow.actionsUrl} target="_blank" rel="noreferrer">
+              {workflow.openLabel}
             </a>
             <button type="button" className="btn btn--ghost" onClick={onCopyReleaseCommand}>
-              Copy release command
+              {workflow.copyLabel}
             </button>
           </div>
         </div>

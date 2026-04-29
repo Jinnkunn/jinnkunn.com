@@ -360,26 +360,36 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   );
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
   const releasePanel = await read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx");
+  const releaseFlow = await read(
+    "apps/workspace/src/surfaces/site-admin/release-flow-model.ts",
+  );
   const pipeline = await read(
     "apps/workspace/src/surfaces/site-admin/PublishPipelineCard.tsx",
   );
 
-  assert.match(publishButton, /isDeployCandidateBlocked/);
+  assert.match(releaseFlow, /export function deriveReleaseFlow/);
+  assert.match(releaseFlow, /RELEASE_FROM_DISPATCH_ACTIONS_URL/);
+  assert.match(releaseFlow, /DEPLOY_ON_CONTENT_ACTIONS_URL/);
+  assert.match(publishButton, /deriveReleaseFlow/);
   assert.match(publishButton, /DEPLOY_VERSION_STALE/);
-  assert.match(publishButton, /GitHub Actions “Deploy \(auto\)”/);
-  assert.match(publishButton, /npm run release:staging/);
+  assert.match(releaseFlow, /GitHub Actions “Deploy \(auto\)”/);
+  assert.match(releaseFlow, /GitHub Actions “Release from dispatch”/);
+  assert.match(releaseFlow, /npm run release:staging/);
   assert.match(publishButton, /Recheck/);
+  assert.match(publishButton, /parseDeployResponseSummary/);
+  assert.match(publishButton, /Staging release queued in GitHub Actions/);
   assert.doesNotMatch(
     publishButton,
     /Publish failed: \$\{response\.code\}: \$\{response\.error\}[\s\S]*DEPLOY_VERSION_STALE/,
     "DEPLOY_VERSION_STALE should be translated into a rebuild/recheck message, not shown as a raw failure",
   );
-  assert.match(statusPanel, /GitHub Actions “Deploy \(auto\)”/);
-  assert.match(statusPanel, /npm run release:staging/);
+  assert.match(statusPanel, /releaseWorkflowRecovery/);
   assert.match(statusPanel, /PublishPipelineCard/);
+  assert.doesNotMatch(statusPanel, /\/api\/site-admin\/deploy/);
+  assert.doesNotMatch(statusPanel, /Confirm Deploy/);
   assert.match(statusPanel, /Content source/);
   assert.match(statusPanel, /Next action/);
-  assert.match(statusPanel, /D1 content database/);
+  assert.match(releaseFlow, /D1 content database/);
   assert.match(statusPanel, /Release Health/);
   assert.match(statusPanel, /Site sync and release health/);
   assert.match(statusPanel, /Active deploy/);
@@ -389,14 +399,19 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(pipeline, /Worker candidate/);
   assert.match(pipeline, /Staging deploy/);
   assert.match(pipeline, /Production promotion remains explicit/);
-  assert.match(pipeline, /D1 source has no branch diff/);
-  assert.match(releasePanel, /PROMOTE_STAGING_CONTENT=1 npm run release:prod/);
+  assert.match(releaseFlow, /D1 source has no branch diff/);
+  assert.match(releasePanel, /RELEASE_PROD_FROM_STAGING_COMMAND/);
+  assert.match(releasePanel, /LEGACY_RELEASE_PROD_COMMAND/);
+  assert.match(releasePanel, /parsePromotePreview/);
+  assert.match(releasePanel, /\/api\/site-admin\/promote-to-production/);
+  assert.doesNotMatch(releasePanel, /localStorage/);
   assert.match(releasePanel, /PromoteToProductionButton/);
   assert.match(releasePanel, /Advanced command fallback/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
   assert.match(releasePanel, /Promotion Checklist/);
   assert.match(releasePanel, /Environment comparison/);
   assert.match(releasePanel, /Production differs/);
+  assert.match(releasePanel, /Release preflight reads staging and production deployments live/);
 });
 
 test("tauri-ui-engineering: site admin has a unified topbar save action", async () => {
