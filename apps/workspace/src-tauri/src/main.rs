@@ -562,18 +562,25 @@ fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&show, &separator, &quit])?;
 
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .ok_or("missing default window icon — set tauri.conf.json bundle.icon")?;
+    // Bundled at compile time — `include_image!` resolves the path at
+    // build time and embeds the PNG bytes into the binary, so the tray
+    // works the same in `tauri dev` and a packaged .app without
+    // worrying about resource copy semantics. The PNG is the brand
+    // mark in pure black on transparent (regenerated from tray.svg via
+    // apps/workspace/scripts/build-tray-icon.mjs); macOS template-tints
+    // it for light/dark menubar at runtime.
+    // `include_image!` resolves paths relative to CARGO_MANIFEST_DIR
+    // (i.e. src-tauri/), not the source file — so this is `icons/...`
+    // even though we're in `src/`.
+    let icon = tauri::include_image!("icons/tray.png");
 
     let _tray = TrayIconBuilder::with_id("jinnkunn-workspace-tray")
         .tooltip("Jinnkunn Workspace")
         .icon(icon)
         // macOS expects a template (single-channel) icon for the menubar.
-        // Our brand mark is colorful; setting the flag asks AppKit to
-        // tint it with the system foreground color (light/dark adaptive).
-        // No-op on Linux / Windows.
+        // Our PNG is already pre-templated (black + alpha), and this flag
+        // tells AppKit to render it with the system foreground color
+        // (light/dark adaptive). No-op on Linux / Windows.
         .icon_as_template(true)
         // Don't open the menu on left-click — left-click toggles the
         // window, right-click opens the menu (standard menubar UX).
