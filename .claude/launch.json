@@ -25,6 +25,14 @@
       "cwd": "apps/workspace",
       "port": 1420,
       "autoPort": true
+    },
+    {
+      "name": "workspace-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--host", "127.0.0.1", "--port", "1421"],
+      "cwd": "apps/workspace",
+      "port": 1421,
+      "autoPort": true
     }
   ]
 }
