@@ -194,13 +194,23 @@ jobs:
           export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
 
           if [ "$TARGET_ENV" = "staging" ]; then
-            # Staging dispatch now runs the same CSS / design-system /
-            # production-style contract checks the local CLI runs. Skipping
-            # them previously meant a raw color literal or a layout drift
-            # could land on staging without anyone noticing until production
-            # promotion forced a rebuild. The checks add ~30 s; the safety
-            # net is worth it.
-            npm run release:staging
+            # Run the cheap static checks first so a raw color literal or
+            # a stale design-system token fails fast (well before we burn
+            # ~5 min on a Cloudflare deploy). production-style-regression
+            # is intentionally absent — it spins up `npm run start` and a
+            # Playwright comparison against jinkunchen.com, which needs a
+            # warm `.next/` directory the local CLI has but a fresh CI
+            # checkout does not. The local release path still runs it.
+            npm run check:classic-css
+            npm run check:design-system
+            npm run check:classic-style
+            npm run lint
+            npm run test
+            npm run check:scripts
+            # `release:staging --skip-checks` leaves the release-cloudflare
+            # script's CHECKS array off; we already ran the cheap subset
+            # ourselves above.
+            npm run release:staging -- --skip-checks
           else
             # Production guardrails (CONFIRM_PRODUCTION_DEPLOY etc) are
             # enforced inside release-cloudflare.mjs; we set CONFIRM_* here
