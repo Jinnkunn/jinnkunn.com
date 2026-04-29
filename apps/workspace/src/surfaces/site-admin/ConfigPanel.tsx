@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsSection } from "./config/SettingsSection";
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
-import { useSiteAdmin } from "./state";
+import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import type { ConfigSourceVersion, SiteSettings } from "./types";
 import {
   applySettingsPatch,
@@ -42,8 +42,8 @@ function isSourceConflictResponse(response: { ok: boolean; code?: string; status
  * tracking + conflict handling, and delegates the visual form to a
  * dedicated presentational component under `config/`. */
 export function ConfigPanel() {
-  const { productionReadOnly, request, setMessage, setTopbarSaveAction } =
-    useSiteAdmin();
+  const { productionReadOnly, request, setMessage } = useSiteAdmin();
+  const { setTopbarSaveAction } = useSiteAdminEphemeral();
 
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseSettings, setBaseSettings] = useState<SiteSettings>(defaultSettings());

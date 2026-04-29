@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { handleWindowDragMouseDown } from "../../shell/windowDrag";
-import { useSiteAdmin } from "./state";
+import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import { PublishButton } from "./PublishButton";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
 import { SyncStatusPill } from "./SyncStatusPill";
@@ -18,8 +18,8 @@ export function SiteAdminTopBar() {
     productionReadOnly,
     toggleDrawer,
     connection,
-    topbarSaveAction,
   } = useSiteAdmin();
+  const { topbarSaveAction } = useSiteAdminEphemeral();
 
   // Phase 5a — drive the local SQLite mirror at one stable mount point so
   // we have one timer + one in-flight pull per app instance regardless of

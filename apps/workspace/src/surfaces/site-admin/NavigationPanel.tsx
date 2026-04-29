@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
-import { useSiteAdmin } from "./state";
+import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import type { ConfigSourceVersion, NavRow } from "./types";
 import {
   clone,
@@ -63,8 +63,8 @@ function sortedRows(rows: NavRow[], drafts: Record<string, NavRow>, group: "top"
 }
 
 export function NavigationPanel() {
-  const { productionReadOnly, request, setMessage, setTopbarSaveAction } =
-    useSiteAdmin();
+  const { productionReadOnly, request, setMessage } = useSiteAdmin();
+  const { setTopbarSaveAction } = useSiteAdminEphemeral();
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseRows, setBaseRows] = useState<NavRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, NavRow>>({});

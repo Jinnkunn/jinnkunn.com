@@ -62,7 +62,7 @@ import {
   type MdxBlockType,
 } from "./mdx-blocks";
 import { localContent } from "./local-content";
-import { useSiteAdmin } from "./state";
+import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import { formatDraftAge, useEditorDraft, type EditorKind } from "./use-editor-draft";
 import {
   useConfirmingBack,
@@ -1662,8 +1662,8 @@ export function MdxDocumentEditor<TForm>({
     productionReadOnly,
     request,
     setMessage,
-    setTopbarSaveAction,
   } = useSiteAdmin();
+  const { setTopbarSaveAction } = useSiteAdminEphemeral();
   const [slug, setSlug] = useState(initialSlug ?? "");
   const [form, setForm] = useState<TForm>(() => adapter.createBlankForm());
   const [body, setBody] = useState(adapter.defaultBody);
