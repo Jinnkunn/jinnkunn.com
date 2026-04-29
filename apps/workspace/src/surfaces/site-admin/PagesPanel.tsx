@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { PageEditor } from "./PageEditor";
-import { PublishButton } from "./PublishButton";
 import { useSiteAdmin } from "./state";
 import type { ItemSelection } from "./types";
 
@@ -86,7 +85,6 @@ export function PagesPanel({
           >
             New page
           </button>
-          <PublishButton />
         </div>
       </header>
       <div className="panel-shell__body">{body}</div>

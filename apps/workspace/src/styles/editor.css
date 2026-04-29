@@ -2257,6 +2257,121 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   display: contents;
 }
 
+.navigation-editor {
+  gap: 14px;
+}
+
+.navigation-editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.navigation-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.navigation-editor__create {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(220px, 1.5fr) minmax(120px, 0.7fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface-alt);
+}
+
+.navigation-editor__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.navigation-editor__group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.navigation-editor__group h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.navigation-editor__group > header span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.navigation-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.navigation-editor__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.navigation-editor__row[data-dirty="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 32%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-surface));
+}
+
+.navigation-editor__order {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navigation-editor__order .btn {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+.navigation-editor__fields {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.4fr) minmax(110px, 0.7fr);
+  gap: 8px;
+}
+
+.navigation-editor__enabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1160px) {
+  .navigation-editor__create,
+  .navigation-editor__row,
+  .navigation-editor__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation-editor__order {
+    flex-direction: row;
+  }
+}
+
 /* HomePanel "Notion" mode wraps the shared BlocksEditor in a single
    centred column. Hint above explains the takeover semantics — non-
    empty bodyMdx wins over the section list. */

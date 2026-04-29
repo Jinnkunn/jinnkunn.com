@@ -39,6 +39,7 @@ test("tauri-ui-engineering: Home uses the shared MDX document editor", async () 
   // thin adapter over the shared MdxDocumentEditor; the compatibility
   // storage remains content/home.json with { title, bodyMdx }.
   const homePanel = await read("apps/workspace/src/surfaces/site-admin/HomePanel.tsx");
+  const topbar = await read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx");
   const schema = await read(
     "apps/workspace/src/surfaces/site-admin/home-builder/schema.ts",
   );
@@ -52,10 +53,20 @@ test("tauri-ui-engineering: Home uses the shared MDX document editor", async () 
     "parseHomeSource",
     "/api/site-admin/home",
     "content/home.json",
-    "PublishButton",
   ]) {
     assert.match(homePanel, new RegExp(symbol), `HomePanel should use ${symbol}`);
   }
+  assert.doesNotMatch(
+    homePanel,
+    /PublishButton/,
+    "HomePanel should not duplicate the global publish action",
+  );
+  assert.match(topbar, /PublishButton/, "SiteAdminTopBar should own the publish action");
+  assert.match(
+    topbar,
+    /requirePendingChanges/,
+    "Global publish action should only activate when source has pending changes",
+  );
 
   // What HomePanel must NOT reference anymore (the deleted
   // section-builder primitives). These would all `import` from files
@@ -314,6 +325,7 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
     "apps/workspace/src/surfaces/site-admin/PublishButton.tsx",
   );
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
+  const releasePanel = await read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx");
   const pipeline = await read(
     "apps/workspace/src/surfaces/site-admin/PublishPipelineCard.tsx",
   );
@@ -344,6 +356,10 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(pipeline, /Staging deploy/);
   assert.match(pipeline, /Production promotion remains explicit/);
   assert.match(pipeline, /D1 source has no branch diff/);
+  assert.match(releasePanel, /PROMOTE_STAGING_CONTENT=1 npm run release:prod/);
+  assert.match(releasePanel, /Copy Production Command/);
+  assert.match(releasePanel, /Production promotion starts from Staging/);
+  assert.match(releasePanel, /Promotion Checklist/);
 });
 
 test("tauri-ui-engineering: production settings are visibly locked", async () => {

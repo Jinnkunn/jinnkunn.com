@@ -9,7 +9,6 @@ import { DisconnectedNotice } from "./DisconnectedNotice";
 import { MessageBar } from "./MessageBar";
 import {
   SITE_ADMIN_DEFAULT_TAB,
-  SITE_ADMIN_NAV_GROUPS,
   isSiteAdminTab,
 } from "./nav";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
@@ -35,11 +34,17 @@ const HomePanel = lazy(() =>
 const LinkAuditPanel = lazy(() =>
   import("./LinkAuditPanel").then((module) => ({ default: module.LinkAuditPanel })),
 );
+const NavigationPanel = lazy(() =>
+  import("./NavigationPanel").then((module) => ({ default: module.NavigationPanel })),
+);
 const PagesPanel = lazy(() =>
   import("./PagesPanel").then((module) => ({ default: module.PagesPanel })),
 );
 const PostsPanel = lazy(() =>
   import("./PostsPanel").then((module) => ({ default: module.PostsPanel })),
+);
+const ReleasePanel = lazy(() =>
+  import("./ReleasePanel").then((module) => ({ default: module.ReleasePanel })),
 );
 const SettingsPanel = lazy(() =>
   import("./SettingsPanel").then((module) => ({ default: module.SettingsPanel })),
@@ -977,7 +982,7 @@ function SiteAdminContent() {
 
   return (
     <WorkspaceSurfaceFrame className="site-admin-shell">
-      <SiteAdminTopBar sections={SITE_ADMIN_NAV_GROUPS} activeTab={activeTab} />
+      <SiteAdminTopBar />
       <div className="site-admin-layout__main">
         <MessageBar />
         {pageTreeConflict && (
@@ -1030,6 +1035,8 @@ function SiteAdminContent() {
                 />
               )}
               {activeTab === "links" && <LinkAuditPanel />}
+              {activeTab === "navigation" && <NavigationPanel />}
+              {activeTab === "release" && <ReleasePanel />}
               {activeTab === "settings" && <SettingsPanel />}
             </>
           )}

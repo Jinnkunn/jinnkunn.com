@@ -14,7 +14,7 @@
 .site-admin-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   padding: 8px 10px;
   border: 1px solid var(--color-border-subtle);
@@ -25,75 +25,51 @@
   -webkit-user-select: none;
 }
 
-.site-admin-topbar__crumbs {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.site-admin-topbar__spacer {
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-}
-
-.site-admin-topbar__crumb-sep {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.site-admin-topbar__crumb-section {
-  color: var(--color-text-secondary);
-}
-
-.site-admin-topbar__crumb-tab {
-  color: var(--color-text-primary);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.site-admin-topbar__environment {
-  display: inline-flex;
-  align-items: center;
-  max-width: 180px;
-  padding: 2px 7px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
-  background: var(--color-bg-surface-alt);
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.site-admin-topbar__environment[data-kind="production"] {
-  border-color: color-mix(in srgb, var(--color-warn) 35%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-warn) 10%, var(--color-bg-surface));
-  color: var(--color-warn);
-}
-
-.site-admin-topbar__environment[data-kind="staging"] {
-  border-color: color-mix(in srgb, var(--color-success) 30%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-success) 8%, var(--color-bg-surface));
-  color: color-mix(in srgb, var(--color-success) 72%, var(--color-text-primary));
 }
 
 .site-admin-topbar__right {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-shrink: 0;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.site-admin-topbar__right .site-admin-pill-root + .publish-control {
+  margin-left: 4px;
+}
+
+.site-admin-topbar__right .publish-control {
+  position: relative;
+}
+
+.site-admin-topbar__right .publish-control > .btn {
+  min-height: 30px;
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.site-admin-topbar__right .publish-preview {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(720px, calc(100vw - 360px));
+  max-height: min(70vh, 620px);
+  overflow: auto;
+  box-shadow: var(--shadow-popover, 0 16px 40px rgba(15, 23, 42, 0.16));
 }
 
 .site-admin-topbar__drawer-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  min-height: 30px;
+  padding: 6px 10px;
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
   background: var(--color-bg-surface);

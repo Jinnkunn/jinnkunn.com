@@ -133,6 +133,10 @@ export function SiteAdminConnectionPill() {
         ? "Connecting…"
         : "Connect";
   const pillTitle = [profileLabel, statusLabel, trimmedBase].filter(Boolean).join(" · ");
+  const environmentLabel = environment.readOnly ? "Read-only" : environment.label;
+  const showEnvironmentMode =
+    normalizeString(environmentLabel).toLowerCase() !==
+    normalizeString(profileLabel).toLowerCase();
 
   const disableLogin = connection.authLoading || !normalizeString(connection.baseUrl);
   const disableClear = connection.authLoading || !connection.authToken;
@@ -153,13 +157,15 @@ export function SiteAdminConnectionPill() {
       >
         <span className="site-admin-pill__dot" aria-hidden="true" />
         <span className="site-admin-pill__label">{pillLabel}</span>
-        <span
-          className="site-admin-pill__mode"
-          data-kind={environment.kind}
-          title={environment.helpText}
-        >
-          {environment.readOnly ? "Read-only" : environment.label}
-        </span>
+        {showEnvironmentMode ? (
+          <span
+            className="site-admin-pill__mode"
+            data-kind={environment.kind}
+            title={environment.helpText}
+          >
+            {environmentLabel}
+          </span>
+        ) : null}
         <svg
           viewBox="0 0 10 10"
           width="8"

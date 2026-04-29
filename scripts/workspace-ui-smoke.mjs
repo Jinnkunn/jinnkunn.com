@@ -99,8 +99,8 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
-    "site-admin-topbar__environment",
-    "Site Admin environment badge",
+    "SiteAdminConnectionPill",
+    "Site Admin topbar should use the connection/environment control",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminConnectionPill.tsx"),
@@ -146,6 +146,16 @@ function main() {
     read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx"),
     "Latest Uploaded Version",
     "Status latest upload version",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "PROMOTE_STAGING_CONTENT=1 npm run release:prod",
+    "Release panel production promotion command",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Copy Production Command",
+    "Release panel promotion action",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ConfigPanel.tsx"),
@@ -481,13 +491,8 @@ function main() {
   );
   assertIncludes(
     workspaceCss,
-    ".site-admin-topbar__environment[data-kind=\"production\"]",
-    "Site Admin production environment badge CSS",
-  );
-  assertIncludes(
-    workspaceCss,
     ".site-admin-pill__mode[data-kind=\"production\"]",
-    "Site Admin production connection mode CSS",
+    "Site Admin production environment mode CSS",
   );
   assertIncludes(
     workspaceCss,

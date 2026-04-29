@@ -10,7 +10,6 @@ import {
   parseHomeSource,
   type HomeFrontmatterForm,
 } from "./mdx-source";
-import { PublishButton } from "./PublishButton";
 import {
   WorkspaceInspectorSection,
   WorkspaceTextField,
@@ -109,9 +108,6 @@ export function HomePanel() {
           <p className="panel-shell__description">
             Root page content stored in content/home.json.
           </p>
-        </div>
-        <div className="panel-shell__actions">
-          <PublishButton />
         </div>
       </header>
       <div className="panel-shell__body">

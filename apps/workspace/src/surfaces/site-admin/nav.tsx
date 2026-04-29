@@ -2,6 +2,7 @@ import {
   ConfigIcon,
   HomeIcon,
   PostsIcon,
+  RoutesIcon,
   StatusIcon,
 } from "../icons";
 import type { SurfaceNavGroup, SurfaceNavItem } from "../types";
@@ -66,6 +67,7 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
     id: "site",
     label: "Site",
     items: [
+      { id: "navigation", label: "Navigation", icon: <RoutesIcon /> },
       { id: "links", label: "Links", icon: <StatusIcon /> },
       { id: "settings", label: "Settings", icon: <ConfigIcon /> },
     ],
@@ -73,7 +75,10 @@ export const SITE_ADMIN_NAV_GROUPS: readonly SurfaceNavGroup[] = [
   {
     id: "ops",
     label: "Ops",
-    items: [{ id: "status", label: "Status", icon: <StatusIcon /> }],
+    items: [
+      { id: "status", label: "Status", icon: <StatusIcon /> },
+      { id: "release", label: "Release", icon: <RoutesIcon /> },
+    ],
   },
 ];
 
@@ -93,6 +98,8 @@ export const SITE_ADMIN_TAB_IDS: readonly SiteAdminTab[] = [
   "pages",
   "components",
   "links",
+  "navigation",
+  "release",
   "settings",
 ];
 
