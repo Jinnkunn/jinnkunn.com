@@ -298,7 +298,23 @@ export function PublicCalendarView({
             onClick={() => onAnchorChange?.(shiftAnchor(anchor, view, -1))}
             aria-label="Previous calendar range"
           >
-            ‹
+            <svg
+              className="public-calendar__nav-icon"
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M10 3.5 L5.5 8 L10 12.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
           <button
             type="button"
@@ -313,7 +329,23 @@ export function PublicCalendarView({
             onClick={() => onAnchorChange?.(shiftAnchor(anchor, view, 1))}
             aria-label="Next calendar range"
           >
-            ›
+            <svg
+              className="public-calendar__nav-icon"
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M6 3.5 L10.5 8 L6 12.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
           <strong className="public-calendar__range-title">
             {formatToolbarTitle(view, anchor)}
