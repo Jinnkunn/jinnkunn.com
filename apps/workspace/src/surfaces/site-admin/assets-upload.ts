@@ -50,17 +50,26 @@ export interface UploadImageFileInput {
   request: RequestFn;
 }
 
-async function fileToBase64(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  // btoa needs binary string; use chunked loop to avoid stack issues on larger files.
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    const chunk = bytes.subarray(i, i + CHUNK);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
+function fileToBase64(file: File): Promise<string> {
+  // FileReader.readAsDataURL is async and runs the encode off the main JS
+  // thread (browser-internal) — for a 5 MB image this is the difference
+  // between a 200-500 ms UI freeze and an imperceptible await. We strip
+  // the `data:<mime>;base64,` prefix and return just the encoded body so
+  // callers downstream don't need to know which path produced the string.
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("FileReader did not return a string"));
+        return;
+      }
+      const commaIndex = result.indexOf(",");
+      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export type UploadImageResult =

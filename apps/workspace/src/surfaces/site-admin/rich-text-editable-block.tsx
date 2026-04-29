@@ -137,19 +137,36 @@ export function RichTextEditableBlock({
   }, [block.text, slashCommands.length]);
 
   // Subscribe to TipTap selection / doc updates so the format toolbar
-  // anchors to the live caret and the rev counter forces a coords recompute.
+  // anchors to the live caret and its mark indicators reflect the current
+  // marks. Two listeners with different jobs:
+  //
+  //   selectionUpdate — caret/range moved. Update the selection state so
+  //     the toolbar appears/disappears/repositions; bump revision so
+  //     coords recompute even when the range numbers happen to coincide.
+  //
+  //   transaction — any doc/state mutation. We only force a re-render
+  //     when there's an active selection — that's the only time the
+  //     toolbar is visible and its `editor.isActive(...)` indicators
+  //     might need to update. Skipping this for empty-selection
+  //     transactions (the common keystroke case) is what makes typing
+  //     into a 100-block document feel responsive.
   useEffect(() => {
     if (!editor) return;
-    const onUpdate = () => {
+    const onSelectionUpdate = () => {
       setRevision((r) => r + 1);
       const { from, to, empty } = editor.state.selection;
       setSelection(empty ? null : { from, to });
     };
-    editor.on("selectionUpdate", onUpdate);
-    editor.on("transaction", onUpdate);
+    const onTransaction = () => {
+      if (!editor.state.selection.empty) {
+        setRevision((r) => r + 1);
+      }
+    };
+    editor.on("selectionUpdate", onSelectionUpdate);
+    editor.on("transaction", onTransaction);
     return () => {
-      editor.off("selectionUpdate", onUpdate);
-      editor.off("transaction", onUpdate);
+      editor.off("selectionUpdate", onSelectionUpdate);
+      editor.off("transaction", onTransaction);
     };
   }, [editor]);
 
