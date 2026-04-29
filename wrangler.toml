@@ -76,6 +76,19 @@ CF_ACCESS_AUD = "f30a77b414f5f37b27d6d3ec1acc4fddfff100810c7a1bd9933fe073f3a65cb
 SITE_ADMIN_EMAILS = "i@jinkunchen.com"
 SITE_ADMIN_SERVICE_TOKENS = "861cdfad2e676fb177cd85bef18351da.access"
 
+# Production-promotion endpoint config. The "Promote to Production"
+# button on the Tauri workspace lives on the staging worker, so it
+# needs to know:
+#   - which Cloudflare Workers to query (CLOUDFLARE_WORKER_NAME_*)
+#   - which GitHub repo to dispatch the release-production action to
+#     (SITE_ADMIN_REPO_OWNER / SITE_ADMIN_REPO_NAME)
+# All four values are non-secret identifiers — the matching API token
+# + GitHub App credentials are still set as `wrangler secret put`.
+CLOUDFLARE_WORKER_NAME_STAGING = "jinnkunn-site-staging"
+CLOUDFLARE_WORKER_NAME_PRODUCTION = "jinnkunn-site"
+SITE_ADMIN_REPO_OWNER = "Jinnkunn"
+SITE_ADMIN_REPO_NAME = "jinnkunn.com"
+
 # Bind the staging worker to a stable hostname. `custom_domain = true`
 # tells wrangler to use the Workers Custom Domains API, which auto-
 # provisions both the DNS record in the `jinkunchen.com` zone AND the
