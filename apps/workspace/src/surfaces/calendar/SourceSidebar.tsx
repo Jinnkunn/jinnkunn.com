@@ -7,13 +7,17 @@ import type { Calendar, CalendarSource } from "./types";
 export function SourceSidebar({
   sources,
   calendarsBySource,
-  selected,
-  onToggle,
+  visible,
+  published,
+  onToggleVisible,
+  onTogglePublished,
 }: {
   sources: CalendarSource[];
   calendarsBySource: Map<string, Calendar[]>;
-  selected: Set<string>;
-  onToggle: (id: string) => void;
+  visible: Set<string>;
+  published: Set<string>;
+  onToggleVisible: (id: string) => void;
+  onTogglePublished: (id: string) => void;
 }) {
   return (
     <aside
@@ -41,20 +45,36 @@ export function SourceSidebar({
             <ul className="m-0 p-0 list-none flex flex-col gap-0.5">
               {cals.map((cal) => (
                 <li key={cal.id}>
-                  <label className="flex items-center gap-2 px-1.5 py-1 rounded text-[12.5px] text-text-primary hover:bg-bg-surface-alt cursor-pointer">
-                    <input
-                      type="checkbox"
-                      style={{ accentColor: cal.colorHex }}
-                      checked={selected.has(cal.id)}
-                      onChange={() => onToggle(cal.id)}
-                    />
-                    <span
-                      className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                      style={{ background: cal.colorHex }}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{cal.title}</span>
-                  </label>
+                  <div className="calendar-source-row">
+                    <label className="calendar-source-row__main">
+                      <input
+                        type="checkbox"
+                        style={{ accentColor: cal.colorHex }}
+                        checked={visible.has(cal.id)}
+                        onChange={() => onToggleVisible(cal.id)}
+                        title="Show in Workspace"
+                      />
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                        style={{ background: cal.colorHex }}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{cal.title}</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="calendar-source-row__publish"
+                      data-active={published.has(cal.id) ? "true" : "false"}
+                      onClick={() => onTogglePublished(cal.id)}
+                      title={
+                        published.has(cal.id)
+                          ? "Included on public /calendar"
+                          : "Excluded from public /calendar"
+                      }
+                    >
+                      Web
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

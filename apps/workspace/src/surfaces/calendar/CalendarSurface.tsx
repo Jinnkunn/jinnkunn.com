@@ -86,6 +86,9 @@ export function CalendarSurface() {
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<Set<string>>(
     new Set(),
   );
+  const [publishedCalendarIds, setPublishedCalendarIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [publishMetadata, setPublishMetadata] =
@@ -102,6 +105,8 @@ export function CalendarSurface() {
     error: null,
   });
   const lastAutoSyncKeyRef = useRef("");
+  const initializedVisibleCalendarsRef = useRef(false);
+  const initializedPublishedCalendarsRef = useRef(false);
 
   // Refetch whenever the user pages forward/back or switches view —
   // each combination implies a different EventKit query window.
@@ -147,11 +152,22 @@ export function CalendarSurface() {
       ]);
       setSources(src);
       setCalendars(cal);
-      // Select-all the first time we see calendars; preserve any prior
-      // user choice on subsequent reloads.
+      // Select-all the first time we see calendars; preserve deliberate
+      // user choices afterwards. App visibility and website publishing are
+      // separate: hiding a calendar in Workspace must not remove it from
+      // /calendar.
       setSelectedCalendarIds((prev) =>
-        prev.size === 0 ? new Set(cal.map((c) => c.id)) : prev,
+        initializedVisibleCalendarsRef.current
+          ? prev
+          : new Set(cal.map((c) => c.id)),
       );
+      initializedVisibleCalendarsRef.current = true;
+      setPublishedCalendarIds((prev) =>
+        initializedPublishedCalendarsRef.current
+          ? prev
+          : new Set(cal.map((c) => c.id)),
+      );
+      initializedPublishedCalendarsRef.current = true;
       const evs = await calendarFetchEvents({
         startsAt: range.startsAt,
         endsAt: range.endsAt,
@@ -214,10 +230,14 @@ export function CalendarSurface() {
     () => events.filter((e) => selectedCalendarIds.has(e.calendarId)),
     [events, selectedCalendarIds],
   );
+  const publishedEvents = useMemo(
+    () => events.filter((e) => publishedCalendarIds.has(e.calendarId)),
+    [events, publishedCalendarIds],
+  );
 
   const publishSummary = useMemo(
-    () => summarizePublishVisibility(visibleEvents, publishMetadata),
-    [publishMetadata, visibleEvents],
+    () => summarizePublishVisibility(publishedEvents, publishMetadata),
+    [publishMetadata, publishedEvents],
   );
   const publicEventCount =
     publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
@@ -228,6 +248,15 @@ export function CalendarSurface() {
 
   const toggleCalendar = (id: string) => {
     setSelectedCalendarIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const togglePublishedCalendar = (id: string) => {
+    setPublishedCalendarIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -275,9 +304,12 @@ export function CalendarSurface() {
     try {
       const snapshotEvents = await calendarFetchEvents({
         ...publishWindow,
-        calendarIds: [...selectedCalendarIds],
+        calendarIds: [...publishedCalendarIds],
       });
-      const mergedEvents = mergeCalendarEvents(snapshotEvents, visibleEvents);
+      const currentPublishedEvents = visibleEvents.filter((event) =>
+        publishedCalendarIds.has(event.calendarId),
+      );
+      const mergedEvents = mergeCalendarEvents(snapshotEvents, currentPublishedEvents);
       const projectedRange = {
         startsAt:
           Date.parse(range.startsAt) < Date.parse(publishWindow.startsAt)
@@ -331,27 +363,27 @@ export function CalendarSurface() {
     auth,
     calendarsById,
     publishMetadata,
+    publishedCalendarIds,
     range.endsAt,
     range.startsAt,
     rulesLoaded,
-    selectedCalendarIds,
     visibleEvents,
   ]);
 
   const autoSyncKey = useMemo(
     () =>
       JSON.stringify({
-        calendarIds: [...selectedCalendarIds].sort(),
+        publishedCalendarIds: [...publishedCalendarIds].sort(),
         metadata: publishMetadata,
         rulesLoaded,
         loadState,
       }),
-    [loadState, publishMetadata, rulesLoaded, selectedCalendarIds],
+    [loadState, publishMetadata, publishedCalendarIds, rulesLoaded],
   );
 
   useEffect(() => {
     if (!rulesLoaded || loadState !== "ready" || !isAuthorized(auth)) return;
-    if (selectedCalendarIds.size === 0 || calendarsById.size === 0) return;
+    if (publishedCalendarIds.size === 0 || calendarsById.size === 0) return;
     if (lastAutoSyncKeyRef.current === autoSyncKey) return;
     const id = window.setTimeout(() => {
       lastAutoSyncKeyRef.current = autoSyncKey;
@@ -363,8 +395,8 @@ export function CalendarSurface() {
     autoSyncKey,
     calendarsById.size,
     loadState,
+    publishedCalendarIds.size,
     rulesLoaded,
-    selectedCalendarIds.size,
     syncCalendarProjection,
   ]);
 
@@ -444,8 +476,10 @@ export function CalendarSurface() {
             <SourceSidebar
               sources={sources}
               calendarsBySource={calendarsBySource}
-              selected={selectedCalendarIds}
-              onToggle={toggleCalendar}
+              visible={selectedCalendarIds}
+              published={publishedCalendarIds}
+              onToggleVisible={toggleCalendar}
+              onTogglePublished={togglePublishedCalendar}
             />
             <ViewPane
               view={view}

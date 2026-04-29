@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
+import { useDragReorder } from "./shared/useDragReorder";
 import type { ConfigSourceVersion, NavRow } from "./types";
 import {
   clone,
@@ -144,6 +145,26 @@ export function NavigationPanel() {
         if (from < 0 || to < 0 || to >= rows.length) return prev;
         const nextRows = rows.slice();
         [nextRows[from], nextRows[to]] = [nextRows[to], nextRows[from]];
+        const next = { ...prev };
+        nextRows.forEach((row, index) => {
+          next[row.rowId] = { ...row, order: (index + 1) * 10 };
+        });
+        return next;
+      });
+    },
+    [baseRows],
+  );
+
+  const reorderGroup = useCallback(
+    (group: "top" | "more", from: number, to: number) => {
+      setDrafts((prev) => {
+        const rows = sortedRows(baseRows, prev, group);
+        if (from < 0 || to < 0 || from >= rows.length || to >= rows.length) {
+          return prev;
+        }
+        const nextRows = rows.slice();
+        const [moved] = nextRows.splice(from, 1);
+        nextRows.splice(to, 0, moved);
         const next = { ...prev };
         nextRows.forEach((row, index) => {
           next[row.rowId] = { ...row, order: (index + 1) * 10 };
@@ -367,39 +388,65 @@ export function NavigationPanel() {
 
       <NavigationGroup
         title="Top bar"
+        group="top"
         rows={topRows}
         baseRows={baseRows}
         readOnly={productionReadOnly}
         onMove={moveRow}
+        onReorder={reorderGroup}
         onUpdate={updateDraft}
       />
       <NavigationGroup
         title="More menu"
+        group="more"
         rows={moreRows}
         baseRows={baseRows}
         readOnly={productionReadOnly}
         onMove={moveRow}
+        onReorder={reorderGroup}
         onUpdate={updateDraft}
       />
+      <section className="navigation-editor__preview" aria-label="Navigation preview">
+        <header>
+          <h2>Preview</h2>
+          <span>enabled links only</span>
+        </header>
+        <nav>
+          {[...topRows, ...moreRows]
+            .filter((row) => row.enabled)
+            .map((row) => (
+              <a href={row.href || "#"} key={row.rowId}>
+                {row.label || "Untitled"}
+              </a>
+            ))}
+        </nav>
+      </section>
     </section>
   );
 }
 
 function NavigationGroup({
   title,
+  group,
   rows,
   baseRows,
   readOnly,
   onMove,
+  onReorder,
   onUpdate,
 }: {
   title: string;
+  group: "top" | "more";
   rows: NavRow[];
   baseRows: NavRow[];
   readOnly: boolean;
   onMove: (rowId: string, direction: "up" | "down") => void;
+  onReorder: (group: "top" | "more", from: number, to: number) => void;
   onUpdate: <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => void;
 }) {
+  const { getHandleProps, getRowProps } = useDragReorder(rows.length, (from, to) =>
+    onReorder(group, from, to),
+  );
   return (
     <section className="navigation-editor__group">
       <header>
@@ -414,15 +461,29 @@ function NavigationGroup({
             const base = baseRows.find((item) => item.rowId === row.rowId);
             const dirty = base ? isNavDirty(base, row) : false;
             return (
-              <article className="navigation-editor__row" key={row.rowId} data-dirty={dirty ? "true" : "false"}>
+              <article
+                className="navigation-editor__row"
+                key={row.rowId}
+                data-dirty={dirty ? "true" : "false"}
+                {...getRowProps(index)}
+              >
                 <div className="navigation-editor__order">
+                  <button
+                    type="button"
+                    className="navigation-editor__drag-handle"
+                    disabled={readOnly}
+                    title="Drag to reorder"
+                    {...(!readOnly ? getHandleProps(index) : {})}
+                  >
+                    ⋮⋮
+                  </button>
                   <button
                     type="button"
                     className="btn btn--ghost"
                     disabled={readOnly || index === 0}
                     onClick={() => onMove(row.rowId, "up")}
                   >
-                    Up
+                    ↑
                   </button>
                   <button
                     type="button"
@@ -430,7 +491,7 @@ function NavigationGroup({
                     disabled={readOnly || index === rows.length - 1}
                     onClick={() => onMove(row.rowId, "down")}
                   >
-                    Down
+                    ↓
                   </button>
                 </div>
                 <div className="navigation-editor__fields">

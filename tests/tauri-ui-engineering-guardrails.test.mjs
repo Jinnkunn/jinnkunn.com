@@ -357,7 +357,8 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(pipeline, /Production promotion remains explicit/);
   assert.match(pipeline, /D1 source has no branch diff/);
   assert.match(releasePanel, /PROMOTE_STAGING_CONTENT=1 npm run release:prod/);
-  assert.match(releasePanel, /Copy Production Command/);
+  assert.match(releasePanel, /PromoteToProductionButton/);
+  assert.match(releasePanel, /Advanced command fallback/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
   assert.match(releasePanel, /Promotion Checklist/);
   assert.match(releasePanel, /Environment comparison/);
