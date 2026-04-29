@@ -50,6 +50,15 @@ export function debugSetTrafficLights(x: number, y: number): Promise<void> {
   return invoke("debug_set_traffic_lights", { x, y });
 }
 
+/** Open an http(s) URL in the user's default browser. The Tauri webview
+ * doesn't honour `<a target="_blank">` on its own; this routes through
+ * the Rust `open` crate so external links land in Safari / Chrome /
+ * Firefox the way the operator expects. The Rust side validates the
+ * scheme, so passing a `javascript:` or `file:` URL no-ops. */
+export function openExternalUrl(url: string): Promise<void> {
+  return invoke("open_external_url", { url });
+}
+
 /** Raw keyring access — prefer `createNamespacedSecureStorage` in
  * lib/secureStorage.ts so feature modules don't collide on key names. */
 export function secureStoreSet(key: string, value: string): Promise<void> {
