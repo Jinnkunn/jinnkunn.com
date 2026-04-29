@@ -168,6 +168,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /data-selected/);
   assert.match(documentEditor, /Raw MDX fallback/);
   assert.match(documentEditor, /rawBlockCount/);
+  assert.match(documentEditor, /EditorDiagnosticsPanel/);
+  assert.match(documentEditor, /collectEditorDiagnostics/);
+  assert.match(documentEditor, /onReplaceWithBlocks/);
   // Slash-menu rendering moved into the per-block TipTap component when
   // paragraph migrated off the textarea. The dispatcher still owns
   // SLASH_COMMANDS + matching, but the menu element + className are
@@ -183,6 +186,10 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(richTextBlock, /LinkInspectorPanel/);
   assert.match(richTextBlock, /AssetLibraryPicker/);
   assert.match(richTextBlock, /findIconLinkEntryForHref/);
+  assert.match(richTextBlock, /markdownShortcutBlock/);
+  assert.match(richTextBlock, /shouldPromotePlainTextPaste/);
+  assert.match(richTextBlock, /onPaste/);
+  assert.doesNotMatch(richTextBlock, /window\.prompt\("Link URL"/);
   assert.match(iconRegistry, /icon-link-registry\.json/);
   assert.match(blocks, /export function parseMdxBlocks/);
   assert.match(blocks, /export function serializeMdxBlocks/);
@@ -194,6 +201,7 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(controller, /useConfirmingBack/);
   assert.match(styles, /\.mdx-document-editor__layout/);
   assert.match(styles, /\.mdx-document-block/);
+  assert.match(styles, /\.mdx-document-diagnostics/);
   assert.match(styles, /\.mdx-document-slash-menu/);
   assert.match(styles, /data-link-style="icon"/);
   assert.match(
@@ -309,6 +317,9 @@ test("tauri-ui-engineering: shared content editor stays visual-first", async () 
   assert.match(previewRoute, /renderComponentPreviewElement/);
   assert.match(blockRenderers, /More details/);
   assert.match(blockRenderers, /detailed editing lives in the unified BlockInspector/);
+  assert.match(blockRenderers, /LinkItemsInlineEditor/);
+  assert.match(blockRenderers, /mdx-document-table-block__cell/);
+  assert.match(blockRenderers, /mdx-document-hero-block__title-input/);
   assert.match(blockRenderers, /Select this block to add links/);
   assert.match(blockRenderers, /Select this block to add cards/);
   assert.match(blockRenderers, /Select this block to configure columns/);

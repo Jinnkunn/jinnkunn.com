@@ -229,6 +229,26 @@ function main() {
     "RichTextEditableBlock link inspector",
   );
   assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
+    "markdownShortcutBlock",
+    "RichTextEditableBlock markdown shortcuts",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/rich-text-editable-block.tsx"),
+    "shouldPromotePlainTextPaste",
+    "RichTextEditableBlock paste import",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx"),
+    "EditorDiagnosticsPanel",
+    "MdxDocumentEditor diagnostics",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/mdx-block-renderers.tsx"),
+    "LinkItemsInlineEditor",
+    "structured block inline editing",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/icon-link-registry.ts"),
     "icon-link-registry.json",
     "shared icon link registry",
@@ -549,6 +569,11 @@ function main() {
     workspaceCss,
     ".mdx-document-slash-menu button[data-active=\"true\"]",
     "workspace editor slash menu active state CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".mdx-document-diagnostics",
+    "workspace editor diagnostics CSS",
   );
   assertIncludes(
     workspaceCss,

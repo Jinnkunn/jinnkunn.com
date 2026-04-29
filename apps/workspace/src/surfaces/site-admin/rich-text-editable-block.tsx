@@ -36,7 +36,12 @@ import {
   type IconLinkRegistryEntry,
 } from "./icon-link-registry";
 import { MentionPicker, type MentionTarget } from "./mention-picker";
-import type { MdxBlock, MdxBlockType } from "./mdx-blocks";
+import {
+  createMdxBlock,
+  parseMdxBlocks,
+  type MdxBlock,
+  type MdxBlockType,
+} from "./mdx-blocks";
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
 import { uploadImageFile } from "./assets-upload";
 import type { NormalizedApiResponse } from "./types";
@@ -66,14 +71,86 @@ export interface RichTextEditableBlockProps {
   onChooseSlashCommand: (command: SlashCommand) => void;
   onDuplicate: () => void;
   onInsertParagraphAfter: () => void;
+  onInsertBlocksAfter: (blocks: MdxBlock[]) => void;
   onMoveDown: () => void;
   onMoveUp: () => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
+  onReplaceWithBlocks: (blocks: MdxBlock[]) => void;
   onSlashCommand: (value: string) => boolean;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
   readOnly?: boolean;
   request: RequestFn;
+}
+
+type KeyboardLinkMode = "regular" | "icon";
+
+function isProbablyUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /\s/.test(trimmed)) return false;
+  if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return true;
+  if (/^\/(?!\/)/.test(trimmed)) return true;
+  return /^[\w.-]+\.[a-z]{2,}(?:[/?#].*)?$/i.test(trimmed);
+}
+
+function isValidPastedBlock(block: MdxBlock): boolean {
+  if (block.type === "paragraph") return block.text.trim().length > 0;
+  if (block.type === "heading") return block.text.trim().length > 0;
+  return true;
+}
+
+function markdownShortcutBlock(text: string): MdxBlock | null {
+  const marker = text.trim();
+  if (marker === "#") return { ...createMdxBlock("heading"), level: 1, text: "" };
+  if (marker === "##") return { ...createMdxBlock("heading"), level: 2, text: "" };
+  if (marker === "###") return { ...createMdxBlock("heading"), level: 3, text: "" };
+  if (marker === "-" || marker === "*") {
+    return { ...createMdxBlock("list"), listStyle: "bulleted", text: "" };
+  }
+  if (/^\d+\.$/.test(marker)) {
+    return { ...createMdxBlock("list"), listStyle: "numbered", text: "" };
+  }
+  if (marker === ">") return createMdxBlock("quote");
+  if (marker === "[ ]" || marker === "[]") return createMdxBlock("todo");
+  if (/^\[[xX]\]$/.test(marker)) {
+    return { ...createMdxBlock("todo"), checkedLines: [0] };
+  }
+  if (marker === "---" || marker === "***") return createMdxBlock("divider");
+  if (marker === "```") return createMdxBlock("code");
+  return null;
+}
+
+function shouldPromotePlainTextPaste(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("\n\n")) return true;
+  if (/^```/m.test(trimmed)) return true;
+  if (/^\s{0,3}(#{1,3}\s+|[-*]\s+|\d+\.\s+|>\s+|- \[[ xX]\]\s+)/m.test(trimmed))
+    return true;
+  const lines = trimmed.split("\n");
+  return (
+    lines.length >= 2 &&
+    lines.every((line) => line.trim().startsWith("|")) &&
+    /\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|/.test(lines[1] ?? "")
+  );
+}
+
+function blocksFromPlainTextPaste(text: string): MdxBlock[] {
+  return parseMdxBlocks(text)
+    .filter(isValidPastedBlock)
+    .map((block) => ({ ...block, blankLinesBefore: undefined }));
+}
+
+function imageFilesFromClipboard(event: ClipboardEvent): File[] {
+  const items = Array.from(event.clipboardData?.items ?? []);
+  const fromItems = items
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+  if (fromItems.length > 0) return fromItems;
+  return Array.from(event.clipboardData?.files ?? []).filter((file) =>
+    file.type.startsWith("image/"),
+  );
 }
 
 function placeholderFor(block: MdxBlock): string {
@@ -103,10 +180,12 @@ export function RichTextEditableBlock({
   onDuplicate,
   onFocusInput,
   onInsertParagraphAfter,
+  onInsertBlocksAfter,
   onMoveDown,
   onMoveUp,
   onPatch,
   onRemoveEmpty,
+  onReplaceWithBlocks,
   onSlashCommand,
   onTurnInto,
   readOnly = false,
@@ -121,6 +200,8 @@ export function RichTextEditableBlock({
   const [editor, setEditor] = useState<Editor | null>(null);
   const [selection, setSelection] = useState<{ from: number; to: number } | null>(null);
   const [mention, setMention] = useState<{ from: number } | null>(null);
+  const [keyboardLinkMode, setKeyboardLinkMode] =
+    useState<KeyboardLinkMode | null>(null);
   const [slashCursor, setSlashCursor] = useState(0);
   // Force re-render on every selection / doc update so anchor coords stay
   // pinned to the current caret. Cheap — the editor only fires these on
@@ -133,6 +214,29 @@ export function RichTextEditableBlock({
   useEffect(() => {
     setSlashCursor(0);
   }, [block.text, slashCommands.length]);
+
+  const uploadClipboardImages = useCallback(
+    async (files: File[]) => {
+      const imageBlocks: MdxBlock[] = [];
+      for (const file of files) {
+        const result = await uploadImageFile({ file, request });
+        if (!result.ok) {
+          if (typeof window !== "undefined") {
+            window.alert(`Image paste failed: ${result.error}`);
+          }
+          continue;
+        }
+        rememberRecentAsset(result.asset, result.filename);
+        imageBlocks.push({
+          ...createMdxBlock("image"),
+          alt: file.name.replace(/\.[^.]+$/, "") || result.filename,
+          url: result.asset.url,
+        });
+      }
+      if (imageBlocks.length > 0) onInsertBlocksAfter(imageBlocks);
+    },
+    [onInsertBlocksAfter, request],
+  );
 
   // Subscribe to TipTap selection / doc updates so the format toolbar
   // anchors to the live caret and its mark indicators reflect the current
@@ -199,6 +303,32 @@ export function RichTextEditableBlock({
         onMoveDown();
         return;
       }
+      if (!meta && event.altKey && event.key === "ArrowUp") {
+        event.preventDefault();
+        onMoveUp();
+        return;
+      }
+      if (!meta && event.altKey && event.key === "ArrowDown") {
+        event.preventDefault();
+        onMoveDown();
+        return;
+      }
+
+      if (
+        event.key === " " &&
+        !meta &&
+        !event.altKey &&
+        !event.shiftKey &&
+        block.type === "paragraph" &&
+        editor.state.selection.empty
+      ) {
+        const shortcutBlock = markdownShortcutBlock(editor.getText());
+        if (shortcutBlock) {
+          event.preventDefault();
+          onReplaceWithBlocks([shortcutBlock]);
+          return;
+        }
+      }
 
       if (showSlashMenu && !meta && !event.altKey) {
         if (!event.shiftKey && event.key === "ArrowDown") {
@@ -231,6 +361,13 @@ export function RichTextEditableBlock({
       ) {
         event.preventDefault();
         onTurnInto("heading", Number(event.key) as 1 | 2 | 3);
+        return;
+      }
+
+      if (meta && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setKeyboardLinkMode(event.shiftKey ? "icon" : "regular");
+        setRevision((r) => r + 1);
         return;
       }
 
@@ -268,18 +405,20 @@ export function RichTextEditableBlock({
           editor.chain().focus().toggleCode().run();
           return;
         }
-        if (lowered === "k") {
-          event.preventDefault();
-          const url =
-            typeof window !== "undefined" ? window.prompt("Link URL", "https://") : null;
-          if (url) {
-            editor.chain().focus().setLink({ href: url }).run();
-          }
-          return;
-        }
       }
 
       if (event.key === "Enter" && !event.shiftKey) {
+        if (
+          block.type === "paragraph" &&
+          editor.state.selection.empty
+        ) {
+          const shortcutBlock = markdownShortcutBlock(editor.getText());
+          if (shortcutBlock && (shortcutBlock.type === "divider" || shortcutBlock.type === "code")) {
+            event.preventDefault();
+            onReplaceWithBlocks([shortcutBlock]);
+            return;
+          }
+        }
         // list blocks let TipTap split the paragraph — each split becomes
         // a new line in the markdown serializer (which prepends the bullet
         // / number on save). All other kinds intercept Enter to either
@@ -318,6 +457,7 @@ export function RichTextEditableBlock({
       onChooseSlashCommand,
       onDuplicate,
       onInsertParagraphAfter,
+      onReplaceWithBlocks,
       onMoveDown,
       onMoveUp,
       onPatch,
@@ -328,6 +468,54 @@ export function RichTextEditableBlock({
       showSlashMenu,
       slashCommands,
       slashCursor,
+    ],
+  );
+
+  const onPaste = useCallback(
+    (event: ClipboardEvent) => {
+      const editor = richRef.current?.getEditor();
+      if (!editor || readOnly) return false;
+
+      const imageFiles = imageFilesFromClipboard(event);
+      if (imageFiles.length > 0) {
+        event.preventDefault();
+        void uploadClipboardImages(imageFiles);
+        return true;
+      }
+
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      const trimmed = text.trim();
+      if (!trimmed) return false;
+
+      if (editor.isEmpty && isProbablyUrl(trimmed)) {
+        event.preventDefault();
+        onReplaceWithBlocks([
+          {
+            ...createMdxBlock("bookmark"),
+            text: "",
+            title: "",
+            url: trimmed,
+          },
+        ]);
+        return true;
+      }
+
+      if (!shouldPromotePlainTextPaste(text)) return false;
+      const pastedBlocks = blocksFromPlainTextPaste(text);
+      if (pastedBlocks.length === 0) return false;
+      event.preventDefault();
+      if (editor.isEmpty || !editor.state.selection.empty) {
+        onReplaceWithBlocks(pastedBlocks);
+      } else {
+        onInsertBlocksAfter(pastedBlocks);
+      }
+      return true;
+    },
+    [
+      onInsertBlocksAfter,
+      onReplaceWithBlocks,
+      readOnly,
+      uploadClipboardImages,
     ],
   );
 
@@ -365,6 +553,21 @@ export function RichTextEditableBlock({
       return null;
     }
   }, [editor, selection]);
+
+  const keyboardLinkAnchor = useMemo<BlockPopoverAnchor>(() => {
+    if (!editor || !keyboardLinkMode) return null;
+    try {
+      const coords = editor.view.coordsAtPos(editor.state.selection.from);
+      return {
+        top: coords.top,
+        left: coords.left,
+        width: 0,
+        height: coords.bottom - coords.top,
+      };
+    } catch {
+      return null;
+    }
+  }, [editor, keyboardLinkMode]);
 
   const mentionAnchor = useMemo<BlockPopoverAnchor>(() => {
     if (!editor || !mention) return null;
@@ -434,6 +637,7 @@ export function RichTextEditableBlock({
       value={block.text}
       onChange={handleValueChange}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
       onEditorReady={setEditor}
       className={classNameFor(block)}
       ariaLabel={`${block.type} block`}
@@ -456,11 +660,16 @@ export function RichTextEditableBlock({
           onChoose={onChooseSlashCommand}
         />
       ) : null}
-      {selection && inlineAnchor && !readOnly ? (
+      {((selection && inlineAnchor) || (keyboardLinkMode && keyboardLinkAnchor)) && !readOnly ? (
         <InlineFormatToolbar
-          anchor={inlineAnchor}
+          key={keyboardLinkMode ? `keyboard-link-${keyboardLinkMode}` : "selection-toolbar"}
+          anchor={(selection && inlineAnchor) || keyboardLinkAnchor}
           editor={editor}
-          onClose={() => setSelection(null)}
+          initialLinkMode={keyboardLinkMode}
+          onClose={() => {
+            setSelection(null);
+            setKeyboardLinkMode(null);
+          }}
           request={request}
           onTurnInto={onTurnInto}
         />
@@ -492,6 +701,7 @@ export function RichTextEditableBlock({
 interface InlineFormatToolbarProps {
   anchor: BlockPopoverAnchor;
   editor: Editor | null;
+  initialLinkMode?: KeyboardLinkMode | null;
   onClose: () => void;
   request: RequestFn;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
@@ -563,6 +773,7 @@ function textMarkNamesForEditor(editor: Editor): string[] {
 function InlineFormatToolbar({
   anchor,
   editor,
+  initialLinkMode = null,
   onClose,
   request,
   onTurnInto,
@@ -574,13 +785,12 @@ function InlineFormatToolbar({
     event.preventDefault();
   };
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  const [linkInspectorOpen, setLinkInspectorOpen] = useState(false);
+  const [linkInspectorOpen, setLinkInspectorOpen] = useState(Boolean(initialLinkMode));
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [linkDraft, setLinkDraft] = useState<LinkDraft>(() => ({
-    href: "",
-    iconMode: false,
-    iconUrl: "",
-    text: "",
+    ...(editor
+      ? draftFromEditor(editor, initialLinkMode === "icon")
+      : { href: "", iconMode: false, iconUrl: "", text: "" }),
   }));
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const iconFileInputRef = useRef<HTMLInputElement>(null);
@@ -598,6 +808,11 @@ function InlineFormatToolbar({
     setLinkDraft(draftFromEditor(editor, forceIcon));
     setLinkInspectorOpen(true);
   };
+  const closeLinkInspector = () => {
+    setLinkInspectorOpen(false);
+    setAssetPickerOpen(false);
+    if (initialLinkMode) onClose();
+  };
   const onLink = () => openLinkInspector(false);
   const onIconLink = () => openLinkInspector(true);
   const applyLinkDraft = () => {
@@ -605,7 +820,7 @@ function InlineFormatToolbar({
     const label = linkDraft.text || currentSelectionOrLinkText(editor) || href;
     if (!href) {
       editor.chain().focus().extendMarkRange("link").unsetLink().unsetInlineLinkStyle().run();
-      setLinkInspectorOpen(false);
+      closeLinkInspector();
       return;
     }
 
@@ -664,14 +879,12 @@ function InlineFormatToolbar({
       }
       chain.run();
     }
-    setLinkInspectorOpen(false);
-    setAssetPickerOpen(false);
+    closeLinkInspector();
   };
   const clearLink = () => {
     editor.chain().focus().extendMarkRange("link").unsetLink().unsetInlineLinkStyle().run();
     setLinkDraft({ href: "", iconMode: false, iconUrl: "", text: "" });
-    setLinkInspectorOpen(false);
-    setAssetPickerOpen(false);
+    closeLinkInspector();
   };
   const onUploadIcon = () => {
     setLinkDraft((draft) => ({ ...draft, iconMode: true }));
@@ -845,10 +1058,7 @@ function InlineFormatToolbar({
             onApply={applyLinkDraft}
             onAssetPick={() => setAssetPickerOpen((open) => !open)}
             onClear={clearLink}
-            onClose={() => {
-              setLinkInspectorOpen(false);
-              setAssetPickerOpen(false);
-            }}
+            onClose={closeLinkInspector}
             onDraftChange={setLinkDraft}
             onKnownIcon={chooseKnownIcon}
             onUploadIcon={onUploadIcon}

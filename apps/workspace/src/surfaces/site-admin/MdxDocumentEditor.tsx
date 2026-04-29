@@ -601,6 +601,172 @@ function isBlockVisuallyEmpty(block: MdxBlock): boolean {
   return false;
 }
 
+type EditorDiagnosticSeverity = "info" | "warning";
+
+interface EditorDiagnostic {
+  blockId: string;
+  detail: string;
+  id: string;
+  severity: EditorDiagnosticSeverity;
+  title: string;
+}
+
+function isLikelySafeUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return true;
+  if (/^\/(?!\/)/.test(trimmed)) return true;
+  if (/^(#|\.{0,2}\/)/.test(trimmed)) return true;
+  return false;
+}
+
+function collectInlineLinkDiagnostics(block: MdxBlock, out: EditorDiagnostic[]) {
+  const markdownLinkRe = /\[[^\]]+\]\(([^)]+)\)/g;
+  for (const match of block.text.matchAll(markdownLinkRe)) {
+    const href = match[1] ?? "";
+    if (!isLikelySafeUrl(href)) {
+      out.push({
+        blockId: block.id,
+        detail: href,
+        id: `${block.id}:link:${out.length}`,
+        severity: "warning",
+        title: "Link may be invalid",
+      });
+    }
+  }
+}
+
+function collectEditorDiagnostics(blocks: MdxBlock[]): EditorDiagnostic[] {
+  const out: EditorDiagnostic[] = [];
+  const visit = (block: MdxBlock) => {
+    collectInlineLinkDiagnostics(block, out);
+    if (block.type === "raw") {
+      out.push({
+        blockId: block.id,
+        detail: "Raw MDX can still publish, but it is not fully WYSIWYG.",
+        id: `${block.id}:raw`,
+        severity: "info",
+        title: "Raw MDX block",
+      });
+    }
+    if (block.type === "image" && block.url && !block.alt?.trim()) {
+      out.push({
+        blockId: block.id,
+        detail: block.url,
+        id: `${block.id}:image-alt`,
+        severity: "warning",
+        title: "Image is missing alt text",
+      });
+    }
+    if (
+      (block.type === "bookmark" ||
+        block.type === "embed" ||
+        block.type === "file") &&
+      block.url &&
+      !isLikelySafeUrl(block.url)
+    ) {
+      out.push({
+        blockId: block.id,
+        detail: block.url,
+        id: `${block.id}:url`,
+        severity: "warning",
+        title: `${BLOCK_TYPE_LABELS[block.type]} URL may be invalid`,
+      });
+    }
+    if (block.type === "page-link" && !block.pageSlug?.trim()) {
+      out.push({
+        blockId: block.id,
+        detail: "Choose a target page slug before publishing.",
+        id: `${block.id}:page-link`,
+        severity: "warning",
+        title: "Page link has no target",
+      });
+    }
+    if (block.type === "table" && isBlockVisuallyEmpty(block)) {
+      out.push({
+        blockId: block.id,
+        detail: "Empty table blocks are omitted when saved.",
+        id: `${block.id}:table-empty`,
+        severity: "info",
+        title: "Empty table",
+      });
+    }
+    if (block.type === "news-entry" && !/^\d{4}-\d{2}-\d{2}$/.test(block.dateIso ?? "")) {
+      out.push({
+        blockId: block.id,
+        detail: "Use YYYY-MM-DD so the published page can sort this entry.",
+        id: `${block.id}:news-date`,
+        severity: "warning",
+        title: "News entry date is missing",
+      });
+    }
+    if (
+      block.type === "link-list-block" ||
+      block.type === "featured-pages-block" ||
+      block.type === "teaching-links" ||
+      block.type === "publications-profile-links"
+    ) {
+      for (const [index, item] of (block.linkItems ?? []).entries()) {
+        if (!item.label.trim() || !item.href.trim()) {
+          out.push({
+            blockId: block.id,
+            detail: `Row ${index + 1} needs both label and URL.`,
+            id: `${block.id}:link-item:${index}`,
+            severity: "warning",
+            title: "Link row is incomplete",
+          });
+        } else if (!isLikelySafeUrl(item.href)) {
+          out.push({
+            blockId: block.id,
+            detail: item.href,
+            id: `${block.id}:link-item-url:${index}`,
+            severity: "warning",
+            title: "Link row URL may be invalid",
+          });
+        }
+      }
+    }
+    for (const child of block.children ?? []) visit(child);
+  };
+  for (const block of blocks) visit(block);
+  return out;
+}
+
+function EditorDiagnosticsPanel({
+  diagnostics,
+}: {
+  diagnostics: EditorDiagnostic[];
+}) {
+  if (diagnostics.length === 0) return null;
+  const warningCount = diagnostics.filter((item) => item.severity === "warning").length;
+  return (
+    <details className="mdx-document-diagnostics" open={warningCount > 0}>
+      <summary>
+        Editor checks
+        <span>
+          {warningCount > 0
+            ? `${warningCount} warning${warningCount === 1 ? "" : "s"}`
+            : `${diagnostics.length} note${diagnostics.length === 1 ? "" : "s"}`}
+        </span>
+      </summary>
+      <ul>
+        {diagnostics.slice(0, 8).map((item) => (
+          <li key={item.id} data-severity={item.severity}>
+            <strong>{item.title}</strong>
+            <span>{item.detail}</span>
+          </li>
+        ))}
+        {diagnostics.length > 8 ? (
+          <li data-severity="info">
+            <strong>{diagnostics.length - 8} more checks</strong>
+            <span>Open the affected blocks to review the remaining notes.</span>
+          </li>
+        ) : null}
+      </ul>
+    </details>
+  );
+}
+
 function findBlockInTree(blocks: MdxBlock[], id: string): MdxBlock | null {
   for (const block of blocks) {
     if (block.id === id) return block;
@@ -720,6 +886,7 @@ export function BlocksEditor({
     () => (selectedBlockId ? findBlockInTree(blocks, selectedBlockId) : null),
     [blocks, selectedBlockId],
   );
+  const diagnostics = useMemo(() => collectEditorDiagnostics(blocks), [blocks]);
   const inspectorBlock = selectedBlock && blockHasInspector(selectedBlock)
     ? selectedBlock
     : null;
@@ -823,6 +990,8 @@ export function BlocksEditor({
           if (files.length > 0) void uploadDroppedImages(files);
         }}
       >
+        <EditorDiagnosticsPanel diagnostics={diagnostics} />
+
         <EditableBlocksList
           blocks={blocks}
           depth={0}
@@ -977,6 +1146,32 @@ function EditableBlocksList({
       next.splice(index + 1, 0, block);
       commitBlocks(next);
       requestBlockFocus(block.id);
+    },
+    [blocks, commitBlocks, requestBlockFocus],
+  );
+
+  const insertBlocksAfter = useCallback(
+    (index: number, insertedBlocks: MdxBlock[]) => {
+      const normalized = insertedBlocks.length > 0
+        ? insertedBlocks
+        : [createMdxBlock("paragraph")];
+      const next = blocks.slice();
+      next.splice(index + 1, 0, ...normalized);
+      commitBlocks(next);
+      requestBlockFocus(normalized[0]?.id ?? "");
+    },
+    [blocks, commitBlocks, requestBlockFocus],
+  );
+
+  const replaceBlockWithBlocks = useCallback(
+    (index: number, insertedBlocks: MdxBlock[]) => {
+      const normalized = insertedBlocks.length > 0
+        ? insertedBlocks
+        : [createMdxBlock("paragraph")];
+      const next = blocks.slice();
+      next.splice(index, 1, ...normalized);
+      commitBlocks(next);
+      requestBlockFocus(normalized[0]?.id ?? "");
     },
     [blocks, commitBlocks, requestBlockFocus],
   );
@@ -1231,7 +1426,9 @@ function EditableBlocksList({
             }}
             onFocusInput={(node) => registerBlockInput(block.id, node)}
             onInsertParagraphAfter={() => insertParagraphAfter(index)}
+            onInsertBlocksAfter={(newBlocks) => insertBlocksAfter(index, newBlocks)}
             onRemoveEmpty={() => removeEmptyBlock(block.id, index)}
+            onReplaceWithBlocks={(newBlocks) => replaceBlockWithBlocks(index, newBlocks)}
             onUploadImage={(file) => void uploadImageIntoBlock(block.id, file)}
             onMoveUp={() => moveBlock(index, -1)}
             onMoveDown={() => moveBlock(index, 1)}
@@ -1295,10 +1492,12 @@ function EditableBlock({
   onDuplicate,
   onFocusInput,
   onInsertParagraphAfter,
+  onInsertBlocksAfter,
   onMoveDown,
   onMoveUp,
   onPatch,
   onRemoveEmpty,
+  onReplaceWithBlocks,
   onSlashCommand,
   onSelectBlock,
   onTurnInto,
@@ -1318,10 +1517,12 @@ function EditableBlock({
     node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
   ) => void;
   onInsertParagraphAfter: () => void;
+  onInsertBlocksAfter: (blocks: MdxBlock[]) => void;
   onMoveDown: () => void;
   onMoveUp: () => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
+  onReplaceWithBlocks: (blocks: MdxBlock[]) => void;
   onSlashCommand: (value: string) => boolean;
   onSelectBlock?: (id: string) => void;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
@@ -1370,11 +1571,13 @@ function EditableBlock({
         onDuplicate={onDuplicate}
         onFocusInput={onFocusInput as (node: HTMLElement | null) => void}
         onInsertParagraphAfter={onInsertParagraphAfter}
+        onInsertBlocksAfter={onInsertBlocksAfter}
         onMoveDown={onMoveDown}
         onMoveUp={onMoveUp}
         onPatch={onPatch}
         readOnly={readOnly}
         onRemoveEmpty={onRemoveEmpty}
+        onReplaceWithBlocks={onReplaceWithBlocks}
         onSlashCommand={onSlashCommand}
         onTurnInto={onTurnInto}
         request={request}
@@ -1402,6 +1605,16 @@ function EditableBlock({
       return;
     }
     if (meta && event.shiftKey && event.key === "ArrowDown") {
+      event.preventDefault();
+      onMoveDown();
+      return;
+    }
+    if (!meta && event.altKey && event.key === "ArrowUp") {
+      event.preventDefault();
+      onMoveUp();
+      return;
+    }
+    if (!meta && event.altKey && event.key === "ArrowDown") {
       event.preventDefault();
       onMoveDown();
       return;
