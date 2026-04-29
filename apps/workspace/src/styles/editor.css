@@ -641,6 +641,58 @@
   opacity: var(--mdx-read-only-opacity, 0.86);
 }
 
+.mdx-document-diagnostics {
+  margin: 0 0 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-secondary);
+}
+
+.mdx-document-diagnostics summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.mdx-document-diagnostics summary span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mdx-document-diagnostics ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 10px 10px 24px;
+}
+
+.mdx-document-diagnostics li {
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.mdx-document-diagnostics li[data-severity="warning"]::marker {
+  color: var(--color-danger, #b42318);
+}
+
+.mdx-document-diagnostics li strong {
+  color: var(--color-text-primary);
+  font-weight: 650;
+}
+
+.mdx-document-diagnostics li span {
+  margin-left: 6px;
+}
+
 .mdx-document-block {
   position: relative;
   display: block;
@@ -2319,6 +2371,70 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   padding: 6px 8px;
 }
 
+.mdx-document-table-block__cell:focus {
+  outline: none;
+  background: var(--color-bg-surface);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 34%, transparent);
+}
+
+.mdx-document-inline-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mdx-document-inline-fields label,
+.mdx-document-link-list-block__title-field,
+.mdx-document-link-list-block__item--editable label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mdx-document-inline-fields label > span,
+.mdx-document-link-list-block__title-field > span,
+.mdx-document-link-list-block__item--editable label > span {
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mdx-document-inline-fields input,
+.mdx-document-link-list-block__title-field input,
+.mdx-document-link-list-block__item--editable input,
+.mdx-document-link-list-block__item--editable textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.mdx-document-inline-fields input:focus,
+.mdx-document-link-list-block__title-field input:focus,
+.mdx-document-link-list-block__item--editable input:focus,
+.mdx-document-link-list-block__item--editable textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 13%, transparent);
+}
+
 /* Settings surface (Phase 5): super.so-style wrapper around Site
    config + Routes. Horizontal sub-tabs swap which underlying panel is
    mounted; the panels themselves are unchanged. */
@@ -2911,19 +3027,40 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   min-width: 0;
 }
 
+.mdx-document-hero-block__title-input,
 .mdx-document-hero-block__body strong {
   display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
   color: var(--color-text-primary);
   font-size: clamp(26px, 4vw, 42px);
   font-weight: 760;
   line-height: 1.06;
+  font-family: inherit;
+  letter-spacing: 0;
+  padding: 0;
 }
 
+.mdx-document-hero-block__subtitle-input,
 .mdx-document-hero-block__body p {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
   margin: 8px 0 0;
   color: var(--color-text-muted);
   font-size: 15px;
   line-height: 1.5;
+  font-family: inherit;
+  padding: 0;
+  resize: vertical;
+}
+
+.mdx-document-hero-block__title-input:focus,
+.mdx-document-hero-block__subtitle-input:focus {
+  outline: none;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--color-accent) 36%, transparent);
 }
 
 .mdx-document-hero-block__media {
@@ -3001,6 +3138,67 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
   background: var(--color-bg-surface);
+}
+
+.mdx-document-link-list-block__item--editable {
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    minmax(140px, 0.85fr)
+    minmax(180px, 1fr)
+    minmax(120px, 0.65fr)
+    auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.mdx-document-link-list-block__field--wide {
+  grid-column: 1 / -1;
+}
+
+.mdx-document-link-list-block__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.mdx-document-link-list-block__remove:hover,
+.mdx-document-link-list-block__remove:focus-visible {
+  outline: none;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.mdx-document-link-list-block__add {
+  align-self: flex-start;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  padding: 5px 9px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.mdx-document-link-list-block__add:hover,
+.mdx-document-link-list-block__add:focus-visible {
+  outline: none;
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+@media (max-width: 760px) {
+  .mdx-document-link-list-block__item--editable {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }
 
 /* Featured-pages variant paints compact card previews. */

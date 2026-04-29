@@ -243,7 +243,7 @@ export function BlockActionMenu({
             onClick={onMoveUp}
           >
             <span>Move up</span>
-            <kbd>⌘⇧↑</kbd>
+            <kbd>⌥↑</kbd>
           </button>
           <button
             type="button"
@@ -252,7 +252,7 @@ export function BlockActionMenu({
             onClick={onMoveDown}
           >
             <span>Move down</span>
-            <kbd>⌘⇧↓</kbd>
+            <kbd>⌥↓</kbd>
           </button>
         </div>
       )}

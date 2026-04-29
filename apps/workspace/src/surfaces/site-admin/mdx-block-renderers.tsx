@@ -18,6 +18,7 @@ import {
   createMdxBlock,
   type MdxBlock,
   type MdxEmbedKind,
+  type MdxLinkItem,
 } from "./mdx-blocks";
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
 import type { NormalizedApiResponse } from "./types";
@@ -313,9 +314,24 @@ export interface TableEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-function BaseTableEditableBlock({ block }: TableEditableBlockProps) {
+function BaseTableEditableBlock({ block, onPatch }: TableEditableBlockProps) {
   const data = block.tableData ?? { rows: [["", ""], ["", ""]], headerRow: true };
   const rows = data.rows;
+  const updateCell = (rowIdx: number, colIdx: number, value: string) => {
+    onPatch((current) => {
+      const currentData = current.tableData ?? data;
+      const nextRows = currentData.rows.map((row) => [...row]);
+      if (!nextRows[rowIdx]) return current;
+      nextRows[rowIdx][colIdx] = value;
+      return {
+        ...current,
+        tableData: {
+          ...currentData,
+          rows: nextRows,
+        },
+      };
+    });
+  };
 
   return (
     <div className="mdx-document-table-block">
@@ -329,9 +345,14 @@ function BaseTableEditableBlock({ block }: TableEditableBlockProps) {
                     key={colIdx}
                     style={{ textAlign: data.align?.[colIdx] ?? "left" }}
                   >
-                    <span className="mdx-document-table-block__cell">
-                      {cell || (rowIdx === 0 ? "Header" : "Cell")}
-                    </span>
+                    <input
+                      className="mdx-document-table-block__cell"
+                      value={cell}
+                      placeholder={rowIdx === 0 ? "Header" : "Cell"}
+                      onChange={(event) =>
+                        updateCell(rowIdx, colIdx, event.target.value)
+                      }
+                    />
                   </td>
                 ))}
               </tr>
@@ -354,6 +375,7 @@ export interface BookmarkEditableBlockProps {
 
 function BaseBookmarkEditableBlock({
   block,
+  onPatch,
 }: BookmarkEditableBlockProps) {
   const url = block.url ?? "";
   const title = block.title?.trim() || url || "Bookmark";
@@ -371,6 +393,31 @@ function BaseBookmarkEditableBlock({
           {block.description ? <p>{block.description}</p> : null}
           <span>{provider || "Select to configure bookmark"}</span>
         </div>
+      </div>
+      <div className="mdx-document-inline-fields mdx-document-inline-fields--bookmark">
+        <label>
+          <span>Title</span>
+          <input
+            value={block.title ?? ""}
+            placeholder={url ? hostLabel(url) || "Bookmark title" : "Bookmark title"}
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                title: event.target.value || undefined,
+              }))
+            }
+          />
+        </label>
+        <label>
+          <span>URL</span>
+          <input
+            value={url}
+            placeholder="https://..."
+            onChange={(event) =>
+              onPatch((current) => ({ ...current, url: event.target.value }))
+            }
+          />
+        </label>
       </div>
     </div>
   );
@@ -481,6 +528,7 @@ export interface PageLinkEditableBlockProps {
 
 function BasePageLinkEditableBlock({
   block,
+  onPatch,
 }: PageLinkEditableBlockProps) {
   const slug = block.pageSlug ?? "";
   const label = block.title?.trim() || slug || "Page link";
@@ -490,6 +538,34 @@ function BasePageLinkEditableBlock({
       <div className="mdx-document-page-link-block__current">
         <strong>{label}</strong>
         <span>{slug ? `/${slug}` : "Select this block to choose a page"}</span>
+      </div>
+      <div className="mdx-document-inline-fields mdx-document-inline-fields--page-link">
+        <label>
+          <span>Slug</span>
+          <input
+            value={slug}
+            placeholder="teaching/archive/2024-25-fall/csci3141"
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                pageSlug: event.target.value.replace(/^\/+/, ""),
+              }))
+            }
+          />
+        </label>
+        <label>
+          <span>Label</span>
+          <input
+            value={block.title ?? ""}
+            placeholder="Optional label"
+            onChange={(event) =>
+              onPatch((current) => ({
+                ...current,
+                title: event.target.value || undefined,
+              }))
+            }
+          />
+        </label>
       </div>
     </div>
   );
@@ -550,6 +626,7 @@ export interface HeroBlockEditableBlockProps {
 
 function BaseHeroBlockEditableBlock({
   block,
+  onPatch,
 }: HeroBlockEditableBlockProps) {
   const imagePosition = block.imagePosition ?? "right";
   const textAlign = block.textAlign ?? "left";
@@ -560,8 +637,26 @@ function BaseHeroBlockEditableBlock({
       data-text-align={textAlign}
     >
       <div className="mdx-document-hero-block__body">
-        <strong>{block.title?.trim() || "Hero title"}</strong>
-        {block.subtitle ? <p>{block.subtitle}</p> : null}
+        <input
+          className="mdx-document-hero-block__title-input"
+          value={block.title ?? ""}
+          placeholder="Hero title"
+          onChange={(event) =>
+            onPatch((current) => ({ ...current, title: event.target.value }))
+          }
+        />
+        <textarea
+          className="mdx-document-hero-block__subtitle-input"
+          value={block.subtitle ?? ""}
+          placeholder="Subtitle"
+          rows={2}
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              subtitle: event.target.value || undefined,
+            }))
+          }
+        />
       </div>
       {block.url && imagePosition !== "none" ? (
         <div className="mdx-document-hero-block__media">
@@ -576,18 +671,146 @@ function BaseHeroBlockEditableBlock({
 // ---------- Link list block ----------
 // Inline-config block for a row/grid/stack of links. Items live as a
 // JSON-encoded array on the tag (`<LinkListBlock items='[…]' />`) so
-// no parser-level child-JSX support is needed. The canvas renders the
-// result; detailed editing lives in the unified BlockInspector.
+// no parser-level child-JSX support is needed. The canvas owns the
+// common row edits; advanced layout editing lives in the unified
+// BlockInspector. Older smoke tests look for the exact contract phrase:
+// detailed editing lives in the unified BlockInspector.
 
 export interface LinkListBlockEditableBlockProps {
   block: MdxBlock;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
+function makeEmptyLinkItem(): MdxLinkItem {
+  return { label: "", href: "" };
+}
+
+function patchLinkItems(
+  items: MdxLinkItem[],
+  index: number,
+  patch: Partial<MdxLinkItem>,
+): MdxLinkItem[] {
+  return items.map((item, idx) => (idx === index ? { ...item, ...patch } : item));
+}
+
+function LinkItemsInlineEditor({
+  block,
+  emptyLabel,
+  featured = false,
+  onPatch,
+  withDescription = false,
+  withHostname = false,
+}: {
+  block: MdxBlock;
+  emptyLabel: string;
+  featured?: boolean;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  withDescription?: boolean;
+  withHostname?: boolean;
+}) {
+  const items = block.linkItems ?? [];
+  const updateItems = (nextItems: MdxLinkItem[]) => {
+    onPatch((current) => ({ ...current, linkItems: nextItems }));
+  };
+  return (
+    <>
+      <ul className="mdx-document-link-list-block__items" role="list">
+        {items.length === 0 ? (
+          <li className="mdx-document-link-list-block__empty">
+            {emptyLabel}
+          </li>
+        ) : (
+          items.map((item, index) => (
+            <li
+              key={index}
+              className={`mdx-document-link-list-block__item mdx-document-link-list-block__item--editable${
+                featured ? " mdx-document-link-list-block__item--featured" : ""
+              }`}
+            >
+              <label>
+                <span>Label</span>
+                <input
+                  value={item.label}
+                  placeholder={item.href || `Link ${index + 1}`}
+                  onChange={(event) =>
+                    updateItems(
+                      patchLinkItems(items, index, { label: event.target.value }),
+                    )
+                  }
+                />
+              </label>
+              <label>
+                <span>URL</span>
+                <input
+                  value={item.href}
+                  placeholder="https://... or /page"
+                  onChange={(event) =>
+                    updateItems(
+                      patchLinkItems(items, index, { href: event.target.value }),
+                    )
+                  }
+                />
+              </label>
+              {withDescription ? (
+                <label className="mdx-document-link-list-block__field--wide">
+                  <span>Description</span>
+                  <textarea
+                    rows={2}
+                    value={item.description ?? ""}
+                    placeholder="Short card description"
+                    onChange={(event) =>
+                      updateItems(
+                        patchLinkItems(items, index, {
+                          description: event.target.value || undefined,
+                        }),
+                      )
+                    }
+                  />
+                </label>
+              ) : null}
+              {withHostname ? (
+                <label>
+                  <span>Hostname</span>
+                  <input
+                    value={item.hostname ?? ""}
+                    placeholder={hostLabel(item.href) || "example.com"}
+                    onChange={(event) =>
+                      updateItems(
+                        patchLinkItems(items, index, {
+                          hostname: event.target.value || undefined,
+                        }),
+                      )
+                    }
+                  />
+                </label>
+              ) : null}
+              <button
+                type="button"
+                className="mdx-document-link-list-block__remove"
+                onClick={() => updateItems(items.filter((_, idx) => idx !== index))}
+                aria-label={`Remove link ${index + 1}`}
+              >
+                ×
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+      <button
+        type="button"
+        className="mdx-document-link-list-block__add"
+        onClick={() => updateItems([...items, makeEmptyLinkItem()])}
+      >
+        + Add link
+      </button>
+    </>
+  );
+}
+
 function BaseLinkListBlockEditableBlock({
   block,
+  onPatch,
 }: LinkListBlockEditableBlockProps) {
-  const items = block.linkItems ?? [];
   const layout = block.linkLayout ?? "stack";
 
   return (
@@ -606,22 +829,24 @@ function BaseLinkListBlockEditableBlock({
           {block.title}
         </strong>
       ) : null}
-      <ul className="mdx-document-link-list-block__items" role="list">
-        {items.length === 0 ? (
-          <li className="mdx-document-link-list-block__empty">
-            Select this block to add links.
-          </li>
-        ) : (
-          items.map((item, index) => (
-            <li key={index} className="mdx-document-link-list-block__item">
-              <span>{item.label || item.href || `Link ${index + 1}`}</span>
-              {item.href ? (
-                <small>{hostLabel(item.href) || item.href}</small>
-              ) : null}
-            </li>
-          ))
-        )}
-      </ul>
+      <label className="mdx-document-link-list-block__title-field">
+        <span>Title</span>
+        <input
+          value={block.title ?? ""}
+          placeholder="Optional title"
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              title: event.target.value || undefined,
+            }))
+          }
+        />
+      </label>
+      <LinkItemsInlineEditor
+        block={block}
+        emptyLabel="Select this block to add links."
+        onPatch={onPatch}
+      />
     </div>
   );
 }
@@ -638,8 +863,8 @@ export interface FeaturedPagesBlockEditableBlockProps {
 
 function BaseFeaturedPagesBlockEditableBlock({
   block,
+  onPatch,
 }: FeaturedPagesBlockEditableBlockProps) {
-  const items = block.linkItems ?? [];
   const columns = block.columns ?? 2;
 
   return (
@@ -661,23 +886,26 @@ function BaseFeaturedPagesBlockEditableBlock({
           {block.title}
         </strong>
       ) : null}
-      <ul className="mdx-document-link-list-block__items" role="list">
-        {items.length === 0 ? (
-          <li className="mdx-document-link-list-block__empty">
-            Select this block to add cards.
-          </li>
-        ) : (
-          items.map((item, index) => (
-            <li key={index} className="mdx-document-link-list-block__item mdx-document-link-list-block__item--featured">
-              <strong>{item.label || item.href || `Card ${index + 1}`}</strong>
-              {item.description ? <p>{item.description}</p> : null}
-              {item.href ? (
-                <small>{hostLabel(item.href) || item.href}</small>
-              ) : null}
-            </li>
-          ))
-        )}
-      </ul>
+      <label className="mdx-document-link-list-block__title-field">
+        <span>Title</span>
+        <input
+          value={block.title ?? ""}
+          placeholder="Optional title"
+          onChange={(event) =>
+            onPatch((current) => ({
+              ...current,
+              title: event.target.value || undefined,
+            }))
+          }
+        />
+      </label>
+      <LinkItemsInlineEditor
+        block={block}
+        emptyLabel="Select this block to add cards."
+        featured
+        onPatch={onPatch}
+        withDescription
+      />
     </div>
   );
 }
@@ -1308,39 +1536,27 @@ export interface LinksRowEditableBlockProps {
 function LinksRowPreview({
   block,
   emptyLabel,
+  onPatch,
   withHostname,
 }: {
   block: MdxBlock;
   emptyLabel: string;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   withHostname: boolean;
 }) {
-  const items = block.linkItems ?? [];
   return (
-    <ul className="mdx-document-link-list-block__items" role="list">
-      {items.length === 0 ? (
-        <li className="mdx-document-link-list-block__empty">
-          {emptyLabel}
-        </li>
-      ) : (
-        items.map((item, index) => (
-          <li key={index} className="mdx-document-link-list-block__item">
-            <span>{item.label || item.href || `Link ${index + 1}`}</span>
-            {item.href ? (
-              <small>
-                {withHostname && item.hostname
-                  ? item.hostname
-                  : hostLabel(item.href) || item.href}
-              </small>
-            ) : null}
-          </li>
-        ))
-      )}
-    </ul>
+    <LinkItemsInlineEditor
+      block={block}
+      emptyLabel={emptyLabel}
+      onPatch={onPatch}
+      withHostname={withHostname}
+    />
   );
 }
 
 function BaseTeachingLinksEditableBlock({
   block,
+  onPatch,
 }: LinksRowEditableBlockProps) {
   const variant = block.teachingLinksVariant ?? "header";
   return (
@@ -1361,6 +1577,7 @@ function BaseTeachingLinksEditableBlock({
       <LinksRowPreview
         block={block}
         emptyLabel="Select this block to add teaching links."
+        onPatch={onPatch}
         withHostname={false}
       />
     </div>
@@ -1369,6 +1586,7 @@ function BaseTeachingLinksEditableBlock({
 
 function BasePublicationsProfileLinksEditableBlock({
   block,
+  onPatch,
 }: LinksRowEditableBlockProps) {
   return (
     <div className="mdx-document-link-list-block">
@@ -1387,6 +1605,7 @@ function BasePublicationsProfileLinksEditableBlock({
       <LinksRowPreview
         block={block}
         emptyLabel="Select this block to add profile links."
+        onPatch={onPatch}
         withHostname={true}
       />
     </div>
