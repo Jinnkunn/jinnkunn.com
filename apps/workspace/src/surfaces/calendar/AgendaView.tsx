@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 
 import { isSameDay, startOfDay } from "./dateRange";
-import type { Calendar, CalendarEvent } from "./types";
+import { DisclosureBadge } from "./DisclosureBadge";
+import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 
 /** Flat list of events grouped by local day. Used as the "Agenda"
  * tab — same data the time-grid views render, just in a denser linear
@@ -10,12 +11,14 @@ export function AgendaView({
   events,
   calendarsById,
   rangeLabel,
+  getDisclosure,
   onEventSelect,
 }: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   /** Human-readable summary shown in the empty state, e.g. "this week". */
   rangeLabel: string;
+  getDisclosure?: EventDisclosureResolver;
   onEventSelect?: (event: CalendarEvent) => void;
 }) {
   const eventsByDay = useMemo(() => {
@@ -75,6 +78,9 @@ export function AgendaView({
                       <span className="block text-[13px] text-text-primary truncate">
                         {ev.title || "(No title)"}
                       </span>
+                      {getDisclosure ? (
+                        <DisclosureBadge visibility={getDisclosure(ev)} compact />
+                      ) : null}
                       {ev.location ? (
                         <span className="block text-[11.5px] text-text-muted truncate">
                           {ev.location}

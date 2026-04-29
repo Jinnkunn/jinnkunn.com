@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import { isSameDay } from "./dateRange";
+import { DisclosureBadge } from "./DisclosureBadge";
 import { TimeGrid, HOUR_HEIGHT, TIME_GUTTER_WIDTH } from "./TimeGrid";
-import type { Calendar, CalendarEvent } from "./types";
+import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 
 /** Single-day timeline. The header strip shows the weekday name + date
  * with a blue circle around the number when it's today, matching the
@@ -12,11 +13,13 @@ export function DayView({
   events,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   day: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const allDayEvents = useMemo(
     () => events.filter((e) => e.isAllDay && touchesDay(e, day)),
@@ -41,6 +44,7 @@ export function DayView({
           events={allDayEvents}
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
+          getDisclosure={getDisclosure}
         />
       ) : null}
       <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto">
@@ -49,6 +53,7 @@ export function DayView({
           events={events}
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
+          getDisclosure={getDisclosure}
         />
       </div>
     </div>
@@ -89,10 +94,12 @@ function AllDayStrip({
   events,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   return (
     <div
@@ -119,7 +126,10 @@ function AllDayStrip({
                 boxShadow: `inset 3px 0 0 0 ${color}`,
               }}
             >
-              {ev.title || "(No title)"}
+              <span className="truncate">{ev.title || "(No title)"}</span>
+              {getDisclosure ? (
+                <DisclosureBadge visibility={getDisclosure(ev)} compact />
+              ) : null}
             </button>
           );
         })}

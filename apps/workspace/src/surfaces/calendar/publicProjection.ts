@@ -3,6 +3,7 @@ import type { Calendar, CalendarEvent } from "./types";
 export type CalendarPublicVisibility = "hidden" | "busy" | "titleOnly" | "full";
 
 const PUBLIC_BUSY_COLOR = "#9B9A97";
+const BUSY_ROUND_MINUTES = 15;
 
 export interface CalendarPublishMetadata {
   visibility: CalendarPublicVisibility;
@@ -85,18 +86,23 @@ export function buildPublicCalendarPayload(input: {
     if (meta.visibility === "hidden") continue;
     const visibility = meta.visibility;
     const calendar = input.calendarsById.get(event.calendarId);
+    if (shouldSkipPublicEvent(event, calendar)) continue;
     const title =
       visibility === "busy"
         ? "Busy"
         : meta.titleOverride?.trim() || event.title || "(No title)";
+    const rounded =
+      visibility === "busy"
+        ? roundBusyWindow(event.startsAt, event.endsAt)
+        : { startsAt: event.startsAt, endsAt: event.endsAt };
     projected.push({
       id: calendarEventKey(event),
       calendarId: visibility === "busy" ? undefined : event.calendarId,
       calendarTitle: visibility === "busy" ? undefined : calendar?.title,
       colorHex: visibility === "busy" ? PUBLIC_BUSY_COLOR : calendar?.colorHex,
       title,
-      startsAt: event.startsAt,
-      endsAt: event.endsAt,
+      startsAt: rounded.startsAt,
+      endsAt: rounded.endsAt,
       isAllDay: event.isAllDay,
       visibility,
       description:
@@ -113,12 +119,13 @@ export function buildPublicCalendarPayload(input: {
           : null,
     });
   }
-  projected.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const merged = mergeBusyEvents(projected);
+  merged.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     range: input.range,
-    events: projected,
+    events: merged,
   };
 }
 
@@ -145,4 +152,57 @@ function normalizeVisibility(raw: unknown): CalendarPublicVisibility {
 
 function normalizeOptionalString(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() ? raw : undefined;
+}
+
+function shouldSkipPublicEvent(
+  event: CalendarEvent,
+  calendar: Calendar | undefined,
+): boolean {
+  const title = `${event.title} ${calendar?.title ?? ""}`.toLowerCase();
+  return /declined|cancelled|canceled|holiday|holidays|节假日|生日|birthday/.test(
+    title,
+  );
+}
+
+function roundBusyWindow(startsAt: string, endsAt: string): {
+  startsAt: string;
+  endsAt: string;
+} {
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  const step = BUSY_ROUND_MINUTES * 60 * 1000;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return { startsAt, endsAt };
+  }
+  const roundedStart = Math.floor(start / step) * step;
+  const roundedEnd = Math.max(roundedStart + step, Math.ceil(end / step) * step);
+  return {
+    startsAt: new Date(roundedStart).toISOString(),
+    endsAt: new Date(roundedEnd).toISOString(),
+  };
+}
+
+function mergeBusyEvents(
+  events: PublicCalendarEventPayload[],
+): PublicCalendarEventPayload[] {
+  const sorted = [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const out: PublicCalendarEventPayload[] = [];
+  for (const event of sorted) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      prev.visibility === "busy" &&
+      event.visibility === "busy" &&
+      prev.isAllDay === event.isAllDay &&
+      Date.parse(event.startsAt) <= Date.parse(prev.endsAt)
+    ) {
+      if (Date.parse(event.endsAt) > Date.parse(prev.endsAt)) {
+        prev.endsAt = event.endsAt;
+      }
+      prev.id = `${prev.id}+${event.id}`;
+      continue;
+    }
+    out.push({ ...event });
+  }
+  return out;
 }

@@ -71,9 +71,9 @@ function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
 
   return {
     id,
-    calendarId: normalizeString(obj.calendarId) || undefined,
-    calendarTitle: normalizeString(obj.calendarTitle) || undefined,
-    colorHex: normalizeColorHex(obj.colorHex),
+    calendarId: visibility === "busy" ? undefined : normalizeString(obj.calendarId) || undefined,
+    calendarTitle: visibility === "busy" ? undefined : normalizeString(obj.calendarTitle) || undefined,
+    colorHex: visibility === "busy" ? "#9B9A97" : normalizeColorHex(obj.colorHex),
     title,
     startsAt,
     endsAt,

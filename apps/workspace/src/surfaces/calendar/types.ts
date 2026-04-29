@@ -70,3 +70,7 @@ export interface FetchEventsRequest {
   /** When empty, fetches across all calendars the user has visible. */
   calendarIds: string[];
 }
+
+export type EventDisclosureResolver = (
+  event: CalendarEvent,
+) => "hidden" | "busy" | "titleOnly" | "full";

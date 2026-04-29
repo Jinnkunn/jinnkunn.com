@@ -57,4 +57,56 @@ describe("calendar public projection", () => {
       url: null,
     });
   });
+
+  it("rounds and merges busy blocks while filtering non-work availability noise", () => {
+    const payload = buildPublicCalendarPayload({
+      events: [
+        {
+          ...event,
+          eventIdentifier: "busy-1",
+          externalIdentifier: "busy-1",
+          startsAt: "2026-04-28T14:07:00.000Z",
+          endsAt: "2026-04-28T14:21:00.000Z",
+        },
+        {
+          ...event,
+          eventIdentifier: "busy-2",
+          externalIdentifier: "busy-2",
+          startsAt: "2026-04-28T14:22:00.000Z",
+          endsAt: "2026-04-28T14:46:00.000Z",
+        },
+        {
+          ...event,
+          eventIdentifier: "birthday",
+          externalIdentifier: "birthday",
+          title: "Birthday",
+        },
+        {
+          ...event,
+          calendarId: "holidays",
+          eventIdentifier: "holiday",
+          externalIdentifier: "holiday",
+          title: "Stat Holiday",
+        },
+      ],
+      calendarsById: new Map([
+        [calendar.id, calendar],
+        ["holidays", { ...calendar, id: "holidays", title: "Holidays" }],
+      ]),
+      metadata: emptyMetadataStore(),
+      range: {
+        startsAt: "2026-04-28T00:00:00.000Z",
+        endsAt: "2026-04-29T00:00:00.000Z",
+      },
+    });
+
+    expect(payload.events).toHaveLength(1);
+    expect(payload.events[0]).toMatchObject({
+      title: "Busy",
+      visibility: "busy",
+      startsAt: "2026-04-28T14:00:00.000Z",
+      endsAt: "2026-04-28T15:00:00.000Z",
+      colorHex: "#9B9A97",
+    });
+  });
 });
