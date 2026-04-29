@@ -2257,11 +2257,19 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   display: contents;
 }
 
-.navigation-editor {
+/* ------------------------------------------------------------------ *
+ * NavigationPanel — Super.so-style: clean rows with the secondary
+ * fields tucked behind a `…` popover, collapsible groups with an
+ * inline `+` add affordance. The visual goal is one row = one link
+ * with the label as primary content; URL / group switch live in the
+ * row's overflow menu and only surface when the operator asks.
+ * ------------------------------------------------------------------ */
+
+.nav-editor {
   gap: 14px;
 }
 
-.navigation-editor__header {
+.nav-editor__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2269,176 +2277,464 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   flex-wrap: wrap;
 }
 
-.navigation-editor__actions {
+.nav-editor__actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.navigation-editor__create {
-  display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(220px, 1.5fr) minmax(120px, 0.7fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-bg-surface-alt);
-}
-
-.navigation-editor__group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.navigation-editor__group > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.navigation-editor__group h2 {
+.nav-editor__status {
   margin: 0;
-  color: var(--color-text-primary);
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.navigation-editor__group > header span {
   color: var(--color-text-muted);
   font-size: 12px;
 }
 
-.navigation-editor__list {
+/* ---------- Group card ---------- */
+
+.nav-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface-alt);
+  overflow: hidden;
 }
 
-.navigation-editor__row {
+.nav-group__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-bg-surface-alt);
+}
+
+.nav-group__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.nav-group__chevron:hover,
+.nav-group__chevron:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.nav-group__title {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--color-text-primary);
+  letter-spacing: -0.005em;
+}
+
+.nav-group__count {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface);
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.nav-group__spacer {
+  flex: 1 1 auto;
+}
+
+.nav-group__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.nav-group__add:hover:not(:disabled),
+.nav-group__add:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+  outline: none;
+}
+
+.nav-group__add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nav-group__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 10px;
+  background: var(--color-bg-surface-alt);
+}
+
+.nav-group__empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  text-align: center;
+  font-style: italic;
+}
+
+/* Collapsed groups hide the row list but keep the rounded card outline. */
+.nav-group[data-collapsed="true"] .nav-group__rows {
+  display: none;
+}
+
+/* ---------- Row ---------- */
+
+.nav-row {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 10px;
   align-items: center;
-  padding: 10px;
+  gap: 6px;
+  padding: 6px 10px 6px 4px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--color-bg-surface);
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
-.navigation-editor__row[data-dirty="true"] {
-  border-color: color-mix(in srgb, var(--color-accent) 32%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-surface));
+.nav-row:hover {
+  border-color: color-mix(in srgb, var(--color-text-primary) 18%, transparent);
 }
 
-.navigation-editor__row[data-drag-state="dragging"] {
+.nav-row[data-dirty="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-surface));
+}
+
+.nav-row[data-drag-state="dragging"] {
   opacity: 0.55;
 }
 
-.navigation-editor__row[data-drag-state="over"] {
-  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-subtle));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent);
+.nav-row[data-drag-state="over"] {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border-subtle));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
-.navigation-editor__order {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* Drag handle: 6-dot grip glyph that fades in on hover/focus. Notion +
+ * Super.so both keep this affordance subtle so a quiet list of links
+ * doesn't look like a forest of icons. */
+.nav-row__drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
 }
 
-.navigation-editor__order .btn {
-  padding: 3px 8px;
-  font-size: 11.5px;
+.nav-row:hover .nav-row__drag,
+.nav-row:focus-within .nav-row__drag,
+.nav-row[data-drag-state="dragging"] .nav-row__drag {
+  opacity: 1;
 }
 
-.navigation-editor__drag-handle {
+.nav-row__drag:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.nav-row__drag:active {
+  cursor: grabbing;
+}
+
+.nav-row__drag:disabled {
+  opacity: 0;
+  cursor: default;
+}
+
+/* Inline-editable label: looks like read-only text by default, gets a
+ * subtle outline on focus so the operator can see the input without
+ * the row becoming a form-input-fest. */
+.nav-row__label {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  letter-spacing: -0.005em;
+}
+
+.nav-row__label:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.nav-row__label:focus-visible,
+.nav-row__label:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  background: var(--color-bg-surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.nav-row__label:disabled {
+  color: var(--color-text-secondary);
+}
+
+/* Pill-toggle for the row's enabled flag — replaces the old text
+ * checkbox so the row stays compact and the on/off state reads at a
+ * glance. The native checkbox is hidden but stays focusable for
+ * keyboard nav + screen readers. */
+.nav-row__enabled {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.nav-row__enabled input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.nav-row__enabled-track {
+  display: inline-flex;
+  align-items: center;
+  width: 28px;
+  height: 16px;
+  padding: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 18%, transparent);
+  transition: background 120ms ease;
+}
+
+.nav-row__enabled-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-bg-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease;
+}
+
+.nav-row__enabled input[type="checkbox"]:checked ~ .nav-row__enabled-track {
+  background: color-mix(in srgb, var(--color-accent) 78%, transparent);
+}
+
+.nav-row__enabled input[type="checkbox"]:checked ~ .nav-row__enabled-track .nav-row__enabled-thumb {
+  transform: translateX(12px);
+}
+
+.nav-row__enabled input[type="checkbox"]:focus-visible ~ .nav-row__enabled-track {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+
+.nav-row__menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   color: var(--color-text-muted);
-  cursor: grab;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  opacity: 0;
 }
 
-.navigation-editor__drag-handle:disabled {
-  cursor: default;
-  opacity: 0.4;
+.nav-row:hover .nav-row__menu-button,
+.nav-row:focus-within .nav-row__menu-button {
+  opacity: 1;
 }
 
-.navigation-editor__drag-handle:active {
-  cursor: grabbing;
+.nav-row__menu-button:hover,
+.nav-row__menu-button:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-subtle);
+  outline: none;
 }
 
-.navigation-editor__fields {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.4fr) minmax(110px, 0.7fr);
-  gap: 8px;
+.nav-row__dirty-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-bg-surface);
 }
 
-.navigation-editor__enabled {
+/* ---------- Row overflow popover (URL + group) ---------- */
+
+.nav-row-menu .block-popover__inner,
+.nav-row-menu {
+  /* The popover container itself is styled by BlockPopover; we only
+   * need to size the inner content. */
+}
+
+.nav-row-menu__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px;
+  width: 280px;
+}
+
+.nav-row-menu__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.nav-row-menu__field input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 7px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.nav-row-menu__field input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.nav-row-menu__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nav-row-menu__group legend {
+  padding: 0;
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.nav-row-menu__group label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
 
-.navigation-editor__preview {
+.nav-row-menu__group label:hover {
+  background: var(--color-bg-hover);
+}
+
+.nav-row-menu__group input[type="radio"] {
+  margin: 0;
+}
+
+.nav-row-menu__group:disabled label {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+/* ---------- Preview footer ---------- */
+
+.nav-editor__preview {
   display: grid;
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--color-bg-surface-alt);
 }
 
-.navigation-editor__preview header {
+.nav-editor__preview header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
 }
 
-.navigation-editor__preview h2 {
+.nav-editor__preview h2 {
   margin: 0;
   color: var(--color-text-primary);
   font-size: 13px;
   font-weight: 650;
 }
 
-.navigation-editor__preview span {
+.nav-editor__preview span {
   color: var(--color-text-muted);
   font-size: 12px;
 }
 
-.navigation-editor__preview nav {
+.nav-editor__preview nav {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
 }
 
-.navigation-editor__preview a {
+.nav-editor__preview a {
   color: var(--color-text-secondary);
   font-size: 13px;
   text-decoration: none;
 }
 
 @media (max-width: 1160px) {
-  .navigation-editor__create,
-  .navigation-editor__row,
-  .navigation-editor__fields {
-    grid-template-columns: 1fr;
-  }
-
-  .navigation-editor__order {
-    flex-direction: row;
+  .nav-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
 }
 
