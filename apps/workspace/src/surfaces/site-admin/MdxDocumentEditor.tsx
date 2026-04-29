@@ -20,7 +20,10 @@ import {
   getMatchingBlockEditorCommands,
   type BlockEditorCommand,
 } from "./block-editor";
-import { BlockPopover } from "./block-popover";
+import {
+  BlockActionMenu,
+  BlockGutterHandles,
+} from "./block-action-menu";
 import {
   BookmarkEditableBlock,
   ColumnEditableBlock,
@@ -43,15 +46,19 @@ import {
   WorksEntryEditableBlock,
 } from "./mdx-block-renderers";
 import { RichTextEditableBlock } from "./rich-text-editable-block";
+import { useImeComposition } from "./useImeComposition";
+import { classifySiteAdminError } from "./api-errors";
+import {
+  decodeDocumentLoad,
+  decodeDocumentSave,
+} from "./api-validators";
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import {
   createMdxBlock,
   duplicateMdxBlock,
-  MDX_BLOCK_COLORS,
   parseMdxBlocks,
   serializeMdxBlocks,
   type MdxBlock,
-  type MdxBlockColor,
   type MdxBlockType,
 } from "./mdx-blocks";
 import { localContent } from "./local-content";
@@ -64,7 +71,6 @@ import {
 } from "./use-mdx-editor-controller";
 import { isBoolean, isString, usePersistentUiState } from "./use-persistent-ui-state";
 import type { NormalizedApiResponse } from "./types";
-import { normalizeString } from "./utils";
 import {
   WorkspaceInspector,
   WorkspaceInspectorHeader,
@@ -126,33 +132,6 @@ const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
   raw: "Raw MDX",
 };
 
-type TurnIntoOption = {
-  label: string;
-  level?: 1 | 2 | 3;
-  listStyle?: "bulleted" | "numbered";
-  type: MdxBlockType;
-};
-
-// Options that can appear in the "Turn into" submenu, in display order.
-// Block types whose data lives outside the `text` field (table, bookmark,
-// embed, file, page-link) are intentionally omitted — turning to them from
-// a text block would discard meaningful data.
-const TURN_INTO_OPTIONS: TurnIntoOption[] = [
-  { label: "Text", type: "paragraph" },
-  { label: "Heading 1", type: "heading", level: 1 },
-  { label: "Heading 2", type: "heading", level: 2 },
-  { label: "Heading 3", type: "heading", level: 3 },
-  { label: "Bulleted list", type: "list", listStyle: "bulleted" },
-  { label: "Numbered list", type: "list", listStyle: "numbered" },
-  { label: "To-do list", type: "todo" },
-  { label: "Toggle", type: "toggle" },
-  { label: "Quote", type: "quote" },
-  { label: "Callout", type: "callout" },
-  { label: "Code", type: "code" },
-  { label: "Divider", type: "divider" },
-  { label: "Image", type: "image" },
-  { label: "Raw MDX", type: "raw" },
-];
 
 interface SlashCommand extends BlockEditorCommand {
   makeBlock: () => MdxBlock;
@@ -572,10 +551,6 @@ function isBlockVisuallyEmpty(block: MdxBlock): boolean {
     return !block.children?.some((child) => !isBlockVisuallyEmpty(child));
   }
   return false;
-}
-
-function isSourceConflictResponse(response: NormalizedApiResponse): boolean {
-  return !response.ok && (response.code === "SOURCE_CONFLICT" || response.status === 409);
 }
 
 export interface BlocksEditorProps {
@@ -1138,223 +1113,6 @@ function EditableBlocksList({
   );
 }
 
-interface BlockGutterHandlesProps {
-  controlsActive: boolean;
-  isDragging: boolean;
-  onAdd: () => void;
-  onDragEnd: () => void;
-  onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
-  onMenu: (anchor: HTMLElement) => void;
-}
-
-function BlockGutterHandles({
-  controlsActive,
-  isDragging,
-  onAdd,
-  onDragEnd,
-  onDragStart,
-  onMenu,
-}: BlockGutterHandlesProps) {
-  return (
-    <div className="mdx-document-block__gutter" aria-hidden="false">
-      <button
-        type="button"
-        className="mdx-document-block__handle mdx-document-block__handle--add"
-        tabIndex={controlsActive ? 0 : -1}
-        onClick={onAdd}
-        aria-label="Add block below"
-        title="Click to add a block below"
-      >
-        +
-      </button>
-      <button
-        type="button"
-        className="mdx-document-block__handle mdx-document-block__handle--menu"
-        tabIndex={controlsActive ? 0 : -1}
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onClick={(event) => onMenu(event.currentTarget)}
-        aria-label="Drag to reorder, click for block actions"
-        title={isDragging ? "Dragging" : "Drag to reorder · Click for actions"}
-      >
-        ⋮⋮
-      </button>
-    </div>
-  );
-}
-
-interface BlockActionMenuProps {
-  anchor: HTMLElement;
-  block: MdxBlock | null;
-  canMoveDown: boolean;
-  canMoveUp: boolean;
-  onClose: () => void;
-  onCopyLink: () => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  onMoveDown: () => void;
-  onMoveUp: () => void;
-  onSetColor: (color: MdxBlockColor) => void;
-  onTurnInto: (
-    type: MdxBlockType,
-    level?: 1 | 2 | 3,
-    listStyle?: "bulleted" | "numbered",
-  ) => void;
-}
-
-type ActionMenuPanel = "main" | "turnInto" | "color";
-
-function isTurnIntoOptionActive(
-  block: MdxBlock | null,
-  option: TurnIntoOption,
-): boolean {
-  if (!block || block.type !== option.type) return false;
-  if (option.type === "heading") {
-    return (block.level ?? 2) === option.level;
-  }
-  if (option.type === "list") {
-    return (block.listStyle ?? "bulleted") === option.listStyle;
-  }
-  return true;
-}
-
-function BlockActionMenu({
-  anchor,
-  block,
-  canMoveDown,
-  canMoveUp,
-  onClose,
-  onCopyLink,
-  onDelete,
-  onDuplicate,
-  onMoveDown,
-  onMoveUp,
-  onSetColor,
-  onTurnInto,
-}: BlockActionMenuProps) {
-  const [panel, setPanel] = useState<ActionMenuPanel>("main");
-
-  useEffect(() => {
-    if (!block) onClose();
-  }, [block, onClose]);
-
-  return (
-    <BlockPopover
-      anchor={anchor}
-      ariaLabel="Block actions"
-      className="block-popover--menu"
-      onClose={onClose}
-      open={Boolean(block)}
-      placement="bottom-start"
-    >
-      {panel === "turnInto" ? (
-        <div className="block-popover__section" role="menu" aria-label="Turn into">
-          <button
-            type="button"
-            className="block-popover__item block-popover__item--back"
-            onClick={() => setPanel("main")}
-          >
-            ← Turn into…
-          </button>
-          {TURN_INTO_OPTIONS.map((option) => (
-            <button
-              type="button"
-              className="block-popover__item"
-              key={`${option.type}-${option.level ?? option.listStyle ?? "default"}`}
-              onClick={() =>
-                onTurnInto(option.type, option.level, option.listStyle)
-              }
-              aria-current={
-                isTurnIntoOptionActive(block, option) ? "true" : undefined
-              }
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      ) : panel === "color" ? (
-        <div className="block-popover__section" role="menu" aria-label="Color">
-          <button
-            type="button"
-            className="block-popover__item block-popover__item--back"
-            onClick={() => setPanel("main")}
-          >
-            ← Color
-          </button>
-          {MDX_BLOCK_COLORS.map((color) => (
-            <button
-              type="button"
-              key={color}
-              className="block-popover__item block-popover__item--swatch"
-              data-color={color}
-              onClick={() => onSetColor(color)}
-              aria-current={
-                (block?.color ?? "default") === color ? "true" : undefined
-              }
-            >
-              <span
-                className="block-popover__swatch"
-                data-color={color}
-                aria-hidden="true"
-              />
-              <span style={{ textTransform: "capitalize" }}>{color}</span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="block-popover__section" role="menu">
-          <button type="button" className="block-popover__item" onClick={onDelete}>
-            <span>Delete</span>
-            <kbd>⌫</kbd>
-          </button>
-          <button type="button" className="block-popover__item" onClick={onDuplicate}>
-            <span>Duplicate</span>
-            <kbd>⌘D</kbd>
-          </button>
-          <button
-            type="button"
-            className="block-popover__item"
-            onClick={() => setPanel("turnInto")}
-          >
-            <span>Turn into</span>
-            <span aria-hidden="true">›</span>
-          </button>
-          <button
-            type="button"
-            className="block-popover__item"
-            onClick={() => setPanel("color")}
-          >
-            <span>Color</span>
-            <span aria-hidden="true">›</span>
-          </button>
-          <button type="button" className="block-popover__item" onClick={onCopyLink}>
-            <span>Copy link to block</span>
-          </button>
-          <div className="block-popover__divider" role="separator" />
-          <button
-            type="button"
-            className="block-popover__item"
-            disabled={!canMoveUp}
-            onClick={onMoveUp}
-          >
-            <span>Move up</span>
-            <kbd>⌘⇧↑</kbd>
-          </button>
-          <button
-            type="button"
-            className="block-popover__item"
-            disabled={!canMoveDown}
-            onClick={onMoveDown}
-          >
-            <span>Move down</span>
-            <kbd>⌘⇧↓</kbd>
-          </button>
-        </div>
-      )}
-    </BlockPopover>
-  );
-}
 
 function EditableBlock({
   block,
@@ -1815,7 +1573,37 @@ function EditableBlock({
   // unhandled block type. Verbatim text only — no slash menu / mention
   // picker / inline format toolbar; all of those moved to the TipTap
   // path with the formattable block types.
-  const nativePlaceholder = block.type === "code" ? "Code" : block.type === "raw" ? "Raw MDX" : "";
+  return (
+    <CodeOrRawTextarea
+      block={block}
+      readOnly={readOnly}
+      onPatch={onPatch}
+      onTextKeyDown={onTextKeyDown}
+      setRefs={setRefs}
+    />
+  );
+}
+
+function CodeOrRawTextarea({
+  block,
+  readOnly,
+  onPatch,
+  onTextKeyDown,
+  setRefs,
+}: {
+  block: MdxBlock;
+  readOnly: boolean;
+  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
+  onTextKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  setRefs: (node: HTMLTextAreaElement | null) => void;
+}) {
+  const ime = useImeComposition(
+    useCallback(
+      (next: string) => onPatch((current) => ({ ...current, text: next })),
+      [onPatch],
+    ),
+  );
+  const placeholder = block.type === "code" ? "Code" : block.type === "raw" ? "Raw MDX" : "";
   return (
     <div className="mdx-document-text-block-shell">
       <textarea
@@ -1824,14 +1612,41 @@ function EditableBlock({
         ref={setRefs}
         rows={block.type === "code" || block.type === "raw" ? 6 : Math.max(3, block.text.split("\n").length + 1)}
         value={block.text}
-        placeholder={nativePlaceholder}
+        placeholder={placeholder}
         readOnly={readOnly}
-        onChange={(event) =>
-          onPatch((current) => ({ ...current, text: event.target.value }))
-        }
+        onChange={ime.onChange}
+        onCompositionStart={ime.onCompositionStart}
+        onCompositionEnd={ime.onCompositionEnd}
         onKeyDown={onTextKeyDown}
       />
     </div>
+  );
+}
+
+function TitleInput({
+  "aria-label": ariaLabel,
+  value,
+  readOnly,
+  onChange,
+}: {
+  "aria-label": string;
+  value: string;
+  readOnly: boolean;
+  onChange: (next: string) => void;
+}) {
+  const ime = useImeComposition(onChange);
+  return (
+    <input
+      aria-label={ariaLabel}
+      className="mdx-document-editor__title"
+      value={value}
+      placeholder="Untitled"
+      readOnly={readOnly}
+      onChange={ime.onChange}
+      onCompositionStart={ime.onCompositionStart}
+      onCompositionEnd={ime.onCompositionEnd}
+      required
+    />
   );
 }
 
@@ -1962,9 +1777,16 @@ export function MdxDocumentEditor<TForm>({
             setMessage("error", `Load ${adapter.titleNoun} failed: ${msg}`);
             return;
           }
-          const data = (response.data ?? {}) as Record<string, unknown>;
-          loadedSource = typeof data.source === "string" ? data.source : "";
-          loadedVersion = normalizeString(data.version);
+          const decoded = decodeDocumentLoad(response.data);
+          if (!decoded) {
+            setMessage(
+              "error",
+              `Load ${adapter.titleNoun} failed: response missing source/version fields.`,
+            );
+            return;
+          }
+          loadedSource = decoded.source;
+          loadedVersion = decoded.version;
         }
       }
       const parsed = adapter.parseSource(loadedSource);
@@ -2018,11 +1840,12 @@ export function MdxDocumentEditor<TForm>({
         });
         setSaving(false);
         if (!response.ok) {
-          setError(`${response.code}: ${response.error}`);
-          setMessage(
-            "error",
-            `Create ${adapter.titleNoun} failed: ${response.code}: ${response.error}`,
-          );
+          const info = classifySiteAdminError(response, {
+            action: `Create ${adapter.titleNoun}`,
+            subject: adapter.titleNoun,
+          });
+          setError(info.detail);
+          setMessage(info.category === "read_only" ? "warn" : "error", info.banner);
           return;
         }
         setLastSavedSource(nextSource);
@@ -2051,26 +1874,25 @@ export function MdxDocumentEditor<TForm>({
           );
       setSaving(false);
       if (!response.ok) {
-        if (isSourceConflictResponse(response)) {
-          const msg = "Remote content changed. Reload latest before saving again.";
+        const info = classifySiteAdminError(response, {
+          action: `Update ${adapter.titleNoun}`,
+          subject: adapter.titleNoun,
+        });
+        if (info.category === "conflict") {
           setConflict(true);
-          setError(msg);
-          setMessage("warn", `${adapter.titleNoun} save conflict. Reload latest before saving.`);
-          return;
         }
-        setError(`${response.code}: ${response.error}`);
+        setError(info.detail);
         setMessage(
-          "error",
-          `Update ${adapter.titleNoun} failed: ${response.code}: ${response.error}`,
+          info.category === "conflict" || info.category === "read_only"
+            ? "warn"
+            : "error",
+          info.banner,
         );
         return;
       }
-      const data = (response.data ?? {}) as Record<string, unknown>;
-      const nextVersion = normalizeString(data.version);
-      const sourceVersion = (data.sourceVersion ?? {}) as { fileSha?: unknown };
-      const nextFileSha = normalizeString(sourceVersion.fileSha);
-      if (nextVersion) setVersion(nextVersion);
-      else if (nextFileSha) setVersion(nextFileSha);
+      const saved = decodeDocumentSave(response.data);
+      if (saved.version) setVersion(saved.version);
+      else if (saved.fileSha) setVersion(saved.fileSha);
       setLastSavedSource(nextSource);
       setConflict(false);
       clearDraft();
@@ -2118,11 +1940,12 @@ export function MdxDocumentEditor<TForm>({
     );
     setDeleting(false);
     if (!response.ok) {
-      setError(`${response.code}: ${response.error}`);
-      setMessage(
-        "error",
-        `Delete ${adapter.titleNoun} failed: ${response.code}: ${response.error}`,
-      );
+      const info = classifySiteAdminError(response, {
+        action: `Delete ${adapter.titleNoun}`,
+        subject: adapter.titleNoun,
+      });
+      setError(info.detail);
+      setMessage(info.category === "read_only" ? "warn" : "error", info.banner);
       return;
     }
     clearDraft();
@@ -2309,16 +2132,13 @@ export function MdxDocumentEditor<TForm>({
 
           <div className="mdx-document-editor__layout">
             <main className="mdx-document-editor__canvas">
-              <input
+              <TitleInput
                 aria-label={`${adapter.titleNoun} title`}
-                className="mdx-document-editor__title"
                 value={adapter.getTitle(form)}
-                placeholder="Untitled"
                 readOnly={productionReadOnly}
-                onChange={(event) =>
-                  setForm((current) => adapter.setTitle(current, event.target.value))
+                onChange={(next) =>
+                  setForm((current) => adapter.setTitle(current, next))
                 }
-                required
               />
 
               {adapter.renderDocumentTools ? (
