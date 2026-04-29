@@ -2,12 +2,23 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
 import type { DbExecutor } from "./db-content-store.ts";
+import { logWarn } from "./error-log.ts";
 import {
   normalizePublicCalendarData,
   type PublicCalendarData,
+  type PublicCalendarEvent,
 } from "../shared/public-calendar.ts";
 
 const SYNC_STATE_ID = "public";
+// D1 has a hard cap of 100 bind parameters per statement; we use 5 columns per
+// event row, so 20 events per multi-row INSERT keeps us safely under the limit
+// while still cutting round-trips by ~95% for typical (50-200 event) datasets.
+const INSERT_BATCH_SIZE = 20;
+
+export type WritePublicCalendarResult =
+  | { ok: true; eventsWritten: number; skipped: false }
+  | { ok: true; eventsWritten: 0; skipped: true; reason: "no_executor" }
+  | { ok: false; error: string };
 
 function isD1Like(value: unknown): value is D1DatabaseLike {
   return (
@@ -25,6 +36,34 @@ function tryGetD1Executor(): DbExecutor | null {
   } catch {
     return null;
   }
+}
+
+function decodeEventRow(
+  raw: unknown,
+  index: number,
+): PublicCalendarEvent | null {
+  if (typeof raw !== "string" || !raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    logWarn({
+      source: "public-calendar-db",
+      message: "skipping unparseable event row",
+      detail: err,
+      meta: { index },
+    });
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    logWarn({
+      source: "public-calendar-db",
+      message: "skipping non-object event row",
+      meta: { index },
+    });
+    return null;
+  }
+  return parsed as PublicCalendarEvent;
 }
 
 export async function readPublicCalendarFromDb(
@@ -45,6 +84,9 @@ export async function readPublicCalendarFromDb(
     ]);
     const first = state.rows[0];
     if (!first) return null;
+    const decodedEvents = events.rows
+      .map((row, index) => decodeEventRow(row.body_json, index))
+      .filter((event): event is PublicCalendarEvent => event !== null);
     return normalizePublicCalendarData({
       schemaVersion: 1,
       generatedAt: first.generated_at,
@@ -52,43 +94,53 @@ export async function readPublicCalendarFromDb(
         startsAt: first.range_starts_at,
         endsAt: first.range_ends_at,
       },
-      events: events.rows
-        .map((row) => {
-          try {
-            return JSON.parse(String(row.body_json ?? ""));
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean),
+      events: decodedEvents,
     });
-  } catch {
+  } catch (err) {
+    logWarn({
+      source: "public-calendar-db",
+      message: "read failed",
+      detail: err,
+    });
     return null;
   }
+}
+
+function buildBatchInsertSql(rowCount: number): string {
+  const placeholders = Array.from({ length: rowCount }, () => "(?, ?, ?, ?, ?)").join(
+    ", ",
+  );
+  return `INSERT INTO calendar_public_events
+          (id, starts_at, ends_at, body_json, updated_at)
+          VALUES ${placeholders}`;
 }
 
 export async function writePublicCalendarToDb(
   data: PublicCalendarData,
   executor = tryGetD1Executor(),
-): Promise<void> {
-  if (!executor) return;
-  const normalized = normalizePublicCalendarData(data);
+): Promise<WritePublicCalendarResult> {
+  if (!executor) {
+    return { ok: true, eventsWritten: 0, skipped: true, reason: "no_executor" };
+  }
+  // Callers pass `PublicCalendarData` (already normalized at the request
+  // boundary); readPublicCalendarFromDb normalizes again on the way out.
+  const normalized = data;
   const now = Date.now();
   try {
     await executor.execute({ sql: "DELETE FROM calendar_public_events" });
-    for (const event of normalized.events) {
-      await executor.execute({
-        sql: `INSERT INTO calendar_public_events
-              (id, starts_at, ends_at, body_json, updated_at)
-              VALUES (?, ?, ?, ?, ?)`,
-        args: [
+    for (let i = 0; i < normalized.events.length; i += INSERT_BATCH_SIZE) {
+      const batch = normalized.events.slice(i, i + INSERT_BATCH_SIZE);
+      const args: unknown[] = [];
+      for (const event of batch) {
+        args.push(
           event.id,
           event.startsAt,
           event.endsAt,
           JSON.stringify(event),
           now,
-        ],
-      });
+        );
+      }
+      await executor.execute({ sql: buildBatchInsertSql(batch.length), args });
     }
     await executor.execute({
       sql: `INSERT INTO calendar_public_sync_state
@@ -109,8 +161,17 @@ export async function writePublicCalendarToDb(
         now,
       ],
     });
-  } catch {
+    return { ok: true, eventsWritten: normalized.events.length, skipped: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     // The content-file path remains the compatibility source of truth until
     // all deployed environments have the calendar_public_* migrations.
+    logWarn({
+      source: "public-calendar-db",
+      message: "write failed",
+      detail: err,
+      meta: { eventCount: normalized.events.length },
+    });
+    return { ok: false, error: message };
   }
 }

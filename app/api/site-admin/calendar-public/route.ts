@@ -56,19 +56,23 @@ export async function POST(req: NextRequest) {
       const parsed = await readSiteAdminJsonCommand(req, parseSaveCommand);
       if (!parsed.ok) return parsed.res;
       try {
-        const sourceVersion = await saveSiteAdminPublicCalendarData(parsed.value);
+        const saved = await saveSiteAdminPublicCalendarData(parsed.value);
+        const { dbStatus, dbError, ...sourceVersion } = saved;
         await writeSiteAdminAuditLog({
           actor: ctx.login,
           action: "calendar.public.save",
           endpoint: "/api/site-admin/calendar-public",
           method: "POST",
           status: 200,
-          result: "success",
-          code: "OK",
-          message: "",
-          metadata: { count: parsed.value.data.events.length },
+          result: dbStatus === "failed" ? "error" : "success",
+          code: dbStatus === "failed" ? "DB_WRITE_FAILED" : "OK",
+          message: dbError ?? "",
+          metadata: {
+            count: parsed.value.data.events.length,
+            dbStatus,
+          },
         });
-        return apiPayloadOk({ sourceVersion });
+        return apiPayloadOk({ sourceVersion, dbStatus });
       } catch (err: unknown) {
         if (isSiteAdminSourceConflictError(err)) {
           return apiError(err.message, { status: 409, code: err.code });

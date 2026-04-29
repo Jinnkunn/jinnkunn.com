@@ -1,3 +1,5 @@
+export const PUBLIC_CALENDAR_CACHE_TAG = "public-calendar";
+
 export type PublicCalendarVisibility = "busy" | "titleOnly" | "full";
 
 export type PublicCalendarEvent = {
@@ -113,5 +115,5 @@ export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
 }
 
 export function publicCalendarJson(data: PublicCalendarData): string {
-  return `${JSON.stringify(normalizePublicCalendarData(data), null, 2)}\n`;
+  return `${JSON.stringify(data, null, 2)}\n`;
 }

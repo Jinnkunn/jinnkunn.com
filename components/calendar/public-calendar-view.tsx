@@ -1,4 +1,6 @@
-import type { CSSProperties } from "react";
+"use client";
+
+import { useMemo, type CSSProperties } from "react";
 
 import type { PublicCalendarData, PublicCalendarEvent } from "@/lib/shared/public-calendar";
 
@@ -11,10 +13,15 @@ const VIEW_LABELS: Array<{ value: PublicCalendarViewMode; label: string }> = [
   { value: "agenda", label: "Agenda" },
 ];
 
-function dayKey(iso: string): string {
-  const date = new Date(iso);
-  return keyForDate(date);
-}
+type DecoratedEvent = PublicCalendarEvent & {
+  startTimestamp: number;
+  endTimestamp: number;
+  startDayKey: string;
+  formattedTime: string;
+  touchedDayKeys: string[];
+};
+
+type DayIndex = Map<string, DecoratedEvent[]>;
 
 function keyForDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -103,52 +110,111 @@ function shiftAnchor(
   return out;
 }
 
-function formatTime(event: PublicCalendarEvent): string {
-  if (event.isAllDay) return "All day";
-  const starts = new Date(event.startsAt);
-  const ends = new Date(event.endsAt);
-  const sameDay = dayKey(event.startsAt) === dayKey(event.endsAt);
-  const startLabel = starts.toLocaleTimeString("en", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const endLabel = ends.toLocaleTimeString("en", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  if (sameDay) return `${startLabel} - ${endLabel}`;
-  return `${startLabel} - ${ends.toLocaleDateString("en", {
-    month: "short",
-    day: "numeric",
-  })}, ${endLabel}`;
+function decorateEvent(event: PublicCalendarEvent): DecoratedEvent {
+  const startTimestamp = Date.parse(event.startsAt);
+  const endTimestamp = Date.parse(event.endsAt);
+  const startDate = new Date(startTimestamp);
+  const endDate = new Date(endTimestamp);
+  const startDayKey = keyForDate(startDate);
+
+  // Walk the calendar days the event covers, matching the original
+  // eventTouchesDay rule: a day is included when end > dayStart && start < dayEnd.
+  // Using setDate (via addDays) handles DST transitions correctly.
+  const touchedDayKeys: string[] = [];
+  let cursor = startOfDay(startDate);
+  while (cursor.getTime() < endTimestamp) {
+    touchedDayKeys.push(keyForDate(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  if (touchedDayKeys.length === 0) {
+    // Defensive: if endTimestamp <= startTimestamp slipped past normalize,
+    // still surface the event on its start day rather than dropping it.
+    touchedDayKeys.push(startDayKey);
+  }
+
+  let formattedTime: string;
+  if (event.isAllDay) {
+    formattedTime = "All day";
+  } else {
+    const startLabel = startDate.toLocaleTimeString("en", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const endLabel = endDate.toLocaleTimeString("en", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const sameDay = startDayKey === keyForDate(endDate);
+    formattedTime = sameDay
+      ? `${startLabel} - ${endLabel}`
+      : `${startLabel} - ${endDate.toLocaleDateString("en", {
+          month: "short",
+          day: "numeric",
+        })}, ${endLabel}`;
+  }
+
+  return {
+    ...event,
+    startTimestamp,
+    endTimestamp,
+    startDayKey,
+    formattedTime,
+    touchedDayKeys,
+  };
 }
 
-function eventTouchesDay(event: PublicCalendarEvent, day: Date): boolean {
-  const start = new Date(event.startsAt).getTime();
-  const end = new Date(event.endsAt).getTime();
-  const dayStart = startOfDay(day).getTime();
-  const dayEnd = addDays(startOfDay(day), 1).getTime();
-  return end > dayStart && start < dayEnd;
-}
-
-function eventsForDay(events: PublicCalendarEvent[], day: Date) {
-  return events
-    .filter((event) => eventTouchesDay(event, day))
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-}
-
-function groupEvents(events: PublicCalendarEvent[]): Array<[string, PublicCalendarEvent[]]> {
-  const map = new Map<string, PublicCalendarEvent[]>();
+function buildDayIndex(events: DecoratedEvent[]): DayIndex {
+  const index: DayIndex = new Map();
   for (const event of events) {
-    const key = dayKey(event.startsAt);
-    const bucket = map.get(key) ?? [];
-    bucket.push(event);
-    map.set(key, bucket);
+    for (const key of event.touchedDayKeys) {
+      const bucket = index.get(key);
+      if (bucket) {
+        bucket.push(event);
+      } else {
+        index.set(key, [event]);
+      }
+    }
   }
-  for (const bucket of map.values()) {
-    bucket.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  for (const bucket of index.values()) {
+    bucket.sort((a, b) => a.startTimestamp - b.startTimestamp);
   }
-  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  return index;
+}
+
+function eventsForDayKey(index: DayIndex, key: string): DecoratedEvent[] {
+  return index.get(key) ?? [];
+}
+
+function eventsForDay(index: DayIndex, day: Date): DecoratedEvent[] {
+  return eventsForDayKey(index, keyForDate(day));
+}
+
+function buildAgendaGroups(
+  events: DecoratedEvent[],
+  index: DayIndex,
+  windowDays: number,
+): Array<[string, DecoratedEvent[]]> {
+  const startMs = startOfDay(new Date()).getTime();
+  const endMs = addDays(new Date(), windowDays).getTime();
+  // Group by start-day so each event appears once even when multi-day.
+  const buckets = new Map<string, DecoratedEvent[]>();
+  for (const event of events) {
+    if (event.endTimestamp < startMs || event.startTimestamp > endMs) continue;
+    const bucket = buckets.get(event.startDayKey);
+    if (bucket) {
+      bucket.push(event);
+    } else {
+      buckets.set(event.startDayKey, [event]);
+    }
+  }
+  // Reuse the index's sort: each bucket already references events in
+  // index ordering, but to guarantee stable order we re-sort by start.
+  for (const bucket of buckets.values()) {
+    bucket.sort((a, b) => a.startTimestamp - b.startTimestamp);
+  }
+  // Suppress unused-parameter lint without changing the call site contract.
+  void index;
+  return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 export function PublicCalendarView({
@@ -177,11 +243,44 @@ export function PublicCalendarView({
   const anchor = Number.isFinite(Date.parse(anchorIso ?? ""))
     ? new Date(anchorIso ?? "")
     : new Date();
-  const sortedEvents = [...data.events].sort((a, b) =>
-    a.startsAt.localeCompare(b.startsAt),
+
+  // Decorate each event once: parse timestamps, compute day keys + formatted
+  // time. Without this, MonthView would Date-parse every event 42 times per
+  // render.
+  const decoratedEvents = useMemo(
+    () =>
+      [...data.events]
+        .map(decorateEvent)
+        .sort((a, b) => a.startTimestamp - b.startTimestamp),
+    [data.events],
   );
 
-  if (sortedEvents.length === 0) {
+  // Index events by the day-keys they touch, so MonthView/WeekView/DayView
+  // get O(1) per-day lookups instead of O(n) filters.
+  const dayIndex = useMemo(() => buildDayIndex(decoratedEvents), [decoratedEvents]);
+
+  const agendaGroups = useMemo(
+    () => buildAgendaGroups(decoratedEvents, dayIndex, agendaDays),
+    [decoratedEvents, dayIndex, agendaDays],
+  );
+
+  const lastUpdatedLabel = useMemo(
+    () =>
+      new Date(data.generatedAt).toLocaleString("en", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    [data.generatedAt],
+  );
+
+  const resolvedTimeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+
+  if (decoratedEvents.length === 0) {
     return (
       <div className="public-calendar public-calendar--empty notion-text notion-text__content">
         <p>No public calendar events are currently listed.</p>
@@ -250,16 +349,11 @@ export function PublicCalendarView({
         ) : null}
       </div>
       <p className="public-calendar__sync-note">
-        Last updated {new Date(data.generatedAt).toLocaleString("en", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })}. Times shown in {Intl.DateTimeFormat().resolvedOptions().timeZone}.
+        Last updated {lastUpdatedLabel}. Times shown in {resolvedTimeZone}.
       </p>
       {view === "month" ? (
         <MonthCalendar
-          events={sortedEvents}
+          dayIndex={dayIndex}
           anchor={anchor}
           onDaySelect={onDaySelect}
           onEventToggle={onEventToggle}
@@ -267,7 +361,7 @@ export function PublicCalendarView({
       ) : null}
       {view === "week" ? (
         <WeekCalendar
-          events={sortedEvents}
+          dayIndex={dayIndex}
           anchor={anchor}
           expandedEventId={expandedEventId}
           onEventToggle={onEventToggle}
@@ -275,7 +369,7 @@ export function PublicCalendarView({
       ) : null}
       {view === "day" ? (
         <DayCalendar
-          events={sortedEvents}
+          dayIndex={dayIndex}
           anchor={anchor}
           expandedEventId={expandedEventId}
           onEventToggle={onEventToggle}
@@ -283,8 +377,7 @@ export function PublicCalendarView({
       ) : null}
       {view === "agenda" ? (
         <AgendaCalendar
-          events={sortedEvents}
-          days={agendaDays}
+          groups={agendaGroups}
           expandedEventId={expandedEventId}
           onEventToggle={onEventToggle}
         />
@@ -310,17 +403,17 @@ function WeekdayLabels() {
 }
 
 function MonthCalendar({
-  events,
+  dayIndex,
   anchor,
   onDaySelect,
   onEventToggle,
 }: {
-  events: PublicCalendarEvent[];
+  dayIndex: DayIndex;
   anchor: Date;
   onDaySelect?: (date: Date) => void;
   onEventToggle?: (id: string) => void;
 }) {
-  const days = monthGridDays(anchor);
+  const days = useMemo(() => monthGridDays(anchor), [anchor]);
   const todayKey = keyForDate(new Date());
   return (
     <div className="public-calendar__month">
@@ -328,7 +421,7 @@ function MonthCalendar({
       <div className="public-calendar__month-grid">
         {days.map((day) => {
           const key = keyForDate(day);
-          const dayEvents = eventsForDay(events, day);
+          const dayEvents = eventsForDayKey(dayIndex, key);
           const inMonth = day.getMonth() === anchor.getMonth();
           return (
             <section
@@ -354,7 +447,7 @@ function MonthCalendar({
                 {dayEvents.slice(0, 3).map((event) => (
                   <EventPill
                     event={event}
-                    key={`${event.id}-${event.startsAt}`}
+                    key={`${event.id}-${event.startTimestamp}`}
                     onEventToggle={onEventToggle}
                   />
                 ))}
@@ -373,17 +466,20 @@ function MonthCalendar({
 }
 
 function WeekCalendar({
-  events,
+  dayIndex,
   anchor,
   expandedEventId,
   onEventToggle,
 }: {
-  events: PublicCalendarEvent[];
+  dayIndex: DayIndex;
   anchor: Date;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
 }) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i));
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i)),
+    [anchor],
+  );
   return (
     <div className="public-calendar__week">
       <WeekdayLabels />
@@ -394,10 +490,10 @@ function WeekCalendar({
               <span>{day.getDate()}</span>
             </div>
             <div className="public-calendar__week-events">
-              {eventsForDay(events, day).map((event) => (
+              {eventsForDay(dayIndex, day).map((event) => (
                 <EventCard
                   event={event}
-                  key={`${event.id}-${event.startsAt}`}
+                  key={`${event.id}-${event.startTimestamp}`}
                   compact
                   expanded={expandedEventId === event.id}
                   onEventToggle={onEventToggle}
@@ -412,24 +508,24 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  events,
+  dayIndex,
   anchor,
   expandedEventId,
   onEventToggle,
 }: {
-  events: PublicCalendarEvent[];
+  dayIndex: DayIndex;
   anchor: Date;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
 }) {
-  const dayEvents = eventsForDay(events, anchor);
+  const dayEvents = eventsForDay(dayIndex, anchor);
   return (
     <div className="public-calendar__day-list">
       {dayEvents.length > 0 ? (
         dayEvents.map((event) => (
           <EventCard
             event={event}
-            key={`${event.id}-${event.startsAt}`}
+            key={`${event.id}-${event.startTimestamp}`}
             expanded={expandedEventId === event.id}
             onEventToggle={onEventToggle}
           />
@@ -442,25 +538,14 @@ function DayCalendar({
 }
 
 function AgendaCalendar({
-  events,
-  days,
+  groups,
   expandedEventId,
   onEventToggle,
 }: {
-  events: PublicCalendarEvent[];
-  days: 30 | 90;
+  groups: Array<[string, DecoratedEvent[]]>;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
 }) {
-  const start = startOfDay(new Date()).getTime();
-  const end = addDays(new Date(), days).getTime();
-  const groups = groupEvents(
-    events.filter((event) => {
-      const eventStart = Date.parse(event.startsAt);
-      const eventEnd = Date.parse(event.endsAt);
-      return eventEnd >= start && eventStart <= end;
-    }),
-  );
   return (
     <div className="public-calendar__agenda">
       {groups.map(([day, dayEvents]) => (
@@ -468,7 +553,10 @@ function AgendaCalendar({
           <h2 className="public-calendar__day-title">{formatDay(day)}</h2>
           <ol className="public-calendar__events">
             {dayEvents.map((event) => (
-              <li className="public-calendar__event" key={`${event.id}-${event.startsAt}`}>
+              <li
+                className="public-calendar__event"
+                key={`${event.id}-${event.startTimestamp}`}
+              >
                 <EventCard
                   event={event}
                   expanded={expandedEventId === event.id}
@@ -487,21 +575,21 @@ function EventPill({
   event,
   onEventToggle,
 }: {
-  event: PublicCalendarEvent;
+  event: DecoratedEvent;
   onEventToggle?: (id: string) => void;
 }) {
   return (
     <button
       type="button"
       className="public-calendar__event-pill"
-      title={`${formatTime(event)} ${event.title}`}
+      title={`${event.formattedTime} ${event.title}`}
       onClick={(e) => {
         e.stopPropagation();
         onEventToggle?.(event.id);
       }}
       style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
     >
-      <span>{event.isAllDay ? "" : formatTime(event)}</span>
+      <span>{event.isAllDay ? "" : event.formattedTime}</span>
       {event.title}
     </button>
   );
@@ -513,7 +601,7 @@ function EventCard({
   expanded = false,
   onEventToggle,
 }: {
-  event: PublicCalendarEvent;
+  event: DecoratedEvent;
   compact?: boolean;
   expanded?: boolean;
   onEventToggle?: (id: string) => void;
@@ -535,7 +623,7 @@ function EventCard({
           onClick={() => onEventToggle?.(event.id)}
         >
           <div className="public-calendar__event-topline">
-            <span className="public-calendar__event-time">{formatTime(event)}</span>
+            <span className="public-calendar__event-time">{event.formattedTime}</span>
             <strong className="public-calendar__event-title">{event.title}</strong>
           </div>
         </button>
