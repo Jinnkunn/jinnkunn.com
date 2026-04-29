@@ -43,6 +43,13 @@
   margin-left: 4px;
 }
 
+.site-admin-topbar__save-btn {
+  min-height: 30px;
+  padding: 6px 11px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .site-admin-topbar__right .publish-control {
   position: relative;
 }

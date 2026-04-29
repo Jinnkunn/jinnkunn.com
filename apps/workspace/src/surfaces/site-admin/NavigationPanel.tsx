@@ -63,7 +63,8 @@ function sortedRows(rows: NavRow[], drafts: Record<string, NavRow>, group: "top"
 }
 
 export function NavigationPanel() {
-  const { productionReadOnly, request, setMessage } = useSiteAdmin();
+  const { productionReadOnly, request, setMessage, setTopbarSaveAction } =
+    useSiteAdmin();
   const [sourceVersion, setSourceVersion] = useState<ConfigSourceVersion | null>(null);
   const [baseRows, setBaseRows] = useState<NavRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, NavRow>>({});
@@ -248,6 +249,37 @@ export function NavigationPanel() {
     setMessage("success", "Navigation item created. Publish staging separately.");
     await loadConfig({ silent: true });
   }, [baseRows, drafts, loadConfig, newNav, productionReadOnly, request, setMessage, sourceVersion]);
+
+  useEffect(() => {
+    setTopbarSaveAction({
+      dirty: dirtyRows.length > 0,
+      disabled:
+        productionReadOnly ||
+        loading ||
+        saving ||
+        conflict ||
+        dirtyRows.length === 0,
+      label: `Save Navigation (${dirtyRows.length})`,
+      onSave: () => {
+        void saveNavigation();
+      },
+      saving,
+      title: productionReadOnly
+        ? "Production is inspect-only. Switch to Staging to save navigation."
+        : conflict
+          ? "Reload latest before saving navigation."
+          : undefined,
+    });
+    return () => setTopbarSaveAction(null);
+  }, [
+    conflict,
+    dirtyRows.length,
+    loading,
+    productionReadOnly,
+    saveNavigation,
+    saving,
+    setTopbarSaveAction,
+  ]);
 
   return (
     <section className="surface-card navigation-editor">

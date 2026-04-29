@@ -360,6 +360,28 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Copy Production Command/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
   assert.match(releasePanel, /Promotion Checklist/);
+  assert.match(releasePanel, /Environment comparison/);
+  assert.match(releasePanel, /Production differs/);
+});
+
+test("tauri-ui-engineering: site admin has a unified topbar save action", async () => {
+  const state = await read("apps/workspace/src/surfaces/site-admin/state.tsx");
+  const topbar = await read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx");
+  const documentEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
+  );
+  const configPanel = await read("apps/workspace/src/surfaces/site-admin/ConfigPanel.tsx");
+  const navigationPanel = await read(
+    "apps/workspace/src/surfaces/site-admin/NavigationPanel.tsx",
+  );
+
+  assert.match(state, /topbarSaveAction/);
+  assert.match(state, /setTopbarSaveAction/);
+  assert.match(topbar, /topbarSaveAction\?\.dirty/);
+  assert.match(topbar, /site-admin-topbar__save-btn/);
+  assert.match(documentEditor, /setTopbarSaveAction/);
+  assert.match(configPanel, /setTopbarSaveAction/);
+  assert.match(navigationPanel, /setTopbarSaveAction/);
 });
 
 test("tauri-ui-engineering: production settings are visibly locked", async () => {

@@ -27,6 +27,7 @@ import type {
   NormalizedApiResponse,
   PageListRow,
   PostListRow,
+  TopbarSaveAction,
 } from "./types";
 import {
   decodeJwtPayload,
@@ -123,6 +124,12 @@ export interface SiteAdminContextValue {
   drawerOpen: boolean;
   toggleDrawer: () => void;
   setDrawerOpen: (open: boolean) => void;
+
+  // Current panel's optional save action. Panels register this so the
+  // shell can expose one consistent topbar Save control without needing
+  // to know each panel's internal state shape.
+  topbarSaveAction: TopbarSaveAction | null;
+  setTopbarSaveAction: (action: TopbarSaveAction | null) => void;
 
   // Shared indexes — panels push their most-recently-fetched list here
   // so the command palette can search post/page titles without doing its
@@ -324,6 +331,8 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     body: "",
   });
   const [drawerOpen, setDrawerOpenState] = useState(false);
+  const [topbarSaveAction, setTopbarSaveActionState] =
+    useState<TopbarSaveAction | null>(null);
   const [postsIndex, setPostsIndexState] = useState<PostListRow[]>([]);
   const [pagesIndex, setPagesIndexState] = useState<PageListRow[]>([]);
   const [contentRevision, setContentRevisionState] = useState(0);
@@ -351,6 +360,10 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
 
   const setDrawerOpen = useCallback((open: boolean) => {
     setDrawerOpenState(open);
+  }, []);
+
+  const setTopbarSaveAction = useCallback((action: TopbarSaveAction | null) => {
+    setTopbarSaveActionState(action);
   }, []);
 
   const setPostsIndex = useCallback((rows: PostListRow[]) => {
@@ -892,6 +905,8 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       drawerOpen,
       toggleDrawer,
       setDrawerOpen,
+      topbarSaveAction,
+      setTopbarSaveAction,
       postsIndex,
       pagesIndex,
       setPostsIndex,
@@ -926,6 +941,8 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
       drawerOpen,
       toggleDrawer,
       setDrawerOpen,
+      topbarSaveAction,
+      setTopbarSaveAction,
       postsIndex,
       pagesIndex,
       setPostsIndex,
