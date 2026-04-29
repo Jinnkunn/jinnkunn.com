@@ -119,6 +119,76 @@
   text-transform: uppercase;
 }
 
+/* When the section header doubles as a collapse toggle (Recent /
+ * Favorites), give it the affordance: chevron on the left, count on
+ * the right, full-row hover surface so it reads like a button. */
+.sidebar-context-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  /* Re-apply the eyebrow typography that the base `__label` rule sets;
+   * the button reset above stripped it. */
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  text-align: left;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.sidebar-context-section__toggle:hover,
+.sidebar-context-section__toggle:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.sidebar-context-section__toggle > svg {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  /* Match the section-row chevrons in the surface tree below. */
+  transition: transform 140ms ease, color 120ms ease;
+}
+
+.sidebar-context-section__toggle:hover > svg {
+  color: var(--color-text-primary);
+}
+
+.sidebar-context-section__toggle > span {
+  /* The label sits in the middle, growing to push count to the right. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-context-section__count {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.sidebar-context-section[data-collapsed="true"] {
+  /* Shrink the gap when collapsed so adjacent sections don't leave a
+   * lonely 6px void. The section's children are already hidden by the
+   * conditional render. */
+  gap: 0;
+}
+
 .sidebar-context-header__title {
   margin: 4px 0 0;
   overflow: hidden;

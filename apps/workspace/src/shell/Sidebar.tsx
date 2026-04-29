@@ -54,6 +54,13 @@ interface SidebarProps {
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
 const ITEM_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.itemTrees.v1";
+// Per-context-section collapse state. Currently keyed for "recent" and
+// "favorites"; the surface tree under "Navigation" is intentionally not
+// collapsible at the section level — that's the primary nav and hiding
+// it would leave the sidebar useless. Per-group collapse inside the
+// nav tree continues to use GROUP_COLLAPSE_STORAGE_KEY above.
+const CONTEXT_SECTION_COLLAPSE_STORAGE_KEY =
+  "workspace.sidebar.contextSections.v1";
 
 type CollapseMap = Record<string, boolean>;
 
@@ -672,6 +679,13 @@ export function Sidebar({
   const [itemTreeCollapsed, setItemTreeCollapsed] = useState<CollapseMap>(() =>
     loadCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY),
   );
+  // Recent + Favorites can be collapsed individually so a daily reorder
+  // of the surface tree doesn't have to step around stale recents the
+  // operator already knows about. State is keyed by section id ("recent"
+  // / "favorites") so adding a future section is a one-line change.
+  const [contextSectionCollapsed, setContextSectionCollapsed] = useState<CollapseMap>(
+    () => loadCollapseMap(CONTEXT_SECTION_COLLAPSE_STORAGE_KEY),
+  );
 
   useEffect(() => {
     persistCollapseMap(GROUP_COLLAPSE_STORAGE_KEY, groupCollapsed);
@@ -681,6 +695,13 @@ export function Sidebar({
     persistCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY, itemTreeCollapsed);
   }, [itemTreeCollapsed]);
 
+  useEffect(() => {
+    persistCollapseMap(
+      CONTEXT_SECTION_COLLAPSE_STORAGE_KEY,
+      contextSectionCollapsed,
+    );
+  }, [contextSectionCollapsed]);
+
   const toggleGroup = useCallback((key: string) => {
     setGroupCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
@@ -688,6 +709,15 @@ export function Sidebar({
   const toggleItemTree = useCallback((key: string) => {
     setItemTreeCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  const toggleContextSection = useCallback((key: string) => {
+    setContextSectionCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const isContextSectionOpen = useCallback(
+    (key: string) => !contextSectionCollapsed[key],
+    [contextSectionCollapsed],
+  );
 
   const groupKey = (surfaceId: string, groupId: string) =>
     `${surfaceId}:${groupId}`;
@@ -772,13 +802,34 @@ export function Sidebar({
           ) : null}
         </header>
         <div className="sidebar-context-scroll">
-        {recentItems.length > 0 && (
-          <section className="sidebar-context-section">
-            <p className="sidebar-context-section__label">
-              Recent
-            </p>
-            <ul className="sidebar-recent" role="list">
-              {recentItems.slice(0, 5).map((recent) => {
+        {recentItems.length > 0 && (() => {
+          const recentOpen = isContextSectionOpen("recent");
+          const recentCount = Math.min(recentItems.length, 5);
+          return (
+            <section
+              className="sidebar-context-section"
+              data-collapsed={recentOpen ? undefined : "true"}
+            >
+              <button
+                type="button"
+                className="sidebar-context-section__label sidebar-context-section__toggle"
+                onClick={() => toggleContextSection("recent")}
+                aria-expanded={recentOpen}
+                aria-controls="sidebar-section-recent"
+              >
+                <ChevronIcon open={recentOpen} />
+                <span>Recent</span>
+                <span className="sidebar-context-section__count" aria-hidden="true">
+                  {recentCount}
+                </span>
+              </button>
+              {recentOpen && (
+                <ul
+                  id="sidebar-section-recent"
+                  className="sidebar-recent"
+                  role="list"
+                >
+                  {recentItems.slice(0, 5).map((recent) => {
                 const selected =
                   activeSurfaceId === recent.surfaceId &&
                   activeNavItemId === recent.itemId;
@@ -820,16 +871,38 @@ export function Sidebar({
                   </li>
                 );
               })}
-            </ul>
-          </section>
-        )}
-        {favorites.length > 0 && (
-          <section className="sidebar-context-section">
-            <p className="sidebar-context-section__label">
-              Favorites
-            </p>
-            <ul className="sidebar-favorites" role="list">
-              {favorites.map((fav) => {
+                </ul>
+              )}
+            </section>
+          );
+        })()}
+        {favorites.length > 0 && (() => {
+          const favoritesOpen = isContextSectionOpen("favorites");
+          return (
+            <section
+              className="sidebar-context-section"
+              data-collapsed={favoritesOpen ? undefined : "true"}
+            >
+              <button
+                type="button"
+                className="sidebar-context-section__label sidebar-context-section__toggle"
+                onClick={() => toggleContextSection("favorites")}
+                aria-expanded={favoritesOpen}
+                aria-controls="sidebar-section-favorites"
+              >
+                <ChevronIcon open={favoritesOpen} />
+                <span>Favorites</span>
+                <span className="sidebar-context-section__count" aria-hidden="true">
+                  {favorites.length}
+                </span>
+              </button>
+              {favoritesOpen && (
+                <ul
+                  id="sidebar-section-favorites"
+                  className="sidebar-favorites"
+                  role="list"
+                >
+                  {favorites.map((fav) => {
                 const selected =
                   activeSurfaceId === fav.surfaceId &&
                   activeNavItemId === fav.itemId;
@@ -878,9 +951,11 @@ export function Sidebar({
                   </li>
                 );
               })}
-            </ul>
-          </section>
-        )}
+                </ul>
+              )}
+            </section>
+          );
+        })()}
         <section className="sidebar-context-section">
           <p className="sidebar-context-section__label">Navigation</p>
           {activeSurface.navGroups?.length ? (
