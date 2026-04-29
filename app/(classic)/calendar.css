@@ -124,12 +124,15 @@
 }
 
 .public-calendar__sync-status[data-status="ok"] {
-  color: color-mix(in srgb, #2f855a 70%, var(--ds-text-secondary));
+  color: var(--ds-success-text);
+  border-color: var(--ds-success-border);
+  background: var(--ds-success-bg);
 }
 
 .public-calendar__sync-status[data-status="failed"] {
-  color: color-mix(in srgb, #c53030 70%, var(--ds-text-secondary));
-  border-color: color-mix(in srgb, #c53030 28%, transparent);
+  color: var(--ds-danger-text);
+  border-color: var(--ds-danger-border);
+  background: var(--ds-danger-bg);
 }
 
 @keyframes public-calendar-sync-pulse {
