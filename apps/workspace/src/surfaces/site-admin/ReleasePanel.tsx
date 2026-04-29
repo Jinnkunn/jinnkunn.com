@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
+import { PromoteToProductionButton } from "./PromoteToProductionButton";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { getSiteAdminEnvironment, normalizeString } from "./utils";
@@ -317,13 +318,13 @@ export function ReleasePanel() {
             Copy Preflight
           </button>
           <button
-            className={readyToPromote ? "btn btn--primary" : "btn btn--secondary"}
+            className="btn btn--secondary"
             type="button"
             onClick={() =>
               void copyText("production promotion command", productionCommandFor(status))
             }
           >
-            Copy Production Command
+            Copy Command
           </button>
         </div>
       </header>
@@ -439,16 +440,31 @@ export function ReleasePanel() {
         </div>
       </section>
 
-      <section className="release-panel__commands" aria-label="Release commands">
-        <div>
-          <h2>Preflight</h2>
-          <pre>{PREFLIGHT_COMMAND}</pre>
-        </div>
+      <section className="release-panel__promote" aria-label="Production promotion action">
         <div>
           <h2>Production Promotion</h2>
-          <pre>{productionCommandFor(status)}</pre>
+          <p>
+            Dispatches the guarded release-production workflow from the validated
+            staging candidate. Production remains read-only everywhere else in
+            Workspace.
+          </p>
         </div>
+        <PromoteToProductionButton />
       </section>
+
+      <details className="release-panel__commands" aria-label="Release commands">
+        <summary>Advanced command fallback</summary>
+        <div className="release-panel__commands-grid">
+          <div>
+            <h2>Preflight</h2>
+            <pre>{PREFLIGHT_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Production Promotion</h2>
+            <pre>{productionCommandFor(status)}</pre>
+          </div>
+        </div>
+      </details>
 
       <footer className="release-panel__footer">
         <span>Runbook: {PRODUCTION_RUNBOOK_PATH}</span>

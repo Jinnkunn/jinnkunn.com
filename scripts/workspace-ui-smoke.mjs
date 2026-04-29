@@ -154,8 +154,13 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Copy Production Command",
+    "PromoteToProductionButton",
     "Release panel promotion action",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Advanced command fallback",
+    "Release panel command fallback",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
