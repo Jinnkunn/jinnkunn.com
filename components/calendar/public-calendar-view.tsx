@@ -155,14 +155,24 @@ export function PublicCalendarView({
   data,
   view = "agenda",
   anchorIso,
+  agendaDays = 30,
   onViewChange,
   onAnchorChange,
+  onAgendaDaysChange,
+  onDaySelect,
+  expandedEventId,
+  onEventToggle,
 }: {
   data: PublicCalendarData;
   view?: PublicCalendarViewMode;
   anchorIso?: string;
+  agendaDays?: 30 | 90;
   onViewChange?: (view: PublicCalendarViewMode) => void;
   onAnchorChange?: (date: Date) => void;
+  onAgendaDaysChange?: (days: 30 | 90) => void;
+  onDaySelect?: (date: Date) => void;
+  expandedEventId?: string | null;
+  onEventToggle?: (id: string) => void;
 }) {
   const anchor = Number.isFinite(Date.parse(anchorIso ?? ""))
     ? new Date(anchorIso ?? "")
@@ -223,15 +233,62 @@ export function PublicCalendarView({
             </button>
           ))}
         </div>
+        {view === "agenda" ? (
+          <div className="public-calendar__view-switch" aria-label="Agenda range">
+            {([30, 90] as const).map((days) => (
+              <button
+                key={days}
+                type="button"
+                className="public-calendar__view-button"
+                data-active={agendaDays === days ? "true" : "false"}
+                onClick={() => onAgendaDaysChange?.(days)}
+              >
+                {days} days
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
+      <p className="public-calendar__sync-note">
+        Last updated {new Date(data.generatedAt).toLocaleString("en", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })}. Times shown in {Intl.DateTimeFormat().resolvedOptions().timeZone}.
+      </p>
       {view === "month" ? (
-        <MonthCalendar events={sortedEvents} anchor={anchor} />
+        <MonthCalendar
+          events={sortedEvents}
+          anchor={anchor}
+          onDaySelect={onDaySelect}
+          onEventToggle={onEventToggle}
+        />
       ) : null}
       {view === "week" ? (
-        <WeekCalendar events={sortedEvents} anchor={anchor} />
+        <WeekCalendar
+          events={sortedEvents}
+          anchor={anchor}
+          expandedEventId={expandedEventId}
+          onEventToggle={onEventToggle}
+        />
       ) : null}
-      {view === "day" ? <DayCalendar events={sortedEvents} anchor={anchor} /> : null}
-      {view === "agenda" ? <AgendaCalendar events={sortedEvents} /> : null}
+      {view === "day" ? (
+        <DayCalendar
+          events={sortedEvents}
+          anchor={anchor}
+          expandedEventId={expandedEventId}
+          onEventToggle={onEventToggle}
+        />
+      ) : null}
+      {view === "agenda" ? (
+        <AgendaCalendar
+          events={sortedEvents}
+          days={agendaDays}
+          expandedEventId={expandedEventId}
+          onEventToggle={onEventToggle}
+        />
+      ) : null}
     </div>
   );
 }
@@ -255,9 +312,13 @@ function WeekdayLabels() {
 function MonthCalendar({
   events,
   anchor,
+  onDaySelect,
+  onEventToggle,
 }: {
   events: PublicCalendarEvent[];
   anchor: Date;
+  onDaySelect?: (date: Date) => void;
+  onEventToggle?: (id: string) => void;
 }) {
   const days = monthGridDays(anchor);
   const todayKey = keyForDate(new Date());
@@ -274,6 +335,14 @@ function MonthCalendar({
               className="public-calendar__month-cell"
               data-muted={inMonth ? "false" : "true"}
               key={key}
+              onClick={() => onDaySelect?.(day)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                onDaySelect?.(day);
+              }}
+              role="button"
+              tabIndex={0}
             >
               <span
                 className="public-calendar__date-number"
@@ -283,7 +352,11 @@ function MonthCalendar({
               </span>
               <div className="public-calendar__month-events">
                 {dayEvents.slice(0, 3).map((event) => (
-                  <EventPill event={event} key={`${event.id}-${event.startsAt}`} />
+                  <EventPill
+                    event={event}
+                    key={`${event.id}-${event.startsAt}`}
+                    onEventToggle={onEventToggle}
+                  />
                 ))}
                 {dayEvents.length > 3 ? (
                   <span className="public-calendar__more">
@@ -302,9 +375,13 @@ function MonthCalendar({
 function WeekCalendar({
   events,
   anchor,
+  expandedEventId,
+  onEventToggle,
 }: {
   events: PublicCalendarEvent[];
   anchor: Date;
+  expandedEventId?: string | null;
+  onEventToggle?: (id: string) => void;
 }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i));
   return (
@@ -318,7 +395,13 @@ function WeekCalendar({
             </div>
             <div className="public-calendar__week-events">
               {eventsForDay(events, day).map((event) => (
-                <EventCard event={event} key={`${event.id}-${event.startsAt}`} compact />
+                <EventCard
+                  event={event}
+                  key={`${event.id}-${event.startsAt}`}
+                  compact
+                  expanded={expandedEventId === event.id}
+                  onEventToggle={onEventToggle}
+                />
               ))}
             </div>
           </section>
@@ -331,16 +414,25 @@ function WeekCalendar({
 function DayCalendar({
   events,
   anchor,
+  expandedEventId,
+  onEventToggle,
 }: {
   events: PublicCalendarEvent[];
   anchor: Date;
+  expandedEventId?: string | null;
+  onEventToggle?: (id: string) => void;
 }) {
   const dayEvents = eventsForDay(events, anchor);
   return (
     <div className="public-calendar__day-list">
       {dayEvents.length > 0 ? (
         dayEvents.map((event) => (
-          <EventCard event={event} key={`${event.id}-${event.startsAt}`} />
+          <EventCard
+            event={event}
+            key={`${event.id}-${event.startsAt}`}
+            expanded={expandedEventId === event.id}
+            onEventToggle={onEventToggle}
+          />
         ))
       ) : (
         <p className="public-calendar__empty-day">No public events for this day.</p>
@@ -349,8 +441,26 @@ function DayCalendar({
   );
 }
 
-function AgendaCalendar({ events }: { events: PublicCalendarEvent[] }) {
-  const groups = groupEvents(events);
+function AgendaCalendar({
+  events,
+  days,
+  expandedEventId,
+  onEventToggle,
+}: {
+  events: PublicCalendarEvent[];
+  days: 30 | 90;
+  expandedEventId?: string | null;
+  onEventToggle?: (id: string) => void;
+}) {
+  const start = startOfDay(new Date()).getTime();
+  const end = addDays(new Date(), days).getTime();
+  const groups = groupEvents(
+    events.filter((event) => {
+      const eventStart = Date.parse(event.startsAt);
+      const eventEnd = Date.parse(event.endsAt);
+      return eventEnd >= start && eventStart <= end;
+    }),
+  );
   return (
     <div className="public-calendar__agenda">
       {groups.map(([day, dayEvents]) => (
@@ -359,7 +469,11 @@ function AgendaCalendar({ events }: { events: PublicCalendarEvent[] }) {
           <ol className="public-calendar__events">
             {dayEvents.map((event) => (
               <li className="public-calendar__event" key={`${event.id}-${event.startsAt}`}>
-                <EventCard event={event} />
+                <EventCard
+                  event={event}
+                  expanded={expandedEventId === event.id}
+                  onEventToggle={onEventToggle}
+                />
               </li>
             ))}
           </ol>
@@ -369,45 +483,74 @@ function AgendaCalendar({ events }: { events: PublicCalendarEvent[] }) {
   );
 }
 
-function EventPill({ event }: { event: PublicCalendarEvent }) {
+function EventPill({
+  event,
+  onEventToggle,
+}: {
+  event: PublicCalendarEvent;
+  onEventToggle?: (id: string) => void;
+}) {
   return (
-    <span
+    <button
+      type="button"
       className="public-calendar__event-pill"
       title={`${formatTime(event)} ${event.title}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onEventToggle?.(event.id);
+      }}
       style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
     >
       <span>{event.isAllDay ? "" : formatTime(event)}</span>
       {event.title}
-    </span>
+    </button>
   );
 }
 
 function EventCard({
   event,
   compact = false,
+  expanded = false,
+  onEventToggle,
 }: {
   event: PublicCalendarEvent;
   compact?: boolean;
+  expanded?: boolean;
+  onEventToggle?: (id: string) => void;
 }) {
   return (
-    <div className="public-calendar__event-card" data-compact={compact ? "true" : "false"}>
+    <div
+      className="public-calendar__event-card"
+      data-compact={compact ? "true" : "false"}
+    >
       <span
         className="public-calendar__event-color"
         style={{ background: event.colorHex ?? "#9b9a97" }}
         aria-hidden="true"
       />
       <div className="public-calendar__event-main">
-        <div className="public-calendar__event-topline">
-          <span className="public-calendar__event-time">{formatTime(event)}</span>
-          <strong className="public-calendar__event-title">{event.title}</strong>
-        </div>
-        {event.visibility === "full" && event.location ? (
+        <button
+          type="button"
+          className="public-calendar__event-toggle"
+          onClick={() => onEventToggle?.(event.id)}
+        >
+          <div className="public-calendar__event-topline">
+            <span className="public-calendar__event-time">{formatTime(event)}</span>
+            <strong className="public-calendar__event-title">{event.title}</strong>
+          </div>
+        </button>
+        {expanded && event.visibility === "busy" ? (
+          <p className="public-calendar__event-description">
+            Details are hidden for this blocked time.
+          </p>
+        ) : null}
+        {expanded && event.visibility === "full" && event.location ? (
           <p className="public-calendar__event-meta">{event.location}</p>
         ) : null}
-        {event.visibility === "full" && event.description ? (
+        {expanded && event.visibility === "full" && event.description ? (
           <p className="public-calendar__event-description">{event.description}</p>
         ) : null}
-        {event.visibility === "full" && event.url ? (
+        {expanded && event.visibility === "full" && event.url ? (
           <p className="public-calendar__event-link">
             <a href={event.url}>Event link</a>
           </p>

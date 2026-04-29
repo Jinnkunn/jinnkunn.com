@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 
 import { isSameDay, isSameMonth, monthGridDays } from "./dateRange";
+import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents, type AllDayBar } from "./eventLayout";
-import type { Calendar, CalendarEvent } from "./types";
+import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 
 const BAR_HEIGHT = 18;
 const BAR_GAP = 2;
@@ -17,11 +18,13 @@ export function MonthView({
   events,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const days = useMemo(() => monthGridDays(anchor), [anchor]);
   const weekRows = useMemo(() => chunk(days, 7), [days]);
@@ -39,6 +42,7 @@ export function MonthView({
             anchor={anchor}
             isFirstRow={idx === 0}
             onEventSelect={onEventSelect}
+            getDisclosure={getDisclosure}
           />
         ))}
       </div>
@@ -76,6 +80,7 @@ function WeekRow({
   anchor,
   isFirstRow,
   onEventSelect,
+  getDisclosure,
 }: {
   week: Date[];
   events: CalendarEvent[];
@@ -83,6 +88,7 @@ function WeekRow({
   anchor: Date;
   isFirstRow: boolean;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   // Anything that should render as a continuous bar — both multi-day
   // events and single-day all-day events. Single-day timed events
@@ -164,6 +170,7 @@ function WeekRow({
                   event={ev}
                   calendarsById={calendarsById}
                   onEventSelect={onEventSelect}
+                  getDisclosure={getDisclosure}
                 />
               ))}
               {overflowCount > 0 ? (
@@ -190,6 +197,7 @@ function WeekRow({
                 weekDayCount={week.length}
                 calendarsById={calendarsById}
                 onEventSelect={onEventSelect}
+                getDisclosure={getDisclosure}
               />
             )),
           )}
@@ -205,12 +213,14 @@ function Bar({
   weekDayCount,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   bar: AllDayBar;
   rowIdx: number;
   weekDayCount: number;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const cal = calendarsById.get(bar.event.calendarId);
   const color = cal?.colorHex ?? "#7A7A7A";
@@ -232,7 +242,10 @@ function Bar({
         boxShadow: `inset 3px 0 0 0 ${color}`,
       }}
     >
-      {bar.event.title || "(No title)"}
+      <span>{bar.event.title || "(No title)"}</span>
+      {getDisclosure ? (
+        <DisclosureBadge visibility={getDisclosure(bar.event)} compact />
+      ) : null}
     </button>
   );
 }
@@ -241,10 +254,12 @@ function TimedChip({
   event,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   event: CalendarEvent;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const cal = calendarsById.get(event.calendarId);
   const color = cal?.colorHex ?? "#7A7A7A";
@@ -271,6 +286,9 @@ function TimedChip({
       <span className="truncate text-text-primary">
         {event.title || "(No title)"}
       </span>
+      {getDisclosure ? (
+        <DisclosureBadge visibility={getDisclosure(event)} compact />
+      ) : null}
     </button>
   );
 }

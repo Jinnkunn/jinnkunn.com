@@ -19,6 +19,8 @@ export function PublicCalendarClient({
   const [data, setData] = useState<PublicCalendarData>(initialData);
   const [view, setView] = useState<PublicCalendarViewMode>("month");
   const [anchorIso, setAnchorIso] = useState(() => new Date().toISOString());
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,8 +52,18 @@ export function PublicCalendarClient({
       data={data}
       view={view}
       anchorIso={anchorIso}
+      agendaDays={agendaDays}
       onViewChange={setView}
       onAnchorChange={(date) => setAnchorIso(date.toISOString())}
+      onAgendaDaysChange={setAgendaDays}
+      expandedEventId={expandedEventId}
+      onEventToggle={(id) =>
+        setExpandedEventId((current) => (current === id ? null : id))
+      }
+      onDaySelect={(date) => {
+        setAnchorIso(date.toISOString());
+        setView("day");
+      }}
     />
   );
 }

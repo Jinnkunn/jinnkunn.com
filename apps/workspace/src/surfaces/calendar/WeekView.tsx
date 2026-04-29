@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import { isSameDay, weekDays } from "./dateRange";
+import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents } from "./eventLayout";
 import { TimeGrid, HOUR_HEIGHT, TIME_GUTTER_WIDTH } from "./TimeGrid";
-import type { Calendar, CalendarEvent } from "./types";
+import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 
 const ALL_DAY_BAR_HEIGHT = 18;
 const ALL_DAY_BAR_GAP = 2;
@@ -17,11 +18,13 @@ export function WeekView({
   events,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const days = useMemo(() => weekDays(anchor), [anchor]);
 
@@ -50,6 +53,7 @@ export function WeekView({
           calendarsById={calendarsById}
           stripHeight={stripHeight}
           onEventSelect={onEventSelect}
+          getDisclosure={getDisclosure}
         />
       ) : null}
       <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto">
@@ -58,6 +62,7 @@ export function WeekView({
           events={events}
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
+          getDisclosure={getDisclosure}
         />
       </div>
     </div>
@@ -106,12 +111,14 @@ function AllDayStrip({
   calendarsById,
   stripHeight,
   onEventSelect,
+  getDisclosure,
 }: {
   days: Date[];
   bars: ReturnType<typeof layoutAllDayEvents>;
   calendarsById: Map<string, Calendar>;
   stripHeight: number;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   // Stack bars into rows so two events on the same day don't overlap.
   const rows = stackRows(bars);
@@ -153,7 +160,10 @@ function AllDayStrip({
                   boxShadow: `inset 3px 0 0 0 ${color}`,
                 }}
               >
-                {bar.event.title || "(No title)"}
+                <span>{bar.event.title || "(No title)"}</span>
+                {getDisclosure ? (
+                  <DisclosureBadge visibility={getDisclosure(bar.event)} compact />
+                ) : null}
               </button>
             );
           }),

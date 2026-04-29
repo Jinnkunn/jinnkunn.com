@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
 import { isSameDay } from "./dateRange";
+import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutDayEvents, type PositionedEvent } from "./eventLayout";
-import type { Calendar, CalendarEvent } from "./types";
+import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 
 /** Pixels per hour. macOS Calendar uses ~44px at default zoom; matching
  * that keeps text-block events readable without dominating the pane. */
@@ -22,11 +23,13 @@ export function TimeGrid({
   events,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   days: Date[];
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const totalHeight = HOUR_HEIGHT * HOURS_PER_DAY;
   const now = useNow();
@@ -52,6 +55,7 @@ export function TimeGrid({
             positioned={positioned}
             calendarsById={calendarsById}
             onEventSelect={onEventSelect}
+            getDisclosure={getDisclosure}
             totalHeight={totalHeight}
             nowTopPx={isToday ? nowTopPx : null}
             // Right edge of each column except the last gets a vertical
@@ -116,6 +120,7 @@ function DayColumn({
   positioned,
   calendarsById,
   onEventSelect,
+  getDisclosure,
   totalHeight,
   nowTopPx,
   withRightBorder,
@@ -124,6 +129,7 @@ function DayColumn({
   positioned: PositionedEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
   totalHeight: number;
   nowTopPx: number | null;
   withRightBorder: boolean;
@@ -153,6 +159,7 @@ function DayColumn({
           positioned={p}
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
+          getDisclosure={getDisclosure}
         />
       ))}
       {nowTopPx !== null ? (
@@ -182,10 +189,12 @@ function EventBlock({
   positioned,
   calendarsById,
   onEventSelect,
+  getDisclosure,
 }: {
   positioned: PositionedEvent;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  getDisclosure?: EventDisclosureResolver;
 }) {
   const { event, column, totalColumns, startMinute, endMinute } = positioned;
   const cal = calendarsById.get(event.calendarId);
@@ -219,6 +228,9 @@ function EventBlock({
         <div className="font-semibold truncate" style={{ color }}>
           {event.title || "(No title)"}
         </div>
+        {getDisclosure ? (
+          <DisclosureBadge visibility={getDisclosure(event)} compact />
+        ) : null}
         {height >= HOUR_HEIGHT * 0.6 && !event.isAllDay ? (
           <div className="text-text-secondary truncate">
             {formatHM(event.startsAt)}

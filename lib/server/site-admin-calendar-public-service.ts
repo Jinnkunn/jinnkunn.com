@@ -6,6 +6,7 @@ import {
   type PublicCalendarData,
 } from "@/lib/shared/public-calendar";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
+import { writePublicCalendarToDb } from "@/lib/server/public-calendar-db";
 
 const CALENDAR_PUBLIC_REL_PATH = "content/calendar-public.json";
 
@@ -46,5 +47,6 @@ export async function saveSiteAdminPublicCalendarData(input: {
     expectedSha: input.expectedFileSha,
     message: "chore(calendar): update public calendar projection",
   });
+  await writePublicCalendarToDb(input.data);
   return { fileSha: result.fileSha };
 }

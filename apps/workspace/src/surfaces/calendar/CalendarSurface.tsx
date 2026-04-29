@@ -27,6 +27,7 @@ import {
 } from "./dateRange";
 import { DateNav } from "./DateNav";
 import { DayView } from "./DayView";
+import type { EventDisclosureResolver } from "./types";
 import { MonthView } from "./MonthView";
 import {
   buildPublicCalendarPayload,
@@ -56,6 +57,14 @@ type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = "idle" | "publishing" | "success" | "error";
 type PublishSummary = Record<CalendarPublicVisibility, number>;
 type CalendarSyncReason = "auto" | "manual";
+type CalendarSyncHealth = {
+  lastSyncedAt: string | null;
+  eventCount: number;
+  baseUrl: string;
+  fileSha: string;
+  reason: CalendarSyncReason | null;
+  error: string | null;
+};
 
 function isAuthorized(status: CalendarAuthorizationStatus): boolean {
   return status === "fullAccess" || status === "writeOnly";
@@ -84,6 +93,14 @@ export function CalendarSurface() {
   const [rulesLoaded, setRulesLoaded] = useState(false);
   const [publishState, setPublishState] = useState<PublishState>("idle");
   const [publishMessage, setPublishMessage] = useState<string>("");
+  const [syncHealth, setSyncHealth] = useState<CalendarSyncHealth>({
+    lastSyncedAt: null,
+    eventCount: 0,
+    baseUrl: "",
+    fileSha: "",
+    reason: null,
+    error: null,
+  });
   const lastAutoSyncKeyRef = useRef("");
 
   // Refetch whenever the user pages forward/back or switches view —
@@ -152,7 +169,6 @@ export function CalendarSurface() {
     if (!isAuthorized(auth)) return;
     // Initial EventKit hydration is an async external sync; loadAll awaits
     // native APIs before committing state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll();
   }, [auth, loadAll]);
 
@@ -205,6 +221,10 @@ export function CalendarSurface() {
   );
   const publicEventCount =
     publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
+  const getDisclosure = useCallback<EventDisclosureResolver>(
+    (event) => metadataForEvent(publishMetadata, event).visibility,
+    [publishMetadata],
+  );
 
   const toggleCalendar = (id: string) => {
     setSelectedCalendarIds((prev) => {
@@ -278,15 +298,34 @@ export function CalendarSurface() {
       if (!result.ok) {
         setPublishState("error");
         setPublishMessage(`Calendar sync failed via ${result.baseUrl}: ${result.error}`);
+        setSyncHealth((prev) => ({
+          ...prev,
+          baseUrl: result.baseUrl,
+          error: result.error,
+          reason,
+        }));
         return;
       }
       setPublishState("success");
+      setSyncHealth({
+        lastSyncedAt: new Date().toISOString(),
+        eventCount: payload.events.length,
+        baseUrl: result.baseUrl,
+        fileSha: result.fileSha,
+        reason,
+        error: null,
+      });
       setPublishMessage(
         `${reason === "auto" ? "Auto-synced" : "Synced"} ${payload.events.length} public events to ${result.baseUrl}. The website calendar reads this projection dynamically. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
       );
     } catch (err) {
       setPublishState("error");
       setPublishMessage(`Calendar sync failed: ${String(err)}`);
+      setSyncHealth((prev) => ({
+        ...prev,
+        error: String(err),
+        reason,
+      }));
     }
   }, [
     auth,
@@ -351,6 +390,7 @@ export function CalendarSurface() {
           <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <CalendarPublishSummary summary={publishSummary} />
+            <CalendarSyncHealthPill health={syncHealth} state={publishState} />
             <button
               type="button"
               className="btn btn--primary"
@@ -373,6 +413,7 @@ export function CalendarSurface() {
             {publishMessage}
           </p>
         ) : null}
+        <CalendarSyncHealthPanel health={syncHealth} state={publishState} />
       </header>
       <div
         className="panel-shell__body flex flex-1 min-h-0 overflow-hidden"
@@ -413,6 +454,7 @@ export function CalendarSurface() {
               calendarsById={calendarsById}
               loadState={loadState}
               errorMessage={errorMessage}
+              getDisclosure={getDisclosure}
               onEventSelect={setSelectedEvent}
             />
             {selectedEvent ? (
@@ -436,6 +478,79 @@ export function CalendarSurface() {
   );
 }
 
+function CalendarSyncHealthPanel({
+  health,
+  state,
+}: {
+  health: CalendarSyncHealth;
+  state: PublishState;
+}) {
+  if (!health.lastSyncedAt && !health.error && state !== "publishing") return null;
+  const target = health.baseUrl || "https://staging.jinkunchen.com";
+  const status =
+    state === "publishing" ? "syncing" : health.error ? "error" : "ready";
+  return (
+    <div className="mt-3 grid gap-2 rounded border border-border-subtle bg-bg-surface-alt p-3 text-[12px] text-text-muted sm:grid-cols-4">
+      <span>
+        <strong className="text-text-primary">Status</strong>
+        <br />
+        {status}
+      </span>
+      <span>
+        <strong className="text-text-primary">Target</strong>
+        <br />
+        {target.replace(/^https?:\/\//, "")}
+      </span>
+      <span>
+        <strong className="text-text-primary">Events</strong>
+        <br />
+        {health.eventCount}
+      </span>
+      <span>
+        <strong className="text-text-primary">Save SHA</strong>
+        <br />
+        {health.fileSha ? health.fileSha.slice(0, 8) : "pending"}
+      </span>
+    </div>
+  );
+}
+
+function CalendarSyncHealthPill({
+  health,
+  state,
+}: {
+  health: CalendarSyncHealth;
+  state: PublishState;
+}) {
+  const last = health.lastSyncedAt
+    ? new Date(health.lastSyncedAt).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "not synced";
+  const label =
+    state === "publishing"
+      ? "Syncing"
+      : health.error
+        ? "Sync error"
+        : `Synced ${health.eventCount} · ${last}`;
+  return (
+    <a
+      className="px-2 py-1 rounded bg-bg-surface-alt text-[11.5px] text-text-muted no-underline"
+      href={`${health.baseUrl || "https://staging.jinkunchen.com"}/calendar`}
+      target="_blank"
+      rel="noreferrer"
+      title={
+        health.error
+          ? health.error
+          : `Target: ${health.baseUrl || "staging"} · SHA ${health.fileSha || "n/a"}`
+      }
+    >
+      {label}
+    </a>
+  );
+}
+
 function ViewPane({
   view,
   anchor,
@@ -443,6 +558,7 @@ function ViewPane({
   calendarsById,
   loadState,
   errorMessage,
+  getDisclosure,
   onEventSelect,
 }: {
   view: ViewKind;
@@ -451,6 +567,7 @@ function ViewPane({
   calendarsById: Map<string, Calendar>;
   loadState: LoadState;
   errorMessage: string | null;
+  getDisclosure: EventDisclosureResolver;
   onEventSelect: (event: CalendarEvent) => void;
 }) {
   if (loadState === "error") {
@@ -478,6 +595,7 @@ function ViewPane({
           day={anchor}
           events={events}
           calendarsById={calendarsById}
+          getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
         />
       );
@@ -487,6 +605,7 @@ function ViewPane({
           anchor={anchor}
           events={events}
           calendarsById={calendarsById}
+          getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
         />
       );
@@ -496,6 +615,7 @@ function ViewPane({
           anchor={anchor}
           events={events}
           calendarsById={calendarsById}
+          getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
         />
       );
@@ -505,6 +625,7 @@ function ViewPane({
           events={events}
           calendarsById={calendarsById}
           rangeLabel={formatViewTitle("agenda", anchor)}
+          getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
         />
       );
