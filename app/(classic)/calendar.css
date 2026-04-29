@@ -50,8 +50,17 @@
   width: 30px;
   height: 30px;
   padding: 0;
-  font-size: 22px;
-  font-weight: 500;
+  /* Center the SVG chevron — the previous text-glyph approach (font-size
+   * 22px / weight 500) painted thin, slightly off-center punctuation
+   * marks. The SVG icon needs explicit centering since the button no
+   * longer relies on text-baseline alignment. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-calendar__nav-icon {
+  display: block;
 }
 
 .public-calendar__today-button,
