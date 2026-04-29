@@ -12,7 +12,8 @@
       "maxDepthBySection": {
         "teaching": 5
       }
-    }
+    },
+    "sitemapExcludes": []
   },
   "integrations": {
     "googleAnalyticsId": ""
@@ -21,45 +22,80 @@
   "nav": {
     "more": [
       {
+        "enabled": true,
         "href": "/teaching",
-        "label": "Teaching"
+        "label": "Teaching",
+        "order": 0,
+        "rowId": "b6e25267a43eb17ec4eb476f0dacd5a4"
       },
       {
+        "enabled": true,
+        "href": "/calendar",
+        "label": "Calendar",
+        "order": 1,
+        "rowId": "4374ae23357fcdd140b37f61b7867852"
+      },
+      {
+        "enabled": true,
         "href": "/bio",
-        "label": "BIO"
+        "label": "BIO",
+        "order": 2,
+        "rowId": "7155575a34aaa1bce96a480cd3423324"
       },
       {
+        "enabled": true,
         "href": "/connect",
-        "label": "Connect"
+        "label": "Connect",
+        "order": 3,
+        "rowId": "e49ed6fc4c4c33078e383ce801023ef9"
       }
     ],
     "top": [
       {
+        "enabled": true,
         "href": "/",
-        "label": "Home"
+        "label": "Home",
+        "order": 0,
+        "rowId": "afa1424d15c18cd01568c12533dd8ab5"
       },
       {
+        "enabled": true,
         "href": "/news",
-        "label": "News"
+        "label": "News",
+        "order": 1,
+        "rowId": "b17c69823e58ce6fd25092a8c814f1c4"
       },
       {
+        "enabled": true,
         "href": "/publications",
-        "label": "Publications"
+        "label": "Publications",
+        "order": 2,
+        "rowId": "ed22ea339a9d4beec38e4b2c545ce0c9"
       },
       {
+        "enabled": true,
         "href": "/works",
-        "label": "Works"
+        "label": "Works",
+        "order": 3,
+        "rowId": "afafc3d87f704e711c1ba3669ab3b367"
       },
       {
+        "enabled": true,
         "href": "/blog",
-        "label": "Blog"
+        "label": "Blog",
+        "order": 4,
+        "rowId": "70162869a23b9422c2a11e9992f1648b"
       }
     ]
   },
-  "security": {},
+  "security": {
+    "contentGithubUsers": []
+  },
   "seo": {
     "description": "Jinkun Chen (he/him/his) — Ph.D. student studying Computer Science at Dalhousie University.",
     "favicon": "/assets/favicon.png",
+    "ogImage": "/assets/profile.png",
+    "pageOverrides": {},
     "title": "Jinkun Chen"
   },
   "siteName": "Jinkun Chen."
