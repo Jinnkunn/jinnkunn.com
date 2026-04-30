@@ -39,6 +39,7 @@ import {
 } from "./markdown-inline";
 import { createRichTextExtensions } from "./rich-text-extensions";
 import { openExternalUrl } from "../../lib/tauri";
+import { handleEditorLinkClick } from "./link-click";
 
 export interface RichTextInputHandle {
   /** Focus the contenteditable + place caret at end (or current selection
@@ -137,37 +138,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
           const handled = onPaste(event);
           return Boolean(handled) || event.defaultPrevented;
         },
-        handleClick: (_view, _pos, event) => {
+        handleClick: (_view, _pos, event) =>
           // Tauri's webview ignores `<a target="_blank">`, and TipTap's
           // Link extension is configured with `openOnClick: false` so a
-          // plain click can still place the caret inside link text. We
-          // intercept the modifier-click — Cmd on macOS, Ctrl elsewhere
-          // — and route the href through `open_external_url`, which
-          // hands it to the OS browser. This matches the convention in
-          // Notion / VSCode and keeps editing single-clicks unchanged.
-          if (!event.metaKey && !event.ctrlKey) return false;
-          const target = event.target as Element | null;
-          const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
-          if (!anchor) return false;
-          const raw = anchor.getAttribute("href") ?? "";
-          if (!raw) return false;
-          // Resolve relative paths against the staging origin so an in-
-          // editor `[blog](/blog)` opens https://staging.jinkunchen.com/blog
-          // rather than the dev server's localhost root, which would
-          // 404. Absolute URLs pass through unchanged.
-          const resolved = (() => {
-            try {
-              return new URL(raw, "https://staging.jinkunchen.com").toString();
-            } catch {
-              return raw;
-            }
-          })();
-          event.preventDefault();
-          void openExternalUrl(resolved).catch((error) => {
-            console.warn("[RichTextInput] failed to open external URL", resolved, error);
-          });
-          return true;
-        },
+          // plain click can still place the caret inside link text.
+          // The extracted helper handles the modifier-click intercept
+          // — see link-click.ts for the contract + tests.
+          handleEditorLinkClick(event, { openExternalUrl }),
       },
       onUpdate: ({ editor: ed }) => {
         const md = tiptapDocToMarkdown(ed.getJSON());

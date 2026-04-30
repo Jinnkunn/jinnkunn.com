@@ -99,7 +99,7 @@ function isValidPastedBlock(block: MdxBlock): boolean {
   return true;
 }
 
-function markdownShortcutBlock(text: string): MdxBlock | null {
+export function markdownShortcutBlock(text: string): MdxBlock | null {
   const marker = text.trim();
   if (marker === "#") return { ...createMdxBlock("heading"), level: 1, text: "" };
   if (marker === "##") return { ...createMdxBlock("heading"), level: 2, text: "" };
@@ -120,7 +120,7 @@ function markdownShortcutBlock(text: string): MdxBlock | null {
   return null;
 }
 
-function shouldPromotePlainTextPaste(text: string): boolean {
+export function shouldPromotePlainTextPaste(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
   if (trimmed.includes("\n\n")) return true;
@@ -135,7 +135,7 @@ function shouldPromotePlainTextPaste(text: string): boolean {
   );
 }
 
-function blocksFromPlainTextPaste(text: string): MdxBlock[] {
+export function blocksFromPlainTextPaste(text: string): MdxBlock[] {
   return parseMdxBlocks(text)
     .filter(isValidPastedBlock)
     .map((block) => ({ ...block, blankLinesBefore: undefined }));
