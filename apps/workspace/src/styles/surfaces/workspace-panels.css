@@ -33,7 +33,7 @@
 .workspace-dashboard__hero p:not(.workspace-dashboard__eyebrow) {
   margin-top: 5px;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .workspace-dashboard__eyebrow {
@@ -88,7 +88,7 @@
 .workspace-dashboard__panel-header h2 {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 740;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -188,7 +188,7 @@
 .workspace-dashboard__list small {
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -249,7 +249,7 @@
 .workspace-dashboard__list time {
   flex-shrink: 0;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
 }
 
 .workspace-dashboard__empty {
@@ -643,7 +643,7 @@
 .notes-commandbar {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: var(--z-elevated);
 }
 
 .notes-search {
@@ -851,7 +851,7 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 30;
+  z-index: var(--z-overlay);
   display: grid;
   gap: 8px;
   width: 296px;
@@ -1344,7 +1344,7 @@
   border-radius: 9px;
   background: color-mix(in srgb, var(--color-danger) 7%, var(--color-bg-surface));
   color: var(--color-danger);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.35;
 }
 
@@ -1357,7 +1357,7 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-bg-surface-alt) 72%, var(--color-bg-surface));
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .calendar-sync-health-panel[data-state="error"] {
@@ -1715,7 +1715,7 @@
   position: absolute;
   right: 28px;
   color: var(--color-text-muted);
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   font-weight: 700;
   pointer-events: none;
   animation: calendar-search-pulse 1100ms ease-in-out infinite;
@@ -1844,7 +1844,7 @@
 
 .smart-rules-editor__header h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   font-weight: 700;
   color: var(--color-text-primary);
 }
@@ -1852,7 +1852,7 @@
 .smart-rules-editor__header p {
   margin: 4px 0 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.4;
 }
 
@@ -1892,7 +1892,7 @@
   cursor: pointer;
   width: 22px;
   height: 22px;
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   line-height: 1;
   transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
@@ -1962,7 +1962,7 @@
 
 .panel-empty p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1971,7 +1971,7 @@
 .command-palette__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-toast);
   background: color-mix(in srgb, #000 35%, transparent);
   backdrop-filter: blur(2px);
   display: flex;
@@ -2029,7 +2029,7 @@
   outline: none;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   font-weight: 500;
   line-height: 1.3;
 }
@@ -2082,7 +2082,7 @@
   background: transparent;
   cursor: pointer;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   text-align: left;
   transition: background-color 80ms ease;
 }
@@ -2112,7 +2112,7 @@
   padding: 24px 16px 26px;
   text-align: center;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .command-palette__empty p {
@@ -2124,7 +2124,7 @@
 .command-palette__empty span {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2149,7 +2149,7 @@
 
 .draft-restore__btn {
   padding: 3px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   flex-shrink: 0;
 }
 
@@ -2184,7 +2184,7 @@
   height: 20px;
   padding: 0 7px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   border: 1px solid var(--color-border-subtle);
 }

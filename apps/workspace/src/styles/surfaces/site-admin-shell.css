@@ -44,7 +44,7 @@
 .site-admin-topbar__save-btn {
   min-height: 30px;
   padding: 6px 11px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   white-space: nowrap;
 }
 
@@ -55,14 +55,14 @@
 .site-admin-topbar__right .publish-control > .btn {
   min-height: 30px;
   padding: 6px 11px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .site-admin-topbar__right .publish-preview {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: var(--z-titlebar);
   width: min(720px, calc(100vw - 360px));
   max-height: min(70vh, 620px);
   overflow: auto;
@@ -90,7 +90,7 @@
 .site-admin-conflict-banner .btn {
   flex-shrink: 0;
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* Connection pill ------------------------------------------------- */
@@ -240,7 +240,7 @@
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  z-index: 50;
+  z-index: var(--z-popover);
   width: min(360px, 92vw);
   min-height: 392px;
   padding: 12px 14px;
@@ -257,7 +257,7 @@
 
 .site-admin-pill__popover-header h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 600;
   color: var(--color-text-primary);
 }
@@ -287,13 +287,13 @@
 
 .site-admin-pill__environment strong {
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 650;
 }
 
 .site-admin-pill__environment span {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1.35;
 }
 
@@ -414,7 +414,7 @@
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
   margin: 8px 0;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .site-admin-pill__meta dd {
@@ -444,7 +444,7 @@
 
 .site-admin-pill__note {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: var(--color-text-muted);
 }
 
@@ -499,7 +499,7 @@
 .site-admin-pill__warn {
   margin: 0;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: var(--color-warn);
   background: color-mix(in srgb, var(--color-warn) 10%, transparent);
   border-radius: 6px;
@@ -513,7 +513,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: var(--color-text-muted);
   margin-left: auto;
 }
@@ -522,7 +522,7 @@
 .site-admin-dev-drawer {
   position: sticky;
   bottom: 0;
-  z-index: 40;
+  z-index: var(--z-titlebar);
   margin-top: 6px;
   border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
@@ -544,7 +544,7 @@
 
 .site-admin-dev-drawer__header h3 {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;

@@ -12,7 +12,7 @@
   border: none;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   line-height: 1;
   cursor: grab;
   user-select: none;
@@ -58,7 +58,7 @@ pre.debug-pane {
   padding: 10px 12px;
   background: var(--color-bg-surface-alt);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.45;
   color: var(--color-text-primary);
   white-space: pre-wrap;

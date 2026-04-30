@@ -120,7 +120,7 @@ code {
  * ------------------------------------------------------------------ */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(55, 53, 47, 0.22) transparent;
+  scrollbar-color: var(--ink-soft) transparent;
 }
 
 :root[data-theme="dark"] * {
@@ -134,7 +134,7 @@ code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(55, 53, 47, 0.16);
+  background: var(--ink-faint);
   border-radius: 999px;
   /* The thumb gets a 2 px transparent border so it visually pulls
    * back from the scroll-track edges, matching the AppKit overlay
