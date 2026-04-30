@@ -137,7 +137,7 @@ details.surface-details[open] > summary {
 @media (max-width: 1000px) {
   :root {
     --workspace-sidebar-width: 260px;
-    --workspace-sidebar-rail-width: 52px;
+    --workspace-sidebar-rail-width: 64px;
     --workspace-sidebar-depth-step: 14px;
     --workspace-sidebar-depth-max: 48px;
   }

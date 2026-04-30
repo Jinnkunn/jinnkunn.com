@@ -2,6 +2,7 @@
 
 mod calendar;
 mod local_db;
+mod notes;
 mod outbox;
 mod sync;
 
@@ -477,19 +478,18 @@ async fn site_admin_browser_login(base_url: String) -> Result<SiteAdminBrowserLo
 
 /// macOS traffic-lights inset (x, y) in window coordinates.
 ///
-/// Ported from personal-os `src-tauri/src/lib.rs`: the (26, 28) values
-/// place the lights centered inside a 52px sidebar header strip whose
-/// top sits 8px below the window top. Keep these in sync with
-/// `.sidebar__header { height }` in styles.css.
+/// The values place the lights inside the independent 42px workspace
+/// titlebar. Keep this aligned with `--workspace-titlebar-height` so
+/// the traffic lights read as part of the titlebar, not the sidebar.
 #[cfg(target_os = "macos")]
-const TRAFFIC_LIGHTS_INSET: (f32, f32) = (26.0, 28.0);
+const TRAFFIC_LIGHTS_INSET: (f32, f32) = (12.0, 16.0);
 
 /// Dev-time knob for finding the perfect traffic-lights position without
 /// rebuilding the Rust crate. Invoke from DevTools:
 ///
 ///   await window.__TAURI__.core.invoke(
 ///     "debug_set_traffic_lights",
-///     { x: 26, y: 28 }
+///     { x: 12, y: 16 }
 ///   );
 ///
 /// Once you find a value you like, update `TRAFFIC_LIGHTS_INSET` above so
@@ -860,6 +860,36 @@ fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
 fn main() {
     let builder = tauri::Builder::default()
+        // Custom URI scheme so the BlocksEditor can render `note-asset://`
+        // URLs that point at the local notes-assets dir. The `notes_save_asset`
+        // command writes files there; this handler reads them back. Path
+        // validation lives in `notes::resolve_asset_path` to keep the
+        // traversal-prevention rules co-located with the writer.
+        .register_uri_scheme_protocol("note-asset", |ctx, request| {
+            let app = ctx.app_handle();
+            let raw_path = request.uri().path();
+            let name = raw_path.trim_start_matches('/');
+            let Some(file_path) = notes::resolve_asset_path(app, name) else {
+                return tauri::http::Response::builder()
+                    .status(404)
+                    .body(b"not found".to_vec())
+                    .unwrap_or_else(|_| {
+                        tauri::http::Response::new(b"error".to_vec())
+                    });
+            };
+            match std::fs::read(&file_path) {
+                Ok(bytes) => tauri::http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", notes::asset_content_type(&file_path))
+                    .header("Cache-Control", "public, max-age=31536000, immutable")
+                    .body(bytes)
+                    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new())),
+                Err(_) => tauri::http::Response::builder()
+                    .status(500)
+                    .body(b"read error".to_vec())
+                    .unwrap_or_else(|_| tauri::http::Response::new(b"error".to_vec())),
+            }
+        })
         .plugin(tauri_plugin_decorum::init())
         // Persist window position/size/maximized state across launches.
         // Writes to the OS app-data dir; no app code required.
@@ -901,6 +931,16 @@ fn main() {
             calendar::commands::calendar_list_calendars,
             calendar::commands::calendar_fetch_events,
             calendar::commands::calendar_create_event,
+            notes::notes_list,
+            notes::notes_list_archived,
+            notes::notes_get,
+            notes::notes_create,
+            notes::notes_update,
+            notes::notes_move,
+            notes::notes_archive,
+            notes::notes_unarchive,
+            notes::notes_search,
+            notes::notes_save_asset,
             // Phase 5a — local SQLite mirror of D1 content_files. Sync
             // pulls the delta on demand; the read commands serve the
             // editor without a network round-trip.

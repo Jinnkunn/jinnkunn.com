@@ -11,7 +11,6 @@ import {
 } from "./contextMenu";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
-import { handleWindowDragMouseDown } from "./windowDrag";
 import { WorkspaceIconButton, WorkspaceSidebarRow } from "../ui/primitives";
 
 interface SidebarProps {
@@ -20,8 +19,10 @@ interface SidebarProps {
   activeNavItemId: string | null;
   favorites: readonly SidebarFavorite[];
   recentItems: readonly SidebarRecentItem[];
+  sidebarCollapsed: boolean;
   onSelectSurface: (id: string) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
+  onOpenSettings: () => void;
   onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   isFavorite: (surfaceId: string, itemId: string) => boolean;
@@ -37,6 +38,14 @@ interface SidebarProps {
     surfaceId: string,
     itemId: string,
     direction: "up" | "down",
+  ) => void;
+  /** Reorders app-rail surfaces. The Command Center / workspace surface
+   * stays fixed in the first slot; Sidebar only fires this for the
+   * remaining app buttons. */
+  onReorderSurface?: (
+    surfaceId: string,
+    targetSurfaceId: string,
+    edge: "before" | "after",
   ) => void;
   /** Inline-rename handler. Sidebar fires it when the user submits the
    * rename input on a draggable row; surface decides which API to call
@@ -58,6 +67,8 @@ interface SidebarProps {
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
 const ITEM_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.itemTrees.v1";
+const APP_RAIL_SURFACE_DRAG_TYPE = "application/x-workspace-surface";
+const FIXED_APP_RAIL_SURFACE_ID = "workspace";
 // Per-context-section collapse state. Currently keyed for "recent" and
 // "favorites"; the surface tree under "Navigation" is intentionally not
 // collapsible at the section level — that's the primary nav and hiding
@@ -109,6 +120,25 @@ function ChevronIcon({ open }: { open: boolean }) {
       aria-hidden="true"
     >
       <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg
+      viewBox="0 0 18 18"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.55"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="9" r="2.35" />
+      <path d="M9 2.5v1.65M9 13.85v1.65M3.35 3.35l1.15 1.15M13.5 13.5l1.15 1.15M2.5 9h1.65M13.85 9h1.65M3.35 14.65l1.15-1.15M13.5 4.5l1.15-1.15" />
     </svg>
   );
 }
@@ -399,6 +429,7 @@ function renderNavItem({
         {isRenaming ? (
           <RenameInput
             initial={(() => {
+              if (item.renameValue !== undefined) return item.renameValue;
               // Strip the surface-specific prefix so the user only edits
               // the slug part (e.g. "docs/intro", not "pages:docs/intro").
               // Falls back to the raw id when no colon is present.
@@ -667,19 +698,27 @@ export function Sidebar({
   activeNavItemId,
   favorites,
   recentItems,
+  sidebarCollapsed,
   onSelectSurface,
   onSelectNavItem,
+  onOpenSettings,
   onRecordRecent,
   onToggleFavorite,
   isFavorite,
   onMoveNavItem,
   onReorderNavItem,
+  onReorderSurface,
   onRenameNavItem,
   validateRenameNavItem,
 }: SidebarProps) {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
   const [dragSurfaceId, setDragSurfaceId] = useState<string | null>(null);
+  const [draggingAppSurfaceId, setDraggingAppSurfaceId] = useState<string | null>(null);
+  const [surfaceDropTarget, setSurfaceDropTarget] = useState<{
+    edge: "before" | "after";
+    surfaceId: string;
+  } | null>(null);
   const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
   const [renameSurfaceId, setRenameSurfaceId] = useState<string | null>(null);
   const startRename = useCallback((surfaceId: string, itemId: string) => {
@@ -712,6 +751,10 @@ export function Sidebar({
     setDragSurfaceId(null);
     setDraggingItemId(null);
     setDragOverItemId(null);
+  }, []);
+  const endAppSurfaceDrag = useCallback(() => {
+    setDraggingAppSurfaceId(null);
+    setSurfaceDropTarget(null);
   }, []);
   const dropOnto = useCallback(
     (surfaceId: string, targetItemId: string) => {
@@ -803,30 +846,113 @@ export function Sidebar({
   }
 
   return (
-    <aside className="sidebar-surface" aria-label="Primary navigation">
+    <aside
+      className="sidebar-surface"
+      data-collapsed={sidebarCollapsed ? "true" : undefined}
+      aria-label="Primary navigation"
+    >
       <div className="sidebar-app-rail" aria-label="Workspace apps">
-        {/* Native macOS traffic lights are positioned inside this strip by
-            `set_traffic_lights_inset` in src-tauri/main.rs. The height is
-            controlled by --workspace-traffic-light-strip-height. */}
-        <div
-          className="sidebar-header-strip"
-          data-tauri-drag-region
-          onMouseDown={handleWindowDragMouseDown}
-          aria-hidden="true"
-        />
         <nav className="sidebar-app-rail__nav" aria-label="Workspace apps">
           {surfaces.map((surface) => {
             const active = surface.id === activeSurfaceId;
+            const reorderable =
+              Boolean(onReorderSurface) &&
+              !surface.disabled &&
+              surface.id !== FIXED_APP_RAIL_SURFACE_ID;
+            const dropEdge =
+              surfaceDropTarget?.surfaceId === surface.id
+                ? surfaceDropTarget.edge
+                : undefined;
             return (
               <button
                 key={surface.id}
                 type="button"
                 aria-current={active ? "page" : undefined}
                 className="sidebar-app-rail__button"
+                draggable={reorderable ? true : undefined}
+                onDragStart={
+                  reorderable
+                    ? (event) => {
+                        event.dataTransfer.setData(
+                          APP_RAIL_SURFACE_DRAG_TYPE,
+                          surface.id,
+                        );
+                        event.dataTransfer.effectAllowed = "move";
+                        setDraggingAppSurfaceId(surface.id);
+                      }
+                    : undefined
+                }
+                onDragOver={
+                  reorderable
+                    ? (event) => {
+                        if (
+                          !Array.from(event.dataTransfer.types).includes(
+                            APP_RAIL_SURFACE_DRAG_TYPE,
+                          )
+                        ) {
+                          return;
+                        }
+                        const sourceId =
+                          draggingAppSurfaceId ||
+                          event.dataTransfer.getData(APP_RAIL_SURFACE_DRAG_TYPE);
+                        if (
+                          !sourceId ||
+                          sourceId === surface.id ||
+                          sourceId === FIXED_APP_RAIL_SURFACE_ID
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        const edge =
+                          event.clientY > rect.top + rect.height / 2
+                            ? "after"
+                            : "before";
+                        setSurfaceDropTarget({ edge, surfaceId: surface.id });
+                      }
+                    : undefined
+                }
+                onDragLeave={
+                  reorderable
+                    ? () => {
+                        if (surfaceDropTarget?.surfaceId === surface.id) {
+                          setSurfaceDropTarget(null);
+                        }
+                      }
+                    : undefined
+                }
+                onDrop={
+                  reorderable
+                    ? (event) => {
+                        const sourceId = event.dataTransfer.getData(
+                          APP_RAIL_SURFACE_DRAG_TYPE,
+                        );
+                        const edge = dropEdge ?? "before";
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (
+                          onReorderSurface &&
+                          sourceId &&
+                          sourceId !== surface.id &&
+                          sourceId !== FIXED_APP_RAIL_SURFACE_ID
+                        ) {
+                          onReorderSurface(sourceId, surface.id, edge);
+                        }
+                        endAppSurfaceDrag();
+                      }
+                    : undefined
+                }
+                onDragEnd={reorderable ? endAppSurfaceDrag : undefined}
                 onClick={() => onSelectSurface(surface.id)}
                 disabled={surface.disabled}
                 title={surface.description ?? surface.title}
                 aria-label={surface.title}
+                data-drop-edge={dropEdge}
+                data-surface-dragging={
+                  draggingAppSurfaceId === surface.id ? "true" : undefined
+                }
+                data-surface-reorderable={reorderable ? "true" : undefined}
               >
                 <span className="sidebar-app-rail__icon" aria-hidden="true">
                   {surface.icon}
@@ -840,12 +966,25 @@ export function Sidebar({
             );
           })}
         </nav>
+        <div className="sidebar-app-rail__footer">
+          <button
+            type="button"
+            className="sidebar-settings-button"
+            onClick={onOpenSettings}
+            aria-label="Open settings"
+            title="Settings"
+          >
+            <SettingsIcon />
+          </button>
+        </div>
       </div>
-      <div className="sidebar-context-pane">
+      <div
+        id="workspace-sidebar-context-pane"
+        className="sidebar-context-pane"
+        aria-hidden={sidebarCollapsed ? "true" : undefined}
+      >
         <header
           className="sidebar-context-header"
-          data-tauri-drag-region
-          onMouseDown={handleWindowDragMouseDown}
         >
           <p className="sidebar-context-header__eyebrow">Workspace</p>
           <h2 className="sidebar-context-header__title">{activeSurface.title}</h2>

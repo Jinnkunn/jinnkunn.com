@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 interface NativeMenuHandlers {
@@ -16,20 +16,20 @@ interface NativeMenuHandlers {
  * for the lifetime of the app — the subscription survives every
  * re-render of the parent. */
 export function useNativeMenu(handlers: NativeMenuHandlers): void {
-  const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  const { onCheckUpdates, onOpenPalette } = handlers;
 
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
     let unlisten: UnlistenFn | undefined;
     let cancelled = false;
     void listen<string>("menu://action", (event) => {
       const id = event.payload;
       switch (id) {
         case "menu-open-palette":
-          handlersRef.current.onOpenPalette?.();
+          onOpenPalette?.();
           break;
         case "menu-check-updates":
-          handlersRef.current.onCheckUpdates?.();
+          onCheckUpdates?.();
           break;
         case "menu-cycle-theme":
           window.dispatchEvent(new CustomEvent("workspace:theme:cycle"));
@@ -40,16 +40,18 @@ export function useNativeMenu(handlers: NativeMenuHandlers): void {
       window.dispatchEvent(
         new CustomEvent("workspace:menu", { detail: { id } }),
       );
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unlisten = fn;
-    });
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [onCheckUpdates, onOpenPalette]);
 }

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WorkspaceCommandBar,
+  WorkspaceCommandButton,
+  WorkspaceCommandGroup,
   WorkspaceCheckboxField,
   WorkspaceInspector,
   WorkspaceInspectorHeader,
@@ -710,65 +712,34 @@ export function CalendarSurface() {
       <WorkspaceCommandBar
         className="calendar-commandbar"
         leading={
-          <div className="calendar-commandbar__date">
-            <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
-            <ViewSwitcher view={view} onChange={setView} />
-          </div>
+          <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
         }
         center={
-          <div className="calendar-commandbar__tools">
-            <div className="calendar-search-wrapper">
-              <input
-                type="search"
-                className="calendar-search-input"
-                placeholder="Search ±180 days..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                aria-label="Search events"
-                // The fetch widens to ±180 days on a 300ms debounce;
-                // see the search effect in the parent for the
-                // rationale. The placeholder hints at the range so
-                // the operator knows results aren't bounded to the
-                // current week/month/day view.
-              />
-              {searchEventsLoading ? (
-                <span
-                  className="calendar-search-pending"
-                  aria-live="polite"
-                  title="Loading wider event range for search"
-                >
-                  …
-                </span>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="btn btn--ghost"
+          <ViewSwitcher view={view} onChange={setView} />
+        }
+        trailing={
+          <WorkspaceCommandGroup
+            align="end"
+            className="calendar-commandbar__actions"
+          >
+            <WorkspaceCommandButton
+              tone="ghost"
               onClick={() => setComposerOpen((open) => !open)}
               aria-pressed={composerOpen}
               title="Create a new event in macOS Calendar (Cmd+N from native)"
             >
               + Event
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost"
+            </WorkspaceCommandButton>
+            <WorkspaceCommandButton
+              tone="ghost"
               onClick={() => setRulesEditorOpen((open) => !open)}
               aria-pressed={rulesEditorOpen}
               title="Edit smart visibility rules (regex → visibility)"
             >
               Rules
-            </button>
-          </div>
-        }
-        trailing={
-          <div className="calendar-commandbar__sync" aria-label="Website calendar sync">
-            <CalendarPublishSummary summary={publishSummary} />
-            <CalendarSyncHealthPill health={syncHealth} state={publishState} />
-            <SyncPreviewChip diff={syncPreviewDiff} hasBaseline={lastSyncSnapshot !== null} />
-            <button
-              type="button"
-              className="btn btn--primary"
+            </WorkspaceCommandButton>
+            <WorkspaceCommandButton
+              tone="accent"
               disabled={publishState === "publishing" || !rulesLoaded}
               onClick={() => void syncCalendarProjection("manual")}
               title={
@@ -778,18 +749,46 @@ export function CalendarSurface() {
               }
             >
               {publishState === "publishing" ? "Syncing..." : "Sync now"}
-            </button>
-          </div>
+            </WorkspaceCommandButton>
+          </WorkspaceCommandGroup>
         }
       />
       <div className="calendar-commandbar__supplement">
-        {publishMessage ? (
+        <div className="calendar-commandbar__secondary">
+          <div className="calendar-search-wrapper">
+            <input
+              type="search"
+              className="calendar-search-input"
+              placeholder="Search events..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              aria-label="Search events"
+              // The fetch widens to +/-180 days on a 300ms debounce;
+              // see the search effect in the parent for the rationale.
+            />
+            {searchEventsLoading ? (
+              <span
+                className="calendar-search-pending"
+                aria-live="polite"
+                title="Loading wider event range for search"
+              >
+                ...
+              </span>
+            ) : null}
+          </div>
+          <WorkspaceCommandGroup
+            align="end"
+            className="calendar-commandbar__sync"
+            aria-label="Website calendar sync"
+          >
+            <CalendarPublishSummary summary={publishSummary} />
+            <CalendarSyncHealthPill health={syncHealth} state={publishState} />
+            <SyncPreviewChip diff={syncPreviewDiff} hasBaseline={lastSyncSnapshot !== null} />
+          </WorkspaceCommandGroup>
+        </div>
+        {publishMessage && publishState === "error" ? (
           <p
-            className={
-              publishState === "error"
-                ? "m-0 mt-2 text-[12px] text-text-danger"
-                : "m-0 mt-2 text-[12px] text-text-muted"
-            }
+            className="calendar-sync-error"
           >
             {publishMessage}
           </p>
@@ -883,12 +882,12 @@ function CalendarSyncHealthPanel({
   health: CalendarSyncHealth;
   state: PublishState;
 }) {
-  if (!health.lastSyncedAt && !health.error && state !== "publishing") return null;
+  if (!health.error && state !== "publishing") return null;
   const target = health.baseUrl || "https://staging.jinkunchen.com";
   const status =
     state === "publishing" ? "syncing" : health.error ? "error" : "ready";
   return (
-    <div className="calendar-sync-health-panel">
+    <div className="calendar-sync-health-panel" data-state={status}>
       <span>
         <strong className="text-text-primary">Status</strong>
         <br />
@@ -934,7 +933,7 @@ function CalendarSyncHealthPill({
         : `Synced ${health.eventCount} · ${last}`;
   return (
     <a
-      className="px-2 py-1 rounded bg-bg-surface-alt text-[11.5px] text-text-muted no-underline"
+      className="calendar-sync-link"
       href={`${health.baseUrl || "https://staging.jinkunchen.com"}/calendar`}
       target="_blank"
       rel="noreferrer"
@@ -1115,22 +1114,14 @@ function SyncPreviewChip({
 function CalendarPublishSummary({ summary }: { summary: PublishSummary }) {
   return (
     <div
-      className="flex items-center gap-1 text-[11.5px] text-text-muted"
+      className="calendar-publish-summary"
       aria-label="Calendar publish summary for current view"
     >
-      <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
-        Busy {summary.busy}
-      </span>
-      <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
-        Title {summary.titleOnly}
-      </span>
-      <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
-        Full {summary.full}
-      </span>
+      <span>Busy {summary.busy}</span>
+      <span>Title {summary.titleOnly}</span>
+      <span>Full {summary.full}</span>
       {summary.hidden > 0 ? (
-        <span className="px-1.5 py-0.5 rounded bg-bg-surface-alt">
-          Hidden {summary.hidden}
-        </span>
+        <span>Hidden {summary.hidden}</span>
       ) : null}
     </div>
   );

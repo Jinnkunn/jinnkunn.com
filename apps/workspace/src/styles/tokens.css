@@ -13,19 +13,19 @@
    * through just enough that the app reads as a macOS surface, not a
    * web app on a beige page.
    * ----------------------------------------------------------------- */
-  --color-bg-window: #ece9e2;
-  --color-bg-window-blend: rgba(236, 233, 226, 0.62);
+  --color-bg-window: #f3f2ee;
+  --color-bg-window-blend: rgba(243, 242, 238, 0.72);
   /* Sidebar / surface used to be solid white. We keep them as
    * fall-back values for non-vibrancy contexts (`@supports not
    * (backdrop-filter)`), but in the actual app surfaces switch to
    * the translucent `*-translucent` variants below so the OS
    * wallpaper / window-vibrancy material stays readable through
    * the chrome. */
-  --color-bg-sidebar: rgba(255, 255, 255, 0.66);
-  --color-bg-sidebar-translucent: rgba(255, 255, 255, 0.55);
-  --color-bg-surface: rgba(255, 255, 255, 0.78);
-  --color-bg-surface-translucent: rgba(255, 255, 255, 0.62);
-  --color-bg-surface-alt: rgba(247, 244, 237, 0.7);
+  --color-bg-sidebar: rgba(246, 245, 241, 0.78);
+  --color-bg-sidebar-translucent: rgba(246, 245, 241, 0.68);
+  --color-bg-surface: rgba(255, 255, 255, 0.84);
+  --color-bg-surface-translucent: rgba(255, 255, 255, 0.72);
+  --color-bg-surface-alt: rgba(244, 243, 239, 0.66);
   --color-bg-popover: rgba(255, 255, 255, 0.94);
   --color-bg-hover: rgba(55, 53, 47, 0.05);
   --color-bg-hover-strong: rgba(55, 53, 47, 0.09);
@@ -37,10 +37,10 @@
    * vibrancy adapt automatically. Use these for buttons, pills,
    * input chrome, hover states — anything that used to pick a solid
    * `--color-bg-surface-alt` + `1px solid border` combo. */
-  --fill-primary: rgba(55, 53, 47, 0.12);
-  --fill-secondary: rgba(55, 53, 47, 0.08);
-  --fill-tertiary: rgba(55, 53, 47, 0.05);
-  --fill-quaternary: rgba(55, 53, 47, 0.03);
+  --fill-primary: rgba(55, 53, 47, 0.1);
+  --fill-secondary: rgba(55, 53, 47, 0.065);
+  --fill-tertiary: rgba(55, 53, 47, 0.04);
+  --fill-quaternary: rgba(55, 53, 47, 0.025);
   /* Accent-tinted fill for prominent buttons / "selected" rows.
    * Light enough that white text reads cleanly on top, but
    * solid-feeling against vibrancy. */
@@ -182,17 +182,18 @@
   --color-bg-red: rgba(212, 76, 71, 0.14);
 
   /* Workspace shell layout.
-   * Keep native macOS window controls, the floating sidebar card, and
-   * the titlebar breadcrumb in sync from one place. */
-  --workspace-titlebar-height: 40px;
-  --workspace-sidebar-width: 320px;
-  --workspace-shell-gap: 8px;
-  --workspace-sidebar-rail-width: 56px;
-  --workspace-sidebar-top-overlap: 32px;
-  --workspace-traffic-light-strip-height: 52px;
-  --workspace-traffic-light-clearance: 30px;
-  --workspace-sidebar-depth-step: 16px;
-  --workspace-sidebar-depth-max: 56px;
+   * The app chrome is split into an independent macOS titlebar and an
+   * integrated two-column sidebar below it. */
+  --workspace-titlebar-height: 42px;
+  --workspace-sidebar-width: 244px;
+  --workspace-shell-gap: 0px;
+  --workspace-sidebar-rail-width: 44px;
+  --workspace-sidebar-collapsed-width: var(--workspace-sidebar-rail-width);
+  --workspace-sidebar-top-overlap: 0px;
+  --workspace-traffic-light-strip-height: var(--workspace-titlebar-height);
+  --workspace-traffic-light-clearance: 8px;
+  --workspace-sidebar-depth-step: 12px;
+  --workspace-sidebar-depth-max: 42px;
 
   --spacing-titlebar: var(--workspace-titlebar-height);
   --spacing-sidebar: var(--workspace-sidebar-width);
@@ -200,10 +201,9 @@
 
   --radius-card: 16px;
 
-  /* Tuned z-indices so sidebar card sits above titlebar (the card visually
-   * wraps the OS-rendered traffic lights via decorum). */
-  --z-titlebar: 30;
-  --z-sidebar-card: 32;
+  /* Titlebar stays above the body; dialogs/popovers sit above both. */
+  --z-titlebar: 40;
+  --z-sidebar-card: 20;
 }
 
 /* Dark mode is driven by `data-theme="dark"` on <html>, set by the

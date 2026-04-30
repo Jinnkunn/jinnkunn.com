@@ -12,32 +12,7 @@
 }
 
 .site-admin-topbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-md);
-  min-height: 38px;
-  padding: var(--space-2xs) var(--space-sm);
-  /* Hairline-bottom + vibrancy material instead of a full
-   * 1-px-bordered card. The toolbar reads as a unified strip rather
-   * than a floating chip. The `inset 0 -1px 0` paints a true 0.5pt
-   * line on retina; on non-retina it falls back to the same color
-   * with a slightly thicker shadow. */
-  border: 0;
-  border-radius: 0;
-  box-shadow: inset 0 -1px 0 var(--hairline);
-  background: transparent;
-  min-width: 0;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
-  .site-admin-topbar {
-    background: color-mix(in srgb, var(--color-bg-surface-translucent) 100%, transparent);
-    backdrop-filter: saturate(180%) blur(22px);
-    -webkit-backdrop-filter: saturate(180%) blur(22px);
-  }
+  flex-shrink: 0;
 }
 
 .site-admin-topbar__spacer {
@@ -46,16 +21,24 @@
 }
 
 .site-admin-topbar__right {
-  display: inline-flex;
-  align-items: center;
   gap: 7px;
   flex-shrink: 0;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .site-admin-topbar__right .site-admin-pill-root + .publish-control {
   margin-left: 4px;
+}
+
+.site-admin-topbar .site-admin-pill {
+  height: 30px;
+  border-radius: var(--radius-lg);
+  padding: 0 10px;
+}
+
+.site-admin-topbar .site-admin-pill__mode {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
 }
 
 .site-admin-topbar__save-btn {
@@ -84,44 +67,6 @@
   max-height: min(70vh, 620px);
   overflow: auto;
   box-shadow: var(--shadow-popover, 0 16px 40px rgba(15, 23, 42, 0.16));
-}
-
-.site-admin-topbar__drawer-btn {
-  /* Chromeless icon button to match the new ghost-button rhythm:
-   * no fill/border at rest, soft fill on hover. Lines up with .btn--ghost
-   * height + padding so they pack together without looking jaggy. */
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  height: 22px;
-  padding: 0 var(--space-sm);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-small);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background-color 120ms var(--ease-out),
-    color 120ms var(--ease-out);
-}
-
-.site-admin-topbar__drawer-btn:hover,
-.site-admin-topbar__drawer-btn[aria-pressed="true"] {
-  background: var(--fill-secondary);
-  color: var(--color-text-primary);
-}
-
-.site-admin-topbar__drawer-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
-}
-
-.site-admin-topbar__drawer-btn[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-surface));
-  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border-default));
-  color: var(--color-accent-strong);
 }
 
 .site-admin-conflict-banner {

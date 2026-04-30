@@ -14,10 +14,10 @@ export function DateNav({
 }) {
   const title = formatViewTitle(view, anchor);
   return (
-    <div className="flex items-center gap-2">
+    <div className="calendar-date-nav">
       <button
         type="button"
-        className="inline-flex items-center justify-center w-7 h-7 rounded text-text-secondary hover:bg-bg-surface-alt hover:text-text-primary"
+        className="calendar-date-nav__button"
         onClick={() => onAnchorChange(navigateView(view, anchor, -1))}
         aria-label="Previous"
       >
@@ -28,22 +28,21 @@ export function DateNav({
         // macOS-style pill: solid pale background, no border, slightly
         // wider padding than the chevrons so it reads as the primary
         // navigation action of the trio.
-        className="px-3 py-1 rounded-md text-[12px] font-medium text-text-primary hover:brightness-95 transition"
-        style={{ background: "rgba(0,0,0,0.05)" }}
+        className="calendar-date-nav__today"
         onClick={() => onAnchorChange(navigateView(view, anchor, 0))}
       >
         Today
       </button>
       <button
         type="button"
-        className="inline-flex items-center justify-center w-7 h-7 rounded text-text-secondary hover:bg-bg-surface-alt hover:text-text-primary"
+        className="calendar-date-nav__button"
         onClick={() => onAnchorChange(navigateView(view, anchor, 1))}
         aria-label="Next"
       >
         <Chevron dir="right" />
       </button>
       <h2
-        className="m-0 ml-1 text-[14px] font-semibold text-text-primary tracking-[-0.01em]"
+        className="calendar-date-nav__title"
         aria-live="polite"
       >
         {title}

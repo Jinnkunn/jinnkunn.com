@@ -105,6 +105,71 @@ test("public-calendar-db: writes batches larger than INSERT_BATCH_SIZE", async (
   assert.equal(data.events.length, 55);
 });
 
+test("public-calendar-db: upsert refresh prunes stale rows after new rows land", async () => {
+  const client = await makeCalendarDb();
+  const base = {
+    schemaVersion: 1,
+    generatedAt: "2026-04-28T12:00:00.000Z",
+    range: {
+      startsAt: "2026-04-28T00:00:00.000Z",
+      endsAt: "2026-05-28T00:00:00.000Z",
+    },
+  };
+  await writePublicCalendarToDb(
+    {
+      ...base,
+      events: [
+        {
+          id: "keep",
+          title: "Old title",
+          startsAt: "2026-04-30T15:00:00.000Z",
+          endsAt: "2026-04-30T16:00:00.000Z",
+          isAllDay: false,
+          visibility: "titleOnly",
+        },
+        {
+          id: "stale",
+          title: "Stale",
+          startsAt: "2026-04-30T17:00:00.000Z",
+          endsAt: "2026-04-30T18:00:00.000Z",
+          isAllDay: false,
+          visibility: "titleOnly",
+        },
+      ],
+    },
+    client,
+  );
+
+  const result = await writePublicCalendarToDb(
+    {
+      ...base,
+      generatedAt: "2026-04-29T12:00:00.000Z",
+      events: [
+        {
+          id: "keep",
+          title: "New title",
+          startsAt: "2026-04-30T15:30:00.000Z",
+          endsAt: "2026-04-30T16:30:00.000Z",
+          isAllDay: false,
+          visibility: "titleOnly",
+        },
+      ],
+    },
+    client,
+  );
+  assert.equal(result.ok, true);
+
+  const data = await readPublicCalendarFromDb(client);
+  assert.ok(data);
+  assert.deepEqual(
+    data.events.map((event) => event.id),
+    ["keep"],
+  );
+  assert.equal(data.events[0].title, "New title");
+  assert.equal(data.events[0].startsAt, "2026-04-30T15:30:00.000Z");
+  assert.equal(data.generatedAt, "2026-04-29T12:00:00.000Z");
+});
+
 test("public-calendar-db: missing migration returns ok=false with error", async () => {
   const client = createClient({ url: ":memory:" });
   assert.equal(await readPublicCalendarFromDb(client), null);

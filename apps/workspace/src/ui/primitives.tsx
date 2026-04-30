@@ -60,6 +60,244 @@ export function WorkspaceToolbar({
   );
 }
 
+export interface WorkspaceCommandBarProps extends HTMLAttributes<HTMLElement> {
+  center?: ReactNode;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+}
+
+export function WorkspaceCommandBar({
+  center,
+  children,
+  className,
+  leading,
+  trailing,
+  ...props
+}: WorkspaceCommandBarProps) {
+  return (
+    <header
+      className={joinClassNames("workspace-commandbar", className)}
+      {...props}
+    >
+      <div className="workspace-commandbar__leading">{leading}</div>
+      <div className="workspace-commandbar__center">{center}</div>
+      <div className="workspace-commandbar__trailing" data-window-drag-exclude>
+        {trailing}
+      </div>
+      {children}
+    </header>
+  );
+}
+
+export interface WorkspaceCommandGroupProps
+  extends HTMLAttributes<HTMLDivElement> {
+  align?: "start" | "center" | "end";
+}
+
+export function WorkspaceCommandGroup({
+  align = "start",
+  className,
+  ...props
+}: WorkspaceCommandGroupProps) {
+  return (
+    <div
+      className={joinClassNames("workspace-commandbar__group", className)}
+      data-align={align}
+      {...props}
+    />
+  );
+}
+
+export interface WorkspaceCommandButtonProps
+  extends ButtonHTMLAttributes<HTMLButtonElement> {
+  tone?: "default" | "ghost" | "accent" | "danger";
+}
+
+export function WorkspaceCommandButton({
+  className,
+  tone = "default",
+  type = "button",
+  ...props
+}: WorkspaceCommandButtonProps) {
+  return (
+    <button
+      className={joinClassNames(
+        "workspace-commandbar__button",
+        tone !== "default" && `workspace-commandbar__button--${tone}`,
+        className,
+      )}
+      type={type}
+      {...props}
+    />
+  );
+}
+
+export interface WorkspacePaneProps extends HTMLAttributes<HTMLElement> {
+  children: ReactNode;
+  label?: string;
+  role?: string;
+}
+
+export function WorkspacePane({
+  children,
+  className,
+  label,
+  role,
+  ...props
+}: WorkspacePaneProps) {
+  const Element = role ? "section" : "div";
+  return (
+    <Element
+      aria-label={label}
+      className={joinClassNames("workspace-pane", className)}
+      role={role}
+      {...props}
+    >
+      {children}
+    </Element>
+  );
+}
+
+export interface WorkspaceSplitViewProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode;
+  inspector?: ReactNode;
+  sidebar?: ReactNode;
+}
+
+export function WorkspaceSplitView({
+  children,
+  className,
+  inspector,
+  sidebar,
+  ...props
+}: WorkspaceSplitViewProps) {
+  return (
+    <div
+      className={joinClassNames("workspace-split-view", className)}
+      data-has-inspector={inspector ? "true" : undefined}
+      data-has-sidebar={sidebar ? "true" : undefined}
+      {...props}
+    >
+      {sidebar ? (
+        <WorkspacePane
+          className="workspace-split-view__sidebar"
+          label="Sidebar"
+        >
+          {sidebar}
+        </WorkspacePane>
+      ) : null}
+      <WorkspacePane className="workspace-split-view__detail" label="Detail">
+        {children}
+      </WorkspacePane>
+      {inspector ? (
+        <WorkspacePane
+          className="workspace-split-view__inspector"
+          label="Inspector"
+        >
+          {inspector}
+        </WorkspacePane>
+      ) : null}
+    </div>
+  );
+}
+
+export interface WorkspaceSheetProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode;
+  open?: boolean;
+  placement?: "right" | "bottom";
+}
+
+export function WorkspaceSheet({
+  children,
+  className,
+  open = true,
+  placement = "right",
+  ...props
+}: WorkspaceSheetProps) {
+  return (
+    <div
+      className={joinClassNames("workspace-sheet", className)}
+      data-open={open ? "true" : "false"}
+      data-placement={placement}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function WorkspaceBottomSheet(props: Omit<WorkspaceSheetProps, "placement">) {
+  return <WorkspaceSheet placement="bottom" {...props} />;
+}
+
+export interface WorkspaceActionMenuProps
+  extends HTMLAttributes<HTMLDetailsElement> {
+  label: ReactNode;
+}
+
+export function WorkspaceActionMenu({
+  children,
+  className,
+  label,
+  ...props
+}: WorkspaceActionMenuProps) {
+  return (
+    <details className={joinClassNames("workspace-action-menu", className)} {...props}>
+      <summary className="workspace-action-menu__trigger">{label}</summary>
+      <div className="workspace-action-menu__popover" role="menu">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+export interface WorkspaceSegmentedControlOption<T extends string> {
+  label: ReactNode;
+  value: T;
+}
+
+export interface WorkspaceSegmentedControlProps<T extends string>
+  extends Omit<HTMLAttributes<HTMLDivElement>, "onChange"> {
+  label: string;
+  onChange: (value: T) => void;
+  options: readonly WorkspaceSegmentedControlOption<T>[];
+  value: T;
+}
+
+export function WorkspaceSegmentedControl<T extends string>({
+  className,
+  label,
+  onChange,
+  options,
+  value,
+  ...props
+}: WorkspaceSegmentedControlProps<T>) {
+  return (
+    <div
+      aria-label={label}
+      className={joinClassNames("workspace-segmented-control", className)}
+      role="tablist"
+      {...props}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            aria-selected={active}
+            data-active={active ? "true" : undefined}
+            key={option.value}
+            onClick={() => onChange(option.value)}
+            role="tab"
+            type="button"
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export interface WorkspacePopoverProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
 }

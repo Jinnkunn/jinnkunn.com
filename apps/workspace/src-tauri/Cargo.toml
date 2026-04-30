@@ -76,6 +76,11 @@ tauri-plugin-dialog = "2"
 # No-op on Linux; Windows has Mica but we only target macOS for now.
 window-vibrancy = "0.6"
 url = "2"
+# Notes asset pipeline: base64 decodes the body the webview sends via
+# `request("/api/site-admin/assets", "POST", { base64 })`; sha2 names
+# the resulting file by content digest so identical pastes dedupe.
+base64 = "0.22"
+sha2 = "0.10"
 
 # EventKit bindings — kept macOS-only so a future Linux/Windows build
 # still compiles. The objc2 family is the maintained successor to the

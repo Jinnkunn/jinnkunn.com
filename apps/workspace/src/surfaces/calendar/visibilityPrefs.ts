@@ -2,9 +2,9 @@
 // EventKit calendar IDs the operator wants visible in the workspace
 // (the toggles on the SourceSidebar). This is workspace-only state —
 // hiding a calendar here does NOT remove it from the public /calendar
-// projection; that's a separate `publishedCalendarIds` set in
-// CalendarSurface.tsx, deliberately not persisted because the public
-// site's published-calendars list comes from a server-side rule store.
+// projection. Public projection is controlled by each calendar's
+// default visibility rule: Hidden excludes it; Busy / Title / Full
+// include it with the matching disclosure level.
 //
 // Storage layout: a single localStorage key holding both the current
 // visibility set AND the union of every calendar id we've ever seen.

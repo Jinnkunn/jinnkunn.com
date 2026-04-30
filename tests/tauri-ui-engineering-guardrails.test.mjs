@@ -105,6 +105,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const blockInspector = await read(
     "apps/workspace/src/surfaces/site-admin/block-inspector.tsx",
   );
+  const editorSlashCommands = await read(
+    "apps/workspace/src/surfaces/site-admin/editor-slash-commands.ts",
+  );
   const blocks = await read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");
   const controller = await read(
     "apps/workspace/src/surfaces/site-admin/use-mdx-editor-controller.ts",
@@ -147,11 +150,11 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(documentEditor, /source: "Advanced"/);
   assert.doesNotMatch(documentEditor, /usePreview/);
   assert.doesNotMatch(documentEditor, /mdx-document-editor__preview/);
-  assert.match(documentEditor, /SLASH_COMMANDS/);
-  assert.match(documentEditor, /RECENT_SLASH_COMMAND_IDS_KEY/);
-  assert.match(documentEditor, /rememberRecentSlashCommand/);
-  assert.match(documentEditor, /getMatchingSlashCommands/);
-  assert.match(documentEditor, /getMatchingBlockEditorCommands/);
+  assert.match(editorSlashCommands, /SLASH_COMMANDS/);
+  assert.match(editorSlashCommands, /RECENT_SLASH_COMMAND_IDS_KEY/);
+  assert.match(editorSlashCommands, /rememberRecentSlashCommand/);
+  assert.match(editorSlashCommands, /getMatchingSlashCommands/);
+  assert.match(editorSlashCommands, /getMatchingBlockEditorCommands/);
   assert.match(documentEditor, /onInsertParagraphAfter/);
   assert.match(documentEditor, /onRemoveEmpty/);
   assert.match(documentEditor, /blockInputRefs/);
@@ -286,6 +289,8 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
 
 test("tauri-ui-engineering: workspace primitives exist for future UI migration", async () => {
   const source = await read("apps/workspace/src/surfaces/site-admin/ui.tsx");
+  const primitives = await read("apps/workspace/src/ui/primitives.tsx");
+  const styles = await readWorkspaceCssBundle();
   for (const symbol of [
     "Button",
     "IconButton",
@@ -297,6 +302,137 @@ test("tauri-ui-engineering: workspace primitives exist for future UI migration",
   ]) {
     assert.match(source, new RegExp(`export function ${symbol}`));
   }
+  for (const symbol of [
+    "WorkspaceCommandBar",
+    "WorkspaceCommandGroup",
+    "WorkspaceCommandButton",
+    "WorkspaceSplitView",
+    "WorkspacePane",
+    "WorkspaceSheet",
+    "WorkspaceBottomSheet",
+    "WorkspaceActionMenu",
+    "WorkspaceSegmentedControl",
+  ]) {
+    assert.match(primitives, new RegExp(`export function ${symbol}`));
+  }
+  for (const selector of [
+    ".workspace-commandbar",
+    ".workspace-commandbar__group",
+    ".workspace-commandbar__button",
+    ".workspace-split-view",
+    ".workspace-split-view__inspector",
+    ".workspace-sheet",
+    ".workspace-action-menu",
+    ".workspace-segmented-control",
+    "@media (max-width: 720px)",
+  ]) {
+    assert.match(styles, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", async () => {
+  const topbar = await read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx");
+  const calendar = await read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx");
+  const viewSwitcher = await read("apps/workspace/src/surfaces/calendar/ViewSwitcher.tsx");
+  const sourceSidebar = await read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx");
+  const sidebar = await read("apps/workspace/src/shell/Sidebar.tsx");
+  const app = await read("apps/workspace/src/App.tsx");
+  const styles = await readWorkspaceCssBundle();
+
+  assert.match(topbar, /WorkspaceCommandBar/);
+  assert.match(topbar, /WorkspaceCommandGroup/);
+  assert.match(topbar, /WorkspaceCommandButton/);
+  assert.doesNotMatch(topbar, /leading=\{<span className="workspace-commandbar__meta">Site Admin<\/span>\}/);
+  assert.match(calendar, /WorkspaceCommandBar/);
+  assert.match(calendar, /WorkspaceCommandGroup/);
+  assert.match(calendar, /WorkspaceCommandButton/);
+  assert.match(calendar, /WorkspaceSplitView/);
+  assert.match(calendar, /className="calendar-workspace-split"/);
+  assert.doesNotMatch(calendar, /gridTemplateColumns: selectedEvent/);
+  assert.match(viewSwitcher, /WorkspaceSegmentedControl/);
+  assert.doesNotMatch(viewSwitcher, /shadow_\[|bg-white/);
+  assert.match(sourceSidebar, /SOURCE_ORDER_STORAGE_KEY/);
+  assert.match(sourceSidebar, /SOURCE_COLLAPSED_STORAGE_KEY/);
+  assert.match(sourceSidebar, /calendar-source-group__toggle/);
+  assert.match(sourceSidebar, /application\/x-calendar-source/);
+  assert.match(sourceSidebar, /moveSourceTo\(sourceId, src\.id, edge\)/);
+  assert.match(sourceSidebar, /draggable/);
+  assert.doesNotMatch(sourceSidebar, /borderRight:/);
+  const titlebar = await read("apps/workspace/src/shell/Titlebar.tsx");
+  const settingsWindow = await read("apps/workspace/src/shell/SettingsWindow.tsx");
+  assert.match(app, /SIDEBAR_COLLAPSED_STORAGE_KEY/);
+  assert.match(titlebar, /titlebar-sidebar-toggle/);
+  assert.match(titlebar, /titlebar-tabs/);
+  assert.match(titlebar, /titlebar-tab-add/);
+  assert.match(titlebar, /aria-expanded=\{!sidebarCollapsed\}/);
+  assert.match(settingsWindow, /settings-window/);
+  assert.match(sidebar, /sidebar-settings-button/);
+  assert.match(app, /SURFACE_ORDER_STORAGE_KEY/);
+  assert.match(app, /orderWorkspaceSurfaces/);
+  assert.match(app, /onReorderSurface=\{handleReorderSurface\}/);
+  assert.match(sidebar, /application\/x-workspace-surface/);
+  assert.match(sidebar, /FIXED_APP_RAIL_SURFACE_ID = "workspace"/);
+  assert.match(sidebar, /data-surface-reorderable/);
+  assert.match(styles, /\.calendar-workspace-split/);
+  assert.match(styles, /\.calendar-commandbar__supplement/);
+  assert.match(styles, /\.calendar-source-group__header/);
+  assert.match(styles, /\.calendar-source-group__drag/);
+  assert.match(styles, /data-drop-edge="before"/);
+  assert.match(styles, /\.sidebar-surface\[data-collapsed="true"\]/);
+  assert.match(styles, /\.app-shell:has\(\.sidebar-surface\[data-collapsed="true"\]\)/);
+  assert.match(styles, /\.sidebar-app-rail__footer/);
+  assert.match(styles, /\.titlebar-sidebar-toggle/);
+  assert.match(styles, /\.titlebar-tabs/);
+  assert.match(styles, /\.settings-window/);
+  assert.match(styles, /\.sidebar-app-rail__button\[data-surface-reorderable="true"\]/);
+  assert.match(styles, /\.sidebar-app-rail__button\[data-drop-edge="before"\]::before/);
+  assert.match(styles, /\.sidebar-surface\s*\{[\s\S]*position: fixed;/);
+  assert.match(styles, /\.sidebar-context-pane,[\s\S]*\.sidebar-footer\s*\{[\s\S]*display: none;/);
+});
+
+test("tauri-ui-engineering: Notes is a local surface using the shared editor runtime", async () => {
+  const registry = await read("apps/workspace/src/surfaces/registry.tsx");
+  const notesSurface = await read("apps/workspace/src/surfaces/notes/NotesSurface.tsx");
+  const notesTree = await read("apps/workspace/src/surfaces/notes/tree.tsx");
+  const editorRuntime = await read("apps/workspace/src/ui/editor-runtime.tsx");
+  const documentEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
+  );
+  const tauriWrappers = await read("apps/workspace/src/lib/tauri.ts");
+  const tauriMain = await read("apps/workspace/src-tauri/src/main.rs");
+  const notesRs = await read("apps/workspace/src-tauri/src/notes.rs");
+  const localDb = await read("apps/workspace/src-tauri/src/local_db.rs");
+  const styles = await readWorkspaceCssBundle();
+
+  assert.match(registry, /id: "notes"/);
+  assert.match(registry, /NotesSurface/);
+  assert.match(registry, /NotesIcon/);
+  assert.match(notesSurface, /WorkspaceEditorRuntimeProvider/);
+  assert.match(notesSurface, /BlocksEditor/);
+  assert.match(notesSurface, /SAVE_DEBOUNCE_MS = 600/);
+  assert.doesNotMatch(notesSurface, /useSiteAdmin/);
+  assert.match(notesTree, /buildNoteTree/);
+  assert.match(notesTree, /noteTreeToNavItems/);
+  assert.match(notesTree, /draggable: true/);
+  assert.match(notesTree, /droppable: true/);
+  assert.match(notesTree, /orderable: true/);
+  assert.match(editorRuntime, /export function WorkspaceEditorRuntimeProvider/);
+  assert.match(editorRuntime, /export function useWorkspaceEditorRuntime/);
+  assert.match(documentEditor, /useWorkspaceEditorRuntime/);
+  assert.match(documentEditor, /assetsEnabled/);
+  assert.match(tauriWrappers, /export function notesList/);
+  assert.match(tauriWrappers, /export function notesMove/);
+  assert.match(tauriWrappers, /export function notesSearch/);
+  assert.match(tauriMain, /mod notes;/);
+  assert.match(tauriMain, /notes::notes_list/);
+  assert.match(tauriMain, /notes::notes_archive/);
+  assert.match(localDb, /CREATE TABLE IF NOT EXISTS notes/);
+  assert.match(localDb, /idx_notes_parent_order/);
+  assert.match(notesRs, /cannot move a note inside one of its descendants/);
+  assert.match(notesRs, /WITH RECURSIVE tree/);
+  assert.match(styles, /\.notes-surface/);
+  assert.match(styles, /\.notes-editor__title/);
+  assert.match(styles, /\.notes-save-state/);
 });
 
 test("tauri-ui-engineering: shared content editor stays visual-first", async () => {

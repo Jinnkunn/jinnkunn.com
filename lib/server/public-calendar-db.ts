@@ -139,13 +139,43 @@ export async function readPublicCalendarFromDb(
   }
 }
 
-function buildBatchInsertSql(rowCount: number): string {
+function buildBatchUpsertSql(rowCount: number): string {
   const placeholders = Array.from({ length: rowCount }, () => "(?, ?, ?, ?, ?)").join(
     ", ",
   );
   return `INSERT INTO calendar_public_events
           (id, starts_at, ends_at, body_json, updated_at)
-          VALUES ${placeholders}`;
+          VALUES ${placeholders}
+          ON CONFLICT(id) DO UPDATE SET
+            starts_at = excluded.starts_at,
+            ends_at = excluded.ends_at,
+            body_json = excluded.body_json,
+            updated_at = excluded.updated_at`;
+}
+
+function buildDeleteByIdsSql(rowCount: number): string {
+  const placeholders = Array.from({ length: rowCount }, () => "?").join(", ");
+  return `DELETE FROM calendar_public_events WHERE id IN (${placeholders})`;
+}
+
+async function pruneStalePublicEvents(
+  executor: DbExecutor,
+  activeIds: ReadonlySet<string>,
+): Promise<void> {
+  if (activeIds.size === 0) {
+    await executor.execute({ sql: "DELETE FROM calendar_public_events" });
+    return;
+  }
+  const existing = await executor.execute({
+    sql: "SELECT id FROM calendar_public_events",
+  });
+  const staleIds = existing.rows
+    .map((row) => (typeof row.id === "string" ? row.id : ""))
+    .filter((id) => id && !activeIds.has(id));
+  for (let i = 0; i < staleIds.length; i += INSERT_BATCH_SIZE) {
+    const batch = staleIds.slice(i, i + INSERT_BATCH_SIZE);
+    await executor.execute({ sql: buildDeleteByIdsSql(batch.length), args: batch });
+  }
 }
 
 export async function writePublicCalendarToDb(
@@ -160,11 +190,12 @@ export async function writePublicCalendarToDb(
   const normalized = data;
   const now = Date.now();
   try {
-    await executor.execute({ sql: "DELETE FROM calendar_public_events" });
+    const activeIds = new Set<string>();
     for (let i = 0; i < normalized.events.length; i += INSERT_BATCH_SIZE) {
       const batch = normalized.events.slice(i, i + INSERT_BATCH_SIZE);
       const args: unknown[] = [];
       for (const event of batch) {
+        activeIds.add(event.id);
         args.push(
           event.id,
           event.startsAt,
@@ -173,8 +204,9 @@ export async function writePublicCalendarToDb(
           now,
         );
       }
-      await executor.execute({ sql: buildBatchInsertSql(batch.length), args });
+      await executor.execute({ sql: buildBatchUpsertSql(batch.length), args });
     }
+    await pruneStalePublicEvents(executor, activeIds);
     await executor.execute({
       sql: `INSERT INTO calendar_public_sync_state
             (id, generated_at, range_starts_at, range_ends_at, event_count, updated_at)
