@@ -46,6 +46,16 @@ export function calendarFetchEvents(
   return invoke("calendar_fetch_events", { request });
 }
 
+export type RecurrenceFrequency = "daily" | "weekly" | "biweekly" | "monthly";
+
+export interface RecurrenceSpec {
+  frequency: RecurrenceFrequency;
+  /** Total number of occurrences including the first. The Rust side
+   * clamps to a safety ceiling (200) so a typo can't generate years
+   * of events. */
+  count: number;
+}
+
 export interface CreateEventRequest {
   calendarId: string;
   title: string;
@@ -56,6 +66,10 @@ export interface CreateEventRequest {
   notes?: string;
   location?: string;
   url?: string;
+  /** When set, the event is created as a recurring series. EKEvent
+   * stores it as one row with an attached EKRecurrenceRule, and
+   * `fetch_events` later expands the occurrences for any range query. */
+  recurrence?: RecurrenceSpec;
 }
 
 /** Create a non-recurring event in the chosen calendar. EventKit

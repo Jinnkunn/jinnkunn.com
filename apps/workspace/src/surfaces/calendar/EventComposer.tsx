@@ -1,7 +1,25 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import { calendarCreateEvent } from "./api";
+import { calendarCreateEvent, type RecurrenceFrequency } from "./api";
 import type { Calendar, CalendarEvent } from "./types";
+
+const RECURRENCE_OPTIONS: Array<{
+  value: "none" | RecurrenceFrequency;
+  label: string;
+}> = [
+  { value: "none", label: "Does not repeat" },
+  { value: "daily", label: "Every day" },
+  { value: "weekly", label: "Every week" },
+  { value: "biweekly", label: "Every other week" },
+  { value: "monthly", label: "Every month" },
+];
+
+const RECURRENCE_DEFAULT_COUNT: Record<RecurrenceFrequency, number> = {
+  daily: 14,
+  weekly: 14, // class-meeting default — a typical North American semester
+  biweekly: 7,
+  monthly: 12,
+};
 
 // Quick "+ Event" composer that lives in the calendar surface header.
 // The operator clicks "+ Event", picks a calendar, types a title, and
@@ -83,6 +101,10 @@ export function EventComposer({
     return toLocalInputValue(end);
   });
   const [isAllDay, setIsAllDay] = useState(false);
+  const [recurrence, setRecurrence] = useState<"none" | RecurrenceFrequency>(
+    "none",
+  );
+  const [recurrenceCount, setRecurrenceCount] = useState(14);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,6 +147,10 @@ export function EventComposer({
         startsAt: startIso,
         endsAt: endIso,
         isAllDay,
+        recurrence:
+          recurrence === "none"
+            ? undefined
+            : { frequency: recurrence, count: recurrenceCount },
       });
       onCreated(saved);
       onClose();
@@ -197,6 +223,49 @@ export function EventComposer({
             required
           />
         </label>
+      </div>
+      <div className="calendar-event-composer__row">
+        <label className="calendar-event-composer__field">
+          <span>Repeats</span>
+          <select
+            value={recurrence}
+            onChange={(e) => {
+              const next = e.target.value as "none" | RecurrenceFrequency;
+              setRecurrence(next);
+              if (next !== "none") {
+                // Reset to a sensible default count for the chosen
+                // frequency so a class-meeting flow defaults to a
+                // 14-week semester instead of the previous picker's
+                // value.
+                setRecurrenceCount(RECURRENCE_DEFAULT_COUNT[next]);
+              }
+            }}
+          >
+            {RECURRENCE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {recurrence !== "none" ? (
+          <label className="calendar-event-composer__field">
+            <span>Occurrences</span>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              step={1}
+              value={recurrenceCount}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                setRecurrenceCount(
+                  Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
+                );
+              }}
+            />
+          </label>
+        ) : null}
       </div>
       {error ? (
         <p className="calendar-event-composer__error">{error}</p>

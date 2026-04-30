@@ -31,6 +31,8 @@ import type { EventDisclosureResolver } from "./types";
 import { MonthView } from "./MonthView";
 import {
   buildPublicCalendarPayload,
+  resolveVisibility,
+  type ResolvedVisibility,
   calendarEventKey,
   metadataForEvent,
   emptyMetadataStore,
@@ -57,6 +59,13 @@ import {
 } from "./calendarDefaults";
 import { resolveSmartDefault } from "./smartDefaults";
 import { EventComposer } from "./EventComposer";
+import { SmartRulesEditor } from "./SmartRulesEditor";
+import {
+  diffSnapshots,
+  loadSyncSnapshot,
+  saveSyncSnapshot,
+  type SnapshotEventEntry,
+} from "./syncSnapshot";
 import {
   loadVisibilityPrefs,
   reconcileVisibility,
@@ -276,6 +285,28 @@ export function CalendarSurface() {
     };
   }, [auth, loadAll]);
 
+  // Cmd+N (macOS) / Ctrl+N opens the event composer — matches the
+  // Apple Calendar keyboard convention. Skipped when a dialog is
+  // already open (composer or rules editor) so we don't toggle it
+  // shut on a second press, and skipped when the focus is inside an
+  // editable input so the operator's typing isn't hijacked.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "n" && event.key !== "N") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      const target = event.target as HTMLElement | null;
+      const isEditable =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+      if (isEditable) return;
+      event.preventDefault();
+      setComposerOpen(true);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const calendarsBySource = useMemo(() => {
     const map = new Map<string, Calendar[]>();
     for (const c of calendars) {
@@ -293,12 +324,80 @@ export function CalendarSurface() {
   }, [calendars]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  // Separate event pool used only when the search box has a query —
+  // pulls a much wider date range (±180 days from anchor) than the
+  // current view so "office hours" matches across the year, not just
+  // this week. Empty when search is inactive so the normal `events`
+  // pool is what feeds the visible-events memo.
+  const [searchEvents, setSearchEvents] = useState<CalendarEvent[]>([]);
+  const [searchEventsLoading, setSearchEventsLoading] = useState(false);
+  // Wide-range fetch for the search box. Fires when the operator has
+  // typed ≥2 characters; idle otherwise so we don't burn an EventKit
+  // round-trip on every keystroke. Range is ±180 days from the
+  // current anchor — comfortably covers a full academic year for
+  // "find that talk last March" / "next semester's office hours" use
+  // cases without paying for a multi-year scan on every keystroke.
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      // Reset so a stale large pool doesn't quietly hang around when
+      // the operator clears the box.
+      setSearchEvents([]);
+      setSearchEventsLoading(false);
+      return;
+    }
+    if (!isAuthorized(auth)) return;
+    let cancelled = false;
+    const debounce = window.setTimeout(async () => {
+      const startsAt = new Date(anchor.getTime() - 180 * 86_400_000).toISOString();
+      const endsAt = new Date(anchor.getTime() + 180 * 86_400_000).toISOString();
+      setSearchEventsLoading(true);
+      try {
+        const wide = await calendarFetchEvents({
+          startsAt,
+          endsAt,
+          calendarIds: [],
+        });
+        if (!cancelled) setSearchEvents(wide);
+      } catch {
+        if (!cancelled) setSearchEvents([]);
+      } finally {
+        if (!cancelled) setSearchEventsLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounce);
+    };
+    // `anchor` intentionally NOT a dep — re-fetching on every nav
+    // click would trash the search results. The wide window is
+    // anchored at first-search time, which is fine for a session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, searchQuery]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
+  // Bumped after the operator saves edited rules; resolver memos
+  // depend on it so the next render re-classifies events using the
+  // freshly-loaded rule sheet without needing a full reload.
+  const [smartRulesRevision, setSmartRulesRevision] = useState(0);
+  // Snapshot of the last successful sync — used to diff "what's
+  // about to publish" before the operator clicks Sync. Lazy init
+  // from localStorage so a first-load surface immediately shows
+  // accurate diff counts.
+  const [lastSyncSnapshot, setLastSyncSnapshot] = useState(() =>
+    loadSyncSnapshot(),
+  );
   const visibleEvents = useMemo(() => {
-    const calendarFiltered = events.filter((e) =>
+    const trimmed = searchQuery.trim().toLowerCase();
+    // When search is active, draw from the wider `searchEvents` pool
+    // so a query for "office hours" finds matches across ±180 days,
+    // not just the current week. The calendar filter still applies
+    // (hidden calendars stay hidden in search results too).
+    const source =
+      trimmed.length > 0 && searchEvents.length > 0 ? searchEvents : events;
+    const calendarFiltered = source.filter((e) =>
       selectedCalendarIds.has(e.calendarId),
     );
-    const trimmed = searchQuery.trim().toLowerCase();
     if (trimmed.length === 0) return calendarFiltered;
     // Substring match on title + location + notes. The search box
     // pairs with the existing visibility filter, not replaces it —
@@ -310,7 +409,7 @@ export function CalendarSurface() {
       if (event.notes && event.notes.toLowerCase().includes(trimmed)) return true;
       return false;
     });
-  }, [events, searchQuery, selectedCalendarIds]);
+  }, [events, searchEvents, searchQuery, selectedCalendarIds]);
   const publishedEvents = useMemo(
     () => events.filter((e) => publishedCalendarIds.has(e.calendarId)),
     [events, publishedCalendarIds],
@@ -324,7 +423,43 @@ export function CalendarSurface() {
         calendarDefaults,
         resolveSmartDefault,
       ),
-    [calendarDefaults, publishMetadata, publishedEvents],
+    // smartRulesRevision is a deliberate "invalidate me" bump from
+    // the SmartRulesEditor; React's lint flags it as unnecessary
+    // because resolveSmartDefault reads localStorage by itself, but
+    // dropping it would mean saved rules don't take effect until
+    // some other state change triggers a re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [calendarDefaults, publishMetadata, publishedEvents, smartRulesRevision],
+  );
+
+  // Project the events that WOULD publish on the next sync, then diff
+  // against the last-synced snapshot so the toolbar can show "+3
+  // added · 2 visibility changed · 1 removed". This is the same
+  // pattern the promote-to-production button uses for code SHAs —
+  // surface the upcoming change before the operator commits.
+  const pendingSyncEntries = useMemo<SnapshotEventEntry[]>(() => {
+    const entries: SnapshotEventEntry[] = [];
+    for (const event of publishedEvents) {
+      const meta = metadataForEvent(
+        publishMetadata,
+        event,
+        calendarDefaults,
+        resolveSmartDefault,
+      );
+      if (meta.visibility === "hidden") continue;
+      entries.push({
+        id: event.externalIdentifier || event.eventIdentifier,
+        title: meta.titleOverride?.trim() || event.title || "(No title)",
+        visibility: meta.visibility,
+      });
+    }
+    return entries;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publishedEvents, publishMetadata, calendarDefaults, smartRulesRevision]);
+
+  const syncPreviewDiff = useMemo(
+    () => diffSnapshots(pendingSyncEntries, lastSyncSnapshot?.events ?? []),
+    [lastSyncSnapshot, pendingSyncEntries],
   );
   const publicEventCount =
     publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
@@ -336,7 +471,12 @@ export function CalendarSurface() {
         calendarDefaults,
         resolveSmartDefault,
       ).visibility,
-    [calendarDefaults, publishMetadata],
+    // smartRulesRevision is intentionally in the deps list even
+    // though `resolveSmartDefault` reads localStorage internally —
+    // bumping it invalidates the memo so views re-render against
+    // the freshly-saved rule sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [calendarDefaults, publishMetadata, smartRulesRevision],
   );
 
   const toggleCalendar = (id: string) => {
@@ -441,6 +581,22 @@ export function CalendarSurface() {
         return;
       }
       setPublishState("success");
+      // Persist a thin snapshot of the just-synced projection so the
+      // next sync's preview can diff against it. We only store the
+      // surface fields the diff needs (id + title + visibility), not
+      // the full payload — the file-sha is the source of truth on
+      // the server side.
+      const snapshotEntries: SnapshotEventEntry[] = payload.events.map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        visibility: entry.visibility,
+      }));
+      const snapshot = {
+        syncedAt: new Date().toISOString(),
+        events: snapshotEntries,
+      };
+      saveSyncSnapshot(snapshot);
+      setLastSyncSnapshot(snapshot);
       setSyncHealth({
         lastSyncedAt: new Date().toISOString(),
         eventCount: payload.events.length,
@@ -524,27 +680,43 @@ export function CalendarSurface() {
         <div className="flex items-center justify-between flex-wrap gap-2 w-full">
           <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            <input
-              type="search"
-              className="calendar-search-input"
-              placeholder="Search events…"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              aria-label="Search events"
-              // Cmd+F is the OS-level "find in page" — most operators
-              // expect it to work in any view that displays a list.
-              // We don't intercept it (the OS handler does the right
-              // thing for the embedded webview), but a focusable
-              // input here lets keyboard-only flows reach search via
-              // Tab. Cmd+K (palette) provides the global shortcut.
-            />
+            <div className="calendar-search-wrapper">
+              <input
+                type="search"
+                className="calendar-search-input"
+                placeholder="Search ±180 days…"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                aria-label="Search events"
+                // The fetch widens to ±180 days on a 300ms debounce;
+                // see the search effect in the parent for the
+                // rationale. The placeholder hints at the range so
+                // the operator knows results aren't bounded to the
+                // current week/month/day view.
+              />
+              {searchEventsLoading ? (
+                <span
+                  className="calendar-search-pending"
+                  aria-live="polite"
+                  title="Loading wider event range for search"
+                >
+                  …
+                </span>
+              ) : null}
+            </div>
             <CalendarPublishSummary summary={publishSummary} />
             <CalendarSyncHealthPill health={syncHealth} state={publishState} />
+            <SyncPreviewChip diff={syncPreviewDiff} hasBaseline={lastSyncSnapshot !== null} />
             <button
               type="button"
               className="btn btn--primary"
               disabled={publishState === "publishing" || !rulesLoaded}
               onClick={() => void syncCalendarProjection("manual")}
+              title={
+                lastSyncSnapshot
+                  ? `Will publish: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
+                  : "First sync — every published event will be added."
+              }
             >
               {publishState === "publishing" ? "Syncing..." : "Sync now"}
             </button>
@@ -556,6 +728,15 @@ export function CalendarSurface() {
               title="Create a new event in macOS Calendar (Cmd+N from native)"
             >
               + Event
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setRulesEditorOpen((open) => !open)}
+              aria-pressed={rulesEditorOpen}
+              title="Edit smart visibility rules (regex → visibility)"
+            >
+              Rules
             </button>
             <ViewSwitcher view={view} onChange={setView} />
           </div>
@@ -572,6 +753,12 @@ export function CalendarSurface() {
           </p>
         ) : null}
         <CalendarSyncHealthPanel health={syncHealth} state={publishState} />
+        {rulesEditorOpen ? (
+          <SmartRulesEditor
+            onClose={() => setRulesEditorOpen(false)}
+            onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
+          />
+        ) : null}
         {composerOpen ? (
           <EventComposer
             calendars={calendars}
@@ -639,6 +826,12 @@ export function CalendarSurface() {
                 event={selectedEvent}
                 calendar={calendarsById.get(selectedEvent.calendarId)}
                 metadata={metadataForEvent(
+                  publishMetadata,
+                  selectedEvent,
+                  calendarDefaults,
+                  resolveSmartDefault,
+                )}
+                resolution={resolveVisibility(
                   publishMetadata,
                   selectedEvent,
                   calendarDefaults,
@@ -849,6 +1042,45 @@ function summarizePublishVisibility(
   return summary;
 }
 
+function SyncPreviewChip({
+  diff,
+  hasBaseline,
+}: {
+  diff: ReturnType<typeof diffSnapshots>;
+  hasBaseline: boolean;
+}) {
+  // Quiet pill — empty when there's nothing pending so the toolbar
+  // doesn't get noisy on a freshly-synced state. First-sync (no
+  // baseline) is its own state because diff numbers there reflect
+  // "everything is added" which is technically true but not useful
+  // signal for the operator.
+  if (!hasBaseline) {
+    return (
+      <span className="calendar-sync-preview" data-tone="muted">
+        No previous sync
+      </span>
+    );
+  }
+  const hasChanges =
+    diff.added.length + diff.visibilityChanged.length + diff.removed.length > 0;
+  if (!hasChanges) {
+    return (
+      <span className="calendar-sync-preview" data-tone="ok">
+        Up to date
+      </span>
+    );
+  }
+  return (
+    <span className="calendar-sync-preview" data-tone="pending">
+      {diff.added.length > 0 ? <span>+{diff.added.length}</span> : null}
+      {diff.visibilityChanged.length > 0 ? (
+        <span>~{diff.visibilityChanged.length}</span>
+      ) : null}
+      {diff.removed.length > 0 ? <span>-{diff.removed.length}</span> : null}
+    </span>
+  );
+}
+
 function CalendarPublishSummary({ summary }: { summary: PublishSummary }) {
   return (
     <div
@@ -877,6 +1109,7 @@ function CalendarEventInspector({
   event,
   calendar,
   metadata,
+  resolution,
   publicEventCount,
   publishMessage,
   rulesLoaded,
@@ -894,6 +1127,11 @@ function CalendarEventInspector({
     locationOverride?: string;
     urlOverride?: string;
   };
+  /** Where the resolved visibility came from. Lets the inspector tell
+   * the operator whether the current setting comes from an explicit
+   * per-event override, a smart-default rule, the calendar default,
+   * or the global "busy" fallback. */
+  resolution: ResolvedVisibility;
   publicEventCount: number;
   publishMessage: string;
   rulesLoaded: boolean;
@@ -964,6 +1202,24 @@ function CalendarEventInspector({
             <option value="titleOnly">Title only</option>
             <option value="full">Full details</option>
           </WorkspaceSelectField>
+          <p
+            className="calendar-inspector__visibility-source"
+            data-source={resolution.source}
+            // Tells the operator whether the visibility above is
+            // their explicit per-event choice or a default firing
+            // from the resolver chain. Without this, "Busy" looks
+            // identical regardless of whether they set it manually
+            // or it came from the global fallback — and that matters
+            // when they wonder "why is this not showing on /calendar".
+          >
+            {resolution.source === "override"
+              ? "Source: per-event override (clear it to fall back to defaults)"
+              : resolution.source === "smart-rule"
+                ? "Source: smart rule matched the event metadata"
+                : resolution.source === "calendar-default"
+                  ? `Source: ${calendar?.title ?? "calendar"} default`
+                  : "Source: global default (no rule matched)"}
+          </p>
           {showPublicFields ? (
             <WorkspaceTextField
               label="Public title override"

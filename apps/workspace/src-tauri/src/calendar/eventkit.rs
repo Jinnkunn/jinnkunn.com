@@ -11,18 +11,27 @@ use block2::RcBlock;
 use chrono::{DateTime, SecondsFormat, Utc};
 use objc2::rc::Retained;
 use objc2::runtime::Bool;
+use objc2::AnyThread;
 use objc2_core_graphics::CGColor;
 use objc2_event_kit::{
     EKAuthorizationStatus, EKCalendar, EKEntityType, EKEvent, EKEventStore,
-    EKEventStoreChangedNotification, EKSourceType, EKSpan,
+    EKEventStoreChangedNotification, EKRecurrenceEnd, EKRecurrenceFrequency,
+    EKRecurrenceRule, EKSourceType, EKSpan,
 };
 use objc2_foundation::{NSArray, NSDate, NSError, NSNotification, NSNotificationCenter, NSString, NSURL};
 use tokio::sync::oneshot;
 
 use crate::calendar::types::{
     Calendar, CalendarAuthorizationStatus, CalendarEvent, CalendarSource, CalendarSourceType,
-    CreateEventRequest, FetchEventsRequest,
+    CreateEventRequest, FetchEventsRequest, RecurrenceFrequency,
 };
+
+// Cap recurrence count so a typo in the UI ("count = 99999") can't
+// generate a multi-year event explosion in EventKit. 200 covers four
+// years of weekly + a year of daily; anything beyond should go through
+// Apple Calendar.app's authoring surface where the operator gets a
+// proper RRULE editor.
+const MAX_RECURRENCE_COUNT: u32 = 200;
 
 fn map_authorization_status(raw: EKAuthorizationStatus) -> CalendarAuthorizationStatus {
     // EKAuthorizationStatus is a struct-wrapped NSInteger, so we pattern
@@ -401,13 +410,52 @@ pub fn create_event(request: &CreateEventRequest) -> Result<CalendarEvent, Strin
         }
     }
 
-    // EKSpan::ThisEvent is the correct save scope for non-recurring
-    // events; for recurring event creation (which we don't support
-    // yet — operator creates one occurrence), it's also the right
-    // value because the event is brand new and isn't part of a series.
+    // Attach a recurrence rule when the operator picked a frequency.
+    // EventKit treats `addRecurrenceRule:` as additive — passing a
+    // single rule is the typical case (RFC 5545 supports multiple
+    // RRULEs per VEVENT but it's rare and harder to reason about).
+    if let Some(spec) = request.recurrence.as_ref() {
+        let count = spec.count.min(MAX_RECURRENCE_COUNT).max(1);
+        let (frequency, interval) = match spec.frequency {
+            RecurrenceFrequency::Daily => (EKRecurrenceFrequency::Daily, 1),
+            RecurrenceFrequency::Weekly => (EKRecurrenceFrequency::Weekly, 1),
+            // Biweekly = weekly with interval=2 — EventKit doesn't have
+            // a native biweekly frequency, but every iCal client renders
+            // this combo correctly.
+            RecurrenceFrequency::Biweekly => (EKRecurrenceFrequency::Weekly, 2),
+            RecurrenceFrequency::Monthly => (EKRecurrenceFrequency::Monthly, 1),
+        };
+        let end = unsafe {
+            EKRecurrenceEnd::recurrenceEndWithOccurrenceCount(count as usize)
+        };
+        // SAFETY: alloc + init dance — initRecurrenceWithFrequency takes
+        // a frequency variant, an interval >= 1, and an optional end.
+        // All three preconditions are satisfied here.
+        let rule: Retained<EKRecurrenceRule> = unsafe {
+            let allocated = EKRecurrenceRule::alloc();
+            EKRecurrenceRule::initRecurrenceWithFrequency_interval_end(
+                allocated,
+                frequency,
+                interval,
+                Some(&end),
+            )
+        };
+        unsafe { event.addRecurrenceRule(&rule) };
+    }
+
+    // EKSpan determines whether `saveEvent:` writes one occurrence or
+    // the whole series. For brand-new events without a parent series
+    // the choice is moot; for events with a recurrence rule we want
+    // FutureEvents so the rule itself persists (ThisEvent on a
+    // recurring event detaches the occurrence and drops the rule).
+    let span = if request.recurrence.is_some() {
+        EKSpan::FutureEvents
+    } else {
+        EKSpan::ThisEvent
+    };
     // The objc2-event-kit binding maps `out NSError**` to `Result`,
     // so we just propagate any save failure as an error string.
-    if let Err(err) = unsafe { store.saveEvent_span_error(&event, EKSpan::ThisEvent) } {
+    if let Err(err) = unsafe { store.saveEvent_span_error(&event, span) } {
         let detail = err.localizedDescription().to_string();
         return Err(format!("SAVE_FAILED: {detail}"));
     }
