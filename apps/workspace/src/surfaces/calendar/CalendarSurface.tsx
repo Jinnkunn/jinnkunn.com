@@ -82,12 +82,30 @@ import {
   todosList,
   todosUpdate,
   type TodoRow,
+  type TodosUpdateParams,
 } from "../../modules/todos/api";
+import {
+  TODO_SCHEDULE_PRESETS,
+  clearTodoPlanningUpdateParams,
+  dateAndTimeInputToTimestamp,
+  dateInputToTimestamp,
+  dateInputValue,
+  dateTimeInputToTimestamp,
+  dateTimeInputValue,
+  estimateInputToMinutes,
+  timeInputValue,
+  todoPresetUpdateParams,
+  todoScheduleAtUpdateParams,
+  todoSchedulePresetLabel,
+  type TodoSchedulePreset,
+} from "../../modules/todos/planning";
+import { todoTimelineStart } from "../../modules/todos/time";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = "idle" | "publishing" | "success" | "error";
 type PublishSummary = Record<CalendarPublicVisibility, number>;
 type CalendarSyncReason = "auto" | "manual";
+type TodoUpdatePatch = Omit<TodosUpdateParams, "id">;
 type CalendarSyncHealth = {
   lastSyncedAt: string | null;
   eventCount: number;
@@ -154,6 +172,8 @@ export function CalendarSurface() {
   // haven't built yet.
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
+  const [todoMessage, setTodoMessage] = useState<string | null>(null);
   const [publishMetadata, setPublishMetadata] =
     useState<CalendarPublishMetadataStore>(() => emptyMetadataStore());
   const [rulesLoaded, setRulesLoaded] = useState(false);
@@ -278,7 +298,7 @@ export function CalendarSurface() {
     let cancelled = false;
     todosList()
       .then((next) => {
-        if (!cancelled) setTodos(next);
+        if (!cancelled) setTodos(sortCalendarTodos(next));
       })
       .catch(() => {
         // Quiet failure — todos are an overlay, not core to the calendar
@@ -288,6 +308,47 @@ export function CalendarSurface() {
       cancelled = true;
     };
   }, []);
+
+  const upsertTodo = useCallback((row: TodoRow) => {
+    setTodos((prev) =>
+      sortCalendarTodos([
+        ...prev.filter((todo) => todo.id !== row.id),
+        row,
+      ]),
+    );
+  }, []);
+
+  const selectedTodo = useMemo(
+    () => todos.find((todo) => todo.id === selectedTodoId) ?? null,
+    [selectedTodoId, todos],
+  );
+
+  const handleTodoSelect = useCallback((todo: TodoRow) => {
+    setSelectedEvent(null);
+    setSelectedTodoId(todo.id);
+  }, []);
+
+  const handleEventSelect = useCallback((event: CalendarEvent) => {
+    setSelectedTodoId(null);
+    setSelectedEvent(event);
+  }, []);
+
+  const updateTodo = useCallback(
+    async (
+      todo: TodoRow,
+      patch: TodoUpdatePatch,
+      failureLabel = "update todo",
+    ) => {
+      setTodoMessage(null);
+      try {
+        const updated = await todosUpdate({ id: todo.id, ...patch });
+        upsertTodo(updated);
+      } catch (error) {
+        setTodoMessage(`Failed to ${failureLabel}: ${formatTodoOverlayError(error)}`);
+      }
+    },
+    [upsertTodo],
+  );
 
   const handleTodoToggle = useCallback(
     (id: string, completed: boolean) => {
@@ -302,9 +363,10 @@ export function CalendarSurface() {
       );
       void todosUpdate({ id, completed })
         .then((updated) => {
-          setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+          upsertTodo(updated);
         })
-        .catch(() => {
+        .catch((error) => {
+          setTodoMessage(`Failed to update todo: ${formatTodoOverlayError(error)}`);
           // Roll back the optimistic toggle if the backend rejected.
           setTodos((prev) =>
             prev.map((t) =>
@@ -315,7 +377,33 @@ export function CalendarSurface() {
           );
         });
     },
-    [],
+    [upsertTodo],
+  );
+
+  const applyTodoPreset = useCallback(
+    (todo: TodoRow, preset: TodoSchedulePreset) =>
+      updateTodo(todo, todoPresetUpdateParams(preset), "schedule todo"),
+    [updateTodo],
+  );
+
+  const clearTodoPlanning = useCallback(
+    (todo: TodoRow) =>
+      updateTodo(todo, clearTodoPlanningUpdateParams(), "clear todo schedule"),
+    [updateTodo],
+  );
+
+  const scheduleTodoAt = useCallback(
+    (
+      todo: TodoRow,
+      scheduledStartAt: number,
+      estimatedMinutes: number | null,
+    ) =>
+      updateTodo(
+        todo,
+        todoScheduleAtUpdateParams(scheduledStartAt, estimatedMinutes),
+        "schedule todo",
+      ),
+    [updateTodo],
   );
 
   // Re-subscribe to EventKit changes whenever loadAll's identity
@@ -903,6 +991,7 @@ export function CalendarSurface() {
               // flow feeling responsive.
               setEvents((prev) => [...prev, saved]);
               setCalendarChangeRevision((revision) => revision + 1);
+              setSelectedTodoId(null);
               setSelectedEvent(saved);
             }}
           />
@@ -911,6 +1000,16 @@ export function CalendarSurface() {
       <div
         className="panel-shell__body calendar-surface-body"
       >
+        <CalendarTodoTray
+          anchor={anchor}
+          todos={todos}
+          message={todoMessage}
+          onClear={clearTodoPlanning}
+          onPreset={applyTodoPreset}
+          onScheduleAt={scheduleTodoAt}
+          onTodoSelect={handleTodoSelect}
+          onTodoToggle={handleTodoToggle}
+        />
         <WorkspaceSplitView
           className="calendar-workspace-split"
           inspector={
@@ -938,6 +1037,27 @@ export function CalendarSurface() {
                 onMetadataChange={updateSelectedMetadata}
                 onPublish={() => void syncCalendarProjection("manual")}
               />
+            ) : selectedTodo ? (
+              <CalendarTodoInspector
+                key={selectedTodo.id}
+                todo={selectedTodo}
+                onClear={() => void clearTodoPlanning(selectedTodo)}
+                onClose={() => setSelectedTodoId(null)}
+                onPreset={(preset) => void applyTodoPreset(selectedTodo, preset)}
+                onToggle={(completed) =>
+                  handleTodoToggle(selectedTodo.id, completed)
+                }
+                onUpdate={(patch, failureLabel) =>
+                  void updateTodo(selectedTodo, patch, failureLabel)
+                }
+                onScheduleAt={(scheduledStartAt, estimatedMinutes) =>
+                  void scheduleTodoAt(
+                    selectedTodo,
+                    scheduledStartAt,
+                    estimatedMinutes,
+                  )
+                }
+              />
             ) : null}
         >
           <ViewPane
@@ -949,12 +1069,429 @@ export function CalendarSurface() {
             loadState={loadState}
             errorMessage={errorMessage}
             getDisclosure={getDisclosure}
-            onEventSelect={setSelectedEvent}
+            onEventSelect={handleEventSelect}
+            onTodoSelect={handleTodoSelect}
             onTodoToggle={handleTodoToggle}
           />
         </WorkspaceSplitView>
       </div>
     </WorkspaceSurfaceFrame>
+  );
+}
+
+function sortCalendarTodos(rows: readonly TodoRow[]): TodoRow[] {
+  return [...rows].sort((a, b) => {
+    const aDone = a.completedAt ? 1 : 0;
+    const bDone = b.completedAt ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    const aTime = todoTimelineStart(a) ?? Number.MAX_SAFE_INTEGER;
+    const bTime = todoTimelineStart(b) ?? Number.MAX_SAFE_INTEGER;
+    if (aTime !== bTime) return aTime - bTime;
+    return a.sortOrder - b.sortOrder;
+  });
+}
+
+function formatTodoOverlayError(error: unknown): string {
+  const message = String(error);
+  if (
+    message.includes("invoke") ||
+    message.includes("__TAURI_INTERNALS__") ||
+    message.includes("is not a function")
+  ) {
+    return "Todo data is available in the desktop app.";
+  }
+  return message;
+}
+
+function formatTodoPlanningMeta(todo: TodoRow): string {
+  const start = todoTimelineStart(todo);
+  const parts: string[] = [];
+  if (todo.scheduledStartAt !== null && start !== null) {
+    parts.push(`Scheduled ${formatShortDate(start)} ${formatClockTime(start)}`);
+  } else if (todo.dueAt !== null) {
+    parts.push(`Due ${formatShortDate(todo.dueAt)}`);
+  } else {
+    parts.push("No date");
+  }
+  if (todo.estimatedMinutes !== null) {
+    parts.push(`${todo.estimatedMinutes}m`);
+  }
+  return parts.join(" / ");
+}
+
+function formatShortDate(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function formatClockTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function CalendarTodoTray({
+  anchor,
+  todos,
+  message,
+  onClear,
+  onPreset,
+  onScheduleAt,
+  onTodoSelect,
+  onTodoToggle,
+}: {
+  anchor: Date;
+  todos: TodoRow[];
+  message: string | null;
+  onClear: (todo: TodoRow) => void;
+  onPreset: (todo: TodoRow, preset: TodoSchedulePreset) => void;
+  onScheduleAt: (
+    todo: TodoRow,
+    scheduledStartAt: number,
+    estimatedMinutes: number | null,
+  ) => void;
+  onTodoSelect: (todo: TodoRow) => void;
+  onTodoToggle: (id: string, completed: boolean) => void;
+}) {
+  const unscheduled = useMemo(
+    () =>
+      sortCalendarTodos(
+        todos.filter(
+          (todo) =>
+            todo.archivedAt === null &&
+            todo.completedAt === null &&
+            todo.scheduledStartAt === null,
+        ),
+      ),
+    [todos],
+  );
+  const visible = unscheduled.slice(0, 6);
+  return (
+    <section
+      className="calendar-todo-tray"
+      aria-label="Unscheduled todos"
+      data-empty={unscheduled.length === 0 ? "true" : undefined}
+    >
+      <div className="calendar-todo-tray__header">
+        <div>
+          <strong>Unscheduled Todos</strong>
+          <span>{unscheduled.length} open without a time block</span>
+        </div>
+        {unscheduled.length > visible.length ? (
+          <span className="calendar-todo-tray__overflow">
+            +{unscheduled.length - visible.length} more in Todos
+          </span>
+        ) : null}
+      </div>
+      {message ? (
+        <p className="calendar-todo-tray__message" role="status">
+          {message}
+        </p>
+      ) : null}
+      {visible.length === 0 ? (
+        <p className="calendar-todo-tray__empty">
+          All open todos have either a scheduled block or no active work.
+        </p>
+      ) : (
+        <ul className="calendar-todo-tray__list" role="list">
+          {visible.map((todo) => (
+            <CalendarTodoTrayItem
+              anchor={anchor}
+              key={todo.id}
+              todo={todo}
+              onClear={onClear}
+              onPreset={onPreset}
+              onScheduleAt={onScheduleAt}
+              onTodoSelect={onTodoSelect}
+              onTodoToggle={onTodoToggle}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CalendarTodoTrayItem({
+  anchor,
+  todo,
+  onClear,
+  onPreset,
+  onScheduleAt,
+  onTodoSelect,
+  onTodoToggle,
+}: {
+  anchor: Date;
+  todo: TodoRow;
+  onClear: (todo: TodoRow) => void;
+  onPreset: (todo: TodoRow, preset: TodoSchedulePreset) => void;
+  onScheduleAt: (
+    todo: TodoRow,
+    scheduledStartAt: number,
+    estimatedMinutes: number | null,
+  ) => void;
+  onTodoSelect: (todo: TodoRow) => void;
+  onTodoToggle: (id: string, completed: boolean) => void;
+}) {
+  const [dateValue, setDateValue] = useState(() =>
+    dateInputValue(todo.dueAt ?? anchor.getTime()),
+  );
+  const [timeValue, setTimeValue] = useState(() =>
+    timeInputValue(todo.scheduledStartAt) || "09:00",
+  );
+  const [durationValue, setDurationValue] = useState(() =>
+    String(todo.estimatedMinutes ?? 30),
+  );
+
+  const scheduleExact = () => {
+    const scheduledStartAt = dateAndTimeInputToTimestamp(dateValue, timeValue);
+    if (scheduledStartAt === null) return;
+    onScheduleAt(
+      todo,
+      scheduledStartAt,
+      estimateInputToMinutes(durationValue) ?? 30,
+    );
+  };
+
+  return (
+    <li className="calendar-todo-tray__item">
+      <button
+        type="button"
+        className="calendar-todo-tray__check"
+        aria-label="Mark done"
+        onClick={() => onTodoToggle(todo.id, true)}
+      >
+        <span aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className="calendar-todo-tray__body"
+        onClick={() => onTodoSelect(todo)}
+      >
+        <strong>{todo.title || "(Untitled)"}</strong>
+        <span>{formatTodoPlanningMeta(todo)}</span>
+      </button>
+      <div className="calendar-todo-tray__quick" aria-label="Quick schedule">
+        {TODO_SCHEDULE_PRESETS.map((preset) => (
+          <button
+            type="button"
+            key={preset}
+            onClick={() => onPreset(todo, preset)}
+          >
+            {todoSchedulePresetLabel(preset)}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={todo.dueAt === null}
+          onClick={() => onClear(todo)}
+        >
+          Clear
+        </button>
+      </div>
+      <form
+        className="calendar-todo-tray__schedule"
+        onSubmit={(event) => {
+          event.preventDefault();
+          scheduleExact();
+        }}
+      >
+        <input
+          aria-label="Schedule date"
+          type="date"
+          value={dateValue}
+          onChange={(event) => setDateValue(event.currentTarget.value)}
+        />
+        <input
+          aria-label="Schedule time"
+          type="time"
+          value={timeValue}
+          onChange={(event) => setTimeValue(event.currentTarget.value)}
+        />
+        <input
+          aria-label="Duration minutes"
+          min="1"
+          max="1440"
+          type="number"
+          value={durationValue}
+          onChange={(event) => setDurationValue(event.currentTarget.value)}
+        />
+        <button type="submit">Block</button>
+      </form>
+    </li>
+  );
+}
+
+function CalendarTodoInspector({
+  todo,
+  onClear,
+  onClose,
+  onPreset,
+  onScheduleAt,
+  onToggle,
+  onUpdate,
+}: {
+  todo: TodoRow;
+  onClear: () => void;
+  onClose: () => void;
+  onPreset: (preset: TodoSchedulePreset) => void;
+  onScheduleAt: (scheduledStartAt: number, estimatedMinutes: number | null) => void;
+  onToggle: (completed: boolean) => void;
+  onUpdate: (patch: TodoUpdatePatch, failureLabel?: string) => void;
+}) {
+  const [titleDraft, setTitleDraft] = useState(todo.title);
+  const [notesDraft, setNotesDraft] = useState(todo.notes);
+
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    if (!next || next === todo.title) {
+      setTitleDraft(todo.title);
+      return;
+    }
+    onUpdate({ title: next }, "rename todo");
+  };
+
+  const commitNotes = () => {
+    if (notesDraft === todo.notes) return;
+    onUpdate({ notes: notesDraft }, "update todo notes");
+  };
+
+  const updateScheduledTime = (value: string) => {
+    const scheduledStartAt = dateTimeInputToTimestamp(value);
+    if (scheduledStartAt === null) {
+      onUpdate(
+        {
+          scheduledEndAt: null,
+          scheduledStartAt: null,
+        },
+        "update todo schedule",
+      );
+      return;
+    }
+    onScheduleAt(scheduledStartAt, todo.estimatedMinutes);
+  };
+
+  const updateEstimate = (value: string) => {
+    const estimatedMinutes = estimateInputToMinutes(value);
+    onUpdate(
+      {
+        estimatedMinutes,
+        scheduledEndAt:
+          todo.scheduledStartAt === null || estimatedMinutes === null
+            ? null
+            : todo.scheduledStartAt + estimatedMinutes * 60_000,
+      },
+      "update todo estimate",
+    );
+  };
+
+  return (
+    <WorkspaceInspector
+      className="calendar-inspector calendar-todo-inspector"
+      label="Todo"
+      style={{
+        border: 0,
+        borderRadius: 0,
+        padding: "14px",
+      }}
+    >
+      <WorkspaceInspectorHeader
+        heading={todo.title || "(Untitled)"}
+        kicker="Todo"
+        actions={
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Close
+          </button>
+        }
+      />
+      <div className="workspace-inspector__body">
+        <WorkspaceInspectorSection heading="Task">
+          <WorkspaceTextField
+            label="Title"
+            value={titleDraft}
+            onBlur={commitTitle}
+            onChange={(event) => setTitleDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                setTitleDraft(todo.title);
+                event.currentTarget.blur();
+              }
+            }}
+          />
+          <WorkspaceTextareaField
+            label="Notes"
+            rows={4}
+            value={notesDraft}
+            onBlur={commitNotes}
+            onChange={(event) => setNotesDraft(event.currentTarget.value)}
+          />
+          <WorkspaceCheckboxField
+            checked={todo.completedAt !== null}
+            onChange={(event) => onToggle(event.currentTarget.checked)}
+          >
+            Completed
+          </WorkspaceCheckboxField>
+        </WorkspaceInspectorSection>
+        <WorkspaceInspectorSection heading="Planning">
+          <div className="calendar-todo-inspector__quick">
+            {TODO_SCHEDULE_PRESETS.map((preset) => (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                key={preset}
+                onClick={() => onPreset(preset)}
+              >
+                {todoSchedulePresetLabel(preset)}
+              </button>
+            ))}
+            <button type="button" className="btn btn--ghost" onClick={onClear}>
+              Clear
+            </button>
+          </div>
+          <WorkspaceTextField
+            label="Due date"
+            type="date"
+            value={dateInputValue(todo.dueAt)}
+            onChange={(event) =>
+              onUpdate(
+                { dueAt: dateInputToTimestamp(event.currentTarget.value) },
+                "update todo due date",
+              )
+            }
+          />
+          <WorkspaceTextField
+            label="Scheduled time"
+            type="datetime-local"
+            value={dateTimeInputValue(todo.scheduledStartAt)}
+            onChange={(event) => updateScheduledTime(event.currentTarget.value)}
+          />
+          <WorkspaceTextField
+            label="Estimate minutes"
+            min="1"
+            max="1440"
+            type="number"
+            value={todo.estimatedMinutes ?? ""}
+            onChange={(event) => updateEstimate(event.currentTarget.value)}
+          />
+        </WorkspaceInspectorSection>
+        <WorkspaceInspectorSection heading="Status">
+          <dl className="workspace-inspector__meta">
+            <div>
+              <dt>Planning</dt>
+              <dd>{formatTodoPlanningMeta(todo)}</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>{formatDateTime(new Date(todo.updatedAt).toISOString())}</dd>
+            </div>
+          </dl>
+        </WorkspaceInspectorSection>
+      </div>
+    </WorkspaceInspector>
   );
 }
 
@@ -1041,6 +1578,7 @@ function ViewPane({
   errorMessage,
   getDisclosure,
   onEventSelect,
+  onTodoSelect,
   onTodoToggle,
 }: {
   view: ViewKind;
@@ -1052,6 +1590,7 @@ function ViewPane({
   errorMessage: string | null;
   getDisclosure: EventDisclosureResolver;
   onEventSelect: (event: CalendarEvent) => void;
+  onTodoSelect: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
   if (loadState === "error") {
@@ -1082,6 +1621,7 @@ function ViewPane({
           todos={todos}
           getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
+          onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
         />
       );
@@ -1094,6 +1634,7 @@ function ViewPane({
           todos={todos}
           getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
+          onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
         />
       );
@@ -1116,6 +1657,7 @@ function ViewPane({
           rangeLabel={formatViewTitle("agenda", anchor)}
           getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
+          onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
         />
       );

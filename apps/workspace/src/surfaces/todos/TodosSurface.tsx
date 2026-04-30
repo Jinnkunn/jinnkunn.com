@@ -12,6 +12,21 @@ import {
   todoTimelineKind,
   todoTimelineStart,
 } from "../../modules/todos/time";
+import {
+  TODO_SCHEDULE_PRESETS,
+  addLocalDays,
+  clearTodoPlanningUpdateParams,
+  dateInputToTimestamp,
+  dateInputValue,
+  dateTimeInputToTimestamp,
+  dateTimeInputValue,
+  estimateInputToMinutes,
+  scheduleEndTimestamp,
+  startOfLocalDay,
+  todoPresetUpdateParams,
+  todoSchedulePresetLabel,
+  type TodoSchedulePreset,
+} from "../../modules/todos/planning";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceCommandBar,
@@ -45,66 +60,6 @@ function filterFromNavItem(id: string | null): TodoFilter {
   if (id === TODOS_UNSCHEDULED_NAV_ID) return "unscheduled";
   if (id === TODOS_UPCOMING_NAV_ID) return "upcoming";
   return "today";
-}
-
-function dateInputValue(timestamp: number | null): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function dateInputToTimestamp(value: string): number | null {
-  if (!value) return null;
-  const [year, month, day] = value.split("-").map((part) => Number(part));
-  if (!year || !month || !day) return null;
-  return new Date(year, month - 1, day, 12, 0, 0, 0).getTime();
-}
-
-function dateTimeInputValue(timestamp: number | null): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function dateTimeInputToTimestamp(value: string): number | null {
-  if (!value) return null;
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function estimateInputToMinutes(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return Math.min(Math.round(parsed), 24 * 60);
-}
-
-function scheduleEndTimestamp(
-  scheduledStartAt: number | null,
-  estimatedMinutes: number | null,
-): number | null {
-  if (scheduledStartAt === null || estimatedMinutes === null) return null;
-  return scheduledStartAt + estimatedMinutes * 60_000;
-}
-
-function startOfLocalDay(date: Date): Date {
-  const out = new Date(date);
-  out.setHours(0, 0, 0, 0);
-  return out;
-}
-
-function addLocalDays(date: Date, days: number): Date {
-  const out = new Date(date);
-  out.setDate(out.getDate() + days);
-  return out;
 }
 
 function formatDueDate(timestamp: number | null): string {
@@ -238,6 +193,44 @@ function sortTodos(rows: readonly TodoRow[]): TodoRow[] {
   });
 }
 
+function TodoQuickScheduleActions({
+  todo,
+  onClear,
+  onPreset,
+}: {
+  todo: TodoRow;
+  onClear: (todo: TodoRow) => Promise<void>;
+  onPreset: (todo: TodoRow, preset: TodoSchedulePreset) => Promise<void>;
+}) {
+  const plannedDate = dateInputValue(todoTimelineStart(todo));
+  return (
+    <div className="todos-row__quick" aria-label="Quick schedule">
+      {TODO_SCHEDULE_PRESETS.map((preset) => {
+        const presetDate = dateInputValue(todoPresetUpdateParams(preset).dueAt);
+        return (
+          <button
+            type="button"
+            key={preset}
+            className="todos-row__quick-button"
+            data-active={plannedDate === presetDate ? "true" : undefined}
+            onClick={() => void onPreset(todo, preset)}
+          >
+            {todoSchedulePresetLabel(preset)}
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        className="todos-row__quick-button"
+        disabled={todo.scheduledStartAt === null && todo.dueAt === null}
+        onClick={() => void onClear(todo)}
+      >
+        Clear
+      </button>
+    </div>
+  );
+}
+
 export function TodosSurface() {
   const { activeNavItemId, setActiveNavItemId } = useSurfaceNav();
   const [todos, setTodos] = useState<TodoRow[]>([]);
@@ -289,6 +282,13 @@ export function TodosSurface() {
     ]));
   };
 
+  const upsertTodoAndRoute = (row: TodoRow) => {
+    upsertTodo(row);
+    if (!filterTodo(row, filter)) {
+      setActiveNavItemId(navItemForTodo(row));
+    }
+  };
+
   const createTodo = async () => {
     const normalized = title.trim();
     if (!normalized) return;
@@ -304,14 +304,11 @@ export function TodosSurface() {
         scheduledStartAt,
         title: normalized,
       });
-      upsertTodo(row);
       setTitle("");
       setDueDate("");
       setScheduledAt("");
       setEstimatedMinutes("");
-      if (!filterTodo(row, filter)) {
-        setActiveNavItemId(navItemForTodo(row));
-      }
+      upsertTodoAndRoute(row);
     } catch (error) {
       setMessage(`Failed to create todo: ${String(error)}`);
     } finally {
@@ -360,7 +357,7 @@ export function TodosSurface() {
         dueAt: dateInputToTimestamp(value),
         id: todo.id,
       });
-      upsertTodo(row);
+      upsertTodoAndRoute(row);
     } catch (error) {
       setMessage(`Failed to update due date: ${String(error)}`);
     }
@@ -377,7 +374,7 @@ export function TodosSurface() {
         ),
         scheduledStartAt,
       });
-      upsertTodo(row);
+      upsertTodoAndRoute(row);
     } catch (error) {
       setMessage(`Failed to update schedule: ${String(error)}`);
     }
@@ -394,6 +391,33 @@ export function TodosSurface() {
       upsertTodo(row);
     } catch (error) {
       setMessage(`Failed to update estimate: ${String(error)}`);
+    }
+  };
+
+  const applySchedulePreset = async (
+    todo: TodoRow,
+    preset: TodoSchedulePreset,
+  ) => {
+    try {
+      const row = await todosUpdate({
+        id: todo.id,
+        ...todoPresetUpdateParams(preset),
+      });
+      upsertTodoAndRoute(row);
+    } catch (error) {
+      setMessage(`Failed to schedule todo: ${String(error)}`);
+    }
+  };
+
+  const clearPlanning = async (todo: TodoRow) => {
+    try {
+      const row = await todosUpdate({
+        id: todo.id,
+        ...clearTodoPlanningUpdateParams(),
+      });
+      upsertTodoAndRoute(row);
+    } catch (error) {
+      setMessage(`Failed to clear schedule: ${String(error)}`);
     }
   };
 
@@ -547,6 +571,11 @@ export function TodosSurface() {
                     <span className="todos-row__meta">
                       {formatTodoMeta(todo)}
                     </span>
+                    <TodoQuickScheduleActions
+                      todo={todo}
+                      onClear={clearPlanning}
+                      onPreset={applySchedulePreset}
+                    />
                   </div>
                   <input
                     aria-label="Due date"

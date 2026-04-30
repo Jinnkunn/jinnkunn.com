@@ -19,18 +19,16 @@ export function todosList(): Promise<TodoRow[]> {
   return invoke("todos_list");
 }
 
-export function todosCreate(params: {
+export interface TodosCreateParams {
   dueAt?: number | null;
   estimatedMinutes?: number | null;
   notes?: string | null;
   scheduledEndAt?: number | null;
   scheduledStartAt?: number | null;
   title?: string | null;
-}): Promise<TodoRow> {
-  return invoke("todos_create", { params });
 }
 
-export function todosUpdate(params: {
+export interface TodosUpdateParams {
   completed?: boolean;
   dueAt?: number | null;
   estimatedMinutes?: number | null;
@@ -39,7 +37,13 @@ export function todosUpdate(params: {
   scheduledEndAt?: number | null;
   scheduledStartAt?: number | null;
   title?: string;
-}): Promise<TodoRow> {
+}
+
+export function todosCreate(params: TodosCreateParams): Promise<TodoRow> {
+  return invoke("todos_create", { params });
+}
+
+export function todosUpdate(params: TodosUpdateParams): Promise<TodoRow> {
   return invoke("todos_update", { params });
 }
 

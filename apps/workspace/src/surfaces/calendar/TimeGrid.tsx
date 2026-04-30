@@ -34,6 +34,7 @@ export function TimeGrid({
   calendarsById,
   todos = [],
   onEventSelect,
+  onTodoSelect,
   onTodoToggle,
   getDisclosure,
 }: {
@@ -44,8 +45,10 @@ export function TimeGrid({
    * todos are filtered out by the timeline layout. */
   todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
-  /** Click on a todo chip flips its completion state. The parent keeps
-   * the source-of-truth list in sync (optimistic + retry). */
+  /** Selecting a todo opens the parent inspector/editor. */
+  onTodoSelect?: (todo: TodoRow) => void;
+  /** Leading todo controls flip completion. The parent keeps the
+   * source-of-truth list in sync (optimistic + retry). */
   onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
@@ -75,6 +78,7 @@ export function TimeGrid({
             todos={dayTodos}
             calendarsById={calendarsById}
             onEventSelect={onEventSelect}
+            onTodoSelect={onTodoSelect}
             onTodoToggle={onTodoToggle}
             getDisclosure={getDisclosure}
             totalHeight={totalHeight}
@@ -182,6 +186,7 @@ function DayColumn({
   todos,
   calendarsById,
   onEventSelect,
+  onTodoSelect,
   onTodoToggle,
   getDisclosure,
   totalHeight,
@@ -193,6 +198,7 @@ function DayColumn({
   todos: PositionedTodo[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
   totalHeight: number;
@@ -231,6 +237,7 @@ function DayColumn({
         <TodoChip
           key={`todo-${t.todo.id}-${day.toISOString()}`}
           positioned={t}
+          onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
         />
       ))}
@@ -314,17 +321,17 @@ function EventBlock({
   );
 }
 
-/** A todo chip pinned to its scheduled start or due minute. Visually
- * distinct from EventBlock — outline + checkbox prefix — so the user
- * can tell calendar events from personal work. Click anywhere on the
- * chip flips completion; the parent reconciles with `todosUpdate`.
- * Chips render above events so they remain clickable when an event
+/** A todo chip pinned to its scheduled start or due minute. The title
+ * opens the todo inspector while the leading control flips completion;
+ * chips render above events so they remain clickable when an event
  * happens to occupy the same minute. */
 function TodoChip({
   positioned,
+  onTodoSelect,
   onTodoToggle,
 }: {
   positioned: PositionedTodo;
+  onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
 }) {
   const { todo, kind, startMinute, endMinute } = positioned;
@@ -336,10 +343,8 @@ function TodoChip({
   const height = Math.max(TODO_CHIP_HEIGHT, durationHeight);
   const completed = todo.completedAt !== null;
   return (
-    <button
-      type="button"
-      className="absolute overflow-hidden text-left text-[11.5px] leading-tight border-0 cursor-pointer flex items-start gap-1.5 px-1.5 py-1 rounded-[4px]"
-      onClick={() => onTodoToggle?.(todo.id, !completed)}
+    <div
+      className="absolute overflow-hidden text-left text-[11.5px] leading-tight flex items-start gap-1.5 px-1.5 py-1 rounded-[4px]"
       title={
         todo.notes
           ? `${todo.title || "(Untitled)"}\n${todo.notes}`
@@ -367,9 +372,11 @@ function TodoChip({
         zIndex: 6,
       }}
     >
-      <span
-        aria-hidden="true"
-        className="inline-flex items-center justify-center flex-shrink-0 rounded-full"
+      <button
+        type="button"
+        aria-label={completed ? "Mark open" : "Mark done"}
+        className="calendar-todo-chip__toggle"
+        onClick={() => onTodoToggle?.(todo.id, !completed)}
         style={{
           width: "12px",
           height: "12px",
@@ -393,9 +400,11 @@ function TodoChip({
             <path d="M2.5 6.25l2.25 2L9.5 3.75" />
           </svg>
         ) : null}
-      </span>
-      <span
-        className="truncate"
+      </button>
+      <button
+        type="button"
+        className="calendar-todo-chip__body truncate"
+        onClick={() => onTodoSelect?.(todo)}
         style={{
           textDecoration: completed ? "line-through" : "none",
           textDecorationColor: completed ? "rgba(0,0,0,0.45)" : undefined,
@@ -409,8 +418,8 @@ function TodoChip({
               : "due"}
           </span>
         ) : null}
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 

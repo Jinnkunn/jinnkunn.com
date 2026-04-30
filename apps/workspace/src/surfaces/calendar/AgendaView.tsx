@@ -26,6 +26,7 @@ export function AgendaView({
   rangeLabel,
   getDisclosure,
   onEventSelect,
+  onTodoSelect,
   onTodoToggle,
 }: {
   events: CalendarEvent[];
@@ -35,6 +36,7 @@ export function AgendaView({
   rangeLabel: string;
   getDisclosure?: EventDisclosureResolver;
   onEventSelect?: (event: CalendarEvent) => void;
+  onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
 }) {
   const entriesByDay = useMemo(() => {
@@ -91,7 +93,7 @@ export function AgendaView({
                     getDisclosure,
                     onEventSelect,
                   )
-                : renderTodoEntry(entry.todo, onTodoToggle),
+                : renderTodoEntry(entry.todo, onTodoSelect, onTodoToggle),
             )}
           </ul>
         </section>
@@ -143,6 +145,7 @@ function renderEventEntry(
 
 function renderTodoEntry(
   todo: TodoRow,
+  onTodoSelect: ((todo: TodoRow) => void) | undefined,
   onTodoToggle: ((id: string, completed: boolean) => void) | undefined,
 ) {
   const completed = todo.completedAt !== null;
@@ -153,15 +156,15 @@ function renderTodoEntry(
   const kindLabel = todoTimelineKind(todo) === "scheduled" ? "Scheduled" : "Due";
   return (
     <li key={`todo-${todo.id}`}>
-      <button
-        type="button"
-        className="w-full flex items-start gap-3 px-2 py-1.5 rounded hover:bg-bg-surface-alt border-0 bg-transparent text-left cursor-pointer"
+      <div
+        className="w-full flex items-start gap-3 px-2 py-1.5 rounded hover:bg-bg-surface-alt text-left"
         data-completed={completed ? "true" : undefined}
-        onClick={() => onTodoToggle?.(todo.id, !completed)}
       >
-        <span
-          aria-hidden="true"
+        <button
+          type="button"
+          aria-label={completed ? "Mark open" : "Mark done"}
           className="mt-1 inline-flex items-center justify-center flex-shrink-0 rounded-full"
+          onClick={() => onTodoToggle?.(todo.id, !completed)}
           style={{
             width: "12px",
             height: "12px",
@@ -185,11 +188,15 @@ function renderTodoEntry(
               <path d="M2.5 6.25l2.25 2L9.5 3.75" />
             </svg>
           ) : null}
-        </span>
+        </button>
         <span className="w-[72px] flex-shrink-0 text-[12px] text-text-muted tabular-nums">
           {timeLabel}
         </span>
-        <span className="flex-1 min-w-0">
+        <button
+          type="button"
+          className="flex-1 min-w-0 border-0 bg-transparent p-0 text-left cursor-pointer"
+          onClick={() => onTodoSelect?.(todo)}
+        >
           <span
             className="block text-[13px] text-text-primary truncate"
             style={{
@@ -208,8 +215,8 @@ function renderTodoEntry(
               {todo.notes}
             </span>
           ) : null}
-        </span>
-      </button>
+        </button>
+      </div>
     </li>
   );
 }
