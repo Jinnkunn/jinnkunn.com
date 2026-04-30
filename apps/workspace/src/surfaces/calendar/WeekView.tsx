@@ -20,6 +20,7 @@ export function WeekView({
   calendarsById,
   todos,
   onEventSelect,
+  onTodoSelect,
   onTodoToggle,
   getDisclosure,
 }: {
@@ -28,6 +29,7 @@ export function WeekView({
   calendarsById: Map<string, Calendar>;
   todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
@@ -68,6 +70,7 @@ export function WeekView({
           calendarsById={calendarsById}
           todos={todos}
           onEventSelect={onEventSelect}
+          onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
           getDisclosure={getDisclosure}
         />
