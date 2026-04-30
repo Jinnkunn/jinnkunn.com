@@ -1,6 +1,6 @@
 [package]
 name = "jinnkunn-workspace"
-version = "0.1.0"
+version = "0.1.1"
 description = "Personal workspace shell (site-admin first)"
 authors = ["Jinnkunn"]
 edition = "2021"
@@ -29,6 +29,15 @@ serde_json = "1"
 # "background mode" pattern). Gated behind a feature in Tauri 2 to
 # keep mobile builds slim — desktop targets opt in.
 tauri = { version = "2.0.0", features = ["tray-icon"] }
+# Native OS notifications. Used to acknowledge async operator actions
+# (Promote-to-Production dispatch, completion polling) so the operator
+# can step away from the app and still know when a build lands.
+tauri-plugin-notification = "2"
+# Cross-platform global hotkey. Registers a system-wide shortcut
+# (Cmd+Shift+J on macOS) that brings the workspace window forward,
+# even when it's hidden in the menubar tray. Mirrors the Spotlight /
+# Raycast pattern.
+tauri-plugin-global-shortcut = "2"
 # `sync` is only feature we need — the EventKit access-request callback
 # fires on a background queue, and tokio::sync::oneshot is the cleanest
 # way to bridge that into our `async` Tauri command.

@@ -159,3 +159,67 @@ export interface LocalSyncStatus {
 export function localSyncStatus(): Promise<LocalSyncStatus> {
   return invoke("local_sync_status");
 }
+
+// Phase 5b — write outbox. Mutating site-admin requests that fail at
+// the network layer get queued here; outbox_drain replays them when
+// connectivity returns. The Rust side stores `body_json` as a string
+// blob and replays the same (method, path, body) tuple, so the queue
+// works for any site-admin endpoint, not just content writes.
+
+export interface OutboxEnqueueParams {
+  base_url: string;
+  path: string;
+  method: string;
+  body?: unknown;
+}
+
+export function outboxEnqueue(params: OutboxEnqueueParams): Promise<number> {
+  return invoke("outbox_enqueue", { params });
+}
+
+export interface OutboxStatus {
+  pending: number;
+  failing: number;
+  oldest_enqueued_at: number | null;
+}
+
+export function outboxStatus(): Promise<OutboxStatus> {
+  return invoke("outbox_status");
+}
+
+export interface OutboxEntry {
+  id: number;
+  base_url: string;
+  path: string;
+  method: string;
+  body_json: string;
+  enqueued_at: number;
+  attempts: number;
+  last_error: string | null;
+  last_attempt: number | null;
+}
+
+export function outboxList(): Promise<OutboxEntry[]> {
+  return invoke("outbox_list");
+}
+
+export function outboxRemove(id: number): Promise<void> {
+  return invoke("outbox_remove", { id });
+}
+
+export interface OutboxDrainAuth {
+  bearer_token?: string;
+  cf_access_client_id?: string;
+  cf_access_client_secret?: string;
+}
+
+export interface OutboxDrainSummary {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  remaining: number;
+}
+
+export function outboxDrain(auth: OutboxDrainAuth): Promise<OutboxDrainSummary> {
+  return invoke("outbox_drain", { params: { auth } });
+}

@@ -7,6 +7,7 @@ import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
 import { SyncStatusPill } from "./SyncStatusPill";
 import type { LocalSyncCredentials } from "./local-content";
 import { useLocalSync } from "./use-local-sync";
+import { useOutbox } from "./use-outbox";
 
 /** Thin global action bar. The shell titlebar/sidebar already identify
  * the current location, so this bar is reserved for environment,
@@ -41,6 +42,21 @@ export function SiteAdminTopBar() {
     connection.cfAccessClientSecret,
   ]);
   const sync = useLocalSync(syncCredentials);
+  // Phase 5b — write outbox. Same single-mount-point story as the
+  // local sync hook: one drain timer + one focus listener per app
+  // instance, regardless of editor tab churn.
+  const outboxAuth = useMemo(
+    () =>
+      syncCredentials
+        ? {
+            bearer_token: syncCredentials.authToken,
+            cf_access_client_id: syncCredentials.cfAccessClientId,
+            cf_access_client_secret: syncCredentials.cfAccessClientSecret,
+          }
+        : null,
+    [syncCredentials],
+  );
+  const outbox = useOutbox(outboxAuth);
 
   return (
     <header
@@ -52,7 +68,7 @@ export function SiteAdminTopBar() {
       <div className="site-admin-topbar__spacer" aria-hidden="true" />
 
       <div className="site-admin-topbar__right" data-window-drag-exclude>
-        <SyncStatusPill sync={sync} />
+        <SyncStatusPill sync={sync} outbox={outbox} />
         <SiteAdminConnectionPill />
         {topbarSaveAction?.dirty ? (
           <button

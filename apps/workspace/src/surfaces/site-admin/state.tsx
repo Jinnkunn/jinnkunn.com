@@ -10,7 +10,7 @@ import {
 } from "react";
 import { createNamespacedSecureStorage } from "../../lib/secureStorage";
 import { emitWorkspaceEvent } from "../../shell/workspaceEvents";
-import { siteAdminBrowserLogin } from "../../lib/tauri";
+import { outboxEnqueue, siteAdminBrowserLogin } from "../../lib/tauri";
 import { maybeSyncAfterWrite } from "./sync-on-write";
 import {
   cfAccessIdStoreKeyForBase,
@@ -904,9 +904,65 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
         inFlightGetsRef.current.set(path, promise);
         return promise;
       }
-      return requestImpl(path, method, body);
+      return requestImpl(path, method, body).then((response) => {
+        // Phase 5b — write outbox safety net. A mutating request that
+        // came back with a network-level failure (status=0 + invoke
+        // error) means the worker was unreachable: brief offline blip,
+        // server bounce, sleep/wake, etc. Enqueue the call so a future
+        // drain can replay it instead of losing the operator's work.
+        // Filters:
+        //   - mutating method only (GET/HEAD never mutate, no point queuing)
+        //   - exclude auth flow (replaying app-auth offline is silly)
+        //   - exclude /deploy and /promote endpoints (those are explicit
+        //     operator actions; queueing would surprise the operator
+        //     when "deploy now" silently fires three hours later)
+        //   - only when we actually have credentials to replay with
+        const looksOffline =
+          !response.ok &&
+          response.status === 0 &&
+          response.code === "TAURI_INVOKE_ERROR";
+        const isMutating = isMutatingHttpMethod(method);
+        const isAuthFlow = path.startsWith("/api/site-admin/app-auth/");
+        const isDeploy = path.endsWith("/deploy") || path.includes("/promote-to-production");
+        if (
+          looksOffline &&
+          isMutating &&
+          !isAuthFlow &&
+          !isDeploy &&
+          connection.baseUrl &&
+          connection.authToken
+        ) {
+          // Fire-and-forget. The hook's status poll will pick up the
+          // new entry within a few seconds and update the badge.
+          void outboxEnqueue({
+            base_url: connection.baseUrl,
+            path,
+            method: normalizedMethod,
+            body,
+          }).catch(() => {
+            // outbox failures are not user-actionable here. The
+            // original network error is what the caller sees.
+          });
+          // Return a synthetic "queued" envelope so callers can
+          // proceed (the editor's draft survives in localStorage; the
+          // server will catch up when the drain runs).
+          return {
+            ok: true,
+            status: 202,
+            data: { queued: true } as Record<string, unknown>,
+            raw: { queued: true },
+          } satisfies NormalizedApiResponse;
+        }
+        return response;
+      });
     },
-    [productionReadOnly, requestImpl, writeDebugResponse],
+    [
+      connection.authToken,
+      connection.baseUrl,
+      productionReadOnly,
+      requestImpl,
+      writeDebugResponse,
+    ],
   );
 
   const value = useMemo<SiteAdminContextValue>(
