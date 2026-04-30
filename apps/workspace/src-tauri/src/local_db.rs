@@ -82,6 +82,31 @@ fn run_migrations(conn: &Connection) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_calendar_publish_rules_updated_at
             ON calendar_publish_rules (updated_at DESC);
+
+        -- Phase 5b — write outbox. Mutating site-admin requests
+        -- (PUT/POST/DELETE) that fail with a network-level error are
+        -- captured here so a brief offline window (flight, spotty
+        -- wifi, server bounce) doesn't lose work. The drain command
+        -- replays each entry against the same endpoint; on success
+        -- the row is deleted, on a server-side error (4xx/5xx) the
+        -- attempts counter + last_error are bumped for the UI to
+        -- surface. The body is stored as raw JSON bytes so the entry
+        -- works for arbitrary site-admin endpoints, not just content
+        -- writes — calendar publish rules, deploy hooks, anything
+        -- routed through site_admin_http_request can land here.
+        CREATE TABLE IF NOT EXISTS write_outbox (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            base_url      TEXT NOT NULL,
+            path          TEXT NOT NULL,
+            method        TEXT NOT NULL,
+            body_json     TEXT NOT NULL,        -- empty string when body is null
+            enqueued_at   INTEGER NOT NULL,
+            attempts      INTEGER NOT NULL DEFAULT 0,
+            last_error    TEXT,                 -- null until first failed retry
+            last_attempt  INTEGER                -- unix ms; null until first attempt
+        );
+        CREATE INDEX IF NOT EXISTS idx_write_outbox_enqueued
+            ON write_outbox (enqueued_at);
         "#,
     )
     .map_err(|err| format!("failed to run local DB migrations: {err}"))?;

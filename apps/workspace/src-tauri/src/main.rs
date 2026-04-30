@@ -2,6 +2,7 @@
 
 mod calendar;
 mod local_db;
+mod outbox;
 mod sync;
 
 use keyring::Entry;
@@ -645,6 +646,15 @@ fn main() {
         // signed manifest. See .github/workflows/release.yml for the
         // build/publish pipeline.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Native OS notifications. Used by the JS side to fire
+        // "Production deploy started / complete / failed" toasts so the
+        // operator can step away from the app during a 5-10 min release.
+        .plugin(tauri_plugin_notification::init())
+        // System-wide hotkey registration. The setup() block below
+        // binds Cmd+Shift+J to a window-forward action so the
+        // workspace can be summoned from anywhere on macOS, mirroring
+        // the Spotlight / Raycast feel.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             site_admin_http_request,
             secure_store_set,
@@ -667,11 +677,54 @@ fn main() {
             sync::local_get_file,
             sync::local_list_files,
             sync::local_sync_status,
+            // Phase 5b — write outbox. Mutating site-admin requests
+            // that fail with a network error get queued here so a
+            // brief offline window doesn't lose work; outbox_drain
+            // replays them when the network comes back.
+            outbox::outbox_enqueue,
+            outbox::outbox_status,
+            outbox::outbox_list,
+            outbox::outbox_remove,
+            outbox::outbox_drain,
         ])
         .setup(|app| {
             // Tray + menubar background-mode lives at the cross-platform
             // level so a future Linux/Windows build picks it up too.
             install_tray(app)?;
+
+            // Global hotkey: Cmd+Shift+J on macOS / Ctrl+Shift+J elsewhere
+            // brings the window forward from anywhere. The combo avoids
+            // common single-app shortcuts (Cmd+Space = Spotlight,
+            // Cmd+Tab = app switcher, Cmd+Shift+K = Linear new task,
+            // etc.) and is unlikely to clash with other apps the
+            // operator runs. Failures here are logged but non-fatal —
+            // the app still works without the global shortcut, just
+            // requires a tray-icon click to summon.
+            {
+                use tauri::Manager;
+                use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+                #[cfg(target_os = "macos")]
+                let modifiers = Modifiers::SUPER | Modifiers::SHIFT;
+                #[cfg(not(target_os = "macos"))]
+                let modifiers = Modifiers::CONTROL | Modifiers::SHIFT;
+                let shortcut = Shortcut::new(Some(modifiers), Code::KeyJ);
+                let app_handle = app.app_handle().clone();
+                if let Err(err) = app
+                    .global_shortcut()
+                    .on_shortcut(shortcut, move |_app, _hotkey, event| {
+                        // Tauri 2 fires on both Pressed and Released —
+                        // act on Pressed only so Cmd+Shift+J doesn't
+                        // toggle the window twice per keystroke.
+                        if event.state() != ShortcutState::Pressed {
+                            return;
+                        }
+                        toggle_main_window(&app_handle);
+                    })
+                {
+                    eprintln!("[setup] failed to register global shortcut Cmd+Shift+J: {err}");
+                }
+                let _ = app_handle; // referenced inside the closure; suppress unused warning when feature path differs
+            }
 
             #[cfg(target_os = "macos")]
             {

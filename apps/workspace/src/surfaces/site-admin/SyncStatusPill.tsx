@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { UseLocalSyncResult } from "./use-local-sync";
+import type { OutboxHookValue } from "./use-outbox";
 
 function formatAge(ms: number): string {
   if (ms < 5_000) return "just now";
@@ -26,10 +27,18 @@ function nowMs(): number {
 
 export interface SyncStatusPillProps {
   sync: UseLocalSyncResult;
+  /** Optional outbox hook value. When the outbox has pending writes
+   * the pill shifts tone to "warning" and the popover gains a
+   * queue-status row + "Retry now" affordance. Pass `null` to render
+   * the legacy sync-only view (e.g. before the outbox hook has
+   * mounted). */
+  outbox?: OutboxHookValue | null;
 }
 
-export function SyncStatusPill({ sync }: SyncStatusPillProps) {
+export function SyncStatusPill({ sync, outbox = null }: SyncStatusPillProps) {
   const { lastSummary, status, error, busy, triggerSync } = sync;
+  const outboxPending = outbox?.status.pending ?? 0;
+  const outboxFailing = outbox?.status.failing ?? 0;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -55,30 +64,43 @@ export function SyncStatusPill({ sync }: SyncStatusPillProps) {
 
   const toggle = useCallback(() => setOpen((o) => !o), []);
 
-  const tone = busy
-    ? "warning"
-    : error
-      ? "danger"
-      : lastSummary
-        ? "success"
-        : "neutral";
+  // Outbox state takes priority over sync state — a queued write is a
+  // "you might lose work if you close the app right now" condition,
+  // worth flagging more loudly than a stale sync timestamp.
+  const tone = outboxFailing > 0
+    ? "danger"
+    : outboxPending > 0
+      ? "warning"
+      : busy
+        ? "warning"
+        : error
+          ? "danger"
+          : lastSummary
+            ? "success"
+            : "neutral";
 
   const ageMs = status?.last_sync_at_ms ? nowMs() - status.last_sync_at_ms : null;
-  const label = busy
-    ? "Syncing…"
-    : error
-      ? "Sync error"
-      : status && status.last_sync_at_ms > 0
-        ? `Synced ${ageMs !== null ? formatAge(ageMs) : ""}`.trim()
-        : "Not synced";
+  const label = outboxPending > 0
+    ? `${outboxPending} pending write${outboxPending === 1 ? "" : "s"}`
+    : busy
+      ? "Syncing…"
+      : error
+        ? "Sync error"
+        : status && status.last_sync_at_ms > 0
+          ? `Synced ${ageMs !== null ? formatAge(ageMs) : ""}`.trim()
+          : "Not synced";
 
-  const title = busy
-    ? "Pulling latest changes from D1"
-    : error
-      ? `Sync failed: ${error}`
-      : status
-        ? `${status.row_count} row(s) cached locally`
-        : "Local mirror not yet primed";
+  const title = outboxPending > 0
+    ? outboxFailing > 0
+      ? `${outboxFailing} write(s) failing on the server; click for details`
+      : `${outboxPending} write(s) queued for retry; click for details`
+    : busy
+      ? "Pulling latest changes from D1"
+      : error
+        ? `Sync failed: ${error}`
+        : status
+          ? `${status.row_count} row(s) cached locally`
+          : "Local mirror not yet primed";
 
   return (
     <div className="site-admin-pill-root" ref={rootRef}>
@@ -142,17 +164,41 @@ export function SyncStatusPill({ sync }: SyncStatusPillProps) {
                 <dd style={{ color: "var(--site-admin-danger, #b91c1c)" }}>{error}</dd>
               </>
             ) : null}
+            {outbox ? (
+              <>
+                <dt>Pending writes</dt>
+                <dd>
+                  {outboxPending}
+                  {outboxFailing > 0 ? ` (${outboxFailing} failing)` : ""}
+                </dd>
+              </>
+            ) : null}
           </dl>
-          <button
-            type="button"
-            onClick={() => {
-              void triggerSync();
-            }}
-            disabled={busy}
-            style={{ width: "100%", padding: "6px 10px" }}
-          >
-            {busy ? "Syncing…" : "Refresh now"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                void triggerSync();
+              }}
+              disabled={busy}
+              style={{ flex: 1, padding: "6px 10px" }}
+            >
+              {busy ? "Syncing…" : "Refresh now"}
+            </button>
+            {outbox && outboxPending > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void outbox.drainNow();
+                }}
+                disabled={outbox.draining}
+                style={{ flex: 1, padding: "6px 10px" }}
+                title="Replay queued writes against the server"
+              >
+                {outbox.draining ? "Retrying…" : "Retry queue"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
