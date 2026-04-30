@@ -1,0 +1,133 @@
+name: Snapshot staging D1 to git
+
+# Daily-ish scheduled job that dumps staging D1 into `content/*` and
+# opens a PR if anything moved. Together with the staging-first
+# release pipeline this gives us:
+#
+#   1. Disaster recovery — if D1 corrupts or is accidentally cleared,
+#      the previous day's commit has every file the public site needs,
+#      ready to import back via `npm run db:migrate:files`.
+#   2. A free audit log — the PR diff is human-readable; reviewing
+#      "what edits did I make in the workspace yesterday" turns into
+#      "look at yesterday's snapshot PR's file diff."
+#   3. A meaningful baseline for `npm run db:diff:staging`. If git
+#      stays within ~24h of D1, the diff command's output is short and
+#      directly answers "what's edited but not yet snapshotted."
+#
+# Doesn't run on weekends — the volume of human edits there is low and
+# the noise/value ratio of weekend snapshots tilts toward "skip." Run
+# on-demand via workflow_dispatch when needed.
+
+on:
+  schedule:
+    # 04:00 UTC = 00:00 EDT / 21:00 PDT — quiet window for a single
+    # operator's workflow. Cron is best-effort on GitHub free tier;
+    # missed runs just wait for tomorrow.
+    - cron: "0 4 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: snapshot-staging-d1
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Compute diff (read-only) so we can short-circuit
+        # If staging D1 already matches git, we can skip the rest of
+        # the job — no point running the dump, opening a branch, and
+        # pinging the PR API for a no-op. Stash the result so the next
+        # step doesn't pay for the same wrangler round-trip twice.
+        id: diff
+        run: |
+          set -euo pipefail
+          npm run db:diff:staging:json > /tmp/diff.json
+          added=$(jq -r '.summary.added' /tmp/diff.json)
+          modified=$(jq -r '.summary.modified' /tmp/diff.json)
+          removed=$(jq -r '.summary.removed' /tmp/diff.json)
+          total=$((added + modified + removed))
+          echo "added=$added" >> "$GITHUB_OUTPUT"
+          echo "modified=$modified" >> "$GITHUB_OUTPUT"
+          echo "removed=$removed" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "[snapshot] D1↔git: +$added ~$modified -$removed"
+
+      - name: Skip when nothing drifted
+        if: steps.diff.outputs.total == '0'
+        run: echo "[snapshot] no drift — staying idle"
+
+      - name: Materialize staging D1 → content/
+        if: steps.diff.outputs.total != '0'
+        run: node scripts/dump-content-from-db.mjs --remote --env=staging
+
+      - name: Build summary for PR body
+        # Re-run the diff JSON dump now that content/ has been written;
+        # the summary table here is what shows up in the PR description
+        # so reviewers don't need to expand the file diff to understand
+        # what moved. (After `dump`, the in-tree files match D1, so the
+        # second JSON shows zeroes — we use the *first* JSON, which we
+        # captured before the dump, for the PR body.)
+        if: steps.diff.outputs.total != '0'
+        id: pr_body
+        run: |
+          set -euo pipefail
+          {
+            echo "body<<PR_EOF"
+            echo "## Staging D1 → git snapshot"
+            echo
+            echo "- added: ${{ steps.diff.outputs.added }}"
+            echo "- modified: ${{ steps.diff.outputs.modified }}"
+            echo "- removed: ${{ steps.diff.outputs.removed }}"
+            echo
+            echo "Content dumped from \`SITE_ADMIN_DB --env=staging\` via \`scripts/dump-content-from-db.mjs\`. Staging worker is the source of truth for operator-edited content; this PR snapshots that state into git so the working tree stays a recoverable baseline (and so \`npm run db:diff:staging\` continues to give a short, accurate answer)."
+            echo
+            echo "Top of file delta (full list in commit diff):"
+            echo
+            echo '```json'
+            jq '{summary, added: .added[:20], modified: .modified[:20], removed: .removed[:20]}' /tmp/diff.json
+            echo '```'
+            echo PR_EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open / update sync PR
+        if: steps.diff.outputs.total != '0'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # The default GITHUB_TOKEN has contents:write + pull-requests:
+          # write thanks to the permissions block above; no GH App needed
+          # here since we're not crossing into Actions API territory.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/staging-d1-snapshot
+          delete-branch: true
+          base: main
+          commit-message: |
+            chore(content): sync staging D1 → main (auto-snapshot)
+
+            +${{ steps.diff.outputs.added }} ~${{ steps.diff.outputs.modified }} -${{ steps.diff.outputs.removed }}
+          title: "chore(content): staging D1 snapshot"
+          body: ${{ steps.pr_body.outputs.body }}
+          labels: |
+            content
+            auto-snapshot
