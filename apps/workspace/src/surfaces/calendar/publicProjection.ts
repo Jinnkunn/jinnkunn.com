@@ -54,8 +54,29 @@ export function emptyMetadataStore(): CalendarPublishMetadataStore {
 export function metadataForEvent(
   store: CalendarPublishMetadataStore,
   event: CalendarEvent,
+  calendarDefaults?: ReadonlyMap<string, CalendarPublicVisibility>,
+  smartResolver?: (event: CalendarEvent) => CalendarPublicVisibility | null,
 ): CalendarPublishMetadata {
-  return store.byEventKey[calendarEventKey(event)] ?? { visibility: "busy" };
+  // Resolution order (first match wins):
+  //   1. Per-event metadata override — the operator clicked through
+  //      to set this occurrence's visibility explicitly.
+  //   2. Smart defaults — pattern rules running over title/location/
+  //      notes, e.g. "Office hours" → titleOnly, "Lunch with X" →
+  //      busy, "any event with a URL" → titleOnly. See
+  //      smartDefaults.ts for the rule list.
+  //   3. Per-calendar default — "everything in Teaching defaults
+  //      to titleOnly" set via the SourceSidebar dropdown.
+  //   4. Global fallback "busy" — events without any of the above
+  //      stay anonymous until the operator decides otherwise.
+  // Args 3-4 are optional so existing callers (tests, simple status
+  // surfaces, the inspector) keep their previous behaviour.
+  const explicit = store.byEventKey[calendarEventKey(event)];
+  if (explicit) return explicit;
+  const fromSmart = smartResolver?.(event);
+  if (fromSmart) return { visibility: fromSmart };
+  const fromCalendar = calendarDefaults?.get(event.calendarId);
+  if (fromCalendar) return { visibility: fromCalendar };
+  return { visibility: "busy" };
 }
 
 export function updateMetadataForEvent(
@@ -78,11 +99,25 @@ export function buildPublicCalendarPayload(input: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   metadata: CalendarPublishMetadataStore;
+  /** Optional per-calendar default visibility map. When the operator
+   * has set a default for a calendar, every event in that calendar
+   * lacking a per-event override is projected at that visibility (or
+   * filtered when the default is "hidden"). */
+  calendarDefaults?: ReadonlyMap<string, CalendarPublicVisibility>;
+  /** Optional smart-default resolver. Runs before the per-calendar
+   * fallback so pattern matches like "office hours" → titleOnly fire
+   * even on calendars that haven't been configured. */
+  smartResolver?: (event: CalendarEvent) => CalendarPublicVisibility | null;
   range: { startsAt: string; endsAt: string };
 }): PublicCalendarPayload {
   const projected: PublicCalendarEventPayload[] = [];
   for (const event of input.events) {
-    const meta = metadataForEvent(input.metadata, event);
+    const meta = metadataForEvent(
+      input.metadata,
+      event,
+      input.calendarDefaults,
+      input.smartResolver,
+    );
     if (meta.visibility === "hidden") continue;
     const visibility = meta.visibility;
     const calendar = input.calendarsById.get(event.calendarId);

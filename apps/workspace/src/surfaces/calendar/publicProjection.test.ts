@@ -30,6 +30,56 @@ const calendar: Calendar = {
 };
 
 describe("calendar public projection", () => {
+  it("applies a per-calendar default visibility when no per-event override is set", () => {
+    const metadata = emptyMetadataStore();
+    const calendarDefaults = new Map([[calendar.id, "titleOnly" as const]]);
+    expect(
+      metadataForEvent(metadata, event, calendarDefaults).visibility,
+    ).toBe("titleOnly");
+  });
+
+  it("per-event override beats per-calendar default", () => {
+    let metadata = emptyMetadataStore();
+    metadata = {
+      schemaVersion: 1,
+      byEventKey: { "external-1": { visibility: "hidden" } },
+    };
+    const calendarDefaults = new Map([[calendar.id, "full" as const]]);
+    expect(
+      metadataForEvent(metadata, event, calendarDefaults).visibility,
+    ).toBe("hidden");
+  });
+
+  it("falls back to global busy when neither per-event nor per-calendar rule is set", () => {
+    const metadata = emptyMetadataStore();
+    expect(metadataForEvent(metadata, event, new Map()).visibility).toBe("busy");
+  });
+
+  it("smart resolver runs between per-event override and per-calendar default", () => {
+    const metadata = emptyMetadataStore();
+    const calendarDefaults = new Map([[calendar.id, "busy" as const]]);
+    // Smart resolver bumps to titleOnly; that should beat the calendar
+    // default but lose to a per-event override.
+    const smartResolver = () => "titleOnly" as const;
+    expect(
+      metadataForEvent(metadata, event, calendarDefaults, smartResolver)
+        .visibility,
+    ).toBe("titleOnly");
+    // Per-event override stays authoritative.
+    const withOverride = {
+      schemaVersion: 1 as const,
+      byEventKey: { "external-1": { visibility: "hidden" as const } },
+    };
+    expect(
+      metadataForEvent(withOverride, event, calendarDefaults, smartResolver)
+        .visibility,
+    ).toBe("hidden");
+    // Smart resolver returning null falls through to the calendar default.
+    expect(
+      metadataForEvent(metadata, event, calendarDefaults, () => null).visibility,
+    ).toBe("busy");
+  });
+
   it("defaults unconfigured events to busy without leaking details", () => {
     const metadata = emptyMetadataStore();
     expect(metadataForEvent(metadata, event).visibility).toBe("busy");

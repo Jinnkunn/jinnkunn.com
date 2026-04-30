@@ -670,6 +670,7 @@ fn main() {
             calendar::commands::calendar_list_sources,
             calendar::commands::calendar_list_calendars,
             calendar::commands::calendar_fetch_events,
+            calendar::commands::calendar_create_event,
             // Phase 5a — local SQLite mirror of D1 content_files. Sync
             // pulls the delta on demand; the read commands serve the
             // editor without a network round-trip.

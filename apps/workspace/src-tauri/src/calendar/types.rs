@@ -88,3 +88,20 @@ pub struct FetchEventsRequest {
     #[serde(default)]
     pub calendar_ids: Vec<String>,
 }
+
+/// Inbound payload for `calendar_create_event`. The webview side
+/// constructs ISO timestamps with offset already applied; this layer
+/// only converts to NSDate (UTC underneath) for EventKit.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateEventRequest {
+    pub calendar_id: String,
+    pub title: String,
+    pub starts_at: String,
+    pub ends_at: String,
+    #[serde(default)]
+    pub is_all_day: bool,
+    pub notes: Option<String>,
+    pub location: Option<String>,
+    pub url: Option<String>,
+}

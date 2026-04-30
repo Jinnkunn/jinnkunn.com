@@ -4,7 +4,8 @@
 //! frontend can degrade gracefully without a `#[cfg]` of its own.
 
 use crate::calendar::types::{
-    Calendar, CalendarAuthorizationStatus, CalendarEvent, CalendarSource, FetchEventsRequest,
+    Calendar, CalendarAuthorizationStatus, CalendarEvent, CalendarSource, CreateEventRequest,
+    FetchEventsRequest,
 };
 
 #[cfg(target_os = "macos")]
@@ -67,6 +68,19 @@ pub fn calendar_fetch_events(request: FetchEventsRequest) -> Result<Vec<Calendar
     #[cfg(target_os = "macos")]
     {
         eventkit::fetch_events(&request)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = request;
+        Err(UNSUPPORTED.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn calendar_create_event(request: CreateEventRequest) -> Result<CalendarEvent, String> {
+    #[cfg(target_os = "macos")]
+    {
+        eventkit::create_event(&request)
     }
     #[cfg(not(target_os = "macos"))]
     {

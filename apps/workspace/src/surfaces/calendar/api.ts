@@ -46,6 +46,31 @@ export function calendarFetchEvents(
   return invoke("calendar_fetch_events", { request });
 }
 
+export interface CreateEventRequest {
+  calendarId: string;
+  title: string;
+  /** ISO 8601, e.g. `2026-05-12T14:00:00-04:00`. */
+  startsAt: string;
+  endsAt: string;
+  isAllDay?: boolean;
+  notes?: string;
+  location?: string;
+  url?: string;
+}
+
+/** Create a non-recurring event in the chosen calendar. EventKit
+ * fires its change notification after the save, so any registered
+ * `onCalendarChanged` listener will trigger a refetch and the new
+ * event will appear in the visible range automatically. The returned
+ * `CalendarEvent` is the saved row re-projected — callers can
+ * optimistically splice it into local state without waiting for the
+ * notification. */
+export function calendarCreateEvent(
+  request: CreateEventRequest,
+): Promise<CalendarEvent> {
+  return invoke("calendar_create_event", { request });
+}
+
 /** Subscribe to EKEventStoreChanged. The handler fires whenever any
  * source updates — invalidate caches and re-fetch. Returns the unlisten
  * fn; callers MUST call it on unmount. */
