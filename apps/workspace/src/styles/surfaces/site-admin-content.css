@@ -941,6 +941,64 @@
   overflow-wrap: anywhere;
 }
 
+.release-panel__content-delta {
+  margin-top: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.release-panel__content-delta summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.release-panel__content-delta summary strong {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.release-panel__content-delta ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 12px 12px 12px;
+  list-style: none;
+}
+
+.release-panel__content-delta li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.release-panel__content-delta li code {
+  color: var(--color-text-primary);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.release-panel__content-delta li time {
+  color: var(--color-text-muted);
+}
+
+.release-panel__content-delta-more {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .release-panel__summary code {
   min-width: 0;
   color: var(--color-text-muted);
