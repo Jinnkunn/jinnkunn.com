@@ -4,6 +4,10 @@ import { isSameDay, startOfDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import type { TodoRow } from "../../modules/todos/api";
+import {
+  todoTimelineKind,
+  todoTimelineStart,
+} from "../../modules/todos/time";
 
 type AgendaTodoEntry =
   | { kind: "event"; event: CalendarEvent; sortKey: string }
@@ -12,8 +16,9 @@ type AgendaTodoEntry =
 /** Flat list of events grouped by local day. Used as the "Agenda"
  * tab — same data the time-grid views render, just in a denser linear
  * layout that's easier to scan when you only care about "what's next".
- * Todos with a `dueAt` get folded into the same per-day buckets so the
- * agenda also reads as "everything due today" rather than just events. */
+ * Todos with a scheduled start or due time get folded into the same
+ * per-day buckets so the agenda reads as "everything on deck" rather
+ * than just events. */
 export function AgendaView({
   events,
   calendarsById,
@@ -48,11 +53,12 @@ export function AgendaView({
     }
     for (const todo of todos) {
       if (todo.archivedAt !== null) continue;
-      if (todo.dueAt === null) continue;
-      const dueIso = new Date(todo.dueAt).toISOString();
-      const key = localDayKey(dueIso);
+      const timelineStart = todoTimelineStart(todo);
+      if (timelineStart === null) continue;
+      const startIso = new Date(timelineStart).toISOString();
+      const key = localDayKey(startIso);
       const arr = map.get(key) ?? [];
-      arr.push({ kind: "todo", todo, sortKey: `1:${dueIso}` });
+      arr.push({ kind: "todo", todo, sortKey: `1:${startIso}` });
       map.set(key, arr);
     }
     for (const arr of map.values()) {
@@ -140,9 +146,11 @@ function renderTodoEntry(
   onTodoToggle: ((id: string, completed: boolean) => void) | undefined,
 ) {
   const completed = todo.completedAt !== null;
-  const dueLabel = todo.dueAt
-    ? formatTime(new Date(todo.dueAt).toISOString())
+  const timelineStart = todoTimelineStart(todo);
+  const timeLabel = timelineStart !== null
+    ? formatTime(new Date(timelineStart).toISOString())
     : "—";
+  const kindLabel = todoTimelineKind(todo) === "scheduled" ? "Scheduled" : "Due";
   return (
     <li key={`todo-${todo.id}`}>
       <button
@@ -179,7 +187,7 @@ function renderTodoEntry(
           ) : null}
         </span>
         <span className="w-[72px] flex-shrink-0 text-[12px] text-text-muted tabular-nums">
-          {dueLabel}
+          {timeLabel}
         </span>
         <span className="flex-1 min-w-0">
           <span
@@ -190,6 +198,10 @@ function renderTodoEntry(
             }}
           >
             {todo.title || "(Untitled)"}
+          </span>
+          <span className="block text-[11.5px] text-text-muted truncate">
+            {kindLabel}
+            {todo.estimatedMinutes ? ` / ${todo.estimatedMinutes}m` : ""}
           </span>
           {todo.notes ? (
             <span className="block text-[11.5px] text-text-muted truncate">

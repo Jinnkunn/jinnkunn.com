@@ -5,6 +5,12 @@ import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutDayEvents, type PositionedEvent } from "./eventLayout";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import type { TodoRow } from "../../modules/todos/api";
+import {
+  todoTimelineEnd,
+  todoTimelineKind,
+  todoTimelineStart,
+  type TodoTimelineKind,
+} from "../../modules/todos/time";
 
 /** Pixels per hour. macOS Calendar uses ~44px at default zoom; matching
  * that keeps text-block events readable without dominating the pane. */
@@ -20,7 +26,8 @@ const APPLE_RED = "#FF3B30";
  * event blocks laid out for overlap (equal-width split). All-day events
  * are filtered out — render those in a separate strip above. Todos with
  * a `dueAt` on the day are overlaid on top of events as 22px chips so
- * users can see "what's due today" without leaving the calendar. */
+ * users can see scheduled work and due reminders without leaving the
+ * calendar. */
 export function TimeGrid({
   days,
   events,
@@ -33,8 +40,8 @@ export function TimeGrid({
   days: Date[];
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
-  /** Todos with a `dueAt` timestamp. Untimed / archived todos are
-   * filtered out by the parent. */
+  /** Todos with a scheduled start or due timestamp. Untimed / archived
+   * todos are filtered out by the timeline layout. */
   todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
   /** Click on a todo chip flips its completion state. The parent keeps
@@ -83,30 +90,40 @@ export function TimeGrid({
   );
 }
 
-/** Pixel-positioned todo for one day column. Mirrors the shape of
- * PositionedEvent but todos don't claim a duration so we render every
- * chip at a fixed `TODO_CHIP_HEIGHT`. */
+/** Pixel-positioned todo for one day column. Scheduled todos may claim
+ * vertical duration; due-only todos stay compact. */
 interface PositionedTodo {
   todo: TodoRow;
+  kind: TodoTimelineKind;
   startMinute: number;
+  endMinute: number | null;
 }
 
 const TODO_CHIP_HEIGHT = 22;
 
 /** Filter the todos array to ones that fall on `day` (local-time
  * comparison) and stamp each with the within-day minute offset the
- * chip should sit at. Untimed (`dueAt === null`) and archived todos
- * are dropped — those belong in the Todos surface, not the timeline. */
+ * chip should sit at. Untimed and archived todos are dropped — those
+ * belong in the Todos surface, not the timeline. */
 function layoutDayTodos(todos: readonly TodoRow[], day: Date): PositionedTodo[] {
   const out: PositionedTodo[] = [];
   for (const todo of todos) {
     if (todo.archivedAt !== null) continue;
-    if (todo.dueAt === null) continue;
-    const due = new Date(todo.dueAt);
-    if (!isSameDay(due, day)) continue;
+    const start = todoTimelineStart(todo);
+    if (start === null) continue;
+    const startDate = new Date(start);
+    if (!isSameDay(startDate, day)) continue;
+    const end = todoTimelineEnd(todo);
+    const endDate = end === null ? null : new Date(end);
+    const endMinute =
+      endDate !== null && isSameDay(endDate, day)
+        ? endDate.getHours() * 60 + endDate.getMinutes()
+        : null;
     out.push({
       todo,
-      startMinute: due.getHours() * 60 + due.getMinutes(),
+      kind: todoTimelineKind(todo),
+      startMinute: startDate.getHours() * 60 + startDate.getMinutes(),
+      endMinute,
     });
   }
   out.sort((a, b) => a.startMinute - b.startMinute);
@@ -297,14 +314,12 @@ function EventBlock({
   );
 }
 
-/** A todo chip pinned to its `dueAt` minute. Visually distinct from
- * EventBlock — outline (not fill) + checkbox prefix — so the user can
- * tell at a glance which items are "things I scheduled" vs "things I
- * need to finish". Click anywhere on the chip flips the completion
- * state; the parent reconciles with `todosUpdate` and the chip restyles
- * to strikethrough + low opacity. Chips render in their own `z-index`
- * layer above events so they remain clickable when an event happens to
- * occupy the same minute. */
+/** A todo chip pinned to its scheduled start or due minute. Visually
+ * distinct from EventBlock — outline + checkbox prefix — so the user
+ * can tell calendar events from personal work. Click anywhere on the
+ * chip flips completion; the parent reconciles with `todosUpdate`.
+ * Chips render above events so they remain clickable when an event
+ * happens to occupy the same minute. */
 function TodoChip({
   positioned,
   onTodoToggle,
@@ -312,13 +327,18 @@ function TodoChip({
   positioned: PositionedTodo;
   onTodoToggle?: (id: string, completed: boolean) => void;
 }) {
-  const { todo, startMinute } = positioned;
+  const { todo, kind, startMinute, endMinute } = positioned;
   const top = (startMinute / 60) * HOUR_HEIGHT;
+  const durationHeight =
+    endMinute !== null && endMinute > startMinute
+      ? ((endMinute - startMinute) / 60) * HOUR_HEIGHT - 1
+      : TODO_CHIP_HEIGHT;
+  const height = Math.max(TODO_CHIP_HEIGHT, durationHeight);
   const completed = todo.completedAt !== null;
   return (
     <button
       type="button"
-      className="absolute overflow-hidden text-left text-[11.5px] leading-tight border-0 cursor-pointer flex items-center gap-1.5 px-1.5 rounded-[4px]"
+      className="absolute overflow-hidden text-left text-[11.5px] leading-tight border-0 cursor-pointer flex items-start gap-1.5 px-1.5 py-1 rounded-[4px]"
       onClick={() => onTodoToggle?.(todo.id, !completed)}
       title={
         todo.notes
@@ -326,14 +346,17 @@ function TodoChip({
           : todo.title || "(Untitled)"
       }
       data-completed={completed ? "true" : undefined}
+      data-kind={kind}
       style={{
         left: "1px",
         right: "1px",
         top: `${top}px`,
-        height: `${TODO_CHIP_HEIGHT}px`,
+        height: `${height}px`,
         background: completed
           ? "transparent"
-          : "color-mix(in srgb, var(--color-bg-surface, #fff) 88%, transparent)",
+          : kind === "scheduled"
+            ? "color-mix(in srgb, var(--color-accent, #0A84FF) 10%, var(--color-bg-surface, #fff))"
+            : "color-mix(in srgb, var(--color-bg-surface, #fff) 88%, transparent)",
         boxShadow: `inset 0 0 0 1px ${
           completed
             ? "rgba(0,0,0,0.18)"
@@ -378,7 +401,14 @@ function TodoChip({
           textDecorationColor: completed ? "rgba(0,0,0,0.45)" : undefined,
         }}
       >
-        {todo.title || "(Untitled)"}
+        <span className="block truncate">{todo.title || "(Untitled)"}</span>
+        {height >= 36 ? (
+          <span className="block truncate text-[10.5px] text-text-muted">
+            {kind === "scheduled"
+              ? formatTodoTimeRange(startMinute, endMinute)
+              : "due"}
+          </span>
+        ) : null}
       </span>
     </button>
   );
@@ -393,6 +423,24 @@ function formatHourLabel(hour: number): string {
 
 function formatHM(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatTodoTimeRange(
+  startMinute: number,
+  endMinute: number | null,
+): string {
+  const start = formatMinuteOfDay(startMinute);
+  if (endMinute === null || endMinute <= startMinute) return start;
+  return `${start} - ${formatMinuteOfDay(endMinute)}`;
+}
+
+function formatMinuteOfDay(minuteOfDay: number): string {
+  const d = new Date();
+  d.setHours(Math.floor(minuteOfDay / 60), minuteOfDay % 60, 0, 0);
+  return d.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
   });

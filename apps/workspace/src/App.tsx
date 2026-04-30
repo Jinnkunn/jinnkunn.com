@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import {
   addFavorite,
@@ -328,6 +329,8 @@ export function App() {
   const [navGroupItems, setNavGroupItemsMap] = useState<
     Record<string, readonly SurfaceNavItem[]>
   >({});
+  const [surfaceContextAccessory, setSurfaceContextAccessory] =
+    useState<ReactNode | null>(null);
 
   const setNavItemChildren = useCallback(
     (itemId: string, children: readonly SurfaceNavItem[] | null) => {
@@ -357,6 +360,9 @@ export function App() {
     },
     [],
   );
+  const setContextAccessory = useCallback((node: ReactNode | null) => {
+    setSurfaceContextAccessory(node);
+  }, []);
 
   // Active surface's drag-reparent handler. Sidebar's onMoveNavItem
   // routes here, which dispatches to whatever the surface registered
@@ -437,6 +443,7 @@ export function App() {
       setActiveNavItemId,
       setNavItemChildren,
       setNavGroupItems,
+      setContextAccessory,
       setMoveNavItemHandler,
       setReorderNavItemHandler,
       setRenameNavItemHandler,
@@ -447,6 +454,7 @@ export function App() {
       setActiveNavItemId,
       setNavItemChildren,
       setNavGroupItems,
+      setContextAccessory,
       setMoveNavItemHandler,
       setReorderNavItemHandler,
       setRenameNavItemHandler,
@@ -539,24 +547,27 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    setTabs((current) => {
-      let changed = false;
-      const next = current.map((tab) => {
-        if (enabledSurfaceIds.has(tab.surfaceId)) return tab;
-        changed = true;
-        return {
-          ...tab,
-          navItemId: null,
-          surfaceId: DEFAULT_SURFACE_ID,
-        };
+    const handle = window.setTimeout(() => {
+      setTabs((current) => {
+        let changed = false;
+        const next = current.map((tab) => {
+          if (enabledSurfaceIds.has(tab.surfaceId)) return tab;
+          changed = true;
+          return {
+            ...tab,
+            navItemId: null,
+            surfaceId: DEFAULT_SURFACE_ID,
+          };
+        });
+        return changed ? next : current;
       });
-      return changed ? next : current;
-    });
 
-    if (enabledSurfaceIds.has(activeSurfaceId)) return;
-    setActiveSurfaceId(DEFAULT_SURFACE_ID);
-    setActiveNavItemIdState(null);
-    localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, DEFAULT_SURFACE_ID);
+      if (enabledSurfaceIds.has(activeSurfaceId)) return;
+      setActiveSurfaceId(DEFAULT_SURFACE_ID);
+      setActiveNavItemIdState(null);
+      localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, DEFAULT_SURFACE_ID);
+    }, 0);
+    return () => window.clearTimeout(handle);
   }, [activeSurfaceId, enabledSurfaceIds]);
 
   const addTab = useCallback(() => {
@@ -753,6 +764,7 @@ export function App() {
           onReorderSurface={handleReorderSurface}
           onRenameNavItem={handleRenameNavItem}
           validateRenameNavItem={validateRenameNavItem}
+          contextAccessory={surfaceContextAccessory}
         />
         <WorkspaceMain label={activeSurface.title}>
           <ErrorBoundary label={activeSurface.title} key={activeSurface.id}>

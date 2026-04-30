@@ -5,6 +5,9 @@ export interface TodoRow {
   title: string;
   notes: string;
   dueAt: number | null;
+  scheduledStartAt: number | null;
+  scheduledEndAt: number | null;
+  estimatedMinutes: number | null;
   sortOrder: number;
   completedAt: number | null;
   archivedAt: number | null;
@@ -18,7 +21,10 @@ export function todosList(): Promise<TodoRow[]> {
 
 export function todosCreate(params: {
   dueAt?: number | null;
+  estimatedMinutes?: number | null;
   notes?: string | null;
+  scheduledEndAt?: number | null;
+  scheduledStartAt?: number | null;
   title?: string | null;
 }): Promise<TodoRow> {
   return invoke("todos_create", { params });
@@ -27,8 +33,11 @@ export function todosCreate(params: {
 export function todosUpdate(params: {
   completed?: boolean;
   dueAt?: number | null;
+  estimatedMinutes?: number | null;
   id: string;
   notes?: string;
+  scheduledEndAt?: number | null;
+  scheduledStartAt?: number | null;
   title?: string;
 }): Promise<TodoRow> {
   return invoke("todos_update", { params });
