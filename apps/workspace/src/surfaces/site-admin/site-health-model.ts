@@ -106,11 +106,17 @@ export function deriveSiteHealth({
   const blockingReasons: string[] = [];
   const warnings: string[] = [];
 
-  if (releaseFlow.disablePublish) {
+  if (releaseFlow.disablePublish && !releaseFlow.noPendingChanges) {
     blockingReasons.push(releaseFlow.disabledReason);
   }
-  if (contentDirty) warnings.push("Current editor has unsaved content changes");
+  if (contentDirty) {
+    blockingReasons.push("Save the current editor changes before publishing.");
+    warnings.push("Current editor has unsaved content changes");
+  }
   if (outbox && outbox.pending > 0) {
+    blockingReasons.push(
+      `${outbox.pending} local write${outbox.pending === 1 ? "" : "s"} still ${outbox.pending === 1 ? "needs" : "need"} to sync before publishing.`,
+    );
     warnings.push(`${outbox.pending} local write${outbox.pending === 1 ? "" : "s"} pending sync`);
   }
   if (sync.error) warnings.push(`Local sync error: ${sync.error}`);

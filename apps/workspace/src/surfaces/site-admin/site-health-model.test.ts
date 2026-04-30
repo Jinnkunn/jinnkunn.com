@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveSyncHealth, formatSyncAge } from "./site-health-model";
+import { deriveSiteHealth, deriveSyncHealth, formatSyncAge } from "./site-health-model";
 
 describe("site health model", () => {
   it("prioritizes queued writes over a successful sync", () => {
@@ -29,5 +29,22 @@ describe("site health model", () => {
     expect(formatSyncAge(30_000)).toBe("30s ago");
     expect(formatSyncAge(120_000)).toBe("2m ago");
     expect(formatSyncAge(7_200_000)).toBe("2h ago");
+  });
+
+  it("blocks publish health when local editor or outbox changes are not flushed", () => {
+    const state = deriveSiteHealth({
+      contentDirty: true,
+      outbox: { draining: false, failing: 0, pending: 1 },
+      productionReadOnly: false,
+      status: null,
+      sync: { busy: false, error: null, lastSyncAtMs: null, rowCount: null },
+    });
+
+    expect(state.blockingReasons).toEqual([
+      "Save the current editor changes before publishing.",
+      "1 local write still needs to sync before publishing.",
+    ]);
+    expect(state.warnings).toContain("Current editor has unsaved content changes");
+    expect(state.warnings).toContain("1 local write pending sync");
   });
 });

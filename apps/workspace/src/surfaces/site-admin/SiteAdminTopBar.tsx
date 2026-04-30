@@ -92,8 +92,11 @@ export function SiteAdminTopBar() {
           </button>
         ) : null}
         <PublishButton
+          contentDirty={Boolean(topbarSaveAction?.dirty)}
           label={productionReadOnly ? "Read-only" : `Publish ${environment.label}`}
+          outbox={outbox}
           requirePendingChanges
+          sync={sync}
         />
         <button
           type="button"

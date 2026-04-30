@@ -124,7 +124,7 @@ function main() {
     "Site Admin production recovery banner",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/PublishButton.tsx"),
+    read("apps/workspace/src/surfaces/site-admin/PublishPreviewPanel.tsx"),
     "workflowRecovery.openLabel",
     "Publish stale candidate recovery",
   );

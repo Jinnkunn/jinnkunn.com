@@ -369,6 +369,15 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   const publishButton = await read(
     "apps/workspace/src/surfaces/site-admin/PublishButton.tsx",
   );
+  const publishFlowModel = await read(
+    "apps/workspace/src/surfaces/site-admin/publish-flow-model.ts",
+  );
+  const publishPreviewPanel = await read(
+    "apps/workspace/src/surfaces/site-admin/PublishPreviewPanel.tsx",
+  );
+  const publishPreflightPanel = await read(
+    "apps/workspace/src/surfaces/site-admin/PublishPreflightPanel.tsx",
+  );
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
   const releasePanel = await read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx");
   const releaseFlow = await read(
@@ -382,6 +391,12 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releaseFlow, /RELEASE_FROM_DISPATCH_ACTIONS_URL/);
   assert.match(releaseFlow, /DEPLOY_ON_CONTENT_ACTIONS_URL/);
   assert.match(publishButton, /deriveSiteHealth/);
+  assert.match(publishButton, /contentDirty/);
+  assert.match(publishButton, /outbox\.status\.pending/);
+  assert.match(publishFlowModel, /export function parseDeployPreview/);
+  assert.match(publishFlowModel, /export function parseStatusPayload/);
+  assert.match(publishPreviewPanel, /Staging candidate is stale/);
+  assert.match(publishPreflightPanel, /blockingDiagnostics/);
   assert.match(publishButton, /DEPLOY_VERSION_STALE/);
   assert.match(releaseFlow, /GitHub Actions “Deploy \(auto\)”/);
   assert.match(releaseFlow, /GitHub Actions “Release from dispatch”/);
@@ -440,6 +455,9 @@ test("tauri-ui-engineering: site admin has a unified topbar save action", async 
   assert.match(state, /setTopbarSaveAction/);
   assert.match(topbar, /topbarSaveAction\?\.dirty/);
   assert.match(topbar, /site-admin-topbar__save-btn/);
+  assert.match(topbar, /contentDirty=\{Boolean\(topbarSaveAction\?\.dirty\)\}/);
+  assert.match(topbar, /outbox=\{outbox\}/);
+  assert.match(topbar, /sync=\{sync\}/);
   assert.match(documentEditor, /setTopbarSaveAction/);
   assert.match(configPanel, /setTopbarSaveAction/);
   assert.match(navigationPanel, /setTopbarSaveAction/);

@@ -28,8 +28,7 @@ import type { PublicCalendarEvent } from "@/lib/shared/public-calendar";
 // 404. The detail surface intentionally NEVER fabricates fields the
 // projection withheld; if it's not in the payload, it's not on screen.
 
-const REVALIDATE_SECONDS = 300;
-export const revalidate = REVALIDATE_SECONDS;
+export const revalidate = 300;
 // Each event id is a stable opaque string from EventKit; we don't
 // know the full set at build time without iterating D1. Force-dynamic
 // per-event makes the route lazy — the first visitor to a given id
