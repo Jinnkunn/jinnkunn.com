@@ -78,6 +78,200 @@
   color: var(--ds-text-primary);
 }
 
+/* Subscribe button mirrors the toolbar's view-button rhythm but uses
+ * the accent color so it reads as a CTA. Pinned to the right end of
+ * the toolbar via `margin-inline-start: auto` so it pushes itself
+ * past the agenda-range chips in agenda view, and sits flush after
+ * the view switcher in every other view. */
+.public-calendar__subscribe {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  margin-inline-start: auto;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-accent) 38%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ds-accent) 10%, var(--ds-bg-primary));
+  color: var(--ds-text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.public-calendar__subscribe:hover,
+.public-calendar__subscribe:focus-visible {
+  border-color: color-mix(in srgb, var(--ds-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--ds-accent) 18%, var(--ds-bg-primary));
+  outline: none;
+}
+
+/* Tag filter chip row. Sits between the toolbar and the sync note,
+ * wraps to multiple lines on narrow viewports. The chips are
+ * deliberately compact so a 6-7-tag operator doesn't push the actual
+ * calendar canvas down. */
+.public-calendar__tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.public-calendar__tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--ds-text-primary) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ds-bg-primary) 86%, var(--ds-text-primary) 4%);
+  color: var(--ds-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.public-calendar__tag-chip:hover,
+.public-calendar__tag-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--ds-text-primary) 22%, transparent);
+  color: var(--ds-text-primary);
+  outline: none;
+}
+
+.public-calendar__tag-chip[data-active="true"] {
+  border-color: color-mix(in srgb, var(--ds-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--ds-accent) 22%, var(--ds-bg-primary));
+  color: var(--ds-text-primary);
+}
+
+.public-calendar__tag-count {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
+  color: var(--ds-text-muted);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.public-calendar__tag-chip[data-active="true"] .public-calendar__tag-count {
+  background: color-mix(in srgb, var(--ds-text-primary) 18%, transparent);
+  color: var(--ds-text-primary);
+}
+
+.public-calendar__tag-clear {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 6px;
+  text-decoration: underline;
+}
+
+.public-calendar__tag-clear:hover,
+.public-calendar__tag-clear:focus-visible {
+  color: var(--ds-text-primary);
+  outline: none;
+}
+
+/* Per-event detail page — `/calendar/[id]`. Layout mirrors the
+ * blog-post page (single column, breadcrumb on top) so cross-route
+ * navigation feels consistent. */
+.public-calendar-event {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 0 32px;
+}
+
+.public-calendar-event__breadcrumb {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.public-calendar-event__breadcrumb a {
+  color: var(--ds-text-secondary);
+  text-decoration: none;
+}
+
+.public-calendar-event__breadcrumb a:hover {
+  color: var(--ds-text-primary);
+  text-decoration: underline;
+}
+
+.public-calendar-event__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ds-text-primary);
+}
+
+.public-calendar-event__range {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: 15px;
+}
+
+.public-calendar-event__calendar {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: 13px;
+}
+
+.public-calendar-event__body p {
+  margin: 0 0 8px;
+  color: var(--ds-text-primary);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.public-calendar-event__description {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
+}
+
+.public-calendar-event__hint {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.public-calendar__event-permalink {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.public-calendar__event-permalink a {
+  color: var(--ds-text-secondary);
+  text-decoration: none;
+}
+
+.public-calendar__event-permalink a:hover,
+.public-calendar__event-permalink a:focus-visible {
+  color: var(--ds-text-primary);
+  text-decoration: underline;
+  outline: none;
+}
+
 .public-calendar__range-title {
   margin-left: 8px;
   color: var(--ds-text-primary);

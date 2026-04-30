@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   PublicCalendarView,
@@ -10,6 +10,31 @@ import {
   normalizePublicCalendarData,
   type PublicCalendarData,
 } from "@/lib/shared/public-calendar";
+
+// Tag filter persists in the URL search param `tag` (`?tag=foo&tag=bar`)
+// so a shareable link can deep-link to "/calendar filtered by talks".
+// Reading the initial state from the URL once at mount is enough — the
+// useEffect that listens to popstate handles back/forward.
+const TAG_QUERY_KEY = "tag";
+
+function readTagsFromLocation(): string[] {
+  if (typeof window === "undefined") return [];
+  const params = new URLSearchParams(window.location.search);
+  return params.getAll(TAG_QUERY_KEY).filter((t) => t.length > 0);
+}
+
+function writeTagsToLocation(tags: readonly string[]): void {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  params.delete(TAG_QUERY_KEY);
+  for (const tag of tags) {
+    if (tag) params.append(TAG_QUERY_KEY, tag);
+  }
+  const next = params.toString();
+  const target =
+    window.location.pathname + (next ? `?${next}` : "") + window.location.hash;
+  window.history.replaceState(null, "", target);
+}
 
 type SyncStatus = "idle" | "syncing" | "ok" | "failed";
 
@@ -32,6 +57,26 @@ export function PublicCalendarClient({
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  // Hydrate tag filter from URL. The lazy initializer reads location
+  // synchronously on first render so we don't need a pre-paint effect
+  // that would then cascade into another render cycle (which the
+  // existing react-hooks/no-set-state-in-effect lint forbids). The
+  // popstate listener still lives in an effect — it only writes new
+  // state when the user navigates back/forward, not on every render.
+  const [selectedTags, setSelectedTags] = useState<readonly string[]>(() =>
+    readTagsFromLocation(),
+  );
+  useEffect(() => {
+    const onPopState = () => setSelectedTags(readTagsFromLocation());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  const handleSelectedTagsChange = useCallback((next: string[]) => {
+    // Round-trip the selection through replaceState so a deep-link
+    // share captures the filtered view + a refresh preserves it.
+    writeTagsToLocation(next);
+    setSelectedTags(next);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +118,8 @@ export function PublicCalendarClient({
         view={view}
         anchorIso={anchorIso}
         agendaDays={agendaDays}
+        selectedTags={selectedTags}
+        onSelectedTagsChange={handleSelectedTagsChange}
         onViewChange={setView}
         onAnchorChange={(date) => setAnchorIso(date.toISOString())}
         onAgendaDaysChange={setAgendaDays}
