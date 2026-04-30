@@ -25,6 +25,9 @@ import {
   BlockActionMenu,
   BlockGutterHandles,
 } from "./block-action-menu";
+import { BLOCK_TYPE_LABELS } from "./editor-block-labels";
+import { EditorDiagnosticsPanel } from "./EditorDiagnosticsPanel";
+import { collectEditorDiagnostics } from "./editor-diagnostics";
 import {
   BookmarkEditableBlock,
   ColumnEditableBlock,
@@ -62,6 +65,7 @@ import {
   type MdxBlock,
   type MdxBlockType,
 } from "./mdx-blocks";
+import { isBlockVisuallyEmpty, isTextEditableBlock } from "./mdx-block-utils";
 import { localContent } from "./local-content";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import { formatDraftAge, useEditorDraft, type EditorKind } from "./use-editor-draft";
@@ -103,40 +107,12 @@ const SLUG_HINTS: Partial<Record<EditorKind, string>> = {
   post: "1–120 chars, lowercase letters / digits / hyphens, no leading or trailing dash",
 };
 
-const BLOCK_TYPE_LABELS: Record<MdxBlockType, string> = {
-  paragraph: "Text",
-  heading: "Heading",
-  image: "Image",
-  quote: "Quote",
-  list: "List",
-  todo: "To-do list",
-  toggle: "Toggle",
-  table: "Table",
-  bookmark: "Bookmark",
-  embed: "Embed",
-  file: "File",
-  "page-link": "Page link",
-  "news-block": "News",
-  "publications-block": "Publications",
-  "works-block": "Works",
-  "teaching-block": "Teaching",
-  "hero-block": "Hero",
-  "link-list-block": "Link list",
-  "featured-pages-block": "Featured pages",
-  columns: "Columns",
-  column: "Column",
-  "news-entry": "News entry",
-  "works-entry": "Works entry",
-  "teaching-entry": "Teaching entry",
-  "publications-entry": "Publication",
-  "teaching-links": "Teaching links",
-  "publications-profile-links": "Profile links",
-  divider: "Divider",
-  callout: "Callout",
-  code: "Code",
-  raw: "Raw MDX",
-};
-
+function cssEscape(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 
 interface SlashCommand extends BlockEditorCommand {
   makeBlock: () => MdxBlock;
@@ -571,202 +547,6 @@ function replaceBlockType(block: MdxBlock, type: MdxBlockType): MdxBlock {
   return { ...next, alt: block.text.slice(0, 80), text: "" };
 }
 
-function isTextEditableBlock(block: MdxBlock): boolean {
-  return (
-    block.type === "paragraph" ||
-    block.type === "heading" ||
-    block.type === "quote" ||
-    block.type === "list" ||
-    block.type === "todo" ||
-    block.type === "callout" ||
-    block.type === "code" ||
-    block.type === "raw" ||
-    block.type === "toggle"
-  );
-}
-
-function isBlockVisuallyEmpty(block: MdxBlock): boolean {
-  if (isTextEditableBlock(block)) return block.text.trim().length === 0;
-  if (block.type === "image") return !block.url;
-  if (block.type === "bookmark") return !block.url && !block.title;
-  if (block.type === "embed") return !block.url;
-  if (block.type === "file") return !block.url && !block.filename;
-  if (block.type === "page-link") return !block.pageSlug;
-  if (block.type === "table") {
-    return !block.tableData?.rows.some((row) => row.some((cell) => cell.trim()));
-  }
-  if (block.type === "columns" || block.type === "column") {
-    return !block.children?.some((child) => !isBlockVisuallyEmpty(child));
-  }
-  return false;
-}
-
-type EditorDiagnosticSeverity = "info" | "warning";
-
-interface EditorDiagnostic {
-  blockId: string;
-  detail: string;
-  id: string;
-  severity: EditorDiagnosticSeverity;
-  title: string;
-}
-
-function isLikelySafeUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-  if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return true;
-  if (/^\/(?!\/)/.test(trimmed)) return true;
-  if (/^(#|\.{0,2}\/)/.test(trimmed)) return true;
-  return false;
-}
-
-function collectInlineLinkDiagnostics(block: MdxBlock, out: EditorDiagnostic[]) {
-  const markdownLinkRe = /\[[^\]]+\]\(([^)]+)\)/g;
-  for (const match of block.text.matchAll(markdownLinkRe)) {
-    const href = match[1] ?? "";
-    if (!isLikelySafeUrl(href)) {
-      out.push({
-        blockId: block.id,
-        detail: href,
-        id: `${block.id}:link:${out.length}`,
-        severity: "warning",
-        title: "Link may be invalid",
-      });
-    }
-  }
-}
-
-function collectEditorDiagnostics(blocks: MdxBlock[]): EditorDiagnostic[] {
-  const out: EditorDiagnostic[] = [];
-  const visit = (block: MdxBlock) => {
-    collectInlineLinkDiagnostics(block, out);
-    if (block.type === "raw") {
-      out.push({
-        blockId: block.id,
-        detail: "Raw MDX can still publish, but it is not fully WYSIWYG.",
-        id: `${block.id}:raw`,
-        severity: "info",
-        title: "Raw MDX block",
-      });
-    }
-    if (block.type === "image" && block.url && !block.alt?.trim()) {
-      out.push({
-        blockId: block.id,
-        detail: block.url,
-        id: `${block.id}:image-alt`,
-        severity: "warning",
-        title: "Image is missing alt text",
-      });
-    }
-    if (
-      (block.type === "bookmark" ||
-        block.type === "embed" ||
-        block.type === "file") &&
-      block.url &&
-      !isLikelySafeUrl(block.url)
-    ) {
-      out.push({
-        blockId: block.id,
-        detail: block.url,
-        id: `${block.id}:url`,
-        severity: "warning",
-        title: `${BLOCK_TYPE_LABELS[block.type]} URL may be invalid`,
-      });
-    }
-    if (block.type === "page-link" && !block.pageSlug?.trim()) {
-      out.push({
-        blockId: block.id,
-        detail: "Choose a target page slug before publishing.",
-        id: `${block.id}:page-link`,
-        severity: "warning",
-        title: "Page link has no target",
-      });
-    }
-    if (block.type === "table" && isBlockVisuallyEmpty(block)) {
-      out.push({
-        blockId: block.id,
-        detail: "Empty table blocks are omitted when saved.",
-        id: `${block.id}:table-empty`,
-        severity: "info",
-        title: "Empty table",
-      });
-    }
-    if (block.type === "news-entry" && !/^\d{4}-\d{2}-\d{2}$/.test(block.dateIso ?? "")) {
-      out.push({
-        blockId: block.id,
-        detail: "Use YYYY-MM-DD so the published page can sort this entry.",
-        id: `${block.id}:news-date`,
-        severity: "warning",
-        title: "News entry date is missing",
-      });
-    }
-    if (
-      block.type === "link-list-block" ||
-      block.type === "featured-pages-block" ||
-      block.type === "teaching-links" ||
-      block.type === "publications-profile-links"
-    ) {
-      for (const [index, item] of (block.linkItems ?? []).entries()) {
-        if (!item.label.trim() || !item.href.trim()) {
-          out.push({
-            blockId: block.id,
-            detail: `Row ${index + 1} needs both label and URL.`,
-            id: `${block.id}:link-item:${index}`,
-            severity: "warning",
-            title: "Link row is incomplete",
-          });
-        } else if (!isLikelySafeUrl(item.href)) {
-          out.push({
-            blockId: block.id,
-            detail: item.href,
-            id: `${block.id}:link-item-url:${index}`,
-            severity: "warning",
-            title: "Link row URL may be invalid",
-          });
-        }
-      }
-    }
-    for (const child of block.children ?? []) visit(child);
-  };
-  for (const block of blocks) visit(block);
-  return out;
-}
-
-function EditorDiagnosticsPanel({
-  diagnostics,
-}: {
-  diagnostics: EditorDiagnostic[];
-}) {
-  if (diagnostics.length === 0) return null;
-  const warningCount = diagnostics.filter((item) => item.severity === "warning").length;
-  return (
-    <details className="mdx-document-diagnostics" open={warningCount > 0}>
-      <summary>
-        Editor checks
-        <span>
-          {warningCount > 0
-            ? `${warningCount} warning${warningCount === 1 ? "" : "s"}`
-            : `${diagnostics.length} note${diagnostics.length === 1 ? "" : "s"}`}
-        </span>
-      </summary>
-      <ul>
-        {diagnostics.slice(0, 8).map((item) => (
-          <li key={item.id} data-severity={item.severity}>
-            <strong>{item.title}</strong>
-            <span>{item.detail}</span>
-          </li>
-        ))}
-        {diagnostics.length > 8 ? (
-          <li data-severity="info">
-            <strong>{diagnostics.length - 8} more checks</strong>
-            <span>Open the affected blocks to review the remaining notes.</span>
-          </li>
-        ) : null}
-      </ul>
-    </details>
-  );
-}
-
 function findBlockInTree(blocks: MdxBlock[], id: string): MdxBlock | null {
   for (const block of blocks) {
     if (block.id === id) return block;
@@ -833,6 +613,7 @@ export function BlocksEditor({
   readOnly = false,
 }: BlocksEditorProps) {
   const { request, setMessage } = useSiteAdmin();
+  const { setEditorDiagnostics } = useSiteAdminEphemeral();
   // Local error sink — block-internal helpers expect a setError callback,
   // but inline use cases don't have a document-level error banner. Funnel
   // these through the global message banner instead so users still see them.
@@ -846,6 +627,7 @@ export function BlocksEditor({
   const [dragDepth, setDragDepth] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState("");
+  const blocksRootRef = useRef<HTMLDivElement | null>(null);
   const lastEmittedBodyRef = useRef(value);
 
   useEffect(() => {
@@ -887,6 +669,10 @@ export function BlocksEditor({
     [blocks, selectedBlockId],
   );
   const diagnostics = useMemo(() => collectEditorDiagnostics(blocks), [blocks]);
+  useEffect(() => {
+    setEditorDiagnostics(diagnostics);
+    return () => setEditorDiagnostics([]);
+  }, [diagnostics, setEditorDiagnostics]);
   const inspectorBlock = selectedBlock && blockHasInspector(selectedBlock)
     ? selectedBlock
     : null;
@@ -950,6 +736,21 @@ export function BlocksEditor({
     [blocks, handleBlocksChange, readOnly, request, setError, setMessage],
   );
 
+  const selectDiagnosticBlock = useCallback((blockId: string) => {
+    setSelectedBlockId(blockId);
+    window.requestAnimationFrame(() => {
+      const root = blocksRootRef.current;
+      const node = root?.querySelector<HTMLElement>(
+        `.mdx-document-block[data-block-id="${cssEscape(blockId)}"]`,
+      );
+      node?.scrollIntoView({ block: "center", behavior: "smooth" });
+      const focusTarget = node?.querySelector<HTMLElement>(
+        'textarea, input, [contenteditable="true"], button',
+      );
+      focusTarget?.focus({ preventScroll: true });
+    });
+  }, []);
+
   return (
     <div
       className="mdx-block-editor-shell"
@@ -962,6 +763,7 @@ export function BlocksEditor({
     >
       <div
         className="mdx-document-blocks"
+        ref={blocksRootRef}
         data-drag-active={dragDepth > 0 ? "true" : undefined}
         data-read-only={readOnly ? "true" : undefined}
         data-uploading={uploading ? "true" : undefined}
@@ -990,7 +792,10 @@ export function BlocksEditor({
           if (files.length > 0) void uploadDroppedImages(files);
         }}
       >
-        <EditorDiagnosticsPanel diagnostics={diagnostics} />
+        <EditorDiagnosticsPanel
+          diagnostics={diagnostics}
+          onSelectBlock={selectDiagnosticBlock}
+        />
 
         <EditableBlocksList
           blocks={blocks}
@@ -1334,6 +1139,7 @@ function EditableBlocksList({
         <div
           className="mdx-document-block"
           data-depth={depth}
+          data-block-id={block.id}
           data-kind={block.type}
           data-empty={isBlockVisuallyEmpty(block) ? "true" : undefined}
           data-color={block.color && block.color !== "default" ? block.color : undefined}
@@ -1576,6 +1382,7 @@ function EditableBlock({
         onMoveUp={onMoveUp}
         onPatch={onPatch}
         readOnly={readOnly}
+        setMessage={setMessage}
         onRemoveEmpty={onRemoveEmpty}
         onReplaceWithBlocks={onReplaceWithBlocks}
         onSlashCommand={onSlashCommand}

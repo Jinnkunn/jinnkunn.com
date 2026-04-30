@@ -317,7 +317,7 @@ test("tauri-ui-engineering: shared content editor stays visual-first", async () 
   assert.match(previewRoute, /renderComponentPreviewElement/);
   assert.match(blockRenderers, /More details/);
   assert.match(blockRenderers, /detailed editing lives in the unified BlockInspector/);
-  assert.match(blockRenderers, /LinkItemsInlineEditor/);
+  assert.match(blockRenderers, /LinkItemsEditor/);
   assert.match(blockRenderers, /mdx-document-table-block__cell/);
   assert.match(blockRenderers, /mdx-document-hero-block__title-input/);
   assert.match(blockRenderers, /Select this block to add links/);
@@ -381,7 +381,7 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releaseFlow, /export function deriveReleaseFlow/);
   assert.match(releaseFlow, /RELEASE_FROM_DISPATCH_ACTIONS_URL/);
   assert.match(releaseFlow, /DEPLOY_ON_CONTENT_ACTIONS_URL/);
-  assert.match(publishButton, /deriveReleaseFlow/);
+  assert.match(publishButton, /deriveSiteHealth/);
   assert.match(publishButton, /DEPLOY_VERSION_STALE/);
   assert.match(releaseFlow, /GitHub Actions “Deploy \(auto\)”/);
   assert.match(releaseFlow, /GitHub Actions “Release from dispatch”/);

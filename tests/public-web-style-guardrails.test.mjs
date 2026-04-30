@@ -115,6 +115,47 @@ test("public-web-style-guardrails: public content links keep Notion link classes
   );
 });
 
+test("public-web-style-guardrails: visual contracts cover the public route matrix", async () => {
+  const classicContract = await read("scripts/classic-style-contract.mjs");
+  const productionContract = await read("scripts/production-style-regression.mjs");
+  const requiredRoutes = [
+    "/",
+    "/news",
+    "/publications",
+    "/works",
+    "/teaching",
+    "/blog",
+    "/bio",
+    "/connect",
+    "/chen",
+  ];
+
+  for (const route of requiredRoutes) {
+    assertIncludes(classicContract, `path: "${route}"`, `Classic style contract route ${route}`);
+    assertIncludes(
+      productionContract,
+      `path: "${route}"`,
+      `Production style regression route ${route}`,
+    );
+  }
+
+  for (const expected of [
+    "LINK_STYLE_PROBES",
+    "CLASSIC_LINK_OPACITY",
+    "gray text color drifted from the Notion gray mark contract",
+    "Homepage body paragraph spacing drifted from the classic Notion contract",
+    "Text block",
+    "Bulleted list item",
+    "Toggle block",
+    "News inline link",
+    "Works internal link",
+    "Bio certification link",
+    "Connect profile link",
+  ]) {
+    assertIncludes(productionContract, expected, "Production style regression probes");
+  }
+});
+
 test("public-web-style-guardrails: classic list pages keep production Notion markup", async () => {
   const sources = {
     // News rendering lives on the per-entry `<NewsEntry>` MDX component

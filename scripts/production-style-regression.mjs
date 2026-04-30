@@ -157,15 +157,40 @@ const LINK_STYLE_PROBES = [
     icon: true,
   },
   {
+    route: "/news",
+    name: "News inline link",
+    selector: 'a[href="https://icml.cc/Conferences/2026"].notion-link.link',
+    icon: false,
+  },
+  {
     route: "/publications",
     name: "Publications profile icon link",
     selector: 'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link',
     icon: true,
   },
   {
+    route: "/works",
+    name: "Works internal link",
+    selector: 'a[href="/teaching"].notion-link.link',
+    icon: false,
+  },
+  {
     route: "/teaching",
     name: "Teaching archive link",
     selector: 'a[href="/teaching/archive"].notion-link.link',
+    icon: false,
+  },
+  {
+    route: "/bio",
+    name: "Bio certification link",
+    selector:
+      'a[href="https://ethics.gc.ca/eng/policy-politique_tcps2-eptc2_2018.html"].notion-link.link',
+    icon: false,
+  },
+  {
+    route: "/connect",
+    name: "Connect profile link",
+    selector: 'a[href="https://www.linkedin.com/in/jinnkunn/"].notion-link.link',
     icon: false,
   },
 ];
@@ -356,7 +381,7 @@ async function readSnapshot(page, route, origin, viewportName) {
   const status = response?.status() ?? 0;
 
   const data = await page.evaluate(
-    ({ required, forbidden, pageClass }) => {
+    ({ required, forbidden, linkStyleProbes, pageClass }) => {
       const rectOf = (selector) => {
         const node = document.querySelector(selector);
         if (!node) return null;
@@ -475,43 +500,10 @@ async function readSnapshot(page, route, origin, viewportName) {
         grayTextCount: document.querySelectorAll(
           ".notion-root span[data-color='gray'], .notion-root .highlighted-color.color-gray",
         ).length,
-        linkProbes: [
-          {
-            name: "Blog RSS icon link",
-            route: "/blog",
-            selector: 'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link',
-            icon: true,
-          },
-          {
-            name: "Home regular link",
-            route: "/",
-            selector: 'a[href="https://exorcat.com/"].notion-link.link',
-            icon: false,
-          },
-          {
-            name: "Home icon link",
-            route: "/",
-            selector: 'span[data-link-style="icon"] > a[href="/blog"].notion-link.link',
-            icon: true,
-          },
-          {
-            name: "Publications profile icon link",
-            route: "/publications",
-            selector: 'span[data-link-style="icon"] > a[href*="scholar.google"].notion-link.link',
-            icon: true,
-          },
-          {
-            name: "Teaching archive link",
-            route: "/teaching",
-            selector: 'a[href="/teaching/archive"].notion-link.link',
-            icon: false,
-          },
-        ]
-          .filter((probe) => probe.route === window.location.pathname)
-          .map((probe) => ({
-            ...probe,
-            style: styleOf(probe.selector),
-          })),
+        linkProbes: linkStyleProbes.map((probe) => ({
+          ...probe,
+          style: styleOf(probe.selector),
+        })),
         blockProbes: [
           {
             name: "Text block",
@@ -586,6 +578,7 @@ async function readSnapshot(page, route, origin, viewportName) {
       pageClass: route.pageClass || "",
       required: route.required || [],
       forbidden: route.forbidden || [],
+      linkStyleProbes: LINK_STYLE_PROBES.filter((probe) => probe.route === route.path),
     },
   );
 

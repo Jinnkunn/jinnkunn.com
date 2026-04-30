@@ -96,6 +96,7 @@ export function NavigationPanel() {
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [savedNeedsPublish, setSavedNeedsPublish] = useState(false);
   const [collapsed, setCollapsedState] = useState<Record<NavGroupId, boolean>>(() =>
     loadCollapsedState(),
   );
@@ -120,15 +121,19 @@ export function NavigationPanel() {
   const topRows = useMemo(() => sortedRows(baseRows, drafts, "top"), [baseRows, drafts]);
   const moreRows = useMemo(() => sortedRows(baseRows, drafts, "more"), [baseRows, drafts]);
 
-  const applySnapshot = useCallback((snapshot: ConfigSnapshot) => {
-    setSourceVersion(snapshot.sourceVersion);
-    setBaseRows(snapshot.nav);
-    setDrafts(Object.fromEntries(snapshot.nav.map((row) => [row.rowId, clone(row)])));
-    setConflict(false);
-  }, []);
+  const applySnapshot = useCallback(
+    (snapshot: ConfigSnapshot, options: { preserveSavedNotice?: boolean } = {}) => {
+      setSourceVersion(snapshot.sourceVersion);
+      setBaseRows(snapshot.nav);
+      setDrafts(Object.fromEntries(snapshot.nav.map((row) => [row.rowId, clone(row)])));
+      setConflict(false);
+      if (!options.preserveSavedNotice) setSavedNeedsPublish(false);
+    },
+    [],
+  );
 
   const loadConfig = useCallback(
-    async (options: { silent?: boolean } = {}) => {
+    async (options: { preserveSavedNotice?: boolean; silent?: boolean } = {}) => {
       setLoading(true);
       const response = await request("/api/site-admin/config", "GET");
       setLoading(false);
@@ -143,7 +148,7 @@ export function NavigationPanel() {
         if (!options.silent) setMessage("error", "Load navigation failed: missing sourceVersion");
         return false;
       }
-      applySnapshot(snapshot);
+      applySnapshot(snapshot, { preserveSavedNotice: options.preserveSavedNotice });
       if (!options.silent) setMessage("success", "Navigation loaded.");
       return true;
     },
@@ -158,6 +163,7 @@ export function NavigationPanel() {
 
   const updateDraft = useCallback(
     <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => {
+      setSavedNeedsPublish(false);
       setDrafts((prev) => {
         const existing = prev[rowId];
         if (!existing) return prev;
@@ -232,8 +238,9 @@ export function NavigationPanel() {
       if (nextVersion) expectedSiteConfigSha = nextVersion.siteConfigSha;
     }
     setSaving(false);
+    setSavedNeedsPublish(true);
     setMessage("success", "Navigation saved to source branch. Publish staging separately.");
-    await loadConfig({ silent: true });
+    await loadConfig({ preserveSavedNotice: true, silent: true });
   }, [
     conflict,
     dirtyRows,
@@ -294,6 +301,7 @@ export function NavigationPanel() {
       // Make sure the user sees what they just added — pop the group open
       // even if it was previously collapsed.
       setCollapsed(group, false);
+      setSavedNeedsPublish(false);
       setMessage("success", "Navigation item added. Edit label and URL, then save.");
       await loadConfig({ silent: true });
     },
@@ -378,6 +386,12 @@ export function NavigationPanel() {
         </div>
       </header>
       <SiteAdminEnvironmentBanner actionLabel="save navigation" />
+      {savedNeedsPublish ? (
+        <div className="nav-editor__publish-hint" role="status">
+          <strong>Saved to source.</strong>
+          <span>Use the topbar Publish button to update the public staging site.</span>
+        </div>
+      ) : null}
       {conflict ? (
         <div className="site-admin-conflict-banner" role="alert">
           <span>Navigation changed remotely. Reload latest before saving again.</span>
@@ -515,6 +529,8 @@ function NavigationGroup({
                   readOnly={readOnly}
                   rowProps={getRowProps(index)}
                   handleProps={getHandleProps(index)}
+                  rowCount={rows.length}
+                  onMove={(direction) => onReorder(group, index, index + direction)}
                   onUpdate={onUpdate}
                 />
               );
@@ -533,6 +549,8 @@ interface NavigationRowProps {
   readOnly: boolean;
   rowProps: ReturnType<ReturnType<typeof useDragReorder>["getRowProps"]>;
   handleProps: ReturnType<ReturnType<typeof useDragReorder>["getHandleProps"]>;
+  rowCount: number;
+  onMove: (direction: -1 | 1) => void;
   onUpdate: <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => void;
 }
 
@@ -542,6 +560,9 @@ function NavigationRow({
   readOnly,
   rowProps,
   handleProps,
+  index,
+  rowCount,
+  onMove,
   onUpdate,
 }: NavigationRowProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -601,7 +622,10 @@ function NavigationRow({
           anchor={menuAnchor}
           row={row}
           readOnly={readOnly}
+          canMoveDown={index < rowCount - 1}
+          canMoveUp={index > 0}
           onClose={() => setMenuAnchor(null)}
+          onMove={onMove}
           onUpdate={onUpdate}
         />
       ) : null}
@@ -614,15 +638,21 @@ interface NavigationRowMenuProps {
   anchor: HTMLElement;
   row: NavRow;
   readOnly: boolean;
+  canMoveDown: boolean;
+  canMoveUp: boolean;
   onClose: () => void;
+  onMove: (direction: -1 | 1) => void;
   onUpdate: <K extends keyof NavRow>(rowId: string, key: K, value: NavRow[K]) => void;
 }
 
 function NavigationRowMenu({
   anchor,
+  canMoveDown,
+  canMoveUp,
   row,
   readOnly,
   onClose,
+  onMove,
   onUpdate,
 }: NavigationRowMenuProps) {
   return (
@@ -665,6 +695,24 @@ function NavigationRowMenu({
             More menu
           </label>
         </fieldset>
+        <div className="nav-row-menu__actions">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={readOnly || !canMoveUp}
+            onClick={() => onMove(-1)}
+          >
+            Move up
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={readOnly || !canMoveDown}
+            onClick={() => onMove(1)}
+          >
+            Move down
+          </button>
+        </div>
       </div>
     </BlockPopover>
   );

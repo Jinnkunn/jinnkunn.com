@@ -11,8 +11,8 @@ import {
   createMdxBlock,
   type MdxBlock,
   type MdxEmbedKind,
-  type MdxLinkItem,
 } from "./mdx-blocks";
+import { LinkItemsEditor } from "./LinkItemsEditor";
 import { useImeComposition } from "./useImeComposition";
 import type { NormalizedApiResponse } from "./types";
 import {
@@ -67,17 +67,6 @@ function hostLabel(url: string | undefined): string {
   } catch {
     return "";
   }
-}
-
-function patchLinkItem(
-  items: MdxLinkItem[] | undefined,
-  index: number,
-  patch: Partial<MdxLinkItem>,
-): MdxLinkItem[] {
-  const next = items ? items.slice() : [];
-  if (index < 0 || index >= next.length) return next;
-  next[index] = { ...next[index], ...patch };
-  return next;
 }
 
 function normalizedTable(block: MdxBlock) {
@@ -624,12 +613,15 @@ function TypeSpecificInspector({
             </option>
           ))}
         </InspectorSelect>
-        <LinkItemsInspector
+        <LinkItemsEditor
+          addLabel="+ Add link"
           disabled={readOnly}
+          emptyLabel="No links yet."
           items={block.linkItems ?? []}
           onChange={(items) =>
             onPatch((current) => ({ ...current, linkItems: items }))
           }
+          variant="inspector"
         />
       </WorkspaceInspectorSection>
     );
@@ -662,13 +654,16 @@ function TypeSpecificInspector({
             </option>
           ))}
         </InspectorSelect>
-        <LinkItemsInspector
+        <LinkItemsEditor
+          addLabel="+ Add card"
           disabled={readOnly}
+          emptyLabel="No featured pages yet."
           featured
           items={block.linkItems ?? []}
           onChange={(items) =>
             onPatch((current) => ({ ...current, linkItems: items }))
           }
+          variant="inspector"
         />
       </WorkspaceInspectorSection>
     );
@@ -767,12 +762,15 @@ function TypeSpecificInspector({
           <option value="header">header</option>
           <option value="footer">footer</option>
         </InspectorSelect>
-        <LinkItemsInspector
+        <LinkItemsEditor
+          addLabel="+ Add link"
           disabled={readOnly}
+          emptyLabel="No teaching links yet."
           items={block.linkItems ?? []}
           onChange={(items) =>
             onPatch((current) => ({ ...current, linkItems: items }))
           }
+          variant="inspector"
         />
       </WorkspaceInspectorSection>
     );
@@ -781,12 +779,15 @@ function TypeSpecificInspector({
   if (block.type === "publications-profile-links") {
     return (
       <WorkspaceInspectorSection heading="Profile links">
-        <LinkItemsInspector
+        <LinkItemsEditor
+          addLabel="+ Add link"
           disabled={readOnly}
+          emptyLabel="No profile links yet."
           items={block.linkItems ?? []}
           onChange={(items) =>
             onPatch((current) => ({ ...current, linkItems: items }))
           }
+          variant="inspector"
           withHostname
         />
       </WorkspaceInspectorSection>
@@ -1006,115 +1007,5 @@ function InspectorFileButton({
         }}
       />
     </label>
-  );
-}
-
-function LinkItemsInspector({
-  disabled,
-  featured = false,
-  items,
-  onChange,
-  withHostname = false,
-}: {
-  disabled: boolean;
-  featured?: boolean;
-  items: MdxLinkItem[];
-  onChange: (items: MdxLinkItem[]) => void;
-  withHostname?: boolean;
-}) {
-  const addItem = () => onChange([...items, { label: "", href: "" }]);
-  const removeItem = (index: number) => onChange(items.filter((_, i) => i !== index));
-  const moveItem = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= items.length) return;
-    const next = items.slice();
-    [next[index], next[target]] = [next[target], next[index]];
-    onChange(next);
-  };
-  const updateItem = (index: number, patch: Partial<MdxLinkItem>) => {
-    onChange(patchLinkItem(items, index, patch));
-  };
-
-  return (
-    <div className="mdx-block-inspector__items">
-      {items.length === 0 ? (
-        <p className="mdx-block-inspector__hint">No links yet.</p>
-      ) : (
-        items.map((item, index) => (
-          <div className="mdx-block-inspector__item" key={index}>
-            <InspectorTextField
-              disabled={disabled}
-              label="Label"
-              value={item.label}
-              placeholder="Link label"
-              onChange={(value) => updateItem(index, { label: value })}
-            />
-            <InspectorTextField
-              disabled={disabled}
-              label="URL"
-              value={item.href}
-              placeholder="/path or https://"
-              onChange={(value) => updateItem(index, { href: value })}
-            />
-            {withHostname ? (
-              <InspectorTextField
-                disabled={disabled}
-                label="Hostname"
-                value={item.hostname ?? ""}
-                placeholder="example.com"
-                onChange={(value) =>
-                  updateItem(index, { hostname: value || undefined })
-                }
-              />
-            ) : null}
-            {featured ? (
-              <InspectorTextField
-                disabled={disabled}
-                label="Description"
-                value={item.description ?? ""}
-                placeholder="Optional card text"
-                onChange={(value) =>
-                  updateItem(index, { description: value || undefined })
-                }
-              />
-            ) : null}
-            <div className="mdx-block-inspector__item-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                disabled={disabled || index === 0}
-                onClick={() => moveItem(index, -1)}
-              >
-                Up
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                disabled={disabled || index === items.length - 1}
-                onClick={() => moveItem(index, 1)}
-              >
-                Down
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                disabled={disabled}
-                onClick={() => removeItem(index)}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        ))
-      )}
-      <button
-        type="button"
-        className="btn btn--secondary"
-        disabled={disabled}
-        onClick={addItem}
-      >
-        + Add {featured ? "card" : "link"}
-      </button>
-    </div>
   );
 }

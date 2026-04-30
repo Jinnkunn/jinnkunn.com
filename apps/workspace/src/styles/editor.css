@@ -684,6 +684,10 @@
   color: var(--color-danger, #b42318);
 }
 
+.mdx-document-diagnostics li[data-severity="blocking"]::marker {
+  color: var(--color-danger, #b42318);
+}
+
 .mdx-document-diagnostics li strong {
   color: var(--color-text-primary);
   font-weight: 650;
@@ -691,6 +695,28 @@
 
 .mdx-document-diagnostics li span {
   margin-left: 6px;
+}
+
+.mdx-document-diagnostics li small {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.mdx-document-diagnostics li button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdx-document-diagnostics li button:hover strong {
+  text-decoration: underline;
 }
 
 .mdx-document-block {
@@ -966,6 +992,26 @@
   flex-direction: column;
   gap: 1px;
   min-width: 200px;
+}
+
+.block-popover__menu-head {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px 8px;
+}
+
+.block-popover__menu-head span {
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.block-popover__menu-head strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .block-popover__item {
@@ -2916,6 +2962,18 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 .nav-row-menu__group:disabled label {
   color: var(--color-text-muted);
   cursor: not-allowed;
+}
+
+.nav-row-menu__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-row-menu__actions .btn {
+  flex: 1 1 0;
+  justify-content: center;
+  min-height: 30px;
 }
 
 /* ---------- Preview footer ---------- */

@@ -244,8 +244,8 @@ function main() {
     "MdxDocumentEditor diagnostics",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/mdx-block-renderers.tsx"),
-    "LinkItemsInlineEditor",
+    read("apps/workspace/src/surfaces/site-admin/LinkItemsEditor.tsx"),
+    "export function LinkItemsEditor",
     "structured block inline editing",
   );
   assertIncludes(

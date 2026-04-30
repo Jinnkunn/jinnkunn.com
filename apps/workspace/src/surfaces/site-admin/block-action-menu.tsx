@@ -1,6 +1,7 @@
 import { useEffect, useState, type DragEvent } from "react";
 
 import { BlockPopover } from "./block-popover";
+import { BLOCK_TYPE_LABELS } from "./editor-block-labels";
 import {
   MDX_BLOCK_COLORS,
   type MdxBlock,
@@ -208,6 +209,10 @@ export function BlockActionMenu({
         </div>
       ) : (
         <div className="block-popover__section" role="menu">
+          <div className="block-popover__menu-head" role="presentation">
+            <span>Selected block</span>
+            <strong>{block ? BLOCK_TYPE_LABELS[block.type] : "Block"}</strong>
+          </div>
           <button type="button" className="block-popover__item" onClick={onDelete}>
             <span>Delete</span>
             <kbd>⌫</kbd>

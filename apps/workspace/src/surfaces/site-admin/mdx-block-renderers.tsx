@@ -18,8 +18,8 @@ import {
   createMdxBlock,
   type MdxBlock,
   type MdxEmbedKind,
-  type MdxLinkItem,
 } from "./mdx-blocks";
+import { LinkItemsEditor } from "./LinkItemsEditor";
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
 import type { NormalizedApiResponse } from "./types";
 
@@ -681,132 +681,6 @@ export interface LinkListBlockEditableBlockProps {
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
 }
 
-function makeEmptyLinkItem(): MdxLinkItem {
-  return { label: "", href: "" };
-}
-
-function patchLinkItems(
-  items: MdxLinkItem[],
-  index: number,
-  patch: Partial<MdxLinkItem>,
-): MdxLinkItem[] {
-  return items.map((item, idx) => (idx === index ? { ...item, ...patch } : item));
-}
-
-function LinkItemsInlineEditor({
-  block,
-  emptyLabel,
-  featured = false,
-  onPatch,
-  withDescription = false,
-  withHostname = false,
-}: {
-  block: MdxBlock;
-  emptyLabel: string;
-  featured?: boolean;
-  onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
-  withDescription?: boolean;
-  withHostname?: boolean;
-}) {
-  const items = block.linkItems ?? [];
-  const updateItems = (nextItems: MdxLinkItem[]) => {
-    onPatch((current) => ({ ...current, linkItems: nextItems }));
-  };
-  return (
-    <>
-      <ul className="mdx-document-link-list-block__items" role="list">
-        {items.length === 0 ? (
-          <li className="mdx-document-link-list-block__empty">
-            {emptyLabel}
-          </li>
-        ) : (
-          items.map((item, index) => (
-            <li
-              key={index}
-              className={`mdx-document-link-list-block__item mdx-document-link-list-block__item--editable${
-                featured ? " mdx-document-link-list-block__item--featured" : ""
-              }`}
-            >
-              <label>
-                <span>Label</span>
-                <input
-                  value={item.label}
-                  placeholder={item.href || `Link ${index + 1}`}
-                  onChange={(event) =>
-                    updateItems(
-                      patchLinkItems(items, index, { label: event.target.value }),
-                    )
-                  }
-                />
-              </label>
-              <label>
-                <span>URL</span>
-                <input
-                  value={item.href}
-                  placeholder="https://... or /page"
-                  onChange={(event) =>
-                    updateItems(
-                      patchLinkItems(items, index, { href: event.target.value }),
-                    )
-                  }
-                />
-              </label>
-              {withDescription ? (
-                <label className="mdx-document-link-list-block__field--wide">
-                  <span>Description</span>
-                  <textarea
-                    rows={2}
-                    value={item.description ?? ""}
-                    placeholder="Short card description"
-                    onChange={(event) =>
-                      updateItems(
-                        patchLinkItems(items, index, {
-                          description: event.target.value || undefined,
-                        }),
-                      )
-                    }
-                  />
-                </label>
-              ) : null}
-              {withHostname ? (
-                <label>
-                  <span>Hostname</span>
-                  <input
-                    value={item.hostname ?? ""}
-                    placeholder={hostLabel(item.href) || "example.com"}
-                    onChange={(event) =>
-                      updateItems(
-                        patchLinkItems(items, index, {
-                          hostname: event.target.value || undefined,
-                        }),
-                      )
-                    }
-                  />
-                </label>
-              ) : null}
-              <button
-                type="button"
-                className="mdx-document-link-list-block__remove"
-                onClick={() => updateItems(items.filter((_, idx) => idx !== index))}
-                aria-label={`Remove link ${index + 1}`}
-              >
-                ×
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
-      <button
-        type="button"
-        className="mdx-document-link-list-block__add"
-        onClick={() => updateItems([...items, makeEmptyLinkItem()])}
-      >
-        + Add link
-      </button>
-    </>
-  );
-}
-
 function BaseLinkListBlockEditableBlock({
   block,
   onPatch,
@@ -842,10 +716,10 @@ function BaseLinkListBlockEditableBlock({
           }
         />
       </label>
-      <LinkItemsInlineEditor
-        block={block}
+      <LinkItemsEditor
         emptyLabel="Select this block to add links."
-        onPatch={onPatch}
+        items={block.linkItems ?? []}
+        onChange={(items) => onPatch((current) => ({ ...current, linkItems: items }))}
       />
     </div>
   );
@@ -899,11 +773,11 @@ function BaseFeaturedPagesBlockEditableBlock({
           }
         />
       </label>
-      <LinkItemsInlineEditor
-        block={block}
+      <LinkItemsEditor
         emptyLabel="Select this block to add cards."
         featured
-        onPatch={onPatch}
+        items={block.linkItems ?? []}
+        onChange={(items) => onPatch((current) => ({ ...current, linkItems: items }))}
         withDescription
       />
     </div>
@@ -1545,10 +1419,10 @@ function LinksRowPreview({
   withHostname: boolean;
 }) {
   return (
-    <LinkItemsInlineEditor
-      block={block}
+    <LinkItemsEditor
       emptyLabel={emptyLabel}
-      onPatch={onPatch}
+      items={block.linkItems ?? []}
+      onChange={(items) => onPatch((current) => ({ ...current, linkItems: items }))}
       withHostname={withHostname}
     />
   );

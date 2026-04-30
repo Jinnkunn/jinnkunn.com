@@ -51,6 +51,7 @@ export function ConfigPanel() {
   const [loading, setLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [savedNeedsPublish, setSavedNeedsPublish] = useState(false);
   const settingsDirty = useMemo(
     () => Object.keys(settingsPatch(baseSettings, settingsDraft)).length > 0,
     [baseSettings, settingsDraft],
@@ -65,11 +66,15 @@ export function ConfigPanel() {
   );
 
   const applyConfigSnapshot = useCallback(
-    (snapshot: ConfigSnapshot, options: { settingsDraft?: SiteSettings } = {}) => {
+    (
+      snapshot: ConfigSnapshot,
+      options: { preserveSavedNotice?: boolean; settingsDraft?: SiteSettings } = {},
+    ) => {
       setSourceVersion(snapshot.sourceVersion);
       setBaseSettings(snapshot.settings);
       setSettingsDraft(options.settingsDraft ?? clone(snapshot.settings));
       setConflict(false);
+      if (!options.preserveSavedNotice) setSavedNeedsPublish(false);
     },
     [],
   );
@@ -96,14 +101,14 @@ export function ConfigPanel() {
   );
 
   const loadConfig = useCallback(
-    async (options: { silent?: boolean } = {}) => {
+    async (options: { preserveSavedNotice?: boolean; silent?: boolean } = {}) => {
       setLoading(true);
       const snapshot = await fetchConfigSnapshot(options);
       setLoading(false);
       if (!snapshot) {
         return false;
       }
-      applyConfigSnapshot(snapshot);
+      applyConfigSnapshot(snapshot, { preserveSavedNotice: options.preserveSavedNotice });
       if (!options.silent) setMessage("success", "Config loaded.");
       return true;
     },
@@ -195,6 +200,7 @@ export function ConfigPanel() {
       if (!Object.keys(retryPatch).length) {
         applyConfigSnapshot(latest);
         setSavingSettings(false);
+        setSavedNeedsPublish(true);
         setMessage("success", "Latest config already contains your settings.");
         return;
       }
@@ -221,7 +227,8 @@ export function ConfigPanel() {
         "success",
         "Settings saved to source branch after refreshing latest config. Publish staging separately.",
       );
-      await loadConfig({ silent: true });
+      setSavedNeedsPublish(true);
+      await loadConfig({ preserveSavedNotice: true, silent: true });
       return;
     }
     setSavingSettings(false);
@@ -229,8 +236,9 @@ export function ConfigPanel() {
       setMessage("error", `Save settings failed: ${response.code}: ${response.error}`);
       return;
     }
+    setSavedNeedsPublish(true);
     setMessage("success", "Settings saved to source branch. Publish staging separately.");
-    await loadConfig({ silent: true });
+    await loadConfig({ preserveSavedNotice: true, silent: true });
   }, [
     conflict,
     productionReadOnly,
@@ -247,6 +255,7 @@ export function ConfigPanel() {
 
   const updateDraft = useCallback(
     <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => {
+      setSavedNeedsPublish(false);
       setSettingsDraft((prev) => ({ ...prev, [key]: value }));
     },
     [],
@@ -335,6 +344,12 @@ export function ConfigPanel() {
             Edit Settings in Staging, publish the staging candidate, then promote
             production with the release runbook.
           </span>
+        </div>
+      ) : null}
+      {savedNeedsPublish ? (
+        <div className="settings-save-hint" role="status">
+          <strong>Saved to source.</strong>
+          <span>Use the topbar Publish button to update the public staging site.</span>
         </div>
       ) : null}
       <p className="m-0 text-[12px] text-text-muted">
