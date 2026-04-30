@@ -443,6 +443,16 @@ function main() {
     "Workspace module settings toggles",
   );
   assertIncludes(
+    read("apps/workspace/templates/workspace-module/README.md"),
+    "Workspace Module Scaffold",
+    "Workspace module scaffold template docs",
+  );
+  assertIncludes(
+    read("apps/workspace/templates/workspace-module/index.tsx.tmpl"),
+    "WorkspaceModuleDefinition",
+    "Workspace module scaffold manifest template",
+  );
+  assertIncludes(
     read("apps/workspace/src/shell/recent.ts"),
     "workspace.sidebar.recent.v1",
     "Workspace recent navigation storage",

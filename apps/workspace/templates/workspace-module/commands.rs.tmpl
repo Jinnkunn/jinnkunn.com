@@ -1,0 +1,177 @@
+use crate::local_db;
+use rand::distributions::{Alphanumeric, DistString};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+
+const ID_PREFIX: &str = "__MODULE_SNAKE___";
+const DEFAULT_TITLE: &str = "Untitled";
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct __ENTITY__Row {
+    pub id: String,
+    pub title: String,
+    pub archived_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct __ENTITY__CreateParams {
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct __ENTITY__UpdateParams {
+    pub id: String,
+    pub title: Option<String>,
+}
+
+fn now_unix_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+fn new_id() -> String {
+    format!(
+        "{ID_PREFIX}{}",
+        Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+    )
+}
+
+fn normalize_id(id: &str) -> Result<String, String> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Err("__MODULE_ID__ id is required".to_string());
+    }
+    if trimmed.len() > 96 {
+        return Err("__MODULE_ID__ id is too long".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn normalize_title(title: Option<String>) -> String {
+    let value = title.unwrap_or_default();
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        DEFAULT_TITLE.to_string()
+    } else {
+        trimmed.chars().take(220).collect()
+    }
+}
+
+fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<__ENTITY__Row> {
+    Ok(__ENTITY__Row {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        archived_at: row.get(2)?,
+        created_at: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+fn list_rows(conn: &Connection) -> Result<Vec<__ENTITY__Row>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, title, archived_at, created_at, updated_at
+               FROM __MODULE_SNAKE__
+              WHERE archived_at IS NULL
+              ORDER BY updated_at DESC",
+        )
+        .map_err(|err| format!("__MODULE_SNAKE___list: prepare failed: {err}"))?;
+    stmt.query_map([], row_from_sql)
+        .map_err(|err| format!("__MODULE_SNAKE___list: query failed: {err}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("__MODULE_SNAKE___list: collect failed: {err}"))
+}
+
+fn get_row(conn: &Connection, id: &str) -> Result<Option<__ENTITY__Row>, String> {
+    conn.query_row(
+        "SELECT id, title, archived_at, created_at, updated_at
+           FROM __MODULE_SNAKE__
+          WHERE id = ? AND archived_at IS NULL",
+        params![id],
+        row_from_sql,
+    )
+    .optional()
+    .map_err(|err| format!("__MODULE_SNAKE___get: {err}"))
+}
+
+fn create_row(
+    conn: &Connection,
+    params: __ENTITY__CreateParams,
+) -> Result<__ENTITY__Row, String> {
+    let id = new_id();
+    let now = now_unix_ms();
+    conn.execute(
+        "INSERT INTO __MODULE_SNAKE__ (id, title, archived_at, created_at, updated_at)
+         VALUES (?, ?, NULL, ?, ?)",
+        params![id, normalize_title(params.title), now, now],
+    )
+    .map_err(|err| format!("__MODULE_SNAKE___create: insert failed: {err}"))?;
+    get_row(conn, &id)?
+        .ok_or_else(|| "__MODULE_SNAKE___create: created row disappeared".to_string())
+}
+
+fn update_row(
+    conn: &Connection,
+    params: __ENTITY__UpdateParams,
+) -> Result<__ENTITY__Row, String> {
+    let id = normalize_id(&params.id)?;
+    let existing =
+        get_row(conn, &id)?.ok_or_else(|| "__MODULE_ID__ row was not found".to_string())?;
+    let now = now_unix_ms();
+    conn.execute(
+        "UPDATE __MODULE_SNAKE__
+            SET title = ?, updated_at = ?
+          WHERE id = ? AND archived_at IS NULL",
+        params![normalize_title(params.title.or(Some(existing.title))), now, id],
+    )
+    .map_err(|err| format!("__MODULE_SNAKE___update: update failed: {err}"))?;
+    get_row(conn, &id)?
+        .ok_or_else(|| "__MODULE_SNAKE___update: updated row disappeared".to_string())
+}
+
+fn archive_row(conn: &Connection, id: String) -> Result<(), String> {
+    let id = normalize_id(&id)?;
+    let now = now_unix_ms();
+    conn.execute(
+        "UPDATE __MODULE_SNAKE__
+            SET archived_at = ?, updated_at = ?
+          WHERE id = ? AND archived_at IS NULL",
+        params![now, now, id],
+    )
+    .map_err(|err| format!("__MODULE_SNAKE___archive: archive failed: {err}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn __MODULE_SNAKE___list(app: tauri::AppHandle) -> Result<Vec<__ENTITY__Row>, String> {
+    let conn = local_db::open(&app)?;
+    list_rows(&conn)
+}
+
+#[tauri::command]
+pub async fn __MODULE_SNAKE___create(
+    app: tauri::AppHandle,
+    params: __ENTITY__CreateParams,
+) -> Result<__ENTITY__Row, String> {
+    let conn = local_db::open(&app)?;
+    create_row(&conn, params)
+}
+
+#[tauri::command]
+pub async fn __MODULE_SNAKE___update(
+    app: tauri::AppHandle,
+    params: __ENTITY__UpdateParams,
+) -> Result<__ENTITY__Row, String> {
+    let conn = local_db::open(&app)?;
+    update_row(&conn, params)
+}
+
+#[tauri::command]
+pub async fn __MODULE_SNAKE___archive(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let conn = local_db::open(&app)?;
+    archive_row(&conn, id)
+}

@@ -1,0 +1,56 @@
+import { useEffect, useState } from "react";
+import {
+  WorkspaceCommandButton,
+  WorkspacePane,
+  WorkspaceToolbar,
+} from "../../ui/primitives";
+import {
+  __MODULE_CAMEL__Create,
+  __MODULE_CAMEL__List,
+  type __ENTITY__Row,
+} from "../../modules/__MODULE_ID__/api";
+
+export function __MODULE_SURFACE__() {
+  const [items, setItems] = useState<__ENTITY__Row[]>([]);
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    setItems(await __MODULE_CAMEL__List());
+  }
+
+  useEffect(() => {
+    void refresh().catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
+  }, []);
+
+  async function handleCreate() {
+    if (!title.trim()) return;
+    const row = await __MODULE_CAMEL__Create({ title });
+    setItems((current) => [row, ...current]);
+    setTitle("");
+  }
+
+  return (
+    <WorkspacePane className="__MODULE_ID__-surface" label="__MODULE_TITLE__">
+      <WorkspaceToolbar>
+        <input
+          aria-label="Title"
+          onChange={(event) => setTitle(event.currentTarget.value)}
+          placeholder="New item"
+          value={title}
+        />
+        <WorkspaceCommandButton onClick={() => void handleCreate()}>
+          Add
+        </WorkspaceCommandButton>
+      </WorkspaceToolbar>
+      {error ? <p role="alert">{error}</p> : null}
+      <ul>
+        {items.map((item) => (
+          <li key={item.id}>{item.title}</li>
+        ))}
+      </ul>
+    </WorkspacePane>
+  );
+}

@@ -1,0 +1,25 @@
+import { __MODULE_ICON__ } from "../icons";
+import type { SurfaceNavGroup } from "../types";
+
+export const __MODULE_CONST___ACTIVE_NAV_ID = "__MODULE_ID__:active";
+export const __MODULE_CONST___ALL_NAV_ID = "__MODULE_ID__:all";
+export const __MODULE_CONST___DEFAULT_NAV_ITEM_ID = __MODULE_CONST___ACTIVE_NAV_ID;
+
+export const __MODULE_CONST___NAV_GROUPS: readonly SurfaceNavGroup[] = [
+  {
+    id: "__MODULE_ID__",
+    label: "__MODULE_TITLE__",
+    hideHeader: true,
+    items: [
+      {
+        id: __MODULE_CONST___ACTIVE_NAV_ID,
+        label: "Open",
+        icon: <__MODULE_ICON__ />,
+      },
+      {
+        id: __MODULE_CONST___ALL_NAV_ID,
+        label: "All",
+      },
+    ],
+  },
+];

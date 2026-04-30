@@ -1,6 +1,6 @@
 use crate::local_db;
 use rand::distributions::{Alphanumeric, DistString};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 const TODO_ID_PREFIX: &str = "todo_";
@@ -94,7 +94,7 @@ fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<TodoRow> {
     })
 }
 
-fn get_todo(conn: &rusqlite::Connection, id: &str) -> Result<Option<TodoRow>, String> {
+fn get_todo(conn: &Connection, id: &str) -> Result<Option<TodoRow>, String> {
     conn.query_row(
         "SELECT id, title, notes, due_at, sort_order, completed_at, archived_at, created_at, updated_at
            FROM todos
@@ -106,7 +106,7 @@ fn get_todo(conn: &rusqlite::Connection, id: &str) -> Result<Option<TodoRow>, St
     .map_err(|err| format!("todos_get: {err}"))
 }
 
-fn max_sort_order(conn: &rusqlite::Connection) -> Result<i64, String> {
+fn max_sort_order(conn: &Connection) -> Result<i64, String> {
     conn.query_row(
         "SELECT COALESCE(MAX(sort_order), -1) FROM todos WHERE archived_at IS NULL",
         [],
@@ -115,9 +115,7 @@ fn max_sort_order(conn: &rusqlite::Connection) -> Result<i64, String> {
     .map_err(|err| format!("failed to read max todo sort order: {err}"))
 }
 
-#[tauri::command]
-pub async fn todos_list(app: tauri::AppHandle) -> Result<Vec<TodoRow>, String> {
-    let conn = local_db::open(&app)?;
+fn list_todos(conn: &Connection) -> Result<Vec<TodoRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, title, notes, due_at, sort_order, completed_at, archived_at, created_at, updated_at
@@ -137,15 +135,10 @@ pub async fn todos_list(app: tauri::AppHandle) -> Result<Vec<TodoRow>, String> {
     Ok(rows)
 }
 
-#[tauri::command]
-pub async fn todos_create(
-    app: tauri::AppHandle,
-    params: TodoCreateParams,
-) -> Result<TodoRow, String> {
-    let conn = local_db::open(&app)?;
+fn create_todo(conn: &Connection, params: TodoCreateParams) -> Result<TodoRow, String> {
     let id = new_todo_id();
     let now = now_unix_ms();
-    let sort_order = max_sort_order(&conn)? + 1;
+    let sort_order = max_sort_order(conn)? + 1;
     conn.execute(
         "INSERT INTO todos
             (id, title, notes, due_at, sort_order, completed_at, archived_at, created_at, updated_at)
@@ -161,17 +154,12 @@ pub async fn todos_create(
         ],
     )
     .map_err(|err| format!("todos_create: insert failed: {err}"))?;
-    get_todo(&conn, &id)?.ok_or_else(|| "todos_create: created todo disappeared".to_string())
+    get_todo(conn, &id)?.ok_or_else(|| "todos_create: created todo disappeared".to_string())
 }
 
-#[tauri::command]
-pub async fn todos_update(
-    app: tauri::AppHandle,
-    params: TodoUpdateParams,
-) -> Result<TodoRow, String> {
-    let conn = local_db::open(&app)?;
+fn update_todo(conn: &Connection, params: TodoUpdateParams) -> Result<TodoRow, String> {
     let id = normalize_id(&params.id)?;
-    let existing = get_todo(&conn, &id)?.ok_or_else(|| "todo was not found".to_string())?;
+    let existing = get_todo(conn, &id)?.ok_or_else(|| "todo was not found".to_string())?;
     let title = params.title.map(Some).unwrap_or(Some(existing.title));
     let notes = params.notes.map(Some).unwrap_or(Some(existing.notes));
     let due_at = match params.due_at {
@@ -198,12 +186,10 @@ pub async fn todos_update(
         ],
     )
     .map_err(|err| format!("todos_update: update failed: {err}"))?;
-    get_todo(&conn, &id)?.ok_or_else(|| "todos_update: updated todo disappeared".to_string())
+    get_todo(conn, &id)?.ok_or_else(|| "todos_update: updated todo disappeared".to_string())
 }
 
-#[tauri::command]
-pub async fn todos_archive(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let conn = local_db::open(&app)?;
+fn archive_todo(conn: &Connection, id: String) -> Result<(), String> {
     let id = normalize_id(&id)?;
     let now = now_unix_ms();
     conn.execute(
@@ -216,9 +202,7 @@ pub async fn todos_archive(app: tauri::AppHandle, id: String) -> Result<(), Stri
     Ok(())
 }
 
-#[tauri::command]
-pub async fn todos_clear_completed(app: tauri::AppHandle) -> Result<i64, String> {
-    let conn = local_db::open(&app)?;
+fn clear_completed_todos(conn: &Connection) -> Result<i64, String> {
     let now = now_unix_ms();
     let count = conn
         .execute(
@@ -229,4 +213,257 @@ pub async fn todos_clear_completed(app: tauri::AppHandle) -> Result<i64, String>
         )
         .map_err(|err| format!("todos_clear_completed: update failed: {err}"))?;
     Ok(count as i64)
+}
+
+#[tauri::command]
+pub async fn todos_list(app: tauri::AppHandle) -> Result<Vec<TodoRow>, String> {
+    let conn = local_db::open(&app)?;
+    list_todos(&conn)
+}
+
+#[tauri::command]
+pub async fn todos_create(
+    app: tauri::AppHandle,
+    params: TodoCreateParams,
+) -> Result<TodoRow, String> {
+    let conn = local_db::open(&app)?;
+    create_todo(&conn, params)
+}
+
+#[tauri::command]
+pub async fn todos_update(
+    app: tauri::AppHandle,
+    params: TodoUpdateParams,
+) -> Result<TodoRow, String> {
+    let conn = local_db::open(&app)?;
+    update_todo(&conn, params)
+}
+
+#[tauri::command]
+pub async fn todos_archive(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let conn = local_db::open(&app)?;
+    archive_todo(&conn, id)
+}
+
+#[tauri::command]
+pub async fn todos_clear_completed(app: tauri::AppHandle) -> Result<i64, String> {
+    let conn = local_db::open(&app)?;
+    clear_completed_todos(&conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory DB");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("enable FK pragma");
+        local_db::run_migrations(&conn).expect("run local DB migrations");
+        conn
+    }
+
+    fn create(conn: &Connection, title: &str, due_at: Option<i64>) -> TodoRow {
+        create_todo(
+            conn,
+            TodoCreateParams {
+                title: Some(title.to_string()),
+                notes: None,
+                due_at,
+            },
+        )
+        .expect("create todo")
+    }
+
+    #[test]
+    fn create_normalizes_inputs_and_appends_sort_order() {
+        let conn = test_conn();
+        let long_title = "x".repeat(260);
+        let long_notes = "n".repeat(10_050);
+
+        let first = create_todo(
+            &conn,
+            TodoCreateParams {
+                title: Some("   ".to_string()),
+                notes: Some("  note body  ".to_string()),
+                due_at: Some(1_700_000_000_000),
+            },
+        )
+        .expect("create first todo");
+        let second = create_todo(
+            &conn,
+            TodoCreateParams {
+                title: Some(long_title),
+                notes: Some(long_notes),
+                due_at: None,
+            },
+        )
+        .expect("create second todo");
+
+        assert!(first.id.starts_with(TODO_ID_PREFIX));
+        assert_eq!(first.title, DEFAULT_TITLE);
+        assert_eq!(first.notes, "note body");
+        assert_eq!(first.due_at, Some(1_700_000_000_000));
+        assert_eq!(first.sort_order, 0);
+        assert_eq!(second.title.chars().count(), 220);
+        assert_eq!(second.notes.chars().count(), 10_000);
+        assert_eq!(second.sort_order, 1);
+    }
+
+    #[test]
+    fn list_orders_open_by_due_then_done_last_and_hides_archived() {
+        let conn = test_conn();
+        let no_due = create(&conn, "No due", None);
+        let later = create(&conn, "Later", Some(2_000));
+        let earlier = create(&conn, "Earlier", Some(1_000));
+        let done = create(&conn, "Done", Some(500));
+        let archived = create(&conn, "Archived", Some(250));
+
+        update_todo(
+            &conn,
+            TodoUpdateParams {
+                id: done.id.clone(),
+                title: None,
+                notes: None,
+                due_at: None,
+                completed: Some(true),
+            },
+        )
+        .expect("complete todo");
+        archive_todo(&conn, archived.id.clone()).expect("archive todo");
+
+        let rows = list_todos(&conn).expect("list todos");
+        let ids = rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids, vec![earlier.id, later.id, no_due.id, done.id]);
+        assert!(rows.last().expect("done row").completed_at.is_some());
+        assert!(!ids.contains(&archived.id.as_str()));
+    }
+
+    #[test]
+    fn update_preserves_fields_and_can_clear_due_and_completion() {
+        let conn = test_conn();
+        let original = create_todo(
+            &conn,
+            TodoCreateParams {
+                title: Some("  Original  ".to_string()),
+                notes: Some("  keep me  ".to_string()),
+                due_at: Some(4_000),
+            },
+        )
+        .expect("create todo");
+
+        let renamed = update_todo(
+            &conn,
+            TodoUpdateParams {
+                id: original.id.clone(),
+                title: Some("Renamed".to_string()),
+                notes: None,
+                due_at: None,
+                completed: None,
+            },
+        )
+        .expect("rename todo");
+        assert_eq!(renamed.title, "Renamed");
+        assert_eq!(renamed.notes, "keep me");
+        assert_eq!(renamed.due_at, Some(4_000));
+        assert!(renamed.completed_at.is_none());
+
+        let completed = update_todo(
+            &conn,
+            TodoUpdateParams {
+                id: original.id.clone(),
+                title: Some("   ".to_string()),
+                notes: Some("  next notes  ".to_string()),
+                due_at: Some(None),
+                completed: Some(true),
+            },
+        )
+        .expect("complete todo");
+        assert_eq!(completed.title, DEFAULT_TITLE);
+        assert_eq!(completed.notes, "next notes");
+        assert_eq!(completed.due_at, None);
+        assert!(completed.completed_at.is_some());
+
+        let reopened = update_todo(
+            &conn,
+            TodoUpdateParams {
+                id: original.id.clone(),
+                title: None,
+                notes: None,
+                due_at: None,
+                completed: Some(false),
+            },
+        )
+        .expect("reopen todo");
+        assert!(reopened.completed_at.is_none());
+        assert!(reopened.updated_at >= original.updated_at);
+    }
+
+    #[test]
+    fn archive_and_clear_completed_use_soft_delete() {
+        let conn = test_conn();
+        let open = create(&conn, "Open", None);
+        let done_a = create(&conn, "Done A", None);
+        let done_b = create(&conn, "Done B", None);
+
+        for id in [&done_a.id, &done_b.id] {
+            update_todo(
+                &conn,
+                TodoUpdateParams {
+                    id: id.clone(),
+                    title: None,
+                    notes: None,
+                    due_at: None,
+                    completed: Some(true),
+                },
+            )
+            .expect("complete todo");
+        }
+
+        assert_eq!(clear_completed_todos(&conn).expect("clear completed"), 2);
+        let rows = list_todos(&conn).expect("list after clear");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, open.id);
+
+        let archived_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM todos WHERE archived_at IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count archived todos");
+        assert_eq!(archived_count, 2);
+
+        archive_todo(&conn, open.id.clone()).expect("archive open todo");
+        assert!(list_todos(&conn).expect("list after archive").is_empty());
+        let open_archived_at: Option<i64> = conn
+            .query_row(
+                "SELECT archived_at FROM todos WHERE id = ?",
+                params![open.id],
+                |row| row.get(0),
+            )
+            .expect("read archived_at");
+        assert!(open_archived_at.is_some());
+    }
+
+    #[test]
+    fn mutations_reject_invalid_ids() {
+        let conn = test_conn();
+        let overlong_id = "x".repeat(97);
+
+        let empty_update = update_todo(
+            &conn,
+            TodoUpdateParams {
+                id: "   ".to_string(),
+                title: None,
+                notes: None,
+                due_at: None,
+                completed: None,
+            },
+        );
+        assert_eq!(empty_update.unwrap_err(), "todo id is required");
+
+        let overlong_archive = archive_todo(&conn, overlong_id);
+        assert_eq!(overlong_archive.unwrap_err(), "todo id is too long");
+    }
 }

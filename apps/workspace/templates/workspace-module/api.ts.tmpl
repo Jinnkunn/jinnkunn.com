@@ -1,0 +1,29 @@
+import { invoke } from "@tauri-apps/api/core";
+
+export interface __ENTITY__Row {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function __MODULE_CAMEL__List(): Promise<__ENTITY__Row[]> {
+  return invoke("__MODULE_SNAKE___list");
+}
+
+export function __MODULE_CAMEL__Create(params: {
+  title?: string | null;
+}): Promise<__ENTITY__Row> {
+  return invoke("__MODULE_SNAKE___create", { params });
+}
+
+export function __MODULE_CAMEL__Update(params: {
+  id: string;
+  title?: string;
+}): Promise<__ENTITY__Row> {
+  return invoke("__MODULE_SNAKE___update", { params });
+}
+
+export function __MODULE_CAMEL__Archive(id: string): Promise<void> {
+  return invoke("__MODULE_SNAKE___archive", { id });
+}

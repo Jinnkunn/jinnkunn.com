@@ -54,6 +54,14 @@ Build frontend only:
 npm run build
 ```
 
+## First-Party Modules
+
+Workspace features such as Site Admin, Calendar, Notes, and Todos are bundled
+first-party modules registered through `src/modules/registry.tsx`. New daily
+tools should follow the scaffold in `templates/workspace-module/` so the shell
+continues to own discovery, module enablement, recent items, favorites, tabs,
+and command palette wiring.
+
 ## Auth
 
 - Uses browser-mediated login flow:
