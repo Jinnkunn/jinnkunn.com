@@ -10,6 +10,7 @@ import type { JSX } from "react";
 import { useSiteAdmin } from "./state";
 import { stripTrailingSlash } from "./utils";
 import type { SiteAdminTab } from "./types";
+import { runUpdateCheckSafely } from "../../lib/updater";
 
 // Virtual-scroll constants. The palette never grows past a few hundred
 // items in practice, but a blog with 500+ posts adds a row per post and
@@ -274,6 +275,23 @@ export function CommandPalette({
         // Cycle is owned by the ThemeToggle button — emit the same
         // synthetic event so we don't fork the cycle logic.
         window.dispatchEvent(new CustomEvent("workspace:theme:cycle"));
+      },
+    });
+
+    items.push({
+      id: "app:check-updates",
+      label: "Check for updates",
+      hint: "auto-update",
+      keywords: "update upgrade check version release tauri",
+      run: () => {
+        // Always notify on the up-to-date branch so the manual click
+        // gets feedback even when no update lands. Skip the confirm
+        // dialog (`promptBeforeDownload: false`) — the operator
+        // explicitly asked, no need to re-ask.
+        void runUpdateCheckSafely({
+          promptBeforeDownload: false,
+          notifyOnUpToDate: true,
+        });
       },
     });
 

@@ -27,6 +27,7 @@ import {
   type WorkspaceEventInput,
 } from "./shell/workspaceEvents";
 import { useWindowFocus } from "./shell/useWindowFocus";
+import { runUpdateCheckSafely } from "./lib/updater";
 import { SURFACES, findSurface } from "./surfaces/registry";
 import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
 import { WorkspaceMain } from "./ui/primitives";
@@ -292,6 +293,22 @@ export function App() {
     return () =>
       window.removeEventListener(WORKSPACE_EVENT_NAME, onWorkspaceEvent);
   }, [recordWorkspaceEvent]);
+
+  // Auto-check for updates ~10 s after first paint. Delaying it past
+  // mount means the operator's first interactions feel snappy (the
+  // updater plugin shells out + makes a network round-trip), and the
+  // 10 s grace is short enough that "I just opened the app" still
+  // counts as a check-in. `runUpdateCheckSafely` no-ops in non-Tauri
+  // preview builds, so this is safe to mount globally.
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void runUpdateCheckSafely({
+        promptBeforeDownload: true,
+        notifyOnUpToDate: false,
+      });
+    }, 10_000);
+    return () => window.clearTimeout(handle);
+  }, []);
 
   const toggleFavorite = useCallback(
     (entry: SidebarFavorite) => {
