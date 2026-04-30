@@ -1,3 +1,5 @@
+import { getDashboardActions } from "../modules/registry";
+import type { DashboardActionContribution } from "../modules/types";
 import type { SurfaceDefinition } from "../surfaces/types";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
@@ -14,39 +16,6 @@ interface WorkspaceDashboardProps {
   recentItems: readonly SidebarRecentItem[];
   surfaces: readonly SurfaceDefinition[];
 }
-
-interface DashboardAction {
-  description: string;
-  label: string;
-  navItemId?: string;
-  surfaceId?: string;
-}
-
-const DASHBOARD_ACTIONS: readonly DashboardAction[] = [
-  {
-    description: "Deploy health",
-    label: "Site status",
-    navItemId: "status",
-    surfaceId: "site-admin",
-  },
-  {
-    description: "Landing page",
-    label: "Home editor",
-    navItemId: "home",
-    surfaceId: "site-admin",
-  },
-  {
-    description: "Reusable blocks",
-    label: "Shared content",
-    navItemId: "components",
-    surfaceId: "site-admin",
-  },
-  {
-    description: "Daily schedule",
-    label: "Calendar",
-    surfaceId: "calendar",
-  },
-];
 
 function formatRelativeTime(timestamp: number): string {
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
@@ -83,15 +52,20 @@ export function WorkspaceDashboard({
   surfaces,
 }: WorkspaceDashboardProps) {
   const tools = surfaces.filter((surface) => surface.id !== "workspace");
+  const dashboardActions = getDashboardActions().filter((action) => {
+    const surface = surfaces.find((entry) => entry.id === action.surfaceId);
+    return surface && !surface.disabled;
+  });
 
-  const openAction = (action: DashboardAction) => {
-    if (!action.surfaceId) return;
+  const openAction = (action: DashboardActionContribution) => {
+    const target = surfaces.find((surface) => surface.id === action.surfaceId);
+    if (!target || target.disabled) return;
     if (action.navItemId) {
       onRecordRecent({
         itemId: action.navItemId,
         label: action.label,
         surfaceId: action.surfaceId,
-        surfaceTitle: surfaceTitle(surfaces, action.surfaceId),
+        surfaceTitle: target.title,
       });
       onSelectNavItem(action.surfaceId, action.navItemId);
       return;
@@ -123,11 +97,11 @@ export function WorkspaceDashboard({
             <span>Staging-first workspace</span>
           </div>
           <div className="workspace-dashboard__action-grid">
-            {DASHBOARD_ACTIONS.map((action) => (
+            {dashboardActions.map((action) => (
               <button
                 type="button"
                 className="workspace-dashboard__action"
-                key={`${action.surfaceId}:${action.navItemId ?? "home"}`}
+                key={action.id}
                 onClick={() => openAction(action)}
               >
                 <span>{action.label}</span>

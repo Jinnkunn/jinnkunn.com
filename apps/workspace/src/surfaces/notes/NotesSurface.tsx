@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   notesArchive,
   notesCreate,
@@ -23,7 +22,8 @@ import {
   type NoteDetail,
   type NoteRow,
   type NoteSearchResult,
-} from "../../lib/tauri";
+} from "../../modules/notes/api";
+import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
@@ -36,6 +36,10 @@ import {
 } from "../../ui/editor-runtime";
 import { BlocksEditor } from "../site-admin/LazyBlocksEditor";
 import { NoteIconPicker } from "./IconPicker";
+import {
+  NOTES_ARCHIVE_NAV_ITEM,
+  NOTES_NAV_GROUP_ID,
+} from "./nav";
 import {
   applyNotesMutation,
   buildNoteBreadcrumb,
@@ -120,6 +124,33 @@ function formatSaveState(state: NotesSaveState): string {
 const SNIPPET_OPEN = "\u{e000}";
 const SNIPPET_CLOSE = "\u{e001}";
 
+// Slash-command whitelist for the Notes surface. Trims off site-admin
+// business blocks (publications-block, teaching-links, news-entry,
+// hero-block, link-list-block, featured-pages-block, …) — they only
+// make sense inside the public website's content tree, not in personal
+// notes. The ids match the SlashCommand `id` field in editor-slash-commands.ts.
+const NOTES_ENABLED_BLOCK_IDS: ReadonlySet<string> = new Set([
+  "text",
+  "heading1",
+  "heading2",
+  "heading3",
+  "quote",
+  "list",
+  "todo",
+  "toggle",
+  "callout",
+  "code",
+  "divider",
+  "image",
+  "video",
+  "file",
+  "bookmark",
+  "embed",
+  "table",
+  "columns",
+  "column",
+]);
+
 function renderSnippet(raw: string): ReactNode[] {
   if (!raw.includes(SNIPPET_OPEN)) return [raw];
   const out: ReactNode[] = [];
@@ -147,8 +178,8 @@ export function NotesSurface() {
   const {
     activeNavItemId,
     setActiveNavItemId,
+    setNavGroupItems,
     setMoveNavItemHandler,
-    setNavItemChildren,
     setRenameNavItemHandler,
     setRenameValidator,
     setReorderNavItemHandler,
@@ -207,9 +238,9 @@ export function NotesSurface() {
   }, [loadRows]);
 
   useEffect(() => {
-    setNavItemChildren(NOTES_ROOT_NAV_ID, navItems);
-    return () => setNavItemChildren(NOTES_ROOT_NAV_ID, null);
-  }, [navItems, setNavItemChildren]);
+    setNavGroupItems(NOTES_NAV_GROUP_ID, [...navItems, NOTES_ARCHIVE_NAV_ITEM]);
+    return () => setNavGroupItems(NOTES_NAV_GROUP_ID, null);
+  }, [navItems, setNavGroupItems]);
 
   const isArchiveView = activeNavItemId === NOTES_ARCHIVE_NAV_ID;
 
@@ -652,65 +683,56 @@ export function NotesSurface() {
   const editorRuntime = useMemo<WorkspaceEditorRuntime>(
     () => ({
       assetsEnabled: true,
-      // The shared BlocksEditor uploads via a generic HTTP-shaped
-      // `request(path, method, body)`. Site-admin maps this to its
-      // R2-backed cloud asset endpoint; Notes intercepts the same
-      // endpoint and writes bytes locally instead, returning a
-      // `note-asset://` URL the custom URI scheme handler in main.rs
-      // resolves back to disk.
-      request: async (path, method, body) => {
-        if (
-          path === "/api/site-admin/assets" &&
-          (method ?? "POST").toUpperCase() === "POST" &&
-          body &&
-          typeof body === "object"
-        ) {
-          const payload = body as { contentType?: unknown; base64?: unknown };
-          const contentType =
-            typeof payload.contentType === "string" ? payload.contentType : "";
-          const base64 =
-            typeof payload.base64 === "string" ? payload.base64 : "";
-          if (!contentType || !base64) {
-            return {
-              ok: false,
-              status: 400,
-              code: "NOTES_ASSET_BAD_PARAMS",
-              error: "missing content type or base64 body",
-              raw: null,
-            };
-          }
-          try {
-            const result = await notesSaveAsset({ contentType, base64 });
-            return {
-              ok: true,
-              status: 200,
-              data: {
-                key: result.key,
-                url: result.url,
-                size: result.size,
-                contentType: result.contentType,
-                version: result.key,
-              },
-              raw: result,
-            };
-          } catch (error) {
-            return {
-              ok: false,
-              status: 500,
-              code: "NOTES_ASSET_SAVE_FAILED",
-              error: String(error),
-              raw: null,
-            };
-          }
+      // No remote asset library to browse — the picker pulls in
+      // `useSiteAdmin` and would crash without a SiteAdminProvider
+      // ancestor. Paste/drop uploads still work through uploadAsset.
+      assetLibraryEnabled: false,
+      // Curated slash-command vocabulary so Notes users don't see
+      // entries for site-admin business blocks (publications, teaching,
+      // news, hero, …) that don't make sense outside the public site.
+      enabledBlockIds: NOTES_ENABLED_BLOCK_IDS,
+      // Typed upload entry point. Notes writes the bytes to its local
+      // SQLite-adjacent assets dir via the `notes_save_asset` Tauri
+      // command and returns a `note-asset://` URL the custom URI scheme
+      // handler in main.rs serves back to the webview.
+      uploadAsset: async ({ contentType, base64 }) => {
+        if (!contentType || !base64) {
+          return {
+            ok: false,
+            code: "NOTES_ASSET_BAD_PARAMS",
+            error: "missing content type or base64 body",
+          };
         }
-        return {
-          ok: false,
-          status: 404,
-          code: "NOTES_RUNTIME_UNSUPPORTED_PATH",
-          error: `Notes editor runtime does not handle ${method ?? "GET"} ${path}`,
-          raw: null,
-        };
+        try {
+          const result = await notesSaveAsset({ contentType, base64 });
+          return {
+            ok: true,
+            asset: {
+              key: result.key,
+              url: result.url,
+              size: result.size,
+              contentType: result.contentType,
+              version: result.key,
+            },
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            code: "NOTES_ASSET_SAVE_FAILED",
+            error: String(error),
+          };
+        }
       },
+      // Notes has no other site-admin-shaped endpoints, but BlocksEditor
+      // helpers (Bookmark / PageLink / etc.) call `request` for unrelated
+      // paths. Return a clear failure for anything we don't handle.
+      request: async (path, method) => ({
+        ok: false,
+        status: 404,
+        code: "NOTES_RUNTIME_UNSUPPORTED_PATH",
+        error: `Notes editor runtime does not handle ${method ?? "GET"} ${path}`,
+        raw: null,
+      }),
       setEditorDiagnostics: (next) => setDiagnostics(next),
       setMessage: (kind, text) => setMessage({ kind, text }),
     }),
@@ -830,7 +852,7 @@ export function NotesSurface() {
             <NoteIconPicker value={icon} onChange={setIcon} />
             <input
               aria-label="Note title"
-              className="notes-editor__title"
+              className="notes-editor__title workspace-editor-title-input"
               value={title}
               placeholder={DEFAULT_NOTE_TITLE}
               onChange={(event) => setTitle(event.currentTarget.value)}

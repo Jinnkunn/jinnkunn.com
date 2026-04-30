@@ -19,7 +19,7 @@ import {
   type LocalSyncStatus,
   type SyncPullParams,
   type SyncPullSummary,
-} from "../../lib/tauri";
+} from "../../modules/site-admin/tauri";
 
 export type {
   LocalFileEntry,

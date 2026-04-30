@@ -9,8 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { createNamespacedSecureStorage } from "../../lib/secureStorage";
+import { outboxEnqueue, siteAdminBrowserLogin } from "../../modules/site-admin/tauri";
 import { emitWorkspaceEvent } from "../../shell/workspaceEvents";
-import { outboxEnqueue, siteAdminBrowserLogin } from "../../lib/tauri";
 import { maybeSyncAfterWrite } from "./sync-on-write";
 import type { EditorDiagnostic } from "./editor-diagnostics";
 import {

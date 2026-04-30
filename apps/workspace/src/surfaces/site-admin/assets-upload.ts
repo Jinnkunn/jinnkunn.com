@@ -1,8 +1,13 @@
-// Drag-drop image upload helper for the editor body.
-// Reads the File as base64 and POSTs to /api/site-admin/assets. Returns the
-// public URL so the caller can insert a markdown image tag at the cursor.
+// Drag-drop image / file upload helper for the editor body. Reads the
+// File as base64 and hands it to a `WorkspaceAssetUploader` provided by
+// the host surface (site-admin → R2 cloud, Notes → local note-asset
+// protocol, future surfaces → whatever fits). Validation (mime allowlist,
+// size cap) lives here so every consumer enforces the same rules.
 
-import type { SiteAdminRequestResult } from "./api";
+import type {
+  WorkspaceAssetUploader,
+  WorkspaceEditorRequest,
+} from "../../ui/editor-runtime";
 import type { AssetUploadResponse } from "./types";
 import { normalizeString } from "./utils";
 
@@ -39,15 +44,14 @@ export const ALLOWED_FILE_TYPES = new Set<string>([
   "video/quicktime",
 ]);
 
-type RequestFn = (
-  path: string,
-  method: string,
-  body?: unknown,
-) => Promise<SiteAdminRequestResult["response"]>;
-
 export interface UploadImageFileInput {
   file: File;
-  request: RequestFn;
+  /** Typed uploader from `WorkspaceEditorRuntime`. Preferred. */
+  uploadAsset?: WorkspaceAssetUploader;
+  /** Legacy path-based escape hatch — used when `uploadAsset` isn't
+   * provided. Kept so existing site-admin call sites that already plumb
+   * a `request` keep working without immediate migration. */
+  request?: WorkspaceEditorRequest;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -76,10 +80,48 @@ export type UploadImageResult =
   | { ok: true; asset: AssetUploadResponse; filename: string }
   | { ok: false; error: string };
 
+// Pick the runtime uploader if provided, else fall back to a path-based
+// `request("/api/site-admin/assets", "POST", { … })`. New surfaces should
+// always pass `uploadAsset` so the site-admin path string isn't a shared
+// dependency.
+async function dispatchUpload(
+  input: UploadImageFileInput,
+  body: { filename: string; contentType: string; base64: string },
+): Promise<UploadImageResult> {
+  if (input.uploadAsset) {
+    const result = await input.uploadAsset(body);
+    if (!result.ok) {
+      return { ok: false, error: `${result.code}: ${result.error}` };
+    }
+    if (!result.asset.url) return { ok: false, error: "upload response missing url" };
+    return { ok: true, asset: result.asset, filename: input.file.name };
+  }
+  if (input.request) {
+    const response = await input.request("/api/site-admin/assets", "POST", body);
+    if (!response.ok) {
+      return { ok: false, error: `${response.code}: ${response.error}` };
+    }
+    const data = response.data as Record<string, unknown>;
+    const asset: AssetUploadResponse = {
+      key: normalizeString(data.key),
+      url: normalizeString(data.url),
+      size: typeof data.size === "number" ? data.size : 0,
+      contentType: normalizeString(data.contentType) || body.contentType,
+      version: normalizeString(data.version),
+    };
+    if (!asset.url) return { ok: false, error: "upload response missing url" };
+    return { ok: true, asset, filename: input.file.name };
+  }
+  return {
+    ok: false,
+    error: "editor runtime does not support uploads (no uploadAsset / request)",
+  };
+}
+
 export async function uploadImageFile(
   input: UploadImageFileInput,
 ): Promise<UploadImageResult> {
-  const { file, request } = input;
+  const { file } = input;
   const contentType = normalizeString(file.type) || "image/png";
   if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
     return { ok: false, error: `unsupported file type: ${contentType}` };
@@ -93,24 +135,11 @@ export async function uploadImageFile(
   } catch (err) {
     return { ok: false, error: `could not read file: ${String(err)}` };
   }
-  const response = await request("/api/site-admin/assets", "POST", {
+  return dispatchUpload(input, {
     filename: file.name,
     contentType,
     base64,
   });
-  if (!response.ok) {
-    return { ok: false, error: `${response.code}: ${response.error}` };
-  }
-  const data = response.data as Record<string, unknown>;
-  const asset: AssetUploadResponse = {
-    key: normalizeString(data.key),
-    url: normalizeString(data.url),
-    size: typeof data.size === "number" ? data.size : 0,
-    contentType: normalizeString(data.contentType) || contentType,
-    version: normalizeString(data.version),
-  };
-  if (!asset.url) return { ok: false, error: "upload response missing url" };
-  return { ok: true, asset, filename: file.name };
 }
 
 // Generic-file uploader for the File block. Mirrors uploadImageFile but
@@ -118,7 +147,7 @@ export async function uploadImageFile(
 export async function uploadGenericFile(
   input: UploadImageFileInput,
 ): Promise<UploadImageResult> {
-  const { file, request } = input;
+  const { file } = input;
   const contentType = normalizeString(file.type) || "application/octet-stream";
   if (!ALLOWED_FILE_TYPES.has(contentType)) {
     return { ok: false, error: `unsupported file type: ${contentType}` };
@@ -132,24 +161,11 @@ export async function uploadGenericFile(
   } catch (err) {
     return { ok: false, error: `could not read file: ${String(err)}` };
   }
-  const response = await request("/api/site-admin/assets", "POST", {
+  return dispatchUpload(input, {
     filename: file.name,
     contentType,
     base64,
   });
-  if (!response.ok) {
-    return { ok: false, error: `${response.code}: ${response.error}` };
-  }
-  const data = response.data as Record<string, unknown>;
-  const asset: AssetUploadResponse = {
-    key: normalizeString(data.key),
-    url: normalizeString(data.url),
-    size: typeof data.size === "number" ? data.size : 0,
-    contentType: normalizeString(data.contentType) || contentType,
-    version: normalizeString(data.version),
-  };
-  if (!asset.url) return { ok: false, error: "upload response missing url" };
-  return { ok: true, asset, filename: file.name };
 }
 
 export interface MarkdownInsertTarget {

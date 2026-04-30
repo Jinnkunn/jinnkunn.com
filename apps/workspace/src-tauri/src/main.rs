@@ -5,6 +5,7 @@ mod local_db;
 mod notes;
 mod outbox;
 mod sync;
+mod todos;
 
 use keyring::Entry;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE};
@@ -941,6 +942,11 @@ fn main() {
             notes::notes_unarchive,
             notes::notes_search,
             notes::notes_save_asset,
+            todos::todos_list,
+            todos::todos_create,
+            todos::todos_update,
+            todos::todos_archive,
+            todos::todos_clear_completed,
             // Phase 5a — local SQLite mirror of D1 content_files. Sync
             // pulls the delta on demand; the read commands serve the
             // editor without a network round-trip.

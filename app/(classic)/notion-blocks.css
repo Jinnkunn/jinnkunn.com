@@ -102,6 +102,18 @@
   font-size: var(--v1-type-small);
 }
 
+/* Icon-prefixed links use an absolutely positioned ::before icon. Keep the
+ * anchor text decorated exactly like regular content links after all imported
+ * Notion/Super styles have loaded; the icon itself stays in the padding slot. */
+.notion-root span[data-link-style="icon"] > a.notion-link.link,
+.notion-root a[data-link-style="icon"].notion-link.link {
+  text-decoration-line: underline;
+  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.22em;
+  text-decoration-skip-ink: auto;
+}
+
 /* Improve contrast for metadata labels (Date / Author / etc.) on content pages. */
 .notion-page__property-name > span {
   color: var(--ds-text-muted);

@@ -30,7 +30,13 @@ import {
 import { useNativeMenu } from "./shell/useNativeMenu";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { runUpdateCheckSafely } from "./lib/updater";
-import { SURFACES, findSurface } from "./surfaces/registry";
+import {
+  ALL_WORKSPACE_SURFACES,
+  getDefaultEnabledModuleIds,
+  getEnabledModuleSurfaces,
+  normalizeEnabledModuleIds,
+  WORKSPACE_MODULES,
+} from "./modules/registry";
 import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
 import { WorkspaceMain } from "./ui/primitives";
 
@@ -38,6 +44,7 @@ const DEFAULT_SURFACE_ID = "workspace";
 const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
 const SURFACE_ORDER_STORAGE_KEY = "workspace.surfaceOrder.v1";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "workspace.sidebar.collapsed.v1";
+const ENABLED_MODULES_STORAGE_KEY = "workspace.enabledModules.v1";
 
 function createWorkspaceTab(
   surfaceId: string,
@@ -69,6 +76,29 @@ function persistBoolean(storageKey: string, value: boolean): void {
   }
 }
 
+function loadEnabledModuleIds(): string[] {
+  try {
+    const raw = localStorage.getItem(ENABLED_MODULES_STORAGE_KEY);
+    if (!raw) return [...getDefaultEnabledModuleIds()];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [...getDefaultEnabledModuleIds()];
+    return [...normalizeEnabledModuleIds(parsed.filter((id): id is string => typeof id === "string"))];
+  } catch {
+    return [...getDefaultEnabledModuleIds()];
+  }
+}
+
+function persistEnabledModuleIds(ids: readonly string[]): void {
+  try {
+    localStorage.setItem(
+      ENABLED_MODULES_STORAGE_KEY,
+      JSON.stringify(normalizeEnabledModuleIds(ids)),
+    );
+  } catch {
+    // ignore quota / private-mode errors; state stays in-memory
+  }
+}
+
 function navItemStorageKey(surfaceId: string): string {
   return `workspace.nav.${surfaceId}.v1`;
 }
@@ -79,7 +109,7 @@ function loadSurfaceOrder(): string[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    const validIds = new Set(SURFACES.map((surface) => surface.id));
+    const validIds = new Set(ALL_WORKSPACE_SURFACES.map((surface) => surface.id));
     return parsed.filter(
       (id): id is string =>
         typeof id === "string" &&
@@ -117,11 +147,13 @@ function orderWorkspaceSurfaces(
 function moveSurfaceInOrder({
   currentOrder,
   edge,
+  surfaces,
   sourceId,
   targetId,
 }: {
   currentOrder: readonly string[];
   edge: "before" | "after";
+  surfaces: readonly SurfaceDefinition[];
   sourceId: string;
   targetId: string;
 }): string[] {
@@ -132,7 +164,7 @@ function moveSurfaceInOrder({
   ) {
     return [...currentOrder];
   }
-  const ids = orderWorkspaceSurfaces(SURFACES, currentOrder)
+  const ids = orderWorkspaceSurfaces(surfaces, currentOrder)
     .filter((surface) => surface.id !== DEFAULT_SURFACE_ID)
     .map((surface) => surface.id);
   const withoutSource = ids.filter((id) => id !== sourceId);
@@ -175,17 +207,39 @@ function resolveInitialNavItemId(surface: SurfaceDefinition): string | null {
 export function App() {
   useWindowFocus();
 
+  const [enabledModuleIds, setEnabledModuleIds] = useState<string[]>(() =>
+    loadEnabledModuleIds(),
+  );
+  const enabledSurfaces = useMemo(
+    () => getEnabledModuleSurfaces(enabledModuleIds),
+    [enabledModuleIds],
+  );
+  const enabledSurfaceIds = useMemo(
+    () => new Set(enabledSurfaces.map((surface) => surface.id)),
+    [enabledSurfaces],
+  );
+
   const [activeSurfaceId, setActiveSurfaceId] = useState<string>(() => {
+    const enabled = loadEnabledModuleIds();
     const stored = localStorage.getItem(ACTIVE_SURFACE_STORAGE_KEY);
-    if (stored && findSurface(stored) && !findSurface(stored)?.disabled) {
+    if (
+      stored &&
+      (stored === DEFAULT_SURFACE_ID || enabled.includes(stored)) &&
+      ALL_WORKSPACE_SURFACES.some(
+        (surface) => surface.id === stored && !surface.disabled,
+      )
+    ) {
       return stored;
     }
     return DEFAULT_SURFACE_ID;
   });
 
   const activeSurface = useMemo(
-    () => findSurface(activeSurfaceId) ?? findSurface(DEFAULT_SURFACE_ID) ?? SURFACES[0],
-    [activeSurfaceId],
+    () =>
+      enabledSurfaces.find((surface) => surface.id === activeSurfaceId) ??
+      enabledSurfaces.find((surface) => surface.id === DEFAULT_SURFACE_ID) ??
+      enabledSurfaces[0],
+    [activeSurfaceId, enabledSurfaces],
   );
 
   // Nav state is keyed on the active surface. Initialize lazily so we
@@ -218,7 +272,7 @@ export function App() {
 
   const selectSurface = useCallback(
     (id: string) => {
-      const target = findSurface(id);
+      const target = enabledSurfaces.find((surface) => surface.id === id);
       if (!target || target.disabled) return;
       const nextNavItemId = resolveInitialNavItemId(target);
       if (id !== activeSurfaceId) {
@@ -228,12 +282,12 @@ export function App() {
       setActiveNavItemIdState(nextNavItemId);
       updateActiveTab({ navItemId: nextNavItemId, surfaceId: id });
     },
-    [activeSurfaceId, updateActiveTab],
+    [activeSurfaceId, enabledSurfaces, updateActiveTab],
   );
 
   const selectNavItem = useCallback(
     (surfaceId: string, navItemId: string) => {
-      const target = findSurface(surfaceId);
+      const target = enabledSurfaces.find((surface) => surface.id === surfaceId);
       if (!target || target.disabled) return;
       if (surfaceId !== activeSurfaceId) {
         setActiveSurfaceId(surfaceId);
@@ -247,7 +301,7 @@ export function App() {
         // ignore
       }
     },
-    [activeSurfaceId, updateActiveTab],
+    [activeSurfaceId, enabledSurfaces, updateActiveTab],
   );
 
   const setActiveNavItemId = useCallback(
@@ -271,6 +325,9 @@ export function App() {
   const [navItemChildren, setNavItemChildrenMap] = useState<
     Record<string, readonly SurfaceNavItem[]>
   >({});
+  const [navGroupItems, setNavGroupItemsMap] = useState<
+    Record<string, readonly SurfaceNavItem[]>
+  >({});
 
   const setNavItemChildren = useCallback(
     (itemId: string, children: readonly SurfaceNavItem[] | null) => {
@@ -282,6 +339,20 @@ export function App() {
           return next;
         }
         return { ...prev, [itemId]: children };
+      });
+    },
+    [],
+  );
+  const setNavGroupItems = useCallback(
+    (groupId: string, items: readonly SurfaceNavItem[] | null) => {
+      setNavGroupItemsMap((prev) => {
+        if (!items || items.length === 0) {
+          if (!(groupId in prev)) return prev;
+          const next = { ...prev };
+          delete next[groupId];
+          return next;
+        }
+        return { ...prev, [groupId]: items };
       });
     },
     [],
@@ -365,6 +436,7 @@ export function App() {
       activeNavItemId,
       setActiveNavItemId,
       setNavItemChildren,
+      setNavGroupItems,
       setMoveNavItemHandler,
       setReorderNavItemHandler,
       setRenameNavItemHandler,
@@ -374,6 +446,7 @@ export function App() {
       activeNavItemId,
       setActiveNavItemId,
       setNavItemChildren,
+      setNavGroupItems,
       setMoveNavItemHandler,
       setReorderNavItemHandler,
       setRenameNavItemHandler,
@@ -430,13 +503,17 @@ export function App() {
   }, [surfaceOrder]);
 
   useEffect(() => {
+    persistEnabledModuleIds(enabledModuleIds);
+  }, [enabledModuleIds]);
+
+  useEffect(() => {
     persistBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed);
   }, [sidebarCollapsed]);
 
   const activateTab = useCallback((tabId: string) => {
     const tab = tabs.find((entry) => entry.id === tabId);
     if (!tab) return;
-    const surface = findSurface(tab.surfaceId);
+    const surface = enabledSurfaces.find((entry) => entry.id === tab.surfaceId);
     if (!surface || surface.disabled) return;
     const nextNavItemId = tab.navItemId ?? resolveInitialNavItemId(surface);
     setActiveTabId(tab.id);
@@ -450,7 +527,37 @@ export function App() {
         // ignore
       }
     }
-  }, [tabs]);
+  }, [enabledSurfaces, tabs]);
+
+  const setModuleEnabled = useCallback((moduleId: string, enabled: boolean) => {
+    setEnabledModuleIds((current) => {
+      const next = new Set(current);
+      if (enabled) next.add(moduleId);
+      else next.delete(moduleId);
+      return [...normalizeEnabledModuleIds([...next])];
+    });
+  }, []);
+
+  useEffect(() => {
+    setTabs((current) => {
+      let changed = false;
+      const next = current.map((tab) => {
+        if (enabledSurfaceIds.has(tab.surfaceId)) return tab;
+        changed = true;
+        return {
+          ...tab,
+          navItemId: null,
+          surfaceId: DEFAULT_SURFACE_ID,
+        };
+      });
+      return changed ? next : current;
+    });
+
+    if (enabledSurfaceIds.has(activeSurfaceId)) return;
+    setActiveSurfaceId(DEFAULT_SURFACE_ID);
+    setActiveNavItemIdState(null);
+    localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, DEFAULT_SURFACE_ID);
+  }, [activeSurfaceId, enabledSurfaceIds]);
 
   const addTab = useCallback(() => {
     const next = createWorkspaceTab(activeSurfaceId, activeNavItemId);
@@ -538,14 +645,28 @@ export function App() {
     [favorites],
   );
 
+  const visibleFavorites = useMemo(
+    () => favorites.filter((favorite) => enabledSurfaceIds.has(favorite.surfaceId)),
+    [enabledSurfaceIds, favorites],
+  );
+  const visibleRecentItems = useMemo(
+    () => recentItems.filter((recent) => enabledSurfaceIds.has(recent.surfaceId)),
+    [enabledSurfaceIds, recentItems],
+  );
+
   const derivedSurfaces = useMemo(() => {
-    const orderedSurfaces = orderWorkspaceSurfaces(SURFACES, surfaceOrder);
-    if (Object.keys(navItemChildren).length === 0) return orderedSurfaces;
+    const orderedSurfaces = orderWorkspaceSurfaces(enabledSurfaces, surfaceOrder);
+    if (
+      Object.keys(navItemChildren).length === 0 &&
+      Object.keys(navGroupItems).length === 0
+    ) {
+      return orderedSurfaces;
+    }
     return orderedSurfaces.map((surface) => {
       if (!surface.navGroups?.length) return surface;
       const groups = surface.navGroups.map((group) => ({
         ...group,
-        items: group.items.map((item) =>
+        items: (navGroupItems[group.id] ?? group.items).map((item) =>
           navItemChildren[item.id]
             ? { ...item, children: navItemChildren[item.id] }
             : item,
@@ -553,15 +674,21 @@ export function App() {
       }));
       return { ...surface, navGroups: groups };
     });
-  }, [navItemChildren, surfaceOrder]);
+  }, [enabledSurfaces, navGroupItems, navItemChildren, surfaceOrder]);
 
   const handleReorderSurface = useCallback(
     (sourceId: string, targetId: string, edge: "before" | "after") => {
       setSurfaceOrder((currentOrder) =>
-        moveSurfaceInOrder({ currentOrder, edge, sourceId, targetId }),
+        moveSurfaceInOrder({
+          currentOrder,
+          edge,
+          surfaces: enabledSurfaces,
+          sourceId,
+          targetId,
+        }),
       );
     },
-    [],
+    [enabledSurfaces],
   );
 
   useEffect(() => {
@@ -580,10 +707,8 @@ export function App() {
   }, [activeSurfaceId]);
 
   if (!activeSurface) {
-    // SURFACES is statically non-empty (site-admin is always registered),
-    // so this is mostly a type-narrowing guard. Falling through with a
-    // neutral empty shell keeps React from throwing during dev-time
-    // registry edits.
+    // The module registry always contributes the core workspace surface.
+    // This guard keeps React from throwing during dev-time registry edits.
     return <div className="app-shell" />;
   }
 
@@ -599,8 +724,8 @@ export function App() {
         activeNavItemId={activeNavItemId}
         surfaces={derivedSurfaces}
         events={workspaceEvents}
-        favoriteCount={favorites.length}
-        recentCount={recentItems.length}
+        favoriteCount={visibleFavorites.length}
+        recentCount={visibleRecentItems.length}
         tabs={tabs}
         activeTabId={activeTabId}
         sidebarCollapsed={sidebarCollapsed}
@@ -614,8 +739,8 @@ export function App() {
           surfaces={derivedSurfaces}
           activeSurfaceId={activeSurface.id}
           activeNavItemId={activeNavItemId}
-          favorites={favorites}
-          recentItems={recentItems}
+          favorites={visibleFavorites}
+          recentItems={visibleRecentItems}
           sidebarCollapsed={sidebarCollapsed}
           onSelectSurface={selectSurface}
           onSelectNavItem={selectNavItem}
@@ -635,13 +760,13 @@ export function App() {
               {isWorkspaceDashboard ? (
                 <WorkspaceDashboard
                   events={workspaceEvents}
-                  favorites={favorites}
+                  favorites={visibleFavorites}
                   onClearEvents={clearWorkspaceEvents}
                   onOpenCommandPalette={() => setWorkspacePaletteOpen(true)}
                   onRecordRecent={recordRecentItem}
                   onSelectNavItem={selectNavItem}
                   onSelectSurface={selectSurface}
-                  recentItems={recentItems}
+                  recentItems={visibleRecentItems}
                   surfaces={derivedSurfaces}
                 />
               ) : (
@@ -658,8 +783,8 @@ export function App() {
         activeSurfaceId={activeSurface.id}
         activeNavItemId={activeNavItemId}
         eventCount={workspaceEvents.length}
-        favorites={favorites}
-        recentItems={recentItems}
+        favorites={visibleFavorites}
+        recentItems={visibleRecentItems}
         onClearWorkspaceEvents={clearWorkspaceEvents}
         onOpenWorkspaceDashboard={() => selectSurface("workspace")}
         onRecordRecent={recordRecentItem}
@@ -667,8 +792,11 @@ export function App() {
         onSelectNavItem={selectNavItem}
       />
       <SettingsWindow
+        enabledModuleIds={enabledModuleIds}
+        modules={WORKSPACE_MODULES}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onSetModuleEnabled={setModuleEnabled}
       />
     </div>
   );

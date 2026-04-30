@@ -344,6 +344,18 @@
   margin-top: 3px;
 }
 
+.sidebar-tree__group[data-headerless="true"] {
+  gap: 0;
+}
+
+.sidebar-tree__group[data-headerless="true"]
+  > .sidebar-tree__items
+  > li
+  > .sidebar-tree__item-row
+  > .sidebar-tree__item-disclosure-placeholder {
+  display: none;
+}
+
 .sidebar-tree__group-header {
   display: inline-flex;
   align-items: center;

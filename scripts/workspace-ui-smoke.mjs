@@ -76,6 +76,10 @@ function main() {
   }
 
   const documentEditor = read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx");
+  // Block-editor canvas + EditableBlock helpers split into their own
+  // file so Notes' lazy chunk doesn't pull in MdxDocumentEditor's
+  // document-level chrome (publish flow, frontmatter inspector).
+  const blocksEditor = read("apps/workspace/src/surfaces/site-admin/blocks-editor.tsx");
   const blockInspector = read("apps/workspace/src/surfaces/site-admin/block-inspector.tsx");
   const blockInspectorFields = read(
     "apps/workspace/src/surfaces/site-admin/block-inspector-fields.tsx",
@@ -84,16 +88,17 @@ function main() {
     "apps/workspace/src/surfaces/site-admin/editor-slash-commands.ts",
   );
   const mdxBlockTree = read("apps/workspace/src/surfaces/site-admin/mdx-block-tree.ts");
-  assertIncludes(documentEditor, "export function BlocksEditor", "MdxDocumentEditor");
+  assertIncludes(blocksEditor, "export function BlocksEditor", "BlocksEditor module");
+  assertIncludes(documentEditor, "BlocksEditor,", "MdxDocumentEditor BlocksEditor import");
   assertIncludes(documentEditor, "parseMdxBlocks", "MdxDocumentEditor");
-  assertIncludes(documentEditor, "serializeMdxBlocks", "MdxDocumentEditor");
-  assertIncludes(documentEditor, "application/x-mdx-block", "MdxDocumentEditor");
+  assertIncludes(blocksEditor, "serializeMdxBlocks", "BlocksEditor");
+  assertIncludes(blocksEditor, "application/x-mdx-block", "BlocksEditor drag protocol");
   assertIncludes(documentEditor, "useMdxImageUploadDrop", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useUnsavedChangesBeforeUnload", "MdxDocumentEditor");
   assertIncludes(documentEditor, "useConfirmingBack", "MdxDocumentEditor");
   assertIncludes(documentEditor, "usePersistentUiState", "MdxDocumentEditor");
-  assertIncludes(documentEditor, "BlockInspector", "MdxDocumentEditor block inspector");
-  assertExcludes(documentEditor, "function BlockInspector", "MdxDocumentEditor inline block inspector");
+  assertIncludes(blocksEditor, "BlockInspector", "BlocksEditor block inspector");
+  assertExcludes(blocksEditor, "function BlockInspector", "BlocksEditor inline block inspector");
   assertIncludes(blockInspector, "export function BlockInspector", "BlockInspector module");
   assertIncludes(blockInspector, "export function blockHasInspector", "BlockInspector module");
   assertIncludes(blockInspector, "function TableInspector", "BlockInspector table controls");
@@ -102,8 +107,8 @@ function main() {
   assertIncludes(blockInspectorFields, "useImeComposition", "BlockInspector fields IME support");
   assertIncludes(mdxBlockTree, "patchBlockInTree", "Mdx block tree helpers");
   assertIncludes(mdxBlockTree, "countBlocksOfType", "Mdx block tree helpers");
-  assertIncludes(documentEditor, "data-selected", "MdxDocumentEditor block selection");
-  assertIncludes(documentEditor, "Raw MDX fallback", "MdxDocumentEditor raw fallback");
+  assertIncludes(blocksEditor, "data-selected", "BlocksEditor block selection");
+  assertIncludes(blocksEditor, "Raw MDX fallback", "BlocksEditor raw fallback");
   assertIncludes(
     editorSlashCommands,
     "RECENT_SLASH_COMMAND_IDS_KEY",
@@ -112,14 +117,14 @@ function main() {
   assertIncludes(editorSlashCommands, "getMatchingSlashCommands", "MdxDocumentEditor slash menu");
   assertIncludes(editorSlashCommands, "replaceBlockType", "MdxDocumentEditor slash menu");
   assertIncludes(documentEditor, 'source: "Advanced"', "MdxDocumentEditor advanced mode label");
-  assertIncludes(documentEditor, "data-controls-open", "MdxDocumentEditor");
-  assertIncludes(documentEditor, "data-kind", "MdxDocumentEditor block semantics");
-  assertIncludes(documentEditor, "data-empty", "MdxDocumentEditor block semantics");
+  assertIncludes(blocksEditor, "data-controls-open", "BlocksEditor");
+  assertIncludes(blocksEditor, "data-kind", "BlocksEditor block semantics");
+  assertIncludes(blocksEditor, "data-empty", "BlocksEditor block semantics");
   assertIncludes(documentEditor, "productionReadOnly", "MdxDocumentEditor production read-only");
-  assertIncludes(documentEditor, "data-read-only", "MdxDocumentEditor read-only state");
   assertIncludes(documentEditor, "readOnly={productionReadOnly}", "MdxDocumentEditor read-only fields");
-  assertIncludes(documentEditor, "isBlockVisuallyEmpty", "MdxDocumentEditor block semantics");
-  assertIncludes(documentEditor, "controlsActive", "MdxDocumentEditor");
+  assertIncludes(blocksEditor, "data-read-only", "BlocksEditor read-only state");
+  assertIncludes(blocksEditor, "isBlockVisuallyEmpty", "BlocksEditor block semantics");
+  assertIncludes(blocksEditor, "controlsActive", "BlocksEditor");
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/state.tsx"),
     "getSiteAdminEnvironment",
@@ -256,9 +261,9 @@ function main() {
     "RichTextEditableBlock paste import",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx"),
+    read("apps/workspace/src/surfaces/site-admin/blocks-editor.tsx"),
     "EditorDiagnosticsPanel",
-    "MdxDocumentEditor diagnostics",
+    "BlocksEditor diagnostics",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/LinkItemsEditor.tsx"),
@@ -418,7 +423,7 @@ function main() {
     "Site Admin emits workspace activity",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/registry.tsx"),
+    read("apps/workspace/src/modules/registry.tsx"),
     'id: "workspace"',
     "Workspace dashboard registry entry",
   );
@@ -473,7 +478,7 @@ function main() {
     "Calendar adaptive split view",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/registry.tsx"),
+    read("apps/workspace/src/modules/notes/index.tsx"),
     'id: "notes"',
     "Notes surface registry entry",
   );

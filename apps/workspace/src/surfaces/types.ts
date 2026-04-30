@@ -45,6 +45,10 @@ export interface SurfaceNavItem {
 export interface SurfaceNavGroup {
   id: string;
   label: string;
+  /** Hide the visual group header while keeping the group as a logical
+   * bucket for dynamic items. Useful when the active surface already
+   * provides the context, e.g. Notes showing note pages directly. */
+  hideHeader?: boolean;
   items: readonly SurfaceNavItem[];
 }
 

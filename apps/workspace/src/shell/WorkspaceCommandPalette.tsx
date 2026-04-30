@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { getCommandActions } from "../modules/registry";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import type { SurfaceDefinition, SurfaceNavItem } from "../surfaces/types";
@@ -117,23 +118,6 @@ export function WorkspaceCommandPalette({
       });
     };
 
-    const runNavAction = (
-      surfaceId: string,
-      itemId: string,
-      label: string,
-      surfaceTitle?: string,
-    ) => {
-      const surface = findSurface(surfaces, surfaceId);
-      if (!surface || surface.disabled) return;
-      onRecordRecent({
-        itemId,
-        label,
-        surfaceId,
-        surfaceTitle: surfaceTitle ?? surface.title,
-      });
-      onSelectNavItem(surfaceId, itemId);
-    };
-
     items.push({
       group: "Workspace",
       hint: activeSurfaceId === "workspace" ? "current" : "home",
@@ -154,53 +138,29 @@ export function WorkspaceCommandPalette({
       });
     }
 
-    for (const action of [
-      {
-        hint: "Deploy health",
-        id: "quick:site-status",
-        itemId: "status",
-        keywords: "deploy status staging production worker candidate publish",
-        label: "Open Site Status",
-        surfaceId: "site-admin",
-      },
-      {
-        hint: "Landing page",
-        id: "quick:home-editor",
-        itemId: "home",
-        keywords: "home landing editor mdx page",
-        label: "Open Home Editor",
-        surfaceId: "site-admin",
-      },
-      {
-        hint: "Reusable blocks",
-        id: "quick:shared-content",
-        itemId: "components",
-        keywords: "shared components news teaching publications works",
-        label: "Open Shared Content",
-        surfaceId: "site-admin",
-      },
-      {
-        hint: "Route and icon checks",
-        id: "quick:site-links",
-        itemId: "links",
-        keywords: "links audit icon link internal route broken protected",
-        label: "Open Link Audit",
-        surfaceId: "site-admin",
-      },
-    ] as const) {
+    for (const action of getCommandActions()) {
+      const surface = findSurface(surfaces, action.surfaceId);
+      if (!surface || surface.disabled || seen.has(action.id)) continue;
+      seen.add(action.id);
       items.push({
-        group: "Quick Actions",
+        group: action.group ?? "Quick Actions",
         hint: action.hint,
         id: action.id,
         label: action.label,
-        keywords: action.keywords,
-        run: () =>
-          runNavAction(
-            action.surfaceId,
-            action.itemId,
-            action.label,
-            "Site Admin",
-          ),
+        keywords: `${surface.title} ${action.surfaceId} ${action.navItemId ?? ""} ${action.keywords}`,
+        run: () => {
+          if (action.navItemId) {
+            onRecordRecent({
+              itemId: action.navItemId,
+              label: action.label,
+              surfaceId: action.surfaceId,
+              surfaceTitle: surface.title,
+            });
+            onSelectNavItem(action.surfaceId, action.navItemId);
+            return;
+          }
+          onSelectSurface(action.surfaceId);
+        },
       });
     }
 

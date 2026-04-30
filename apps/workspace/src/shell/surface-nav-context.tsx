@@ -19,6 +19,13 @@ interface SurfaceNavContextValue {
     itemId: string,
     children: readonly SurfaceNavItem[] | null,
   ) => void;
+  /** Lets the active surface replace a whole nav group's item list.
+   * Useful for Notion-like page trees that should appear directly under
+   * the group heading instead of under a synthetic root row. */
+  setNavGroupItems: (
+    groupId: string,
+    items: readonly SurfaceNavItem[] | null,
+  ) => void;
   /** Surfaces register a callback here to handle drag-reparent. Sidebar
    * fires onMoveNavItem → App routes it to the active surface's
    * registered handler. Pass `null` to clear. */

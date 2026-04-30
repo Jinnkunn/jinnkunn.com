@@ -1,6 +1,6 @@
 import { PagesIcon } from "../icons";
 import type { SurfaceNavItem } from "../types";
-import type { NotesMutation } from "../../lib/tauri";
+import type { NotesMutation } from "../../modules/notes/api";
 import type { NoteRow, NoteTreeNode } from "./types";
 
 export const NOTES_ROOT_NAV_ID = "notes:root";

@@ -1,9 +1,9 @@
 import { Suspense, lazy } from "react";
 
-import type { BlocksEditorProps } from "./MdxDocumentEditor";
+import type { BlocksEditorProps } from "./blocks-editor";
 
 const BlocksEditorImpl = lazy(() =>
-  import("./MdxDocumentEditor").then((module) => ({
+  import("./blocks-editor").then((module) => ({
     default: module.BlocksEditor,
   })),
 );

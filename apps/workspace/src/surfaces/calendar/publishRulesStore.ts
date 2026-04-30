@@ -2,7 +2,7 @@ import {
   calendarPublishRulesLoad,
   calendarPublishRulesSave,
   type CalendarPublishRuleRow,
-} from "../../lib/tauri";
+} from "../../modules/calendar/publishRulesApi";
 import {
   emptyMetadataStore,
   normalizeCalendarPublishMetadata,

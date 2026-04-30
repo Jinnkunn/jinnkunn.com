@@ -152,7 +152,13 @@ const LINK_STYLE_PROBES = [
   },
   {
     route: "/",
-    name: "Home icon link",
+    name: "Home Dalhousie icon link",
+    selector: 'span[data-link-style="icon"] > a[href="https://www.dal.ca/"].notion-link.link',
+    icon: true,
+  },
+  {
+    route: "/",
+    name: "Home blog icon link",
     selector: 'span[data-link-style="icon"] > a[href="/blog"].notion-link.link',
     icon: true,
   },
