@@ -51,6 +51,42 @@ export function emptyMetadataStore(): CalendarPublishMetadataStore {
   return { schemaVersion: 1, byEventKey: {} };
 }
 
+/** Where a resolved visibility came from. Used by the inspector to
+ * render "Busy (from calendar default · Personal)" so the operator
+ * can tell whether a per-event override is needed or the default is
+ * already correct. */
+export type VisibilitySource =
+  | "override"        // per-event metadata explicitly set
+  | "smart-rule"      // smartResolver returned non-null
+  | "calendar-default" // per-calendar default fired
+  | "global";         // fell through to "busy"
+
+export interface ResolvedVisibility {
+  visibility: CalendarPublicVisibility;
+  source: VisibilitySource;
+}
+
+/** Like `metadataForEvent` but also reports which layer of the
+ * resolver chain produced the visibility. Splitting it keeps the
+ * majority of callers (which only care about `.visibility`) on the
+ * cheaper API. */
+export function resolveVisibility(
+  store: CalendarPublishMetadataStore,
+  event: CalendarEvent,
+  calendarDefaults?: ReadonlyMap<string, CalendarPublicVisibility>,
+  smartResolver?: (event: CalendarEvent) => CalendarPublicVisibility | null,
+): ResolvedVisibility {
+  const explicit = store.byEventKey[calendarEventKey(event)];
+  if (explicit) return { visibility: explicit.visibility, source: "override" };
+  const fromSmart = smartResolver?.(event);
+  if (fromSmart) return { visibility: fromSmart, source: "smart-rule" };
+  const fromCalendar = calendarDefaults?.get(event.calendarId);
+  if (fromCalendar) {
+    return { visibility: fromCalendar, source: "calendar-default" };
+  }
+  return { visibility: "busy", source: "global" };
+}
+
 export function metadataForEvent(
   store: CalendarPublishMetadataStore,
   event: CalendarEvent,

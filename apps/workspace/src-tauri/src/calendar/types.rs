@@ -89,6 +89,31 @@ pub struct FetchEventsRequest {
     pub calendar_ids: Vec<String>,
 }
 
+/// Subset of EKRecurrenceFrequency we expose. EventKit also supports
+/// `Yearly` but the workspace flow doesn't have a UX for it (annual
+/// events are rare and operator-edited via Apple Calendar.app); add
+/// when needed.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RecurrenceFrequency {
+    Daily,
+    Weekly,
+    /// Implemented as `Weekly` with `interval = 2`. EventKit's RRULE
+    /// model doesn't have a native "biweekly" frequency.
+    Biweekly,
+    Monthly,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecurrenceSpec {
+    pub frequency: RecurrenceFrequency,
+    /// Number of occurrences to generate, including the first one.
+    /// E.g. `count = 14` for a 14-week class. Server clamps to a
+    /// safety ceiling so a typo can't generate 9999 events.
+    pub count: u32,
+}
+
 /// Inbound payload for `calendar_create_event`. The webview side
 /// constructs ISO timestamps with offset already applied; this layer
 /// only converts to NSDate (UTC underneath) for EventKit.
@@ -104,4 +129,8 @@ pub struct CreateEventRequest {
     pub notes: Option<String>,
     pub location: Option<String>,
     pub url: Option<String>,
+    /// When set, the event is created as a recurring series rather
+    /// than a single occurrence. Internally translated to one
+    /// EKRecurrenceRule.
+    pub recurrence: Option<RecurrenceSpec>,
 }

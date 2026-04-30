@@ -491,6 +491,27 @@
   outline: none;
 }
 
+.calendar-search-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.calendar-search-pending {
+  position: absolute;
+  right: 28px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+  animation: calendar-search-pulse 1100ms ease-in-out infinite;
+}
+
+@keyframes calendar-search-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 /* Inline event composer — pops between the toolbar header and the
  * timeline. Compact two-column layout so the most-used fields stay
  * one keystroke apart. */
@@ -558,6 +579,166 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* Inline label under the visibility picker so the operator can see
+ * whether the current value comes from an explicit override, a smart
+ * rule, the calendar default, or the global fallback. */
+.calendar-inspector__visibility-source {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.calendar-inspector__visibility-source[data-source="override"] {
+  color: var(--color-text-secondary);
+  font-style: normal;
+}
+
+.calendar-inspector__visibility-source[data-source="smart-rule"] {
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text-secondary));
+}
+
+/* Smart-rule editor — same visual rhythm as the EventComposer
+ * (inline panel between toolbar and timeline). Inputs sit in a
+ * 4-column grid: pattern (flex 1), visibility (12ch), requires
+ * (16ch), delete button. */
+.smart-rules-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+  max-height: min(50vh, 540px);
+  overflow-y: auto;
+}
+
+.smart-rules-editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.smart-rules-editor__header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.smart-rules-editor__header p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.smart-rules-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.smart-rules-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.smart-rules-editor__row input[type="text"],
+.smart-rules-editor__row select {
+  padding: 5px 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.smart-rules-editor__row input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.smart-rules-editor__row input:focus-visible,
+.smart-rules-editor__row select:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  outline: none;
+}
+
+.smart-rules-editor__remove {
+  appearance: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.smart-rules-editor__remove:hover,
+.smart-rules-editor__remove:focus-visible {
+  border-color: color-mix(in srgb, var(--color-danger) 50%, var(--color-border-subtle));
+  color: var(--color-danger);
+  outline: none;
+}
+
+.smart-rules-editor__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 11.5px;
+}
+
+.smart-rules-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* "What's about to publish" pill next to the Sync button. Small and
+ * dense so the toolbar layout stays compact; data-tone drives the
+ * color so the operator can tell at a glance whether sync is a
+ * no-op vs. has pending changes. */
+.calendar-sync-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-sync-preview[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--color-success) 34%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-bg-surface));
+  color: var(--color-success);
+}
+
+.calendar-sync-preview[data-tone="pending"] {
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-surface));
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text-primary));
 }
 
 .panel-empty {

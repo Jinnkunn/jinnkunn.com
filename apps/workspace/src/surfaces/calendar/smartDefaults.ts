@@ -77,6 +77,38 @@ export const DEFAULT_SMART_RULES: ReadonlyArray<SmartDefaultRule> = [
   },
 ];
 
+/** Read the persisted rule sheet, falling back to `DEFAULT_SMART_RULES`
+ * when nothing's stored yet. Exposed so the rule editor UI can show
+ * what's currently active without duplicating the parse logic. */
+export function loadActiveRules(): ReadonlyArray<SmartDefaultRule> {
+  return loadRules();
+}
+
+/** Persist a fresh rule sheet. The caller's responsibility to validate
+ * that each rule's `pattern` is a parseable regex; the resolver
+ * tolerates bad patterns (treats them as no-match) so a typo doesn't
+ * crash the surface, but the editor should reject obvious garbage at
+ * input time so the operator sees feedback. */
+export function saveActiveRules(rules: ReadonlyArray<SmartDefaultRule>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
+  } catch {
+    // Quota / private mode — degrade silently. Defaults reapply on
+    // the next session.
+  }
+}
+
+/** Drop the operator's customizations and revert to the bundled
+ * starter ruleset. Useful when a regex experiment goes sideways and
+ * the operator wants a clean baseline back. */
+export function resetActiveRulesToDefaults(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function loadRules(): ReadonlyArray<SmartDefaultRule> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
