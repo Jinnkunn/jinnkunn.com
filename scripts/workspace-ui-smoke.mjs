@@ -428,6 +428,21 @@ function main() {
     "Workspace dashboard registry entry",
   );
   assertIncludes(
+    read("apps/workspace/src/modules/registry.tsx"),
+    "WORKSPACE_MODULES",
+    "Workspace first-party module registry",
+  );
+  assertIncludes(
+    read("apps/workspace/src/modules/registry.tsx"),
+    "getEnabledModuleSurfaces",
+    "Workspace module enable filtering",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/SettingsWindow.tsx"),
+    "settings-module-toggle",
+    "Workspace module settings toggles",
+  );
+  assertIncludes(
     read("apps/workspace/src/shell/recent.ts"),
     "workspace.sidebar.recent.v1",
     "Workspace recent navigation storage",
@@ -517,11 +532,36 @@ function main() {
     "notesSearch",
   ]) {
     assertIncludes(
-      read("apps/workspace/src/lib/tauri.ts"),
+      read("apps/workspace/src/modules/notes/api.ts"),
       `function ${command}`,
-      "Notes typed Tauri wrappers",
+      "Notes module Tauri wrappers",
     );
   }
+  assertIncludes(
+    read("apps/workspace/src/modules/site-admin/tauri.ts"),
+    "function siteAdminHttpRequest",
+    "Site Admin module Tauri wrappers",
+  );
+  assertIncludes(
+    read("apps/workspace/src/modules/calendar/publishRulesApi.ts"),
+    "function calendarPublishRulesLoad",
+    "Calendar module publish-rule wrappers",
+  );
+  assertIncludes(
+    read("apps/workspace/src/modules/todos/index.tsx"),
+    'id: "todos"',
+    "Todos module registry entry",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/todos/TodosSurface.tsx"),
+    "todosCreate",
+    "Todos surface create flow",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/todos.rs"),
+    "pub async fn todos_list",
+    "Todos Rust command",
+  );
   assertExcludes(
     read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
     "gridTemplateColumns: selectedEvent",
