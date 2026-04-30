@@ -1,0 +1,40 @@
+import { __MODULE_ICON__ } from "../../surfaces/icons";
+import {
+  __MODULE_DEFAULT_NAV_ITEM_ID__,
+  __MODULE_NAV_GROUPS__,
+} from "../../surfaces/__MODULE_ID__/nav";
+import { __MODULE_SURFACE__ } from "../../surfaces/__MODULE_ID__/__MODULE_SURFACE__";
+import type { WorkspaceModuleDefinition } from "../types";
+
+export const __MODULE_CONST___MODULE: WorkspaceModuleDefinition = {
+  id: "__MODULE_ID__",
+  enabledByDefault: true,
+  surface: {
+    id: "__MODULE_ID__",
+    title: "__MODULE_TITLE__",
+    description: "__MODULE_DESCRIPTION__",
+    icon: <__MODULE_ICON__ />,
+    Component: __MODULE_SURFACE__,
+    navGroups: __MODULE_NAV_GROUPS__,
+    defaultNavItemId: __MODULE_DEFAULT_NAV_ITEM_ID__,
+  },
+  dashboardActions: [
+    {
+      id: "__MODULE_ID__:open",
+      description: "__DASHBOARD_ACTION_DESCRIPTION__",
+      label: "__MODULE_TITLE__",
+      navItemId: __MODULE_DEFAULT_NAV_ITEM_ID__,
+      surfaceId: "__MODULE_ID__",
+    },
+  ],
+  commandActions: [
+    {
+      id: "quick:__MODULE_ID__",
+      hint: "__COMMAND_HINT__",
+      keywords: "__MODULE_ID__ __COMMAND_KEYWORDS__",
+      label: "Open __MODULE_TITLE__",
+      navItemId: __MODULE_DEFAULT_NAV_ITEM_ID__,
+      surfaceId: "__MODULE_ID__",
+    },
+  ],
+};

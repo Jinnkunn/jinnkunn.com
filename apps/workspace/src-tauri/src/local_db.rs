@@ -45,7 +45,7 @@ pub fn open(app: &tauri::AppHandle) -> Result<Connection, String> {
 
 /// Apply the local schema. Idempotent — `CREATE TABLE IF NOT EXISTS` so
 /// the same Tauri build can run against an existing DB or a fresh one.
-fn run_migrations(conn: &Connection) -> Result<(), String> {
+pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         r#"
         -- Mirror of D1 `content_files`. Same columns + types so we can
