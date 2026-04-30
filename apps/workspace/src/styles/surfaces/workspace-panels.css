@@ -50,19 +50,26 @@
 }
 
 .workspace-dashboard__panel {
+  /* Migrated to vibrancy + hairline so the dashboard cards feel
+   * like AppKit panes rather than a stack of web cards. The old
+   * inset highlight is gone — vibrancy already differentiates the
+   * card edge from the window background. */
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-sm);
   min-width: 0;
-  padding: 14px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
+  padding: var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
-:root[data-theme="dark"] .workspace-dashboard__panel {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .workspace-dashboard__panel {
+    background: var(--color-bg-surface-translucent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
 }
 
 .workspace-dashboard__panel--wide {
@@ -119,26 +126,33 @@
 .workspace-dashboard__action,
 .workspace-dashboard__tool,
 .workspace-dashboard__list button {
+  /* Borderless tile — fill instead of border. Hover bumps the fill
+   * one rung up the macOS systemFill ladder rather than darkening a
+   * 1 px stroke. The translateY-on-hover is replaced with a simpler
+   * background swap so the tile doesn't physically jump. */
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 9px;
-  background: var(--color-bg-surface-alt);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--fill-tertiary);
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    transform 120ms ease;
+    background-color 120ms var(--ease-out),
+    transform 80ms var(--ease-out);
 }
 
 .workspace-dashboard__action:hover,
 .workspace-dashboard__tool:hover,
 .workspace-dashboard__list button:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-surface));
-  transform: translateY(-1px);
+  background: var(--fill-secondary);
+}
+
+.workspace-dashboard__action:active,
+.workspace-dashboard__tool:active,
+.workspace-dashboard__list button:active {
+  transform: scale(0.99);
 }
 
 .workspace-dashboard__action:focus-visible,
@@ -206,13 +220,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
   color: var(--color-accent);
-  background: var(--color-bg-surface);
+  background: var(--fill-accent);
 }
 
 .workspace-dashboard__tool > span:last-child,
@@ -237,12 +251,16 @@
 }
 
 .workspace-dashboard__empty {
+  /* Empty-state placeholder — fill instead of dashed border so it
+   * reads as "this slot is intentionally quiet" rather than "this
+   * box is broken". The dashed-border was a Tailwind tell. */
   margin: 0;
-  padding: 18px 10px;
-  border: 1px dashed var(--color-border-subtle);
-  border-radius: 10px;
+  padding: var(--space-lg) var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--fill-quaternary);
   color: var(--color-text-muted);
-  font-size: 12.5px;
+  font-size: var(--font-size-small);
   text-align: center;
 }
 
@@ -250,10 +268,14 @@
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-sm);
   min-width: 0;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-sm) 0;
+  /* Hairline divider per item — replaces the explicit border-bottom
+   * so the activity list reads as a sequence of rows separated by
+   * 0.5pt lines on retina, not a stack of boxes. */
+  box-shadow: inset 0 -1px 0 var(--hairline);
+  border-bottom: 0;
 }
 
 .workspace-activity-list__item:last-child {
@@ -394,17 +416,133 @@
   min-width: 0;
 }
 
+.calendar-commandbar {
+  gap: 10px;
+}
+
+.calendar-commandbar__date,
+.calendar-commandbar__tools,
+.calendar-commandbar__sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.calendar-commandbar__date {
+  justify-content: flex-start;
+}
+
+.calendar-commandbar__tools {
+  justify-content: center;
+}
+
+.calendar-commandbar__sync {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.calendar-commandbar__supplement {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.calendar-sync-health-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg-surface-alt) 72%, var(--color-bg-surface));
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.calendar-sync-health-panel span {
+  min-width: 0;
+}
+
+.calendar-sync-health-panel strong {
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
+.calendar-surface-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.calendar-workspace-split {
+  --workspace-split-sidebar-width: 220px;
+  --workspace-split-inspector-width: minmax(280px, 340px);
+  flex: 1;
+}
+
+.calendar-workspace-split .workspace-split-view__detail {
+  background: var(--color-bg-surface);
+}
+
+.calendar-workspace-split .workspace-split-view__sidebar {
+  background: color-mix(in srgb, var(--color-bg-surface-alt) 58%, var(--color-bg-surface));
+}
+
+.calendar-workspace-split .workspace-split-view__inspector {
+  background: var(--color-bg-surface-alt);
+}
+
+@media (max-width: 1180px) {
+  .calendar-commandbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calendar-commandbar__tools,
+  .calendar-commandbar__sync {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .calendar-commandbar__date,
+  .calendar-commandbar__tools,
+  .calendar-commandbar__sync {
+    width: 100%;
+  }
+
+  .calendar-commandbar__date {
+    justify-content: space-between;
+  }
+
+  .calendar-search-wrapper,
+  .calendar-search-input {
+    width: 100%;
+  }
+
+  .calendar-workspace-split {
+    min-height: 0;
+  }
+
+  .calendar-sync-health-panel {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
 .calendar-source-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  border-radius: 7px;
-  padding: 2px 4px;
+  gap: var(--space-xs);
+  border-radius: var(--radius-md);
+  padding: 2px var(--space-xs);
+  transition: background-color 120ms var(--ease-out);
 }
 
 .calendar-source-row:hover {
-  background: var(--color-bg-surface-alt);
+  background: var(--fill-tertiary);
 }
 
 .calendar-source-row__main {
@@ -412,82 +550,74 @@
   min-width: 0;
   cursor: pointer;
   align-items: center;
-  gap: 8px;
-  border-radius: 7px;
+  gap: var(--space-sm);
+  border-radius: var(--radius-md);
   color: var(--color-text-primary);
-  font-size: 12.5px;
+  font-size: var(--font-size-small);
 }
 
-.calendar-source-row__publish {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 4px 6px;
-}
-
-.calendar-source-row__publish[data-active="true"] {
-  border-color: color-mix(in srgb, var(--color-success) 34%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-success) 10%, var(--color-bg-surface));
-  color: var(--color-success);
-}
-
-/* Compact `<select>` for the per-calendar default visibility. Sits
- * next to the Web toggle and uses the same pill-ish footprint so the
- * row stays single-line at typical sidebar widths. */
+/* Compact macOS-style popup-button for the per-calendar default
+ * visibility. Borderless fill-quaternary at rest, fill-secondary on
+ * hover, accent halo on focus — same vocabulary as everything else
+ * in the toolbar.  */
 .calendar-source-row__default {
   appearance: none;
   -webkit-appearance: none;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
-  background: var(--color-bg-surface);
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-quaternary);
   color: var(--color-text-muted);
   cursor: pointer;
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  padding: 4px 18px 4px 8px;
+  padding: 0 18px 0 8px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23878787' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 6px center;
+  transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
 
 .calendar-source-row__default:hover,
 .calendar-source-row__default:focus-visible {
-  border-color: color-mix(in srgb, var(--color-text-primary) 22%, var(--color-border-subtle));
+  background: var(--fill-secondary);
   color: var(--color-text-primary);
   outline: none;
 }
 
-/* Search input pinned in the calendar toolbar. Compact width so it
- * doesn't push the view switcher off the row at typical sidebar
- * widths; matches the existing pill / button height. */
+/* Search field uses the same fill-tertiary token as every other
+ * input in the app, no per-component border. Width is bumped to
+ * 220 px because the placeholder copy got more specific. */
 .calendar-search-input {
   appearance: none;
-  width: 200px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
-  background: var(--color-bg-surface);
+  width: 220px;
+  height: 24px;
+  padding: 0 var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--fill-tertiary);
   color: var(--color-text-primary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-small);
   line-height: 1.2;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: background-color 120ms var(--ease-out),
+    border-color 120ms var(--ease-out),
+    box-shadow 120ms var(--ease-out);
 }
 
 .calendar-search-input::placeholder {
   color: var(--color-text-muted);
 }
 
+.calendar-search-input:hover:not(:focus-visible) {
+  background: var(--fill-secondary);
+}
+
 .calendar-search-input:focus-visible {
-  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
-  background: var(--color-bg-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  background: var(--color-bg-surface-translucent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
   outline: none;
 }
 
@@ -512,53 +642,49 @@
   50% { opacity: 1; }
 }
 
-/* Inline event composer — pops between the toolbar header and the
- * timeline. Compact two-column layout so the most-used fields stay
- * one keystroke apart. */
+/* Inline event composer — popover material between toolbar and
+ * timeline. Translucent vibrancy + hairline edge so the panel
+ * feels like a system sheet rather than a web modal. */
 .calendar-event-composer {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 12px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-bg-surface);
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-popover);
+}
+
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .calendar-event-composer {
+    backdrop-filter: saturate(220%) blur(28px);
+    -webkit-backdrop-filter: saturate(220%) blur(28px);
+  }
 }
 
 .calendar-event-composer__row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 .calendar-event-composer__field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xs);
   flex: 1;
   min-width: 180px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-secondary);
 }
 
 .calendar-event-composer__field input[type="text"],
 .calendar-event-composer__field input[type="datetime-local"],
 .calendar-event-composer__field select {
-  padding: 6px 9px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
+  /* Inherit the global input styling — fills + focus halo come from
+   * legacy-controls.css, no per-field overrides needed. */
   font: inherit;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.calendar-event-composer__field input:focus-visible,
-.calendar-event-composer__field select:focus-visible {
-  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
-  outline: none;
 }
 
 .calendar-event-composer__checkbox {
@@ -572,13 +698,13 @@
 .calendar-event-composer__error {
   margin: 0;
   color: var(--color-danger);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .calendar-event-composer__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 /* Inline label under the visibility picker so the operator can see
@@ -608,14 +734,21 @@
 .smart-rules-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 12px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-bg-surface);
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-popover);
   max-height: min(50vh, 540px);
   overflow-y: auto;
+}
+
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .smart-rules-editor {
+    backdrop-filter: saturate(220%) blur(28px);
+    -webkit-backdrop-filter: saturate(220%) blur(28px);
+  }
 }
 
 .smart-rules-editor__header {
@@ -657,42 +790,32 @@
 
 .smart-rules-editor__row input[type="text"],
 .smart-rules-editor__row select {
-  padding: 5px 8px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
+  /* Inherits the global input styling — no per-row overrides. */
   font: inherit;
-  font-size: 12.5px;
-  line-height: 1.2;
 }
 
 .smart-rules-editor__row input[aria-invalid="true"] {
   border-color: var(--color-danger);
-}
-
-.smart-rules-editor__row input:focus-visible,
-.smart-rules-editor__row select:focus-visible {
-  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
-  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 22%, transparent);
 }
 
 .smart-rules-editor__remove {
   appearance: none;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
-  background: var(--color-bg-surface);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-tertiary);
   color: var(--color-text-muted);
   cursor: pointer;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   font-size: 14px;
   line-height: 1;
+  transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
 
 .smart-rules-editor__remove:hover,
 .smart-rules-editor__remove:focus-visible {
-  border-color: color-mix(in srgb, var(--color-danger) 50%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
   color: var(--color-danger);
   outline: none;
 }
@@ -701,43 +824,41 @@
   grid-column: 1 / -1;
   margin: 0;
   color: var(--color-danger);
-  font-size: 11.5px;
+  font-size: var(--font-size-caption);
 }
 
 .smart-rules-editor__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
-/* "What's about to publish" pill next to the Sync button. Small and
- * dense so the toolbar layout stays compact; data-tone drives the
- * color so the operator can tell at a glance whether sync is a
- * no-op vs. has pending changes. */
+/* "What's about to publish" pill next to the Sync button — pure
+ * fill-and-color, no border. Tone variants change the fill +
+ * text color together, matching the rest of the pill family. */
 .calendar-sync-preview {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-surface);
+  gap: var(--space-xs);
+  height: 22px;
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-tertiary);
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-weight: 700;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
 .calendar-sync-preview[data-tone="ok"] {
-  border-color: color-mix(in srgb, var(--color-success) 34%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-success) 10%, var(--color-bg-surface));
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
   color: var(--color-success);
 }
 
 .calendar-sync-preview[data-tone="pending"] {
-  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-surface));
+  background: var(--fill-accent);
   color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text-primary));
 }
 

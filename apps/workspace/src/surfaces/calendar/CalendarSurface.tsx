@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  WorkspaceCommandBar,
   WorkspaceCheckboxField,
   WorkspaceInspector,
   WorkspaceInspectorHeader,
   WorkspaceInspectorSection,
   WorkspaceSelectField,
+  WorkspaceSplitView,
   WorkspaceSurfaceFrame,
   WorkspaceTextareaField,
   WorkspaceTextField,
@@ -21,6 +23,7 @@ import {
 } from "./api";
 import {
   formatViewTitle,
+  navigateView,
   rangeForView,
   startOfDay,
   type ViewKind,
@@ -135,9 +138,6 @@ export function CalendarSurface() {
     },
     [],
   );
-  const [publishedCalendarIds, setPublishedCalendarIds] = useState<Set<string>>(
-    new Set(),
-  );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [publishMetadata, setPublishMetadata] =
@@ -145,6 +145,7 @@ export function CalendarSurface() {
   const [rulesLoaded, setRulesLoaded] = useState(false);
   const [publishState, setPublishState] = useState<PublishState>("idle");
   const [publishMessage, setPublishMessage] = useState<string>("");
+  const [calendarChangeRevision, setCalendarChangeRevision] = useState(0);
   const [syncHealth, setSyncHealth] = useState<CalendarSyncHealth>({
     lastSyncedAt: null,
     eventCount: 0,
@@ -155,7 +156,6 @@ export function CalendarSurface() {
   });
   const lastAutoSyncKeyRef = useRef("");
   const initializedVisibleCalendarsRef = useRef(false);
-  const initializedPublishedCalendarsRef = useRef(false);
 
   // Refetch whenever the user pages forward/back or switches view —
   // each combination implies a different EventKit query window.
@@ -210,11 +210,11 @@ export function CalendarSurface() {
       //     previous load) defaults to visible. That way adding a
       //     fresh calendar in Apple Calendar.app shows up immediately
       //     without the operator hunting for its toggle.
-      // App visibility and public-site publishing stay independent —
+      // App visibility and public-site publishing stay independent:
       // hiding a calendar in the workspace must NOT remove it from
-      // the public /calendar projection (that's `publishedCalendarIds`
-      // below, deliberately not persisted because the public list is
-      // server-side authoritative).
+      // the public /calendar projection. Public inclusion is driven
+      // by each calendar's default visibility: Hidden excludes it;
+      // Busy / Title / Full include it.
       const loadedIds = cal.map((c) => c.id);
       const reconciled = reconcileVisibility(
         loadedIds,
@@ -229,12 +229,6 @@ export function CalendarSurface() {
       knownCalendarIdsRef.current = reconciled.knownIds;
       saveVisibilityPrefs(reconciled);
       initializedVisibleCalendarsRef.current = true;
-      setPublishedCalendarIds((prev) =>
-        initializedPublishedCalendarsRef.current
-          ? prev
-          : new Set(cal.map((c) => c.id)),
-      );
-      initializedPublishedCalendarsRef.current = true;
       const evs = await calendarFetchEvents({
         startsAt: range.startsAt,
         endsAt: range.endsAt,
@@ -271,7 +265,10 @@ export function CalendarSurface() {
     let active = true;
     let unlisten: (() => void) | null = null;
     void onCalendarChanged(() => {
-      if (active) void loadAll();
+      if (active) {
+        setCalendarChangeRevision((revision) => revision + 1);
+        void loadAll();
+      }
     }).then((fn) => {
       if (!active) {
         fn();
@@ -306,6 +303,48 @@ export function CalendarSurface() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Bridge native AppKit menubar → calendar actions. The `useNativeMenu`
+  // hook (mounted in App.tsx) re-broadcasts every menu selection as a
+  // `workspace:menu` CustomEvent; we filter to the calendar ids and
+  // dispatch into the same setters the toolbar uses. The listener is
+  // active whenever the calendar surface is mounted.
+  useEffect(() => {
+    function onMenu(event: Event) {
+      const id = (event as CustomEvent<{ id: string }>).detail?.id;
+      if (!id) return;
+      switch (id) {
+        case "menu-new-event":
+          setComposerOpen(true);
+          break;
+        case "menu-cal-today":
+          setAnchor(startOfDay(new Date()));
+          break;
+        case "menu-cal-prev":
+          setAnchor((current) => navigateView(view, current, -1));
+          break;
+        case "menu-cal-next":
+          setAnchor((current) => navigateView(view, current, 1));
+          break;
+        case "menu-cal-day":
+          setView("day");
+          break;
+        case "menu-cal-week":
+          setView("week");
+          break;
+        case "menu-cal-month":
+          setView("month");
+          break;
+        case "menu-cal-agenda":
+          setView("agenda");
+          break;
+        default:
+          break;
+      }
+    }
+    window.addEventListener("workspace:menu", onMenu);
+    return () => window.removeEventListener("workspace:menu", onMenu);
+  }, [view]);
 
   const calendarsBySource = useMemo(() => {
     const map = new Map<string, Calendar[]>();
@@ -410,10 +449,7 @@ export function CalendarSurface() {
       return false;
     });
   }, [events, searchEvents, searchQuery, selectedCalendarIds]);
-  const publishedEvents = useMemo(
-    () => events.filter((e) => publishedCalendarIds.has(e.calendarId)),
-    [events, publishedCalendarIds],
-  );
+  const publishedEvents = events;
 
   const publishSummary = useMemo(
     () =>
@@ -495,15 +531,6 @@ export function CalendarSurface() {
     });
   };
 
-  const togglePublishedCalendar = (id: string) => {
-    setPublishedCalendarIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const requestAccess = async () => {
     setErrorMessage(null);
     try {
@@ -544,12 +571,9 @@ export function CalendarSurface() {
     try {
       const snapshotEvents = await calendarFetchEvents({
         ...publishWindow,
-        calendarIds: [...publishedCalendarIds],
+        calendarIds: [],
       });
-      const currentPublishedEvents = visibleEvents.filter((event) =>
-        publishedCalendarIds.has(event.calendarId),
-      );
-      const mergedEvents = mergeCalendarEvents(snapshotEvents, currentPublishedEvents);
+      const mergedEvents = mergeCalendarEvents(snapshotEvents, events);
       const projectedRange = {
         startsAt:
           Date.parse(range.startsAt) < Date.parse(publishWindow.startsAt)
@@ -622,27 +646,35 @@ export function CalendarSurface() {
     calendarDefaults,
     calendarsById,
     publishMetadata,
-    publishedCalendarIds,
     range.endsAt,
     range.startsAt,
     rulesLoaded,
-    visibleEvents,
+    events,
   ]);
 
   const autoSyncKey = useMemo(
     () =>
       JSON.stringify({
-        publishedCalendarIds: [...publishedCalendarIds].sort(),
+        calendarDefaults: serializeCalendarDefaults(calendarDefaults),
+        calendarChangeRevision,
         metadata: publishMetadata,
         rulesLoaded,
         loadState,
+        smartRulesRevision,
       }),
-    [loadState, publishMetadata, publishedCalendarIds, rulesLoaded],
+    [
+      calendarChangeRevision,
+      calendarDefaults,
+      loadState,
+      publishMetadata,
+      rulesLoaded,
+      smartRulesRevision,
+    ],
   );
 
   useEffect(() => {
     if (!rulesLoaded || loadState !== "ready" || !isAuthorized(auth)) return;
-    if (publishedCalendarIds.size === 0 || calendarsById.size === 0) return;
+    if (calendarsById.size === 0) return;
     if (lastAutoSyncKeyRef.current === autoSyncKey) return;
     const id = window.setTimeout(() => {
       lastAutoSyncKeyRef.current = autoSyncKey;
@@ -654,7 +686,6 @@ export function CalendarSurface() {
     autoSyncKey,
     calendarsById.size,
     loadState,
-    publishedCalendarIds.size,
     rulesLoaded,
     syncCalendarProjection,
   ]);
@@ -676,15 +707,21 @@ export function CalendarSurface() {
       className="panel-shell"
       style={{ flex: 1, minHeight: 0 }}
     >
-      <header className="panel-shell__header">
-        <div className="flex items-center justify-between flex-wrap gap-2 w-full">
-          <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+      <WorkspaceCommandBar
+        className="calendar-commandbar"
+        leading={
+          <div className="calendar-commandbar__date">
+            <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
+            <ViewSwitcher view={view} onChange={setView} />
+          </div>
+        }
+        center={
+          <div className="calendar-commandbar__tools">
             <div className="calendar-search-wrapper">
               <input
                 type="search"
                 className="calendar-search-input"
-                placeholder="Search ±180 days…"
+                placeholder="Search ±180 days..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 aria-label="Search events"
@@ -704,22 +741,6 @@ export function CalendarSurface() {
                 </span>
               ) : null}
             </div>
-            <CalendarPublishSummary summary={publishSummary} />
-            <CalendarSyncHealthPill health={syncHealth} state={publishState} />
-            <SyncPreviewChip diff={syncPreviewDiff} hasBaseline={lastSyncSnapshot !== null} />
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={publishState === "publishing" || !rulesLoaded}
-              onClick={() => void syncCalendarProjection("manual")}
-              title={
-                lastSyncSnapshot
-                  ? `Will publish: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
-                  : "First sync — every published event will be added."
-              }
-            >
-              {publishState === "publishing" ? "Syncing..." : "Sync now"}
-            </button>
             <button
               type="button"
               className="btn btn--ghost"
@@ -738,9 +759,30 @@ export function CalendarSurface() {
             >
               Rules
             </button>
-            <ViewSwitcher view={view} onChange={setView} />
           </div>
-        </div>
+        }
+        trailing={
+          <div className="calendar-commandbar__sync" aria-label="Website calendar sync">
+            <CalendarPublishSummary summary={publishSummary} />
+            <CalendarSyncHealthPill health={syncHealth} state={publishState} />
+            <SyncPreviewChip diff={syncPreviewDiff} hasBaseline={lastSyncSnapshot !== null} />
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={publishState === "publishing" || !rulesLoaded}
+              onClick={() => void syncCalendarProjection("manual")}
+              title={
+                lastSyncSnapshot
+                  ? `Will publish: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
+                  : "First sync - every published event will be added."
+              }
+            >
+              {publishState === "publishing" ? "Syncing..." : "Sync now"}
+            </button>
+          </div>
+        }
+      />
+      <div className="calendar-commandbar__supplement">
         {publishMessage ? (
           <p
             className={
@@ -770,58 +812,29 @@ export function CalendarSurface() {
               // showing the new event immediately keeps the create
               // flow feeling responsive.
               setEvents((prev) => [...prev, saved]);
+              setCalendarChangeRevision((revision) => revision + 1);
               setSelectedEvent(saved);
             }}
           />
         ) : null}
-      </header>
+      </div>
       <div
-        className="panel-shell__body flex flex-1 min-h-0 overflow-hidden"
+        className="panel-shell__body calendar-surface-body"
       >
-        {/* Wrap the whole sidebar+timeline in the same `surface-card`
-         * site-admin uses, so the calendar reads as a single bordered
-         * panel sitting above the window's vibrancy. We zero the
-         * card's padding (the time grid wants to hit the edges) and
-         * push internal padding into the sidebar instead. */}
-        <section
-          className="surface-card"
-          style={{
-            flex: 1,
-            minHeight: 0,
-            padding: 0,
-            gap: 0,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            className="grid flex-1 min-h-0"
-            style={{
-              gridTemplateColumns: selectedEvent
-                ? "220px minmax(0, 1fr) minmax(280px, 340px)"
-                : "220px minmax(0, 1fr)",
-            }}
-          >
+        <WorkspaceSplitView
+          className="calendar-workspace-split"
+          sidebar={
             <SourceSidebar
               sources={sources}
               calendarsBySource={calendarsBySource}
               visible={selectedCalendarIds}
-              published={publishedCalendarIds}
               calendarDefaults={calendarDefaults}
               onToggleVisible={toggleCalendar}
-              onTogglePublished={togglePublishedCalendar}
               onSetCalendarDefault={setCalendarDefault}
             />
-            <ViewPane
-              view={view}
-              anchor={anchor}
-              events={visibleEvents}
-              calendarsById={calendarsById}
-              loadState={loadState}
-              errorMessage={errorMessage}
-              getDisclosure={getDisclosure}
-              onEventSelect={setSelectedEvent}
-            />
-            {selectedEvent ? (
+          }
+          inspector={
+            selectedEvent ? (
               <CalendarEventInspector
                 event={selectedEvent}
                 calendar={calendarsById.get(selectedEvent.calendarId)}
@@ -846,8 +859,18 @@ export function CalendarSurface() {
                 onPublish={() => void syncCalendarProjection("manual")}
               />
             ) : null}
-          </div>
-        </section>
+        >
+          <ViewPane
+            view={view}
+            anchor={anchor}
+            events={visibleEvents}
+            calendarsById={calendarsById}
+            loadState={loadState}
+            errorMessage={errorMessage}
+            getDisclosure={getDisclosure}
+            onEventSelect={setSelectedEvent}
+          />
+        </WorkspaceSplitView>
       </div>
     </WorkspaceSurfaceFrame>
   );
@@ -865,7 +888,7 @@ function CalendarSyncHealthPanel({
   const status =
     state === "publishing" ? "syncing" : health.error ? "error" : "ready";
   return (
-    <div className="mt-3 grid gap-2 rounded border border-border-subtle bg-bg-surface-alt p-3 text-[12px] text-text-muted sm:grid-cols-4">
+    <div className="calendar-sync-health-panel">
       <span>
         <strong className="text-text-primary">Status</strong>
         <br />
@@ -1022,6 +1045,14 @@ function mergeCalendarEvents(
   return out;
 }
 
+function serializeCalendarDefaults(
+  defaults: ReadonlyMap<string, CalendarPublicVisibility>,
+): Array<[string, CalendarPublicVisibility]> {
+  return [...defaults.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+}
+
 function summarizePublishVisibility(
   events: CalendarEvent[],
   store: CalendarPublishMetadataStore,
@@ -1147,9 +1178,7 @@ function CalendarEventInspector({
       className="calendar-inspector"
       label="Calendar event publishing"
       style={{
-        borderTop: 0,
-        borderRight: 0,
-        borderBottom: 0,
+        border: 0,
         borderRadius: 0,
         padding: "14px",
       }}

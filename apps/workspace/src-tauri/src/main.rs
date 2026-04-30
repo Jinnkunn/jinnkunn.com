@@ -567,11 +567,235 @@ fn toggle_main_window(app: &tauri::AppHandle) {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ContextMenuItem {
+    /// Stable id — emitted on `menu://action` when the user picks this
+    /// item. Must be globally unique within a single popup. Convention
+    /// is `ctx:<surface>:<action>` so the JS-side router can pattern-
+    /// match without colliding with the menubar `menu-*` ids.
+    id: String,
+    label: String,
+    /// Disabled items still render but can't be activated. Useful for
+    /// "Open in browser" when the row has no public URL yet.
+    enabled: Option<bool>,
+}
+
+/// Show a native AppKit popup at the cursor for right-click /
+/// long-press surfaces. Items are passed in from the webview; selection
+/// flows back through the same `menu://action` channel as the menubar
+/// (see `on_menu_event` above), so the JS side has one listener for
+/// both pathways. The command is fire-and-forget — the popup is
+/// modal-ish from the user's perspective but `popup` returns
+/// immediately, and dismissal without a selection is a no-op.
+#[tauri::command]
+async fn show_context_menu(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    items: Vec<ContextMenuItem>,
+) -> Result<(), String> {
+    use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
+
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let mut entries: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = Vec::with_capacity(items.len());
+    let mut sep_holder: Vec<PredefinedMenuItem<tauri::Wry>> = Vec::new();
+    let mut item_holder: Vec<MenuItem<tauri::Wry>> = Vec::new();
+
+    for item in &items {
+        if item.id == "-" || item.label == "-" {
+            let sep = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+            sep_holder.push(sep);
+        } else {
+            let m = MenuItem::with_id(
+                &app,
+                &item.id,
+                &item.label,
+                item.enabled.unwrap_or(true),
+                None::<&str>,
+            )
+            .map_err(|e| e.to_string())?;
+            item_holder.push(m);
+        }
+    }
+
+    // Re-walk in original order, picking from each holder. Holders keep
+    // the `MenuItem` values alive for the lifetime of `entries` —
+    // necessary because `IsMenuItem` is a borrow.
+    let mut sep_idx = 0;
+    let mut item_idx = 0;
+    for item in &items {
+        if item.id == "-" || item.label == "-" {
+            entries.push(Box::new(sep_holder[sep_idx].clone()));
+            sep_idx += 1;
+        } else {
+            entries.push(Box::new(item_holder[item_idx].clone()));
+            item_idx += 1;
+        }
+    }
+
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        entries.iter().map(|b| b.as_ref()).collect();
+    let menu = Menu::with_items(&app, &refs).map_err(|e| e.to_string())?;
+    menu.popup(window).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Build the menubar tray icon + its right-click menu.
 ///
 /// The tray is registered once at startup. We keep the bundled app
 /// icon as the tray glyph and let macOS template-strip it (so the
 /// menubar shows a tinted silhouette instead of the colorful brand
+/// Native macOS menubar — File / Edit / View / Calendar / Window /
+/// Help. Replaces Tauri's default empty menubar so the app gets the
+/// AppKit-standard menus the operator expects (Cmd+Q, Cmd+W,
+/// services, hide-others) plus our own shortcuts. Each `MenuItem` ID
+/// is routed in `on_menu_event` either to a Rust handler (window
+/// management) or to a JS-side custom event so the frontend can
+/// react (palette commands, theme cycle, view changes).
+///
+/// On non-macOS targets the menubar is per-window rather than global;
+/// the same ID layout still works there once we test on Linux/Win.
+#[cfg(target_os = "macos")]
+fn build_menubar(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+    use tauri::menu::{
+        AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, Submenu,
+    };
+
+    // Helper: build a menu item with an accelerator string. Tauri 2
+    // uses the same `CmdOrCtrl+Shift+N` syntax as Electron, which on
+    // macOS resolves to ⌘ ⇧ N automatically.
+    fn item(
+        app: &tauri::AppHandle,
+        id: &str,
+        label: &str,
+        accelerator: Option<&str>,
+    ) -> Result<MenuItem<tauri::Wry>, Box<dyn std::error::Error>> {
+        Ok(MenuItem::with_id(app, id, label, true, accelerator)?)
+    }
+
+    let about_meta = AboutMetadataBuilder::new()
+        .name(Some("Jinnkunn Workspace"))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .website(Some("https://jinkunchen.com"))
+        .build();
+
+    let app_menu = Submenu::with_items(
+        app,
+        "Jinnkunn Workspace",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, Some("About Jinnkunn Workspace"), Some(about_meta))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item(app, "menu-check-updates", "Check for Updates…", None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+
+    let file_menu = Submenu::with_items(
+        app,
+        "File",
+        true,
+        &[
+            &item(app, "menu-new-event", "New Event", Some("CmdOrCtrl+N"))?,
+            &item(app, "menu-new-post", "New Post", Some("CmdOrCtrl+Shift+P"))?,
+            &item(app, "menu-new-page", "New Page", Some("CmdOrCtrl+Shift+G"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item(app, "menu-open-palette", "Command Palette…", Some("CmdOrCtrl+K"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &item(app, "menu-find", "Find…", Some("CmdOrCtrl+F"))?,
+        ],
+    )?;
+
+    let view_menu = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &item(app, "menu-cycle-theme", "Cycle Theme", Some("CmdOrCtrl+Shift+T"))?,
+            &item(app, "menu-reload", "Reload", Some("CmdOrCtrl+R"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::fullscreen(app, None)?,
+        ],
+    )?;
+
+    let calendar_menu = Submenu::with_items(
+        app,
+        "Calendar",
+        true,
+        &[
+            &item(app, "menu-cal-today", "Today", Some("CmdOrCtrl+T"))?,
+            &item(app, "menu-cal-prev", "Previous", Some("CmdOrCtrl+["))?,
+            &item(app, "menu-cal-next", "Next", Some("CmdOrCtrl+]"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item(app, "menu-cal-day", "Day View", Some("CmdOrCtrl+1"))?,
+            &item(app, "menu-cal-week", "Week View", Some("CmdOrCtrl+2"))?,
+            &item(app, "menu-cal-month", "Month View", Some("CmdOrCtrl+3"))?,
+            &item(app, "menu-cal-agenda", "Agenda View", Some("CmdOrCtrl+4"))?,
+        ],
+    )?;
+
+    let window_menu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+
+    let help_menu = Submenu::with_items(
+        app,
+        "Help",
+        true,
+        &[
+            &item(app, "menu-help-runbook", "Open Production Runbook", None)?,
+            &item(app, "menu-help-actions", "Open GitHub Actions", None)?,
+        ],
+    )?;
+
+    Ok(Menu::with_items(
+        app,
+        &[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &calendar_menu,
+            &window_menu,
+            &help_menu,
+        ],
+    )?)
+}
+
 /// mark). On non-macOS targets `icon_as_template` is a no-op.
 fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::{
@@ -650,6 +874,11 @@ fn main() {
         // "Production deploy started / complete / failed" toasts so the
         // operator can step away from the app during a 5-10 min release.
         .plugin(tauri_plugin_notification::init())
+        // Native AppKit alert / confirm sheets, used by the auto-updater
+        // prompt (see lib/updater.ts) so the "update available" dialog
+        // is a real macOS window-level alert instead of the webview's
+        // blandly cross-platform `window.confirm()`.
+        .plugin(tauri_plugin_dialog::init())
         // System-wide hotkey registration. The setup() block below
         // binds Cmd+Shift+J to a window-forward action so the
         // workspace can be summoned from anywhere on macOS, mirroring
@@ -665,6 +894,7 @@ fn main() {
             site_admin_browser_login,
             debug_set_traffic_lights,
             open_external_url,
+            show_context_menu,
             calendar::commands::calendar_authorization_status,
             calendar::commands::calendar_request_access,
             calendar::commands::calendar_list_sources,
@@ -688,6 +918,35 @@ fn main() {
             outbox::outbox_remove,
             outbox::outbox_drain,
         ])
+        .on_menu_event(|app, event| {
+            // Route every menubar selection. A handful of items are
+            // handled in Rust (reload, external URLs); the rest are
+            // forwarded to the frontend as a `menu://action` event so
+            // React can dispatch into the same handlers the palette
+            // uses. Keeping the routing list short means new commands
+            // only need a `MenuItem::with_id` line above + a JS
+            // listener — no Rust round-trip.
+            use tauri::{Emitter, Manager};
+            let id = event.id.as_ref();
+            match id {
+                "menu-reload" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.eval("window.location.reload();");
+                    }
+                }
+                "menu-help-runbook" => {
+                    let _ = open::that("https://github.com/jinnkunn/jinnkunn.com/blob/main/docs/production-runbook.md");
+                }
+                "menu-help-actions" => {
+                    let _ = open::that("https://github.com/jinnkunn/jinnkunn.com/actions");
+                }
+                _ => {
+                    // Forward to JS. Payload is the menu id verbatim so
+                    // the frontend can pattern-match without parsing.
+                    let _ = app.emit("menu://action", id);
+                }
+            }
+        })
         .setup(|app| {
             // Tray + menubar background-mode lives at the cross-platform
             // level so a future Linux/Windows build picks it up too.
@@ -732,6 +991,21 @@ fn main() {
                 use tauri::{Emitter, Manager};
                 use tauri_plugin_decorum::WebviewWindowExt;
                 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+
+                // Native AppKit menubar. Failure here is non-fatal — the
+                // window still works without our custom menu, falling
+                // back to Tauri's empty default. Logged so we notice in
+                // dev if the menu builder breaks.
+                match build_menubar(app.app_handle()) {
+                    Ok(menu) => {
+                        if let Err(err) = app.set_menu(menu) {
+                            eprintln!("[setup] failed to attach menubar: {err}");
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("[setup] failed to build menubar: {err}");
+                    }
+                }
 
                 if let Some(window) = app.get_webview_window("main") {
                     // Order ported from personal-os: overlay titlebar first

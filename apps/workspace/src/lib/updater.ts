@@ -17,6 +17,7 @@
 // download → ed25519 verify against the embedded pubkey → swap. We
 // just orchestrate the user-facing flow.
 
+import { ask } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 
 import { notify } from "./notify";
@@ -74,9 +75,19 @@ export async function runUpdateCheck(
 
   // The update is available. Confirm before downloading on the auto-
   // check path; explicit operator triggers go straight to download.
+  // The dialog plugin renders a native AppKit alert (NSAlert) — same
+  // surface AppleScript / system update prompts use — instead of the
+  // webview's `window.confirm()`, which is JS-only and doesn't pick
+  // up the system accent color or keyboard navigation conventions.
   if (promptBeforeDownload) {
-    const accepted = window.confirm(
+    const accepted = await ask(
       `Workspace v${update.version} is available (you're on ${update.currentVersion}). Download and install now?`,
+      {
+        title: "Update available",
+        kind: "info",
+        okLabel: "Install",
+        cancelLabel: "Later",
+      },
     );
     if (!accepted) {
       return {

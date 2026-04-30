@@ -26,6 +26,7 @@ import {
   WORKSPACE_EVENT_NAME,
   type WorkspaceEventInput,
 } from "./shell/workspaceEvents";
+import { useNativeMenu } from "./shell/useNativeMenu";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { runUpdateCheckSafely } from "./lib/updater";
 import { SURFACES, findSurface } from "./surfaces/registry";
@@ -262,6 +263,16 @@ export function App() {
     loadWorkspaceEvents(),
   );
   const [workspacePaletteOpen, setWorkspacePaletteOpen] = useState(false);
+
+  useNativeMenu({
+    onOpenPalette: () => setWorkspacePaletteOpen(true),
+    onCheckUpdates: () => {
+      void runUpdateCheckSafely({
+        promptBeforeDownload: false,
+        notifyOnUpToDate: true,
+      });
+    },
+  });
 
   const recordWorkspaceEvent = useCallback((input: WorkspaceEventInput) => {
     setWorkspaceEvents((current) => appendWorkspaceEvent(current, input));
