@@ -4,9 +4,7 @@ import { notFound } from "next/navigation";
 
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { buildPageMetadata } from "@/lib/seo/metadata";
-import {
-  getLatestPublicCalendarDataWithArchive,
-} from "@/lib/server/public-calendar-data";
+import { getPublicCalendarEventById } from "@/lib/server/public-calendar-data";
 import { getSiteConfig } from "@/lib/site-config";
 import type { PublicCalendarEvent } from "@/lib/shared/public-calendar";
 
@@ -41,8 +39,11 @@ export const dynamic = "force-dynamic";
 type Params = { id: string };
 
 async function findEvent(id: string): Promise<PublicCalendarEvent | null> {
-  const data = await getLatestPublicCalendarDataWithArchive();
-  return data.events.find((event) => event.id === id) ?? null;
+  // Single indexed D1 read instead of loading the full archive — the
+  // archive scan still serves as a graceful fallback when D1 isn't
+  // bound. Both paths preserve the time-decay-archive escape hatch
+  // so a deep link to a year-old event still resolves.
+  return getPublicCalendarEventById(id);
 }
 
 function formatRange(event: PublicCalendarEvent): string {

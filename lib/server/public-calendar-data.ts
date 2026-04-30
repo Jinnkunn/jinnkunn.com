@@ -7,9 +7,13 @@ import {
   filterStalePublicCalendarEvents,
   normalizePublicCalendarData,
   type PublicCalendarData,
+  type PublicCalendarEvent,
 } from "@/lib/shared/public-calendar";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
-import { readPublicCalendarFromDb } from "@/lib/server/public-calendar-db";
+import {
+  readPublicCalendarEventFromDb,
+  readPublicCalendarFromDb,
+} from "@/lib/server/public-calendar-db";
 
 const CALENDAR_PUBLIC_PATH = path.join(process.cwd(), "content", "calendar-public.json");
 const CALENDAR_PUBLIC_REL_PATH = "content/calendar-public.json";
@@ -48,6 +52,23 @@ export async function getLatestPublicCalendarData(): Promise<PublicCalendarData>
   } catch {
     return getPublicCalendarData();
   }
+}
+
+/** Per-id detail lookup. The /calendar/[id] route uses this instead
+ * of scanning the full agenda payload — D1 has the events keyed by
+ * id, so a single indexed read returns the row directly. Falls
+ * through to a full-archive scan when D1 isn't bound (preview
+ * builds, dev) so the route never 500s on missing infrastructure. */
+export async function getPublicCalendarEventById(
+  id: string,
+): Promise<PublicCalendarEvent | null> {
+  const fromDb = await readPublicCalendarEventFromDb(id);
+  if (fromDb) return fromDb;
+  // D1 missing or no row — fall back to the file-backed archive scan.
+  // Costs O(N) but only fires on dev / preview / fresh-install paths,
+  // where N is small enough that the difference is invisible.
+  const data = await getLatestPublicCalendarDataWithArchive();
+  return data.events.find((event) => event.id === id) ?? null;
 }
 
 /** Unfiltered variant for the per-event detail page. Lets a

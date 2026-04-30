@@ -234,6 +234,7 @@ export function PublicCalendarView({
   onEventToggle,
   selectedTags,
   onSelectedTagsChange,
+  tagSummary: tagSummaryProp,
 }: {
   data: PublicCalendarData;
   view?: PublicCalendarViewMode;
@@ -252,6 +253,10 @@ export function PublicCalendarView({
    * (the view doesn't own filter state — the route does, so the URL
    * `?tag=foo` round-trips). */
   onSelectedTagsChange?: (next: string[]) => void;
+  /** Optional pre-computed tag summary. The client wrapper hoists
+   * this so it's only rebuilt when `data.events` changes, not on
+   * every internal view re-render (anchor change, view switch, etc.). */
+  tagSummary?: ReadonlyArray<{ tag: string; count: number }>;
 }) {
   const anchor = Number.isFinite(Date.parse(anchorIso ?? ""))
     ? new Date(anchorIso ?? "")
@@ -273,7 +278,13 @@ export function PublicCalendarView({
         : data.events.filter((event) => eventMatchesAnyTag(event, selectedTagSet)),
     [data.events, selectedTagSet],
   );
-  const tagSummary = useMemo(() => summarizeTags(data.events), [data.events]);
+  // Prefer the parent-supplied summary (the client wrapper computes
+  // it once per data change). Fall back to recomputing locally for
+  // callers that don't pass it — keeps the component standalone-safe.
+  const tagSummary = useMemo(
+    () => tagSummaryProp ?? summarizeTags(data.events),
+    [tagSummaryProp, data.events],
+  );
 
   // Decorate each event once: parse timestamps, compute day keys + formatted
   // time. Without this, MonthView would Date-parse every event 42 times per
