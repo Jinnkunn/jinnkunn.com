@@ -51,6 +51,11 @@ import type {
   CalendarSource,
 } from "./types";
 import { ViewSwitcher } from "./ViewSwitcher";
+import {
+  loadVisibilityPrefs,
+  reconcileVisibility,
+  saveVisibilityPrefs,
+} from "./visibilityPrefs";
 import { WeekView } from "./WeekView";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
@@ -83,8 +88,18 @@ export function CalendarSurface() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sources, setSources] = useState<CalendarSource[]>([]);
   const [calendars, setCalendars] = useState<Calendar[]>([]);
+  // Hydrate the visibility set from localStorage on first render so a
+  // restart lands on the operator's last selection instead of the
+  // empty-Set placeholder. The reconcile-on-load step in `loadAll`
+  // adds any net-new calendar ids (created in Apple Calendar.app
+  // since last launch) as visible-by-default — without that, brand-
+  // new calendars would be silently invisible.
+  const [persistedVisibility] = useState(() => loadVisibilityPrefs());
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<Set<string>>(
-    new Set(),
+    () => new Set(persistedVisibility?.visible ?? []),
+  );
+  const knownCalendarIdsRef = useRef<Set<string>>(
+    new Set(persistedVisibility?.knownIds ?? []),
   );
   const [publishedCalendarIds, setPublishedCalendarIds] = useState<Set<string>>(
     new Set(),
@@ -152,15 +167,33 @@ export function CalendarSurface() {
       ]);
       setSources(src);
       setCalendars(cal);
-      // Select-all the first time we see calendars; preserve deliberate
-      // user choices afterwards. App visibility and website publishing are
-      // separate: hiding a calendar in Workspace must not remove it from
-      // /calendar.
-      setSelectedCalendarIds((prev) =>
+      // Reconcile loaded calendars against persisted visibility:
+      //   - First launch (no persisted entry) → all loaded calendars
+      //     default to visible, mirroring the historical select-all
+      //     behaviour the operator expects.
+      //   - Subsequent launches → keep the operator's saved choices,
+      //     plus any net-new calendar id (one we hadn't seen on a
+      //     previous load) defaults to visible. That way adding a
+      //     fresh calendar in Apple Calendar.app shows up immediately
+      //     without the operator hunting for its toggle.
+      // App visibility and public-site publishing stay independent —
+      // hiding a calendar in the workspace must NOT remove it from
+      // the public /calendar projection (that's `publishedCalendarIds`
+      // below, deliberately not persisted because the public list is
+      // server-side authoritative).
+      const loadedIds = cal.map((c) => c.id);
+      const reconciled = reconcileVisibility(
+        loadedIds,
         initializedVisibleCalendarsRef.current
-          ? prev
-          : new Set(cal.map((c) => c.id)),
+          ? {
+              visible: selectedCalendarIds,
+              knownIds: knownCalendarIdsRef.current,
+            }
+          : persistedVisibility,
       );
+      setSelectedCalendarIds(reconciled.visible);
+      knownCalendarIdsRef.current = reconciled.knownIds;
+      saveVisibilityPrefs(reconciled);
       initializedVisibleCalendarsRef.current = true;
       setPublishedCalendarIds((prev) =>
         initializedPublishedCalendarsRef.current
@@ -251,6 +284,13 @@ export function CalendarSurface() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      // Persist immediately so a window-close mid-session lands the
+      // user's choice. Cheap (one localStorage.setItem with a small
+      // JSON), no need to debounce.
+      saveVisibilityPrefs({
+        visible: next,
+        knownIds: knownCalendarIdsRef.current,
+      });
       return next;
     });
   };
