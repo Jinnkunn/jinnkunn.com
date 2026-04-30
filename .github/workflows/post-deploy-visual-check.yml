@@ -1,0 +1,90 @@
+name: Post-deploy visual regression
+
+# Cleanup window for the visual regressions the dispatch path can no
+# longer catch on its own (`check:classic-style` and
+# `check:production-style` were dropped from staging dispatch in
+# 2026-04-29 because they spawn `npm run start` and on Linux CI the
+# cleanup phase strands the next-server grandchild → 20-min job timeout
+# every run). This workflow uses `check:staging-visual` instead, which
+# uses Playwright to fetch staging.jinkunchen.com directly and compare
+# it to production. No `npm run start`, no SIGTERM grandchild — just
+# two real URLs and a viewport diff.
+#
+# Trigger: each successful run of release-from-dispatch.yml. After a
+# staging deploy this catches "did the new bundle render the same as
+# production"; after a production deploy it catches "did the promote
+# actually land what staging was showing". Either way the operator
+# learns within ~5 minutes of clicking promote.
+
+on:
+  workflow_run:
+    workflows: ["Release on dispatch (db mode)"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-visual-check
+  cancel-in-progress: true
+
+jobs:
+  visual-check:
+    # workflow_run fires for ALL completion states; we only care about
+    # successful deploys. Skipping here (rather than continuing and
+    # exiting silently) keeps the Actions tab clean.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      SITE_ADMIN_GITHUB_USERS: ${{ secrets.SITE_ADMIN_GITHUB_USERS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        # ubuntu-latest has Chrome pre-installed, but the runner image
+        # has been known to drop major versions ahead of playwright-core
+        # — pinning the bundled chromium avoids "no executable found"
+        # surprises that wouldn't reproduce locally. ~30 s on a warm
+        # runner; ~90 s cold.
+        run: npx playwright install --with-deps chromium
+
+      - name: Compare staging vs production (Notion-style contract)
+        # `check:staging-visual` calls scripts/production-style-regression.mjs
+        # with --candidate-origin=staging + --candidate-auth, which:
+        #   - skips the local `next build`
+        #   - skips spawning `npm run start` (no SIGTERM hang)
+        #   - opens https://staging.jinkunchen.com with a synthetic
+        #     gate cookie
+        #   - compares it pixel-region-wise against
+        #     https://jinkunchen.com on desktop + mobile viewports
+        # If staging's CSS / layout drifts from prod, this fails loud.
+        run: npm run check:staging-visual
+
+      - name: Upload Playwright artifacts on failure
+        # Failure artifacts (screenshots, diff images) live under
+        # output/playwright/production-style-regression/. Persist them
+        # so the operator doesn't need to re-run locally to see what
+        # broke — the GitHub UI links straight to the artifact bundle.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-artifacts
+          path: |
+            output/playwright/
+            output/snapshots/
+          if-no-files-found: ignore
+          retention-days: 7
