@@ -282,7 +282,7 @@
   margin: 2px 0 0;
   overflow: hidden;
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   font-weight: 650;
   letter-spacing: 0;
   line-height: 1.25;
@@ -322,7 +322,7 @@
   margin: 0;
   padding: 8px 2px;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.45;
 }
 
@@ -402,7 +402,7 @@
   min-height: 25px;
   padding: 2px 6px 2px 3px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   flex: 1;
   min-width: 0;
 }
@@ -532,7 +532,7 @@
   cursor: pointer;
   border-radius: 6px;
   margin-inline-start: 1px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 600;
   opacity: 0;
   transition: opacity 100ms ease, background-color 80ms ease, color 80ms ease;
@@ -587,7 +587,7 @@
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 60;
+  z-index: var(--z-drawer);
   display: flex;
   min-width: 152px;
   flex-direction: column;
@@ -612,7 +612,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.2;
   text-align: left;
   cursor: pointer;
@@ -732,7 +732,7 @@
   flex-shrink: 0;
   width: 18px;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   line-height: 1.35;
   text-align: center;
 }

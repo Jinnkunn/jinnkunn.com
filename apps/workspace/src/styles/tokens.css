@@ -55,6 +55,27 @@
   --hairline: rgba(55, 53, 47, 0.08);
   --hairline-strong: rgba(55, 53, 47, 0.14);
 
+  /* Ink ladder — `--color-text-primary` faded by alpha. Mirrors the
+   * `--fill-*` ladder but for "drawing" rather than "filling": text
+   * accents, border-like overlays, icon strokes, link decorations.
+   *
+   * Critical: use `color-mix` so dark mode's lifted `--color-text-primary`
+   * (#f2ebdf) flows through automatically. Hardcoding `rgba(55, 53, 47, X)`
+   * (which is what 180+ rules across the workspace did before this token
+   * landed) silently breaks dark mode by leaving "dark text" baked in.
+   *
+   * Stops are calibrated to the existing inline values harvested from
+   * `editor-canvas.css` / `workspace-panels.css` so a sed migration is
+   * pixel-equivalent. Don't add intermediate stops without checking the
+   * harvest first or two surfaces will end up using neighboring tokens
+   * that look the same on light but diverge on dark. */
+  --ink-strong: var(--color-text-primary);
+  --ink-emphasis: color-mix(in srgb, var(--color-text-primary) 78%, transparent);
+  --ink-mid: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
+  --ink-soft: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+  --ink-faint: color-mix(in srgb, var(--color-text-primary) 14%, transparent);
+  --ink-hairline: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+
   --color-text-primary: #37352f;
   --color-text-secondary: rgba(55, 53, 47, 0.82);
   --color-text-muted: rgba(55, 53, 47, 0.62);
@@ -201,9 +222,22 @@
 
   --radius-card: 16px;
 
-  /* Titlebar stays above the body; dialogs/popovers sit above both. */
-  --z-titlebar: 40;
+  /* Stacking ladder. Pre-existing tokens (`--z-titlebar`, `--z-sidebar-card`)
+   * keep their numeric values so existing call sites don't shift. The
+   * additional layers below replace the ad-hoc `z-index: 1/2/3/5/30/50/70/90/100`
+   * literals scattered across the workspace — name the *intent* of the
+   * layer so the next stacking-order question doesn't require a grep. */
+  --z-base: 1;
+  --z-raised: 2;
+  --z-elevated: 5;
   --z-sidebar-card: 20;
+  --z-overlay: 30;
+  --z-titlebar: 40;
+  --z-popover: 50;
+  --z-drawer: 60;
+  --z-modal: 70;
+  --z-modal-overlay: 90;
+  --z-toast: 100;
 }
 
 /* Dark mode is driven by `data-theme="dark"` on <html>, set by the

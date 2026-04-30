@@ -28,7 +28,7 @@
 .nav-editor__status {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* ---------- Group card ---------- */
@@ -375,7 +375,7 @@
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   text-transform: none;
   letter-spacing: normal;
   font-weight: 400;
@@ -413,7 +413,7 @@
   padding: 5px 8px;
   border-radius: 6px;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   cursor: pointer;
   transition: background 120ms ease;
 }
@@ -464,13 +464,13 @@
 .nav-editor__preview h2 {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 650;
 }
 
 .nav-editor__preview span {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .nav-editor__preview nav {
@@ -481,7 +481,7 @@
 
 .nav-editor__preview a {
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   text-decoration: none;
 }
 
@@ -507,7 +507,7 @@
 .home-builder__notion-hint {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-muted);
   background: var(--color-bg-surface-alt);
   border: 1px dashed var(--color-border-subtle);
@@ -622,7 +622,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-secondary);
 }
 
@@ -748,14 +748,14 @@
 .mdx-document-link-list-block__item small {
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mdx-document-link-list-block__empty {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-style: italic;
 }
 
@@ -774,7 +774,7 @@
 
 .page-routing-properties__hint {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-muted);
   line-height: 1.45;
 }
@@ -880,7 +880,7 @@
 
 .mdx-document-data-block__heading strong {
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .mdx-document-data-block__heading span {
@@ -892,7 +892,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-secondary);
 }
 
@@ -908,7 +908,7 @@
 
 .mdx-document-data-block__meta {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* Embed block */
@@ -923,7 +923,7 @@
   flex-direction: column;
   gap: 2px;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .mdx-document-embed-block__summary span {
@@ -954,7 +954,7 @@
 
 .mdx-document-embed-block__hint {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-style: italic;
 }
 
@@ -985,7 +985,7 @@
 }
 
 .mdx-document-file-block__meta {
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: var(--color-text-muted);
 }
 
@@ -1015,7 +1015,7 @@
 
 .mdx-document-page-link-block__current span {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
 }
 
 /* To-do block — multi-line checklist. */
@@ -1112,7 +1112,7 @@
 }
 
 .mdx-document-heading-block__input--h2 {
-  font-size: 22px;
+  font-size: var(--font-size-display);
 }
 
 .mdx-document-heading-block__input--h3 {
@@ -1154,7 +1154,7 @@
   background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 650;
 }
 
@@ -1287,7 +1287,7 @@
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   line-height: 1;
 }
@@ -1307,14 +1307,14 @@
 
 .block-editor-command__body > span {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1.3;
 }
 
 /* Floating popover used by block action menus and inline format
  * toolbars. Positioned via JS (fixed + computed left/top), styled here. */
 .block-popover {
-  z-index: 40;
+  z-index: var(--z-titlebar);
   min-width: 180px;
   padding: var(--space-xs);
   border: 1px solid var(--mdx-popover-border);
@@ -1370,7 +1370,7 @@
 
 .error-boundary__message {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   color: var(--color-text-secondary);
   padding: 8px 10px;
   background: var(--color-bg-surface-alt);
@@ -1405,7 +1405,7 @@
   background: var(--color-bg-surface-alt);
   overflow: auto;
   max-height: 240px;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1.5;
   color: var(--color-text-secondary);
 }
@@ -1471,7 +1471,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1;
   padding: 4px 8px;
   min-width: 28px;
@@ -1496,13 +1496,13 @@
 }
 
 .mdx-toolbar__btn code {
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-family: inherit;
 }
 
 .mdx-toolbar__hint {
   margin-inline-start: auto;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: var(--color-text-muted);
 }
 

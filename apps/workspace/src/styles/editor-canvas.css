@@ -32,7 +32,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 650;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -186,7 +186,7 @@
 
 .home-builder__field em {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-style: normal;
   line-height: 1.35;
 }
@@ -255,7 +255,7 @@
   gap: 8px;
   flex-wrap: wrap;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .component-editor-tools code {
@@ -312,7 +312,7 @@
 
 .component-editor-properties__stat strong {
   color: var(--color-text-primary);
-  font-size: 22px;
+  font-size: var(--font-size-display);
   line-height: 1;
 }
 
@@ -321,7 +321,7 @@
 .component-editor-properties__warn {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.4;
 }
 
@@ -414,7 +414,7 @@
 .component-embed-preview > summary::before {
   content: "▸";
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   transition: transform 120ms ease;
 }
 
@@ -434,7 +434,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
 }
 
@@ -448,7 +448,7 @@
 .component-collection-table__empty {
   margin: 4px 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .component-collection-table__row {
@@ -546,7 +546,7 @@
   width: fit-content;
   cursor: pointer;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 600;
 }
 
@@ -564,7 +564,7 @@
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .component-collection-table__actions button:hover:not(:disabled) {
@@ -594,7 +594,7 @@
   padding: 12px;
   border-top: 1px solid var(--color-border-subtle);
   color: var(--color-danger);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.4;
 }
 
@@ -687,14 +687,14 @@
   gap: 12px;
   padding: 8px 10px;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 650;
   cursor: pointer;
 }
 
 .mdx-document-diagnostics summary span {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 500;
 }
 
@@ -870,7 +870,7 @@
 .mdx-block-inspector__hint {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.45;
 }
 
@@ -897,7 +897,7 @@
   align-items: center;
   gap: 8px;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .mdx-block-inspector__check input {
@@ -989,7 +989,7 @@
   background: transparent;
   color: var(--mdx-handle-color);
   opacity: 0.74;
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
@@ -1009,7 +1009,7 @@
 
 .mdx-document-block__handle--menu {
   cursor: grab;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   letter-spacing: -1px;
 }
 
@@ -1041,7 +1041,7 @@
 
 .block-popover__menu-head strong {
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 700;
 }
 
@@ -1056,7 +1056,7 @@
   padding: 6px 8px;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   text-align: left;
   cursor: pointer;
   transition: background-color 80ms ease;
@@ -1080,13 +1080,13 @@
 
 .block-popover__item kbd {
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: var(--color-text-muted);
 }
 
 .block-popover__item--back {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 650;
   margin-bottom: 2px;
 }
@@ -1197,13 +1197,13 @@
 
 .mention-picker__item span {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
 }
 
 .mention-picker__empty {
   padding: 8px;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-style: italic;
 }
 
@@ -1235,7 +1235,7 @@
   padding: 0 7px;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   cursor: pointer;
   transition: background-color 80ms ease;
@@ -1251,7 +1251,7 @@
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
 }
 
 .block-popover__inline-btn[aria-pressed="true"] {
@@ -1332,7 +1332,7 @@
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .mdx-document-text-block--raw {
@@ -1340,7 +1340,7 @@
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
     monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .mdx-document-raw-block__head {
@@ -1350,7 +1350,7 @@
   gap: 8px;
   padding: 6px 8px 0;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
 }
 
 .mdx-document-raw-block__head strong {
@@ -1397,7 +1397,7 @@
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
   text-decoration-skip-ink: auto;
-  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-color: var(--ink-mid);
   background-image:
     linear-gradient(to top, rgba(246, 228, 183, 0.88), rgba(246, 228, 183, 0.88)),
     linear-gradient(
@@ -1429,7 +1429,7 @@
   background-size:
     calc(100% - var(--link-icon-space)) 1.35em,
     calc(100% - var(--link-icon-space)) 0.42em;
-  text-decoration-color: rgba(55, 53, 47, 0.78);
+  text-decoration-color: var(--ink-emphasis);
 }
 
 .mdx-document-text-block.ProseMirror a {
@@ -1468,13 +1468,13 @@
   text-decoration-line: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
-  text-decoration-color: rgba(55, 53, 47, 0.95);
+  text-decoration-color: var(--ink-strong);
   text-decoration-skip-ink: none;
 }
 
 .mdx-document-text-block.ProseMirror span[data-link-style="icon"] > a:hover,
 .mdx-document-text-block.ProseMirror a:hover > span[data-link-style="icon"] {
-  text-decoration-color: rgba(55, 53, 47, 1);
+  text-decoration-color: var(--ink-strong);
 }
 
 .mdx-document-text-block.ProseMirror span[data-link-style="icon"]::before {
@@ -1817,13 +1817,13 @@ a[data-link-style="icon"].notion-link.link {
   text-decoration-line: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
-  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-color: var(--ink-mid);
   text-decoration-skip-ink: none;
 }
 
 span[data-link-style="icon"] > a.notion-link.link:hover,
 a[data-link-style="icon"].notion-link.link:hover {
-  text-decoration-color: rgba(55, 53, 47, 0.78);
+  text-decoration-color: var(--ink-emphasis);
 }
 
 /* Color picker — opens beneath the toolbar's "A▾" button. Two rows
@@ -1844,7 +1844,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   height: 16px;
   border-radius: 3px;
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   padding: 0 1px;
 }
 
@@ -1890,7 +1890,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   cursor: pointer;
   transition:
     border-color 100ms ease,
@@ -1958,7 +1958,7 @@ a[data-link-style="icon"].notion-link.link:hover {
 }
 
 .mdx-link-inspector__head strong {
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .mdx-link-inspector__head button {
@@ -1983,7 +1983,7 @@ a[data-link-style="icon"].notion-link.link:hover {
 }
 
 .mdx-link-inspector__field > span {
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-weight: 650;
   color: var(--color-text-muted);
   letter-spacing: 0.04em;
@@ -2023,14 +2023,14 @@ a[data-link-style="icon"].notion-link.link:hover {
   background: transparent;
   color: var(--color-text-muted);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   cursor: pointer;
 }
 
 .mdx-link-inspector__seg[data-active="true"] {
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
-  box-shadow: 0 1px 2px rgba(55, 53, 47, 0.12);
+  box-shadow: 0 1px 2px var(--ink-faint);
 }
 
 .mdx-link-inspector__icon-panel {
@@ -2111,7 +2111,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   color: var(--color-text-primary);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   padding: 5px 7px;
   text-align: left;
 }
@@ -2181,7 +2181,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   padding: 0;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   cursor: pointer;
   transition: background-color 80ms ease, color 80ms ease;
 }
@@ -2198,7 +2198,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   background: transparent;
   color: var(--color-text-primary);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-subhead);
   padding: 5px 8px;
 }
 
@@ -2233,7 +2233,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-muted);
 }
 
@@ -2249,7 +2249,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   padding: 2px 6px;
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2297,7 +2297,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   gap: 4px;
   flex: 1 1 160px;
   min-width: 120px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--color-text-muted);
 }
 
@@ -2359,7 +2359,7 @@ a[data-link-style="icon"].notion-link.link:hover {
 
 .mdx-document-columns-block__empty {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .mdx-document-columns-block__grid {
@@ -2588,7 +2588,7 @@ a[data-link-style="icon"].notion-link.link:hover {
   border: 0;
   border-bottom: 2px solid transparent;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 500;
   color: var(--color-text-muted);
   cursor: pointer;
