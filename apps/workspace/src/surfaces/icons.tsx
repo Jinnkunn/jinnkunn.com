@@ -34,6 +34,22 @@ export const CalendarIcon = () => (
   </svg>
 );
 
+export const NotesIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M4 2.5h6.25L13 5.25V13a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13V4A1.5 1.5 0 0 1 4 2.5Z" />
+    <path d="M10 2.75V5.5h2.75M5.5 8h5M5.5 10.5h3.25" />
+  </svg>
+);
+
 export const WorkspaceIcon = () => (
   <svg
     viewBox="0 0 16 16"
@@ -131,6 +147,23 @@ export const PagesIcon = () => (
   >
     <rect x="3" y="2" width="10" height="12" rx="1.5" />
     <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
+  </svg>
+);
+
+export const ArchiveIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2.25" y="3" width="11.5" height="3" rx="0.75" />
+    <path d="M3.5 6.25v6A1.25 1.25 0 0 0 4.75 13.5h6.5a1.25 1.25 0 0 0 1.25-1.25v-6" />
+    <path d="M6.5 9h3" />
   </svg>
 );
 

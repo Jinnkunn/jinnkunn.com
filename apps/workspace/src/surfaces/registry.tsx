@@ -1,5 +1,10 @@
 import { CalendarSurface } from "./calendar/CalendarSurface";
-import { CalendarIcon, SiteAdminIcon, WorkspaceIcon } from "./icons";
+import { CalendarIcon, NotesIcon, SiteAdminIcon, WorkspaceIcon } from "./icons";
+import {
+  NOTES_DEFAULT_NAV_ITEM_ID,
+  NOTES_NAV_GROUPS,
+} from "./notes/nav";
+import { NotesSurface } from "./notes/NotesSurface";
 import {
   SITE_ADMIN_DEFAULT_TAB,
   SITE_ADMIN_NAV_GROUPS,
@@ -37,6 +42,15 @@ export const SURFACES: readonly SurfaceDefinition[] = [
     description: "Aggregated from macOS Calendar",
     icon: <CalendarIcon />,
     Component: CalendarSurface,
+  },
+  {
+    id: "notes",
+    title: "Notes",
+    description: "Local Notion-like notes",
+    icon: <NotesIcon />,
+    Component: NotesSurface,
+    navGroups: NOTES_NAV_GROUPS,
+    defaultNavItemId: NOTES_DEFAULT_NAV_ITEM_ID,
   },
 ];
 

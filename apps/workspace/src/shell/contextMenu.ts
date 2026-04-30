@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo } from "react";
 
 /** Native AppKit popup item. The id flows back to the JS side via the
  * existing `workspace:menu` CustomEvent (see `useNativeMenu`), so each
@@ -54,21 +54,18 @@ export function useContextMenuSubscription(
   ids: readonly string[],
   onPick: (id: string) => void,
 ): void {
-  const idSet = useRef<Set<string>>(new Set(ids));
-  idSet.current = new Set(ids);
-  const handlerRef = useRef(onPick);
-  handlerRef.current = onPick;
+  const idSet = useMemo(() => new Set(ids), [ids]);
 
   useEffect(() => {
     function onMenu(event: Event) {
       const id = (event as CustomEvent<{ id: string }>).detail?.id;
       if (!id) return;
-      if (!idSet.current.has(id)) return;
-      handlerRef.current(id);
+      if (!idSet.has(id)) return;
+      onPick(id);
     }
     window.addEventListener("workspace:menu", onMenu);
     return () => window.removeEventListener("workspace:menu", onMenu);
-  }, []);
+  }, [idSet, onPick]);
 }
 
 let popupNonceCounter = 0;
@@ -106,7 +103,6 @@ export function showContextMenuWithActions(
   });
   if (handlers.size === 0) return;
 
-  let timeout: number | undefined;
   function onMenu(event: Event) {
     const id = (event as CustomEvent<{ id: string }>).detail?.id;
     if (!id || !handlers.has(id)) return;
@@ -119,13 +115,13 @@ export function showContextMenuWithActions(
   }
   function cleanup() {
     window.removeEventListener("workspace:menu", onMenu);
-    if (timeout !== undefined) window.clearTimeout(timeout);
+    window.clearTimeout(timeout);
   }
   window.addEventListener("workspace:menu", onMenu);
   // Tauri's `popup` returns immediately and we don't get a "dismissed"
   // event on cancel — so the listener would otherwise leak forever for
   // each cancelled popup. The 30 s timeout caps the leak; it's long
   // enough that no real user takes longer to pick from a menu.
-  timeout = window.setTimeout(cleanup, POPUP_DISMISS_TIMEOUT_MS);
+  const timeout = window.setTimeout(cleanup, POPUP_DISMISS_TIMEOUT_MS);
   void showContextMenu(specs);
 }

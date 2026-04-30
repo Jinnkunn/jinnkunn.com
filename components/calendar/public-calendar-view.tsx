@@ -599,21 +599,25 @@ function MonthCalendar({
               className="public-calendar__month-cell"
               data-muted={inMonth ? "false" : "true"}
               key={key}
-              onClick={() => onDaySelect?.(day)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter" && e.key !== " ") return;
-                e.preventDefault();
-                onDaySelect?.(day);
-              }}
-              role="button"
-              tabIndex={0}
             >
-              <span
-                className="public-calendar__date-number"
-                data-today={key === todayKey ? "true" : "false"}
+              <button
+                type="button"
+                className="public-calendar__date-button"
+                onClick={() => onDaySelect?.(day)}
+                aria-label={`Open ${day.toLocaleDateString("en", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}`}
               >
-                {day.getDate()}
-              </span>
+                <span
+                  className="public-calendar__date-number"
+                  data-today={key === todayKey ? "true" : "false"}
+                >
+                  {day.getDate()}
+                </span>
+              </button>
               <div className="public-calendar__month-events">
                 {dayEvents.slice(0, 3).map((event) => (
                   <EventPill
@@ -792,6 +796,7 @@ function EventCard({
           type="button"
           className="public-calendar__event-toggle"
           onClick={() => onEventToggle?.(event.id)}
+          aria-expanded={expanded}
         >
           <div className="public-calendar__event-topline">
             <span className="public-calendar__event-time">{event.formattedTime}</span>

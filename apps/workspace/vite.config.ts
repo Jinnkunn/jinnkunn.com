@@ -31,9 +31,9 @@ export default defineConfig({
   },
   clearScreen: false,
   test: {
-    // Vitest picks up *.test.ts files under src/ without extra config. We
+    // Vitest picks up *.test.{ts,tsx} files under src/ without extra config. We
     // don't need jsdom yet — all tests to date cover pure-function modules.
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

@@ -77,6 +77,13 @@ function main() {
 
   const documentEditor = read("apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx");
   const blockInspector = read("apps/workspace/src/surfaces/site-admin/block-inspector.tsx");
+  const blockInspectorFields = read(
+    "apps/workspace/src/surfaces/site-admin/block-inspector-fields.tsx",
+  );
+  const editorSlashCommands = read(
+    "apps/workspace/src/surfaces/site-admin/editor-slash-commands.ts",
+  );
+  const mdxBlockTree = read("apps/workspace/src/surfaces/site-admin/mdx-block-tree.ts");
   assertIncludes(documentEditor, "export function BlocksEditor", "MdxDocumentEditor");
   assertIncludes(documentEditor, "parseMdxBlocks", "MdxDocumentEditor");
   assertIncludes(documentEditor, "serializeMdxBlocks", "MdxDocumentEditor");
@@ -91,9 +98,19 @@ function main() {
   assertIncludes(blockInspector, "export function blockHasInspector", "BlockInspector module");
   assertIncludes(blockInspector, "function TableInspector", "BlockInspector table controls");
   assertIncludes(blockInspector, "Teaching links", "BlockInspector link strip controls");
+  assertIncludes(blockInspectorFields, "InspectorTextField", "BlockInspector fields module");
+  assertIncludes(blockInspectorFields, "useImeComposition", "BlockInspector fields IME support");
+  assertIncludes(mdxBlockTree, "patchBlockInTree", "Mdx block tree helpers");
+  assertIncludes(mdxBlockTree, "countBlocksOfType", "Mdx block tree helpers");
   assertIncludes(documentEditor, "data-selected", "MdxDocumentEditor block selection");
   assertIncludes(documentEditor, "Raw MDX fallback", "MdxDocumentEditor raw fallback");
-  assertIncludes(documentEditor, "RECENT_SLASH_COMMAND_IDS_KEY", "MdxDocumentEditor slash recents");
+  assertIncludes(
+    editorSlashCommands,
+    "RECENT_SLASH_COMMAND_IDS_KEY",
+    "MdxDocumentEditor slash recents",
+  );
+  assertIncludes(editorSlashCommands, "getMatchingSlashCommands", "MdxDocumentEditor slash menu");
+  assertIncludes(editorSlashCommands, "replaceBlockType", "MdxDocumentEditor slash menu");
   assertIncludes(documentEditor, 'source: "Advanced"', "MdxDocumentEditor advanced mode label");
   assertIncludes(documentEditor, "data-controls-open", "MdxDocumentEditor");
   assertIncludes(documentEditor, "data-kind", "MdxDocumentEditor block semantics");
@@ -279,6 +296,16 @@ function main() {
     "workspace primitives",
   );
   assertIncludes(
+    read("apps/workspace/src/ui/editor-runtime.tsx"),
+    "WorkspaceEditorRuntimeProvider",
+    "shared editor runtime",
+  );
+  assertIncludes(
+    read("apps/workspace/src/ui/editor-runtime.tsx"),
+    "useWorkspaceEditorRuntime",
+    "shared editor runtime hook",
+  );
+  assertIncludes(
     read("apps/workspace/src/ui/primitives.tsx"),
     "WorkspaceSurfaceFrame",
     "workspace primitives",
@@ -303,6 +330,23 @@ function main() {
     "WorkspaceCheckboxField",
     "workspace primitives",
   );
+  for (const primitive of [
+    "WorkspaceCommandBar",
+    "WorkspaceCommandGroup",
+    "WorkspaceCommandButton",
+    "WorkspaceSplitView",
+    "WorkspacePane",
+    "WorkspaceSheet",
+    "WorkspaceBottomSheet",
+    "WorkspaceActionMenu",
+    "WorkspaceSegmentedControl",
+  ]) {
+    assertIncludes(
+      read("apps/workspace/src/ui/primitives.tsx"),
+      primitive,
+      "adaptive workspace primitives",
+    );
+  }
   assertIncludes(
     read("apps/workspace/src/App.tsx"),
     "WorkspaceMain",
@@ -384,6 +428,21 @@ function main() {
     "Workspace recent navigation storage",
   );
   assertIncludes(
+    read("apps/workspace/src/App.tsx"),
+    "SURFACE_ORDER_STORAGE_KEY",
+    "Workspace app rail order persistence",
+  );
+  assertIncludes(
+    read("apps/workspace/src/App.tsx"),
+    "orderWorkspaceSurfaces",
+    "Workspace app rail order derivation",
+  );
+  assertIncludes(
+    read("apps/workspace/src/App.tsx"),
+    "onReorderSurface",
+    "Workspace app rail reorder handler",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminSurface.tsx"),
     "WorkspaceSurfaceFrame",
     "Site Admin surface primitive migration",
@@ -392,6 +451,116 @@ function main() {
     read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
     "WorkspaceSurfaceFrame",
     "Calendar surface primitive migration",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "WorkspaceCommandBar",
+    "Calendar adaptive command bar",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "WorkspaceCommandButton",
+    "Calendar shared command buttons",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "WorkspaceCommandGroup",
+    "Calendar shared command groups",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "WorkspaceSplitView",
+    "Calendar adaptive split view",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/registry.tsx"),
+    'id: "notes"',
+    "Notes surface registry entry",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/notes/NotesSurface.tsx"),
+    "WorkspaceEditorRuntimeProvider",
+    "Notes shared editor runtime",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/notes/NotesSurface.tsx"),
+    "BlocksEditor",
+    "Notes shared block editor",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/notes/NotesSurface.tsx"),
+    "SAVE_DEBOUNCE_MS = 600",
+    "Notes autosave debounce",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/notes/tree.tsx"),
+    "buildNoteTree",
+    "Notes tree builder",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/notes/tree.tsx"),
+    "noteTreeToNavItems",
+    "Notes sidebar tree adapter",
+  );
+  for (const command of [
+    "notesList",
+    "notesGet",
+    "notesCreate",
+    "notesUpdate",
+    "notesMove",
+    "notesArchive",
+    "notesSearch",
+  ]) {
+    assertIncludes(
+      read("apps/workspace/src/lib/tauri.ts"),
+      `function ${command}`,
+      "Notes typed Tauri wrappers",
+    );
+  }
+  assertExcludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "gridTemplateColumns: selectedEvent",
+    "Calendar should not hard-code desktop inspector grid",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/ViewSwitcher.tsx"),
+    "WorkspaceSegmentedControl",
+    "Calendar view switcher primitive",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx"),
+    "SOURCE_ORDER_STORAGE_KEY",
+    "Calendar source account ordering persistence",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx"),
+    "SOURCE_COLLAPSED_STORAGE_KEY",
+    "Calendar source account collapse persistence",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx"),
+    "calendar-source-group__toggle",
+    "Calendar source account collapse toggle",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx"),
+    "application/x-calendar-source",
+    "Calendar source account drag reorder",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
+    "WorkspaceCommandBar",
+    "Site Admin adaptive command bar",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
+    "WorkspaceCommandButton",
+    "Site Admin shared command buttons",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
+    "WorkspaceCommandGroup",
+    "Site Admin shared command groups",
   );
   assertIncludes(
     documentEditor,
@@ -440,6 +609,41 @@ function main() {
     "Sidebar primitive migration",
   );
   assertIncludes(
+    read("apps/workspace/src/App.tsx"),
+    "SIDEBAR_COLLAPSED_STORAGE_KEY",
+    "Sidebar collapse persistence",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Titlebar.tsx"),
+    "titlebar-sidebar-toggle",
+    "Titlebar sidebar collapse affordance",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Titlebar.tsx"),
+    "titlebar-tabs",
+    "Titlebar tab strip",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/SettingsWindow.tsx"),
+    "settings-window",
+    "Workspace settings window",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Sidebar.tsx"),
+    "sidebar-settings-button",
+    "Sidebar settings affordance",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Sidebar.tsx"),
+    "application/x-workspace-surface",
+    "Sidebar app rail drag reorder",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/Sidebar.tsx"),
+    "FIXED_APP_RAIL_SURFACE_ID",
+    "Sidebar fixed command center rail slot",
+  );
+  assertIncludes(
     read("apps/workspace/src/shell/Sidebar.tsx"),
     "sidebar-app-rail",
     "Sidebar app rail migration",
@@ -479,6 +683,91 @@ function main() {
     workspaceCss,
     ".workspace-checkbox-field",
     "workspace form primitive CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-commandbar",
+    "adaptive command bar CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-commandbar__group",
+    "adaptive command group CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-commandbar__button",
+    "adaptive command button CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-split-view",
+    "adaptive split view CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-sheet",
+    "adaptive sheet CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-action-menu",
+    "adaptive action menu CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".workspace-segmented-control",
+    "adaptive segmented control CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".calendar-workspace-split",
+    "Calendar split view CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".calendar-commandbar__supplement",
+    "Calendar command bar supplement CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".notes-surface",
+    "Notes surface CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".notes-editor__title",
+    "Notes editor title CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".notes-save-state",
+    "Notes autosave status CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".calendar-source-group__header",
+    "Calendar source account header CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".calendar-source-group__drag",
+    "Calendar source account drag handle CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    "data-drop-edge=\"before\"",
+    "Calendar source account drop indicator CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".sidebar-surface",
+    "mobile-ready app rail CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    "@media (max-width: 720px)",
+    "mobile-ready workspace CSS",
   );
   assertIncludes(
     workspaceCss,
@@ -529,6 +818,56 @@ function main() {
     workspaceCss,
     ".sidebar-app-rail",
     "workspace sidebar shell CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".sidebar-app-rail__footer",
+    "workspace sidebar app rail footer CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".sidebar-settings-button",
+    "workspace sidebar settings button CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".titlebar-sidebar-toggle",
+    "workspace titlebar sidebar toggle CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".titlebar-tabs",
+    "workspace titlebar tabs CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".titlebar-tab-add",
+    "workspace titlebar new tab CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".settings-window",
+    "workspace settings window CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".sidebar-app-rail__button[data-surface-reorderable=\"true\"]",
+    "workspace sidebar app rail reorder CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".sidebar-app-rail__button[data-drop-edge=\"before\"]::before",
+    "workspace sidebar app rail drop indicator CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".sidebar-surface[data-collapsed=\"true\"]",
+    "workspace sidebar collapsed CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".app-shell:has(.sidebar-surface[data-collapsed=\"true\"])",
+    "workspace titlebar collapsed offset CSS",
   );
   assertIncludes(
     workspaceCss,
@@ -627,6 +966,7 @@ function main() {
   );
   for (const token of [
     "--workspace-sidebar-rail-width",
+    "--workspace-sidebar-collapsed-width",
     "--workspace-sidebar-top-overlap",
     "--workspace-traffic-light-strip-height",
     "--workspace-traffic-light-clearance",

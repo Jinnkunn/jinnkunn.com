@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 
 import { handleWindowDragMouseDown } from "../../shell/windowDrag";
+import {
+  WorkspaceCommandBar,
+  WorkspaceCommandButton,
+  WorkspaceCommandGroup,
+} from "../../ui/primitives";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import { PublishButton } from "./PublishButton";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
@@ -59,65 +64,66 @@ export function SiteAdminTopBar() {
   const outbox = useOutbox(outboxAuth);
 
   return (
-    <header
+    <WorkspaceCommandBar
       className="site-admin-topbar"
       role="banner"
       data-tauri-drag-region
       onMouseDown={handleWindowDragMouseDown}
-    >
-      <div className="site-admin-topbar__spacer" aria-hidden="true" />
-
-      <div className="site-admin-topbar__right" data-window-drag-exclude>
-        <SyncStatusPill sync={sync} outbox={outbox} />
-        <SiteAdminConnectionPill />
-        {topbarSaveAction?.dirty ? (
-          <button
-            className="btn btn--primary site-admin-topbar__save-btn"
-            disabled={
-              topbarSaveAction.disabled ||
-              topbarSaveAction.saving ||
-              productionReadOnly
-            }
-            onClick={() => {
-              void topbarSaveAction.onSave();
-            }}
-            title={
-              productionReadOnly
-                ? environment.helpText
-                : topbarSaveAction.title
-            }
-            type="button"
-          >
-            {topbarSaveAction.saving ? "Saving..." : topbarSaveAction.label}
-          </button>
-        ) : null}
-        <PublishButton
-          contentDirty={Boolean(topbarSaveAction?.dirty)}
-          label={productionReadOnly ? "Read-only" : `Publish ${environment.label}`}
-          outbox={outbox}
-          requirePendingChanges
-          sync={sync}
-        />
-        <button
-          type="button"
-          className="site-admin-topbar__drawer-btn"
-          onClick={toggleDrawer}
-          aria-pressed={drawerOpen}
-          title="Toggle dev drawer (⌘\\)"
+      trailing={
+        <WorkspaceCommandGroup
+          align="end"
+          className="site-admin-topbar__right"
         >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <path
-              d="M2 3h12v10H2z M2 10h12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span>Debug</span>
-        </button>
-      </div>
-    </header>
+          <SyncStatusPill sync={sync} outbox={outbox} />
+          <SiteAdminConnectionPill />
+          {topbarSaveAction?.dirty ? (
+            <button
+              className="btn btn--primary site-admin-topbar__save-btn"
+              disabled={
+                topbarSaveAction.disabled ||
+                topbarSaveAction.saving ||
+                productionReadOnly
+              }
+              onClick={() => {
+                void topbarSaveAction.onSave();
+              }}
+              title={
+                productionReadOnly
+                  ? environment.helpText
+                  : topbarSaveAction.title
+              }
+              type="button"
+            >
+              {topbarSaveAction.saving ? "Saving..." : topbarSaveAction.label}
+            </button>
+          ) : null}
+          <PublishButton
+            contentDirty={Boolean(topbarSaveAction?.dirty)}
+            label={productionReadOnly ? "Read-only" : `Publish ${environment.label}`}
+            outbox={outbox}
+            requirePendingChanges
+            sync={sync}
+          />
+          <WorkspaceCommandButton
+            tone="ghost"
+            onClick={toggleDrawer}
+            aria-pressed={drawerOpen}
+            title="Toggle dev drawer (⌘\\)"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M2 3h12v10H2z M2 10h12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>Debug</span>
+          </WorkspaceCommandButton>
+        </WorkspaceCommandGroup>
+      }
+    />
   );
 }

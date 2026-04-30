@@ -107,9 +107,69 @@ fn run_migrations(conn: &Connection) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_write_outbox_enqueued
             ON write_outbox (enqueued_at);
+
+        -- Local-first Notes surface. These rows are intentionally not
+        -- mirrored to the website/content branch in v1; they live only
+        -- in the workspace.db file and use archive semantics instead of
+        -- hard delete so accidental removals can be recovered later.
+        CREATE TABLE IF NOT EXISTS notes (
+            id          TEXT PRIMARY KEY,
+            parent_id   TEXT REFERENCES notes(id) ON DELETE SET NULL,
+            title       TEXT NOT NULL,
+            body_mdx    TEXT NOT NULL DEFAULT '',
+            icon        TEXT,
+            sort_order  INTEGER NOT NULL,
+            archived_at INTEGER,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_parent_order
+            ON notes (parent_id, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_notes_updated_at
+            ON notes (updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notes_title
+            ON notes (title);
+
+        -- Phase 6 — full-text index for the Notes search box. Trigram
+        -- tokenizer gives substring matches that work for both Latin
+        -- and CJK input (no whitespace tokenizer would catch "笔记"
+        -- as a single token). External-content table mode lets the
+        -- triggers below keep notes_fts in sync without duplicating
+        -- the body text.
+        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+            title,
+            body_mdx,
+            content='notes',
+            content_rowid='rowid',
+            tokenize='trigram case_sensitive 0'
+        );
+        CREATE TRIGGER IF NOT EXISTS notes_fts_ai AFTER INSERT ON notes BEGIN
+            INSERT INTO notes_fts(rowid, title, body_mdx)
+            VALUES (new.rowid, new.title, new.body_mdx);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_fts_ad AFTER DELETE ON notes BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, body_mdx)
+            VALUES ('delete', old.rowid, old.title, old.body_mdx);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_fts_au AFTER UPDATE ON notes BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, body_mdx)
+            VALUES ('delete', old.rowid, old.title, old.body_mdx);
+            INSERT INTO notes_fts(rowid, title, body_mdx)
+            VALUES (new.rowid, new.title, new.body_mdx);
+        END;
         "#,
     )
     .map_err(|err| format!("failed to run local DB migrations: {err}"))?;
+
+    // One-shot backfill so existing notes get into the FTS index after
+    // upgrading. The marker in sync_state lets us skip the rebuild on
+    // every subsequent open.
+    if read_sync_state_int(conn, "notes_fts_backfill_v1")? == 0 {
+        conn.execute("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')", [])
+            .map_err(|err| format!("failed to backfill notes_fts: {err}"))?;
+        write_sync_state_int(conn, "notes_fts_backfill_v1", 1)?;
+    }
+
     Ok(())
 }
 

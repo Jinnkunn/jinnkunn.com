@@ -509,6 +509,24 @@
   opacity: 0.45;
 }
 
+.public-calendar__date-button {
+  appearance: none;
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.public-calendar__date-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ds-accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
 .public-calendar__date-number {
   display: inline-flex;
   align-items: center;

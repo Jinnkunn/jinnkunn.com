@@ -52,7 +52,12 @@ export function PublicCalendarClient({
   initialData: PublicCalendarData;
 }) {
   const [data, setData] = useState<PublicCalendarData>(initialData);
-  const [view, setView] = useState<PublicCalendarViewMode>("month");
+  const [view, setView] = useState<PublicCalendarViewMode>(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 720px)").matches
+      ? "agenda"
+      : "month",
+  );
   const [anchorIso, setAnchorIso] = useState(() => new Date().toISOString());
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);

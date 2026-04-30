@@ -8,6 +8,9 @@ import type { ComponentType, ReactNode } from "react";
 export interface SurfaceNavItem {
   id: string;
   label: string;
+  /** Optional edit value used by sidebar inline rename. Defaults to a
+   * surface-specific id fragment for legacy slug rows. */
+  renameValue?: string;
   icon?: ReactNode;
   badge?: ReactNode;
   children?: readonly SurfaceNavItem[];

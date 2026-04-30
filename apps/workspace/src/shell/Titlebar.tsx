@@ -6,9 +6,23 @@ import type { WorkspaceEvent, WorkspaceEventTone } from "./workspaceEvents";
 interface TitlebarProps {
   activeSurface: SurfaceDefinition;
   activeNavItemId: string | null;
+  surfaces: readonly SurfaceDefinition[];
   events: readonly WorkspaceEvent[];
   favoriteCount: number;
   recentCount: number;
+  tabs: readonly WorkspaceTitlebarTab[];
+  activeTabId: string;
+  sidebarCollapsed: boolean;
+  onCloseTab: (id: string) => void;
+  onNewTab: () => void;
+  onSelectTab: (id: string) => void;
+  onToggleSidebar: () => void;
+}
+
+export interface WorkspaceTitlebarTab {
+  id: string;
+  navItemId: string | null;
+  surfaceId: string;
 }
 
 function findNavLabel(
@@ -42,17 +56,78 @@ function formatRelativeTime(timestamp: number): string {
   return `${days}d`;
 }
 
-/** Titlebar — thin strip pinned to the top of the window. The leading pad
- * reserves the sidebar's footprint so the breadcrumb starts past the
- * card's right edge. Native macOS traffic lights are repositioned into
- * the sidebar header by `set_traffic_lights_inset` (see
- * src-tauri/src/main.rs), so nothing is rendered here for them. */
+function SidebarCollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 18 18"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.65"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2.75" y="3.25" width="12.5" height="11.5" rx="2.2" />
+      <path d="M7.1 3.25v11.5" />
+      {collapsed ? <path d="M11 7l2 2-2 2" /> : <path d="M13 7l-2 2 2 2" />}
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M4.75 4.75 11.25 11.25M11.25 4.75 4.75 11.25" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M8 3.25v9.5M3.25 8h9.5" />
+    </svg>
+  );
+}
+
+/** Titlebar — thin strip pinned to the top of the window. It owns the
+ * sidebar toggle, tab strip, status center, and draggable empty space.
+ * Native macOS traffic lights are positioned into this lane by
+ * `set_traffic_lights_inset` (see src-tauri/src/main.rs). */
 export function Titlebar({
   activeSurface,
   activeNavItemId,
+  surfaces,
   events,
   favoriteCount,
   recentCount,
+  tabs,
+  activeTabId,
+  sidebarCollapsed,
+  onCloseTab,
+  onNewTab,
+  onSelectTab,
+  onToggleSidebar,
 }: TitlebarProps) {
   const activeNavLabel = activeNavItemId
     ? activeSurface.navGroups
@@ -63,36 +138,89 @@ export function Titlebar({
       )
     : null;
 
+  const labelForTab = (tab: WorkspaceTitlebarTab): string => {
+    const surface = surfaces.find((entry) => entry.id === tab.surfaceId);
+    const navLabel = tab.navItemId
+      ? surface?.navGroups
+        ?.flatMap((group) => group.items)
+        .reduce<string | null>(
+          (found, item) => found ?? findNavLabel([item], tab.navItemId),
+          null,
+        )
+      : null;
+    return navLabel || surface?.title || "Workspace";
+  };
+
   return (
     <header
       className="titlebar-shell"
       data-tauri-drag-region
       onMouseDown={handleWindowDragMouseDown}
     >
-      <div className="titlebar-leading-pad" aria-hidden="true" />
-      <div
-        className="min-w-0 flex-1 flex items-center gap-2 text-[12.5px] text-text-secondary whitespace-nowrap overflow-hidden"
-        data-tauri-drag-region
-      >
-        <span className="font-semibold text-text-primary">Jinnkunn Workspace</span>
-        <span className="opacity-45" aria-hidden="true">›</span>
-        <span
-          className="text-text-primary font-medium truncate"
-          aria-live="polite"
+      <div className="titlebar-window-zone" data-window-drag-exclude>
+        <button
+          type="button"
+          className="titlebar-sidebar-toggle"
+          onClick={onToggleSidebar}
+          aria-controls="workspace-sidebar-context-pane"
+          aria-expanded={!sidebarCollapsed}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {activeSurface.title}
-        </span>
-        {activeNavLabel && (
-          <>
-            <span className="opacity-45" aria-hidden="true">›</span>
-            <span
-              className="text-text-primary font-medium truncate"
-              aria-live="polite"
+          <SidebarCollapseIcon collapsed={sidebarCollapsed} />
+        </button>
+      </div>
+      <nav
+        className="titlebar-tabs"
+        aria-label="Workspace tabs"
+        data-window-drag-exclude
+      >
+        {tabs.map((tab) => {
+          const active = tab.id === activeTabId;
+          const label = labelForTab(tab);
+          return (
+            <div
+              className="titlebar-tab"
+              data-active={active ? "true" : undefined}
+              key={tab.id}
             >
-              {activeNavLabel}
-            </span>
-          </>
-        )}
+              <button
+                type="button"
+                className="titlebar-tab__select"
+                onClick={() => onSelectTab(tab.id)}
+                aria-current={active ? "page" : undefined}
+                title={label}
+              >
+                <span className="titlebar-tab__label">{label}</span>
+              </button>
+              <button
+                type="button"
+                className="titlebar-tab__close"
+                onClick={() => onCloseTab(tab.id)}
+                disabled={tabs.length <= 1}
+                aria-label={`Close ${label}`}
+                title="Close tab"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          className="titlebar-tab-add"
+          onClick={onNewTab}
+          aria-label="New tab"
+          title="New tab"
+        >
+          <PlusIcon />
+        </button>
+      </nav>
+      <div className="titlebar-drag-fill" data-tauri-drag-region>
+        <span className="titlebar-current-location" aria-live="polite">
+          {activeSurface.title}
+          {activeNavLabel ? ` / ${activeNavLabel}` : ""}
+        </span>
       </div>
       <details className="workspace-status-center">
         <summary

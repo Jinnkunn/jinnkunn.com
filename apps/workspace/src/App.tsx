@@ -16,7 +16,8 @@ import {
 } from "./shell/recent";
 import { Sidebar } from "./shell/Sidebar";
 import { SurfaceNavProvider } from "./shell/surface-nav-context";
-import { Titlebar } from "./shell/Titlebar";
+import { Titlebar, type WorkspaceTitlebarTab } from "./shell/Titlebar";
+import { SettingsWindow } from "./shell/SettingsWindow";
 import { WorkspaceCommandPalette } from "./shell/WorkspaceCommandPalette";
 import { WorkspaceDashboard } from "./shell/WorkspaceDashboard";
 import {
@@ -35,9 +36,110 @@ import { WorkspaceMain } from "./ui/primitives";
 
 const DEFAULT_SURFACE_ID = "workspace";
 const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
+const SURFACE_ORDER_STORAGE_KEY = "workspace.surfaceOrder.v1";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "workspace.sidebar.collapsed.v1";
+
+function createWorkspaceTab(
+  surfaceId: string,
+  navItemId: string | null,
+): WorkspaceTitlebarTab {
+  return {
+    id: `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    navItemId,
+    surfaceId,
+  };
+}
+
+function loadBoolean(storageKey: string, fallback = false): boolean {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistBoolean(storageKey: string, value: boolean): void {
+  try {
+    localStorage.setItem(storageKey, value ? "true" : "false");
+  } catch {
+    // ignore quota / private-mode errors; state stays in-memory
+  }
+}
 
 function navItemStorageKey(surfaceId: string): string {
   return `workspace.nav.${surfaceId}.v1`;
+}
+
+function loadSurfaceOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(SURFACE_ORDER_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const validIds = new Set(SURFACES.map((surface) => surface.id));
+    return parsed.filter(
+      (id): id is string =>
+        typeof id === "string" &&
+        id !== DEFAULT_SURFACE_ID &&
+        validIds.has(id),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persistSurfaceOrder(ids: readonly string[]): void {
+  try {
+    localStorage.setItem(SURFACE_ORDER_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // ignore quota / private-mode errors; state stays in-memory
+  }
+}
+
+function orderWorkspaceSurfaces(
+  surfaces: readonly SurfaceDefinition[],
+  orderedIds: readonly string[],
+): readonly SurfaceDefinition[] {
+  const fixed = surfaces.find((surface) => surface.id === DEFAULT_SURFACE_ID);
+  const reorderable = surfaces.filter((surface) => surface.id !== DEFAULT_SURFACE_ID);
+  const byId = new Map(reorderable.map((surface) => [surface.id, surface]));
+  const ordered = orderedIds
+    .map((id) => byId.get(id))
+    .filter((surface): surface is SurfaceDefinition => Boolean(surface));
+  const seen = new Set(ordered.map((surface) => surface.id));
+  const trailing = reorderable.filter((surface) => !seen.has(surface.id));
+  return fixed ? [fixed, ...ordered, ...trailing] : [...ordered, ...trailing];
+}
+
+function moveSurfaceInOrder({
+  currentOrder,
+  edge,
+  sourceId,
+  targetId,
+}: {
+  currentOrder: readonly string[];
+  edge: "before" | "after";
+  sourceId: string;
+  targetId: string;
+}): string[] {
+  if (
+    sourceId === DEFAULT_SURFACE_ID ||
+    targetId === DEFAULT_SURFACE_ID ||
+    sourceId === targetId
+  ) {
+    return [...currentOrder];
+  }
+  const ids = orderWorkspaceSurfaces(SURFACES, currentOrder)
+    .filter((surface) => surface.id !== DEFAULT_SURFACE_ID)
+    .map((surface) => surface.id);
+  const withoutSource = ids.filter((id) => id !== sourceId);
+  const targetIndex = withoutSource.indexOf(targetId);
+  if (targetIndex < 0) return ids;
+  withoutSource.splice(edge === "after" ? targetIndex + 1 : targetIndex, 0, sourceId);
+  return withoutSource;
 }
 
 /** Pick the starting nav item for a surface: the persisted value (when
@@ -91,18 +193,42 @@ export function App() {
   const [activeNavItemId, setActiveNavItemIdState] = useState<string | null>(
     () => (activeSurface ? resolveInitialNavItemId(activeSurface) : null),
   );
+  const [tabs, setTabs] = useState<WorkspaceTitlebarTab[]>(() => [
+    createWorkspaceTab(
+      activeSurfaceId,
+      activeSurface ? resolveInitialNavItemId(activeSurface) : null,
+    ),
+  ]);
+  const [activeTabId, setActiveTabId] = useState(() => tabs[0]?.id ?? "tab_initial");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() =>
+    loadBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY),
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const updateActiveTab = useCallback(
+    (patch: Partial<Omit<WorkspaceTitlebarTab, "id">>) => {
+      setTabs((current) =>
+        current.map((tab) =>
+          tab.id === activeTabId ? { ...tab, ...patch } : tab,
+        ),
+      );
+    },
+    [activeTabId],
+  );
 
   const selectSurface = useCallback(
     (id: string) => {
       const target = findSurface(id);
       if (!target || target.disabled) return;
+      const nextNavItemId = resolveInitialNavItemId(target);
       if (id !== activeSurfaceId) {
         setActiveSurfaceId(id);
         localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, id);
-        setActiveNavItemIdState(resolveInitialNavItemId(target));
       }
+      setActiveNavItemIdState(nextNavItemId);
+      updateActiveTab({ navItemId: nextNavItemId, surfaceId: id });
     },
-    [activeSurfaceId],
+    [activeSurfaceId, updateActiveTab],
   );
 
   const selectNavItem = useCallback(
@@ -114,26 +240,28 @@ export function App() {
         localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, surfaceId);
       }
       setActiveNavItemIdState(navItemId);
+      updateActiveTab({ navItemId, surfaceId });
       try {
         localStorage.setItem(navItemStorageKey(surfaceId), navItemId);
       } catch {
         // ignore
       }
     },
-    [activeSurfaceId],
+    [activeSurfaceId, updateActiveTab],
   );
 
   const setActiveNavItemId = useCallback(
     (id: string) => {
       if (!activeSurface) return;
       setActiveNavItemIdState(id);
+      updateActiveTab({ navItemId: id, surfaceId: activeSurface.id });
       try {
         localStorage.setItem(navItemStorageKey(activeSurface.id), id);
       } catch {
         // ignore
       }
     },
-    [activeSurface],
+    [activeSurface, updateActiveTab],
   );
 
   // Dynamic child trees published by the active surface (e.g. site-admin
@@ -263,6 +391,9 @@ export function App() {
     loadWorkspaceEvents(),
   );
   const [workspacePaletteOpen, setWorkspacePaletteOpen] = useState(false);
+  const [surfaceOrder, setSurfaceOrder] = useState<string[]>(() =>
+    loadSurfaceOrder(),
+  );
 
   useNativeMenu({
     onOpenPalette: () => setWorkspacePaletteOpen(true),
@@ -293,6 +424,62 @@ export function App() {
   useEffect(() => {
     persistWorkspaceEvents(workspaceEvents);
   }, [workspaceEvents]);
+
+  useEffect(() => {
+    persistSurfaceOrder(surfaceOrder);
+  }, [surfaceOrder]);
+
+  useEffect(() => {
+    persistBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
+  const activateTab = useCallback((tabId: string) => {
+    const tab = tabs.find((entry) => entry.id === tabId);
+    if (!tab) return;
+    const surface = findSurface(tab.surfaceId);
+    if (!surface || surface.disabled) return;
+    const nextNavItemId = tab.navItemId ?? resolveInitialNavItemId(surface);
+    setActiveTabId(tab.id);
+    setActiveSurfaceId(surface.id);
+    setActiveNavItemIdState(nextNavItemId);
+    localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, surface.id);
+    if (nextNavItemId) {
+      try {
+        localStorage.setItem(navItemStorageKey(surface.id), nextNavItemId);
+      } catch {
+        // ignore
+      }
+    }
+  }, [tabs]);
+
+  const addTab = useCallback(() => {
+    const next = createWorkspaceTab(activeSurfaceId, activeNavItemId);
+    setTabs((current) => [...current, next]);
+    setActiveTabId(next.id);
+  }, [activeNavItemId, activeSurfaceId]);
+
+  const closeTab = useCallback(
+    (tabId: string) => {
+      setTabs((current) => {
+        if (current.length <= 1) return current;
+        const index = current.findIndex((tab) => tab.id === tabId);
+        if (index < 0) return current;
+        const next = current.filter((tab) => tab.id !== tabId);
+        if (tabId === activeTabId) {
+          const replacement = next[Math.max(0, index - 1)] ?? next[0];
+          if (replacement) {
+            window.setTimeout(() => activateTab(replacement.id), 0);
+          }
+        }
+        return next;
+      });
+    },
+    [activateTab, activeTabId],
+  );
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((current) => !current);
+  }, []);
 
   useEffect(() => {
     const onWorkspaceEvent = (event: Event) => {
@@ -352,8 +539,9 @@ export function App() {
   );
 
   const derivedSurfaces = useMemo(() => {
-    if (Object.keys(navItemChildren).length === 0) return SURFACES;
-    return SURFACES.map((surface) => {
+    const orderedSurfaces = orderWorkspaceSurfaces(SURFACES, surfaceOrder);
+    if (Object.keys(navItemChildren).length === 0) return orderedSurfaces;
+    return orderedSurfaces.map((surface) => {
       if (!surface.navGroups?.length) return surface;
       const groups = surface.navGroups.map((group) => ({
         ...group,
@@ -365,7 +553,16 @@ export function App() {
       }));
       return { ...surface, navGroups: groups };
     });
-  }, [navItemChildren]);
+  }, [navItemChildren, surfaceOrder]);
+
+  const handleReorderSurface = useCallback(
+    (sourceId: string, targetId: string, edge: "before" | "after") => {
+      setSurfaceOrder((currentOrder) =>
+        moveSurfaceInOrder({ currentOrder, edge, sourceId, targetId }),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -392,15 +589,25 @@ export function App() {
 
   const ActiveComponent = activeSurface.Component;
   const isWorkspaceDashboard = activeSurface.id === "workspace";
+  const renderedActiveSurface =
+    derivedSurfaces.find((surface) => surface.id === activeSurface.id) ?? activeSurface;
 
   return (
     <div className="app-shell">
       <Titlebar
-        activeSurface={activeSurface}
+        activeSurface={renderedActiveSurface}
         activeNavItemId={activeNavItemId}
+        surfaces={derivedSurfaces}
         events={workspaceEvents}
         favoriteCount={favorites.length}
         recentCount={recentItems.length}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        sidebarCollapsed={sidebarCollapsed}
+        onCloseTab={closeTab}
+        onNewTab={addTab}
+        onSelectTab={activateTab}
+        onToggleSidebar={toggleSidebarCollapsed}
       />
       <div className="app-body">
         <Sidebar
@@ -409,13 +616,16 @@ export function App() {
           activeNavItemId={activeNavItemId}
           favorites={favorites}
           recentItems={recentItems}
+          sidebarCollapsed={sidebarCollapsed}
           onSelectSurface={selectSurface}
           onSelectNavItem={selectNavItem}
+          onOpenSettings={() => setSettingsOpen(true)}
           onToggleFavorite={toggleFavorite}
           onRecordRecent={recordRecentItem}
           isFavorite={isFavorite}
           onMoveNavItem={handleMoveNavItem}
           onReorderNavItem={handleReorderNavItem}
+          onReorderSurface={handleReorderSurface}
           onRenameNavItem={handleRenameNavItem}
           validateRenameNavItem={validateRenameNavItem}
         />
@@ -455,6 +665,10 @@ export function App() {
         onRecordRecent={recordRecentItem}
         onSelectSurface={selectSurface}
         onSelectNavItem={selectNavItem}
+      />
+      <SettingsWindow
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </div>
   );
