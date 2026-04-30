@@ -61,6 +61,9 @@ export function CommandPalette({
     saveConnectionLocally,
     postsIndex,
     pagesIndex,
+    activeProfileId,
+    profiles,
+    switchProfile,
   } = useSiteAdmin();
 
   const [query, setQuery] = useState("");
@@ -199,8 +202,84 @@ export function CommandPalette({
       });
     }
 
+    // Browser shortcuts to the public sites + the GitHub Actions tab.
+    // These are stable URLs the operator hits constantly during a
+    // release; routing them through the palette saves the "where did I
+    // pin that tab" flow when the workspace is full-screen.
+    items.push({
+      id: "open:public:production",
+      label: "Open jinkunchen.com (production)",
+      hint: "browser",
+      keywords: "open production site browser jinkunchen public",
+      run: () => {
+        window.open("https://jinkunchen.com/", "_blank", "noreferrer");
+      },
+    });
+    items.push({
+      id: "open:public:staging",
+      label: "Open staging.jinkunchen.com",
+      hint: "browser",
+      keywords: "open staging site browser jinkunchen",
+      run: () => {
+        window.open("https://staging.jinkunchen.com/", "_blank", "noreferrer");
+      },
+    });
+    items.push({
+      id: "open:gh:actions",
+      label: "Open GitHub Actions",
+      hint: "browser",
+      keywords: "open github actions ci runs deploy workflow",
+      run: () => {
+        window.open(
+          "https://github.com/Jinnkunn/jinnkunn.com/actions",
+          "_blank",
+          "noreferrer",
+        );
+      },
+    });
+
+    // Profile switcher — one row per inactive profile so the operator
+    // can flip from staging↔production from anywhere without finding
+    // the connection pill. We skip the row for the currently-active
+    // profile (it'd be a no-op).
+    for (const profile of profiles) {
+      if (profile.id === activeProfileId) continue;
+      items.push({
+        id: `profile:switch:${profile.id}`,
+        label: `Switch profile · ${profile.label}`,
+        hint: profile.baseUrl,
+        keywords: `switch profile ${profile.label} ${profile.baseUrl}`,
+        run: () => switchProfile(profile.id),
+      });
+    }
+
+    // Window-level utilities. Reload picks up code edits without
+    // restarting the whole Tauri shell — handy after a JS change in
+    // dev. Toggle theme cycles the workspace appearance.
+    items.push({
+      id: "window:reload",
+      label: "Reload workspace window",
+      hint: "⌘R",
+      keywords: "reload window refresh restart",
+      run: () => {
+        window.location.reload();
+      },
+    });
+    items.push({
+      id: "window:cycle-theme",
+      label: "Cycle theme (light → dark → system)",
+      hint: "appearance",
+      keywords: "theme dark light system appearance toggle cycle",
+      run: () => {
+        // Cycle is owned by the ThemeToggle button — emit the same
+        // synthetic event so we don't fork the cycle logic.
+        window.dispatchEvent(new CustomEvent("workspace:theme:cycle"));
+      },
+    });
+
     return items;
   }, [
+    activeProfileId,
     activeTab,
     clearAuth,
     connection.authToken,
@@ -213,8 +292,10 @@ export function CommandPalette({
     onSelectTab,
     pagesIndex,
     postsIndex,
+    profiles,
     saveConnectionLocally,
     signInWithBrowser,
+    switchProfile,
     toggleDrawer,
   ]);
 
