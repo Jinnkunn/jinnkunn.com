@@ -2,6 +2,10 @@
 
 import { useMemo, type CSSProperties } from "react";
 
+import {
+  eventMatchesAnyTag,
+  summarizeTags,
+} from "@/lib/shared/calendar-tags";
 import type { PublicCalendarData, PublicCalendarEvent } from "@/lib/shared/public-calendar";
 
 export type PublicCalendarViewMode = "month" | "week" | "day" | "agenda";
@@ -228,6 +232,8 @@ export function PublicCalendarView({
   onDaySelect,
   expandedEventId,
   onEventToggle,
+  selectedTags,
+  onSelectedTagsChange,
 }: {
   data: PublicCalendarData;
   view?: PublicCalendarViewMode;
@@ -239,20 +245,45 @@ export function PublicCalendarView({
   onDaySelect?: (date: Date) => void;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
+  /** Currently-active tag filter. Empty = show every event. The
+   * filter is OR-logic: an event matching any selected tag passes. */
+  selectedTags?: readonly string[];
+  /** Toggle handler for chip clicks. Receives the next selection set
+   * (the view doesn't own filter state — the route does, so the URL
+   * `?tag=foo` round-trips). */
+  onSelectedTagsChange?: (next: string[]) => void;
 }) {
   const anchor = Number.isFinite(Date.parse(anchorIso ?? ""))
     ? new Date(anchorIso ?? "")
     : new Date();
+
+  // Tag filter — applied BEFORE decoration so the day index, agenda
+  // groups, and per-view event lists all share the same filtered set.
+  // The Set is rebuilt every render but `selectedTags` is typically
+  // ≤5 chips and the membership test is the hot path inside
+  // eventMatchesAnyTag. Memoizing the Set itself isn't worth it.
+  const selectedTagSet = useMemo(
+    () => new Set(selectedTags ?? []),
+    [selectedTags],
+  );
+  const filteredEvents = useMemo(
+    () =>
+      selectedTagSet.size === 0
+        ? data.events
+        : data.events.filter((event) => eventMatchesAnyTag(event, selectedTagSet)),
+    [data.events, selectedTagSet],
+  );
+  const tagSummary = useMemo(() => summarizeTags(data.events), [data.events]);
 
   // Decorate each event once: parse timestamps, compute day keys + formatted
   // time. Without this, MonthView would Date-parse every event 42 times per
   // render.
   const decoratedEvents = useMemo(
     () =>
-      [...data.events]
+      [...filteredEvents]
         .map(decorateEvent)
         .sort((a, b) => a.startTimestamp - b.startTimestamp),
-    [data.events],
+    [filteredEvents],
   );
 
   // Index events by the day-keys they touch, so MonthView/WeekView/DayView
@@ -280,7 +311,7 @@ export function PublicCalendarView({
     [],
   );
 
-  if (decoratedEvents.length === 0) {
+  if (data.events.length === 0) {
     return (
       <div className="public-calendar public-calendar--empty notion-text notion-text__content">
         <p>No public calendar events are currently listed.</p>
@@ -379,9 +410,106 @@ export function PublicCalendarView({
             ))}
           </div>
         ) : null}
+        <a
+          // `webcal://` is the iCal subscription scheme; macOS / iOS /
+          // most desktop clients pop the "subscribe to calendar" dialog
+          // when they see it. Plain HTTPS would render the ICS as text
+          // in a browser tab; the title attribute spells out the
+          // fallback for users on platforms that don't recognise the
+          // scheme. The href is hand-crafted (not URL.toString()) so
+          // the protocol stays `webcal:` rather than getting URL-coerced
+          // to `https://` by Next.js's link wrappers.
+          className="public-calendar__subscribe"
+          href="webcal://jinkunchen.com/api/public/calendar/calendar.ics"
+          title="Subscribe with Apple Calendar / Outlook / Google Calendar — your calendar app keeps it auto-updating."
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="13"
+            height="13"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M3 5h10M3 9h7M3 13h4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            />
+            <path
+              d="M11.5 11.25v3.5M9.75 13h3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>Subscribe</span>
+        </a>
       </div>
+      {tagSummary.length > 0 ? (
+        <div
+          className="public-calendar__tag-bar"
+          role="group"
+          aria-label="Filter by tag"
+        >
+          {tagSummary.map(({ tag, count }) => {
+            const isActive = selectedTagSet.has(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                className="public-calendar__tag-chip"
+                data-active={isActive ? "true" : "false"}
+                onClick={() => {
+                  if (!onSelectedTagsChange) return;
+                  // Toggle: clicking an active chip removes it from
+                  // the selection; clicking an inactive chip adds it.
+                  // The route owns the array, so we hand back the
+                  // new shape rather than mutating in place.
+                  const next = new Set(selectedTagSet);
+                  if (isActive) next.delete(tag);
+                  else next.add(tag);
+                  onSelectedTagsChange(Array.from(next).sort());
+                }}
+                aria-pressed={isActive}
+                title={
+                  isActive
+                    ? `Remove #${tag} filter`
+                    : `Show only events tagged #${tag}`
+                }
+              >
+                <span>#{tag}</span>
+                <span className="public-calendar__tag-count" aria-hidden="true">
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+          {selectedTagSet.size > 0 ? (
+            <button
+              type="button"
+              className="public-calendar__tag-clear"
+              onClick={() => onSelectedTagsChange?.([])}
+              title="Clear tag filter"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <p className="public-calendar__sync-note">
         Last updated {lastUpdatedLabel}. Times shown in {resolvedTimeZone}.
+        {selectedTagSet.size > 0 ? (
+          <>
+            {" "}Filtered by{" "}
+            {Array.from(selectedTagSet)
+              .map((t) => `#${t}`)
+              .join(", ")}{" "}
+            ({decoratedEvents.length} of {data.events.length} events).
+          </>
+        ) : null}
       </p>
       {view === "month" ? (
         <MonthCalendar
@@ -673,6 +801,15 @@ function EventCard({
         {expanded && event.visibility === "full" && event.url ? (
           <p className="public-calendar__event-link">
             <a href={event.url}>Event link</a>
+          </p>
+        ) : null}
+        {expanded && event.visibility !== "busy" ? (
+          // Permalink to the per-event detail page. Lives below the
+          // expanded body so the inline read still feels like the
+          // primary surface; the link is for "share this with someone"
+          // and for SEO indexing of titled events.
+          <p className="public-calendar__event-permalink">
+            <a href={`/calendar/${event.id}`}>Open event page →</a>
           </p>
         ) : null}
       </div>

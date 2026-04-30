@@ -88,6 +88,41 @@ function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
   };
 }
 
+// Time-decay archiving: events older than this many days are dropped
+// from the public projection so the agenda doesn't grow unbounded.
+// 30 days is the default — past events fade out a month after they
+// happen, which matches how a CV / résumé treats "past talks": the
+// recent few stay visible, the long tail moves to a separate archive
+// page (when one exists). Tunable via `filterStalePublicCalendarEvents`.
+export const DEFAULT_PUBLIC_CALENDAR_PAST_DAYS = 30;
+
+export interface FilterStaleOptions {
+  /** Drop events whose `endsAt` is more than this many days in the
+   * past. Set to `Infinity` to disable archiving (useful for a
+   * future "/calendar/archive" route). */
+  maxPastDays?: number;
+  /** Override `now` for tests. Production should leave it unset so
+   * the worker's current time is the cutoff anchor. */
+  now?: Date;
+}
+
+export function filterStalePublicCalendarEvents(
+  data: PublicCalendarData,
+  options: FilterStaleOptions = {},
+): PublicCalendarData {
+  const maxPastDays = options.maxPastDays ?? DEFAULT_PUBLIC_CALENDAR_PAST_DAYS;
+  if (!Number.isFinite(maxPastDays)) return data;
+  const now = options.now ?? new Date();
+  const cutoff = now.getTime() - maxPastDays * 86_400_000;
+  const filtered = data.events.filter((event) => {
+    const endsMs = Date.parse(event.endsAt);
+    if (!Number.isFinite(endsMs)) return true; // malformed → keep, let UI decide
+    return endsMs >= cutoff;
+  });
+  if (filtered.length === data.events.length) return data;
+  return { ...data, events: filtered };
+}
+
 export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
   const obj =
     raw && typeof raw === "object" && !Array.isArray(raw)
