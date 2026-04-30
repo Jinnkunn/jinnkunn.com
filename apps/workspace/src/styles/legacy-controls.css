@@ -5,72 +5,112 @@
  * (.btn--secondary / .btn--ghost / .btn--danger) aren't overridden by
  * the base rule. See old styles.css Dec-2025 fix notes.
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *
+ * .btn — three macOS-flavored variants:
+ *
+ *   .btn (default)        prominent: accent fill, white text, soft
+ *                         dual-shadow that mimics AppKit prominent
+ *                         button. Used for the primary CTA on a row
+ *                         (Save, Promote, Sync).
+ *   .btn.btn--secondary   bezel: translucent fill, accent text. The
+ *                         "second-most-important" affordance.
+ *   .btn.btn--ghost       chromeless: zero fill at rest, soft fill
+ *                         on hover. Used for toolbar actions and
+ *                         everything that shouldn't compete for
+ *                         attention.
+ *   .btn.btn--danger      same shape as default, danger fill.
+ *
+ * The visual rhythm changed deliberately: macOS controls live in
+ * 5/6 px corners + 22-28 px heights — the old 8 px / 12 px / 32 px
+ * sizing read as web-form. The shadow stack is borrowed from AppKit
+ * NSButton (a 0.5 pt darken on the bottom edge + a 1.5 pt soft
+ * spread). All three variants share the height/padding/font scale
+ * so they line up flush in a button row.
+ * ------------------------------------------------------------------ */
 .btn {
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-small);
+  font-weight: 600;
   line-height: 1;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--color-accent);
+  letter-spacing: -0.005em;
+  height: 24px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-sm);
+  border: 0;
   background: var(--color-accent);
   color: var(--color-text-inverse);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-xs);
   text-decoration: none;
+  /* AppKit prominent-button shadow stack — a 0.5pt edge darken plus
+   * a soft 1.5pt fall. Both shrink on hover so the button "presses
+   * in" the way native NSButton does. */
+  box-shadow:
+    0 0.5px 0 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px -0.5px rgba(0, 0, 0, 0.08);
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+    background-color 120ms var(--ease-out),
+    color 120ms var(--ease-out),
+    box-shadow 120ms var(--ease-out),
+    transform 80ms var(--ease-out);
 }
 
 .btn:hover {
   background: var(--color-accent-strong);
-  border-color: var(--color-accent-strong);
+  box-shadow:
+    0 0.5px 0 0 rgba(0, 0, 0, 0.14),
+    0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.btn:active {
+  /* Press affordance: scale + flatten shadow. Mirrors the haptic
+   * feel of native NSButton. */
+  transform: scale(0.97);
+  box-shadow: 0 0.5px 0 0 rgba(0, 0, 0, 0.08);
 }
 
 .btn.btn--secondary {
-  background: transparent;
+  background: var(--fill-primary);
   color: var(--color-text-primary);
-  border-color: var(--color-border-default);
+  box-shadow: none;
 }
 
 .btn.btn--secondary:hover {
-  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
-  border-color: var(--color-border-strong);
+  background: var(--fill-accent);
+  color: var(--color-accent-strong);
 }
 
 .btn.btn--ghost {
   background: transparent;
   color: var(--color-text-secondary);
-  border-color: transparent;
-  padding: 6px 10px;
+  height: 22px;
+  padding: 0 var(--space-sm);
+  box-shadow: none;
 }
 
 .btn.btn--ghost:hover {
-  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  background: var(--fill-secondary);
   color: var(--color-text-primary);
 }
 
 .btn.btn--danger {
   background: var(--color-danger);
-  border-color: var(--color-danger);
   color: #ffffff;
 }
 
 .btn.btn--danger:hover {
   background: var(--color-danger-strong);
-  border-color: var(--color-danger-strong);
 }
 
 .btn.btn--confirming {
   background: var(--color-danger-strong);
-  border-color: var(--color-danger-strong);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 24%, transparent);
-  animation: confirm-delete-pulse 360ms ease;
+  box-shadow:
+    0 0.5px 0 0 rgba(0, 0, 0, 0.12),
+    0 0 0 3px color-mix(in srgb, var(--color-danger) 22%, transparent);
+  animation: confirm-delete-pulse 360ms var(--ease-spring);
 }
 
 @keyframes confirm-delete-pulse {
@@ -91,31 +131,56 @@
   pointer-events: none;
 }
 
+/* ------------------------------------------------------------------ *
+ * Inputs — match the new button rhythm. Replaces the web-default
+ * 1 px solid border with a translucent fill + hairline so a form
+ * row reads as a sequence of recessed slots, not a stack of boxes.
+ * Heights line up with `.btn` (24 px) so a "filter input + Apply"
+ * row stays flush. Focus ring is a 3 px translucent accent halo +
+ * 1 px accent edge — the AppKit-style focus indicator.
+ * ------------------------------------------------------------------ */
 input,
 textarea,
 select {
   font: inherit;
   width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 7px;
-  background: var(--color-bg-surface);
+  height: 24px;
+  padding: 0 var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--fill-tertiary);
   color: var(--color-text-primary);
+  font-size: var(--font-size-small);
+  line-height: 1.2;
+  transition:
+    background-color 120ms var(--ease-out),
+    border-color 120ms var(--ease-out),
+    box-shadow 120ms var(--ease-out);
+}
+
+input:hover:not(:focus-visible),
+textarea:hover:not(:focus-visible),
+select:hover:not(:focus-visible) {
+  background: var(--fill-secondary);
 }
 
 input[type="checkbox"],
 input[type="radio"] {
   width: auto;
+  height: auto;
   min-width: 14px;
   padding: 0;
   flex-shrink: 0;
+  background: transparent;
 }
 
 textarea {
   resize: vertical;
-  min-height: 60px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
+  min-height: 64px;
+  height: auto;
+  padding: var(--space-sm) var(--space-sm);
+  font-family: var(--font-mono-ui);
+  font-size: var(--font-size-small);
   line-height: 1.5;
 }
 
@@ -123,6 +188,8 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 .btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  background: var(--color-bg-surface-translucent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
