@@ -1,29 +1,16 @@
 // Compact status indicator for the Phase 5a local mirror. Reuses the
 // existing `.site-admin-pill` styling so it visually rhymes with the
-// connection pill next to it. Tone:
-//   - "neutral" before any sync has happened
-//   - "success" after a successful pull
-//   - "danger"  after a failed pull (lastError present)
-//   - "warning" when busy=true (in-flight)
+// connection pill next to it. Tone is derived by site-health-model so the
+// sync pill and release/health surfaces share one source of truth.
 //
 // Click toggles a popover with row count, watermark age, and an explicit
 // "Refresh now" button (via triggerSync).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { deriveSyncHealth, formatSyncAge } from "./site-health-model";
 import type { UseLocalSyncResult } from "./use-local-sync";
 import type { OutboxHookValue } from "./use-outbox";
-
-function formatAge(ms: number): string {
-  if (ms < 5_000) return "just now";
-  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
-  return `${Math.floor(ms / 3_600_000)}h ago`;
-}
-
-function nowMs(): number {
-  return Date.now();
-}
 
 export interface SyncStatusPillProps {
   sync: UseLocalSyncResult;
@@ -67,40 +54,22 @@ export function SyncStatusPill({ sync, outbox = null }: SyncStatusPillProps) {
   // Outbox state takes priority over sync state — a queued write is a
   // "you might lose work if you close the app right now" condition,
   // worth flagging more loudly than a stale sync timestamp.
-  const tone = outboxFailing > 0
-    ? "danger"
-    : outboxPending > 0
-      ? "warning"
-      : busy
-        ? "warning"
-        : error
-          ? "danger"
-          : lastSummary
-            ? "success"
-            : "neutral";
-
-  const ageMs = status?.last_sync_at_ms ? nowMs() - status.last_sync_at_ms : null;
-  const label = outboxPending > 0
-    ? `${outboxPending} pending write${outboxPending === 1 ? "" : "s"}`
-    : busy
-      ? "Syncing…"
-      : error
-        ? "Sync error"
-        : status && status.last_sync_at_ms > 0
-          ? `Synced ${ageMs !== null ? formatAge(ageMs) : ""}`.trim()
-          : "Not synced";
-
-  const title = outboxPending > 0
-    ? outboxFailing > 0
-      ? `${outboxFailing} write(s) failing on the server; click for details`
-      : `${outboxPending} write(s) queued for retry; click for details`
-    : busy
-      ? "Pulling latest changes from D1"
-      : error
-        ? `Sync failed: ${error}`
-        : status
-          ? `${status.row_count} row(s) cached locally`
-          : "Local mirror not yet primed";
+  const health = deriveSyncHealth(
+    {
+      busy,
+      error,
+      lastSyncAtMs: status?.last_sync_at_ms ?? null,
+      rowCount: status?.row_count ?? null,
+      summaryRowsApplied: lastSummary?.rows_applied ?? null,
+    },
+    outbox
+      ? {
+          draining: outbox.draining,
+          failing: outboxFailing,
+          pending: outboxPending,
+        }
+      : null,
+  );
 
   return (
     <div className="site-admin-pill-root" ref={rootRef}>
@@ -110,11 +79,11 @@ export function SyncStatusPill({ sync, outbox = null }: SyncStatusPillProps) {
         onClick={toggle}
         aria-expanded={open}
         aria-haspopup="dialog"
-        data-tone={tone}
-        title={title}
+        data-tone={health.tone}
+        title={health.title}
       >
         <span className="site-admin-pill__dot" aria-hidden="true" />
-        <span className="site-admin-pill__label">{label}</span>
+        <span className="site-admin-pill__label">{health.label}</span>
       </button>
 
       {open ? (
@@ -126,20 +95,12 @@ export function SyncStatusPill({ sync, outbox = null }: SyncStatusPillProps) {
           <header className="site-admin-pill__popover-header">
             <strong>Local mirror</strong>
           </header>
-          <dl
-            style={{
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              gap: "4px 12px",
-              margin: "8px 0",
-              fontSize: "12px",
-            }}
-          >
+          <dl className="site-admin-pill__meta">
             <dt>Rows cached</dt>
             <dd>{status?.row_count ?? "—"}</dd>
             <dt>Last sync</dt>
             <dd>
-              {ageMs !== null ? formatAge(ageMs) : "—"}
+              {health.ageMs !== null ? formatSyncAge(health.ageMs) : "—"}
               {status?.last_sync_at_ms
                 ? ` (${new Date(status.last_sync_at_ms).toLocaleTimeString()})`
                 : ""}
@@ -161,7 +122,7 @@ export function SyncStatusPill({ sync, outbox = null }: SyncStatusPillProps) {
             {error ? (
               <>
                 <dt>Error</dt>
-                <dd style={{ color: "var(--site-admin-danger, #b91c1c)" }}>{error}</dd>
+                <dd className="site-admin-pill__error">{error}</dd>
               </>
             ) : null}
             {outbox ? (
@@ -174,25 +135,25 @@ export function SyncStatusPill({ sync, outbox = null }: SyncStatusPillProps) {
               </>
             ) : null}
           </dl>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="site-admin-pill__actions">
             <button
               type="button"
+              className="site-admin-pill__action"
               onClick={() => {
                 void triggerSync();
               }}
               disabled={busy}
-              style={{ flex: 1, padding: "6px 10px" }}
             >
               {busy ? "Syncing…" : "Refresh now"}
             </button>
             {outbox && outboxPending > 0 ? (
               <button
                 type="button"
+                className="site-admin-pill__action"
                 onClick={() => {
                   void outbox.drainNow();
                 }}
                 disabled={outbox.draining}
-                style={{ flex: 1, padding: "6px 10px" }}
                 title="Replay queued writes against the server"
               >
                 {outbox.draining ? "Retrying…" : "Retry queue"}

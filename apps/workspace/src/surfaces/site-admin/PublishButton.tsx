@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { openExternalUrl } from "../../lib/tauri";
 import {
   deployCandidateBlockedMessage,
-  deriveReleaseFlow,
   parseDeployResponseSummary,
   releaseWorkflowRecovery,
   shortSha,
   type DeployResponseSummary,
 } from "./release-flow-model";
-import { useSiteAdmin } from "./state";
+import { editorDiagnosticsSummary } from "./editor-diagnostics";
+import { deriveSiteHealth } from "./site-health-model";
+import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import type { StatusPayload } from "./types";
 import { normalizeString } from "./utils";
 
@@ -209,6 +210,7 @@ export function PublishButton({
   requirePendingChanges?: boolean;
 }) {
   const { connection, environment, productionReadOnly, request, setMessage } = useSiteAdmin();
+  const { editorDiagnostics } = useSiteAdminEphemeral();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -223,10 +225,35 @@ export function PublishButton({
 
   const ready = Boolean(connection.baseUrl) && Boolean(connection.authToken);
   const publishLabel = productionReadOnly ? "Read-only" : label;
-  const releaseFlow = deriveReleaseFlow(statusPayload, {
+  const siteHealth = deriveSiteHealth({
+    contentDirty: false,
+    outbox: null,
     productionReadOnly,
-    publishLabel,
+    status: statusPayload,
+    sync: {
+      busy: false,
+      error: null,
+      lastSyncAtMs: null,
+      rowCount: null,
+    },
   });
+  const releaseFlow = {
+    ...siteHealth.releaseFlow,
+    publishLabel:
+      siteHealth.releaseFlow.publishLabel === "Publish"
+        ? publishLabel
+        : siteHealth.releaseFlow.publishLabel,
+  };
+  const editorDiagnosticSummary = editorDiagnosticsSummary(editorDiagnostics);
+  const blockingEditorDiagnostics = editorDiagnostics.filter(
+    (diagnostic) => diagnostic.severity === "blocking",
+  );
+  const editorPreflightBlocked = editorDiagnosticSummary.blocking > 0;
+  const editorPreflightMessage = editorPreflightBlocked
+    ? `Fix ${editorDiagnosticSummary.blocking} editor preflight blocker${
+        editorDiagnosticSummary.blocking === 1 ? "" : "s"
+      } before publishing.`
+    : "";
 
   const clearPollTimers = useCallback(() => {
     for (const timer of pollTimersRef.current) {
@@ -284,6 +311,10 @@ export function PublishButton({
   }, [confirming]);
 
   async function loadPreview() {
+    if (editorPreflightBlocked) {
+      setMessage("warn", editorPreflightMessage);
+      return;
+    }
     if (productionReadOnly) {
       setMessage(
         "warn",
@@ -358,6 +389,10 @@ export function PublishButton({
   );
 
   async function trigger() {
+    if (editorPreflightBlocked) {
+      setMessage("warn", editorPreflightMessage);
+      return;
+    }
     if (productionReadOnly) {
       setMessage(
         "warn",
@@ -429,7 +464,7 @@ export function PublishButton({
     <div className="publish-control">
       <button
         className={
-          deployCandidateBlocked || noPendingChanges
+          editorPreflightBlocked || deployCandidateBlocked || noPendingChanges
             ? "btn btn--secondary"
             : confirming
               ? "btn btn--danger"
@@ -443,11 +478,14 @@ export function PublishButton({
           busy ||
           previewLoading ||
           statusLoading ||
+          editorPreflightBlocked ||
           noPendingChanges
         }
         title={
           productionReadOnly
             ? environment.helpText
+            : editorPreflightBlocked
+              ? editorPreflightMessage
             : deployCandidateBlocked
             ? releaseFlow.disabledReason
             : noPendingChanges
@@ -461,6 +499,8 @@ export function PublishButton({
             ? "Checking…"
             : productionReadOnly
               ? publishLabel
+            : editorPreflightBlocked
+              ? "Fix editor checks"
             : deployCandidateBlocked
               ? releaseFlow.publishLabel
               : confirming
@@ -469,6 +509,28 @@ export function PublishButton({
                   ? releaseFlow.publishLabel
                   : publishLabel}
       </button>
+      {editorPreflightBlocked ? (
+        <details className="publish-preview publish-preview--preflight" role="status" open>
+          <summary>{editorPreflightMessage}</summary>
+          <div className="publish-preview__body">
+            <ul className="publish-preview__preflight-list">
+              {blockingEditorDiagnostics.slice(0, 6).map((diagnostic) => (
+                <li key={diagnostic.id}>
+                  <strong>{diagnostic.title}</strong>
+                  <span>{diagnostic.detail}</span>
+                  <small>{diagnostic.suggestion}</small>
+                </li>
+              ))}
+              {blockingEditorDiagnostics.length > 6 ? (
+                <li>
+                  <strong>{blockingEditorDiagnostics.length - 6} more blockers</strong>
+                  <span>Review the editor checks panel in the current document.</span>
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        </details>
+      ) : null}
       {confirming && (
         <details className="publish-preview" role="status" open>
           <summary>

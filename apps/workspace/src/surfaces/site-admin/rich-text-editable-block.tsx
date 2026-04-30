@@ -81,6 +81,7 @@ export interface RichTextEditableBlockProps {
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
   readOnly?: boolean;
   request: RequestFn;
+  setMessage: (kind: "error" | "success", text: string) => void;
 }
 
 type KeyboardLinkMode = "regular" | "icon";
@@ -190,6 +191,7 @@ export function RichTextEditableBlock({
   onTurnInto,
   readOnly = false,
   request,
+  setMessage,
 }: RichTextEditableBlockProps) {
   const richRef = useRef<RichTextInputHandle>(null);
   // The editor lives in RichTextInput's `useEditor`. We track it as
@@ -221,9 +223,7 @@ export function RichTextEditableBlock({
       for (const file of files) {
         const result = await uploadImageFile({ file, request });
         if (!result.ok) {
-          if (typeof window !== "undefined") {
-            window.alert(`Image paste failed: ${result.error}`);
-          }
+          setMessage("error", `Image paste failed: ${result.error}`);
           continue;
         }
         rememberRecentAsset(result.asset, result.filename);
@@ -235,7 +235,7 @@ export function RichTextEditableBlock({
       }
       if (imageBlocks.length > 0) onInsertBlocksAfter(imageBlocks);
     },
-    [onInsertBlocksAfter, request],
+    [onInsertBlocksAfter, request, setMessage],
   );
 
   // Subscribe to TipTap selection / doc updates so the format toolbar
@@ -671,6 +671,7 @@ export function RichTextEditableBlock({
             setKeyboardLinkMode(null);
           }}
           request={request}
+          setMessage={setMessage}
           onTurnInto={onTurnInto}
         />
       ) : null}
@@ -704,6 +705,7 @@ interface InlineFormatToolbarProps {
   initialLinkMode?: KeyboardLinkMode | null;
   onClose: () => void;
   request: RequestFn;
+  setMessage: (kind: "error" | "success", text: string) => void;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
 }
 
@@ -776,6 +778,7 @@ function InlineFormatToolbar({
   initialLinkMode = null,
   onClose,
   request,
+  setMessage,
   onTurnInto,
 }: InlineFormatToolbarProps) {
   // Same focus-preserving trick the textarea version uses — mousedown on
@@ -908,7 +911,7 @@ function InlineFormatToolbar({
     });
     setUploadingIcon(false);
     if (!result.ok) {
-      if (typeof window !== "undefined") window.alert(`Icon upload failed: ${result.error}`);
+      setMessage("error", `Icon upload failed: ${result.error}`);
       return;
     }
     rememberRecentAsset(result.asset, result.filename);

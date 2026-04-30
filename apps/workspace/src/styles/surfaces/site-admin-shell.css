@@ -177,13 +177,28 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 22%, transparent);
 }
 
+.site-admin-pill[data-tone="success"] .site-admin-pill__dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 22%, transparent);
+}
+
 .site-admin-pill[data-tone="loading"] .site-admin-pill__dot {
+  background: var(--color-warn);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 22%, transparent);
+}
+
+.site-admin-pill[data-tone="warning"] .site-admin-pill__dot {
   background: var(--color-warn);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 22%, transparent);
 }
 
 .site-admin-pill[data-tone="disconnected"] .site-admin-pill__dot {
   background: var(--color-text-inverse);
+}
+
+.site-admin-pill[data-tone="danger"] .site-admin-pill__dot {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 18%, transparent);
 }
 
 /* When disconnected the pill doubles as a primary CTA — DisconnectedNotice
@@ -411,6 +426,39 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.site-admin-pill__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.site-admin-pill__meta dd {
+  margin: 0;
+}
+
+.site-admin-pill__error {
+  color: var(--color-danger);
+}
+
+.site-admin-pill__action {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.site-admin-pill__action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .site-admin-pill__note {

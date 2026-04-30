@@ -12,6 +12,7 @@ import {
   shortSha,
   normalizeStatusPayload,
 } from "./release-flow-model";
+import { deriveSiteHealth } from "./site-health-model";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { getSiteAdminEnvironment, normalizeString } from "./utils";
@@ -332,6 +333,18 @@ export function ReleasePanel() {
   const activeDeploymentLabel =
     environment.kind === "production" ? "Active production" : "Active staging";
   const checks = releaseChecks(status, isStaging, preview);
+  const releaseHealth = deriveSiteHealth({
+    contentDirty: false,
+    outbox: null,
+    productionReadOnly: environment.kind === "production",
+    status,
+    sync: {
+      busy: loading,
+      error: error || null,
+      lastSyncAtMs: null,
+      rowCount: null,
+    },
+  });
   const productionAlreadyCurrent = preview?.ok === true && !preview.productionDifferent;
   const readyToPromote =
     isStaging &&
@@ -413,6 +426,15 @@ export function ReleasePanel() {
           </p>
         </div>
         <div className="release-panel__actions">
+          <span
+            className="release-panel__health-pill"
+            data-tone={releaseHealth.releaseFlow.statusTone}
+            title={releaseHealth.releaseFlow.nextAction}
+          >
+            {releaseHealth.releaseFlow.stage === "current"
+              ? "Staging current"
+              : releaseHealth.releaseFlow.nextAction}
+          </span>
           <button
             className="btn btn--secondary"
             type="button"

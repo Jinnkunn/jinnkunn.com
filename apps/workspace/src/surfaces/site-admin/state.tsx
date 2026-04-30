@@ -12,6 +12,7 @@ import { createNamespacedSecureStorage } from "../../lib/secureStorage";
 import { emitWorkspaceEvent } from "../../shell/workspaceEvents";
 import { outboxEnqueue, siteAdminBrowserLogin } from "../../lib/tauri";
 import { maybeSyncAfterWrite } from "./sync-on-write";
+import type { EditorDiagnostic } from "./editor-diagnostics";
 import {
   cfAccessIdStoreKeyForBase,
   cfAccessSecretStoreKeyForBase,
@@ -186,6 +187,8 @@ export function useSiteAdmin(): SiteAdminContextValue {
  */
 export interface SiteAdminEphemeralValue {
   debugResponse: DebugResponseState;
+  editorDiagnostics: EditorDiagnostic[];
+  setEditorDiagnostics: (diagnostics: EditorDiagnostic[]) => void;
   writeDebugResponse: (title: string, payload: unknown) => void;
   topbarSaveAction: TopbarSaveAction | null;
   setTopbarSaveAction: (action: TopbarSaveAction | null) => void;
@@ -353,6 +356,7 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
     title: "",
     body: "",
   });
+  const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
   const [drawerOpen, setDrawerOpenState] = useState(false);
   const [topbarSaveAction, setTopbarSaveActionState] =
     useState<TopbarSaveAction | null>(null);
@@ -1035,11 +1039,19 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
   const ephemeralValue = useMemo<SiteAdminEphemeralValue>(
     () => ({
       debugResponse,
+      editorDiagnostics,
+      setEditorDiagnostics,
       writeDebugResponse,
       topbarSaveAction,
       setTopbarSaveAction,
     }),
-    [debugResponse, writeDebugResponse, topbarSaveAction, setTopbarSaveAction],
+    [
+      debugResponse,
+      editorDiagnostics,
+      writeDebugResponse,
+      topbarSaveAction,
+      setTopbarSaveAction,
+    ],
   );
 
   return (
