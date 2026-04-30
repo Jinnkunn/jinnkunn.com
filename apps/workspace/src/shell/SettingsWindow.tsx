@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { WorkspaceModuleDefinition } from "../modules/types";
 
 function SettingsIconLarge() {
   return (
@@ -20,11 +21,17 @@ function SettingsIconLarge() {
 }
 
 export function SettingsWindow({
+  enabledModuleIds,
+  modules,
   open,
   onClose,
+  onSetModuleEnabled,
 }: {
+  enabledModuleIds: readonly string[];
+  modules: readonly WorkspaceModuleDefinition[];
   open: boolean;
   onClose: () => void;
+  onSetModuleEnabled: (moduleId: string, enabled: boolean) => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -59,7 +66,7 @@ export function SettingsWindow({
             className="settings-window__nav-item"
             aria-current="page"
           >
-            General
+            Modules
           </button>
         </aside>
         <main className="settings-window__main">
@@ -72,9 +79,43 @@ export function SettingsWindow({
           >
             x
           </button>
-          <div className="settings-window__empty">
-            <SettingsIconLarge />
-            <h1 id="settings-window-title">Settings</h1>
+          <div className="settings-window__section">
+            <div className="settings-window__section-head">
+              <SettingsIconLarge />
+              <div>
+                <h1 id="settings-window-title">Modules</h1>
+                <p>{enabledModuleIds.length} enabled</p>
+              </div>
+            </div>
+            <div className="settings-modules-list">
+              {modules.map((module) => {
+                const enabled = enabledModuleIds.includes(module.id);
+                return (
+                  <div className="settings-module-row" key={module.id}>
+                    <span className="settings-module-row__icon" aria-hidden="true">
+                      {module.surface.icon}
+                    </span>
+                    <span className="settings-module-row__body">
+                      <strong>{module.surface.title}</strong>
+                      {module.surface.description ? (
+                        <small>{module.surface.description}</small>
+                      ) : null}
+                    </span>
+                    <button
+                      type="button"
+                      className="settings-module-toggle"
+                      role="switch"
+                      aria-checked={enabled}
+                      aria-label={`${enabled ? "Disable" : "Enable"} ${module.surface.title}`}
+                      data-on={enabled ? "true" : undefined}
+                      onClick={() => onSetModuleEnabled(module.id, !enabled)}
+                    >
+                      <span aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </main>
       </section>

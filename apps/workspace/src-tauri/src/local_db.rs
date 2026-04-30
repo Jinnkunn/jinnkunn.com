@@ -130,6 +130,25 @@ fn run_migrations(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_notes_title
             ON notes (title);
 
+        -- Local-first Todos module. These rows stay in workspace.db
+        -- alongside notes and use archive semantics so clearing a task
+        -- does not physically delete it from the local store.
+        CREATE TABLE IF NOT EXISTS todos (
+            id           TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            notes        TEXT NOT NULL DEFAULT '',
+            due_at       INTEGER,
+            sort_order   INTEGER NOT NULL,
+            completed_at INTEGER,
+            archived_at  INTEGER,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_todos_status_due_order
+            ON todos (archived_at, completed_at, due_at, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_todos_updated_at
+            ON todos (updated_at DESC);
+
         -- Phase 6 — full-text index for the Notes search box. Trigram
         -- tokenizer gives substring matches that work for both Latin
         -- and CJK input (no whitespace tokenizer would catch "笔记"

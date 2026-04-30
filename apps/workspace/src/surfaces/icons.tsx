@@ -50,6 +50,22 @@ export const NotesIcon = () => (
   </svg>
 );
 
+export const TodosIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2" />
+    <path d="M5 5.5l1.25 1.25L8.5 4.5M5 10.5h6" />
+  </svg>
+);
+
 export const WorkspaceIcon = () => (
   <svg
     viewBox="0 0 16 16"

@@ -1,6 +1,6 @@
-import type { NoteRow } from "../../lib/tauri";
+import type { NoteRow } from "../../modules/notes/api";
 
-export type { NoteDetail, NoteRow } from "../../lib/tauri";
+export type { NoteDetail, NoteRow } from "../../modules/notes/api";
 
 export interface NoteTreeNode extends NoteRow {
   children: NoteTreeNode[];

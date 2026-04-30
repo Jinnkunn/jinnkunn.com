@@ -1,4 +1,4 @@
-import { siteAdminHttpRequest } from "../../lib/tauri";
+import { siteAdminHttpRequest } from "../../modules/site-admin/tauri";
 import type { NormalizedApiResponse } from "./types";
 import { normalizeString } from "./utils";
 

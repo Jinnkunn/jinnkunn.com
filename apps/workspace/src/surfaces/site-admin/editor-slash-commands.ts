@@ -332,8 +332,18 @@ export function rememberRecentSlashCommand(id: string) {
   }
 }
 
-export function getMatchingSlashCommands(value: string): SlashCommand[] {
-  const matches = getMatchingBlockEditorCommands(value, SLASH_COMMANDS, {
+export function getMatchingSlashCommands(
+  value: string,
+  enabledIds?: ReadonlySet<string>,
+): SlashCommand[] {
+  // Surface-level filter so callers (Notes) can hide site-admin business
+  // blocks (publications-block, teaching-links, …) without forking the
+  // command list. `undefined` keeps the full vocabulary for site-admin.
+  const pool =
+    enabledIds && enabledIds.size > 0
+      ? SLASH_COMMANDS.filter((command) => enabledIds.has(command.id))
+      : SLASH_COMMANDS;
+  const matches = getMatchingBlockEditorCommands(value, pool, {
     requireSlash: true,
   });
   const query = value.trim().replace(/^\//, "").replace(/\s+/g, "");
@@ -349,8 +359,11 @@ export function getMatchingSlashCommands(value: string): SlashCommand[] {
   return [...recent, ...matches.filter((command) => !recentSet.has(command.id))];
 }
 
-export function blockFromSlashCommand(value: string): MdxBlock | null {
-  const command = getMatchingSlashCommands(value)[0];
+export function blockFromSlashCommand(
+  value: string,
+  enabledIds?: ReadonlySet<string>,
+): MdxBlock | null {
+  const command = getMatchingSlashCommands(value, enabledIds)[0];
   if (!command) return null;
   rememberRecentSlashCommand(command.id);
   return command.makeBlock();

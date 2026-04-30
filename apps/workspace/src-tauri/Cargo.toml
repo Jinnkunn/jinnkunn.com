@@ -28,7 +28,7 @@ serde_json = "1"
 # that keeps the app reachable after the main window is closed (the
 # "background mode" pattern). Gated behind a feature in Tauri 2 to
 # keep mobile builds slim — desktop targets opt in.
-tauri = { version = "2.0.0", features = ["tray-icon"] }
+tauri = { version = "2.0.0", features = ["macos-private-api", "tray-icon"] }
 # Native OS notifications. Used to acknowledge async operator actions
 # (Promote-to-Production dispatch, completion polling) so the operator
 # can step away from the app and still know when a build lands.

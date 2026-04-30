@@ -655,7 +655,7 @@ function renderNavItem({
           role="list"
         >
           {item.children!.map((child, childIndex) => {
-            const reorderSiblings = item.children!.filter((entry) => entry.id.startsWith("pages:"));
+            const reorderSiblings = item.children!.filter((entry) => entry.orderable);
             const reorderIndex = reorderSiblings.findIndex((entry) => entry.id === child.id);
             return renderNavItem({
               activeNavItemId,
@@ -1154,21 +1154,27 @@ export function Sidebar({
           {activeSurface.navGroups?.length ? (
             <nav className="sidebar-tree" aria-label={`${activeSurface.title} navigation`}>
               {activeSurface.navGroups.map((group) => {
-                const open = isGroupOpen(activeSurface.id, group, true);
+                const open = group.hideHeader || isGroupOpen(activeSurface.id, group, true);
                 return (
-                  <div key={group.id} className="sidebar-tree__group">
-                    <button
-                      type="button"
-                      className="sidebar-tree__group-header"
-                      onClick={() =>
-                        toggleGroup(groupKey(activeSurface.id, group.id))
-                      }
-                      aria-expanded={open}
-                      aria-controls={`sidebar-group-${activeSurface.id}-${group.id}`}
-                    >
-                      <ChevronIcon open={open} />
-                      <span>{group.label}</span>
-                    </button>
+                  <div
+                    key={group.id}
+                    className="sidebar-tree__group"
+                    data-headerless={group.hideHeader ? "true" : undefined}
+                  >
+                    {group.hideHeader ? null : (
+                      <button
+                        type="button"
+                        className="sidebar-tree__group-header"
+                        onClick={() =>
+                          toggleGroup(groupKey(activeSurface.id, group.id))
+                        }
+                        aria-expanded={open}
+                        aria-controls={`sidebar-group-${activeSurface.id}-${group.id}`}
+                      >
+                        <ChevronIcon open={open} />
+                        <span>{group.label}</span>
+                      </button>
+                    )}
                     {open && (
                       <ul
                         id={`sidebar-group-${activeSurface.id}-${group.id}`}
@@ -1176,8 +1182,8 @@ export function Sidebar({
                         role="list"
                       >
                         {group.items.map((item, itemIndex) => {
-                          const reorderSiblings = group.items.filter((entry) =>
-                            entry.id.startsWith("pages:"),
+                          const reorderSiblings = group.items.filter(
+                            (entry) => entry.orderable,
                           );
                           const reorderIndex = reorderSiblings.findIndex(
                             (entry) => entry.id === item.id,

@@ -102,6 +102,12 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const documentEditor = await read(
     "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
   );
+  // Phase: BlocksEditor + its block-editing canvas + helpers (EditableBlocksList,
+  // EditableBlock, CodeOrRawTextarea) live in their own file so surfaces that
+  // just need the canvas (Notes) don't pull in the document chrome.
+  const blocksEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/blocks-editor.tsx",
+  );
   const blockInspector = await read(
     "apps/workspace/src/surfaces/site-admin/block-inspector.tsx",
   );
@@ -136,12 +142,14 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   const styles = await readWorkspaceCssBundle();
 
   assert.match(documentEditor, /export function MdxDocumentEditor/);
-  // BlocksEditor is the standalone block-editing canvas, exported so other
-  // panels (Home, News, Teaching, Works, …) can render Notion-style blocks
-  // without dragging the full document chrome.
-  assert.match(documentEditor, /export function BlocksEditor/);
-  assert.match(documentEditor, /parseMdxBlocks/);
-  assert.match(documentEditor, /serializeMdxBlocks/);
+  // BlocksEditor is the standalone block-editing canvas — now in
+  // blocks-editor.tsx so Notes can lazy-load it without the full
+  // document chrome. MdxDocumentEditor.tsx still re-exports it for
+  // backward compat with existing imports.
+  assert.match(blocksEditor, /export function BlocksEditor/);
+  assert.match(documentEditor, /BlocksEditor,/);
+  assert.match(blocksEditor, /parseMdxBlocks/);
+  assert.match(blocksEditor, /serializeMdxBlocks/);
   assert.match(documentEditor, /DOCUMENT_EDITOR_MODES/);
   assert.match(
     documentEditor,
@@ -155,12 +163,12 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(editorSlashCommands, /rememberRecentSlashCommand/);
   assert.match(editorSlashCommands, /getMatchingSlashCommands/);
   assert.match(editorSlashCommands, /getMatchingBlockEditorCommands/);
-  assert.match(documentEditor, /onInsertParagraphAfter/);
-  assert.match(documentEditor, /onRemoveEmpty/);
-  assert.match(documentEditor, /blockInputRefs/);
-  assert.match(documentEditor, /application\/x-mdx-block/);
-  assert.match(documentEditor, /BlockInspector, blockHasInspector/);
-  assert.doesNotMatch(documentEditor, /function BlockInspector/);
+  assert.match(blocksEditor, /onInsertParagraphAfter/);
+  assert.match(blocksEditor, /onRemoveEmpty/);
+  assert.match(blocksEditor, /blockInputRefs/);
+  assert.match(blocksEditor, /application\/x-mdx-block/);
+  assert.match(blocksEditor, /BlockInspector, blockHasInspector/);
+  assert.doesNotMatch(blocksEditor, /function BlockInspector/);
   assert.match(blockInspector, /export function BlockInspector/);
   assert.match(blockInspector, /export function blockHasInspector/);
   assert.match(blockInspector, /function TableInspector/);
@@ -168,12 +176,20 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(blockInspector, /Page link/);
   assert.match(blockInspector, /Teaching links/);
   assert.match(blockInspector, /publications-profile-links/);
-  assert.match(documentEditor, /data-selected/);
-  assert.match(documentEditor, /Raw MDX fallback/);
+  assert.match(blocksEditor, /data-selected/);
+  assert.match(blocksEditor, /Raw MDX fallback/);
   assert.match(documentEditor, /rawBlockCount/);
-  assert.match(documentEditor, /EditorDiagnosticsPanel/);
-  assert.match(documentEditor, /collectEditorDiagnostics/);
-  assert.match(documentEditor, /onReplaceWithBlocks/);
+  assert.match(blocksEditor, /EditorDiagnosticsPanel/);
+  assert.match(blocksEditor, /collectEditorDiagnostics/);
+  assert.match(blocksEditor, /onReplaceWithBlocks/);
+  // Notes-isolation contract: blocks-editor must not pull in site-admin
+  // state hooks. The base ProseMirror canvas should be reusable from any
+  // surface via the WorkspaceEditorRuntime context.
+  assert.doesNotMatch(blocksEditor, /\buseSiteAdmin\s*\(/);
+  assert.doesNotMatch(
+    blocksEditor,
+    /from\s+["'][^"']*\.\/state["']/,
+  );
   // Slash-menu rendering moved into the per-block TipTap component when
   // paragraph migrated off the textarea. The dispatcher still owns
   // SLASH_COMMANDS + matching, but the menu element + className are
@@ -206,6 +222,13 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(styles, /\.mdx-document-block/);
   assert.match(styles, /\.mdx-document-diagnostics/);
   assert.match(styles, /\.mdx-document-slash-menu/);
+  assert.match(documentEditor, /mdx-document-editor__title workspace-editor-title-input/);
+  assert.match(styles, /\.workspace-editor-title-input\s*\{[\s\S]*overflow: visible;/);
+  assert.match(
+    styles,
+    /\.workspace-editor-title-input\s*\{[\s\S]*line-height: var\(--workspace-editor-title-line-height, 1\.35\);/,
+    "Workspace title inputs should share the WebKit clipping-safe title metric",
+  );
   assert.match(styles, /data-link-style="icon"/);
   assert.match(
     styles,
@@ -391,12 +414,22 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
 });
 
 test("tauri-ui-engineering: Notes is a local surface using the shared editor runtime", async () => {
-  const registry = await read("apps/workspace/src/surfaces/registry.tsx");
+  // Surface registration moved into per-module manifests; surfaces/registry.tsx
+  // is now a thin re-export of `ALL_WORKSPACE_SURFACES` from modules/registry.
+  const registry = await read("apps/workspace/src/modules/notes/index.tsx");
+  const app = await read("apps/workspace/src/App.tsx");
+  const surfaceNavContext = await read(
+    "apps/workspace/src/shell/surface-nav-context.tsx",
+  );
+  const notesNav = await read("apps/workspace/src/surfaces/notes/nav.tsx");
   const notesSurface = await read("apps/workspace/src/surfaces/notes/NotesSurface.tsx");
   const notesTree = await read("apps/workspace/src/surfaces/notes/tree.tsx");
   const editorRuntime = await read("apps/workspace/src/ui/editor-runtime.tsx");
   const documentEditor = await read(
     "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
+  );
+  const blocksEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/blocks-editor.tsx",
   );
   const tauriWrappers = await read("apps/workspace/src/lib/tauri.ts");
   const tauriMain = await read("apps/workspace/src-tauri/src/main.rs");
@@ -409,8 +442,43 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   assert.match(registry, /NotesIcon/);
   assert.match(notesSurface, /WorkspaceEditorRuntimeProvider/);
   assert.match(notesSurface, /BlocksEditor/);
+  assert.match(notesSurface, /notes-editor__title workspace-editor-title-input/);
+  // Both Notes and site-admin inherit appearance / padding / line-height
+  // from `.workspace-editor-title-input` and only override the
+  // `--workspace-editor-title-*` design tokens. This keeps a single
+  // place to fix WebKit-specific rendering issues (descender clipping,
+  // native textfield chrome) instead of two parallel rule sets.
+  assert.match(styles, /\.workspace-editor-title-input \{/);
+  assert.match(styles, /--workspace-editor-title-line-height/);
+  assert.match(styles, /\.notes-editor__title \{[^}]*--workspace-editor-title-size/);
+  assert.match(
+    styles,
+    /\.mdx-document-editor__title \{[^}]*--workspace-editor-title-size/,
+  );
+  assert.match(notesSurface, /setNavGroupItems\(NOTES_NAV_GROUP_ID/);
+  assert.doesNotMatch(notesSurface, /setNavItemChildren\(NOTES_ROOT_NAV_ID/);
+  assert.match(notesNav, /NOTES_ARCHIVE_NAV_ITEM/);
+  assert.match(notesNav, /hideHeader: true/);
+  assert.match(
+    styles,
+    /\.sidebar-tree__group\[data-headerless="true"\][\s\S]*\.sidebar-tree__item-disclosure-placeholder\s*\{[\s\S]*display: none;/,
+    "Headerless Notes nav should not keep the old synthetic-root indentation",
+  );
+  assert.match(surfaceNavContext, /setNavGroupItems/);
+  assert.match(app, /navGroupItems/);
+  assert.match(app, /navGroupItems\[group\.id\] \?\? group\.items/);
+  assert.match(
+    await read("apps/workspace/src/shell/Sidebar.tsx"),
+    /filter\(\(entry\) => entry\.orderable\)/,
+    "Sidebar reorder controls should work for Notes, not only site-admin page ids",
+  );
   assert.match(notesSurface, /SAVE_DEBOUNCE_MS = 600/);
-  assert.doesNotMatch(notesSurface, /useSiteAdmin/);
+  // Notes must not pull in the site-admin context — it has no
+  // SiteAdminProvider ancestor. Match the actual call or import shape;
+  // bare-word matches catch documentation comments that explain *why*
+  // the hook is off-limits.
+  assert.doesNotMatch(notesSurface, /\buseSiteAdmin\s*\(/);
+  assert.doesNotMatch(notesSurface, /from\s+["'][^"']*\/site-admin\/state["']/);
   assert.match(notesTree, /buildNoteTree/);
   assert.match(notesTree, /noteTreeToNavItems/);
   assert.match(notesTree, /draggable: true/);
@@ -418,8 +486,12 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   assert.match(notesTree, /orderable: true/);
   assert.match(editorRuntime, /export function WorkspaceEditorRuntimeProvider/);
   assert.match(editorRuntime, /export function useWorkspaceEditorRuntime/);
-  assert.match(documentEditor, /useWorkspaceEditorRuntime/);
+  // The runtime hook is consumed inside the block-editing canvas (now
+  // its own file). MdxDocumentEditor only provides the runtime via the
+  // Provider, so the consumer assertion moved to blocks-editor.tsx.
+  assert.match(blocksEditor, /useWorkspaceEditorRuntime/);
   assert.match(documentEditor, /assetsEnabled/);
+  assert.match(documentEditor, /WorkspaceEditorRuntimeProvider/);
   assert.match(tauriWrappers, /export function notesList/);
   assert.match(tauriWrappers, /export function notesMove/);
   assert.match(tauriWrappers, /export function notesSearch/);
@@ -618,8 +690,12 @@ test("tauri-ui-engineering: link audit is a first-class Site Admin surface", asy
   const types = await read("apps/workspace/src/surfaces/site-admin/types.ts");
   const nav = await read("apps/workspace/src/surfaces/site-admin/nav.tsx");
   const surface = await read("apps/workspace/src/surfaces/site-admin/SiteAdminSurface.tsx");
-  const commandPalette = await read(
-    "apps/workspace/src/shell/WorkspaceCommandPalette.tsx",
+  // Quick action labels moved into module manifests under
+  // `apps/workspace/src/modules/*/index.tsx`. The palette renders them
+  // generically via `getCommandActions()`, so the literal label string
+  // now lives next to the surface that owns it.
+  const siteAdminModule = await read(
+    "apps/workspace/src/modules/site-admin/index.tsx",
   );
   const linkAudit = await read(
     "apps/workspace/src/surfaces/site-admin/LinkAuditPanel.tsx",
@@ -628,7 +704,7 @@ test("tauri-ui-engineering: link audit is a first-class Site Admin surface", asy
   assert.match(types, /\| "links"/);
   assert.match(nav, /id: "links"/);
   assert.match(surface, /LinkAuditPanel/);
-  assert.match(commandPalette, /Open Link Audit/);
+  assert.match(siteAdminModule, /Open Link Audit/);
   assert.match(linkAudit, /missing-icon-mark/);
   assert.match(linkAudit, /folder-only/);
   assert.match(linkAudit, /localContent\.syncPull/);

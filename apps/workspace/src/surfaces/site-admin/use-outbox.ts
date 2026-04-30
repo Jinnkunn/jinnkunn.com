@@ -7,7 +7,7 @@ import {
   outboxStatus,
   type OutboxEntry,
   type OutboxStatus,
-} from "../../lib/tauri";
+} from "../../modules/site-admin/tauri";
 
 // Hook that owns the workspace's view of the local write outbox: a
 // background drain timer, a window-focus drain, a status poll, and an
