@@ -2,13 +2,27 @@
  * Surface card + message banner
  * ------------------------------------------------------------------ */
 .surface-card {
+  /* Card => translucent vibrancy material + hairline edge instead of
+   * solid white + 1 px border. Lets the desktop wallpaper / window
+   * vibrancy bleed through, which is what makes a macOS app feel
+   * native rather than web-on-a-page. Padding tightened from 18/20
+   * to the new 12/16 spacing scale; gap from 14 to 12 for the same
+   * reason. */
   background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 14px;
-  padding: 18px 20px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md) var(--space-lg);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-md);
+}
+
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .surface-card {
+    background: var(--color-bg-surface-translucent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
 }
 
 .panel-loading {

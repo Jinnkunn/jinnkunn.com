@@ -11,10 +11,164 @@ body,
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
-  font-size: 14px;
+  /* Promoted to the new `--font-system` token so SF Pro Display +
+   * Text optical sizing kick in on macOS. The 13 px / 1.38 body
+   * pair matches the AppKit metric for Body — this dropped from
+   * 14 px because every native macOS app's primary text reads at
+   * 13 (Notion's "compact" mode, Linear, Things 3 — all 13). The
+   * old 14 made the app feel a touch bloated against the native
+   * controls in the titlebar. */
+  font-family: var(--font-system);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: -0.003em;
   color: var(--color-text-primary);
   background: var(--color-bg-window-blend);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* SF Pro stylistic alternates: ss01 (alternate 6/9), ss02
+   * (open-tail 4), cv11 (single-storey g). Matches the typography
+   * macOS uses internally for control labels. */
+  font-feature-settings: var(--font-feature-text);
+  font-variant-ligatures: contextual;
+}
+
+/* Numbers in interface chrome (sidebar counts, timestamps, SHA
+ * snippets) use tabular-nums + lining figures so columns align
+ * vertically. Apply via the helper class below or inline
+ * `font-feature-settings: var(--font-feature-numbers)`. */
+.tabular,
+time,
+code {
+  font-feature-settings: var(--font-feature-numbers);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ------------------------------------------------------------------ *
+ * Vibrancy helper — apply to any surface that should let the OS
+ * NSVisualEffectView material show through. The base `body` already
+ * paints `--color-bg-window-blend` (the warm tint over vibrancy);
+ * sub-surfaces stack their own translucent fill + blur so layers
+ * read distinctly without resorting to opaque white cards.
+ *
+ * `@supports` keeps non-Tauri previews (regular Chrome / Safari)
+ * looking right by falling back to the opaque-token branch when
+ * backdrop-filter isn't available.
+ * ------------------------------------------------------------------ */
+.vibrancy-surface {
+  background: var(--color-bg-surface);
+}
+
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .vibrancy-surface {
+    background: var(--color-bg-surface-translucent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+}
+
+.vibrancy-sidebar {
+  background: var(--color-bg-sidebar);
+}
+
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .vibrancy-sidebar {
+    background: var(--color-bg-sidebar-translucent);
+    backdrop-filter: saturate(180%) blur(28px);
+    -webkit-backdrop-filter: saturate(180%) blur(28px);
+  }
+}
+
+.vibrancy-popover {
+  background: var(--color-bg-popover);
+  /* Popovers get a slightly higher-contrast material so dropdown
+   * + dialog content stays readable against busy backgrounds. */
+}
+
+@supports (backdrop-filter: blur(30px)) or (-webkit-backdrop-filter: blur(30px)) {
+  .vibrancy-popover {
+    background: var(--color-bg-popover);
+    backdrop-filter: saturate(220%) blur(30px);
+    -webkit-backdrop-filter: saturate(220%) blur(30px);
+  }
+}
+
+/* Hairline divider helper — prefer over `border: 1px solid var(--color-border-*)`
+ * because the box-shadow form renders as a true 0.5pt line on
+ * retina, where a 1-CSS-px border looks chunky. Pick the side via
+ * the variant. */
+.hairline-bottom {
+  box-shadow: inset 0 -1px 0 var(--hairline);
+}
+.hairline-top {
+  box-shadow: inset 0 1px 0 var(--hairline);
+}
+.hairline-end {
+  box-shadow: inset -1px 0 0 var(--hairline);
+}
+.hairline-start {
+  box-shadow: inset 1px 0 0 var(--hairline);
+}
+
+/* ------------------------------------------------------------------ *
+ * macOS-style overlay scrollbars. Mac has thin (8 px) scrollbars
+ * that fade in on hover and disappear when idle; the web default is
+ * a fat 17 px persistent strip. The `scrollbar-width: thin` /
+ * `scrollbar-color` pair gives us most of the look on Firefox + Edge;
+ * the WebKit `::-webkit-scrollbar-*` selectors handle Safari + the
+ * Tauri webview specifically.
+ * ------------------------------------------------------------------ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(55, 53, 47, 0.22) transparent;
+}
+
+:root[data-theme="dark"] * {
+  scrollbar-color: rgba(242, 235, 223, 0.22) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(55, 53, 47, 0.16);
+  border-radius: 999px;
+  /* The thumb gets a 2 px transparent border so it visually pulls
+   * back from the scroll-track edges, matching the AppKit overlay
+   * scrollbar's "pill in a wider track" geometry. */
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(242, 235, 223, 0.18);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(55, 53, 47, 0.32);
+  background-clip: padding-box;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(242, 235, 223, 0.32);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ *
+ * Selection color — pull from accent so highlighted text in the
+ * editor + form fields uses the system tint. The 24 % alpha
+ * matches macOS NSColor.selectedTextBackgroundColor's apparent
+ * weight against vibrancy. */
+::selection {
+  background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  color: var(--color-text-primary);
 }

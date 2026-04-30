@@ -6,25 +6,126 @@
  * classes (e.g. `bg-bg-sidebar`, `text-text-primary`, `rounded-xl-card`).
  * ------------------------------------------------------------------ */
 @theme {
-  /* Surface ladder: window (tablecloth) → sidebar card → surface card.
-   * `--bg-window-blend` is the semi-translucent tint painted over
-   * NSVisualEffectView on macOS (see src-tauri/main.rs). Fallback to the
-   * solid `--bg-window` on platforms without vibrancy. */
+  /* ----------------------------------------------------------------- *
+   * Surface ladder — moved from "opaque cards stacked on a window" to
+   * "translucent fills layered on the NSVisualEffectView vibrancy".
+   * The `*-blend` tokens are tuned to let the desktop wallpaper bleed
+   * through just enough that the app reads as a macOS surface, not a
+   * web app on a beige page.
+   * ----------------------------------------------------------------- */
   --color-bg-window: #ece9e2;
-  --color-bg-window-blend: rgba(236, 233, 226, 0.68);
-  --color-bg-sidebar: #ffffff;
-  --color-bg-surface: #ffffff;
-  --color-bg-surface-alt: #f7f4ed;
-  --color-bg-hover: rgba(55, 53, 47, 0.06);
+  --color-bg-window-blend: rgba(236, 233, 226, 0.62);
+  /* Sidebar / surface used to be solid white. We keep them as
+   * fall-back values for non-vibrancy contexts (`@supports not
+   * (backdrop-filter)`), but in the actual app surfaces switch to
+   * the translucent `*-translucent` variants below so the OS
+   * wallpaper / window-vibrancy material stays readable through
+   * the chrome. */
+  --color-bg-sidebar: rgba(255, 255, 255, 0.66);
+  --color-bg-sidebar-translucent: rgba(255, 255, 255, 0.55);
+  --color-bg-surface: rgba(255, 255, 255, 0.78);
+  --color-bg-surface-translucent: rgba(255, 255, 255, 0.62);
+  --color-bg-surface-alt: rgba(247, 244, 237, 0.7);
+  --color-bg-popover: rgba(255, 255, 255, 0.94);
+  --color-bg-hover: rgba(55, 53, 47, 0.05);
+  --color-bg-hover-strong: rgba(55, 53, 47, 0.09);
+
+  /* macOS-style fill ladder. Mirrors NSColor.systemFill /
+   * secondarySystemFill / tertiarySystemFill / quaternarySystemFill —
+   * a four-step alpha scale that lets components describe their own
+   * elevation by alpha, not by an explicit color, so dark mode and
+   * vibrancy adapt automatically. Use these for buttons, pills,
+   * input chrome, hover states — anything that used to pick a solid
+   * `--color-bg-surface-alt` + `1px solid border` combo. */
+  --fill-primary: rgba(55, 53, 47, 0.12);
+  --fill-secondary: rgba(55, 53, 47, 0.08);
+  --fill-tertiary: rgba(55, 53, 47, 0.05);
+  --fill-quaternary: rgba(55, 53, 47, 0.03);
+  /* Accent-tinted fill for prominent buttons / "selected" rows.
+   * Light enough that white text reads cleanly on top, but
+   * solid-feeling against vibrancy. */
+  --fill-accent: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  --fill-accent-strong: color-mix(in srgb, var(--color-accent) 28%, transparent);
+
+  /* Hairline dividers — replace `border: 1px solid var(--color-border-*)`.
+   * `box-shadow: inset 0 -1px 0 var(--hairline)` paints a 1-device-pixel
+   * line on retina (where the OS half-rounds to 0.5pt) without the
+   * 1-CSS-pixel border that web apps lean on. The strong variant is
+   * for separator-of-sections use; subtle is for inside-component. */
+  --hairline: rgba(55, 53, 47, 0.08);
+  --hairline-strong: rgba(55, 53, 47, 0.14);
 
   --color-text-primary: #37352f;
   --color-text-secondary: rgba(55, 53, 47, 0.82);
   --color-text-muted: rgba(55, 53, 47, 0.62);
   --color-text-inverse: #ffffff;
 
-  --color-border-subtle: rgba(55, 53, 47, 0.1);
-  --color-border-default: rgba(55, 53, 47, 0.16);
-  --color-border-strong: rgba(55, 53, 47, 0.24);
+  /* Legacy border tokens — kept for components not yet migrated to
+   * hairlines. New code should reach for `--hairline` / `--fill-*`
+   * instead. The `subtle` value was bumped down to align with the
+   * new hairline scale; `default` / `strong` stay for places that
+   * still need a real border (form-input focus rings, etc.). */
+  --color-border-subtle: rgba(55, 53, 47, 0.08);
+  --color-border-default: rgba(55, 53, 47, 0.14);
+  --color-border-strong: rgba(55, 53, 47, 0.22);
+
+  /* ----------------------------------------------------------------- *
+   * Spacing — 4 px base, 5 stops. Replaces the ad-hoc 6/8/10/12/14/18
+   * mix the codebase grew. Component CSS migrating to this should pick
+   * the closest stop instead of carrying its own px values.
+   * ----------------------------------------------------------------- */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* Radius — tightened from the previous 6/8/10/12 web-y ladder.
+   * macOS apps live in 4/6/8 territory; 12 is reserved for full-
+   * surface "card" containers which are rare in the new design. */
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* Typography scale — five fixed stops mirroring SF's metric system:
+   * 11/14 caption, 12/16 small, 13/18 body, 14/20 subhead, 17/22
+   * headline. Display uses 22/26+ with tighter letter-spacing.
+   * Most surfaces stick to body + small. */
+  --font-size-caption: 11px;
+  --font-size-small: 12px;
+  --font-size-body: 13px;
+  --font-size-subhead: 14px;
+  --font-size-headline: 17px;
+  --font-size-display: 22px;
+  --line-height-caption: 1.27;
+  --line-height-small: 1.33;
+  --line-height-body: 1.38;
+  --line-height-subhead: 1.43;
+  --line-height-headline: 1.29;
+  --line-height-display: 1.18;
+
+  /* Font stacks — promoted from the old `--ds-font-body` alias. Adds
+   * SF Pro Display + Text optical sizing and turns on the stylistic
+   * alternates that give macOS UI its lower-case g / 6 / 9 character.
+   * Tabular-numbers (`tnum`) only on `--font-mono-ui` so timestamps
+   * and counts line up vertically. */
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", "Helvetica Neue", "Inter", system-ui, sans-serif;
+  --font-mono-ui: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+    "Roboto Mono", Menlo, Monaco, Consolas, monospace;
+  --font-feature-text: "ss01", "ss02", "cv11", "ss03";
+  --font-feature-numbers: "tnum", "lnum", "cv11";
+
+  /* Spring-style transition curves used across the app. The "out"
+   * variant comes from the same Apple HIG spec that drives system
+   * popovers and presentation transitions. */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Notion `--color-orange` at 42% lightness so white-on-orange meets
    * WCAG AA (~4.8:1). `--color-accent-strong` is the hover tier. */
@@ -106,17 +207,38 @@
   color-scheme: dark;
 
   --color-bg-window: #120f0d;
-  --color-bg-window-blend: rgba(18, 15, 13, 0.65);
-  --color-bg-sidebar: #1b1816;
-  --color-bg-surface: #1b1816;
-  --color-bg-surface-alt: #25211d;
+  --color-bg-window-blend: rgba(18, 15, 13, 0.55);
+  /* Surfaces mirror the light tokens: prefer translucent fills over
+   * opaque colors so the OS dark vibrancy material stays the
+   * dominant tone. */
+  --color-bg-sidebar: rgba(27, 24, 22, 0.6);
+  --color-bg-sidebar-translucent: rgba(27, 24, 22, 0.5);
+  --color-bg-surface: rgba(27, 24, 22, 0.72);
+  --color-bg-surface-translucent: rgba(27, 24, 22, 0.58);
+  --color-bg-surface-alt: rgba(37, 33, 29, 0.68);
+  --color-bg-popover: rgba(33, 30, 27, 0.94);
   --color-bg-hover: rgba(242, 235, 223, 0.08);
+  --color-bg-hover-strong: rgba(242, 235, 223, 0.13);
+
+  /* Dark-mode fill ladder. NSColor's dark fills are warmer (alpha-
+   * lifted whites rather than darkened blacks), so we mirror the
+   * same alpha steps here keyed off the lifted text color. */
+  --fill-primary: rgba(242, 235, 223, 0.16);
+  --fill-secondary: rgba(242, 235, 223, 0.11);
+  --fill-tertiary: rgba(242, 235, 223, 0.07);
+  --fill-quaternary: rgba(242, 235, 223, 0.04);
+  --fill-accent: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  --fill-accent-strong: color-mix(in srgb, var(--color-accent) 38%, transparent);
+
+  --hairline: rgba(242, 235, 223, 0.1);
+  --hairline-strong: rgba(242, 235, 223, 0.18);
 
   --color-text-primary: #f2ebdf;
   --color-text-secondary: rgba(242, 235, 223, 0.82);
   --color-text-muted: rgba(242, 235, 223, 0.62);
   --color-text-inverse: #171513;
 
+  /* Legacy border tokens — same migration plan as light. */
   --color-border-subtle: rgba(242, 235, 223, 0.08);
   --color-border-default: rgba(242, 235, 223, 0.14);
   --color-border-strong: rgba(242, 235, 223, 0.2);
@@ -174,9 +296,15 @@
  * docs speak the same language without changing the current macOS-style UI.
  */
 :root {
-  --ds-font-body: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  /* `--ds-font-body` and `--ds-font-mono` now alias the workspace's
+   * font tokens so the body / mono stacks stay identical between
+   * web + desktop surfaces. The native `--font-system` variant
+   * leads the body chain so SF Pro picks up correctly inside the
+   * Tauri webview; the public web build's CSS-loader sees the same
+   * fallback chain. */
+  --ds-font-body: var(--font-system);
   --ds-font-heading: var(--ds-font-body);
-  --ds-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace;
+  --ds-font-mono: var(--font-mono-ui);
 
   --ds-surface-page: var(--color-bg-window);
   --ds-surface-panel: var(--color-bg-surface);
