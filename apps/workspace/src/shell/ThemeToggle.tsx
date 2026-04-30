@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { ThemeMode } from "./useTheme";
 import { useTheme } from "./useTheme";
 
@@ -68,6 +70,18 @@ export function ThemeToggle() {
   const { mode, cycle } = useTheme();
   const nextMode =
     mode === "system" ? "light" : mode === "light" ? "dark" : "system";
+
+  // Bridge for the command palette's "Cycle theme" action. The palette
+  // can't import the hook directly without coupling its render scope
+  // to the theme provider, so it dispatches a synthetic event instead.
+  // We listen here (the only mounted ThemeToggle in the app) and route
+  // it back to `cycle()`, which is the same callback the click handler
+  // uses.
+  useEffect(() => {
+    const onCycleEvent = () => cycle();
+    window.addEventListener("workspace:theme:cycle", onCycleEvent);
+    return () => window.removeEventListener("workspace:theme:cycle", onCycleEvent);
+  }, [cycle]);
 
   return (
     <button
