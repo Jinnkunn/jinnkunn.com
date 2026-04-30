@@ -44,6 +44,22 @@ interface EnvironmentSnapshot {
   contentBranch: string;
 }
 
+interface ContentDeltaEntry {
+  relPath: string;
+  sizeBytes: number;
+  sha: string;
+  updatedAtMs: number;
+  updatedBy: string | null;
+}
+
+interface ContentDelta {
+  totalRows: number;
+  changedRows: number;
+  files: ContentDeltaEntry[];
+  truncated: boolean;
+  error: string;
+}
+
 type PromotePreview =
   | {
       ok: true;
@@ -54,6 +70,7 @@ type PromotePreview =
       stagingMatchesMain: boolean;
       productionDifferent: boolean;
       runsListUrl: string;
+      contentDelta: ContentDelta;
     }
   | {
       ok: false;
@@ -81,6 +98,33 @@ function parseSnapshot(raw: unknown): EnvironmentSnapshot | null {
     codeSha: asString(rec.codeSha),
     contentSha: asString(rec.contentSha),
     contentBranch: asString(rec.contentBranch),
+  };
+}
+
+function parseContentDeltaEntry(raw: unknown): ContentDeltaEntry | null {
+  const rec = asRecord(raw);
+  const relPath = asString(rec.relPath);
+  if (!relPath) return null;
+  return {
+    relPath,
+    sizeBytes: typeof rec.sizeBytes === "number" ? rec.sizeBytes : 0,
+    sha: asString(rec.sha),
+    updatedAtMs: typeof rec.updatedAtMs === "number" ? rec.updatedAtMs : 0,
+    updatedBy: typeof rec.updatedBy === "string" ? rec.updatedBy : null,
+  };
+}
+
+function parseContentDelta(raw: unknown): ContentDelta {
+  const rec = asRecord(raw);
+  const filesRaw = Array.isArray(rec.files) ? rec.files : [];
+  return {
+    totalRows: typeof rec.totalRows === "number" ? rec.totalRows : 0,
+    changedRows: typeof rec.changedRows === "number" ? rec.changedRows : 0,
+    files: filesRaw
+      .map(parseContentDeltaEntry)
+      .filter((entry): entry is ContentDeltaEntry => entry !== null),
+    truncated: rec.truncated === true,
+    error: asString(rec.error),
   };
 }
 
@@ -112,6 +156,7 @@ function parsePromotePreview(raw: unknown): PromotePreview {
       stagingMatchesMain: inner.stagingMatchesMain === true,
       productionDifferent: inner.productionDifferent !== false,
       runsListUrl: asString(inner.runsListUrl),
+      contentDelta: parseContentDelta(inner.contentDelta),
     };
   }
   return {
@@ -215,7 +260,52 @@ function releaseChecks(
       tone: previewReady ? (productionDifferent ? "warn" : "ok") : "muted",
       value: previewReady ? (productionDifferent ? "Differs" : "Current") : "Unknown",
     },
+    {
+      // Content delta is a leading indicator: even when code SHAs match
+      // (productionDifferent=false), a staging D1 row that's been edited
+      // since the last production deploy will land on production at the
+      // next promote. Surfacing a count here means the operator clicks
+      // Promote knowing exactly how many files will move, which is the
+      // 2026-04-29 calendar-nav incident's preventable surprise.
+      detail: !previewReady
+        ? "Load promotion preflight from Staging."
+        : preview.contentDelta.error
+          ? `Could not compute content delta: ${preview.contentDelta.error}`
+          : preview.contentDelta.changedRows === 0
+            ? "Staging D1 has not changed since production was deployed."
+            : `${preview.contentDelta.changedRows} content file${preview.contentDelta.changedRows === 1 ? "" : "s"} edited since production deploy. The next promote will overwrite production's bundled snapshot with these.`,
+      label: "Content delta",
+      tone: !previewReady
+        ? "muted"
+        : preview.contentDelta.error
+          ? "warn"
+          : preview.contentDelta.changedRows === 0
+            ? "ok"
+            : "warn",
+      value: !previewReady
+        ? "Unknown"
+        : preview.contentDelta.error
+          ? "Unavailable"
+          : preview.contentDelta.changedRows === 0
+            ? "No edits"
+            : `${preview.contentDelta.changedRows} file${preview.contentDelta.changedRows === 1 ? "" : "s"}`,
+    },
   ];
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatRelativeTime(ms: number, now = Date.now()): string {
+  if (!ms) return "";
+  const delta = now - ms;
+  if (delta < 60_000) return "just now";
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`;
+  return `${Math.floor(delta / 86_400_000)}d ago`;
 }
 
 export function ReleasePanel() {
@@ -472,6 +562,55 @@ export function ReleasePanel() {
             </div>
           ))}
         </div>
+        {preview?.ok === true &&
+        !preview.contentDelta.error &&
+        preview.contentDelta.files.length > 0 ? (
+          <details
+            className="release-panel__content-delta"
+            aria-label="Files that will land on production"
+          >
+            <summary>
+              <span>What will land on production</span>
+              <strong>
+                {preview.contentDelta.changedRows} file
+                {preview.contentDelta.changedRows === 1 ? "" : "s"}
+              </strong>
+            </summary>
+            <ul>
+              {preview.contentDelta.files.map((file) => (
+                <li key={file.relPath}>
+                  <code>{file.relPath}</code>
+                  <span aria-hidden="true">·</span>
+                  <span>{formatBytes(file.sizeBytes)}</span>
+                  {file.updatedAtMs ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <time
+                        dateTime={new Date(file.updatedAtMs).toISOString()}
+                        title={new Date(file.updatedAtMs).toLocaleString()}
+                      >
+                        {formatRelativeTime(file.updatedAtMs)}
+                      </time>
+                    </>
+                  ) : null}
+                  {file.updatedBy ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>by {file.updatedBy}</span>
+                    </>
+                  ) : null}
+                </li>
+              ))}
+              {preview.contentDelta.truncated ? (
+                <li className="release-panel__content-delta-more">
+                  + {preview.contentDelta.changedRows -
+                    preview.contentDelta.files.length}{" "}
+                  more
+                </li>
+              ) : null}
+            </ul>
+          </details>
+        ) : null}
       </section>
 
       <section className="release-panel__promote" aria-label="Production promotion action">

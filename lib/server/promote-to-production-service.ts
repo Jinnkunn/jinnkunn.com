@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
 import {
   createGitHubAppClientFromEnv,
   GitHubApiError,
@@ -9,6 +11,8 @@ import {
   dispatchWorkflow,
   isWorkflowDispatchConfigured,
 } from "./github-workflow-dispatch";
+import { createD1Executor, type D1DatabaseLike } from "./d1-executor";
+import type { DbExecutor } from "./db-content-store";
 import { logWarn } from "./error-log";
 
 // Service that backs the "Promote to Production" button on the staging
@@ -31,6 +35,38 @@ export type PromoteEnvironmentSnapshot = {
   codeSha: string;
   contentSha: string;
   contentBranch: string;
+  /** When CF reports this deployment went live, as unix ms. Used to filter
+   * `content_files.updated_at` for the promote preview's "what's about to
+   * change" diff. `null` if CF didn't return a parseable `created_on`. */
+  deployedAtMs: number | null;
+};
+
+export type PromoteContentDeltaEntry = {
+  relPath: string;
+  sizeBytes: number;
+  /** sha1(body) — same value used for the optimistic-lock contract. */
+  sha: string;
+  updatedAtMs: number;
+  updatedBy: string | null;
+};
+
+export type PromoteContentDelta = {
+  /** Total rows currently in staging D1's content_files. */
+  totalRows: number;
+  /** Rows whose `updated_at` is newer than production's deployedAtMs. These
+   * are the files that will overwrite production's bundled snapshot at the
+   * next promote. */
+  changedRows: number;
+  /** Up to MAX_DELTA_ENTRIES of the changed rows, newest-first. The UI uses
+   * this to render an inline "Calendar nav, 3 page rewrites…" preview. */
+  files: PromoteContentDeltaEntry[];
+  /** True if `changedRows > MAX_DELTA_ENTRIES` and the list above was
+   * capped. The UI shows a "+N more" tail when set. */
+  truncated: boolean;
+  /** Why the delta couldn't be computed (no D1 binding, no production
+   * deployment timestamp, query error). When set, the rest of the fields
+   * are zeroes — the UI falls back to "delta unavailable". */
+  error?: string;
 };
 
 export type PromotePreviewError =
@@ -56,6 +92,12 @@ export type PromotePreview =
       workflowEventType: "release-production";
       runsListUrl: string;
       githubAppConfigured: boolean;
+      /** Best-effort summary of which staging D1 rows have moved since
+       * production's last deploy. Always present, but may carry an
+       * `error` and zero counts when D1 isn't reachable. The UI uses
+       * `changedRows` for a one-glance count badge and `files` for an
+       * expandable list. */
+      contentDelta: PromoteContentDelta;
     }
   | {
       ok: false;
@@ -229,6 +271,13 @@ async function readActiveDeployment({
     String(annotations["workers/message"] || "") ||
     String((versionDetail as { message?: unknown } | null)?.message || "");
   const meta = parseDeployMessage(message);
+  // CF returns `created_on` as an ISO 8601 string. Parse to ms here so
+  // the content-delta query can do a single integer comparison against
+  // `content_files.updated_at` (which is unix ms by schema). NaN is
+  // surfaced as null so callers can take the "delta unavailable" branch
+  // instead of comparing against silently-corrupt timestamps.
+  const createdOnRaw = String(active.created_on || "");
+  const createdOnMs = createdOnRaw ? Date.parse(createdOnRaw) : NaN;
   return {
     workerName,
     versionId,
@@ -236,6 +285,98 @@ async function readActiveDeployment({
     codeSha: meta.codeSha || meta.sourceSha,
     contentSha: meta.contentSha || meta.sourceSha,
     contentBranch: meta.contentBranch || meta.sourceBranch,
+    deployedAtMs: Number.isFinite(createdOnMs) ? createdOnMs : null,
+  };
+}
+
+const MAX_DELTA_ENTRIES = 50;
+
+function tryGetStagingDbExecutor(): DbExecutor | null {
+  // The promote endpoint runs on the staging worker; its SITE_ADMIN_DB
+  // binding is staging D1 — exactly the database the operator writes to
+  // and the database the build will dump for the promote. Same accessor
+  // pattern as content-store-resolver.ts; getCloudflareContext throws
+  // outside a request lifecycle (build, scripts), so we swallow that
+  // and let the caller surface "delta unavailable".
+  try {
+    const { env } = getCloudflareContext();
+    const binding = (env as Record<string, unknown>).SITE_ADMIN_DB;
+    if (
+      binding &&
+      typeof binding === "object" &&
+      typeof (binding as { prepare?: unknown }).prepare === "function"
+    ) {
+      return createD1Executor(binding as D1DatabaseLike);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function readContentDelta(
+  productionDeployedAtMs: number | null,
+): Promise<PromoteContentDelta> {
+  const empty = (error: string): PromoteContentDelta => ({
+    totalRows: 0,
+    changedRows: 0,
+    files: [],
+    truncated: false,
+    error,
+  });
+
+  if (productionDeployedAtMs === null) {
+    // We don't know when production was deployed, so we can't tell which
+    // rows are newer. Don't lie with a count — surface the limitation.
+    return empty("Production deployment timestamp unavailable");
+  }
+  const executor = tryGetStagingDbExecutor();
+  if (!executor) return empty("D1 binding not available in this context");
+
+  let totalRows = 0;
+  let changedRows = 0;
+  let files: PromoteContentDeltaEntry[] = [];
+  try {
+    const totalResult = await executor.execute({
+      sql: "SELECT COUNT(*) AS n FROM content_files",
+    });
+    totalRows = Number(totalResult.rows?.[0]?.n ?? 0) || 0;
+
+    // Limit to MAX_DELTA_ENTRIES + 1 so we know whether to set
+    // `truncated`. The +1 row is dropped before returning.
+    const changedResult = await executor.execute({
+      sql: `SELECT rel_path, size, sha, updated_at, updated_by
+            FROM content_files
+            WHERE updated_at > ?
+            ORDER BY updated_at DESC
+            LIMIT ?`,
+      args: [productionDeployedAtMs, MAX_DELTA_ENTRIES + 1],
+    });
+    const rows = Array.isArray(changedResult.rows) ? changedResult.rows : [];
+    files = rows.slice(0, MAX_DELTA_ENTRIES).map((row) => ({
+      relPath: String(row.rel_path ?? ""),
+      sizeBytes: Number(row.size ?? 0) || 0,
+      sha: String(row.sha ?? ""),
+      updatedAtMs: Number(row.updated_at ?? 0) || 0,
+      updatedBy: row.updated_by == null ? null : String(row.updated_by),
+    }));
+
+    // Cheap second count query (rather than reading all rows) so the
+    // "+N more" suffix is accurate even when the body fetch was capped.
+    const changedCountResult = await executor.execute({
+      sql: "SELECT COUNT(*) AS n FROM content_files WHERE updated_at > ?",
+      args: [productionDeployedAtMs],
+    });
+    changedRows = Number(changedCountResult.rows?.[0]?.n ?? 0) || 0;
+  } catch (error) {
+    return empty(error instanceof Error ? error.message : String(error));
+  }
+
+  return {
+    totalRows,
+    changedRows,
+    files,
+    truncated: changedRows > files.length,
   };
 }
 
@@ -334,6 +475,11 @@ export async function readPromotePreview(): Promise<PromotePreview> {
     !production ||
     (production.codeSha || "").toLowerCase() !== stagingSha.toLowerCase();
 
+  // Content delta is informational, never blocks the promote — the
+  // operator may legitimately want to ship a code-only change with no
+  // D1 movement. Errors collapse to `error` field on the delta itself.
+  const contentDelta = await readContentDelta(production?.deployedAtMs ?? null);
+
   const owner = readRepoOwner();
   const repo = readRepoName();
   const runsListUrl = `https://github.com/${owner}/${repo}/actions/workflows/release-from-dispatch.yml`;
@@ -349,6 +495,7 @@ export async function readPromotePreview(): Promise<PromotePreview> {
     workflowEventType: "release-production",
     runsListUrl,
     githubAppConfigured: true,
+    contentDelta,
   };
 }
 
