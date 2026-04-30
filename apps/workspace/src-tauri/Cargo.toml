@@ -64,6 +64,12 @@ tauri-plugin-window-state = "2"
 # land. Safe to ship disabled: without a pubkey, the plugin initializes
 # but check_update() rejects.
 tauri-plugin-updater = "2"
+# Native AppKit dialogs (NSAlert under the hood). Replaces the
+# webview's `window.confirm()` for the auto-updater prompt so the
+# operator gets a real macOS sheet — keyboard-navigable, system-styled,
+# and accent-colored — instead of the webview's blandly cross-platform
+# JS dialog.
+tauri-plugin-dialog = "2"
 # window-vibrancy applies the native macOS NSVisualEffectView behind the
 # webview so the window background picks up desktop blur — the translucent
 # "和谐" feel personal-os gets from NSVisualEffectMaterial::WindowBackground.

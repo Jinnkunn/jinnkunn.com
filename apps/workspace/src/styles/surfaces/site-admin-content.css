@@ -33,72 +33,78 @@
   font-size: 12.5px;
 }
 
-/* Surface-level "you are not connected" placeholder. Shown by
- * DisconnectedNotice in place of a panel when no token is in memory. */
+/* Surface-level "you are not connected" placeholder. Mimics the
+ * macOS empty-state pattern (Apple Notes / Things 3 / Reeder): a
+ * roomy centered column with a tinted glyph, headline at display
+ * weight, body in secondary tone, primary CTA prominent. The whole
+ * column sits on the window vibrancy with no card chrome — the
+ * content speaks for itself. */
 .disconnected-notice {
   display: grid;
   place-items: center;
-  min-height: 360px;
+  min-height: 420px;
 }
 
 .disconnected-notice__inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-md);
   max-width: 460px;
-  padding: 32px;
+  padding: var(--space-2xl);
   text-align: center;
 }
 
 .disconnected-notice__icon {
+  /* Larger, softer glyph chip — 56 px reads as a focal point, the
+   * old 44 px felt incidental. Doubled outer ring (faint inset
+   * shadow) gives a touch of depth without painting a border. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-accent);
   color: var(--color-accent);
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .disconnected-notice__title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 650;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.018em;
 }
 
 .disconnected-notice__body {
   margin: 0;
   color: var(--color-text-secondary);
-  font-size: 13.5px;
-  line-height: 1.5;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
 }
 
 .disconnected-notice__actions {
   display: flex;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
 }
 
 .disconnected-notice__hint {
-  margin: 6px 0 0;
+  margin: var(--space-xs) 0 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .disconnected-notice__hint code {
-  background: var(--color-bg-surface-alt);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
-    monospace;
-  font-size: 11.5px;
+  background: var(--fill-tertiary);
+  border-radius: var(--radius-xs);
+  padding: 1px var(--space-xs);
+  font-family: var(--font-mono-ui);
+  font-size: var(--font-size-caption);
 }
 
 .loading-inline {
@@ -126,26 +132,30 @@
 }
 
 .message-bar {
+  /* Notification banner — fill instead of card border. The colored
+   * left edge stays as a focal indicator (kind === success / error /
+   * warn), but the surrounding box is just a tinted fill on top of
+   * vibrancy, no full-width 1 px border. */
   display: flex;
   align-items: center;
-  gap: 10px;
-  border-radius: 10px;
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-surface-alt);
-  padding: 10px 12px;
-  border-left: 4px solid var(--color-accent);
+  gap: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 0;
+  background: var(--fill-tertiary);
+  padding: var(--space-sm) var(--space-md);
+  box-shadow: inset 4px 0 0 var(--color-accent);
 }
 
 .message-bar.kind-success {
-  border-left-color: var(--color-success);
+  box-shadow: inset 4px 0 0 var(--color-success);
 }
 
 .message-bar.kind-error {
-  border-left-color: var(--color-danger);
+  box-shadow: inset 4px 0 0 var(--color-danger);
 }
 
 .message-bar.kind-warn {
-  border-left-color: var(--color-warn);
+  box-shadow: inset 4px 0 0 var(--color-warn);
 }
 
 .message-bar p {
@@ -1021,12 +1031,12 @@
 .release-panel__summary > div,
 .release-panel__check {
   display: grid;
-  gap: 4px;
+  gap: var(--space-xs);
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-bg-surface);
+  padding: var(--space-sm) var(--space-md);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--fill-tertiary);
 }
 
 .release-panel__summary span,
@@ -1049,10 +1059,10 @@
 }
 
 .release-panel__content-delta {
-  margin-top: 12px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-bg-surface);
+  margin-top: var(--space-md);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--fill-quaternary);
 }
 
 .release-panel__content-delta summary {

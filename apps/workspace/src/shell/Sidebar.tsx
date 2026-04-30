@@ -5,6 +5,10 @@ import type {
   SurfaceNavGroup,
   SurfaceNavItem,
 } from "../surfaces/types";
+import {
+  CONTEXT_MENU_SEPARATOR,
+  showContextMenuWithActions,
+} from "./contextMenu";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import { handleWindowDragMouseDown } from "./windowDrag";
@@ -435,6 +439,56 @@ function renderNavItem({
                 return;
               }
               if (hasChildren) toggleItemTree(treeKey);
+            }}
+            onContextMenu={(event) => {
+              // Native AppKit popup. The webview's default context menu
+              // (Inspect Element, Reload) is suppressed in favor of our
+              // own action list — same actions the inline ⋯ menu offers,
+              // but reachable with a single right-click instead of a
+              // hover-then-click.
+              event.preventDefault();
+              const pinned = isFavorite(surfaceId, item.id);
+              const entries = [
+                selectable && {
+                  label: "Open",
+                  run: () => {
+                    onRecordRecent({
+                      itemId: item.id,
+                      label: item.label,
+                      surfaceId,
+                      surfaceTitle,
+                    });
+                    onSelectNavItem(surfaceId, item.id);
+                  },
+                },
+                hasChildren && {
+                  label: treeOpen ? "Collapse" : "Expand",
+                  run: () => toggleItemTree(treeKey),
+                },
+                hasFavoriteAction && CONTEXT_MENU_SEPARATOR,
+                hasFavoriteAction && {
+                  label: pinned ? "Unpin from favorites" : "Pin to favorites",
+                  run: () => {
+                    onToggleFavorite({
+                      surfaceId,
+                      itemId: item.id,
+                      label: item.label,
+                    });
+                  },
+                },
+                item.canAddChild && CONTEXT_MENU_SEPARATOR,
+                item.canAddChild && {
+                  label: "Add sub-page",
+                  run: () => onSelectNavItem(surfaceId, `add:${item.id}`),
+                },
+                item.draggable && {
+                  label: "Rename…",
+                  run: () => onStartRename(item.id),
+                },
+              ].filter(Boolean) as Parameters<
+                typeof showContextMenuWithActions
+              >[0];
+              showContextMenuWithActions(entries);
             }}
             aria-current={selected ? "page" : undefined}
             data-selectable={selectable ? undefined : "false"}

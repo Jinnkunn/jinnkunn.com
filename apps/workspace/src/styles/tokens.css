@@ -139,10 +139,18 @@
   --mdx-handle-bg-hover: rgba(55, 53, 47, 0.06);
   --mdx-block-row-hover-bg: rgba(55, 53, 47, 0.03);
   --mdx-placeholder-color: rgba(55, 53, 47, 0.4);
-  --mdx-popover-bg: #ffffff;
-  --mdx-popover-border: rgba(15, 15, 15, 0.1);
+  /* Editor popovers (block actions, slash menu, format toolbar)
+   * use the same vibrancy material as system menus — translucent
+   * over the editor canvas, blur the content underneath, hairline
+   * edge instead of a 1 px border. The shadow stack mimics the
+   * NSPopover drop-shadow profile: a tight 1 px contact + a soft
+   * 8 px ambient. */
+  --mdx-popover-bg: var(--color-bg-popover);
+  --mdx-popover-border: var(--hairline);
   --mdx-popover-shadow:
-    0 14px 28px rgba(15, 15, 15, 0.12), 0 2px 6px rgba(15, 15, 15, 0.08);
+    0 0.5px 0 0 rgba(15, 15, 15, 0.1),
+    0 6px 24px -4px rgba(15, 15, 15, 0.18),
+    0 1.5px 4px -1px rgba(15, 15, 15, 0.08);
 
   --color-danger: #b3261e;
   --color-danger-strong: #8f1d17;
@@ -251,10 +259,12 @@
   --mdx-handle-bg-hover: rgba(242, 235, 223, 0.06);
   --mdx-block-row-hover-bg: rgba(242, 235, 223, 0.04);
   --mdx-placeholder-color: rgba(242, 235, 223, 0.42);
-  --mdx-popover-bg: #25211d;
-  --mdx-popover-border: rgba(242, 235, 223, 0.12);
+  --mdx-popover-bg: var(--color-bg-popover);
+  --mdx-popover-border: var(--hairline);
   --mdx-popover-shadow:
-    0 14px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.45);
+    0 0.5px 0 0 rgba(0, 0, 0, 0.5),
+    0 12px 28px -4px rgba(0, 0, 0, 0.6),
+    0 2px 6px -1px rgba(0, 0, 0, 0.45);
 
   --color-danger: #ff8479;
   --color-danger-strong: #ff9b91;

@@ -642,10 +642,10 @@
 }
 
 .mdx-document-diagnostics {
-  margin: 0 0 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-bg-surface-alt);
+  margin: 0 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--fill-tertiary);
   color: var(--color-text-secondary);
 }
 
@@ -3746,15 +3746,22 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
   left: 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xs);
   width: min(340px, calc(100% - 16px));
   max-height: 360px;
   overflow: auto;
-  padding: 6px;
+  padding: var(--space-xs);
   border: 1px solid var(--mdx-popover-border);
-  border-radius: 10px;
-  background: var(--color-bg-surface);
+  border-radius: var(--radius-md);
+  background: var(--mdx-popover-bg);
   box-shadow: var(--mdx-popover-shadow);
+}
+
+@supports (backdrop-filter: blur(30px)) or (-webkit-backdrop-filter: blur(30px)) {
+  .mdx-document-slash-menu {
+    backdrop-filter: saturate(220%) blur(28px);
+    -webkit-backdrop-filter: saturate(220%) blur(28px);
+  }
 }
 
 .block-editor-command__group {
@@ -3842,13 +3849,20 @@ a[data-link-style="icon"][data-link-icon].notion-link.link::before {
 .block-popover {
   z-index: 40;
   min-width: 180px;
-  padding: 4px;
+  padding: var(--space-xs);
   border: 1px solid var(--mdx-popover-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--mdx-popover-bg);
   box-shadow: var(--mdx-popover-shadow);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   color: var(--color-text-primary);
+}
+
+@supports (backdrop-filter: blur(30px)) or (-webkit-backdrop-filter: blur(30px)) {
+  .block-popover {
+    backdrop-filter: saturate(220%) blur(28px);
+    -webkit-backdrop-filter: saturate(220%) blur(28px);
+  }
 }
 
 /* ------------------------------------------------------------------ *
