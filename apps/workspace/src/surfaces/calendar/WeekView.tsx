@@ -5,6 +5,7 @@ import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents } from "./eventLayout";
 import { TimeGrid, HOUR_HEIGHT, TIME_GUTTER_WIDTH } from "./TimeGrid";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
+import type { TodoRow } from "../../modules/todos/api";
 
 const ALL_DAY_BAR_HEIGHT = 18;
 const ALL_DAY_BAR_GAP = 2;
@@ -17,13 +18,17 @@ export function WeekView({
   anchor,
   events,
   calendarsById,
+  todos,
   onEventSelect,
+  onTodoToggle,
   getDisclosure,
 }: {
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
   const days = useMemo(() => weekDays(anchor), [anchor]);
@@ -61,7 +66,9 @@ export function WeekView({
           days={days}
           events={events}
           calendarsById={calendarsById}
+          todos={todos}
           onEventSelect={onEventSelect}
+          onTodoToggle={onTodoToggle}
           getDisclosure={getDisclosure}
         />
       </div>

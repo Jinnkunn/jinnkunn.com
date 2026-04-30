@@ -4,6 +4,7 @@ import { isSameDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutDayEvents, type PositionedEvent } from "./eventLayout";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
+import type { TodoRow } from "../../modules/todos/api";
 
 /** Pixels per hour. macOS Calendar uses ~44px at default zoom; matching
  * that keeps text-block events readable without dominating the pane. */
@@ -17,18 +18,28 @@ const APPLE_RED = "#FF3B30";
 /** Shared timeline used by Day and Week views. Renders one column per
  * date in `days`, each with hour gridlines and absolutely positioned
  * event blocks laid out for overlap (equal-width split). All-day events
- * are filtered out — render those in a separate strip above. */
+ * are filtered out — render those in a separate strip above. Todos with
+ * a `dueAt` on the day are overlaid on top of events as 22px chips so
+ * users can see "what's due today" without leaving the calendar. */
 export function TimeGrid({
   days,
   events,
   calendarsById,
+  todos = [],
   onEventSelect,
+  onTodoToggle,
   getDisclosure,
 }: {
   days: Date[];
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  /** Todos with a `dueAt` timestamp. Untimed / archived todos are
+   * filtered out by the parent. */
+  todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  /** Click on a todo chip flips its completion state. The parent keeps
+   * the source-of-truth list in sync (optimistic + retry). */
+  onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
   const totalHeight = HOUR_HEIGHT * HOURS_PER_DAY;
@@ -47,14 +58,17 @@ export function TimeGrid({
       <HourGutter totalHeight={totalHeight} nowTopPx={todayIdx >= 0 ? nowTopPx : null} />
       {days.map((day, idx) => {
         const positioned = layoutDayEvents(events, day);
+        const dayTodos = layoutDayTodos(todos, day);
         const isToday = idx === todayIdx;
         return (
           <DayColumn
             key={day.toISOString()}
             day={day}
             positioned={positioned}
+            todos={dayTodos}
             calendarsById={calendarsById}
             onEventSelect={onEventSelect}
+            onTodoToggle={onTodoToggle}
             getDisclosure={getDisclosure}
             totalHeight={totalHeight}
             nowTopPx={isToday ? nowTopPx : null}
@@ -67,6 +81,36 @@ export function TimeGrid({
       })}
     </div>
   );
+}
+
+/** Pixel-positioned todo for one day column. Mirrors the shape of
+ * PositionedEvent but todos don't claim a duration so we render every
+ * chip at a fixed `TODO_CHIP_HEIGHT`. */
+interface PositionedTodo {
+  todo: TodoRow;
+  startMinute: number;
+}
+
+const TODO_CHIP_HEIGHT = 22;
+
+/** Filter the todos array to ones that fall on `day` (local-time
+ * comparison) and stamp each with the within-day minute offset the
+ * chip should sit at. Untimed (`dueAt === null`) and archived todos
+ * are dropped — those belong in the Todos surface, not the timeline. */
+function layoutDayTodos(todos: readonly TodoRow[], day: Date): PositionedTodo[] {
+  const out: PositionedTodo[] = [];
+  for (const todo of todos) {
+    if (todo.archivedAt !== null) continue;
+    if (todo.dueAt === null) continue;
+    const due = new Date(todo.dueAt);
+    if (!isSameDay(due, day)) continue;
+    out.push({
+      todo,
+      startMinute: due.getHours() * 60 + due.getMinutes(),
+    });
+  }
+  out.sort((a, b) => a.startMinute - b.startMinute);
+  return out;
 }
 
 /** Left gutter showing one hour label per row. The labels align with
@@ -118,8 +162,10 @@ function HourGutter({
 function DayColumn({
   day,
   positioned,
+  todos,
   calendarsById,
   onEventSelect,
+  onTodoToggle,
   getDisclosure,
   totalHeight,
   nowTopPx,
@@ -127,8 +173,10 @@ function DayColumn({
 }: {
   day: Date;
   positioned: PositionedEvent[];
+  todos: PositionedTodo[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
   totalHeight: number;
   nowTopPx: number | null;
@@ -160,6 +208,13 @@ function DayColumn({
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
           getDisclosure={getDisclosure}
+        />
+      ))}
+      {todos.map((t) => (
+        <TodoChip
+          key={`todo-${t.todo.id}-${day.toISOString()}`}
+          positioned={t}
+          onTodoToggle={onTodoToggle}
         />
       ))}
       {nowTopPx !== null ? (
@@ -238,6 +293,93 @@ function EventBlock({
           </div>
         ) : null}
       </div>
+    </button>
+  );
+}
+
+/** A todo chip pinned to its `dueAt` minute. Visually distinct from
+ * EventBlock — outline (not fill) + checkbox prefix — so the user can
+ * tell at a glance which items are "things I scheduled" vs "things I
+ * need to finish". Click anywhere on the chip flips the completion
+ * state; the parent reconciles with `todosUpdate` and the chip restyles
+ * to strikethrough + low opacity. Chips render in their own `z-index`
+ * layer above events so they remain clickable when an event happens to
+ * occupy the same minute. */
+function TodoChip({
+  positioned,
+  onTodoToggle,
+}: {
+  positioned: PositionedTodo;
+  onTodoToggle?: (id: string, completed: boolean) => void;
+}) {
+  const { todo, startMinute } = positioned;
+  const top = (startMinute / 60) * HOUR_HEIGHT;
+  const completed = todo.completedAt !== null;
+  return (
+    <button
+      type="button"
+      className="absolute overflow-hidden text-left text-[11.5px] leading-tight border-0 cursor-pointer flex items-center gap-1.5 px-1.5 rounded-[4px]"
+      onClick={() => onTodoToggle?.(todo.id, !completed)}
+      title={
+        todo.notes
+          ? `${todo.title || "(Untitled)"}\n${todo.notes}`
+          : todo.title || "(Untitled)"
+      }
+      data-completed={completed ? "true" : undefined}
+      style={{
+        left: "1px",
+        right: "1px",
+        top: `${top}px`,
+        height: `${TODO_CHIP_HEIGHT}px`,
+        background: completed
+          ? "transparent"
+          : "color-mix(in srgb, var(--color-bg-surface, #fff) 88%, transparent)",
+        boxShadow: `inset 0 0 0 1px ${
+          completed
+            ? "rgba(0,0,0,0.18)"
+            : "color-mix(in srgb, var(--color-accent, #0A84FF) 55%, transparent)"
+        }`,
+        color: "var(--color-text-primary)",
+        opacity: completed ? 0.55 : 1,
+        zIndex: 6,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className="inline-flex items-center justify-center flex-shrink-0 rounded-full"
+        style={{
+          width: "12px",
+          height: "12px",
+          boxShadow: completed
+            ? "inset 0 0 0 1px rgba(0,0,0,0.35)"
+            : "inset 0 0 0 1.5px var(--color-accent, #0A84FF)",
+          background: completed ? "rgba(0,0,0,0.35)" : "transparent",
+        }}
+      >
+        {completed ? (
+          <svg
+            viewBox="0 0 12 12"
+            width="8"
+            height="8"
+            fill="none"
+            stroke="white"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M2.5 6.25l2.25 2L9.5 3.75" />
+          </svg>
+        ) : null}
+      </span>
+      <span
+        className="truncate"
+        style={{
+          textDecoration: completed ? "line-through" : "none",
+          textDecorationColor: completed ? "rgba(0,0,0,0.45)" : undefined,
+        }}
+      >
+        {todo.title || "(Untitled)"}
+      </span>
     </button>
   );
 }
