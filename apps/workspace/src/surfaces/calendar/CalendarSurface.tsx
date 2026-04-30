@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
@@ -105,6 +106,7 @@ function isAuthorized(status: CalendarAuthorizationStatus): boolean {
  * navigation anchor. Each rendered view (Day / Week / Month / Agenda)
  * is a thin presentation component over the same event list. */
 export function CalendarSurface() {
+  const { setContextAccessory } = useSurfaceNav();
   const [view, setView] = useState<ViewKind>("week");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
 
@@ -556,6 +558,11 @@ export function CalendarSurface() {
     () => diffSnapshots(pendingSyncEntries, lastSyncSnapshot?.events ?? []),
     [lastSyncSnapshot, pendingSyncEntries],
   );
+  const hasPendingSyncChanges =
+    lastSyncSnapshot === null ||
+    syncPreviewDiff.added.length > 0 ||
+    syncPreviewDiff.visibilityChanged.length > 0 ||
+    syncPreviewDiff.removed.length > 0;
   const publicEventCount =
     publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
   const getDisclosure = useCallback<EventDisclosureResolver>(
@@ -574,7 +581,7 @@ export function CalendarSurface() {
     [calendarDefaults, publishMetadata, smartRulesRevision],
   );
 
-  const toggleCalendar = (id: string) => {
+  const toggleCalendar = useCallback((id: string) => {
     setSelectedCalendarIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -588,7 +595,33 @@ export function CalendarSurface() {
       });
       return next;
     });
-  };
+  }, []);
+
+  const sourceSidebar = useMemo(
+    () => (
+      <SourceSidebar
+        sources={sources}
+        calendarsBySource={calendarsBySource}
+        visible={selectedCalendarIds}
+        calendarDefaults={calendarDefaults}
+        onToggleVisible={toggleCalendar}
+        onSetCalendarDefault={setCalendarDefault}
+      />
+    ),
+    [
+      calendarDefaults,
+      calendarsBySource,
+      selectedCalendarIds,
+      setCalendarDefault,
+      sources,
+      toggleCalendar,
+    ],
+  );
+
+  useEffect(() => {
+    setContextAccessory(sourceSidebar);
+    return () => setContextAccessory(null);
+  }, [setContextAccessory, sourceSidebar]);
 
   const requestAccess = async () => {
     setErrorMessage(null);
@@ -796,7 +829,8 @@ export function CalendarSurface() {
               Rules
             </WorkspaceCommandButton>
             <WorkspaceCommandButton
-              tone="accent"
+              className="calendar-commandbar__sync-button"
+              tone={hasPendingSyncChanges ? "accent" : "default"}
               disabled={publishState === "publishing" || !rulesLoaded}
               onClick={() => void syncCalendarProjection("manual")}
               title={
@@ -879,16 +913,6 @@ export function CalendarSurface() {
       >
         <WorkspaceSplitView
           className="calendar-workspace-split"
-          sidebar={
-            <SourceSidebar
-              sources={sources}
-              calendarsBySource={calendarsBySource}
-              visible={selectedCalendarIds}
-              calendarDefaults={calendarDefaults}
-              onToggleVisible={toggleCalendar}
-              onSetCalendarDefault={setCalendarDefault}
-            />
-          }
           inspector={
             selectedEvent ? (
               <CalendarEventInspector

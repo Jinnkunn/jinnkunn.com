@@ -21,7 +21,7 @@ export const TODOS_MODULE: WorkspaceModuleDefinition = {
   dashboardActions: [
     {
       id: "todos:open",
-      description: "Open tasks",
+      description: "Today plan",
       label: "Todos",
       navItemId: TODOS_DEFAULT_NAV_ITEM_ID,
       surfaceId: "todos",
@@ -30,9 +30,9 @@ export const TODOS_MODULE: WorkspaceModuleDefinition = {
   commandActions: [
     {
       id: "quick:todos",
-      hint: "Open tasks",
-      keywords: "todos tasks checklist open done due",
-      label: "Open Todos",
+      hint: "Today plan",
+      keywords: "todos tasks checklist today upcoming scheduled inbox due",
+      label: "Open Today",
       navItemId: TODOS_DEFAULT_NAV_ITEM_ID,
       surfaceId: "todos",
     },

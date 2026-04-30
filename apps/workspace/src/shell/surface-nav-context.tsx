@@ -26,6 +26,10 @@ interface SurfaceNavContextValue {
     groupId: string,
     items: readonly SurfaceNavItem[] | null,
   ) => void;
+  /** Lets the active surface render custom persistent controls in the
+   * workspace sidebar context pane. Use this for module context that is
+   * richer than plain nav rows, e.g. Calendar source/account filters. */
+  setContextAccessory: (node: ReactNode | null) => void;
   /** Surfaces register a callback here to handle drag-reparent. Sidebar
    * fires onMoveNavItem → App routes it to the active surface's
    * registered handler. Pass `null` to clear. */

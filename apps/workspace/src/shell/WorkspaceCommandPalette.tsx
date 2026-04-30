@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getCommandActions } from "../modules/registry";
+import { todosCreate, type TodoRow } from "../modules/todos/api";
+import {
+  hasQuickTodoPrefix,
+  parseQuickTodoInput,
+} from "../modules/todos/quickCapture";
+import {
+  TODOS_INBOX_NAV_ID,
+  TODOS_SCHEDULED_NAV_ID,
+  TODOS_TODAY_NAV_ID,
+  TODOS_UNSCHEDULED_NAV_ID,
+  TODOS_UPCOMING_NAV_ID,
+} from "../surfaces/todos/nav";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import type { SurfaceDefinition, SurfaceNavItem } from "../surfaces/types";
@@ -11,7 +23,7 @@ interface WorkspaceCommand {
   id: string;
   keywords: string;
   label: string;
-  run: () => void;
+  run: () => void | Promise<void>;
 }
 
 interface WorkspaceCommandPaletteProps {
@@ -67,21 +79,39 @@ export function WorkspaceCommandPalette({
 }: WorkspaceCommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [runningCommandId, setRunningCommandId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
 
   const dismiss = useCallback(() => {
     setQuery("");
     setCursor(0);
+    setCommandError(null);
+    setRunningCommandId(null);
     onClose();
   }, [onClose]);
 
   const run = useCallback(
-    (action: () => void) => {
-      action();
-      dismiss();
+    (command: WorkspaceCommand) => {
+      if (runningCommandId) return;
+      setCommandError(null);
+      try {
+        const result = command.run();
+        if (result && typeof result.then === "function") {
+          setRunningCommandId(command.id);
+          void result
+            .then(dismiss)
+            .catch((error) => setCommandError(formatCommandError(error)))
+            .finally(() => setRunningCommandId(null));
+          return;
+        }
+        dismiss();
+      } catch (error) {
+        setCommandError(formatCommandError(error));
+      }
     },
-    [dismiss],
+    [dismiss, runningCommandId],
   );
 
   const commands = useMemo<WorkspaceCommand[]>(() => {
@@ -235,7 +265,7 @@ export function WorkspaceCommandPalette({
     surfaces,
   ]);
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return commands;
     return commands.filter((cmd) =>
@@ -245,9 +275,57 @@ export function WorkspaceCommandPalette({
     );
   }, [commands, query]);
 
+  const quickTodoDraft = useMemo(
+    () => parseQuickTodoInput(query),
+    [query],
+  );
+
+  const filtered = useMemo<WorkspaceCommand[]>(() => {
+    const todoSurface = findSurface(surfaces, "todos");
+    const shouldOfferQuickTodo =
+      quickTodoDraft &&
+      todoSurface &&
+      !todoSurface.disabled &&
+      (hasQuickTodoPrefix(query) || baseFiltered.length === 0);
+    if (!shouldOfferQuickTodo) return baseFiltered;
+    const command: WorkspaceCommand = {
+      group: "Quick Capture",
+      hint: quickTodoDraft.preview,
+      id: "quick-capture:todo",
+      keywords: `todo task quick capture create ${query}`,
+      label: `Create todo · ${quickTodoDraft.title}`,
+      run: async () => {
+        const row = await todosCreate({
+          dueAt: quickTodoDraft.dueAt,
+          estimatedMinutes: quickTodoDraft.estimatedMinutes,
+          scheduledEndAt: quickTodoDraft.scheduledEndAt,
+          scheduledStartAt: quickTodoDraft.scheduledStartAt,
+          title: quickTodoDraft.title,
+        });
+        const navItemId = navItemForQuickTodo(row);
+        onRecordRecent({
+          itemId: navItemId,
+          label: quickTodoNavLabel(navItemId),
+          surfaceId: "todos",
+          surfaceTitle: todoSurface.title,
+        });
+        onSelectNavItem("todos", navItemId);
+      },
+    };
+    return [command, ...baseFiltered];
+  }, [
+    baseFiltered,
+    onRecordRecent,
+    onSelectNavItem,
+    query,
+    quickTodoDraft,
+    surfaces,
+  ]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCursor(0);
+    setCommandError(null);
   }, [query]);
 
   useEffect(() => {
@@ -284,7 +362,7 @@ export function WorkspaceCommandPalette({
       if (event.key === "Enter") {
         event.preventDefault();
         const target = filtered[cursor];
-        if (target) run(target.run);
+        if (target) run(target);
       }
     },
     [cursor, dismiss, filtered, run],
@@ -321,6 +399,7 @@ export function WorkspaceCommandPalette({
             onChange={(event) => setQuery(event.target.value)}
             spellCheck={false}
             autoComplete="off"
+            disabled={Boolean(runningCommandId)}
             role="combobox"
             aria-expanded="true"
             aria-controls="workspace-command-palette-list"
@@ -328,10 +407,15 @@ export function WorkspaceCommandPalette({
           />
           <kbd className="command-palette__hint-key">Esc</kbd>
         </div>
+        {commandError ? (
+          <div className="command-palette__error" role="status">
+            {commandError}
+          </div>
+        ) : null}
         {filtered.length === 0 ? (
           <div className="command-palette__empty">
             <p>No matches.</p>
-            <span>{'Try "home", "calendar", "settings", or a page title.'}</span>
+            <span>{'Try "home", "calendar", "settings", or type "+ write report tomorrow 3pm".'}</span>
           </div>
         ) : (
           <ul
@@ -361,7 +445,9 @@ export function WorkspaceCommandPalette({
                     role="option"
                     aria-selected={index === cursor}
                     onMouseEnter={() => setCursor(index)}
-                    onClick={() => run(cmd.run)}
+                    onClick={() => run(cmd)}
+                    disabled={Boolean(runningCommandId)}
+                    data-running={runningCommandId === cmd.id ? "true" : undefined}
                   >
                     <span className="command-palette__label">{cmd.label}</span>
                     {cmd.hint ? (
@@ -376,4 +462,56 @@ export function WorkspaceCommandPalette({
       </div>
     </div>
   );
+}
+
+function navItemForQuickTodo(todo: TodoRow): string {
+  if (todo.scheduledStartAt === null && todo.dueAt === null) return TODOS_INBOX_NAV_ID;
+  const timestamp = todo.scheduledStartAt ?? todo.dueAt;
+  if (timestamp !== null) {
+    const today = startOfLocalDay(new Date());
+    const tomorrow = addLocalDays(today, 1).getTime();
+    const upcomingEnd = addLocalDays(today, 15).getTime();
+    if (timestamp < tomorrow) return TODOS_TODAY_NAV_ID;
+    if (timestamp < upcomingEnd) return TODOS_UPCOMING_NAV_ID;
+  }
+  if (todo.scheduledStartAt !== null) return TODOS_SCHEDULED_NAV_ID;
+  return TODOS_UNSCHEDULED_NAV_ID;
+}
+
+function quickTodoNavLabel(navItemId: string): string {
+  switch (navItemId) {
+    case TODOS_INBOX_NAV_ID:
+      return "Inbox";
+    case TODOS_SCHEDULED_NAV_ID:
+      return "Scheduled";
+    case TODOS_UNSCHEDULED_NAV_ID:
+      return "Unscheduled";
+    case TODOS_UPCOMING_NAV_ID:
+      return "Upcoming";
+    case TODOS_TODAY_NAV_ID:
+    default:
+      return "Today";
+  }
+}
+
+function formatCommandError(error: unknown): string {
+  const message = String(error);
+  if (
+    message.includes("invoke") ||
+    message.includes("__TAURI_INTERNALS__") ||
+    message.includes("is not a function")
+  ) {
+    return "Todo data is available in the desktop app.";
+  }
+  return `Command failed: ${message}`;
+}
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addLocalDays(date: Date, days: number): Date {
+  const out = new Date(date);
+  out.setDate(out.getDate() + days);
+  return out;
 }

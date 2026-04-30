@@ -134,15 +134,18 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
         -- alongside notes and use archive semantics so clearing a task
         -- does not physically delete it from the local store.
         CREATE TABLE IF NOT EXISTS todos (
-            id           TEXT PRIMARY KEY,
-            title        TEXT NOT NULL,
-            notes        TEXT NOT NULL DEFAULT '',
-            due_at       INTEGER,
-            sort_order   INTEGER NOT NULL,
-            completed_at INTEGER,
-            archived_at  INTEGER,
-            created_at   INTEGER NOT NULL,
-            updated_at   INTEGER NOT NULL
+            id                 TEXT PRIMARY KEY,
+            title              TEXT NOT NULL,
+            notes              TEXT NOT NULL DEFAULT '',
+            due_at             INTEGER,
+            scheduled_start_at INTEGER,
+            scheduled_end_at   INTEGER,
+            estimated_minutes  INTEGER,
+            sort_order         INTEGER NOT NULL,
+            completed_at       INTEGER,
+            archived_at        INTEGER,
+            created_at         INTEGER NOT NULL,
+            updated_at         INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_todos_status_due_order
             ON todos (archived_at, completed_at, due_at, sort_order);
@@ -180,6 +183,16 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|err| format!("failed to run local DB migrations: {err}"))?;
 
+    ensure_todos_column(conn, "scheduled_start_at", "INTEGER")?;
+    ensure_todos_column(conn, "scheduled_end_at", "INTEGER")?;
+    ensure_todos_column(conn, "estimated_minutes", "INTEGER")?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_todos_status_schedule_due_order
+            ON todos (archived_at, completed_at, scheduled_start_at, due_at, sort_order)",
+        [],
+    )
+    .map_err(|err| format!("failed to create todos schedule index: {err}"))?;
+
     // One-shot backfill so existing notes get into the FTS index after
     // upgrading. The marker in sync_state lets us skip the rebuild on
     // every subsequent open.
@@ -189,6 +202,27 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
         write_sync_state_int(conn, "notes_fts_backfill_v1", 1)?;
     }
 
+    Ok(())
+}
+
+fn ensure_todos_column(
+    conn: &Connection,
+    column_name: &str,
+    column_definition: &str,
+) -> Result<(), String> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('todos') WHERE name = ?",
+            params![column_name],
+            |row| row.get(0),
+        )
+        .map_err(|err| format!("failed to inspect todos schema: {err}"))?;
+    if exists > 0 {
+        return Ok(());
+    }
+    let sql = format!("ALTER TABLE todos ADD COLUMN {column_name} {column_definition}");
+    conn.execute(&sql, [])
+        .map_err(|err| format!("failed to add todos.{column_name}: {err}"))?;
     Ok(())
 }
 

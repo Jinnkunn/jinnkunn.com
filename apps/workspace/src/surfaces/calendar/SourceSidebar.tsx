@@ -82,8 +82,8 @@ function orderSources(
   return ordered;
 }
 
-/** Left rail showing every account header (EKSource) with its
- * calendars, mirroring the macOS Calendar sidebar grouping. The
+/** Workspace context pane showing every account header (EKSource) with
+ * its calendars, mirroring the macOS Calendar sidebar grouping. The
  * checkbox state is owned by `CalendarSurface` so all views (Day,
  * Week, Month, Agenda) share a single filter. */
 export function SourceSidebar({
@@ -128,6 +128,19 @@ export function SourceSidebar({
       ),
     [calendarsBySource, orderedSources],
   );
+  const [visibleCalendarCount, calendarCount] = useMemo(
+    () => {
+      let loaded = 0;
+      let selected = 0;
+      for (const source of visibleSourceGroups) {
+        const calendars = calendarsBySource.get(source.id) ?? [];
+        loaded += calendars.length;
+        selected += calendars.filter((calendar) => visible.has(calendar.id)).length;
+      }
+      return [selected, loaded] as const;
+    },
+    [calendarsBySource, visible, visibleSourceGroups],
+  );
 
   function toggleSourceCollapsed(sourceId: string) {
     setSourceCollapsed((prev) => {
@@ -155,16 +168,19 @@ export function SourceSidebar({
   }
 
   return (
-    <aside
-      // Padding lives on the source pane because the adjacent timeline
-      // column wants to bleed to the split-view edge for precise
-      // hour gridlines.
-      className="calendar-source-sidebar"
+    <section
+      className="calendar-source-sidebar sidebar-context-section"
       aria-label="Calendar sources"
     >
+      <div className="calendar-source-sidebar__header">
+        <p className="sidebar-context-section__label">Calendars</p>
+        <span className="sidebar-context-section__count">
+          {visibleCalendarCount}/{calendarCount}
+        </span>
+      </div>
       {sources.length === 0 ? (
         <p className="calendar-source-sidebar__empty">
-          No accounts found. Add one in System Settings → Internet Accounts.
+          No accounts found. Add one in System Settings - Internet Accounts.
         </p>
       ) : null}
       {visibleSourceGroups.map((src) => {
@@ -300,7 +316,7 @@ export function SourceSidebar({
           </section>
         );
       })}
-    </aside>
+    </section>
   );
 }
 

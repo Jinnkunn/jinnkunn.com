@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
 import type {
   SurfaceDefinition,
@@ -63,6 +64,10 @@ interface SidebarProps {
     itemId: string,
     newSlug: string,
   ) => string | null;
+  /** Custom module context rendered in the wider sidebar pane below
+   * Recent/Favorites. Used when a surface needs controls richer than
+   * plain nav rows. */
+  contextAccessory?: ReactNode;
 }
 
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
@@ -710,6 +715,7 @@ export function Sidebar({
   onReorderSurface,
   onRenameNavItem,
   validateRenameNavItem,
+  contextAccessory,
 }: SidebarProps) {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
@@ -1149,9 +1155,10 @@ export function Sidebar({
             </section>
           );
         })()}
+        {contextAccessory}
+        {activeSurface.navGroups?.length ? (
         <section className="sidebar-context-section">
           <p className="sidebar-context-section__label">Navigation</p>
-          {activeSurface.navGroups?.length ? (
             <nav className="sidebar-tree" aria-label={`${activeSurface.title} navigation`}>
               {activeSurface.navGroups.map((group) => {
                 const open = group.hideHeader || isGroupOpen(activeSurface.id, group, true);
@@ -1234,12 +1241,14 @@ export function Sidebar({
                 );
               })}
             </nav>
-          ) : (
+        </section>
+        ) : contextAccessory ? null : (
+          <section className="sidebar-context-section">
             <p className="sidebar-context-empty">
               This surface uses the main workspace canvas.
             </p>
-          )}
-        </section>
+          </section>
+        )}
         </div>
         <footer className="sidebar-footer">
           <p>Jinnkunn Workspace</p>
