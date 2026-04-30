@@ -66,6 +66,39 @@ function decodeEventRow(
   return parsed as PublicCalendarEvent;
 }
 
+/** Single-event lookup by id. Used by /calendar/[id] so the detail
+ * route doesn't have to load every public event just to find one.
+ * Returns `null` when D1 isn't bound or the row doesn't exist;
+ * callers fall back to scanning the JSON file (which keeps the
+ * route working even if D1 hasn't been seeded yet).
+ *
+ * The schema has `id` as the PRIMARY KEY of `calendar_public_events`,
+ * so this is a single index lookup. */
+export async function readPublicCalendarEventFromDb(
+  id: string,
+  executor = tryGetD1Executor(),
+): Promise<PublicCalendarEvent | null> {
+  if (!executor) return null;
+  if (!id) return null;
+  try {
+    const result = await executor.execute({
+      sql: `SELECT body_json FROM calendar_public_events WHERE id = ? LIMIT 1`,
+      args: [id],
+    });
+    const row = result.rows[0];
+    if (!row) return null;
+    return decodeEventRow(row.body_json, 0);
+  } catch (err) {
+    logWarn({
+      source: "public-calendar-db",
+      message: "single-event read failed",
+      detail: err,
+      meta: { id },
+    });
+    return null;
+  }
+}
+
 export async function readPublicCalendarFromDb(
   executor = tryGetD1Executor(),
 ): Promise<PublicCalendarData | null> {

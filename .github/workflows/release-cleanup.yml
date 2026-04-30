@@ -1,0 +1,117 @@
+name: Workspace release cleanup
+
+# Weekly cron that prunes old workspace releases so the repo's
+# Releases tab stays tidy as `tauri-plugin-updater` ships new
+# versions.
+#
+# Why we need this:
+#   - Every `git tag v*.*.*` push triggers workspace-release.yml,
+#     which uploads a signed dmg + latest.json to a fresh GitHub
+#     Release. After v0.1.{2,3,…} we accumulate one release per
+#     ship, none of which the auto-update channel needs after
+#     `latest.json` rolls forward.
+#   - Old releases also keep dead .dmg artifacts around (each ~7 MB);
+#     deleting them is free disk for the repo and trims the public
+#     Releases page.
+#
+# Behaviour:
+#   - Keeps the most recent KEEP_COUNT (default 5) workspace
+#     releases — those whose tag matches `v*.*.*` — and drops the
+#     rest.
+#   - Skips Drafts older than the cutoff too (a stale draft from a
+#     failed build run is the only way Drafts accumulate; safe to
+#     delete).
+#   - Never touches non-workspace releases (e.g. a future blog
+#     content release that doesn't follow `v*.*.*`).
+#   - Soft-deletes via the Releases API: the underlying tag stays so
+#     a deep link to the release notes still works, just without
+#     the asset bundle.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC = 02:00 EDT, after any weekend ad-hoc tags
+    # have settled. Cron is best-effort on free-tier GitHub; missed
+    # runs just wait for next week.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      keep_count:
+        description: "Number of most-recent v*.*.* releases to keep."
+        required: false
+        default: "5"
+      dry_run:
+        description: "Set to 'true' to log without deleting."
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cleanup
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inventory + prune
+        uses: actions/github-script@v7
+        env:
+          KEEP_COUNT: ${{ inputs.keep_count || '5' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        with:
+          script: |
+            const keepCount = Math.max(1, Number(process.env.KEEP_COUNT) || 5);
+            const dryRun = process.env.DRY_RUN === "true";
+
+            // List ALL releases (Drafts included) — `listReleases`
+            // returns them newest-first by default.
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 },
+            );
+
+            // Workspace tags follow `v<major>.<minor>.<patch>`. Anything
+            // else (a future blog content release, a hand-cut tag) is
+            // out of scope for this cleanup so it doesn't get caught in
+            // the prune.
+            const workspace = releases.filter(
+              (release) => /^v\d+\.\d+\.\d+$/.test(release.tag_name || ""),
+            );
+
+            // Skip the most recent KEEP_COUNT — those are the rollback
+            // window. The rest get dropped.
+            const survivors = workspace.slice(0, keepCount);
+            const condemned = workspace.slice(keepCount);
+
+            core.info(`workspace releases total=${workspace.length} keep=${survivors.length} drop=${condemned.length}`);
+            for (const release of survivors) {
+              core.info(`  KEEP ${release.tag_name} (${release.draft ? "draft" : "published"}, id=${release.id})`);
+            }
+
+            if (condemned.length === 0) {
+              core.info("nothing to prune");
+              return;
+            }
+
+            for (const release of condemned) {
+              core.info(`  DROP ${release.tag_name} (${release.draft ? "draft" : "published"}, id=${release.id})`);
+              if (dryRun) continue;
+              try {
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id,
+                });
+              } catch (err) {
+                core.warning(`failed to delete release ${release.tag_name}: ${err.message}`);
+              }
+            }
+
+            core.info(
+              dryRun
+                ? "DRY_RUN — no deletions performed"
+                : "prune complete",
+            );

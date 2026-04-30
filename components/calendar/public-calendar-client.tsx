@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   PublicCalendarView,
   type PublicCalendarViewMode,
 } from "@/components/calendar/public-calendar-view";
+import { summarizeTags } from "@/lib/shared/calendar-tags";
 import {
   normalizePublicCalendarData,
   type PublicCalendarData,
@@ -77,6 +78,11 @@ export function PublicCalendarClient({
     writeTagsToLocation(next);
     setSelectedTags(next);
   }, []);
+  // Hoist the tag summary so it's only rebuilt when the events list
+  // actually changes, not when the operator pages anchor / switches
+  // view. The view component then receives this stable reference and
+  // skips its own summarize call.
+  const tagSummary = useMemo(() => summarizeTags(data.events), [data.events]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +126,7 @@ export function PublicCalendarClient({
         agendaDays={agendaDays}
         selectedTags={selectedTags}
         onSelectedTagsChange={handleSelectedTagsChange}
+        tagSummary={tagSummary}
         onViewChange={setView}
         onAnchorChange={(date) => setAnchorIso(date.toISOString())}
         onAgendaDaysChange={setAgendaDays}
