@@ -52,6 +52,12 @@ import type {
 } from "./types";
 import { ViewSwitcher } from "./ViewSwitcher";
 import {
+  loadCalendarDefaultRules,
+  saveCalendarDefaultRules,
+} from "./calendarDefaults";
+import { resolveSmartDefault } from "./smartDefaults";
+import { EventComposer } from "./EventComposer";
+import {
   loadVisibilityPrefs,
   reconcileVisibility,
   saveVisibilityPrefs,
@@ -100,6 +106,25 @@ export function CalendarSurface() {
   );
   const knownCalendarIdsRef = useRef<Set<string>>(
     new Set(persistedVisibility?.knownIds ?? []),
+  );
+  // Per-calendar default visibility rules. Map keys are calendar IDs;
+  // values are the default visibility applied to every event in that
+  // calendar that doesn't already carry a per-event override. Loaded
+  // synchronously from localStorage on first render so the resolver
+  // sees them on the very first projection pass.
+  const [calendarDefaults, setCalendarDefaults] = useState<
+    Map<string, CalendarPublicVisibility>
+  >(() => loadCalendarDefaultRules());
+  const setCalendarDefault = useCallback(
+    (calendarId: string, visibility: CalendarPublicVisibility) => {
+      setCalendarDefaults((prev) => {
+        const next = new Map(prev);
+        next.set(calendarId, visibility);
+        saveCalendarDefaultRules(next);
+        return next;
+      });
+    },
+    [],
   );
   const [publishedCalendarIds, setPublishedCalendarIds] = useState<Set<string>>(
     new Set(),
@@ -212,6 +237,14 @@ export function CalendarSurface() {
       setLoadState("error");
       setErrorMessage(String(err));
     }
+    // `persistedVisibility` is a one-time-loaded snapshot of
+    // localStorage captured at first render — passing it as a dep
+    // would re-arm `loadAll` on every render even though the snapshot
+    // never changes. `selectedCalendarIds` is intentionally read via
+    // its setter callback (the reconcile branch uses `prev` semantics
+    // through the ref-backed `knownCalendarIdsRef`) so we don't want
+    // its identity changes to re-arm load either.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
   useEffect(() => {
@@ -259,24 +292,51 @@ export function CalendarSurface() {
     return map;
   }, [calendars]);
 
-  const visibleEvents = useMemo(
-    () => events.filter((e) => selectedCalendarIds.has(e.calendarId)),
-    [events, selectedCalendarIds],
-  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [composerOpen, setComposerOpen] = useState(false);
+  const visibleEvents = useMemo(() => {
+    const calendarFiltered = events.filter((e) =>
+      selectedCalendarIds.has(e.calendarId),
+    );
+    const trimmed = searchQuery.trim().toLowerCase();
+    if (trimmed.length === 0) return calendarFiltered;
+    // Substring match on title + location + notes. The search box
+    // pairs with the existing visibility filter, not replaces it —
+    // hidden calendars stay hidden even if a query matches them, so
+    // the result set is "everything visible AND matching".
+    return calendarFiltered.filter((event) => {
+      if (event.title.toLowerCase().includes(trimmed)) return true;
+      if (event.location && event.location.toLowerCase().includes(trimmed)) return true;
+      if (event.notes && event.notes.toLowerCase().includes(trimmed)) return true;
+      return false;
+    });
+  }, [events, searchQuery, selectedCalendarIds]);
   const publishedEvents = useMemo(
     () => events.filter((e) => publishedCalendarIds.has(e.calendarId)),
     [events, publishedCalendarIds],
   );
 
   const publishSummary = useMemo(
-    () => summarizePublishVisibility(publishedEvents, publishMetadata),
-    [publishMetadata, publishedEvents],
+    () =>
+      summarizePublishVisibility(
+        publishedEvents,
+        publishMetadata,
+        calendarDefaults,
+        resolveSmartDefault,
+      ),
+    [calendarDefaults, publishMetadata, publishedEvents],
   );
   const publicEventCount =
     publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
   const getDisclosure = useCallback<EventDisclosureResolver>(
-    (event) => metadataForEvent(publishMetadata, event).visibility,
-    [publishMetadata],
+    (event) =>
+      metadataForEvent(
+        publishMetadata,
+        event,
+        calendarDefaults,
+        resolveSmartDefault,
+      ).visibility,
+    [calendarDefaults, publishMetadata],
   );
 
   const toggleCalendar = (id: string) => {
@@ -364,6 +424,8 @@ export function CalendarSurface() {
         events: mergedEvents,
         calendarsById,
         metadata: publishMetadata,
+        calendarDefaults,
+        smartResolver: resolveSmartDefault,
         range: projectedRange,
       });
       const result = await syncPublicCalendarProjection(payload);
@@ -401,6 +463,7 @@ export function CalendarSurface() {
     }
   }, [
     auth,
+    calendarDefaults,
     calendarsById,
     publishMetadata,
     publishedCalendarIds,
@@ -461,6 +524,20 @@ export function CalendarSurface() {
         <div className="flex items-center justify-between flex-wrap gap-2 w-full">
           <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
           <div className="flex items-center gap-2 flex-wrap justify-end">
+            <input
+              type="search"
+              className="calendar-search-input"
+              placeholder="Search events…"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              aria-label="Search events"
+              // Cmd+F is the OS-level "find in page" — most operators
+              // expect it to work in any view that displays a list.
+              // We don't intercept it (the OS handler does the right
+              // thing for the embedded webview), but a focusable
+              // input here lets keyboard-only flows reach search via
+              // Tab. Cmd+K (palette) provides the global shortcut.
+            />
             <CalendarPublishSummary summary={publishSummary} />
             <CalendarSyncHealthPill health={syncHealth} state={publishState} />
             <button
@@ -470,6 +547,15 @@ export function CalendarSurface() {
               onClick={() => void syncCalendarProjection("manual")}
             >
               {publishState === "publishing" ? "Syncing..." : "Sync now"}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setComposerOpen((open) => !open)}
+              aria-pressed={composerOpen}
+              title="Create a new event in macOS Calendar (Cmd+N from native)"
+            >
+              + Event
             </button>
             <ViewSwitcher view={view} onChange={setView} />
           </div>
@@ -486,6 +572,21 @@ export function CalendarSurface() {
           </p>
         ) : null}
         <CalendarSyncHealthPanel health={syncHealth} state={publishState} />
+        {composerOpen ? (
+          <EventComposer
+            calendars={calendars}
+            anchor={anchor}
+            onClose={() => setComposerOpen(false)}
+            onCreated={(saved) => {
+              // Splice optimistically: EventKit will fire its change
+              // notification a beat later and we'll refetch — but
+              // showing the new event immediately keeps the create
+              // flow feeling responsive.
+              setEvents((prev) => [...prev, saved]);
+              setSelectedEvent(saved);
+            }}
+          />
+        ) : null}
       </header>
       <div
         className="panel-shell__body flex flex-1 min-h-0 overflow-hidden"
@@ -518,8 +619,10 @@ export function CalendarSurface() {
               calendarsBySource={calendarsBySource}
               visible={selectedCalendarIds}
               published={publishedCalendarIds}
+              calendarDefaults={calendarDefaults}
               onToggleVisible={toggleCalendar}
               onTogglePublished={togglePublishedCalendar}
+              onSetCalendarDefault={setCalendarDefault}
             />
             <ViewPane
               view={view}
@@ -535,7 +638,12 @@ export function CalendarSurface() {
               <CalendarEventInspector
                 event={selectedEvent}
                 calendar={calendarsById.get(selectedEvent.calendarId)}
-                metadata={metadataForEvent(publishMetadata, selectedEvent)}
+                metadata={metadataForEvent(
+                  publishMetadata,
+                  selectedEvent,
+                  calendarDefaults,
+                  resolveSmartDefault,
+                )}
                 publicEventCount={publicEventCount}
                 publishMessage={publishMessage}
                 rulesLoaded={rulesLoaded}
@@ -724,6 +832,8 @@ function mergeCalendarEvents(
 function summarizePublishVisibility(
   events: CalendarEvent[],
   store: CalendarPublishMetadataStore,
+  calendarDefaults?: ReadonlyMap<string, CalendarPublicVisibility>,
+  smartResolver?: (event: CalendarEvent) => CalendarPublicVisibility | null,
 ): PublishSummary {
   const summary: PublishSummary = {
     hidden: 0,
@@ -732,7 +842,9 @@ function summarizePublishVisibility(
     full: 0,
   };
   for (const event of events) {
-    summary[metadataForEvent(store, event).visibility] += 1;
+    summary[
+      metadataForEvent(store, event, calendarDefaults, smartResolver).visibility
+    ] += 1;
   }
   return summary;
 }

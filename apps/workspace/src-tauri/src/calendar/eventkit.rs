@@ -13,15 +13,15 @@ use objc2::rc::Retained;
 use objc2::runtime::Bool;
 use objc2_core_graphics::CGColor;
 use objc2_event_kit::{
-    EKAuthorizationStatus, EKCalendar, EKEntityType, EKEventStore, EKEventStoreChangedNotification,
-    EKSourceType,
+    EKAuthorizationStatus, EKCalendar, EKEntityType, EKEvent, EKEventStore,
+    EKEventStoreChangedNotification, EKSourceType, EKSpan,
 };
-use objc2_foundation::{NSArray, NSDate, NSError, NSNotification, NSNotificationCenter};
+use objc2_foundation::{NSArray, NSDate, NSError, NSNotification, NSNotificationCenter, NSString, NSURL};
 use tokio::sync::oneshot;
 
 use crate::calendar::types::{
     Calendar, CalendarAuthorizationStatus, CalendarEvent, CalendarSource, CalendarSourceType,
-    FetchEventsRequest,
+    CreateEventRequest, FetchEventsRequest,
 };
 
 fn map_authorization_status(raw: EKAuthorizationStatus) -> CalendarAuthorizationStatus {
@@ -328,6 +328,124 @@ pub fn fetch_events(request: &FetchEventsRequest) -> Result<Vec<CalendarEvent>, 
         });
     }
     Ok(out)
+}
+
+/// Create a new event in the supplied calendar and persist it via
+/// EKEventStore.save. Returns the saved event re-projected into the
+/// same `CalendarEvent` shape `fetch_events` produces, so the
+/// frontend can splice it into its in-memory list without an extra
+/// round-trip. Errors:
+///   - `MISSING_CALENDAR` — calendar_id didn't resolve to an EKCalendar
+///   - `READ_ONLY_CALENDAR` — calendar exists but doesn't allow writes
+///     (delegate calendars + Birthdays show up here)
+///   - `INVALID_RANGE` — ends_at <= starts_at
+///   - any other string is the underlying EventKit error
+pub fn create_event(request: &CreateEventRequest) -> Result<CalendarEvent, String> {
+    let starts = parse_iso(&request.starts_at)?;
+    let ends = parse_iso(&request.ends_at)?;
+    if ends <= starts {
+        return Err("INVALID_RANGE: ends_at must be after starts_at".to_string());
+    }
+    if request.title.trim().is_empty() {
+        return Err("INVALID_TITLE: title is required".to_string());
+    }
+
+    let store: Retained<EKEventStore> = unsafe { EKEventStore::new() };
+
+    // Resolve the target calendar by id. We can't use the
+    // `calendarWithIdentifier:` lookup directly without bringing in
+    // another feature flag; iterating calendarsForEntityType is
+    // O(N) but N is tiny (<20 calendars on a typical machine).
+    let calendars = unsafe { store.calendarsForEntityType(EKEntityType::Event) };
+    let target = calendars.iter().find(|c| {
+        unsafe { c.calendarIdentifier() }.to_string() == request.calendar_id
+    });
+    let target_calendar = match target {
+        Some(cal) => cal,
+        None => return Err("MISSING_CALENDAR: calendar_id did not match any EKCalendar".to_string()),
+    };
+    if !unsafe { target_calendar.allowsContentModifications() } {
+        return Err(
+            "READ_ONLY_CALENDAR: this calendar is read-only (delegate / Birthdays / subscribed)"
+                .to_string(),
+        );
+    }
+
+    // SAFETY: eventWithEventStore: is the documented factory; passing a
+    // valid &EKEventStore satisfies the precondition.
+    let event: Retained<EKEvent> = unsafe { EKEvent::eventWithEventStore(&store) };
+    let title_ns = NSString::from_str(&request.title);
+    unsafe { event.setTitle(Some(&title_ns)) };
+    unsafe { event.setCalendar(Some(&target_calendar)) };
+    let start_ns = datetime_to_nsdate(starts);
+    let end_ns = datetime_to_nsdate(ends);
+    unsafe { event.setStartDate(Some(&start_ns)) };
+    unsafe { event.setEndDate(Some(&end_ns)) };
+    unsafe { event.setAllDay(request.is_all_day) };
+    if let Some(notes) = request.notes.as_deref() {
+        let s = NSString::from_str(notes);
+        unsafe { event.setNotes(Some(&s)) };
+    }
+    if let Some(location) = request.location.as_deref() {
+        let s = NSString::from_str(location);
+        unsafe { event.setLocation(Some(&s)) };
+    }
+    if let Some(url) = request.url.as_deref() {
+        // NSURL::URLWithString returns Optional — invalid URL strings
+        // (e.g. "not a url") return nil. We treat that as a no-op
+        // rather than refusing to save the event; the operator can
+        // edit the URL field after the fact in Apple Calendar.app.
+        let url_ns = NSString::from_str(url);
+        if let Some(parsed) = NSURL::URLWithString(&url_ns) {
+            unsafe { event.setURL(Some(&parsed)) };
+        }
+    }
+
+    // EKSpan::ThisEvent is the correct save scope for non-recurring
+    // events; for recurring event creation (which we don't support
+    // yet — operator creates one occurrence), it's also the right
+    // value because the event is brand new and isn't part of a series.
+    // The objc2-event-kit binding maps `out NSError**` to `Result`,
+    // so we just propagate any save failure as an error string.
+    if let Err(err) = unsafe { store.saveEvent_span_error(&event, EKSpan::ThisEvent) } {
+        let detail = err.localizedDescription().to_string();
+        return Err(format!("SAVE_FAILED: {detail}"));
+    }
+
+    // Re-project the saved event back into the wire shape so the JS
+    // side can splice it into its event list immediately.
+    let event_identifier = unsafe { event.eventIdentifier() }
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    let external_identifier = unsafe { event.calendarItemExternalIdentifier() }.map(|s| s.to_string());
+    let calendar_id = unsafe { event.calendar() }
+        .map(|c| unsafe { c.calendarIdentifier() }.to_string())
+        .unwrap_or_default();
+    let title = unsafe { event.title() }.to_string();
+    let notes = unsafe { event.notes() }.map(|s| s.to_string());
+    let location = unsafe { event.location() }.map(|s| s.to_string());
+    let url = unsafe { event.URL() }
+        .and_then(|u| u.absoluteString().map(|s| s.to_string()));
+    let start_ns = unsafe { event.startDate() };
+    let end_ns = unsafe { event.endDate() };
+    let starts_at = nsdate_to_iso(&start_ns);
+    let ends_at = nsdate_to_iso(&end_ns);
+    let is_all_day = unsafe { event.isAllDay() };
+    let is_recurring = unsafe { event.hasRecurrenceRules() };
+
+    Ok(CalendarEvent {
+        event_identifier,
+        external_identifier,
+        calendar_id,
+        title,
+        notes,
+        location,
+        url,
+        starts_at,
+        ends_at,
+        is_all_day,
+        is_recurring,
+    })
 }
 
 /// Subscribe to `EKEventStoreChangedNotification` and run `callback`

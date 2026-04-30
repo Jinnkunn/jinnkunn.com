@@ -436,6 +436,130 @@
   color: var(--color-success);
 }
 
+/* Compact `<select>` for the per-calendar default visibility. Sits
+ * next to the Web toggle and uses the same pill-ish footprint so the
+ * row stays single-line at typical sidebar widths. */
+.calendar-source-row__default {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 18px 4px 8px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23878787' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+
+.calendar-source-row__default:hover,
+.calendar-source-row__default:focus-visible {
+  border-color: color-mix(in srgb, var(--color-text-primary) 22%, var(--color-border-subtle));
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+/* Search input pinned in the calendar toolbar. Compact width so it
+ * doesn't push the view switcher off the row at typical sidebar
+ * widths; matches the existing pill / button height. */
+.calendar-search-input {
+  appearance: none;
+  width: 200px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.calendar-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.calendar-search-input:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  background: var(--color-bg-surface);
+  outline: none;
+}
+
+/* Inline event composer — pops between the toolbar header and the
+ * timeline. Compact two-column layout so the most-used fields stay
+ * one keystroke apart. */
+.calendar-event-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.calendar-event-composer__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.calendar-event-composer__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 180px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.calendar-event-composer__field input[type="text"],
+.calendar-event-composer__field input[type="datetime-local"],
+.calendar-event-composer__field select {
+  padding: 6px 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.calendar-event-composer__field input:focus-visible,
+.calendar-event-composer__field select:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  outline: none;
+}
+
+.calendar-event-composer__checkbox {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-end;
+}
+
+.calendar-event-composer__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 12px;
+}
+
+.calendar-event-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .panel-empty {
   display: flex;
   flex-direction: column;
