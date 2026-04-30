@@ -77,6 +77,11 @@ import {
   saveVisibilityPrefs,
 } from "./visibilityPrefs";
 import { WeekView } from "./WeekView";
+import {
+  todosList,
+  todosUpdate,
+  type TodoRow,
+} from "../../modules/todos/api";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = "idle" | "publishing" | "success" | "error";
@@ -141,6 +146,11 @@ export function CalendarSurface() {
     [],
   );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  // Todos overlaid on the timeline (Day / Week views) and folded into
+  // the Agenda list. Loaded once at mount + after every toggle so the
+  // overlay stays in sync without subscribing to a Tauri event we
+  // haven't built yet.
+  const [todos, setTodos] = useState<TodoRow[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [publishMetadata, setPublishMetadata] =
     useState<CalendarPublishMetadataStore>(() => emptyMetadataStore());
@@ -258,6 +268,53 @@ export function CalendarSurface() {
     // native APIs before committing state.
     void loadAll();
   }, [auth, loadAll]);
+
+  // Todos load independently of EventKit auth — they live in workspace.db
+  // and are always available. Re-fetch on mount; toggle handler keeps
+  // local state in sync between fetches via optimistic update.
+  useEffect(() => {
+    let cancelled = false;
+    todosList()
+      .then((next) => {
+        if (!cancelled) setTodos(next);
+      })
+      .catch(() => {
+        // Quiet failure — todos are an overlay, not core to the calendar
+        // surface. The Todos surface itself surfaces real errors.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleTodoToggle = useCallback(
+    (id: string, completed: boolean) => {
+      // Optimistic update so the chip flips immediately; the reconcile
+      // step replaces with the server-canonical row (sets completedAt
+      // timestamp / clears it on uncheck).
+      const optimisticAt = completed ? Date.now() : null;
+      setTodos((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...t, completedAt: optimisticAt } : t,
+        ),
+      );
+      void todosUpdate({ id, completed })
+        .then((updated) => {
+          setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+        })
+        .catch(() => {
+          // Roll back the optimistic toggle if the backend rejected.
+          setTodos((prev) =>
+            prev.map((t) =>
+              t.id === id
+                ? { ...t, completedAt: completed ? null : optimisticAt }
+                : t,
+            ),
+          );
+        });
+    },
+    [],
+  );
 
   // Re-subscribe to EventKit changes whenever loadAll's identity
   // changes (i.e. when range changes); the listener captures the
@@ -864,10 +921,12 @@ export function CalendarSurface() {
             anchor={anchor}
             events={visibleEvents}
             calendarsById={calendarsById}
+            todos={todos}
             loadState={loadState}
             errorMessage={errorMessage}
             getDisclosure={getDisclosure}
             onEventSelect={setSelectedEvent}
+            onTodoToggle={handleTodoToggle}
           />
         </WorkspaceSplitView>
       </div>
@@ -953,19 +1012,23 @@ function ViewPane({
   anchor,
   events,
   calendarsById,
+  todos,
   loadState,
   errorMessage,
   getDisclosure,
   onEventSelect,
+  onTodoToggle,
 }: {
   view: ViewKind;
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  todos: TodoRow[];
   loadState: LoadState;
   errorMessage: string | null;
   getDisclosure: EventDisclosureResolver;
   onEventSelect: (event: CalendarEvent) => void;
+  onTodoToggle: (id: string, completed: boolean) => void;
 }) {
   if (loadState === "error") {
     return (
@@ -992,8 +1055,10 @@ function ViewPane({
           day={anchor}
           events={events}
           calendarsById={calendarsById}
+          todos={todos}
           getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
+          onTodoToggle={onTodoToggle}
         />
       );
     case "week":
@@ -1002,8 +1067,10 @@ function ViewPane({
           anchor={anchor}
           events={events}
           calendarsById={calendarsById}
+          todos={todos}
           getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
+          onTodoToggle={onTodoToggle}
         />
       );
     case "month":
@@ -1021,9 +1088,11 @@ function ViewPane({
         <AgendaView
           events={events}
           calendarsById={calendarsById}
+          todos={todos}
           rangeLabel={formatViewTitle("agenda", anchor)}
           getDisclosure={getDisclosure}
           onEventSelect={onEventSelect}
+          onTodoToggle={onTodoToggle}
         />
       );
   }

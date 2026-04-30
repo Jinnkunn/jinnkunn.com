@@ -4,6 +4,7 @@ import { isSameDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { TimeGrid, HOUR_HEIGHT, TIME_GUTTER_WIDTH } from "./TimeGrid";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
+import type { TodoRow } from "../../modules/todos/api";
 
 /** Single-day timeline. The header strip shows the weekday name + date
  * with a blue circle around the number when it's today, matching the
@@ -12,13 +13,17 @@ export function DayView({
   day,
   events,
   calendarsById,
+  todos,
   onEventSelect,
+  onTodoToggle,
   getDisclosure,
 }: {
   day: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
+  todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  onTodoToggle?: (id: string, completed: boolean) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
   const allDayEvents = useMemo(
@@ -52,7 +57,9 @@ export function DayView({
           days={[day]}
           events={events}
           calendarsById={calendarsById}
+          todos={todos}
           onEventSelect={onEventSelect}
+          onTodoToggle={onTodoToggle}
           getDisclosure={getDisclosure}
         />
       </div>

@@ -431,7 +431,10 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   const blocksEditor = await read(
     "apps/workspace/src/surfaces/site-admin/blocks-editor.tsx",
   );
-  const tauriWrappers = await read("apps/workspace/src/lib/tauri.ts");
+  // Notes-specific wrappers moved into the notes module manifest
+  // (`modules/notes/api.ts`) when the surfaces directory was reorganised.
+  // `lib/tauri.ts` now only carries shell-level commands.
+  const tauriWrappers = await read("apps/workspace/src/modules/notes/api.ts");
   const tauriMain = await read("apps/workspace/src-tauri/src/main.rs");
   const notesRs = await read("apps/workspace/src-tauri/src/notes.rs");
   const localDb = await read("apps/workspace/src-tauri/src/local_db.rs");
