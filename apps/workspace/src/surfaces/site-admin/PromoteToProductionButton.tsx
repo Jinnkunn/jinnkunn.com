@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { openExternalUrl } from "../../lib/tauri";
+import { notify } from "../../lib/notify";
 import { useSiteAdmin } from "./state";
 
 // "Promote to Production" — the workspace counterpart to running
@@ -114,6 +115,18 @@ export function PromoteToProductionButton() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<DispatchResult | null>(null);
+  // Watch state — set when a dispatch succeeds, cleared when production
+  // catches up (success notification fired) or after a hard timeout
+  // (failure notification fired). Persisted across re-renders via
+  // useState so the watcher effect re-fires correctly.
+  const [watchTarget, setWatchTarget] = useState<{
+    stagingSha: string;
+    previousProductionSha: string | null;
+    dispatchedAtMs: number;
+  } | null>(null);
+  // Single-shot guard — without this the watcher would fire a
+  // notification every poll interval after the deploy lands.
+  const watchFiredRef = useRef(false);
 
   const onlyOnStaging = environment.kind === "staging";
   const ready = onlyOnStaging && Boolean(connection.baseUrl) && Boolean(connection.authToken);
@@ -154,6 +167,64 @@ export function PromoteToProductionButton() {
     return () => window.clearTimeout(t);
   }, [confirming]);
 
+  // Deploy-completion watcher. After a successful dispatch we set
+  // watchTarget; this effect polls the preview endpoint until the
+  // production codeSha matches the dispatched stagingSha, then fires a
+  // native "Production deploy complete" notification. Bails after 20
+  // minutes with a "deploy timed out" failure notification — long
+  // enough for a normal CI run, short enough that a stuck workflow
+  // doesn't leave the watcher polling overnight.
+  useEffect(() => {
+    if (!watchTarget) return;
+    watchFiredRef.current = false;
+    const TIMEOUT_MS = 20 * 60 * 1000;
+    const POLL_MS = 30_000;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled || watchFiredRef.current) return;
+      const elapsed = Date.now() - watchTarget.dispatchedAtMs;
+      // Read fresh preview state. Don't rely on the existing `preview`
+      // variable — its identity changes on every state update and
+      // would re-arm this effect on each tick, which is wasteful.
+      const response = await request("/api/site-admin/promote-to-production", "GET");
+      if (cancelled || watchFiredRef.current) return;
+      if (response.ok) {
+        const next = parsePreview(response.data);
+        if (next.ok && next.production) {
+          const live = next.production.codeSha.toLowerCase();
+          const target = watchTarget.stagingSha.toLowerCase();
+          if (live === target) {
+            watchFiredRef.current = true;
+            void notify({
+              title: "Production deploy complete",
+              body: `${target.slice(0, 7)} is live on jinkunchen.com.`,
+            });
+            setWatchTarget(null);
+            return;
+          }
+        }
+      }
+      if (elapsed >= TIMEOUT_MS) {
+        watchFiredRef.current = true;
+        void notify({
+          title: "Production deploy still pending",
+          body: "Polled for 20 minutes without seeing the new SHA on production. Check GitHub Actions for the run.",
+        });
+        setWatchTarget(null);
+      }
+    };
+    const id = window.setInterval(() => {
+      void tick();
+    }, POLL_MS);
+    // Fire one tick right away so a fast deploy doesn't wait the full
+    // 30 s before reporting completion.
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [watchTarget, request]);
+
   if (!onlyOnStaging) return null;
 
   async function trigger() {
@@ -186,6 +257,22 @@ export function PromoteToProductionButton() {
       "success",
       "Production release dispatched. GitHub Actions is building, uploading, and verifying.",
     );
+    // Fire a "started" notification so the operator can step away from
+    // the app during the 5-10 min build/deploy/verify window. The
+    // watcher below polls until production catches up to staging and
+    // then fires a "complete" notification.
+    void notify({
+      title: "Production release dispatched",
+      body: "GitHub Actions is building, uploading, and verifying. You'll be notified when it's live.",
+    });
+    // Snapshot the SHA we expect production to land on so the watcher
+    // can compare future preview pulls against a stable target. Without
+    // this we'd race against `preview` changing as the watcher loops.
+    setWatchTarget({
+      stagingSha: preview.stagingSha,
+      previousProductionSha: asString(asRecord(asRecord(preview).production).codeSha) || null,
+      dispatchedAtMs: Date.now(),
+    });
   }
 
   const ok = preview?.ok === true;
