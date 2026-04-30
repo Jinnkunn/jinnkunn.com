@@ -29,16 +29,33 @@ const DEFAULT_TARGET = path.join(ROOT, "content");
 const ALLOWED_PASSTHROUGH = new Set(["--local", "--remote", "--preview"]);
 
 function parseArgs() {
-  const out = { passthrough: [], target: DEFAULT_TARGET, quiet: false };
+  const out = {
+    passthrough: [],
+    target: DEFAULT_TARGET,
+    quiet: false,
+    // Read-only mode: don't write anywhere. Just compare each D1 row's
+    // body against the on-disk file at <target>/<rel_path> and emit a
+    // summary of which paths are added / modified / removed. Useful as
+    // a fast "is my staging D1 still in sync with main?" check between
+    // daily auto-snapshots without re-running a full deploy.
+    diffOnly: false,
+    // Machine-readable output mode. Pairs naturally with --diff-only —
+    // a wrapper (cron, daily snapshot CI step) can parse the JSON to
+    // decide whether a sync PR is worth opening, instead of grepping
+    // human-formatted lines that may shift over time.
+    json: false,
+  };
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith("--target=")) out.target = path.resolve(arg.slice(9));
     else if (arg === "--quiet") out.quiet = true;
+    else if (arg === "--diff-only") out.diffOnly = true;
+    else if (arg === "--json") out.json = true;
     else if (arg.startsWith("--env=")) out.passthrough.push(arg);
     else if (ALLOWED_PASSTHROUGH.has(arg)) out.passthrough.push(arg);
     else {
       console.error(`unknown arg: ${arg}`);
       console.error(
-        "usage: node scripts/dump-content-from-db.mjs [--local|--remote] [--env=staging|production] [--target=PATH] [--quiet]",
+        "usage: node scripts/dump-content-from-db.mjs [--local|--remote] [--env=staging|production] [--target=PATH] [--quiet] [--diff-only] [--json]",
       );
       process.exit(2);
     }
@@ -98,6 +115,10 @@ async function main() {
     );
   }
 
+  if (args.diffOnly) {
+    return runDiffOnly(args, rows);
+  }
+
   let written = 0;
   let skipped = 0;
   for (const row of rows) {
@@ -127,6 +148,137 @@ async function main() {
   console.log(
     `dump done: written=${written} skipped=${skipped} total=${rows.length}`,
   );
+}
+
+// `--diff-only` walks the same dump payload but writes nothing — instead
+// it returns "what would change if I dumped". Used by the daily snapshot
+// CI cron (decides whether to open a sync PR) and by operators who want
+// a "is my D1 ahead of main?" answer between deploys.
+async function runDiffOnly(args, rows) {
+  const seenInDb = new Set();
+  const added = [];
+  const modified = [];
+  const unchanged = [];
+
+  for (const row of rows) {
+    const relPath = String(row.rel_path);
+    seenInDb.add(relPath);
+    const bytes = Buffer.from(String(row.hex), "hex");
+    const fullPath = path.join(args.target, relPath);
+    let existing = null;
+    try {
+      existing = await readFile(fullPath);
+    } catch (err) {
+      if (err && err.code !== "ENOENT") throw err;
+    }
+    if (!existing) {
+      added.push({ relPath, bytes: bytes.byteLength });
+    } else if (Buffer.compare(existing, bytes) !== 0) {
+      modified.push({
+        relPath,
+        oldBytes: existing.byteLength,
+        newBytes: bytes.byteLength,
+      });
+    } else {
+      unchanged.push(relPath);
+    }
+  }
+
+  // Files in the working tree that D1 doesn't know about. Walking the
+  // filesystem would over-report (caches, etc.); rely on `git ls-files`
+  // so we only report tracked files. If git isn't available, skip
+  // removed-detection rather than crash — the staging→git diff still
+  // captures the more useful add/modify dimension.
+  const removed = [];
+  try {
+    const tracked = await runGitLsFiles(args.target);
+    for (const relPath of tracked) {
+      if (seenInDb.has(relPath)) continue;
+      // `content/generated/*` is build-time output, written by
+      // scripts/prebuild.mjs and committed for production parity. It
+      // is intentionally never in D1, so reporting it as "drift"
+      // would be a false positive every single run.
+      if (relPath.startsWith("generated/")) continue;
+      removed.push({ relPath });
+    }
+  } catch {
+    // git unavailable; leave `removed` empty
+  }
+
+  const result = {
+    target: path.relative(ROOT, args.target),
+    totalRowsInDb: rows.length,
+    summary: {
+      added: added.length,
+      modified: modified.length,
+      removed: removed.length,
+      unchanged: unchanged.length,
+    },
+    added,
+    modified,
+    removed,
+  };
+
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(
+    `[dump-content --diff-only] target=${result.target} total=${result.totalRowsInDb}`,
+  );
+  console.log(
+    `  added=${result.summary.added} modified=${result.summary.modified} removed=${result.summary.removed} unchanged=${result.summary.unchanged}`,
+  );
+  for (const entry of added) {
+    console.log(`  + ${entry.relPath}  (${entry.bytes}B)`);
+  }
+  for (const entry of modified) {
+    console.log(
+      `  ~ ${entry.relPath}  (${entry.oldBytes}B → ${entry.newBytes}B)`,
+    );
+  }
+  for (const entry of removed) {
+    console.log(`  - ${entry.relPath}  (in git, not in D1)`);
+  }
+}
+
+function runGitLsFiles(target) {
+  const relTarget = path.relative(ROOT, target) || ".";
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard", "--", relTarget],
+      { cwd: ROOT, env: process.env },
+    );
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+    proc.on("exit", (code) => {
+      if (code !== 0) {
+        return reject(new Error(`git ls-files exited ${code}: ${stderr}`));
+      }
+      const files = stdout
+        .split(/\r?\n/)
+        .filter(Boolean)
+        // git ls-files reports paths relative to repo root; the dump
+        // wrote them as <relTarget>/<relPath>. Strip the prefix so we
+        // can compare to D1's rel_path keys.
+        .map((line) =>
+          relTarget === "."
+            ? line
+            : line.startsWith(`${relTarget}/`)
+              ? line.slice(relTarget.length + 1)
+              : line,
+        );
+      resolve(files);
+    });
+    proc.on("error", reject);
+  });
 }
 
 main().catch((err) => {

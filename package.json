@@ -15,6 +15,8 @@
     "check:scripts": "node scripts/check-scripts.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:migrate:files": "node scripts/migrate-files-to-db.mjs",
+    "db:diff:staging": "node scripts/dump-content-from-db.mjs --remote --env=staging --diff-only",
+    "db:diff:staging:json": "node scripts/dump-content-from-db.mjs --remote --env=staging --diff-only --json",
     "migrate:home:v3": "node scripts/migrate-home-to-sections.mjs",
     "sync:notion": "node scripts/sync-notion.mjs",
     "provision:admin": "node scripts/provision-site-admin.mjs",
