@@ -45,6 +45,11 @@ export interface SurfaceNavItem {
 export interface SurfaceNavGroup {
   id: string;
   label: string;
+  /** Optional synthetic nav item to select when the group-level add
+   * affordance is clicked. Surfaces decode it like any other nav item,
+   * e.g. Notes uses `add:notes:root` to create a top-level page. */
+  addItemId?: string;
+  addLabel?: string;
   /** Hide the visual group header while keeping the group as a logical
    * bucket for dynamic items. Useful when the active surface already
    * provides the context, e.g. Notes showing note pages directly. */

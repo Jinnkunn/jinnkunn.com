@@ -1,3 +1,5 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 import { formatViewTitle, navigateView, type ViewKind } from "./dateRange";
 
 /** Prev / Today / Next chevrons + view-aware title. Single source of
@@ -52,23 +54,13 @@ export function DateNav({
 }
 
 function Chevron({ dir }: { dir: "left" | "right" }) {
-  const d =
-    dir === "left"
-      ? "M9.5 4 L4 9.5 L9.5 15"
-      : "M5.5 4 L11 9.5 L5.5 15";
+  const Icon = dir === "left" ? ChevronLeft : ChevronRight;
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Icon
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      <path d={d} />
-    </svg>
+      size={14}
+      strokeWidth={1.6}
+    />
   );
 }

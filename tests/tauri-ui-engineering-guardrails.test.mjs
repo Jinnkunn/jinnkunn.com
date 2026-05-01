@@ -313,6 +313,9 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
 test("tauri-ui-engineering: workspace primitives exist for future UI migration", async () => {
   const source = await read("apps/workspace/src/surfaces/site-admin/ui.tsx");
   const primitives = await read("apps/workspace/src/ui/primitives.tsx");
+  const workspacePkg = JSON.parse(await read("apps/workspace/package.json"));
+  const surfaceIcons = await read("apps/workspace/src/surfaces/icons.tsx");
+  const shellSidebar = await read("apps/workspace/src/shell/Sidebar.tsx");
   const styles = await readWorkspaceCssBundle();
   for (const symbol of [
     "Button",
@@ -351,6 +354,17 @@ test("tauri-ui-engineering: workspace primitives exist for future UI migration",
   ]) {
     assert.match(styles, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.ok(
+    workspacePkg.dependencies["lucide-react"],
+    "Workspace app should use lucide-react as the shared maintained icon library",
+  );
+  assert.match(surfaceIcons, /from "lucide-react"/);
+  assert.doesNotMatch(
+    surfaceIcons,
+    /<svg/,
+    "Surface/module icons should come from lucide-react instead of local SVG copies",
+  );
+  assert.match(shellSidebar, /from "lucide-react"/);
 });
 
 test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", async () => {
@@ -377,6 +391,7 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(sourceSidebar, /SOURCE_ORDER_STORAGE_KEY/);
   assert.match(sourceSidebar, /SOURCE_COLLAPSED_STORAGE_KEY/);
   assert.match(sourceSidebar, /calendar-source-group__toggle/);
+  assert.match(sourceSidebar, /WorkspaceSidebarRow/);
   assert.match(sourceSidebar, /application\/x-calendar-source/);
   assert.match(sourceSidebar, /moveSourceTo\(sourceId, src\.id, edge\)/);
   assert.match(sourceSidebar, /draggable/);
@@ -400,6 +415,11 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(styles, /\.calendar-commandbar__supplement/);
   assert.match(styles, /\.calendar-source-group__header/);
   assert.match(styles, /\.calendar-source-group__drag/);
+  assert.match(
+    styles,
+    /\.calendar-source-row\s*\{[\s\S]*--sidebar-depth/,
+    "Calendar source rows should inherit the shared sidebar depth system",
+  );
   assert.match(styles, /data-drop-edge="before"/);
   assert.match(styles, /\.sidebar-surface\[data-collapsed="true"\]/);
   assert.match(styles, /\.app-shell:has\(\.sidebar-surface\[data-collapsed="true"\]\)/);
@@ -424,6 +444,8 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   const notesNav = await read("apps/workspace/src/surfaces/notes/nav.tsx");
   const notesSurface = await read("apps/workspace/src/surfaces/notes/NotesSurface.tsx");
   const notesTree = await read("apps/workspace/src/surfaces/notes/tree.tsx");
+  const sidebarSource = await read("apps/workspace/src/shell/Sidebar.tsx");
+  const utilities = await read("apps/workspace/src/styles/utilities.css");
   const editorRuntime = await read("apps/workspace/src/ui/editor-runtime.tsx");
   const documentEditor = await read(
     "apps/workspace/src/surfaces/site-admin/MdxDocumentEditor.tsx",
@@ -458,20 +480,35 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
     styles,
     /\.mdx-document-editor__title \{[^}]*--workspace-editor-title-size/,
   );
-  assert.match(notesSurface, /setNavGroupItems\(NOTES_NAV_GROUP_ID/);
+  assert.match(notesSurface, /setNavGroupItems\(\s*NOTES_PAGES_NAV_GROUP_ID/);
   assert.doesNotMatch(notesSurface, /setNavItemChildren\(NOTES_ROOT_NAV_ID/);
   assert.match(notesNav, /NOTES_ARCHIVE_NAV_ITEM/);
-  assert.match(notesNav, /hideHeader: true/);
+  assert.match(notesNav, /NOTES_HOME_NAV_ITEM/);
+  assert.match(notesNav, /NOTES_PAGES_NAV_GROUP_ID/);
+  assert.match(notesNav, /NOTES_SYSTEM_NAV_GROUP_ID/);
+  assert.match(notesNav, /addItemId: NOTES_ADD_ROOT_NAV_ID/);
   assert.match(
     styles,
-    /\.sidebar-tree__group\[data-headerless="true"\][\s\S]*\.sidebar-tree__item-disclosure-placeholder\s*\{[\s\S]*display: none;/,
-    "Headerless Notes nav should not keep the old synthetic-root indentation",
+    /\.sidebar-tree__group-add/,
+    "Notes Pages group should expose a first-level page creation affordance",
+  );
+  assert.match(
+    sidebarSource,
+    /function SidebarTreeIconSlot/,
+    "Surface nav rows should share one icon-slot component instead of per-feature indentation",
+  );
+  assert.match(styles, /--sidebar-tree-disclosure-width/);
+  assert.match(styles, /\.sidebar-tree \.sidebar-nav-item-icon\[data-empty="true"\]/);
+  assert.doesNotMatch(
+    utilities,
+    /\.sidebar-tree__item\s*\{[\s\S]*padding-inline-start:/,
+    "Responsive utilities should not override the shared sidebar tree indentation",
   );
   assert.match(surfaceNavContext, /setNavGroupItems/);
   assert.match(app, /navGroupItems/);
   assert.match(app, /navGroupItems\[group\.id\] \?\? group\.items/);
   assert.match(
-    await read("apps/workspace/src/shell/Sidebar.tsx"),
+    sidebarSource,
     /filter\(\(entry\) => entry\.orderable\)/,
     "Sidebar reorder controls should work for Notes, not only site-admin page ids",
   );

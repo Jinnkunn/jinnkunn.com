@@ -1,3 +1,4 @@
+import { PanelLeftClose, PanelLeftOpen, Plus, X } from "lucide-react";
 import type { SurfaceDefinition, SurfaceNavItem } from "../surfaces/types";
 import { ThemeToggle } from "./ThemeToggle";
 import { handleWindowDragMouseDown } from "./windowDrag";
@@ -57,56 +58,31 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 function SidebarCollapseIcon({ collapsed }: { collapsed: boolean }) {
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
   return (
-    <svg
-      viewBox="0 0 18 18"
-      width="15"
-      height="15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.65"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Icon
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      <rect x="2.75" y="3.25" width="12.5" height="11.5" rx="2.2" />
-      <path d="M7.1 3.25v11.5" />
-      {collapsed ? <path d="M11 7l2 2-2 2" /> : <path d="M13 7l-2 2 2 2" />}
-    </svg>
+      size={15}
+      strokeWidth={1.65}
+    />
   );
 }
 
 function CloseIcon() {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M4.75 4.75 11.25 11.25M11.25 4.75 4.75 11.25" />
-    </svg>
+    <X absoluteStrokeWidth aria-hidden="true" size={12} strokeWidth={1.8} />
   );
 }
 
 function PlusIcon() {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
+    <Plus
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      <path d="M8 3.25v9.5M3.25 8h9.5" />
-    </svg>
+      size={14}
+      strokeWidth={1.7}
+    />
   );
 }
 

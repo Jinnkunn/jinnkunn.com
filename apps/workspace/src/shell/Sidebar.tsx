@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  MoreHorizontal,
+  Settings,
+  Star,
+} from "lucide-react";
 
 import type {
   SurfaceDefinition,
@@ -109,42 +117,27 @@ function persistCollapseMap(storageKey: string, state: CollapseMap): void {
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width="10"
-      height="10"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <ChevronRight
+      absoluteStrokeWidth
+      size={10}
+      strokeWidth={2}
       style={{
         transition: "transform 140ms ease",
         transform: open ? "rotate(90deg)" : "rotate(0deg)",
       }}
       aria-hidden="true"
-    >
-      <path d="M6 4l4 4-4 4" />
-    </svg>
+    />
   );
 }
 
 function SettingsIcon() {
   return (
-    <svg
-      viewBox="0 0 18 18"
-      width="15"
-      height="15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.55"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Settings
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      <circle cx="9" cy="9" r="2.35" />
-      <path d="M9 2.5v1.65M9 13.85v1.65M3.35 3.35l1.15 1.15M13.5 13.5l1.15 1.15M2.5 9h1.65M13.85 9h1.65M3.35 14.65l1.15-1.15M13.5 4.5l1.15-1.15" />
-    </svg>
+      size={15}
+      strokeWidth={1.55}
+    />
   );
 }
 
@@ -256,55 +249,48 @@ function RenameInput({
 
 function StarIcon({ filled }: { filled: boolean }) {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width="11"
-      height="11"
-      fill={filled ? "currentColor" : "none"}
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Star
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      <path d="M8 2l1.85 3.75 4.15.6-3 2.93.7 4.13L8 11.5l-3.7 1.91.7-4.13-3-2.93 4.15-.6L8 2z" />
-    </svg>
+      fill={filled ? "currentColor" : "none"}
+      size={11}
+      strokeWidth="1.5"
+    />
   );
 }
 
 function ReorderIcon({ direction }: { direction: "up" | "down" }) {
+  const Icon = direction === "up" ? ChevronUp : ChevronDown;
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Icon
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      {direction === "up" ? <path d="M4 10l4-4 4 4" /> : <path d="M4 6l4 4 4-4" />}
-    </svg>
+      size={12}
+      strokeWidth={1.8}
+    />
   );
 }
 
 function MoreIcon() {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <MoreHorizontal
+      absoluteStrokeWidth
+      aria-hidden="true"
+      size={14}
+      strokeWidth={1.8}
+    />
+  );
+}
+
+function SidebarTreeIconSlot({ icon }: { icon?: ReactNode }) {
+  return (
+    <span
+      className="sidebar-nav-item-icon"
+      data-empty={icon ? undefined : "true"}
       aria-hidden="true"
     >
-      <path d="M4 8h.01M8 8h.01M12 8h.01" />
-    </svg>
+      {icon}
+    </span>
   );
 }
 
@@ -530,9 +516,7 @@ function renderNavItem({
             data-selectable={selectable ? undefined : "false"}
             title={selectable ? item.label : `${item.label} folder`}
           >
-            {item.icon && (
-              <span className="sidebar-nav-item-icon">{item.icon}</span>
-            )}
+            <SidebarTreeIconSlot icon={item.icon} />
             <span className="sidebar-tree__item-label">
               {item.label}
             </span>
@@ -1162,6 +1146,7 @@ export function Sidebar({
             <nav className="sidebar-tree" aria-label={`${activeSurface.title} navigation`}>
               {activeSurface.navGroups.map((group) => {
                 const open = group.hideHeader || isGroupOpen(activeSurface.id, group, true);
+                const addItemId = group.addItemId;
                 return (
                   <div
                     key={group.id}
@@ -1169,18 +1154,33 @@ export function Sidebar({
                     data-headerless={group.hideHeader ? "true" : undefined}
                   >
                     {group.hideHeader ? null : (
-                      <button
-                        type="button"
-                        className="sidebar-tree__group-header"
-                        onClick={() =>
-                          toggleGroup(groupKey(activeSurface.id, group.id))
-                        }
-                        aria-expanded={open}
-                        aria-controls={`sidebar-group-${activeSurface.id}-${group.id}`}
-                      >
-                        <ChevronIcon open={open} />
-                        <span>{group.label}</span>
-                      </button>
+                      <div className="sidebar-tree__group-header-row">
+                        <button
+                          type="button"
+                          className="sidebar-tree__group-header"
+                          onClick={() =>
+                            toggleGroup(groupKey(activeSurface.id, group.id))
+                          }
+                          aria-expanded={open}
+                          aria-controls={`sidebar-group-${activeSurface.id}-${group.id}`}
+                        >
+                          <ChevronIcon open={open} />
+                          <span>{group.label}</span>
+                        </button>
+                        {addItemId ? (
+                          <button
+                            type="button"
+                            className="sidebar-tree__group-add"
+                            aria-label={group.addLabel ?? `Add ${group.label}`}
+                            title={group.addLabel ?? `Add ${group.label}`}
+                            onClick={() => {
+                              onSelectNavItem(activeSurface.id, addItemId);
+                            }}
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
                     )}
                     {open && (
                       <ul
