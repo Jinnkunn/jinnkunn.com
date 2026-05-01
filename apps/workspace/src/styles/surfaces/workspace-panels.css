@@ -1689,11 +1689,19 @@
   padding: 8px 9px;
 }
 
-.notes-home__template > span {
+.notes-home__template-icon {
   grid-row: span 2;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
   color: var(--color-accent);
-  font-size: 17px;
-  text-align: center;
+}
+
+.notes-home__template-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .notes-home__template small {
