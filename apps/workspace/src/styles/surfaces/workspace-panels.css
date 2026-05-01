@@ -2348,8 +2348,12 @@
 .calendar-source-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
   min-width: 0;
+}
+
+.calendar-source-group + .calendar-source-group {
+  margin-top: 3px;
 }
 
 .calendar-source-group__header {
@@ -2470,8 +2474,8 @@
   overflow: hidden;
   color: currentColor;
   font-size: 10.5px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   line-height: 1.2;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -2498,9 +2502,9 @@
 .calendar-source-group__list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   margin: 0;
-  padding: 0;
+  padding: 1px 0;
   list-style: none;
 }
 
@@ -2582,7 +2586,6 @@
 .calendar-source-row__main {
   display: grid;
   grid-template-columns:
-    var(--sidebar-tree-disclosure-width, 17px)
     16px
     10px
     minmax(0, 1fr);
@@ -2593,12 +2596,6 @@
   border-radius: var(--sidebar-tree-row-radius, 6px);
   color: var(--color-text-primary);
   font-size: var(--font-size-small);
-}
-
-.calendar-source-row__main::before {
-  width: var(--sidebar-tree-disclosure-width, 17px);
-  height: var(--sidebar-tree-control-height, 24px);
-  content: "";
 }
 
 .calendar-source-row__main input {

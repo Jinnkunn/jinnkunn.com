@@ -372,6 +372,8 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   const calendar = await read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx");
   const viewSwitcher = await read("apps/workspace/src/surfaces/calendar/ViewSwitcher.tsx");
   const sourceSidebar = await read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx");
+  const todosNav = await read("apps/workspace/src/surfaces/todos/nav.tsx");
+  const todosSurface = await read("apps/workspace/src/surfaces/todos/TodosSurface.tsx");
   const sidebar = await read("apps/workspace/src/shell/Sidebar.tsx");
   const app = await read("apps/workspace/src/App.tsx");
   const styles = await readWorkspaceCssBundle();
@@ -396,6 +398,13 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(sourceSidebar, /moveSourceTo\(sourceId, src\.id, edge\)/);
   assert.match(sourceSidebar, /draggable/);
   assert.doesNotMatch(sourceSidebar, /borderRight:/);
+  assert.match(todosNav, /TODOS_FOCUS_NAV_GROUP_ID/);
+  assert.match(todosNav, /TODOS_SCHEDULE_NAV_GROUP_ID/);
+  assert.match(todosNav, /TODOS_REVIEW_NAV_GROUP_ID/);
+  assert.match(todosNav, /createTodosNavGroups/);
+  assert.doesNotMatch(todosNav, /hideHeader: true/);
+  assert.match(todosSurface, /setNavGroupItems/);
+  assert.match(todosSurface, /createTodosNavGroups\(navCounts\)/);
   const titlebar = await read("apps/workspace/src/shell/Titlebar.tsx");
   const settingsWindow = await read("apps/workspace/src/shell/SettingsWindow.tsx");
   assert.match(app, /SIDEBAR_COLLAPSED_STORAGE_KEY/);
