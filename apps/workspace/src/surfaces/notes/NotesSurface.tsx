@@ -23,14 +23,18 @@ import {
   type NoteRow,
   type NoteSearchResult,
 } from "../../modules/notes/api";
+import { todosCreate } from "../../modules/todos/api";
+import { buildNoteTodoSource } from "../../modules/notes/todoLinks";
 import {
   NOTE_TEMPLATES,
   NOTES_DAILY_PARENT_TITLE,
   NOTES_INBOX_TITLE,
   dailyNoteBody,
   dailyNoteTitle,
+  extractTodosFromNoteBody,
   findNoteByTitle,
   noteRowFromDetail,
+  type ExtractedNoteTodo,
   type NoteTemplate,
 } from "../../modules/notes/workflow";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
@@ -204,6 +208,7 @@ export function NotesSurface() {
   const [loading, setLoading] = useState(true);
   const [loadingNote, setLoadingNote] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [creatingTodos, setCreatingTodos] = useState(false);
   const [saveState, setSaveState] = useState<NotesSaveState>("idle");
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const [query, setQuery] = useState("");
@@ -509,6 +514,62 @@ export function NotesSurface() {
       savingRef.current = false;
     }
   }, []);
+
+  const createTodoFromNote = useCallback(async () => {
+    if (!selectedNote || creatingTodos) return;
+    setCreatingTodos(true);
+    try {
+      await flushSave();
+      const noteTitle = normalizeTitle(title);
+      await todosCreate({
+        notes: buildNoteTodoSource({
+          id: selectedNote.id,
+          title: noteTitle,
+        }),
+        title: `Follow up: ${noteTitle}`,
+      });
+      setMessage({ kind: "success", text: "Created todo linked to this note." });
+    } catch (error) {
+      setMessage({ kind: "error", text: `Create todo failed: ${String(error)}` });
+    } finally {
+      setCreatingTodos(false);
+    }
+  }, [creatingTodos, flushSave, selectedNote, title]);
+
+  const createTodosFromActions = useCallback(
+    async (drafts: readonly ExtractedNoteTodo[]) => {
+      if (!selectedNote || creatingTodos || drafts.length === 0) return;
+      setCreatingTodos(true);
+      try {
+        await flushSave();
+        const noteTitle = normalizeTitle(title);
+        const source = buildNoteTodoSource({
+          id: selectedNote.id,
+          title: noteTitle,
+        });
+        await Promise.all(
+          drafts.map((draft) =>
+            todosCreate({
+              notes: `${source}\n\nExtracted from line ${draft.line}.`,
+              title: draft.title,
+            }),
+          ),
+        );
+        setMessage({
+          kind: "success",
+          text: `Created ${drafts.length} linked ${drafts.length === 1 ? "todo" : "todos"}.`,
+        });
+      } catch (error) {
+        setMessage({
+          kind: "error",
+          text: `Extract todos failed: ${String(error)}`,
+        });
+      } finally {
+        setCreatingTodos(false);
+      }
+    },
+    [creatingTodos, flushSave, selectedNote, title],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -892,6 +953,10 @@ export function NotesSurface() {
 
   const saveLabel = formatSaveState(saveState);
   const showEditor = Boolean(selectedNoteId && selectedNote && !isArchiveView);
+  const extractedTodos = useMemo(
+    () => (showEditor ? extractTodosFromNoteBody(body) : []),
+    [body, showEditor],
+  );
   const inboxRow = useMemo(
     () => findNoteByTitle(rows, NOTES_INBOX_TITLE, null),
     [rows],
@@ -962,14 +1027,34 @@ export function NotesSurface() {
               New note
             </WorkspaceCommandButton>
             {showEditor ? (
-              <WorkspaceCommandButton
-                tone="ghost"
-                disabled={!selectedNote || busy}
-                title={`Archive (${SHORTCUT_META}⌫)`}
-                onClick={() => void archiveSelected()}
-              >
-                Archive
-              </WorkspaceCommandButton>
+              <>
+                <WorkspaceCommandButton
+                  tone="ghost"
+                  disabled={!selectedNote || busy || creatingTodos}
+                  title="Create a todo linked to this note"
+                  onClick={() => void createTodoFromNote()}
+                >
+                  Todo
+                </WorkspaceCommandButton>
+                {extractedTodos.length > 0 ? (
+                  <WorkspaceCommandButton
+                    tone="ghost"
+                    disabled={!selectedNote || busy || creatingTodos}
+                    title="Create todos from unchecked tasks and action items"
+                    onClick={() => void createTodosFromActions(extractedTodos)}
+                  >
+                    Extract {extractedTodos.length}
+                  </WorkspaceCommandButton>
+                ) : null}
+                <WorkspaceCommandButton
+                  tone="ghost"
+                  disabled={!selectedNote || busy}
+                  title={`Archive (${SHORTCUT_META}⌫)`}
+                  onClick={() => void archiveSelected()}
+                >
+                  Archive
+                </WorkspaceCommandButton>
+              </>
             ) : null}
           </WorkspaceCommandGroup>
         }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   dailyNoteBody,
   dailyNoteTitle,
+  extractTodosFromNoteBody,
   findNoteByTitle,
   hasQuickNotePrefix,
   parseQuickNoteInput,
@@ -38,6 +39,28 @@ describe("notes workflow helpers", () => {
     const date = new Date(2026, 4, 1, 10, 0);
     expect(dailyNoteTitle(date)).toBe("2026-05-01");
     expect(dailyNoteBody(date)).toContain("# 2026-05-01");
+  });
+
+  it("extracts unchecked tasks and action section items", () => {
+    expect(
+      extractTodosFromNoteBody(
+        [
+          "# Project",
+          "- [ ] Send recap",
+          "- [x] Done item",
+          "TODO: Book venue #ops",
+          "## Follow-ups",
+          "- Ask for review",
+          "- ",
+          "## Notes",
+          "- Keep as note",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { line: 2, title: "Send recap" },
+      { line: 4, title: "Book venue" },
+      { line: 6, title: "Ask for review" },
+    ]);
   });
 });
 

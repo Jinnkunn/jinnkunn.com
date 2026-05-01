@@ -8,6 +8,7 @@ import {
   todosUpdate,
   type TodoRow,
 } from "../../modules/todos/api";
+import { parseNoteTodoSource } from "../../modules/notes/todoLinks";
 import {
   todoTimelineKind,
   todoTimelineStart,
@@ -28,6 +29,7 @@ import {
   type TodoSchedulePreset,
 } from "../../modules/todos/planning";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
+import { noteNavId } from "../notes/tree";
 import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
@@ -232,7 +234,8 @@ function TodoQuickScheduleActions({
 }
 
 export function TodosSurface() {
-  const { activeNavItemId, setActiveNavItemId } = useSurfaceNav();
+  const { activeNavItemId, selectWorkspaceNavItem, setActiveNavItemId } =
+    useSurfaceNav();
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -529,6 +532,7 @@ export function TodosSurface() {
           <ul className="todos-list" role="list">
             {visibleTodos.map((todo) => {
               const completed = Boolean(todo.completedAt);
+              const noteSource = parseNoteTodoSource(todo.notes);
               return (
                 <li
                   className="todos-row"
@@ -571,6 +575,17 @@ export function TodosSurface() {
                     <span className="todos-row__meta">
                       {formatTodoMeta(todo)}
                     </span>
+                    {noteSource ? (
+                      <button
+                        type="button"
+                        className="todos-row__source"
+                        onClick={() =>
+                          selectWorkspaceNavItem("notes", noteNavId(noteSource.id))
+                        }
+                      >
+                        From {noteSource.title}
+                      </button>
+                    ) : null}
                     <TodoQuickScheduleActions
                       todo={todo}
                       onClear={clearPlanning}
