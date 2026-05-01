@@ -13,6 +13,16 @@
 
 .site-admin-topbar {
   flex-shrink: 0;
+  /* Establish an explicit stacking layer for the topbar. The commandbar
+   * itself already creates a stacking context via `backdrop-filter`, and
+   * the panel content below it (`.surface-card`) does the same. Without
+   * an explicit z-index here, the panel's stacking context wins on DOM
+   * order and clips topbar popovers (connection pill, publish preview)
+   * the moment they overflow downward. Pinning the topbar at
+   * `--z-titlebar` keeps every descendant popover above panel content
+   * regardless of which `--z-popover` they pick locally. */
+  position: relative;
+  z-index: var(--z-titlebar);
 }
 
 .site-admin-topbar__spacer {

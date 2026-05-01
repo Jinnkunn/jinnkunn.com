@@ -179,23 +179,6 @@ export function StatusPanel() {
   return (
     <section className="surface-card">
       <SiteOverviewCard />
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
-            Status
-          </h1>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void refresh()}
-            disabled={loading}
-          >
-            Refresh
-          </button>
-        </div>
-      </header>
 
       <PublishPipelineCard
         loading={loading}
