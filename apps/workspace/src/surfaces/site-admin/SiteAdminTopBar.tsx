@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Bug } from "lucide-react";
 
 import { handleWindowDragMouseDown } from "../../shell/windowDrag";
 import {
@@ -7,6 +8,7 @@ import {
   WorkspaceCommandGroup,
 } from "../../ui/primitives";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
+import { PipelineStatusPill } from "./PipelineStatusPill";
 import { PublishButton } from "./PublishButton";
 import { SiteAdminConnectionPill } from "./SiteAdminConnectionPill";
 import { SyncStatusPill } from "./SyncStatusPill";
@@ -76,6 +78,10 @@ export function SiteAdminTopBar() {
         >
           <SyncStatusPill sync={sync} outbox={outbox} />
           <SiteAdminConnectionPill />
+          <PipelineStatusPill
+            contentDirty={Boolean(topbarSaveAction?.dirty)}
+            pendingOutbox={outbox?.status.pending ?? 0}
+          />
           {topbarSaveAction?.dirty ? (
             <button
               className="btn btn--primary site-admin-topbar__save-btn"
@@ -94,7 +100,7 @@ export function SiteAdminTopBar() {
               }
               type="button"
             >
-              {topbarSaveAction.saving ? "Saving..." : topbarSaveAction.label}
+              {topbarSaveAction.saving ? "Saving…" : topbarSaveAction.label}
             </button>
           ) : null}
           <PublishButton
@@ -110,16 +116,13 @@ export function SiteAdminTopBar() {
             aria-pressed={drawerOpen}
             title="Toggle dev drawer (⌘\\)"
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-              <path
-                d="M2 3h12v10H2z M2 10h12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <Bug
+              absoluteStrokeWidth
+              aria-hidden="true"
+              focusable="false"
+              size={14}
+              strokeWidth={1.65}
+            />
             <span>Debug</span>
           </WorkspaceCommandButton>
         </WorkspaceCommandGroup>
