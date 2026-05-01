@@ -3,6 +3,11 @@ export interface NoteTodoSource {
   title: string;
 }
 
+export interface LinkedTodoLike {
+  archivedAt: number | null;
+  notes: string;
+}
+
 const NOTE_LINK_PREFIX = "workspace://notes/";
 
 export function buildNoteTodoSource(source: NoteTodoSource): string {
@@ -18,6 +23,19 @@ export function parseNoteTodoSource(notes: string): NoteTodoSource | null {
     id: safeDecodeURIComponent(match[2] ?? ""),
     title: unescapeLinkLabel(match[1] ?? ""),
   };
+}
+
+export function isTodoLinkedToNote(todo: LinkedTodoLike, noteId: string): boolean {
+  if (todo.archivedAt !== null) return false;
+  return parseNoteTodoSource(todo.notes)?.id === noteId;
+}
+
+export function filterTodosLinkedToNote<Todo extends LinkedTodoLike>(
+  todos: readonly Todo[],
+  noteId: string | null | undefined,
+): Todo[] {
+  if (!noteId) return [];
+  return todos.filter((todo) => isTodoLinkedToNote(todo, noteId));
 }
 
 function safeDecodeURIComponent(value: string): string {

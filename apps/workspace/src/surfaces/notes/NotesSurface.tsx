@@ -23,8 +23,17 @@ import {
   type NoteRow,
   type NoteSearchResult,
 } from "../../modules/notes/api";
-import { todosCreate } from "../../modules/todos/api";
-import { buildNoteTodoSource } from "../../modules/notes/todoLinks";
+import {
+  todosArchive,
+  todosCreate,
+  todosList,
+  todosUpdate,
+  type TodoRow,
+} from "../../modules/todos/api";
+import {
+  buildNoteTodoSource,
+  filterTodosLinkedToNote,
+} from "../../modules/notes/todoLinks";
 import {
   NOTE_TEMPLATES,
   NOTES_DAILY_PARENT_TITLE,
@@ -67,6 +76,16 @@ import {
   NOTES_ROOT_NAV_ID,
   parentIdFromNavItem,
 } from "./tree";
+import {
+  TODOS_COMPLETED_NAV_ID,
+  TODOS_INBOX_NAV_ID,
+  TODOS_SCHEDULED_NAV_ID,
+  TODOS_TODAY_NAV_ID,
+  TODOS_UNSCHEDULED_NAV_ID,
+  TODOS_UPCOMING_NAV_ID,
+} from "../todos/nav";
+import { addLocalDays, startOfLocalDay } from "../../modules/todos/planning";
+import { todoTimelineStart } from "../../modules/todos/time";
 import type { NotesSaveState } from "./types";
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -190,9 +209,54 @@ function renderSnippet(raw: string): ReactNode[] {
   return out;
 }
 
+function sortLinkedTodos(todos: readonly TodoRow[]): TodoRow[] {
+  return [...todos].sort((a, b) => {
+    const aDone = a.completedAt ? 1 : 0;
+    const bDone = b.completedAt ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    const aTime = todoTimelineStart(a) ?? Number.MAX_SAFE_INTEGER;
+    const bTime = todoTimelineStart(b) ?? Number.MAX_SAFE_INTEGER;
+    if (aTime !== bTime) return aTime - bTime;
+    return b.updatedAt - a.updatedAt;
+  });
+}
+
+function linkedTodoNavItem(todo: TodoRow, now = new Date()): string {
+  if (todo.completedAt !== null) return TODOS_COMPLETED_NAV_ID;
+  if (todo.scheduledStartAt === null && todo.dueAt === null) {
+    return TODOS_INBOX_NAV_ID;
+  }
+  const timestamp = todoTimelineStart(todo);
+  const tomorrowStart = addLocalDays(startOfLocalDay(now), 1).getTime();
+  const upcomingEnd = addLocalDays(startOfLocalDay(now), 15).getTime();
+  if (timestamp !== null && timestamp < tomorrowStart) return TODOS_TODAY_NAV_ID;
+  if (timestamp !== null && timestamp < upcomingEnd) return TODOS_UPCOMING_NAV_ID;
+  if (todo.scheduledStartAt !== null) return TODOS_SCHEDULED_NAV_ID;
+  return TODOS_UNSCHEDULED_NAV_ID;
+}
+
+function formatLinkedTodoMeta(todo: TodoRow): string {
+  if (todo.completedAt !== null) return "Done";
+  const timestamp = todoTimelineStart(todo);
+  const parts: string[] = [];
+  if (timestamp !== null) {
+    parts.push(
+      new Date(timestamp).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+      }),
+    );
+  } else {
+    parts.push("Open");
+  }
+  if (todo.estimatedMinutes !== null) parts.push(`${todo.estimatedMinutes}m`);
+  return parts.join(" / ");
+}
+
 export function NotesSurface() {
   const {
     activeNavItemId,
+    selectWorkspaceNavItem,
     setActiveNavItemId,
     setNavGroupItems,
     setMoveNavItemHandler,
@@ -209,6 +273,9 @@ export function NotesSurface() {
   const [loadingNote, setLoadingNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [creatingTodos, setCreatingTodos] = useState(false);
+  const [linkedTodos, setLinkedTodos] = useState<TodoRow[]>([]);
+  const [linkedTodosLoading, setLinkedTodosLoading] = useState(false);
+  const [linkedTodosBusyId, setLinkedTodosBusyId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<NotesSaveState>("idle");
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const [query, setQuery] = useState("");
@@ -239,6 +306,7 @@ export function NotesSurface() {
   const tree = useMemo(() => buildNoteTree(rows), [rows]);
   const navItems = useMemo(() => noteTreeToNavItems(tree), [tree]);
   const recentNotes = useMemo(() => getRecentNotes(rows), [rows]);
+  const isArchiveView = activeNavItemId === NOTES_ARCHIVE_NAV_ID;
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -255,16 +323,44 @@ export function NotesSurface() {
     }
   }, []);
 
+  const loadLinkedTodos = useCallback(async (noteId: string | null) => {
+    if (!noteId) {
+      setLinkedTodos([]);
+      setLinkedTodosLoading(false);
+      return;
+    }
+    setLinkedTodos([]);
+    setLinkedTodosLoading(true);
+    try {
+      const rows = await todosList();
+      setLinkedTodos(sortLinkedTodos(filterTodosLinkedToNote(rows, noteId)));
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: `Load linked todos failed: ${String(error)}`,
+      });
+      setLinkedTodos([]);
+    } finally {
+      setLinkedTodosLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
 
   useEffect(() => {
+    if (isArchiveView) {
+      setLinkedTodos([]);
+      return;
+    }
+    void loadLinkedTodos(selectedNoteId);
+  }, [isArchiveView, loadLinkedTodos, selectedNoteId]);
+
+  useEffect(() => {
     setNavGroupItems(NOTES_NAV_GROUP_ID, [...navItems, NOTES_ARCHIVE_NAV_ITEM]);
     return () => setNavGroupItems(NOTES_NAV_GROUP_ID, null);
   }, [navItems, setNavGroupItems]);
-
-  const isArchiveView = activeNavItemId === NOTES_ARCHIVE_NAV_ID;
 
   useEffect(() => {
     if (!isArchiveView) return;
@@ -521,13 +617,14 @@ export function NotesSurface() {
     try {
       await flushSave();
       const noteTitle = normalizeTitle(title);
-      await todosCreate({
+      const row = await todosCreate({
         notes: buildNoteTodoSource({
           id: selectedNote.id,
           title: noteTitle,
         }),
         title: `Follow up: ${noteTitle}`,
       });
+      setLinkedTodos((current) => sortLinkedTodos([...current, row]));
       setMessage({ kind: "success", text: "Created todo linked to this note." });
     } catch (error) {
       setMessage({ kind: "error", text: `Create todo failed: ${String(error)}` });
@@ -547,7 +644,7 @@ export function NotesSurface() {
           id: selectedNote.id,
           title: noteTitle,
         });
-        await Promise.all(
+        const created = await Promise.all(
           drafts.map((draft) =>
             todosCreate({
               notes: `${source}\n\nExtracted from line ${draft.line}.`,
@@ -555,6 +652,7 @@ export function NotesSurface() {
             }),
           ),
         );
+        setLinkedTodos((current) => sortLinkedTodos([...current, ...created]));
         setMessage({
           kind: "success",
           text: `Created ${drafts.length} linked ${drafts.length === 1 ? "todo" : "todos"}.`,
@@ -569,6 +667,56 @@ export function NotesSurface() {
       }
     },
     [creatingTodos, flushSave, selectedNote, title],
+  );
+
+  const toggleLinkedTodo = useCallback(async (todo: TodoRow) => {
+    if (linkedTodosBusyId) return;
+    const previous = linkedTodos;
+    const optimistic = {
+      ...todo,
+      completedAt: todo.completedAt ? null : Date.now(),
+      updatedAt: Date.now(),
+    };
+    setLinkedTodosBusyId(todo.id);
+    setLinkedTodos((current) =>
+      sortLinkedTodos(current.map((row) => (row.id === todo.id ? optimistic : row))),
+    );
+    try {
+      const updated = await todosUpdate({
+        completed: !todo.completedAt,
+        id: todo.id,
+      });
+      setLinkedTodos((current) =>
+        sortLinkedTodos(current.map((row) => (row.id === updated.id ? updated : row))),
+      );
+    } catch (error) {
+      setLinkedTodos(previous);
+      setMessage({ kind: "error", text: `Update linked todo failed: ${String(error)}` });
+    } finally {
+      setLinkedTodosBusyId(null);
+    }
+  }, [linkedTodos, linkedTodosBusyId]);
+
+  const archiveLinkedTodo = useCallback(async (todo: TodoRow) => {
+    if (linkedTodosBusyId) return;
+    const previous = linkedTodos;
+    setLinkedTodosBusyId(todo.id);
+    setLinkedTodos((current) => current.filter((row) => row.id !== todo.id));
+    try {
+      await todosArchive(todo.id);
+    } catch (error) {
+      setLinkedTodos(previous);
+      setMessage({ kind: "error", text: `Archive linked todo failed: ${String(error)}` });
+    } finally {
+      setLinkedTodosBusyId(null);
+    }
+  }, [linkedTodos, linkedTodosBusyId]);
+
+  const openLinkedTodo = useCallback(
+    (todo: TodoRow) => {
+      selectWorkspaceNavItem("todos", linkedTodoNavItem(todo));
+    },
+    [selectWorkspaceNavItem],
   );
 
   useEffect(() => {
@@ -957,6 +1105,14 @@ export function NotesSurface() {
     () => (showEditor ? extractTodosFromNoteBody(body) : []),
     [body, showEditor],
   );
+  const linkedTodoCounts = useMemo(() => {
+    const open = linkedTodos.filter((todo) => todo.completedAt === null).length;
+    return {
+      done: linkedTodos.length - open,
+      open,
+      total: linkedTodos.length,
+    };
+  }, [linkedTodos]);
   const inboxRow = useMemo(
     () => findNoteByTitle(rows, NOTES_INBOX_TITLE, null),
     [rows],
@@ -1114,6 +1270,15 @@ export function NotesSurface() {
               onChange={(event) => setTitle(event.currentTarget.value)}
             />
           </div>
+          <LinkedTodosPanel
+            busyId={linkedTodosBusyId}
+            counts={linkedTodoCounts}
+            loading={linkedTodosLoading}
+            todos={linkedTodos}
+            onArchive={(todo) => void archiveLinkedTodo(todo)}
+            onOpen={(todo) => openLinkedTodo(todo)}
+            onToggle={(todo) => void toggleLinkedTodo(todo)}
+          />
           <WorkspaceEditorRuntimeProvider runtime={editorRuntime}>
             <BlocksEditor
               value={body}
@@ -1139,6 +1304,83 @@ export function NotesSurface() {
         />
       )}
     </WorkspaceSurfaceFrame>
+  );
+}
+
+function LinkedTodosPanel({
+  busyId,
+  counts,
+  loading,
+  onArchive,
+  onOpen,
+  onToggle,
+  todos,
+}: {
+  busyId: string | null;
+  counts: { done: number; open: number; total: number };
+  loading: boolean;
+  onArchive: (todo: TodoRow) => void;
+  onOpen: (todo: TodoRow) => void;
+  onToggle: (todo: TodoRow) => void;
+  todos: readonly TodoRow[];
+}) {
+  if (todos.length === 0) return null;
+  return (
+    <section className="notes-linked-todos" aria-busy={loading ? "true" : undefined}>
+      <header className="notes-linked-todos__head">
+        <div>
+          <h2>Linked Todos</h2>
+          <span>
+            {counts.open} open / {counts.done} done
+          </span>
+        </div>
+        <span>{counts.total}</span>
+      </header>
+      <ul className="notes-linked-todos__list" role="list">
+        {todos.map((todo) => {
+          const completed = todo.completedAt !== null;
+          const disabled = busyId !== null;
+          return (
+            <li
+              className="notes-linked-todo"
+              data-completed={completed ? "true" : undefined}
+              key={todo.id}
+            >
+              <button
+                type="button"
+                className="notes-linked-todo__check"
+                aria-label={completed ? "Mark linked todo open" : "Mark linked todo done"}
+                aria-pressed={completed}
+                disabled={disabled}
+                onClick={() => onToggle(todo)}
+              >
+                <span aria-hidden="true" />
+              </button>
+              <div className="notes-linked-todo__body">
+                <strong>{todo.title}</strong>
+                <small>{formatLinkedTodoMeta(todo)}</small>
+              </div>
+              <button
+                type="button"
+                className="notes-linked-todo__button"
+                disabled={disabled}
+                onClick={() => onOpen(todo)}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className="notes-linked-todo__button"
+                disabled={disabled}
+                onClick={() => onArchive(todo)}
+              >
+                Archive
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

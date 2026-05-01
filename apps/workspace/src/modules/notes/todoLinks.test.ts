@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNoteTodoSource, parseNoteTodoSource } from "./todoLinks";
+import {
+  buildNoteTodoSource,
+  filterTodosLinkedToNote,
+  isTodoLinkedToNote,
+  parseNoteTodoSource,
+} from "./todoLinks";
 
 describe("note todo links", () => {
   it("builds and parses a workspace note source link", () => {
@@ -27,5 +32,21 @@ describe("note todo links", () => {
       id: "%E0%A4%A",
       title: "Broken",
     });
+  });
+
+  it("filters live todos linked to a note", () => {
+    const linkedNotes = buildNoteTodoSource({ id: "note-a", title: "A" });
+    const todos = [
+      { archivedAt: null, notes: linkedNotes, title: "open" },
+      { archivedAt: 1, notes: linkedNotes, title: "archived" },
+      {
+        archivedAt: null,
+        notes: buildNoteTodoSource({ id: "note-b", title: "B" }),
+        title: "other",
+      },
+    ];
+
+    expect(isTodoLinkedToNote(todos[0], "note-a")).toBe(true);
+    expect(filterTodosLinkedToNote(todos, "note-a")).toEqual([todos[0]]);
   });
 });
