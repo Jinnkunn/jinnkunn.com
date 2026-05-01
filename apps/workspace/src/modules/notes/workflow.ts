@@ -9,6 +9,11 @@ export interface QuickNoteDraft {
   title: string;
 }
 
+export interface ExtractedNoteTodo {
+  line: number;
+  title: string;
+}
+
 const QUICK_NOTE_PREFIXES = [
   "note:",
   "notes:",
@@ -94,6 +99,74 @@ export function dailyNoteTitle(date = new Date()): string {
 
 export function dailyNoteBody(date = new Date()): string {
   return `# ${dailyNoteTitle(date)}\n\n## Agenda\n\n- \n\n## Notes\n\n\n## Follow-ups\n\n- `;
+}
+
+export function extractTodosFromNoteBody(
+  bodyMdx: string,
+  limit = 20,
+): ExtractedNoteTodo[] {
+  const out: ExtractedNoteTodo[] = [];
+  const seen = new Set<string>();
+  let inActionSection = false;
+
+  bodyMdx.split(/\r?\n/).forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    const heading = trimmed.match(/^#{1,6}\s+(.+)$/);
+    if (heading) {
+      inActionSection = isActionHeading(heading[1] ?? "");
+      return;
+    }
+
+    const title =
+      uncheckedTaskTitle(trimmed) ??
+      explicitActionTitle(trimmed) ??
+      (inActionSection ? plainListTitle(trimmed) : null);
+    if (!title) return;
+
+    const normalized = normalizeNoteTitle(title);
+    if (normalized === "Untitled") return;
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ line: index + 1, title: normalized });
+  });
+
+  return out.slice(0, Math.max(0, limit));
+}
+
+function isActionHeading(value: string): boolean {
+  return /^(?:action items?|actions?|follow-?ups?|next steps?|todos?|待办|行动项)$/i.test(
+    value.trim(),
+  );
+}
+
+function uncheckedTaskTitle(value: string): string | null {
+  const match = value.match(/^\s*[-*]\s+\[\s]\s+(.+)$/);
+  return cleanExtractedTodoTitle(match?.[1]);
+}
+
+function explicitActionTitle(value: string): string | null {
+  const match = value.match(
+    /^(?:[-*]\s+)?(?:todo|task|action|follow-?up|next|待办|行动项)[:：]\s+(.+)$/i,
+  );
+  return cleanExtractedTodoTitle(match?.[1]);
+}
+
+function plainListTitle(value: string): string | null {
+  const match = value.match(/^\s*[-*]\s+(?!\[[xX]\]\s*)(.+)$/);
+  return cleanExtractedTodoTitle(match?.[1]);
+}
+
+function cleanExtractedTodoTitle(value: string | undefined): string | null {
+  const normalized = value
+    ?.replace(/\s+#\w[\w-]*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized === "-") return null;
+  return normalized;
 }
 
 export type NoteTemplateId = "daily-review" | "meeting" | "project" | "research";

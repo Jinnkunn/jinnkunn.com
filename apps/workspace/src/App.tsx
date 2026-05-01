@@ -440,6 +440,7 @@ export function App() {
   const navContextValue = useMemo(
     () => ({
       activeNavItemId,
+      selectWorkspaceNavItem: selectNavItem,
       setActiveNavItemId,
       setNavItemChildren,
       setNavGroupItems,
@@ -451,6 +452,7 @@ export function App() {
     }),
     [
       activeNavItemId,
+      selectNavItem,
       setActiveNavItemId,
       setNavItemChildren,
       setNavGroupItems,

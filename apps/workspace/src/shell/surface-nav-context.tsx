@@ -10,6 +10,9 @@ interface SurfaceNavContextValue {
   /** Switches the nav item. The shell persists the value per-surface so
    * reopening a surface lands on the last-viewed leaf. */
   setActiveNavItemId: (id: string) => void;
+  /** Switches to another surface and selects one of its nav items. Use
+   * for first-party cross-links, e.g. a todo that points back to a note. */
+  selectWorkspaceNavItem: (surfaceId: string, navItemId: string) => void;
   /** Lets the active surface publish a dynamic child tree under one of
    * its static nav items. Pass `null` (or empty) to remove. App.tsx
    * walks each item in the surface's static `navGroups` and replaces

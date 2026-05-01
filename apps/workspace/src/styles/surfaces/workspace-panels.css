@@ -726,6 +726,31 @@
   font-size: var(--font-size-small);
 }
 
+.todos-row__source {
+  justify-self: start;
+  max-width: min(100%, 320px);
+  height: 24px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--fill-quaternary));
+  color: var(--color-accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todos-row__source:hover,
+.todos-row__source:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--fill-tertiary));
+}
+
 .todos-row__quick {
   display: flex;
   gap: 4px;
