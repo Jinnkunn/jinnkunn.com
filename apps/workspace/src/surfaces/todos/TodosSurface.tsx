@@ -38,9 +38,14 @@ import {
 } from "../../ui/primitives";
 import {
   TODO_PLANNING_NAV_IDS,
+  type TodoNavCounts,
+  createTodosNavGroups,
   TODOS_COMPLETED_NAV_ID,
   TODOS_DEFAULT_NAV_ITEM_ID,
+  TODOS_FOCUS_NAV_GROUP_ID,
   TODOS_INBOX_NAV_ID,
+  TODOS_REVIEW_NAV_GROUP_ID,
+  TODOS_SCHEDULE_NAV_GROUP_ID,
   TODOS_SCHEDULED_NAV_ID,
   TODOS_TODAY_NAV_ID,
   TODOS_UNSCHEDULED_NAV_ID,
@@ -234,7 +239,12 @@ function TodoQuickScheduleActions({
 }
 
 export function TodosSurface() {
-  const { activeNavItemId, selectWorkspaceNavItem, setActiveNavItemId } =
+  const {
+    activeNavItemId,
+    selectWorkspaceNavItem,
+    setActiveNavItemId,
+    setNavGroupItems,
+  } =
     useSurfaceNav();
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [title, setTitle] = useState("");
@@ -277,6 +287,44 @@ export function TodosSurface() {
   const activeCount = todos.filter((todo) => !todo.archivedAt && !todo.completedAt).length;
   const completedCount = todos.filter((todo) => !todo.archivedAt && todo.completedAt).length;
   const viewLabel = filterLabel(filter);
+  const navCounts = useMemo<TodoNavCounts>(
+    () => ({
+      [TODOS_COMPLETED_NAV_ID]: todos.filter((todo) =>
+        filterTodo(todo, "completed"),
+      ).length,
+      [TODOS_INBOX_NAV_ID]: todos.filter((todo) =>
+        filterTodo(todo, "inbox"),
+      ).length,
+      [TODOS_SCHEDULED_NAV_ID]: todos.filter((todo) =>
+        filterTodo(todo, "scheduled"),
+      ).length,
+      [TODOS_TODAY_NAV_ID]: todos.filter((todo) =>
+        filterTodo(todo, "today"),
+      ).length,
+      [TODOS_UNSCHEDULED_NAV_ID]: todos.filter((todo) =>
+        filterTodo(todo, "unscheduled"),
+      ).length,
+      [TODOS_UPCOMING_NAV_ID]: todos.filter((todo) =>
+        filterTodo(todo, "upcoming"),
+      ).length,
+    }),
+    [todos],
+  );
+  const navGroups = useMemo(
+    () => createTodosNavGroups(navCounts),
+    [navCounts],
+  );
+
+  useEffect(() => {
+    for (const group of navGroups) {
+      setNavGroupItems(group.id, group.items);
+    }
+    return () => {
+      setNavGroupItems(TODOS_FOCUS_NAV_GROUP_ID, null);
+      setNavGroupItems(TODOS_SCHEDULE_NAV_GROUP_ID, null);
+      setNavGroupItems(TODOS_REVIEW_NAV_GROUP_ID, null);
+    };
+  }, [navGroups, setNavGroupItems]);
 
   const upsertTodo = (row: TodoRow) => {
     setTodos((current) => sortTodos([
