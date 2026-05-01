@@ -96,6 +96,8 @@ html[data-theme="light"] {
 
   --ds-selection-bg: rgba(216, 191, 131, 0.56);
   --ds-selection-text: #2f2c26;
+  --ds-link-underline: rgba(55, 53, 47, 0.55);
+  --ds-link-underline-hover: rgba(55, 53, 47, 0.78);
   --ds-toc-underline: rgba(55, 53, 47, 0.24);
   --ds-anchor-flash: hsla(38, 100%, 80%, 0.55);
   --ds-nav-surface: #ffffff;

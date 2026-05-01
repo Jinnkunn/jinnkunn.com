@@ -1031,7 +1031,7 @@ a.notion-link.link {
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
   text-decoration-skip-ink: auto;
-  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-color: var(--ds-link-underline, rgba(55, 53, 47, 0.55));
   /* Two-layer background so hover can "rise" to a full highlight without the half-height artifact. */
   background-image:
     linear-gradient(to top, rgba(246, 228, 183, 0.88), rgba(246, 228, 183, 0.88)),
@@ -1059,7 +1059,7 @@ a.notion-link.link {
 }
 
 html.theme-light .notion-semantic-string .link {
-  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-color: var(--ds-link-underline, rgba(55, 53, 47, 0.55));
 }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1073,5 +1073,5 @@ a.notion-link.link:hover {
   background-size:
     calc(100% - var(--link-icon-space)) 1.35em,
     calc(100% - var(--link-icon-space)) 0.42em;
-  text-decoration-color: rgba(55, 53, 47, 0.78);
+  text-decoration-color: var(--ds-link-underline-hover, rgba(55, 53, 47, 0.78));
 }

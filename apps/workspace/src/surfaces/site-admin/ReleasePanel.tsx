@@ -2,15 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { PromoteToProductionButton } from "./PromoteToProductionButton";
+import { openExternalUrl } from "../../lib/tauri";
 import {
   candidateLabel,
   branchLabel,
   LEGACY_RELEASE_PROD_COMMAND,
   RELEASE_PROD_FROM_STAGING_COMMAND,
   RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND,
+  RELEASE_STAGING_COMMAND,
+  parseDeployResponseSummary,
+  releaseWorkflowRecovery,
   shortId,
   shortSha,
   normalizeStatusPayload,
+  type DeployResponseSummary,
 } from "./release-flow-model";
 import { deriveSiteHealth } from "./site-health-model";
 import { useSiteAdmin } from "./state";
@@ -311,6 +316,7 @@ function formatRelativeTime(ms: number, now = Date.now()): string {
 
 export function ReleasePanel() {
   const {
+    connection,
     environment,
     profiles,
     request,
@@ -321,6 +327,11 @@ export function ReleasePanel() {
   const [preview, setPreview] = useState<PromotePreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [stagingDeployBusy, setStagingDeployBusy] = useState(false);
+  const [stagingDeployConfirming, setStagingDeployConfirming] = useState(false);
+  const [stagingDeployError, setStagingDeployError] = useState("");
+  const [stagingDeployResult, setStagingDeployResult] =
+    useState<DeployResponseSummary | null>(null);
 
   const stagingProfile = useMemo(
     () =>
@@ -330,6 +341,11 @@ export function ReleasePanel() {
     [profiles],
   );
   const isStaging = environment.kind === "staging";
+  const ready = Boolean(connection.baseUrl && connection.authToken);
+  const stagingWorkflow = releaseWorkflowRecovery(status?.source);
+  const stagingCanDeploy = ready && isStaging && status?.env?.hasDeployTarget !== false;
+  const stagingDeployTone: ReleaseTone =
+    !isStaging ? "muted" : stagingDeployError ? "blocked" : stagingDeployResult ? "ok" : "warn";
   const activeDeploymentLabel =
     environment.kind === "production" ? "Active production" : "Active staging";
   const checks = releaseChecks(status, isStaging, preview);
@@ -403,6 +419,12 @@ export function ReleasePanel() {
   }, [loadStatus]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  useEffect(() => {
+    if (!stagingDeployConfirming) return;
+    const timer = window.setTimeout(() => setStagingDeployConfirming(false), 30000);
+    return () => window.clearTimeout(timer);
+  }, [stagingDeployConfirming]);
+
   const copyText = useCallback(
     async (label: string, text: string) => {
       try {
@@ -415,15 +437,84 @@ export function ReleasePanel() {
     [setMessage],
   );
 
+  const openActions = useCallback(
+    async (url: string) => {
+      if (!url) return;
+      try {
+        await openExternalUrl(url);
+      } catch (err) {
+        setMessage("warn", `Could not open GitHub Actions: ${String(err)}. URL: ${url}`);
+      }
+    },
+    [setMessage],
+  );
+
+  const deployStaging = useCallback(async () => {
+    if (!isStaging) {
+      if (stagingProfile) {
+        switchProfile(stagingProfile.id);
+      } else {
+        setMessage("warn", "Add a staging profile before deploying staging.");
+      }
+      return;
+    }
+    if (!ready) {
+      setMessage("warn", "Connect to staging before deploying.");
+      return;
+    }
+    if (status?.env?.hasDeployTarget === false) {
+      setMessage("warn", "Staging deploy target is not configured.");
+      return;
+    }
+    if (!stagingDeployConfirming) {
+      setStagingDeployConfirming(true);
+      setStagingDeployError("");
+      setStagingDeployResult(null);
+      if (!status) await loadStatus({ silent: true });
+      return;
+    }
+
+    setStagingDeployConfirming(false);
+    setStagingDeployBusy(true);
+    setStagingDeployError("");
+    setStagingDeployResult(null);
+    const response = await request("/api/site-admin/deploy", "POST", {});
+    setStagingDeployBusy(false);
+    if (!response.ok) {
+      const msg = `${response.code}: ${response.error}`;
+      setStagingDeployError(msg);
+      setMessage("error", `Staging deploy failed: ${msg}`);
+      await loadStatus({ silent: true });
+      return;
+    }
+
+    const result = parseDeployResponseSummary(response.data);
+    setStagingDeployResult(result);
+    setMessage(
+      "success",
+      result.queued
+        ? "Staging release queued in GitHub Actions."
+        : "Staging deploy triggered.",
+    );
+    await loadStatus({ silent: true });
+  }, [
+    isStaging,
+    loadStatus,
+    ready,
+    request,
+    setMessage,
+    stagingDeployConfirming,
+    stagingProfile,
+    status,
+    switchProfile,
+  ]);
+
   return (
     <section className="surface-card release-panel">
       <header className="release-panel__header">
         <div>
-          <h1>Release</h1>
-          <p>
-            Promote the validated staging candidate to production through the guarded
-            release path.
-          </p>
+          <h1>Release Center</h1>
+          <p>Deploy staging first, then promote the exact verified candidate.</p>
         </div>
         <div className="release-panel__actions">
           <span
@@ -635,21 +726,118 @@ export function ReleasePanel() {
         ) : null}
       </section>
 
-      <section className="release-panel__promote" aria-label="Production promotion action">
-        <div>
-          <h2>Production Promotion</h2>
-          <p>
-            Dispatches the guarded release-production workflow from the validated
-            staging candidate. Production remains read-only everywhere else in
-            Workspace.
-          </p>
+      <section className="release-panel__operations" aria-label="Release actions">
+        <div className="release-panel__operation" data-tone={stagingDeployTone}>
+          <div className="release-panel__operation-copy">
+            <span>Step 1</span>
+            <h2>Deploy Staging</h2>
+            <p>
+              Dispatches the guarded staging release workflow and leaves production
+              unchanged.
+            </p>
+            <dl>
+              <div>
+                <dt>Workflow</dt>
+                <dd>{stagingWorkflow.label}</dd>
+              </div>
+              <div>
+                <dt>Target</dt>
+                <dd>{stagingWorkflow.kind === "release-dispatch" ? "Staging build" : "Staging deploy"}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="release-panel__operation-actions">
+            <button
+              className={
+                stagingDeployConfirming ? "btn btn--danger" : "btn btn--primary"
+              }
+              type="button"
+              onClick={() => void deployStaging()}
+              disabled={stagingDeployBusy || (!stagingCanDeploy && isStaging)}
+              title={
+                !isStaging
+                  ? "Switch to Staging to deploy."
+                  : !ready
+                    ? "Connect to staging first."
+                    : status?.env?.hasDeployTarget === false
+                      ? "Staging deploy target is missing."
+                      : stagingDeployConfirming
+                        ? "Click again to dispatch the staging workflow."
+                        : "Run the guarded staging release workflow."
+              }
+            >
+              {stagingDeployBusy
+                ? "Dispatching..."
+                : !isStaging
+                  ? "Switch to Staging"
+                  : stagingDeployConfirming
+                    ? "Confirm Deploy"
+                    : "Deploy Staging"}
+            </button>
+            <button
+              className="btn btn--secondary"
+              type="button"
+              onClick={() => void openActions(stagingWorkflow.actionsUrl)}
+            >
+              Open Actions
+            </button>
+            {stagingDeployResult ? (
+              <ActionResultPanel
+                result={stagingDeployResult}
+                onOpenActions={openActions}
+              />
+            ) : stagingDeployError ? (
+              <div className="release-panel__action-error" role="alert">
+                {stagingDeployError}
+              </div>
+            ) : stagingDeployConfirming ? (
+              <div className="release-panel__action-hint" role="status">
+                Staging deploy starts a CI release. Production is not touched.
+              </div>
+            ) : null}
+          </div>
         </div>
-        <PromoteToProductionButton />
+
+        <div className="release-panel__operation release-panel__promote" data-tone={readyToPromote ? "warn" : "muted"}>
+          <div className="release-panel__operation-copy">
+            <span>Step 2</span>
+            <h2>Promote Production</h2>
+            <p>
+              Production promotion is enabled only after staging matches main and
+              preflight passes.
+            </p>
+            <dl>
+              <div>
+                <dt>Preflight</dt>
+                <dd>{preview?.ok ? "Loaded" : "Needs refresh"}</dd>
+              </div>
+              <div>
+                <dt>Production</dt>
+                <dd>{productionAlreadyCurrent ? "Current" : "Explicit confirm"}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="release-panel__operation-actions">
+            <button
+              className="btn btn--secondary"
+              type="button"
+              onClick={() => void loadStatus()}
+              disabled={loading}
+            >
+              {loading ? "Checking..." : "Run Preflight"}
+            </button>
+            <PromoteToProductionButton />
+          </div>
+        </div>
       </section>
 
       <details className="release-panel__commands" aria-label="Release commands">
         <summary>Advanced command fallback</summary>
         <div className="release-panel__commands-grid">
+          <div>
+            <h2>Staging</h2>
+            <pre>{RELEASE_STAGING_COMMAND}</pre>
+          </div>
           <div>
             <h2>Preflight</h2>
             <pre>{PREFLIGHT_COMMAND}</pre>
@@ -676,6 +864,37 @@ export function ReleasePanel() {
         </button>
       </footer>
     </section>
+  );
+}
+
+function ActionResultPanel({
+  onOpenActions,
+  result,
+}: {
+  onOpenActions: (url: string) => Promise<void>;
+  result: DeployResponseSummary;
+}) {
+  return (
+    <div className="release-panel__action-result" role="status">
+      <div>
+        <strong>{result.queued ? "Queued" : "Triggered"}</strong>
+        <span>
+          {result.workflowEventType || result.provider || "deploy"} ·{" "}
+          {result.triggeredAt
+            ? new Date(result.triggeredAt).toLocaleTimeString()
+            : "now"}
+        </span>
+      </div>
+      {result.workflowRunsListUrl ? (
+        <button
+          className="btn btn--secondary"
+          type="button"
+          onClick={() => void onOpenActions(result.workflowRunsListUrl)}
+        >
+          Open Run
+        </button>
+      ) : null}
+    </div>
   );
 }
 
