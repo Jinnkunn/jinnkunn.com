@@ -620,14 +620,6 @@ export function MdxDocumentEditor<TForm>({
               {deleting ? "Deleting…" : confirmDelete ? "Click again to confirm" : "Delete"}
             </button>
           )}
-          <button
-            type="submit"
-            form={formId}
-            className="btn btn--primary"
-            disabled={!canSave || saving || loading || imageDrop.uploading || conflict || productionReadOnly}
-          >
-            {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
-          </button>
         </div>
       </header>
 
