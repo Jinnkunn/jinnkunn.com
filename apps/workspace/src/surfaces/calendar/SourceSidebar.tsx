@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import { ChevronRight } from "lucide-react";
 
+import { WorkspaceSidebarRow } from "../../ui/primitives";
 import type { CalendarPublicVisibility } from "./publicProjection";
 import type { Calendar, CalendarSource } from "./types";
 
@@ -194,9 +196,10 @@ export function SourceSidebar({
             className="calendar-source-group"
             data-collapsed={collapsed ? "true" : undefined}
           >
-            <div
+            <WorkspaceSidebarRow
               className="calendar-source-group__header"
-              data-dragging={draggingSourceId === src.id ? "true" : undefined}
+              depth={0}
+              dragging={draggingSourceId === src.id}
               data-drop-edge={
                 dragOverSource?.id === src.id ? dragOverSource.edge : undefined
               }
@@ -238,7 +241,6 @@ export function SourceSidebar({
                 draggable
                 aria-controls={listId}
                 aria-expanded={!collapsed}
-                title="Click to collapse, drag to reorder"
                 onClick={() => toggleSourceCollapsed(src.id)}
                 onDragStart={(event) => {
                   event.dataTransfer.setData("application/x-calendar-source", src.id);
@@ -250,90 +252,72 @@ export function SourceSidebar({
                   setDragOverSource(null);
                 }}
               >
-                <span className="calendar-source-group__drag" aria-hidden="true" />
                 <span className="calendar-source-group__chevron" aria-hidden="true">
-                  <ChevronIcon />
+                  <ChevronRight absoluteStrokeWidth size={10} strokeWidth={2} />
                 </span>
                 <span className="calendar-source-group__title">{src.title}</span>
                 <span className="calendar-source-group__count">{cals.length}</span>
+                <span className="calendar-source-group__drag" aria-hidden="true" />
               </button>
-            </div>
+            </WorkspaceSidebarRow>
             {!collapsed ? (
-            <ul id={listId} className="calendar-source-group__list">
-              {cals.map((cal) => {
-                const currentDefault =
-                  calendarDefaults.get(cal.id) ?? "busy";
-                return (
-                  <li key={cal.id}>
-                    <div className="calendar-source-row">
-                      <label className="calendar-source-row__main">
-                        <input
-                          type="checkbox"
-                          style={{ accentColor: cal.colorHex }}
-                          checked={visible.has(cal.id)}
-                          onChange={() => onToggleVisible(cal.id)}
-                          title="Show in Workspace"
-                        />
-                        <span
-                          className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                          style={{ background: cal.colorHex }}
-                          aria-hidden="true"
-                        />
-                        <span className="truncate">{cal.title}</span>
-                      </label>
-                      <select
-                        // Default visibility for events in this
-                        // calendar that don't have a per-event
-                        // override. Saves the operator from
-                        // classifying every recurring class meeting
-                        // by hand. "Hidden" is the public-site off
-                        // switch; all other values include the
-                        // calendar on /calendar. Per-event overrides
-                        // still win at resolution time.
-                        className="calendar-source-row__default"
-                        value={currentDefault}
-                        onChange={(event) =>
-                          onSetCalendarDefault(
-                            cal.id,
-                            event.target.value as CalendarPublicVisibility,
-                          )
-                        }
-                        title="Default visibility for events in this calendar (per-event overrides win)"
-                        aria-label={`Default visibility for ${cal.title}`}
-                      >
-                        {DEFAULT_VISIBILITY_LABELS.map((opt) => (
-                          <option key={opt.value} value={opt.value} title={opt.hint}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+              <ul id={listId} className="calendar-source-group__list">
+                {cals.map((cal) => {
+                  const currentDefault =
+                    calendarDefaults.get(cal.id) ?? "busy";
+                  return (
+                    <li key={cal.id}>
+                      <WorkspaceSidebarRow className="calendar-source-row" depth={1}>
+                        <label className="calendar-source-row__main">
+                          <input
+                            type="checkbox"
+                            style={{ accentColor: cal.colorHex }}
+                            checked={visible.has(cal.id)}
+                            onChange={() => onToggleVisible(cal.id)}
+                            title="Show in Workspace"
+                          />
+                          <span
+                            className="calendar-source-row__swatch"
+                            style={{ background: cal.colorHex }}
+                            aria-hidden="true"
+                          />
+                          <span className="calendar-source-row__title">{cal.title}</span>
+                        </label>
+                        <select
+                          // Default visibility for events in this
+                          // calendar that don't have a per-event
+                          // override. Saves the operator from
+                          // classifying every recurring class meeting
+                          // by hand. "Hidden" is the public-site off
+                          // switch; all other values include the
+                          // calendar on /calendar. Per-event overrides
+                          // still win at resolution time.
+                          className="calendar-source-row__default"
+                          value={currentDefault}
+                          onChange={(event) =>
+                            onSetCalendarDefault(
+                              cal.id,
+                              event.target.value as CalendarPublicVisibility,
+                            )
+                          }
+                          title="Default visibility for events in this calendar (per-event overrides win)"
+                          aria-label={`Default visibility for ${cal.title}`}
+                        >
+                          {DEFAULT_VISIBILITY_LABELS.map((opt) => (
+                            <option key={opt.value} value={opt.value} title={opt.hint}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </WorkspaceSidebarRow>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : null}
           </section>
         );
       })}
     </section>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="10"
-      height="10"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M6 4l4 4-4 4" />
-    </svg>
   );
 }

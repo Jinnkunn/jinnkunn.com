@@ -60,8 +60,8 @@ import {
 import { BlocksEditor } from "../site-admin/LazyBlocksEditor";
 import { NoteIconPicker } from "./IconPicker";
 import {
-  NOTES_ARCHIVE_NAV_ITEM,
-  NOTES_NAV_GROUP_ID,
+  NOTES_EMPTY_PAGE_NAV_ITEM,
+  NOTES_PAGES_NAV_GROUP_ID,
 } from "./nav";
 import {
   applyNotesMutation,
@@ -358,8 +358,11 @@ export function NotesSurface() {
   }, [isArchiveView, loadLinkedTodos, selectedNoteId]);
 
   useEffect(() => {
-    setNavGroupItems(NOTES_NAV_GROUP_ID, [...navItems, NOTES_ARCHIVE_NAV_ITEM]);
-    return () => setNavGroupItems(NOTES_NAV_GROUP_ID, null);
+    setNavGroupItems(
+      NOTES_PAGES_NAV_GROUP_ID,
+      navItems.length > 0 ? navItems : [NOTES_EMPTY_PAGE_NAV_ITEM],
+    );
+    return () => setNavGroupItems(NOTES_PAGES_NAV_GROUP_ID, null);
   }, [navItems, setNavGroupItems]);
 
   useEffect(() => {
