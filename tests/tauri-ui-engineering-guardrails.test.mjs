@@ -477,6 +477,12 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   assert.match(notesSurface, /WorkspaceEditorRuntimeProvider/);
   assert.match(notesSurface, /BlocksEditor/);
   assert.match(notesSurface, /notes-editor__title workspace-editor-title-input/);
+  assert.match(
+    notesSurface,
+    /NOTE_TEMPLATE_ICON_BY_ID/,
+    "Notes home templates should render through the shared lucide icon system",
+  );
+  assert.match(styles, /\.notes-home__template-icon/);
   // Both Notes and site-admin inherit appearance / padding / line-height
   // from `.workspace-editor-title-input` and only override the
   // `--workspace-editor-title-*` design tokens. This keeps a single

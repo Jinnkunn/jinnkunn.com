@@ -7,6 +7,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import {
+  CalendarCheck,
+  ClipboardList,
+  FolderKanban,
+  SearchCheck,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   notesArchive,
@@ -93,6 +100,12 @@ const DEFAULT_NOTE_TITLE = "Untitled";
 const IS_MAC =
   typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 const SHORTCUT_META = IS_MAC ? "⌘" : "Ctrl";
+const NOTE_TEMPLATE_ICON_BY_ID: Record<NoteTemplate["id"], LucideIcon> = {
+  "daily-review": CalendarCheck,
+  meeting: ClipboardList,
+  project: FolderKanban,
+  research: SearchCheck,
+};
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -151,6 +164,16 @@ function formatSaveState(state: NotesSaveState): string {
   if (state === "saved") return "Saved";
   if (state === "error") return "Save failed";
   return "Idle";
+}
+
+function NoteTemplateIcon({ id }: { id: NoteTemplate["id"] }) {
+  const Icon = NOTE_TEMPLATE_ICON_BY_ID[id];
+
+  return (
+    <span className="notes-home__template-icon" aria-hidden="true">
+      <Icon absoluteStrokeWidth focusable="false" size={16} strokeWidth={1.75} />
+    </span>
+  );
 }
 
 // FTS5 snippet() wraps matches with these private-use Unicode chars
@@ -1470,7 +1493,7 @@ function NotesHome({
                 disabled={busy}
                 onClick={() => onCreateFromTemplate(template)}
               >
-                <span aria-hidden="true">{template.icon}</span>
+                <NoteTemplateIcon id={template.id} />
                 <strong>{template.title}</strong>
                 <small>{template.description}</small>
               </button>
