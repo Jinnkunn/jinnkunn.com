@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getCommandActions } from "../modules/registry";
+import { notesCreate, notesList, notesUpdate } from "../modules/notes/api";
+import {
+  NOTES_INBOX_TITLE,
+  findNoteByTitle,
+  hasQuickNotePrefix,
+  noteRowFromDetail,
+  parseQuickNoteInput,
+} from "../modules/notes/workflow";
 import { todosCreate, type TodoRow } from "../modules/todos/api";
 import {
   hasQuickTodoPrefix,
@@ -13,6 +21,7 @@ import {
   TODOS_UNSCHEDULED_NAV_ID,
   TODOS_UPCOMING_NAV_ID,
 } from "../surfaces/todos/nav";
+import { noteNavId } from "../surfaces/notes/tree";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import type { SurfaceDefinition, SurfaceNavItem } from "../surfaces/types";
@@ -279,45 +288,98 @@ export function WorkspaceCommandPalette({
     () => parseQuickTodoInput(query),
     [query],
   );
+  const quickNoteDraft = useMemo(
+    () => parseQuickNoteInput(query),
+    [query],
+  );
 
   const filtered = useMemo<WorkspaceCommand[]>(() => {
     const todoSurface = findSurface(surfaces, "todos");
+    const notesSurface = findSurface(surfaces, "notes");
     const shouldOfferQuickTodo =
       quickTodoDraft &&
       todoSurface &&
       !todoSurface.disabled &&
+      !hasQuickNotePrefix(query) &&
       (hasQuickTodoPrefix(query) || baseFiltered.length === 0);
-    if (!shouldOfferQuickTodo) return baseFiltered;
-    const command: WorkspaceCommand = {
-      group: "Quick Capture",
-      hint: quickTodoDraft.preview,
-      id: "quick-capture:todo",
-      keywords: `todo task quick capture create ${query}`,
-      label: `Create todo · ${quickTodoDraft.title}`,
-      run: async () => {
-        const row = await todosCreate({
-          dueAt: quickTodoDraft.dueAt,
-          estimatedMinutes: quickTodoDraft.estimatedMinutes,
-          scheduledEndAt: quickTodoDraft.scheduledEndAt,
-          scheduledStartAt: quickTodoDraft.scheduledStartAt,
-          title: quickTodoDraft.title,
-        });
-        const navItemId = navItemForQuickTodo(row);
-        onRecordRecent({
-          itemId: navItemId,
-          label: quickTodoNavLabel(navItemId),
-          surfaceId: "todos",
-          surfaceTitle: todoSurface.title,
-        });
-        onSelectNavItem("todos", navItemId);
-      },
-    };
-    return [command, ...baseFiltered];
+    const shouldOfferQuickNote =
+      quickNoteDraft &&
+      notesSurface &&
+      !notesSurface.disabled &&
+      hasQuickNotePrefix(query);
+    const quickCommands: WorkspaceCommand[] = [];
+    if (shouldOfferQuickNote) {
+      quickCommands.push({
+        group: "Quick Capture",
+        hint: quickNoteDraft.preview,
+        id: "quick-capture:note",
+        keywords: `note notes quick capture inbox create ${query}`,
+        label: `Create note · ${quickNoteDraft.title}`,
+        run: async () => {
+          const rows = await notesList();
+          let inbox = findNoteByTitle(rows, NOTES_INBOX_TITLE, null);
+          if (!inbox) {
+            const createdInbox = await notesCreate({
+              title: NOTES_INBOX_TITLE,
+            });
+            const inboxDetail = await notesUpdate({
+              icon: "◇",
+              id: createdInbox.note.id,
+            });
+            inbox = noteRowFromDetail(inboxDetail);
+          }
+          const created = await notesCreate({
+            parentId: inbox.id,
+            title: quickNoteDraft.title,
+          });
+          const detail = await notesUpdate({
+            bodyMdx: quickNoteDraft.bodyMdx,
+            id: created.note.id,
+          });
+          const itemId = noteNavId(detail.id);
+          onRecordRecent({
+            itemId,
+            label: detail.title,
+            surfaceId: "notes",
+            surfaceTitle: notesSurface.title,
+          });
+          onSelectNavItem("notes", itemId);
+        },
+      });
+    }
+    if (shouldOfferQuickTodo) {
+      quickCommands.push({
+        group: "Quick Capture",
+        hint: quickTodoDraft.preview,
+        id: "quick-capture:todo",
+        keywords: `todo task quick capture create ${query}`,
+        label: `Create todo · ${quickTodoDraft.title}`,
+        run: async () => {
+          const row = await todosCreate({
+            dueAt: quickTodoDraft.dueAt,
+            estimatedMinutes: quickTodoDraft.estimatedMinutes,
+            scheduledEndAt: quickTodoDraft.scheduledEndAt,
+            scheduledStartAt: quickTodoDraft.scheduledStartAt,
+            title: quickTodoDraft.title,
+          });
+          const navItemId = navItemForQuickTodo(row);
+          onRecordRecent({
+            itemId: navItemId,
+            label: quickTodoNavLabel(navItemId),
+            surfaceId: "todos",
+            surfaceTitle: todoSurface.title,
+          });
+          onSelectNavItem("todos", navItemId);
+        },
+      });
+    }
+    return quickCommands.length > 0 ? [...quickCommands, ...baseFiltered] : baseFiltered;
   }, [
     baseFiltered,
     onRecordRecent,
     onSelectNavItem,
     query,
+    quickNoteDraft,
     quickTodoDraft,
     surfaces,
   ]);
@@ -394,7 +456,7 @@ export function WorkspaceCommandPalette({
           <input
             ref={inputRef}
             className="command-palette__input"
-            placeholder="Jump to a tool, page, or recent item..."
+            placeholder="Jump to a tool, page, or capture with note: / + ..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             spellCheck={false}
@@ -415,7 +477,7 @@ export function WorkspaceCommandPalette({
         {filtered.length === 0 ? (
           <div className="command-palette__empty">
             <p>No matches.</p>
-            <span>{'Try "home", "calendar", "settings", or type "+ write report tomorrow 3pm".'}</span>
+            <span>{'Try "home", "calendar", "note: idea", or "+ write report tomorrow 3pm".'}</span>
           </div>
         ) : (
           <ul
@@ -501,7 +563,7 @@ function formatCommandError(error: unknown): string {
     message.includes("__TAURI_INTERNALS__") ||
     message.includes("is not a function")
   ) {
-    return "Todo data is available in the desktop app.";
+    return "Workspace data is available in the desktop app.";
   }
   return `Command failed: ${message}`;
 }
