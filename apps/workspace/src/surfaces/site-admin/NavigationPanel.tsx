@@ -4,11 +4,15 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
+import {
+  ChevronDown as ChevronDownGlyph,
+  GripVertical,
+  MoreHorizontal,
+  Plus,
+} from "lucide-react";
 
 import { BlockPopover } from "./block-popover";
-import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import { useDragReorder } from "./shared/useDragReorder";
 import type { ConfigSourceVersion, NavRow } from "./types";
@@ -362,30 +366,15 @@ export function NavigationPanel() {
         </div>
         <div className="nav-editor__actions">
           <button
-            className="btn btn--secondary"
+            className="btn btn--ghost"
             type="button"
             onClick={() => void loadConfig()}
             disabled={loading || saving}
           >
             Reload latest
           </button>
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => void saveNavigation()}
-            disabled={
-              productionReadOnly ||
-              loading ||
-              saving ||
-              conflict ||
-              dirtyRows.length === 0
-            }
-          >
-            {saving ? "Saving..." : `Save Navigation${dirtyRows.length ? ` (${dirtyRows.length})` : ""}`}
-          </button>
         </div>
       </header>
-      <SiteAdminEnvironmentBanner actionLabel="save navigation" />
       {savedNeedsPublish ? (
         <div className="nav-editor__publish-hint" role="status">
           <strong>Saved to source.</strong>
@@ -720,71 +709,54 @@ function NavigationRowMenu({
 
 // ---------- icons ----------
 
-const ICON_PROPS: { width: number; height: number; viewBox: string } = {
-  width: 14,
-  height: 14,
-  viewBox: "0 0 16 16",
-};
-
 function ChevronDown({ collapsed }: { collapsed: boolean }) {
-  const style: CSSProperties = {
-    transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-    transition: "transform 140ms ease",
-  };
   return (
-    <svg {...ICON_PROPS} aria-hidden="true" focusable="false" style={style}>
-      <path
-        d="M3.5 6L8 10.5L12.5 6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <ChevronDownGlyph
+      absoluteStrokeWidth
+      aria-hidden="true"
+      focusable="false"
+      size={14}
+      strokeWidth={1.75}
+      style={{
+        transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+        transition: "transform 140ms ease",
+      }}
+    />
   );
 }
 
 function PlusIcon() {
   return (
-    <svg {...ICON_PROPS} aria-hidden="true" focusable="false">
-      <path
-        d="M8 3.5V12.5 M3.5 8H12.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
+    <Plus
+      absoluteStrokeWidth
+      aria-hidden="true"
+      focusable="false"
+      size={14}
+      strokeWidth={1.75}
+    />
   );
 }
 
 function MoreHorizontalIcon() {
   return (
-    <svg {...ICON_PROPS} aria-hidden="true" focusable="false">
-      <circle cx="3.5" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12.5" cy="8" r="1.2" fill="currentColor" />
-    </svg>
+    <MoreHorizontal
+      absoluteStrokeWidth
+      aria-hidden="true"
+      focusable="false"
+      size={14}
+      strokeWidth={1.75}
+    />
   );
 }
 
 function DragDotsIcon() {
-  // 6-dot grip — same pattern Notion / Super.so use as a drag affordance.
   return (
-    <svg
-      width={14}
-      height={14}
-      viewBox="0 0 10 16"
+    <GripVertical
+      absoluteStrokeWidth
       aria-hidden="true"
       focusable="false"
-    >
-      <circle cx="3" cy="3" r="1.1" fill="currentColor" />
-      <circle cx="7" cy="3" r="1.1" fill="currentColor" />
-      <circle cx="3" cy="8" r="1.1" fill="currentColor" />
-      <circle cx="7" cy="8" r="1.1" fill="currentColor" />
-      <circle cx="3" cy="13" r="1.1" fill="currentColor" />
-      <circle cx="7" cy="13" r="1.1" fill="currentColor" />
-    </svg>
+      size={14}
+      strokeWidth={1.75}
+    />
   );
 }

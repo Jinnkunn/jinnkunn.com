@@ -11,7 +11,6 @@ import {
   validateProtected,
 } from "./routes/ProtectedSection";
 import { RedirectsSection } from "./routes/RedirectsSection";
-import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin } from "./state";
 import type {
   OverrideRow,
@@ -493,32 +492,21 @@ export function RoutesPanel() {
 
   return (
     <section className="surface-card">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
-            Routes
-          </h1>
-          <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Path overrides and per-page protection rules.
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void loadRoutes()}
-            disabled={loading}
-          >
-            Reload Latest
-          </button>
-        </div>
-      </header>
-      <p className="m-0 text-[12px] text-text-muted">
-        {sourceVersion
-          ? `siteConfigSha=${sourceVersion.siteConfigSha} | protectedRoutesSha=${sourceVersion.protectedRoutesSha} | branchSha=${sourceVersion.branchSha}`
-          : "sourceVersion: -"}
-      </p>
-      <SiteAdminEnvironmentBanner actionLabel="edit routes" />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="m-0 text-[12px] text-text-muted">
+          {sourceVersion
+            ? `siteConfigSha=${sourceVersion.siteConfigSha} | protectedRoutesSha=${sourceVersion.protectedRoutesSha} | branchSha=${sourceVersion.branchSha}`
+            : "sourceVersion: -"}
+        </p>
+        <button
+          className="btn btn--ghost"
+          type="button"
+          onClick={() => void loadRoutes()}
+          disabled={loading}
+        >
+          Reload Latest
+        </button>
+      </div>
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
       <OverridesSection

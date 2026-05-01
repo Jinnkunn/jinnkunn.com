@@ -14,7 +14,12 @@ interface WorkflowRecovery {
 }
 
 export interface PublishPreviewPanelProps {
+  busy: boolean;
+  canConfirm: boolean;
   deployCandidateBlocked: boolean;
+  environmentLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
   onCopyReleaseCommand: () => void;
   onOpenQueuedWorkflow: () => void;
   onOpenRecoveryWorkflow: () => void;
@@ -28,8 +33,39 @@ export interface PublishPreviewPanelProps {
   workflowRecovery: WorkflowRecovery;
 }
 
-export function PublishPreviewPanel({
+function commitHeadline({
+  busy,
+  canConfirm,
   deployCandidateBlocked,
+  environmentLabel,
+  previewError,
+  previewLoading,
+  queuedDeploy,
+}: {
+  busy: boolean;
+  canConfirm: boolean;
+  deployCandidateBlocked: boolean;
+  environmentLabel: string;
+  previewError: string;
+  previewLoading: boolean;
+  queuedDeploy: DeployResponseSummary | null;
+}): string {
+  if (previewError) return "Preview unavailable";
+  if (previewLoading) return "Loading preview…";
+  if (busy) return `Publishing to ${environmentLabel}…`;
+  if (queuedDeploy) return `Release queued for ${environmentLabel}`;
+  if (deployCandidateBlocked) return "Staging candidate is stale";
+  if (canConfirm) return `Ready to publish to ${environmentLabel}`;
+  return `Reviewing changes for ${environmentLabel}`;
+}
+
+export function PublishPreviewPanel({
+  busy,
+  canConfirm,
+  deployCandidateBlocked,
+  environmentLabel,
+  onCancel,
+  onConfirm,
   onCopyReleaseCommand,
   onOpenQueuedWorkflow,
   onOpenRecoveryWorkflow,
@@ -42,11 +78,48 @@ export function PublishPreviewPanel({
   sourceSnapshot,
   workflowRecovery,
 }: PublishPreviewPanelProps) {
+  const headline = commitHeadline({
+    busy,
+    canConfirm,
+    deployCandidateBlocked,
+    environmentLabel,
+    previewError,
+    previewLoading,
+    queuedDeploy,
+  });
+  const subline = previewError
+    ? previewError
+    : previewLoading
+      ? "Fetching the latest staging diff…"
+      : previewText || "No content changes detected.";
   return (
-    <details className="publish-preview" role="status" open>
-      <summary>
-        {previewError ? `Preview unavailable: ${previewError}` : previewText}
-      </summary>
+    <div className="publish-preview" role="status">
+      <header className="publish-preview__commit-bar">
+        <div className="publish-preview__commit-summary">
+          <strong>{headline}</strong>
+          <span>{subline}</span>
+        </div>
+        <div className="publish-preview__commit-actions">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            {queuedDeploy ? "Dismiss" : "Cancel"}
+          </button>
+          {canConfirm ? (
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={onConfirm}
+              disabled={busy || previewLoading}
+            >
+              {busy ? "Publishing…" : "Confirm publish"}
+            </button>
+          ) : null}
+        </div>
+      </header>
       {!previewError && previewData ? (
         <div className="publish-preview__body">
           <div className="publish-preview__meta">
@@ -162,7 +235,7 @@ export function PublishPreviewPanel({
           ) : null}
         </div>
       ) : null}
-    </details>
+    </div>
   );
 }
 

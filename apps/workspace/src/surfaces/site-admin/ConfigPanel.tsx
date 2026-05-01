@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SettingsSection } from "./config/SettingsSection";
-import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import type { ConfigSourceVersion, SiteSettings } from "./types";
 import {
@@ -303,46 +302,13 @@ export function ConfigPanel() {
 
   return (
     <section className="surface-card">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
-            Site Settings
-          </h1>
-          <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Site identity, analytics, social cards, and SEO defaults.
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void loadConfig()}
-            disabled={loading}
-          >
-            Reload Latest
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => void saveSettings()}
-            title={
-              productionReadOnly
-                ? "Production is inspect-only. Switch to Staging to save site settings."
-                : undefined
-            }
-            disabled={loading || savingSettings || conflict || !sourceVersion || productionReadOnly}
-          >
-            {productionReadOnly ? "Read-only in Production" : "Save Site Settings"}
-          </button>
-        </div>
-      </header>
-      <SiteAdminEnvironmentBanner actionLabel="save site settings" />
       {productionReadOnly ? (
         <div className="settings-readonly-callout" role="status">
-          <strong>Production settings are locked in Workspace.</strong>
+          <strong>Read-only in Production</strong>
           <span>
-            Edit Settings in Staging, publish the staging candidate, then promote
-            production with the release runbook.
+            Production settings are locked in Workspace. Edit in Staging,
+            publish the staging candidate, then promote production with the
+            release runbook.
           </span>
         </div>
       ) : null}
@@ -352,11 +318,21 @@ export function ConfigPanel() {
           <span>Use the topbar Publish button to update the public staging site.</span>
         </div>
       ) : null}
-      <p className="m-0 text-[12px] text-text-muted">
-        {sourceVersion
-          ? `sourceVersion.siteConfigSha=${sourceVersion.siteConfigSha} | branchSha=${sourceVersion.branchSha}`
-          : "sourceVersion: -"}
-      </p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="m-0 text-[12px] text-text-muted">
+          {sourceVersion
+            ? `sourceVersion.siteConfigSha=${sourceVersion.siteConfigSha} | branchSha=${sourceVersion.branchSha}`
+            : "sourceVersion: -"}
+        </p>
+        <button
+          className="btn btn--ghost"
+          type="button"
+          onClick={() => void loadConfig()}
+          disabled={loading}
+        >
+          Reload Latest
+        </button>
+      </div>
       <p className="m-0 text-[12px] text-text-muted">{stateNote}</p>
 
       <SettingsSection

@@ -240,7 +240,10 @@ export function PublishButton({
     [applyStatusSnapshot, clearPollTimers, request, setMessage, sourceSnapshot],
   );
 
-  async function trigger() {
+  // Click 1: from the topbar Publish button. Loads the staging diff +
+  // status into a commit bar; the actual deploy fires from inside that
+  // panel via confirmPublish, not by re-clicking the topbar button.
+  async function requestPublish() {
     if (localPreflightBlocked) {
       setMessage("warn", localPreflightMessage);
       return;
@@ -256,11 +259,22 @@ export function PublishButton({
       );
       return;
     }
-    if (!confirming || sourceSnapshot?.deployableVersionReady === false) {
-      await loadPreview();
+    await loadPreview();
+  }
+
+  // Click 2: fired by the Confirm button inside the commit bar. Runs the
+  // real /api/site-admin/deploy POST and handles the queued/stale/success
+  // branches. Keeps confirming=true on stale/queued so the recovery panel
+  // stays visible; only success or non-recoverable errors close it.
+  async function confirmPublish() {
+    if (productionReadOnly) {
+      setMessage("warn", environment.helpText);
       return;
     }
-    setConfirming(false);
+    if (sourceSnapshot?.deployableVersionReady === false) {
+      setMessage("warn", deployCandidateBlockedMessage(sourceSnapshot));
+      return;
+    }
     setBusy(true);
     const response = await request("/api/site-admin/deploy", "POST", {});
     setBusy(false);
@@ -270,15 +284,14 @@ export function PublishButton({
         const normalizedStatus = status.ok ? applyStatusSnapshot(status.data) : null;
         const source = normalizedStatus?.source ?? sourceSnapshot;
         setMessage("warn", deployCandidateBlockedMessage(source));
-        setConfirming(true);
         return;
       }
       setMessage("error", `Publish failed: ${response.code}: ${response.error}`);
+      setConfirming(false);
       return;
     }
     const data = parseDeployResponseSummary(response.data);
     if (data.queued) {
-      setConfirming(false);
       const statusAfter = await request("/api/site-admin/status", "GET");
       if (statusAfter.ok) applyStatusSnapshot(statusAfter.data);
       scheduleWorkflowStatusPoll(data);
@@ -308,6 +321,14 @@ export function PublishButton({
         ? `Deploy triggered (${details}).`
         : "Deploy triggered. Staging verification did not complete.",
     );
+    setConfirming(false);
+  }
+
+  // User dismissed the commit bar without confirming. Local-only — the
+  // server doesn't have anything to undo at this point because no deploy
+  // POST has fired yet.
+  function cancelPublish() {
+    setConfirming(false);
   }
 
   const deployCandidateBlocked = releaseFlow.candidateBlocked;
@@ -315,6 +336,15 @@ export function PublishButton({
   const noPendingChanges =
     requirePendingChanges && pendingChangesKnown && releaseFlow.noPendingChanges;
   const workflowRecovery = releaseWorkflowRecovery(sourceSnapshot);
+
+  const canConfirm =
+    confirming &&
+    !busy &&
+    !previewLoading &&
+    !previewError &&
+    !deployCandidateBlocked &&
+    !queuedDeploy &&
+    previewData !== null;
 
   return (
     <div className="publish-control">
@@ -325,18 +355,17 @@ export function PublishButton({
           deployCandidateBlocked ||
           noPendingChanges
             ? "btn btn--secondary"
-            : confirming
-              ? "btn btn--danger"
-              : "btn btn--primary"
+            : "btn btn--primary"
         }
         type="button"
-        onClick={() => void trigger()}
+        onClick={() => void requestPublish()}
         disabled={
           !ready ||
           productionReadOnly ||
           busy ||
           previewLoading ||
           statusLoading ||
+          confirming ||
           localPreflightBlocked ||
           editorPreflightBlocked ||
           noPendingChanges
@@ -352,13 +381,17 @@ export function PublishButton({
             ? releaseFlow.disabledReason
             : noPendingChanges
               ? releaseFlow.disabledReason
-              : "Promote the current worker version via Cloudflare API"
+              : confirming
+                ? "Review the staging diff in the panel below before confirming."
+                : "Promote the current worker version via Cloudflare API"
         }
       >
         {busy
           ? "Publishing…"
           : previewLoading || statusLoading
             ? "Checking…"
+            : confirming
+              ? "Reviewing…"
             : productionReadOnly
               ? publishLabel
             : localPreflightBlocked
@@ -367,11 +400,9 @@ export function PublishButton({
               ? "Fix editor checks"
             : deployCandidateBlocked
               ? releaseFlow.publishLabel
-              : confirming
-                ? "Confirm Publish"
-              : noPendingChanges
-                  ? releaseFlow.publishLabel
-                  : publishLabel}
+            : noPendingChanges
+                ? releaseFlow.publishLabel
+                : publishLabel}
       </button>
       {editorPreflightBlocked ? (
         <PublishPreflightPanel
@@ -381,7 +412,12 @@ export function PublishButton({
       ) : null}
       {confirming && (
         <PublishPreviewPanel
+          busy={busy}
+          canConfirm={canConfirm}
           deployCandidateBlocked={deployCandidateBlocked}
+          environmentLabel={environment.label}
+          onCancel={cancelPublish}
+          onConfirm={() => void confirmPublish()}
           onCopyReleaseCommand={() => void copyReleaseCommand()}
           onOpenQueuedWorkflow={() => {
             const url = queuedDeploy?.workflowRunsListUrl;

@@ -17,7 +17,6 @@ import {
   decodeDocumentLoad,
   decodeDocumentSave,
 } from "./api-validators";
-import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { parseMdxBlocks } from "./mdx-blocks";
 import { countBlocksOfType } from "./mdx-block-tree";
 import { localContent } from "./local-content";
@@ -495,7 +494,7 @@ export function MdxDocumentEditor<TForm>({
         conflict ||
         productionReadOnly,
       label: saving
-        ? "Saving..."
+        ? "Saving…"
         : mode === "create"
           ? `Create ${adapter.titleNoun}`
           : `Save ${adapter.titleNoun}`,
@@ -660,8 +659,6 @@ export function MdxDocumentEditor<TForm>({
           </button>
         </div>
       )}
-
-      <SiteAdminEnvironmentBanner actionLabel="edit content" />
 
       {error && (
         <p className="m-0 text-[12px] text-[color:var(--color-danger)]">{error}</p>
