@@ -339,7 +339,7 @@
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--calendar-color) 18%, var(--ds-text-primary) 8%);
   border-radius: 12px;
-  background-color: var(--ds-surface-elevated, #fff);
+  background-color: var(--ds-surface-elevated);
   background-image:
     linear-gradient(
       180deg,
@@ -361,7 +361,7 @@
   border: 1px solid color-mix(in srgb, var(--calendar-color) 18%, var(--ds-text-primary) 8%);
   border-top: 0;
   border-right: 0;
-  background: var(--ds-surface-elevated, #fff);
+  background: var(--ds-surface-elevated);
   pointer-events: none;
 }
 
