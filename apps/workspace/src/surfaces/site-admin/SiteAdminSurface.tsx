@@ -12,6 +12,7 @@ import {
   isSiteAdminTab,
 } from "./nav";
 import { SiteAdminDevDrawer } from "./SiteAdminDevDrawer";
+import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { SiteAdminTopBar } from "./SiteAdminTopBar";
 import { SiteAdminProvider, useSiteAdmin, type PostsGrouping } from "./state";
 import type {
@@ -985,6 +986,7 @@ function SiteAdminContent() {
       <SiteAdminTopBar />
       <div className="site-admin-layout__main">
         <MessageBar />
+        <SiteAdminEnvironmentBanner actionLabel="make changes" />
         {pageTreeConflict && (
           <div className="site-admin-conflict-banner" role="alert">
             <span>

@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import { PublishPipelineCard } from "./PublishPipelineCard";
-import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import {
   candidateLabel,
   deployStateLabel,
@@ -195,8 +194,6 @@ export function StatusPanel() {
           </button>
         </div>
       </header>
-
-      <SiteAdminEnvironmentBanner actionLabel="deploy changes" />
 
       <PublishPipelineCard
         loading={loading}

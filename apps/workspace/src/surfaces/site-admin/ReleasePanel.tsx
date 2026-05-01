@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { SiteAdminEnvironmentBanner } from "./SiteAdminEnvironmentBanner";
 import { PromoteToProductionButton } from "./PromoteToProductionButton";
 import { openExternalUrl } from "../../lib/tauri";
 import {
@@ -556,8 +555,6 @@ export function ReleasePanel() {
         </div>
       </header>
 
-      <SiteAdminEnvironmentBanner actionLabel="prepare production promotion" />
-
       {error ? <div className="release-panel__error">{error}</div> : null}
 
       {!isStaging ? (
@@ -650,8 +647,7 @@ export function ReleasePanel() {
               : "Load staging preflight"}
           </strong>
           <p>
-            Release preflight reads staging and production deployments live from
-            Cloudflare. Production promotion remains explicit.
+            Live Cloudflare comparison. Production remains explicit.
           </p>
         </div>
       </section>
@@ -660,7 +656,7 @@ export function ReleasePanel() {
         <header>
           <div>
             <h2>Promotion Checklist</h2>
-            <p>These checks explain whether the production command is safe to run.</p>
+            <p>Preflight status before production.</p>
           </div>
           <strong data-ready={readyToPromote ? "true" : "false"}>
             {readyToPromote ? "Ready to promote" : "Not ready yet"}
@@ -731,10 +727,7 @@ export function ReleasePanel() {
           <div className="release-panel__operation-copy">
             <span>Step 1</span>
             <h2>Deploy Staging</h2>
-            <p>
-              Dispatches the guarded staging release workflow and leaves production
-              unchanged.
-            </p>
+            <p>Runs staging only.</p>
             <dl>
               <div>
                 <dt>Workflow</dt>
@@ -767,7 +760,7 @@ export function ReleasePanel() {
               }
             >
               {stagingDeployBusy
-                ? "Dispatching..."
+                ? "Dispatching…"
                 : !isStaging
                   ? "Switch to Staging"
                   : stagingDeployConfirming
@@ -802,10 +795,7 @@ export function ReleasePanel() {
           <div className="release-panel__operation-copy">
             <span>Step 2</span>
             <h2>Promote Production</h2>
-            <p>
-              Production promotion is enabled only after staging matches main and
-              preflight passes.
-            </p>
+            <p>Enabled after staging matches main.</p>
             <dl>
               <div>
                 <dt>Preflight</dt>
@@ -824,7 +814,7 @@ export function ReleasePanel() {
               onClick={() => void loadStatus()}
               disabled={loading}
             >
-              {loading ? "Checking..." : "Run Preflight"}
+              {loading ? "Checking…" : "Run Preflight"}
             </button>
             <PromoteToProductionButton />
           </div>
