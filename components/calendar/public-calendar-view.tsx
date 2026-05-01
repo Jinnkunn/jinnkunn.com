@@ -582,18 +582,12 @@ export function PublicCalendarView({
           </>
         ) : null}
       </p>
-      {selectedEvent ? (
-        <EventDetailPanel
-          event={selectedEvent}
-          timeZone={timeZone}
-          onClose={() => onEventToggle?.(selectedEvent.id)}
-        />
-      ) : null}
       {view === "month" ? (
         <MonthCalendar
           dayIndex={dayIndex}
           anchor={anchor}
           timeZone={timeZone}
+          selectedEventId={expandedEventId}
           onDaySelect={onDaySelect}
           onEventToggle={onEventToggle}
         />
@@ -624,6 +618,13 @@ export function PublicCalendarView({
           onEventToggle={onEventToggle}
         />
       ) : null}
+      {selectedEvent ? (
+        <EventDetailPanel
+          event={selectedEvent}
+          timeZone={timeZone}
+          onClose={() => onEventToggle?.(selectedEvent.id)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -648,12 +649,14 @@ function MonthCalendar({
   dayIndex,
   anchor,
   timeZone,
+  selectedEventId,
   onDaySelect,
   onEventToggle,
 }: {
   dayIndex: DayIndex;
   anchor: Date;
   timeZone: string;
+  selectedEventId?: string | null;
   onDaySelect?: (date: Date) => void;
   onEventToggle?: (id: string) => void;
 }) {
@@ -696,6 +699,7 @@ function MonthCalendar({
                   <EventPill
                     event={event}
                     key={`${event.id}-${event.startTimestamp}`}
+                    selected={selectedEventId === event.id}
                     onEventToggle={onEventToggle}
                   />
                 ))}
@@ -748,7 +752,7 @@ function WeekCalendar({
                   event={event}
                   key={`${event.id}-${event.startTimestamp}`}
                   compact
-                  expanded={expandedEventId === event.id}
+                  selected={expandedEventId === event.id}
                   onEventToggle={onEventToggle}
                 />
               ))}
@@ -781,7 +785,7 @@ function DayCalendar({
           <EventCard
             event={event}
             key={`${event.id}-${event.startTimestamp}`}
-            expanded={expandedEventId === event.id}
+            selected={expandedEventId === event.id}
             onEventToggle={onEventToggle}
           />
         ))
@@ -818,7 +822,7 @@ function AgendaCalendar({
               >
                 <EventCard
                   event={event}
-                  expanded={expandedEventId === event.id}
+                  selected={expandedEventId === event.id}
                   onEventToggle={onEventToggle}
                 />
               </li>
@@ -832,20 +836,24 @@ function AgendaCalendar({
 
 function EventPill({
   event,
+  selected = false,
   onEventToggle,
 }: {
   event: DecoratedEvent;
+  selected?: boolean;
   onEventToggle?: (id: string) => void;
 }) {
   return (
     <button
       type="button"
       className="public-calendar__event-pill"
+      data-selected={selected ? "true" : "false"}
       title={`${event.formattedTime} ${event.title}`}
       onClick={(e) => {
         e.stopPropagation();
         onEventToggle?.(event.id);
       }}
+      aria-pressed={selected}
       style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
     >
       <span>{event.isAllDay ? "" : event.formattedTime}</span>
@@ -870,82 +878,95 @@ function EventDetailPanel({
     year: "numeric",
   });
   return (
-    <aside
-      className="public-calendar__detail-panel"
-      style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
-      aria-label="Selected event details"
-    >
-      <div className="public-calendar__detail-rail" aria-hidden="true" />
-      <div className="public-calendar__detail-main">
-        <header className="public-calendar__detail-header">
-          <div>
-            <span className="public-calendar__detail-kicker">
-              {event.calendarTitle ?? "Calendar"}
-            </span>
-            <h2>{event.title}</h2>
-          </div>
-          <button
-            type="button"
-            className="public-calendar__detail-close"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </header>
-        <dl className="public-calendar__detail-meta">
-          <div>
-            <dt>Date</dt>
-            <dd>{dateLabel}</dd>
-          </div>
-          <div>
-            <dt>Time</dt>
-            <dd>{event.formattedTime}</dd>
-          </div>
-          {event.visibility === "full" && event.location ? (
+    <div className="public-calendar__detail-layer">
+      <button
+        type="button"
+        className="public-calendar__detail-scrim"
+        aria-label="Close event details"
+        onClick={onClose}
+      />
+      <aside
+        className="public-calendar__detail-panel"
+        style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="public-calendar-detail-title"
+      >
+        <div className="public-calendar__detail-rail" aria-hidden="true" />
+        <div className="public-calendar__detail-main">
+          <header className="public-calendar__detail-header">
             <div>
-              <dt>Location</dt>
-              <dd>{event.location}</dd>
+              <span className="public-calendar__detail-kicker">
+                {event.calendarTitle ?? "Calendar"}
+              </span>
+              <h2 id="public-calendar-detail-title">{event.title}</h2>
             </div>
+            <button
+              type="button"
+              className="public-calendar__detail-close"
+              onClick={onClose}
+              aria-label="Close event details"
+            >
+              Close
+            </button>
+          </header>
+          <dl className="public-calendar__detail-meta">
+            <div>
+              <dt>Date</dt>
+              <dd>{dateLabel}</dd>
+            </div>
+            <div>
+              <dt>Time</dt>
+              <dd>{event.formattedTime}</dd>
+            </div>
+            {event.visibility === "full" && event.location ? (
+              <div>
+                <dt>Location</dt>
+                <dd>{event.location}</dd>
+              </div>
+            ) : null}
+          </dl>
+          {event.visibility === "busy" ? (
+            <p className="public-calendar__detail-description">
+              Details are hidden for this blocked time.
+            </p>
           ) : null}
-        </dl>
-        {event.visibility === "busy" ? (
-          <p className="public-calendar__detail-description">
-            Details are hidden for this blocked time.
-          </p>
-        ) : null}
-        {event.visibility === "full" && event.description ? (
-          <p className="public-calendar__detail-description">
-            {event.description}
-          </p>
-        ) : null}
-        <div className="public-calendar__detail-actions">
-          {event.visibility === "full" && event.url ? (
-            <a href={event.url}>Event link</a>
+          {event.visibility === "full" && event.description ? (
+            <p className="public-calendar__detail-description">
+              {event.description}
+            </p>
           ) : null}
-          {event.visibility !== "busy" ? (
-            <a href={`/calendar/${event.id}`}>Open event page</a>
-          ) : null}
+          <div className="public-calendar__detail-actions">
+            {event.visibility === "full" && event.url ? (
+              <a href={event.url}>Event link</a>
+            ) : null}
+            {event.visibility !== "busy" ? (
+              <a href={`/calendar/${event.id}`}>Open event page</a>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </div>
   );
 }
 
 function EventCard({
   event,
   compact = false,
-  expanded = false,
+  selected = false,
   onEventToggle,
 }: {
   event: DecoratedEvent;
   compact?: boolean;
-  expanded?: boolean;
+  selected?: boolean;
   onEventToggle?: (id: string) => void;
 }) {
   return (
     <div
       className="public-calendar__event-card"
       data-compact={compact ? "true" : "false"}
+      data-selected={selected ? "true" : "false"}
+      style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
     >
       <span
         className="public-calendar__event-color"
@@ -957,38 +978,14 @@ function EventCard({
           type="button"
           className="public-calendar__event-toggle"
           onClick={() => onEventToggle?.(event.id)}
-          aria-expanded={expanded}
+          aria-pressed={selected}
+          aria-haspopup="dialog"
         >
           <div className="public-calendar__event-topline">
             <span className="public-calendar__event-time">{event.formattedTime}</span>
             <strong className="public-calendar__event-title">{event.title}</strong>
           </div>
         </button>
-        {expanded && event.visibility === "busy" ? (
-          <p className="public-calendar__event-description">
-            Details are hidden for this blocked time.
-          </p>
-        ) : null}
-        {expanded && event.visibility === "full" && event.location ? (
-          <p className="public-calendar__event-meta">{event.location}</p>
-        ) : null}
-        {expanded && event.visibility === "full" && event.description ? (
-          <p className="public-calendar__event-description">{event.description}</p>
-        ) : null}
-        {expanded && event.visibility === "full" && event.url ? (
-          <p className="public-calendar__event-link">
-            <a href={event.url}>Event link</a>
-          </p>
-        ) : null}
-        {expanded && event.visibility !== "busy" ? (
-          // Permalink to the per-event detail page. Lives below the
-          // expanded body so the inline read still feels like the
-          // primary surface; the link is for "share this with someone"
-          // and for SEO indexing of titled events.
-          <p className="public-calendar__event-permalink">
-            <a href={`/calendar/${event.id}`}>Open event page →</a>
-          </p>
-        ) : null}
       </div>
     </div>
   );

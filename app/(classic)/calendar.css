@@ -316,10 +316,26 @@
   line-height: 1.4;
 }
 
+.public-calendar__detail-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.public-calendar__detail-scrim {
+  display: none;
+}
+
 .public-calendar__detail-panel {
+  position: absolute;
+  top: clamp(86px, 10vh, 128px);
+  right: max(18px, calc((100vw - 1120px) / 2 + 18px));
   display: grid;
   grid-template-columns: 5px minmax(0, 1fr);
   gap: 14px;
+  width: min(380px, calc(100vw - 36px));
+  max-height: min(620px, calc(100dvh - 116px));
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--calendar-color) 18%, var(--ds-text-primary) 8%);
   border-radius: 10px;
@@ -329,6 +345,8 @@
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 45%, transparent),
     0 12px 30px color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
+  overflow: auto;
+  pointer-events: auto;
 }
 
 .public-calendar__detail-rail {
@@ -355,6 +373,7 @@
   color: var(--ds-text-primary);
   font-size: 20px;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .public-calendar__detail-kicker {
@@ -411,6 +430,7 @@
   color: var(--ds-text-secondary);
   font-size: 14px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .public-calendar__detail-actions {
@@ -536,6 +556,8 @@
   grid-template-columns: 5px minmax(0, 1fr);
   gap: 14px;
   text-align: left;
+  min-width: 0;
+  border-radius: 7px;
 }
 
 .public-calendar__event-card[data-compact="true"] {
@@ -544,6 +566,14 @@
   padding: 8px;
   border-radius: 7px;
   background: color-mix(in srgb, var(--ds-text-primary) 4%, transparent);
+  overflow: hidden;
+}
+
+.public-calendar__event-card[data-selected="true"] {
+  background: color-mix(in srgb, var(--calendar-color, var(--ds-accent)) 12%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--calendar-color, var(--ds-accent)) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 35%, transparent);
 }
 
 .public-calendar__event-color {
@@ -560,6 +590,7 @@
 .public-calendar__event-toggle {
   appearance: none;
   width: 100%;
+  min-width: 0;
   border: 0;
   background: transparent;
   padding: 0;
@@ -574,6 +605,7 @@
   flex-wrap: wrap;
   gap: 8px 12px;
   align-items: baseline;
+  min-width: 0;
 }
 
 .public-calendar__event-time {
@@ -581,6 +613,7 @@
   font-size: 15px;
   font-weight: 500;
   line-height: 1.35;
+  min-width: 0;
 }
 
 .public-calendar__event-title {
@@ -588,6 +621,32 @@
   font-size: 19px;
   font-weight: 700;
   line-height: 1.3;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.public-calendar__event-card[data-compact="true"] .public-calendar__event-color {
+  width: 4px;
+  min-height: 100%;
+}
+
+.public-calendar__event-card[data-compact="true"] .public-calendar__event-topline {
+  display: grid;
+  gap: 5px;
+}
+
+.public-calendar__event-card[data-compact="true"] .public-calendar__event-time {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.public-calendar__event-card[data-compact="true"] .public-calendar__event-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.22;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
 .public-calendar__event-meta,
@@ -704,6 +763,7 @@
   border: 0;
   display: block;
   width: 100%;
+  min-width: 0;
   overflow: hidden;
   min-height: 18px;
   padding: 2px 6px;
@@ -716,6 +776,13 @@
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.public-calendar__event-pill[data-selected="true"] {
+  background: color-mix(in srgb, var(--calendar-color) 24%, transparent);
+  box-shadow:
+    inset 3px 0 0 var(--calendar-color),
+    inset 0 0 0 1px color-mix(in srgb, var(--calendar-color) 28%, transparent);
 }
 
 .public-calendar__event-pill span {
@@ -741,6 +808,7 @@
   min-width: 0;
   padding: 9px 7px;
   border-right: 1px solid color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
+  overflow: hidden;
 }
 
 .public-calendar__week-day:last-child {
@@ -761,6 +829,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .public-calendar__day-list {
@@ -806,6 +875,29 @@
   .public-calendar__month,
   .public-calendar__week {
     overflow-x: auto;
+  }
+
+  .public-calendar__detail-layer {
+    pointer-events: auto;
+  }
+
+  .public-calendar__detail-scrim {
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: color-mix(in srgb, var(--ds-bg-primary) 22%, transparent);
+  }
+
+  .public-calendar__detail-panel {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-height: min(74dvh, 620px);
+    border-radius: 16px 16px 12px 12px;
   }
 
   .public-calendar__weekdays,
