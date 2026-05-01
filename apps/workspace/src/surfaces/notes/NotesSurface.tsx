@@ -23,6 +23,16 @@ import {
   type NoteRow,
   type NoteSearchResult,
 } from "../../modules/notes/api";
+import {
+  NOTE_TEMPLATES,
+  NOTES_DAILY_PARENT_TITLE,
+  NOTES_INBOX_TITLE,
+  dailyNoteBody,
+  dailyNoteTitle,
+  findNoteByTitle,
+  noteRowFromDetail,
+  type NoteTemplate,
+} from "../../modules/notes/workflow";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceCommandBar,
@@ -94,20 +104,22 @@ function noteSaveKey(input: { bodyMdx: string; icon: string | null; title: strin
 }
 
 function mergeNoteRow(rows: readonly NoteRow[], detail: NoteDetail): NoteRow[] {
-  return rows.map((row) =>
-    row.id === detail.id
-      ? {
-          archivedAt: detail.archivedAt,
-          createdAt: detail.createdAt,
-          icon: detail.icon,
-          id: detail.id,
-          parentId: detail.parentId,
-          sortOrder: detail.sortOrder,
-          title: detail.title,
-          updatedAt: detail.updatedAt,
-        }
-      : row,
-  );
+  let matched = false;
+  const next = rows.map((row) => {
+    if (row.id !== detail.id) return row;
+    matched = true;
+    return {
+      archivedAt: detail.archivedAt,
+      createdAt: detail.createdAt,
+      icon: detail.icon,
+      id: detail.id,
+      parentId: detail.parentId,
+      sortOrder: detail.sortOrder,
+      title: detail.title,
+      updatedAt: detail.updatedAt,
+    };
+  });
+  return matched ? next : [...next, noteRowFromDetail(detail)];
 }
 
 function formatSaveState(state: NotesSaveState): string {
@@ -208,11 +220,16 @@ export function NotesSurface() {
   const createInFlightRef = useRef(false);
   const createNoteRef = useRef<(parentId: string | null) => void>(() => {});
   const archiveSelectedRef = useRef<() => void>(() => {});
+  const rowsRef = useRef<NoteRow[]>([]);
   const selectedNoteId = noteIdFromNavItem(activeNavItemId);
 
   useEffect(() => {
     selectedNoteRef.current = selectedNote;
   }, [selectedNote]);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   const tree = useMemo(() => buildNoteTree(rows), [rows]);
   const navItems = useMemo(() => noteTreeToNavItems(tree), [tree]);
@@ -294,6 +311,132 @@ export function NotesSurface() {
       }
     },
     [setActiveNavItemId],
+  );
+
+  const createNoteWithContent = useCallback(
+    async ({
+      bodyMdx,
+      icon: nextIcon,
+      parentId,
+      select = true,
+      title: nextTitle,
+    }: {
+      bodyMdx?: string;
+      icon?: string | null;
+      parentId?: string | null;
+      select?: boolean;
+      title: string;
+    }): Promise<NoteDetail> => {
+      const result = await notesCreate({
+        parentId: parentId ?? null,
+        title: nextTitle,
+      });
+      setRows((current) => applyNotesMutation(current, result.mutation));
+      let detail = result.note;
+      if (bodyMdx !== undefined || nextIcon !== undefined) {
+        detail = await notesUpdate({
+          bodyMdx,
+          icon: nextIcon,
+          id: result.note.id,
+        });
+        setRows((current) => mergeNoteRow(current, detail));
+      }
+      if (select) setActiveNavItemId(noteNavId(detail.id));
+      setMessage(null);
+      return detail;
+    },
+    [setActiveNavItemId],
+  );
+
+  const ensureNote = useCallback(
+    async ({
+      bodyMdx,
+      icon: nextIcon,
+      parentId = null,
+      title: nextTitle,
+    }: {
+      bodyMdx?: string;
+      icon?: string | null;
+      parentId?: string | null;
+      title: string;
+    }): Promise<NoteRow> => {
+      const existing = findNoteByTitle(rows, nextTitle, parentId);
+      if (existing) return existing;
+      const detail = await createNoteWithContent({
+        bodyMdx,
+        icon: nextIcon,
+        parentId,
+        select: false,
+        title: nextTitle,
+      });
+      return noteRowFromDetail(detail);
+    },
+    [createNoteWithContent, rows],
+  );
+
+  const openInbox = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const inbox = await ensureNote({
+        icon: "◇",
+        title: NOTES_INBOX_TITLE,
+      });
+      setActiveNavItemId(noteNavId(inbox.id));
+      setMessage(null);
+    } catch (error) {
+      setMessage({ kind: "error", text: `Open Inbox failed: ${String(error)}` });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, ensureNote, setActiveNavItemId]);
+
+  const openTodayNote = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const parent = await ensureNote({
+        icon: "◷",
+        title: NOTES_DAILY_PARENT_TITLE,
+      });
+      const today = await ensureNote({
+        bodyMdx: dailyNoteBody(),
+        icon: "◷",
+        parentId: parent.id,
+        title: dailyNoteTitle(),
+      });
+      setActiveNavItemId(noteNavId(today.id));
+      setMessage(null);
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: `Open daily note failed: ${String(error)}`,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, ensureNote, setActiveNavItemId]);
+
+  const createFromTemplate = useCallback(
+    async (template: NoteTemplate) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await createNoteWithContent({
+          bodyMdx: template.bodyMdx,
+          icon: template.icon,
+          title: template.title,
+        });
+      } catch (error) {
+        setMessage({
+          kind: "error",
+          text: `Create note from template failed: ${String(error)}`,
+        });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, createNoteWithContent],
   );
 
   useEffect(() => {
@@ -407,6 +550,14 @@ export function NotesSurface() {
         setBody(note.bodyMdx);
         setIcon(note.icon ?? "");
         lastSavedKeyRef.current = noteSaveKey(note);
+        setRows((current) => mergeNoteRow(current, note));
+        const currentRows = rowsRef.current;
+        const hasSelectedRow = currentRows.some((row) => row.id === note.id);
+        const hasParentRow =
+          !note.parentId || currentRows.some((row) => row.id === note.parentId);
+        if (!hasSelectedRow || !hasParentRow) {
+          void loadRows();
+        }
         setSaveState("saved");
         setMessage(null);
       })
@@ -421,7 +572,7 @@ export function NotesSurface() {
     return () => {
       cancelled = true;
     };
-  }, [flushSave, selectFirstAvailable, selectedNoteId]);
+  }, [flushSave, loadRows, selectFirstAvailable, selectedNoteId]);
 
   useEffect(() => {
     if (!selectedNote || loadingNote) return;
@@ -741,6 +892,26 @@ export function NotesSurface() {
 
   const saveLabel = formatSaveState(saveState);
   const showEditor = Boolean(selectedNoteId && selectedNote && !isArchiveView);
+  const inboxRow = useMemo(
+    () => findNoteByTitle(rows, NOTES_INBOX_TITLE, null),
+    [rows],
+  );
+  const inboxCount = useMemo(
+    () =>
+      inboxRow
+        ? rows.filter(
+            (row) => row.archivedAt === null && row.parentId === inboxRow.id,
+          ).length
+        : 0,
+    [inboxRow, rows],
+  );
+  const todayTitle = dailyNoteTitle();
+  const hasTodayNote = useMemo(() => {
+    const dailyParent = findNoteByTitle(rows, NOTES_DAILY_PARENT_TITLE, null);
+    return Boolean(
+      dailyParent && findNoteByTitle(rows, todayTitle, dailyParent.id),
+    );
+  }, [rows, todayTitle]);
   const breadcrumb = useMemo(
     () =>
       showEditor && selectedNote
@@ -868,36 +1039,140 @@ export function NotesSurface() {
           </WorkspaceEditorRuntimeProvider>
         </article>
       ) : (
-        <section className="notes-empty" aria-busy={loading ? "true" : undefined}>
-          <div className="notes-empty__card">
-            <h1>Notes</h1>
-            <WorkspaceCommandButton
-              tone="accent"
+        <NotesHome
+          busy={busy}
+          hasTodayNote={hasTodayNote}
+          inboxCount={inboxCount}
+          loading={loading}
+          recentNotes={recentNotes}
+          templates={NOTE_TEMPLATES}
+          onCreateBlank={() => void createNote(null)}
+          onCreateFromTemplate={(template) => void createFromTemplate(template)}
+          onOpenInbox={() => void openInbox()}
+          onOpenRecent={(id) => setActiveNavItemId(noteNavId(id))}
+          onOpenToday={() => void openTodayNote()}
+        />
+      )}
+    </WorkspaceSurfaceFrame>
+  );
+}
+
+function NotesHome({
+  busy,
+  hasTodayNote,
+  inboxCount,
+  loading,
+  onCreateBlank,
+  onCreateFromTemplate,
+  onOpenInbox,
+  onOpenRecent,
+  onOpenToday,
+  recentNotes,
+  templates,
+}: {
+  busy: boolean;
+  hasTodayNote: boolean;
+  inboxCount: number;
+  loading: boolean;
+  onCreateBlank: () => void;
+  onCreateFromTemplate: (template: NoteTemplate) => void;
+  onOpenInbox: () => void;
+  onOpenRecent: (id: string) => void;
+  onOpenToday: () => void;
+  recentNotes: readonly NoteRow[];
+  templates: readonly NoteTemplate[];
+}) {
+  return (
+    <section className="notes-home" aria-busy={loading ? "true" : undefined}>
+      <div className="notes-home__hero">
+        <div>
+          <p className="notes-home__eyebrow">Notes</p>
+          <h1>Capture, review, connect.</h1>
+        </div>
+        <WorkspaceCommandButton
+          tone="accent"
+          disabled={busy}
+          onClick={onCreateBlank}
+        >
+          New note
+        </WorkspaceCommandButton>
+      </div>
+
+      <div className="notes-home__grid">
+        <section className="notes-home__panel notes-home__panel--wide">
+          <header className="notes-home__panel-head">
+            <h2>Start</h2>
+            <span>Daily workflow</span>
+          </header>
+          <div className="notes-home__actions">
+            <button
+              type="button"
+              className="notes-home__action"
               disabled={busy}
-              onClick={() => void createNote(null)}
+              onClick={onOpenInbox}
             >
-              New note
-            </WorkspaceCommandButton>
+              <span>Inbox</span>
+              <small>{inboxCount} open captures</small>
+            </button>
+            <button
+              type="button"
+              className="notes-home__action"
+              disabled={busy}
+              onClick={onOpenToday}
+            >
+              <span>Today</span>
+              <small>{hasTodayNote ? "Open daily note" : "Create daily note"}</small>
+            </button>
           </div>
-          {recentNotes.length > 0 ? (
-            <div className="notes-empty__recent" aria-label="Recent notes">
-              <h2>Recent</h2>
+        </section>
+
+        <section className="notes-home__panel">
+          <header className="notes-home__panel-head">
+            <h2>Templates</h2>
+            <span>{templates.length}</span>
+          </header>
+          <div className="notes-home__template-list">
+            {templates.map((template) => (
+              <button
+                type="button"
+                key={template.id}
+                className="notes-home__template"
+                disabled={busy}
+                onClick={() => onCreateFromTemplate(template)}
+              >
+                <span aria-hidden="true">{template.icon}</span>
+                <strong>{template.title}</strong>
+                <small>{template.description}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="notes-home__panel">
+          <header className="notes-home__panel-head">
+            <h2>Recent</h2>
+            <span>{recentNotes.length}</span>
+          </header>
+          {recentNotes.length === 0 ? (
+            <p className="notes-home__empty">No notes yet.</p>
+          ) : (
+            <div className="notes-home__recent-list">
               {recentNotes.map((note) => (
                 <button
                   type="button"
                   key={note.id}
-                  className="notes-recent-row"
-                  onClick={() => setActiveNavItemId(noteNavId(note.id))}
+                  className="notes-home__recent"
+                  onClick={() => onOpenRecent(note.id)}
                 >
-                  <span>{note.icon || "#"}</span>
+                  <span aria-hidden="true">{note.icon || "#"}</span>
                   <strong>{note.title || DEFAULT_NOTE_TITLE}</strong>
                 </button>
               ))}
             </div>
-          ) : null}
+          )}
         </section>
-      )}
-    </WorkspaceSurfaceFrame>
+      </div>
+    </section>
   );
 }
 
