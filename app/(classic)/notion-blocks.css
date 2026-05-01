@@ -108,10 +108,15 @@
 .notion-root span[data-link-style="icon"] > a.notion-link.link,
 .notion-root a[data-link-style="icon"].notion-link.link {
   text-decoration-line: underline;
-  text-decoration-color: var(--ds-toc-underline);
+  text-decoration-color: var(--ds-link-underline);
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
   text-decoration-skip-ink: auto;
+}
+
+.notion-root span[data-link-style="icon"] > a.notion-link.link:hover,
+.notion-root a[data-link-style="icon"].notion-link.link:hover {
+  text-decoration-color: var(--ds-link-underline-hover);
 }
 
 /* Improve contrast for metadata labels (Date / Author / etc.) on content pages. */

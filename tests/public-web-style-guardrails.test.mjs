@@ -590,6 +590,40 @@ test("public-web-style-guardrails: classic gray text is content-level, not page-
   assertIncludes(homeContent, 'data-color="gray"', "Home content explicit gray mark");
 });
 
+test("public-web-style-guardrails: icon links use the same underline token as content links", async () => {
+  const designCss = await read("app/design-system.css");
+  const superInlineCss = await read("public/styles/super-inline.css");
+  const notionBlocksCss = await read("app/(classic)/notion-blocks.css");
+
+  assertIncludes(designCss, "--ds-link-underline:", "Design tokens");
+  assertIncludes(designCss, "--ds-link-underline-hover:", "Design tokens");
+  assertIncludes(
+    superInlineCss,
+    "text-decoration-color: var(--ds-link-underline, rgba(55, 53, 47, 0.55));",
+    "Classic content links",
+  );
+  assertIncludes(
+    superInlineCss,
+    "text-decoration-color: var(--ds-link-underline-hover, rgba(55, 53, 47, 0.78));",
+    "Classic content links hover",
+  );
+  assertIncludes(
+    notionBlocksCss,
+    "text-decoration-color: var(--ds-link-underline);",
+    "Classic icon links",
+  );
+  assertIncludes(
+    notionBlocksCss,
+    "text-decoration-color: var(--ds-link-underline-hover);",
+    "Classic icon links hover",
+  );
+  assertExcludes(
+    notionBlocksCss,
+    "text-decoration-color: var(--ds-toc-underline);",
+    "Classic icon links",
+  );
+});
+
 test("public-web-style-guardrails: MDX heading links inherit heading color", async () => {
   const postsCss = await read("app/(classic)/posts-mdx.css");
 
