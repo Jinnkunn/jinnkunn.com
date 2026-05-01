@@ -6,6 +6,20 @@ import {
   eventMatchesAnyTag,
   summarizeTags,
 } from "@/lib/shared/calendar-tags";
+import {
+  CALENDAR_TIME_ZONE_OPTIONS,
+  DEFAULT_CALENDAR_TIME_ZONE,
+  addZonedDays,
+  addZonedMonths,
+  calendarTimeZoneLabel,
+  formatInTimeZone,
+  isSameZonedMonth,
+  zonedDateFromDayKey,
+  zonedDayKey,
+  zonedStartOfDay,
+  zonedStartOfMonth,
+  zonedStartOfWeek,
+} from "@/lib/shared/calendar-timezone";
 import type { PublicCalendarData, PublicCalendarEvent } from "@/lib/shared/public-calendar";
 
 export type PublicCalendarViewMode = "month" | "week" | "day" | "agenda";
@@ -27,46 +41,60 @@ type DecoratedEvent = PublicCalendarEvent & {
 
 type DayIndex = Map<string, DecoratedEvent[]>;
 
-function keyForDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+function keyForDate(
+  date: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): string {
+  return zonedDayKey(date, timeZone);
 }
 
-function parseDayKey(key: string): Date {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day);
+function parseDayKey(
+  key: string,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): Date {
+  return zonedDateFromDayKey(key, timeZone);
 }
 
-function startOfDay(date: Date): Date {
-  const out = new Date(date);
-  out.setHours(0, 0, 0, 0);
-  return out;
+function startOfDay(
+  date: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): Date {
+  return zonedStartOfDay(date, timeZone);
 }
 
-function addDays(date: Date, days: number): Date {
-  const out = new Date(date);
-  out.setDate(out.getDate() + days);
-  return out;
+function addDays(
+  date: Date,
+  days: number,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): Date {
+  return addZonedDays(date, days, timeZone);
 }
 
-function startOfWeek(date: Date): Date {
-  const out = startOfDay(date);
-  const day = out.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  return addDays(out, mondayOffset);
+function startOfWeek(
+  date: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): Date {
+  return zonedStartOfWeek(date, timeZone);
 }
 
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
+function startOfMonth(
+  date: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): Date {
+  return zonedStartOfMonth(date, timeZone);
 }
 
-function monthGridDays(anchor: Date): Date[] {
-  const first = startOfMonth(anchor);
-  const start = startOfWeek(first);
-  return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+function monthGridDays(
+  anchor: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): Date[] {
+  const first = startOfMonth(anchor, timeZone);
+  const start = startOfWeek(first, timeZone);
+  return Array.from({ length: 42 }, (_, i) => addDays(start, i, timeZone));
 }
 
-function formatDay(key: string): string {
-  return parseDayKey(key).toLocaleDateString("en", {
+function formatDay(key: string, timeZone = DEFAULT_CALENDAR_TIME_ZONE): string {
+  return formatInTimeZone(parseDayKey(key, timeZone), timeZone, {
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -74,9 +102,13 @@ function formatDay(key: string): string {
   });
 }
 
-function formatToolbarTitle(view: PublicCalendarViewMode, anchor: Date): string {
+function formatToolbarTitle(
+  view: PublicCalendarViewMode,
+  anchor: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): string {
   if (view === "day") {
-    return anchor.toLocaleDateString("en", {
+    return formatInTimeZone(anchor, timeZone, {
       weekday: "long",
       month: "long",
       day: "numeric",
@@ -84,51 +116,51 @@ function formatToolbarTitle(view: PublicCalendarViewMode, anchor: Date): string 
     });
   }
   if (view === "week") {
-    const start = startOfWeek(anchor);
-    const end = addDays(start, 6);
-    return `${start.toLocaleDateString("en", {
+    const start = startOfWeek(anchor, timeZone);
+    const end = addDays(start, 6, timeZone);
+    return `${formatInTimeZone(start, timeZone, {
       month: "short",
       day: "numeric",
-    })} - ${end.toLocaleDateString("en", {
+    })} - ${formatInTimeZone(end, timeZone, {
       month: "short",
       day: "numeric",
       year: "numeric",
     })}`;
   }
-  return anchor.toLocaleDateString("en", { month: "long", year: "numeric" });
+  return formatInTimeZone(anchor, timeZone, { month: "long", year: "numeric" });
 }
 
 function shiftAnchor(
   anchor: Date,
   view: PublicCalendarViewMode,
   direction: -1 | 1,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Date {
-  const out = new Date(anchor);
   if (view === "month" || view === "agenda") {
-    out.setMonth(out.getMonth() + direction);
-  } else if (view === "week") {
-    out.setDate(out.getDate() + direction * 7);
-  } else {
-    out.setDate(out.getDate() + direction);
+    return addZonedMonths(anchor, direction, timeZone);
   }
-  return out;
+  if (view === "week") return addDays(anchor, direction * 7, timeZone);
+  return addDays(anchor, direction, timeZone);
 }
 
-function decorateEvent(event: PublicCalendarEvent): DecoratedEvent {
+function decorateEvent(
+  event: PublicCalendarEvent,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): DecoratedEvent {
   const startTimestamp = Date.parse(event.startsAt);
   const endTimestamp = Date.parse(event.endsAt);
   const startDate = new Date(startTimestamp);
   const endDate = new Date(endTimestamp);
-  const startDayKey = keyForDate(startDate);
+  const startDayKey = keyForDate(startDate, timeZone);
 
   // Walk the calendar days the event covers, matching the original
   // eventTouchesDay rule: a day is included when end > dayStart && start < dayEnd.
   // Using setDate (via addDays) handles DST transitions correctly.
   const touchedDayKeys: string[] = [];
-  let cursor = startOfDay(startDate);
+  let cursor = startOfDay(startDate, timeZone);
   while (cursor.getTime() < endTimestamp) {
-    touchedDayKeys.push(keyForDate(cursor));
-    cursor = addDays(cursor, 1);
+    touchedDayKeys.push(keyForDate(cursor, timeZone));
+    cursor = addDays(cursor, 1, timeZone);
   }
   if (touchedDayKeys.length === 0) {
     // Defensive: if endTimestamp <= startTimestamp slipped past normalize,
@@ -140,18 +172,18 @@ function decorateEvent(event: PublicCalendarEvent): DecoratedEvent {
   if (event.isAllDay) {
     formattedTime = "All day";
   } else {
-    const startLabel = startDate.toLocaleTimeString("en", {
+    const startLabel = formatInTimeZone(startDate, timeZone, {
       hour: "numeric",
       minute: "2-digit",
     });
-    const endLabel = endDate.toLocaleTimeString("en", {
+    const endLabel = formatInTimeZone(endDate, timeZone, {
       hour: "numeric",
       minute: "2-digit",
     });
-    const sameDay = startDayKey === keyForDate(endDate);
+    const sameDay = startDayKey === keyForDate(endDate, timeZone);
     formattedTime = sameDay
       ? `${startLabel} - ${endLabel}`
-      : `${startLabel} - ${endDate.toLocaleDateString("en", {
+      : `${startLabel} - ${formatInTimeZone(endDate, timeZone, {
           month: "short",
           day: "numeric",
         })}, ${endLabel}`;
@@ -189,17 +221,23 @@ function eventsForDayKey(index: DayIndex, key: string): DecoratedEvent[] {
   return index.get(key) ?? [];
 }
 
-function eventsForDay(index: DayIndex, day: Date): DecoratedEvent[] {
-  return eventsForDayKey(index, keyForDate(day));
+function eventsForDay(
+  index: DayIndex,
+  day: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): DecoratedEvent[] {
+  return eventsForDayKey(index, keyForDate(day, timeZone));
 }
 
 function buildAgendaGroups(
   events: DecoratedEvent[],
   index: DayIndex,
   windowDays: number,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Array<[string, DecoratedEvent[]]> {
-  const startMs = startOfDay(new Date()).getTime();
-  const endMs = addDays(new Date(), windowDays).getTime();
+  const agendaStart = startOfDay(new Date(), timeZone);
+  const startMs = agendaStart.getTime();
+  const endMs = addDays(agendaStart, windowDays, timeZone).getTime();
   // Group by start-day so each event appears once even when multi-day.
   const buckets = new Map<string, DecoratedEvent[]>();
   for (const event of events) {
@@ -232,6 +270,8 @@ export function PublicCalendarView({
   onDaySelect,
   expandedEventId,
   onEventToggle,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+  onTimeZoneChange,
   selectedTags,
   onSelectedTagsChange,
   tagSummary: tagSummaryProp,
@@ -246,6 +286,8 @@ export function PublicCalendarView({
   onDaySelect?: (date: Date) => void;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
+  timeZone?: string;
+  onTimeZoneChange?: (timeZone: string) => void;
   /** Currently-active tag filter. Empty = show every event. The
    * filter is OR-logic: an event matching any selected tag passes. */
   selectedTags?: readonly string[];
@@ -292,9 +334,9 @@ export function PublicCalendarView({
   const decoratedEvents = useMemo(
     () =>
       [...filteredEvents]
-        .map(decorateEvent)
+        .map((event) => decorateEvent(event, timeZone))
         .sort((a, b) => a.startTimestamp - b.startTimestamp),
-    [filteredEvents],
+    [filteredEvents, timeZone],
   );
 
   // Index events by the day-keys they touch, so MonthView/WeekView/DayView
@@ -302,24 +344,24 @@ export function PublicCalendarView({
   const dayIndex = useMemo(() => buildDayIndex(decoratedEvents), [decoratedEvents]);
 
   const agendaGroups = useMemo(
-    () => buildAgendaGroups(decoratedEvents, dayIndex, agendaDays),
-    [decoratedEvents, dayIndex, agendaDays],
+    () => buildAgendaGroups(decoratedEvents, dayIndex, agendaDays, timeZone),
+    [decoratedEvents, dayIndex, agendaDays, timeZone],
   );
 
   const lastUpdatedLabel = useMemo(
     () =>
-      new Date(data.generatedAt).toLocaleString("en", {
+      formatInTimeZone(data.generatedAt, timeZone, {
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       }),
-    [data.generatedAt],
+    [data.generatedAt, timeZone],
   );
 
-  const resolvedTimeZone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-    [],
+  const selectedEvent = useMemo(
+    () => decoratedEvents.find((event) => event.id === expandedEventId) ?? null,
+    [decoratedEvents, expandedEventId],
   );
 
   if (data.events.length === 0) {
@@ -337,7 +379,9 @@ export function PublicCalendarView({
           <button
             type="button"
             className="public-calendar__nav-button"
-            onClick={() => onAnchorChange?.(shiftAnchor(anchor, view, -1))}
+            onClick={() =>
+              onAnchorChange?.(shiftAnchor(anchor, view, -1, timeZone))
+            }
             aria-label="Previous calendar range"
           >
             <svg
@@ -361,14 +405,16 @@ export function PublicCalendarView({
           <button
             type="button"
             className="public-calendar__today-button"
-            onClick={() => onAnchorChange?.(new Date())}
+            onClick={() => onAnchorChange?.(startOfDay(new Date(), timeZone))}
           >
             Today
           </button>
           <button
             type="button"
             className="public-calendar__nav-button"
-            onClick={() => onAnchorChange?.(shiftAnchor(anchor, view, 1))}
+            onClick={() =>
+              onAnchorChange?.(shiftAnchor(anchor, view, 1, timeZone))
+            }
             aria-label="Next calendar range"
           >
             <svg
@@ -390,9 +436,22 @@ export function PublicCalendarView({
             </svg>
           </button>
           <strong className="public-calendar__range-title">
-            {formatToolbarTitle(view, anchor)}
+            {formatToolbarTitle(view, anchor, timeZone)}
           </strong>
         </div>
+        <label className="public-calendar__time-zone-select">
+          <span>Time zone</span>
+          <select
+            value={timeZone}
+            onChange={(event) => onTimeZoneChange?.(event.currentTarget.value)}
+          >
+            {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="public-calendar__view-switch" aria-label="Calendar view">
           {VIEW_LABELS.map((item) => (
             <button
@@ -511,7 +570,8 @@ export function PublicCalendarView({
         </div>
       ) : null}
       <p className="public-calendar__sync-note">
-        Last updated {lastUpdatedLabel}. Times shown in {resolvedTimeZone}.
+        Last updated {lastUpdatedLabel}. Times shown in{" "}
+        {calendarTimeZoneLabel(timeZone)}.
         {selectedTagSet.size > 0 ? (
           <>
             {" "}Filtered by{" "}
@@ -522,10 +582,18 @@ export function PublicCalendarView({
           </>
         ) : null}
       </p>
+      {selectedEvent ? (
+        <EventDetailPanel
+          event={selectedEvent}
+          timeZone={timeZone}
+          onClose={() => onEventToggle?.(selectedEvent.id)}
+        />
+      ) : null}
       {view === "month" ? (
         <MonthCalendar
           dayIndex={dayIndex}
           anchor={anchor}
+          timeZone={timeZone}
           onDaySelect={onDaySelect}
           onEventToggle={onEventToggle}
         />
@@ -534,6 +602,7 @@ export function PublicCalendarView({
         <WeekCalendar
           dayIndex={dayIndex}
           anchor={anchor}
+          timeZone={timeZone}
           expandedEventId={expandedEventId}
           onEventToggle={onEventToggle}
         />
@@ -542,6 +611,7 @@ export function PublicCalendarView({
         <DayCalendar
           dayIndex={dayIndex}
           anchor={anchor}
+          timeZone={timeZone}
           expandedEventId={expandedEventId}
           onEventToggle={onEventToggle}
         />
@@ -549,6 +619,7 @@ export function PublicCalendarView({
       {view === "agenda" ? (
         <AgendaCalendar
           groups={agendaGroups}
+          timeZone={timeZone}
           expandedEventId={expandedEventId}
           onEventToggle={onEventToggle}
         />
@@ -557,15 +628,15 @@ export function PublicCalendarView({
   );
 }
 
-function WeekdayLabels() {
-  const monday = new Date(2024, 0, 1);
+function WeekdayLabels({ timeZone }: { timeZone: string }) {
+  const monday = zonedDateFromDayKey("2024-01-01", timeZone);
   return (
     <div className="public-calendar__weekdays">
       {Array.from({ length: 7 }, (_, i) => {
-        const day = addDays(monday, i);
+        const day = addDays(monday, i, timeZone);
         return (
           <span key={day.toISOString()}>
-            {day.toLocaleDateString("en", { weekday: "short" })}
+            {formatInTimeZone(day, timeZone, { weekday: "short" })}
           </span>
         );
       })}
@@ -576,24 +647,26 @@ function WeekdayLabels() {
 function MonthCalendar({
   dayIndex,
   anchor,
+  timeZone,
   onDaySelect,
   onEventToggle,
 }: {
   dayIndex: DayIndex;
   anchor: Date;
+  timeZone: string;
   onDaySelect?: (date: Date) => void;
   onEventToggle?: (id: string) => void;
 }) {
-  const days = useMemo(() => monthGridDays(anchor), [anchor]);
-  const todayKey = keyForDate(new Date());
+  const days = useMemo(() => monthGridDays(anchor, timeZone), [anchor, timeZone]);
+  const todayKey = keyForDate(new Date(), timeZone);
   return (
     <div className="public-calendar__month">
-      <WeekdayLabels />
+      <WeekdayLabels timeZone={timeZone} />
       <div className="public-calendar__month-grid">
         {days.map((day) => {
-          const key = keyForDate(day);
+          const key = keyForDate(day, timeZone);
           const dayEvents = eventsForDayKey(dayIndex, key);
-          const inMonth = day.getMonth() === anchor.getMonth();
+          const inMonth = isSameZonedMonth(day, anchor, timeZone);
           return (
             <section
               className="public-calendar__month-cell"
@@ -604,7 +677,7 @@ function MonthCalendar({
                 type="button"
                 className="public-calendar__date-button"
                 onClick={() => onDaySelect?.(day)}
-                aria-label={`Open ${day.toLocaleDateString("en", {
+                aria-label={`Open ${formatInTimeZone(day, timeZone, {
                   weekday: "long",
                   month: "long",
                   day: "numeric",
@@ -615,7 +688,7 @@ function MonthCalendar({
                   className="public-calendar__date-number"
                   data-today={key === todayKey ? "true" : "false"}
                 >
-                  {day.getDate()}
+                  {formatInTimeZone(day, timeZone, { day: "numeric" })}
                 </span>
               </button>
               <div className="public-calendar__month-events">
@@ -643,29 +716,34 @@ function MonthCalendar({
 function WeekCalendar({
   dayIndex,
   anchor,
+  timeZone,
   expandedEventId,
   onEventToggle,
 }: {
   dayIndex: DayIndex;
   anchor: Date;
+  timeZone: string;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
 }) {
   const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i)),
-    [anchor],
+    () =>
+      Array.from({ length: 7 }, (_, i) =>
+        addDays(startOfWeek(anchor, timeZone), i, timeZone),
+      ),
+    [anchor, timeZone],
   );
   return (
     <div className="public-calendar__week">
-      <WeekdayLabels />
+      <WeekdayLabels timeZone={timeZone} />
       <div className="public-calendar__week-grid">
         {days.map((day) => (
           <section className="public-calendar__week-day" key={day.toISOString()}>
             <div className="public-calendar__week-date">
-              <span>{day.getDate()}</span>
+              <span>{formatInTimeZone(day, timeZone, { day: "numeric" })}</span>
             </div>
             <div className="public-calendar__week-events">
-              {eventsForDay(dayIndex, day).map((event) => (
+              {eventsForDay(dayIndex, day, timeZone).map((event) => (
                 <EventCard
                   event={event}
                   key={`${event.id}-${event.startTimestamp}`}
@@ -685,15 +763,17 @@ function WeekCalendar({
 function DayCalendar({
   dayIndex,
   anchor,
+  timeZone,
   expandedEventId,
   onEventToggle,
 }: {
   dayIndex: DayIndex;
   anchor: Date;
+  timeZone: string;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
 }) {
-  const dayEvents = eventsForDay(dayIndex, anchor);
+  const dayEvents = eventsForDay(dayIndex, anchor, timeZone);
   return (
     <div className="public-calendar__day-list">
       {dayEvents.length > 0 ? (
@@ -714,10 +794,12 @@ function DayCalendar({
 
 function AgendaCalendar({
   groups,
+  timeZone,
   expandedEventId,
   onEventToggle,
 }: {
   groups: Array<[string, DecoratedEvent[]]>;
+  timeZone: string;
   expandedEventId?: string | null;
   onEventToggle?: (id: string) => void;
 }) {
@@ -725,7 +807,9 @@ function AgendaCalendar({
     <div className="public-calendar__agenda">
       {groups.map(([day, dayEvents]) => (
         <section className="public-calendar__day" key={day}>
-          <h2 className="public-calendar__day-title">{formatDay(day)}</h2>
+          <h2 className="public-calendar__day-title">
+            {formatDay(day, timeZone)}
+          </h2>
           <ol className="public-calendar__events">
             {dayEvents.map((event) => (
               <li
@@ -767,6 +851,83 @@ function EventPill({
       <span>{event.isAllDay ? "" : event.formattedTime}</span>
       {event.title}
     </button>
+  );
+}
+
+function EventDetailPanel({
+  event,
+  timeZone,
+  onClose,
+}: {
+  event: DecoratedEvent;
+  timeZone: string;
+  onClose: () => void;
+}) {
+  const dateLabel = formatInTimeZone(event.startsAt, timeZone, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  return (
+    <aside
+      className="public-calendar__detail-panel"
+      style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
+      aria-label="Selected event details"
+    >
+      <div className="public-calendar__detail-rail" aria-hidden="true" />
+      <div className="public-calendar__detail-main">
+        <header className="public-calendar__detail-header">
+          <div>
+            <span className="public-calendar__detail-kicker">
+              {event.calendarTitle ?? "Calendar"}
+            </span>
+            <h2>{event.title}</h2>
+          </div>
+          <button
+            type="button"
+            className="public-calendar__detail-close"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </header>
+        <dl className="public-calendar__detail-meta">
+          <div>
+            <dt>Date</dt>
+            <dd>{dateLabel}</dd>
+          </div>
+          <div>
+            <dt>Time</dt>
+            <dd>{event.formattedTime}</dd>
+          </div>
+          {event.visibility === "full" && event.location ? (
+            <div>
+              <dt>Location</dt>
+              <dd>{event.location}</dd>
+            </div>
+          ) : null}
+        </dl>
+        {event.visibility === "busy" ? (
+          <p className="public-calendar__detail-description">
+            Details are hidden for this blocked time.
+          </p>
+        ) : null}
+        {event.visibility === "full" && event.description ? (
+          <p className="public-calendar__detail-description">
+            {event.description}
+          </p>
+        ) : null}
+        <div className="public-calendar__detail-actions">
+          {event.visibility === "full" && event.url ? (
+            <a href={event.url}>Event link</a>
+          ) : null}
+          {event.visibility !== "busy" ? (
+            <a href={`/calendar/${event.id}`}>Open event page</a>
+          ) : null}
+        </div>
+      </div>
+    </aside>
   );
 }
 

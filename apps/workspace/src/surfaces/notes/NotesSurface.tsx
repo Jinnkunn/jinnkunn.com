@@ -160,10 +160,19 @@ function mergeNoteRow(rows: readonly NoteRow[], detail: NoteDetail): NoteRow[] {
 
 function formatSaveState(state: NotesSaveState): string {
   if (state === "dirty") return "Unsaved";
-  if (state === "saving") return "Saving...";
+  if (state === "saving") return "Saving…";
   if (state === "saved") return "Saved";
   if (state === "error") return "Save failed";
   return "Idle";
+}
+
+function isNativeBridgeUnavailable(error: unknown): boolean {
+  const message = String(error);
+  return (
+    message.includes("invoke") ||
+    message.includes("__TAURI_INTERNALS__") ||
+    message.includes("is not a function")
+  );
 }
 
 function NoteTemplateIcon({ id }: { id: NoteTemplate["id"] }) {
@@ -339,7 +348,9 @@ export function NotesSurface() {
       setMessage(null);
       return next;
     } catch (error) {
-      setMessage({ kind: "error", text: `Failed to load notes: ${String(error)}` });
+      if (!isNativeBridgeUnavailable(error)) {
+        setMessage({ kind: "error", text: `Failed to load notes: ${String(error)}` });
+      }
       return [];
     } finally {
       setLoading(false);
@@ -1175,7 +1186,7 @@ export function NotesSurface() {
           <div className="notes-search">
             <input
               type="search"
-              placeholder="Search notes"
+              placeholder="Search notes…"
               value={query}
               onChange={(event) => setQuery(event.currentTarget.value)}
               onKeyDown={onSearchKeyDown}
@@ -1440,7 +1451,7 @@ function NotesHome({
       <div className="notes-home__hero">
         <div>
           <p className="notes-home__eyebrow">Notes</p>
-          <h1>Capture, review, connect.</h1>
+          <h1>Home</h1>
         </div>
         <WorkspaceCommandButton
           tone="accent"
@@ -1455,7 +1466,6 @@ function NotesHome({
         <section className="notes-home__panel notes-home__panel--wide">
           <header className="notes-home__panel-head">
             <h2>Start</h2>
-            <span>Daily workflow</span>
           </header>
           <div className="notes-home__actions">
             <button
@@ -1465,7 +1475,7 @@ function NotesHome({
               onClick={onOpenInbox}
             >
               <span>Inbox</span>
-              <small>{inboxCount} open captures</small>
+              {inboxCount > 0 ? <small>{inboxCount} open</small> : null}
             </button>
             <button
               type="button"
@@ -1474,7 +1484,7 @@ function NotesHome({
               onClick={onOpenToday}
             >
               <span>Today</span>
-              <small>{hasTodayNote ? "Open daily note" : "Create daily note"}</small>
+              <small>{hasTodayNote ? "Open" : "Create"}</small>
             </button>
           </div>
         </section>
@@ -1492,10 +1502,10 @@ function NotesHome({
                 className="notes-home__template"
                 disabled={busy}
                 onClick={() => onCreateFromTemplate(template)}
+                title={template.description}
               >
                 <NoteTemplateIcon id={template.id} />
                 <strong>{template.title}</strong>
-                <small>{template.description}</small>
               </button>
             ))}
           </div>
@@ -1504,10 +1514,10 @@ function NotesHome({
         <section className="notes-home__panel">
           <header className="notes-home__panel-head">
             <h2>Recent</h2>
-            <span>{recentNotes.length}</span>
+            {recentNotes.length > 0 ? <span>{recentNotes.length}</span> : null}
           </header>
           {recentNotes.length === 0 ? (
-            <p className="notes-home__empty">No notes yet.</p>
+            <p className="notes-home__empty">No notes</p>
           ) : (
             <div className="notes-home__recent-list">
               {recentNotes.map((note) => (
@@ -1600,10 +1610,6 @@ function ArchivePanel({
     >
       <header className="notes-archive__head">
         <h1>Archived</h1>
-        <p>
-          Archived notes stay here until you restore them. Restoring a parent
-          brings its descendants back too.
-        </p>
       </header>
       {loading ? (
         <div className="notes-archive__empty">Loading…</div>

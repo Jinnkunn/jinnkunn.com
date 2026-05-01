@@ -47,6 +47,35 @@
   --fill-accent: color-mix(in srgb, var(--color-accent) 18%, transparent);
   --fill-accent-strong: color-mix(in srgb, var(--color-accent) 28%, transparent);
 
+  /* Material layer — subtle tactile lighting over the translucent
+   * surface ladder. These tokens are intentionally quiet: the app is
+   * a daily workspace, so depth should be felt at the edges rather
+   * than seen as decorative chrome. */
+  --surface-highlight: rgba(255, 255, 255, 0.54);
+  --surface-highlight-soft: rgba(255, 255, 255, 0.32);
+  --surface-edge: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+  --surface-edge-strong: color-mix(in srgb, var(--color-text-primary) 15%, transparent);
+  --surface-tint: color-mix(in srgb, var(--color-bg-surface) 88%, transparent);
+  --surface-tint-raised: color-mix(in srgb, var(--color-bg-surface) 94%, transparent);
+  --material-noise-opacity: 0.032;
+  --ambient-warm: rgba(230, 128, 42, 0.16);
+  --ambient-cool: rgba(86, 118, 164, 0.11);
+  --ambient-fresh: rgba(77, 136, 105, 0.08);
+  --accent-gradient: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 94%, white 6%),
+    var(--color-accent-strong)
+  );
+  --shadow-raised:
+    0 0.5px 0 rgba(255, 255, 255, 0.56) inset,
+    0 0 0 1px var(--surface-edge),
+    0 8px 24px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  --shadow-floating:
+    0 0.5px 0 rgba(255, 255, 255, 0.54) inset,
+    0 0 0 1px var(--surface-edge),
+    0 18px 54px color-mix(in srgb, var(--color-text-primary) 18%, transparent),
+    0 3px 12px color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+
   /* Hairline dividers — replace `border: 1px solid var(--color-border-*)`.
    * `box-shadow: inset 0 -1px 0 var(--hairline)` paints a 1-device-pixel
    * line on retina (where the OS half-rounds to 0.5pt) without the
@@ -110,6 +139,7 @@
   --radius-sm: 5px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-xl: 14px;
   --radius-pill: 999px;
 
   /* Typography scale — five fixed stops mirroring SF's metric system:
@@ -136,6 +166,8 @@
    * and counts line up vertically. */
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "SF Pro Display", "Helvetica Neue", "Inter", system-ui, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "Helvetica Neue", "Inter", system-ui, sans-serif;
   --font-mono-ui: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
     "Roboto Mono", Menlo, Monaco, Consolas, monospace;
   --font-feature-text: "ss01", "ss02", "cv11", "ss03";
@@ -271,6 +303,31 @@
   --fill-quaternary: rgba(242, 235, 223, 0.04);
   --fill-accent: color-mix(in srgb, var(--color-accent) 24%, transparent);
   --fill-accent-strong: color-mix(in srgb, var(--color-accent) 38%, transparent);
+
+  --surface-highlight: rgba(255, 244, 226, 0.1);
+  --surface-highlight-soft: rgba(255, 244, 226, 0.07);
+  --surface-edge: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  --surface-edge-strong: color-mix(in srgb, var(--color-text-primary) 18%, transparent);
+  --surface-tint: color-mix(in srgb, var(--color-bg-surface) 84%, transparent);
+  --surface-tint-raised: color-mix(in srgb, var(--color-bg-surface) 92%, transparent);
+  --material-noise-opacity: 0.045;
+  --ambient-warm: rgba(235, 138, 66, 0.14);
+  --ambient-cool: rgba(92, 132, 196, 0.13);
+  --ambient-fresh: rgba(83, 154, 120, 0.09);
+  --accent-gradient: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 92%, white 8%),
+    color-mix(in srgb, var(--color-accent-strong) 88%, black 12%)
+  );
+  --shadow-raised:
+    0 0.5px 0 var(--surface-highlight) inset,
+    0 0 0 1px var(--surface-edge),
+    0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-floating:
+    0 0.5px 0 var(--surface-highlight) inset,
+    0 0 0 1px var(--surface-edge),
+    0 24px 68px rgba(0, 0, 0, 0.46),
+    0 4px 14px rgba(0, 0, 0, 0.26);
 
   --hairline: rgba(242, 235, 223, 0.1);
   --hairline-strong: rgba(242, 235, 223, 0.18);

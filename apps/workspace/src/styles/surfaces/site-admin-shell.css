@@ -247,12 +247,18 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  background: var(--color-bg-surface);
-  box-shadow:
-    0 4px 12px rgba(15, 15, 15, 0.08),
-    0 18px 48px rgba(15, 15, 15, 0.18);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, var(--surface-highlight), transparent 38%),
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
+      transparent 0.72px
+    ),
+    color-mix(in srgb, var(--color-bg-popover) 98%, transparent);
+  background-size: auto, 3px 3px, auto;
+  box-shadow: var(--shadow-floating);
 }
 
 .site-admin-pill__popover-header h3 {

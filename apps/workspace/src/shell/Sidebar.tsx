@@ -294,6 +294,16 @@ function SidebarTreeIconSlot({ icon }: { icon?: ReactNode }) {
   );
 }
 
+function shouldRenderSidebarBadge(badge: ReactNode): boolean {
+  if (badge === null || badge === undefined || badge === false) return false;
+  if (typeof badge === "number") return badge !== 0;
+  if (typeof badge === "string") {
+    const value = badge.trim();
+    return value !== "" && value !== "0" && value !== "0/0";
+  }
+  return true;
+}
+
 function closeActionMenu(start: HTMLElement | null) {
   start?.closest("details")?.removeAttribute("open");
 }
@@ -520,7 +530,7 @@ function renderNavItem({
             <span className="sidebar-tree__item-label">
               {item.label}
             </span>
-            {item.badge !== undefined && item.badge !== null && (
+            {shouldRenderSidebarBadge(item.badge) && (
               <span className="sidebar-tree__badge">{item.badge}</span>
             )}
           </button>
@@ -976,13 +986,7 @@ export function Sidebar({
         <header
           className="sidebar-context-header"
         >
-          <p className="sidebar-context-header__eyebrow">Workspace</p>
           <h2 className="sidebar-context-header__title">{activeSurface.title}</h2>
-          {activeSurface.description ? (
-            <p className="sidebar-context-header__description">
-              {activeSurface.description}
-            </p>
-          ) : null}
         </header>
         <div className="sidebar-context-scroll">
         {recentItems.length > 0 && (() => {
@@ -1242,18 +1246,8 @@ export function Sidebar({
               })}
             </nav>
         </section>
-        ) : contextAccessory ? null : (
-          <section className="sidebar-context-section">
-            <p className="sidebar-context-empty">
-              This surface uses the main workspace canvas.
-            </p>
-          </section>
-        )}
+        ) : null}
         </div>
-        <footer className="sidebar-footer">
-          <p>Jinnkunn Workspace</p>
-          <p>Personal desktop</p>
-        </footer>
       </div>
     </aside>
   );

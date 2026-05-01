@@ -152,6 +152,159 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_todos_updated_at
             ON todos (updated_at DESC);
 
+        -- Personal CRM. Local-first contact records — names, contact
+        -- methods, birthdays, free-form Markdown notes, and tags. Rows
+        -- live entirely in workspace.db and use archive semantics so
+        -- accidental deletion is recoverable. Multi-valued contact
+        -- methods (multiple emails / phones) are stored as JSON arrays
+        -- to keep the schema flat while still allowing the frontend
+        -- to render labelled rows like "work" / "personal".
+        CREATE TABLE IF NOT EXISTS contacts (
+            id              TEXT PRIMARY KEY,
+            display_name    TEXT NOT NULL,
+            given_name      TEXT,
+            family_name     TEXT,
+            company         TEXT,
+            role            TEXT,
+            -- Birthday: month+day always present together when set,
+            -- year is independently optional (some birthdays are
+            -- known to the day but not the year).
+            birthday_month  INTEGER,
+            birthday_day    INTEGER,
+            birthday_year   INTEGER,
+            -- emails_json/phones_json store [{value, label, primary}].
+            -- The first entry doubles as the primary when no item is
+            -- explicitly flagged.
+            emails_json     TEXT NOT NULL DEFAULT '[]',
+            phones_json     TEXT NOT NULL DEFAULT '[]',
+            tags_json       TEXT NOT NULL DEFAULT '[]',
+            notes           TEXT NOT NULL DEFAULT '',
+            -- Personal CRM follow-up workflow. `next_follow_up_at`
+            -- is a unix-ms due date; `cadence_days` auto-schedules
+            -- the next touch after a logged interaction.
+            next_follow_up_at INTEGER,
+            cadence_days      INTEGER,
+            -- Pinned contacts float to the top of "All" / "Recent".
+            pinned_at       INTEGER,
+            archived_at     INTEGER,
+            created_at      INTEGER NOT NULL,
+            updated_at      INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_contacts_updated_at
+            ON contacts (archived_at, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_contacts_birthday
+            ON contacts (archived_at, birthday_month, birthday_day);
+
+        -- Interaction log. One row per touchpoint (meeting, call,
+        -- message, freeform note). The most recent row's `occurred_at`
+        -- is treated as the contact's "last met" timestamp at query
+        -- time — no denormalised cache needed for typical contact
+        -- counts. `source` is reserved for cross-references like
+        -- "calendar:eventId" so a future auto-derive pass can dedupe.
+        CREATE TABLE IF NOT EXISTS contact_interactions (
+            id           TEXT PRIMARY KEY,
+            contact_id   TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+            occurred_at  INTEGER NOT NULL,
+            kind         TEXT NOT NULL,
+            note         TEXT NOT NULL DEFAULT '',
+            source       TEXT,
+            created_at   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_contact_interactions_recent
+            ON contact_interactions (contact_id, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_contact_interactions_global_recent
+            ON contact_interactions (occurred_at DESC);
+
+        -- Trigram FTS5 index for the contacts search box. Same tokenizer
+        -- choice as notes_fts so CJK substring queries work the same way.
+        CREATE VIRTUAL TABLE IF NOT EXISTS contacts_fts USING fts5(
+            display_name,
+            given_name,
+            family_name,
+            company,
+            role,
+            notes,
+            content='contacts',
+            content_rowid='rowid',
+            tokenize='trigram case_sensitive 0'
+        );
+        CREATE TRIGGER IF NOT EXISTS contacts_fts_ai AFTER INSERT ON contacts BEGIN
+            INSERT INTO contacts_fts(rowid, display_name, given_name, family_name, company, role, notes)
+            VALUES (new.rowid, new.display_name, new.given_name, new.family_name, new.company, new.role, new.notes);
+        END;
+        CREATE TRIGGER IF NOT EXISTS contacts_fts_ad AFTER DELETE ON contacts BEGIN
+            INSERT INTO contacts_fts(contacts_fts, rowid, display_name, given_name, family_name, company, role, notes)
+            VALUES ('delete', old.rowid, old.display_name, old.given_name, old.family_name, old.company, old.role, old.notes);
+        END;
+        CREATE TRIGGER IF NOT EXISTS contacts_fts_au AFTER UPDATE ON contacts BEGIN
+            INSERT INTO contacts_fts(contacts_fts, rowid, display_name, given_name, family_name, company, role, notes)
+            VALUES ('delete', old.rowid, old.display_name, old.given_name, old.family_name, old.company, old.role, old.notes);
+            INSERT INTO contacts_fts(rowid, display_name, given_name, family_name, company, role, notes)
+            VALUES (new.rowid, new.display_name, new.given_name, new.family_name, new.company, new.role, new.notes);
+        END;
+
+        -- Backlinks from notes to contacts. Populated automatically
+        -- whenever a note is created or updated — the resolver scans
+        -- the body for `@<contact name>` substrings and writes one row
+        -- per (note, contact, offset) match. The contact CRM uses this
+        -- to render a "Mentioned in N notes" panel; deleting a contact
+        -- cascades to drop their backlinks. Both edges are foreign-key
+        -- checked so an archived note (kept for recovery) keeps its
+        -- mentions until the source row goes away.
+        CREATE TABLE IF NOT EXISTS note_contact_mentions (
+            note_id      TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            contact_id   TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+            mention_text TEXT NOT NULL,
+            char_offset  INTEGER NOT NULL,
+            created_at   INTEGER NOT NULL,
+            PRIMARY KEY (note_id, contact_id, char_offset)
+        );
+        CREATE INDEX IF NOT EXISTS idx_note_contact_mentions_by_contact
+            ON note_contact_mentions (contact_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_note_contact_mentions_by_note
+            ON note_contact_mentions (note_id);
+
+        -- Local-first workspace calendar. These rows describe a self-
+        -- contained calendar (and its events) that lives entirely in
+        -- workspace.db — no EventKit dependency. The frontend renders
+        -- them alongside macOS Calendar sources under a synthetic
+        -- "Workspace" account header so the operator gets one unified
+        -- calendar surface. Archive semantics (no hard delete) match
+        -- the rest of the local-first surfaces.
+        CREATE TABLE IF NOT EXISTS local_calendars (
+            id           TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            color_hex    TEXT NOT NULL,
+            sort_order   INTEGER NOT NULL,
+            archived_at  INTEGER,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_local_calendars_sort
+            ON local_calendars (archived_at, sort_order);
+
+        CREATE TABLE IF NOT EXISTS local_calendar_events (
+            id            TEXT PRIMARY KEY,
+            calendar_id   TEXT NOT NULL REFERENCES local_calendars(id) ON DELETE CASCADE,
+            title         TEXT NOT NULL,
+            notes         TEXT,
+            location      TEXT,
+            url           TEXT,
+            -- Unix milliseconds. The bridge re-projects to ISO 8601 with
+            -- offset on read so the frontend's `CalendarEvent` shape stays
+            -- uniform between EventKit and local sources.
+            starts_at_ms  INTEGER NOT NULL,
+            ends_at_ms    INTEGER NOT NULL,
+            is_all_day    INTEGER NOT NULL DEFAULT 0,
+            archived_at   INTEGER,
+            created_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_local_calendar_events_range
+            ON local_calendar_events (calendar_id, archived_at, starts_at_ms);
+        CREATE INDEX IF NOT EXISTS idx_local_calendar_events_window
+            ON local_calendar_events (archived_at, starts_at_ms, ends_at_ms);
+
         -- Phase 6 — full-text index for the Notes search box. Trigram
         -- tokenizer gives substring matches that work for both Latin
         -- and CJK input (no whitespace tokenizer would catch "笔记"
@@ -186,6 +339,8 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     ensure_todos_column(conn, "scheduled_start_at", "INTEGER")?;
     ensure_todos_column(conn, "scheduled_end_at", "INTEGER")?;
     ensure_todos_column(conn, "estimated_minutes", "INTEGER")?;
+    ensure_table_column(conn, "contacts", "next_follow_up_at", "INTEGER")?;
+    ensure_table_column(conn, "contacts", "cadence_days", "INTEGER")?;
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_todos_status_schedule_due_order
             ON todos (archived_at, completed_at, scheduled_start_at, due_at, sort_order)",
@@ -205,25 +360,35 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+fn ensure_table_column(
+    conn: &Connection,
+    table_name: &str,
+    column_name: &str,
+    column_definition: &str,
+) -> Result<(), String> {
+    let pragma = format!("pragma_table_info('{table_name}')");
+    let exists: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {pragma} WHERE name = ?"),
+            params![column_name],
+            |row| row.get(0),
+        )
+        .map_err(|err| format!("failed to inspect {table_name} schema: {err}"))?;
+    if exists > 0 {
+        return Ok(());
+    }
+    let sql = format!("ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}");
+    conn.execute(&sql, [])
+        .map_err(|err| format!("failed to add {table_name}.{column_name}: {err}"))?;
+    Ok(())
+}
+
 fn ensure_todos_column(
     conn: &Connection,
     column_name: &str,
     column_definition: &str,
 ) -> Result<(), String> {
-    let exists: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('todos') WHERE name = ?",
-            params![column_name],
-            |row| row.get(0),
-        )
-        .map_err(|err| format!("failed to inspect todos schema: {err}"))?;
-    if exists > 0 {
-        return Ok(());
-    }
-    let sql = format!("ALTER TABLE todos ADD COLUMN {column_name} {column_definition}");
-    conn.execute(&sql, [])
-        .map_err(|err| format!("failed to add todos.{column_name}: {err}"))?;
-    Ok(())
+    ensure_table_column(conn, "todos", column_name, column_definition)
 }
 
 pub fn read_sync_state_int(conn: &Connection, key: &str) -> Result<i64, String> {

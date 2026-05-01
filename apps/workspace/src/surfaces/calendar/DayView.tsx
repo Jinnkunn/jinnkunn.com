@@ -2,9 +2,19 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { isSameDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
-import { TimeGrid, HOUR_HEIGHT, TIME_GUTTER_WIDTH } from "./TimeGrid";
+import {
+  TimeGrid,
+  HOUR_HEIGHT,
+  TIME_GUTTER_WIDTH,
+  type CalendarTimeSlotSelection,
+} from "./TimeGrid";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import type { TodoRow } from "../../modules/todos/api";
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  formatInTimeZone,
+  zonedDayRange,
+} from "../../../../../lib/shared/calendar-timezone.ts";
 
 /** Single-day timeline. The header strip shows the weekday name + date
  * with a blue circle around the number when it's today, matching the
@@ -17,7 +27,9 @@ export function DayView({
   onEventSelect,
   onTodoSelect,
   onTodoToggle,
+  onSlotCreate,
   getDisclosure,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
   day: Date;
   events: CalendarEvent[];
@@ -26,11 +38,13 @@ export function DayView({
   onEventSelect?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
+  onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone?: string;
 }) {
   const allDayEvents = useMemo(
-    () => events.filter((e) => e.isAllDay && touchesDay(e, day)),
-    [events, day],
+    () => events.filter((e) => e.isAllDay && touchesDay(e, day, timeZone)),
+    [events, day, timeZone],
   );
 
   // On mount + on day change, scroll so 8 AM is the first thing the
@@ -41,11 +55,11 @@ export function DayView({
     scrollerRef.current.scrollTop = HOUR_HEIGHT * 7;
   }, [day]);
 
-  const isToday = isSameDay(day, new Date());
+  const isToday = isSameDay(day, new Date(), timeZone);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <DayHeader day={day} isToday={isToday} />
+      <DayHeader day={day} isToday={isToday} timeZone={timeZone} />
       {allDayEvents.length > 0 ? (
         <AllDayStrip
           events={allDayEvents}
@@ -63,16 +77,25 @@ export function DayView({
           onEventSelect={onEventSelect}
           onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
+          onSlotCreate={onSlotCreate}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
         />
       </div>
     </div>
   );
 }
 
-function DayHeader({ day, isToday }: { day: Date; isToday: boolean }) {
-  const weekday = day
-    .toLocaleDateString(undefined, { weekday: "short" })
+function DayHeader({
+  day,
+  isToday,
+  timeZone,
+}: {
+  day: Date;
+  isToday: boolean;
+  timeZone: string;
+}) {
+  const weekday = formatInTimeZone(day, timeZone, { weekday: "short" })
     .toUpperCase();
   return (
     <div
@@ -93,7 +116,7 @@ function DayHeader({ day, isToday }: { day: Date; isToday: boolean }) {
               : "text-[14px] font-semibold text-text-primary tabular-nums"
           }
         >
-          {day.getDate()}
+          {formatInTimeZone(day, timeZone, { day: "numeric" })}
         </span>
       </div>
     </div>
@@ -148,14 +171,11 @@ function AllDayStrip({
   );
 }
 
-function touchesDay(ev: CalendarEvent, day: Date): boolean {
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+function touchesDay(ev: CalendarEvent, day: Date, timeZone: string): boolean {
+  const { startsAt, endsAt } = zonedDayRange(day, timeZone);
   const start = new Date(ev.startsAt).getTime();
   const end = new Date(ev.endsAt).getTime();
-  return end > dayStart.getTime() && start < dayEnd.getTime();
+  return end > startsAt.getTime() && start < endsAt.getTime();
 }
 
 function tint(hex: string): string {

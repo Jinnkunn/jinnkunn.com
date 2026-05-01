@@ -6,6 +6,10 @@ import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getPublicCalendarEventById } from "@/lib/server/public-calendar-data";
 import { getSiteConfig } from "@/lib/site-config";
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  formatInTimeZone,
+} from "@/lib/shared/calendar-timezone";
 import type { PublicCalendarEvent } from "@/lib/shared/public-calendar";
 
 // Per-event detail page. Reachable via:
@@ -49,29 +53,38 @@ function formatRange(event: PublicCalendarEvent): string {
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
   if (event.isAllDay) {
-    const sameDay =
-      start.getUTCFullYear() === end.getUTCFullYear() &&
-      start.getUTCMonth() === end.getUTCMonth() &&
-      start.getUTCDate() === end.getUTCDate();
-    const fmt = new Intl.DateTimeFormat("en", {
-      weekday: "long",
-      month: "long",
+    const displayEnd = new Date(Math.max(start.getTime(), end.getTime() - 1));
+    const startDay = formatInTimeZone(start, DEFAULT_CALENDAR_TIME_ZONE, {
       day: "numeric",
+      month: "long",
+      weekday: "long",
       year: "numeric",
     });
-    return sameDay ? `${fmt.format(start)} (all day)` : `${fmt.format(start)} – ${fmt.format(end)}`;
+    const endDay = formatInTimeZone(displayEnd, DEFAULT_CALENDAR_TIME_ZONE, {
+      day: "numeric",
+      month: "long",
+      weekday: "long",
+      year: "numeric",
+    });
+    return startDay === endDay
+      ? `${startDay} (all day)`
+      : `${startDay} – ${endDay}`;
   }
-  const dateFmt = new Intl.DateTimeFormat("en", {
+  const dateLabel = formatInTimeZone(start, DEFAULT_CALENDAR_TIME_ZONE, {
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
   });
-  const timeFmt = new Intl.DateTimeFormat("en", {
+  const startTime = formatInTimeZone(start, DEFAULT_CALENDAR_TIME_ZONE, {
     hour: "numeric",
     minute: "2-digit",
   });
-  return `${dateFmt.format(start)} · ${timeFmt.format(start)} – ${timeFmt.format(end)}`;
+  const endTime = formatInTimeZone(end, DEFAULT_CALENDAR_TIME_ZONE, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${dateLabel} · ${startTime} – ${endTime} (${DEFAULT_CALENDAR_TIME_ZONE})`;
 }
 
 export async function generateMetadata({

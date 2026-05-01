@@ -11,12 +11,18 @@ import {
   normalizePublicCalendarData,
   type PublicCalendarData,
 } from "@/lib/shared/public-calendar";
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  normalizeCalendarTimeZone,
+} from "@/lib/shared/calendar-timezone";
 
 // Tag filter persists in the URL search param `tag` (`?tag=foo&tag=bar`)
 // so a shareable link can deep-link to "/calendar filtered by talks".
 // Reading the initial state from the URL once at mount is enough — the
 // useEffect that listens to popstate handles back/forward.
 const TAG_QUERY_KEY = "tag";
+const TIME_ZONE_QUERY_KEY = "tz";
+const TIME_ZONE_STORAGE_KEY = "public-calendar.timeZone.v1";
 
 function readTagsFromLocation(): string[] {
   if (typeof window === "undefined") return [];
@@ -30,6 +36,41 @@ function writeTagsToLocation(tags: readonly string[]): void {
   params.delete(TAG_QUERY_KEY);
   for (const tag of tags) {
     if (tag) params.append(TAG_QUERY_KEY, tag);
+  }
+  const next = params.toString();
+  const target =
+    window.location.pathname + (next ? `?${next}` : "") + window.location.hash;
+  window.history.replaceState(null, "", target);
+}
+
+function readTimeZoneFromLocation(): string {
+  if (typeof window === "undefined") return DEFAULT_CALENDAR_TIME_ZONE;
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get(TIME_ZONE_QUERY_KEY);
+  if (fromQuery) return normalizeCalendarTimeZone(fromQuery);
+  try {
+    return normalizeCalendarTimeZone(
+      window.localStorage.getItem(TIME_ZONE_STORAGE_KEY) ??
+        DEFAULT_CALENDAR_TIME_ZONE,
+    );
+  } catch {
+    return DEFAULT_CALENDAR_TIME_ZONE;
+  }
+}
+
+function writeTimeZoneToLocation(timeZone: string): void {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeCalendarTimeZone(timeZone);
+  try {
+    window.localStorage.setItem(TIME_ZONE_STORAGE_KEY, normalized);
+  } catch {
+    // URL persistence still works when localStorage is unavailable.
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (normalized === DEFAULT_CALENDAR_TIME_ZONE) {
+    params.delete(TIME_ZONE_QUERY_KEY);
+  } else {
+    params.set(TIME_ZONE_QUERY_KEY, normalized);
   }
   const next = params.toString();
   const target =
@@ -61,6 +102,9 @@ export function PublicCalendarClient({
   const [anchorIso, setAnchorIso] = useState(() => new Date().toISOString());
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
+  const [timeZone, setTimeZone] = useState<string>(() =>
+    readTimeZoneFromLocation(),
+  );
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   // Hydrate tag filter from URL. The lazy initializer reads location
@@ -73,7 +117,10 @@ export function PublicCalendarClient({
     readTagsFromLocation(),
   );
   useEffect(() => {
-    const onPopState = () => setSelectedTags(readTagsFromLocation());
+    const onPopState = () => {
+      setSelectedTags(readTagsFromLocation());
+      setTimeZone(readTimeZoneFromLocation());
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -82,6 +129,11 @@ export function PublicCalendarClient({
     // share captures the filtered view + a refresh preserves it.
     writeTagsToLocation(next);
     setSelectedTags(next);
+  }, []);
+  const handleTimeZoneChange = useCallback((next: string) => {
+    const normalized = normalizeCalendarTimeZone(next);
+    writeTimeZoneToLocation(normalized);
+    setTimeZone(normalized);
   }, []);
   // Hoist the tag summary so it's only rebuilt when the events list
   // actually changes, not when the operator pages anchor / switches
@@ -129,12 +181,14 @@ export function PublicCalendarClient({
         view={view}
         anchorIso={anchorIso}
         agendaDays={agendaDays}
+        timeZone={timeZone}
         selectedTags={selectedTags}
         onSelectedTagsChange={handleSelectedTagsChange}
         tagSummary={tagSummary}
         onViewChange={setView}
         onAnchorChange={(date) => setAnchorIso(date.toISOString())}
         onAgendaDaysChange={setAgendaDays}
+        onTimeZoneChange={handleTimeZoneChange}
         expandedEventId={expandedEventId}
         onEventToggle={(id) =>
           setExpandedEventId((current) => (current === id ? null : id))

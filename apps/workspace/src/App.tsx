@@ -33,9 +33,9 @@ import { useWindowFocus } from "./shell/useWindowFocus";
 import { runUpdateCheckSafely } from "./lib/updater";
 import {
   ALL_WORKSPACE_SURFACES,
-  getDefaultEnabledModuleIds,
   getEnabledModuleSurfaces,
   normalizeEnabledModuleIds,
+  reconcileEnabledModules,
   WORKSPACE_MODULES,
 } from "./modules/registry";
 import type { SurfaceDefinition, SurfaceNavItem } from "./surfaces/types";
@@ -46,6 +46,10 @@ const ACTIVE_SURFACE_STORAGE_KEY = "workspace.activeSurfaceId.v1";
 const SURFACE_ORDER_STORAGE_KEY = "workspace.surfaceOrder.v1";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "workspace.sidebar.collapsed.v1";
 const ENABLED_MODULES_STORAGE_KEY = "workspace.enabledModules.v1";
+/** Tracks which module ids the user has ever encountered. Lets the
+ * boot-time reconcile distinguish "user disabled this module" from
+ * "this module was added in a build after the user's last save". */
+const KNOWN_MODULES_STORAGE_KEY = "workspace.modules.known.v1";
 
 function createWorkspaceTab(
   surfaceId: string,
@@ -77,16 +81,39 @@ function persistBoolean(storageKey: string, value: boolean): void {
   }
 }
 
-function loadEnabledModuleIds(): string[] {
+function readStringListFromStorage(key: string): readonly string[] | null {
   try {
-    const raw = localStorage.getItem(ENABLED_MODULES_STORAGE_KEY);
-    if (!raw) return [...getDefaultEnabledModuleIds()];
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [...getDefaultEnabledModuleIds()];
-    return [...normalizeEnabledModuleIds(parsed.filter((id): id is string => typeof id === "string"))];
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((id): id is string => typeof id === "string");
   } catch {
-    return [...getDefaultEnabledModuleIds()];
+    return null;
   }
+}
+
+function persistKnownModuleIds(ids: readonly string[]): void {
+  try {
+    localStorage.setItem(
+      KNOWN_MODULES_STORAGE_KEY,
+      JSON.stringify([...ids]),
+    );
+  } catch {
+    // ignore quota / private-mode errors; the migration just re-runs
+    // next launch, which is the same outcome as the first launch.
+  }
+}
+
+function loadEnabledModuleIds(): string[] {
+  const persisted = readStringListFromStorage(ENABLED_MODULES_STORAGE_KEY);
+  const known = readStringListFromStorage(KNOWN_MODULES_STORAGE_KEY);
+  const resolution = reconcileEnabledModules(persisted, known);
+  // Persist the updated known-modules set immediately so a future boot
+  // doesn't re-auto-enable today's net-new module if the user disables
+  // it later this session.
+  persistKnownModuleIds(resolution.knownModuleIds);
+  return [...resolution.enabled];
 }
 
 function persistEnabledModuleIds(ids: readonly string[]): void {

@@ -8,18 +8,35 @@
    * native rather than web-on-a-page. Padding tightened from 18/20
    * to the new 12/16 spacing scale; gap from 14 to 12 for the same
    * reason. */
-  background: var(--color-bg-surface);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 44%),
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
+      transparent 0.72px
+    ),
+    var(--surface-tint);
+  background-size: auto, 3px 3px, auto;
+  border: 0;
+  border-radius: 12px;
   padding: var(--space-md) var(--space-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  box-shadow: var(--shadow-raised);
 }
 
 @supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
   .surface-card {
-    background: var(--color-bg-surface-translucent);
+    background:
+      linear-gradient(180deg, var(--surface-highlight-soft), transparent 44%),
+      radial-gradient(
+        circle at 1px 1px,
+        color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
+        transparent 0.72px
+      ),
+      color-mix(in srgb, var(--color-bg-surface-translucent) 86%, transparent);
+    background-size: auto, 3px 3px, auto;
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
   }
@@ -883,6 +900,26 @@
   font-size: 11.5px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.status-details {
+  display: grid;
+  gap: 10px;
+}
+
+.status-details > summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+
+.status-details[open] > summary {
+  color: var(--color-text-primary);
+}
+
+.status-details .release-health {
+  margin-top: 8px;
 }
 
 @media (max-width: 920px) {

@@ -5,6 +5,12 @@ import { DisclosureBadge } from "./DisclosureBadge";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import type { TodoRow } from "../../modules/todos/api";
 import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  formatInTimeZone,
+  zonedDayKey,
+  zonedDateFromDayKey,
+} from "../../../../../lib/shared/calendar-timezone.ts";
+import {
   todoTimelineKind,
   todoTimelineStart,
 } from "../../modules/todos/time";
@@ -28,6 +34,7 @@ export function AgendaView({
   onEventSelect,
   onTodoSelect,
   onTodoToggle,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
@@ -38,11 +45,12 @@ export function AgendaView({
   onEventSelect?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
+  timeZone?: string;
 }) {
   const entriesByDay = useMemo(() => {
     const map = new Map<string, AgendaTodoEntry[]>();
     for (const e of events) {
-      const key = localDayKey(e.startsAt);
+      const key = zonedDayKey(e.startsAt, timeZone);
       const arr = map.get(key) ?? [];
       // All-day events sort before the rest; within a day timed
       // entries sort by ISO start. Todos compete on the same key.
@@ -58,7 +66,7 @@ export function AgendaView({
       const timelineStart = todoTimelineStart(todo);
       if (timelineStart === null) continue;
       const startIso = new Date(timelineStart).toISOString();
-      const key = localDayKey(startIso);
+      const key = zonedDayKey(startIso, timeZone);
       const arr = map.get(key) ?? [];
       arr.push({ kind: "todo", todo, sortKey: `1:${startIso}` });
       map.set(key, arr);
@@ -67,7 +75,7 @@ export function AgendaView({
       arr.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [events, todos]);
+  }, [events, todos, timeZone]);
 
   if (entriesByDay.length === 0) {
     return (
@@ -82,7 +90,7 @@ export function AgendaView({
       {entriesByDay.map(([day, entries]) => (
         <section key={day}>
           <h3 className="m-0 mb-1.5 text-[11px] uppercase tracking-[0.06em] font-semibold text-text-muted">
-            {formatDayHeader(day)}
+            {formatDayHeader(day, timeZone)}
           </h3>
           <ul className="m-0 p-0 list-none flex flex-col gap-1">
             {entries.map((entry) =>
@@ -92,8 +100,14 @@ export function AgendaView({
                     calendarsById,
                     getDisclosure,
                     onEventSelect,
+                    timeZone,
                   )
-                : renderTodoEntry(entry.todo, onTodoSelect, onTodoToggle),
+                : renderTodoEntry(
+                    entry.todo,
+                    onTodoSelect,
+                    onTodoToggle,
+                    timeZone,
+                  ),
             )}
           </ul>
         </section>
@@ -107,6 +121,7 @@ function renderEventEntry(
   calendarsById: Map<string, Calendar>,
   getDisclosure: EventDisclosureResolver | undefined,
   onEventSelect: ((event: CalendarEvent) => void) | undefined,
+  timeZone: string,
 ) {
   const cal = calendarsById.get(ev.calendarId);
   const color = cal?.colorHex ?? "#888888";
@@ -123,7 +138,7 @@ function renderEventEntry(
           aria-hidden="true"
         />
         <span className="w-[72px] flex-shrink-0 text-[12px] text-text-muted tabular-nums">
-          {ev.isAllDay ? "All day" : formatTime(ev.startsAt)}
+          {ev.isAllDay ? "All day" : formatTime(ev.startsAt, timeZone)}
         </span>
         <span className="flex-1 min-w-0">
           <span className="block text-[13px] text-text-primary truncate">
@@ -147,11 +162,12 @@ function renderTodoEntry(
   todo: TodoRow,
   onTodoSelect: ((todo: TodoRow) => void) | undefined,
   onTodoToggle: ((id: string, completed: boolean) => void) | undefined,
+  timeZone: string,
 ) {
   const completed = todo.completedAt !== null;
   const timelineStart = todoTimelineStart(todo);
   const timeLabel = timelineStart !== null
-    ? formatTime(new Date(timelineStart).toISOString())
+    ? formatTime(new Date(timelineStart).toISOString(), timeZone)
     : "—";
   const kindLabel = todoTimelineKind(todo) === "scheduled" ? "Scheduled" : "Due";
   return (
@@ -221,31 +237,21 @@ function renderTodoEntry(
   );
 }
 
-/** Local-time YYYY-MM-DD key used to bucket events by display day. We
- * can't slice the ISO string — that would group by UTC date and split
- * evenings into "tomorrow" for users east of GMT. */
-function localDayKey(iso: string): string {
-  const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function formatDayHeader(key: string): string {
-  const [y, m, d] = key.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = startOfDay(new Date());
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const prefix = isSameDay(date, today)
+function formatDayHeader(key: string, timeZone: string): string {
+  const date = zonedDateFromDayKey(key, timeZone);
+  const today = startOfDay(new Date(), timeZone);
+  const tomorrow = zonedDateFromDayKey(
+    zonedDayKey(new Date(today.getTime() + 36 * 60 * 60 * 1000), timeZone),
+    timeZone,
+  );
+  const prefix = isSameDay(date, today, timeZone)
     ? "Today · "
-    : isSameDay(date, tomorrow)
+    : isSameDay(date, tomorrow, timeZone)
       ? "Tomorrow · "
       : "";
   return (
     prefix +
-    date.toLocaleDateString(undefined, {
+    formatInTimeZone(date, timeZone, {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -253,8 +259,8 @@ function formatDayHeader(key: string): string {
   );
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, {
+function formatTime(iso: string, timeZone = DEFAULT_CALENDAR_TIME_ZONE): string {
+  return formatInTimeZone(iso, timeZone, {
     hour: "numeric",
     minute: "2-digit",
   });

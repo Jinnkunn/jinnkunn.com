@@ -4,6 +4,14 @@ import { isSameDay, isSameMonth, monthGridDays } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents, type AllDayBar } from "./eventLayout";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  addZonedDays,
+  formatInTimeZone,
+  isSameZonedDay,
+  zonedDateAtMinute,
+  zonedDayRange,
+} from "../../../../../lib/shared/calendar-timezone.ts";
 
 const BAR_HEIGHT = 18;
 const BAR_GAP = 2;
@@ -18,20 +26,27 @@ export function MonthView({
   events,
   calendarsById,
   onEventSelect,
+  onDayCreate,
   getDisclosure,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onDayCreate?: (selection: {
+    startsAt: Date;
+    point: { x: number; y: number };
+  }) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone?: string;
 }) {
-  const days = useMemo(() => monthGridDays(anchor), [anchor]);
+  const days = useMemo(() => monthGridDays(anchor, timeZone), [anchor, timeZone]);
   const weekRows = useMemo(() => chunk(days, 7), [days]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <WeekdayHeader />
+      <WeekdayHeader timeZone={timeZone} />
       <div className="flex flex-col flex-1 min-h-0">
         {weekRows.map((week, idx) => (
           <WeekRow
@@ -42,7 +57,9 @@ export function MonthView({
             anchor={anchor}
             isFirstRow={idx === 0}
             onEventSelect={onEventSelect}
+            onDayCreate={onDayCreate}
             getDisclosure={getDisclosure}
+            timeZone={timeZone}
           />
         ))}
       </div>
@@ -50,14 +67,14 @@ export function MonthView({
   );
 }
 
-function WeekdayHeader() {
+function WeekdayHeader({ timeZone }: { timeZone: string }) {
   // Use a known Monday so locale-aware short names render correctly
   // (some locales return different abbreviations than `["Mon", "Tue", ...]`).
   const monday = new Date(2024, 0, 1); // Mon 2024-01-01
   const labels = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(d.getDate() + i);
-    return d.toLocaleDateString(undefined, { weekday: "short" });
+    return formatInTimeZone(addZonedDays(monday, i, timeZone), timeZone, {
+      weekday: "short",
+    });
   });
   return (
     <div className="grid grid-cols-7 border-b border-[rgba(0,0,0,0.08)]">
@@ -80,7 +97,9 @@ function WeekRow({
   anchor,
   isFirstRow,
   onEventSelect,
+  onDayCreate,
   getDisclosure,
+  timeZone,
 }: {
   week: Date[];
   events: CalendarEvent[];
@@ -88,18 +107,23 @@ function WeekRow({
   anchor: Date;
   isFirstRow: boolean;
   onEventSelect?: (event: CalendarEvent) => void;
+  onDayCreate?: (selection: {
+    startsAt: Date;
+    point: { x: number; y: number };
+  }) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone: string;
 }) {
   // Anything that should render as a continuous bar — both multi-day
   // events and single-day all-day events. Single-day timed events
   // render as chips inside each cell instead.
   const spanningEvents = useMemo(
-    () => events.filter((e) => e.isAllDay || crossesMidnight(e)),
-    [events],
+    () => events.filter((e) => e.isAllDay || crossesMidnight(e, timeZone)),
+    [events, timeZone],
   );
   const bars = useMemo(
-    () => layoutAllDayEvents(spanningEvents, week[0], week.length),
-    [spanningEvents, week],
+    () => layoutAllDayEvents(spanningEvents, week[0], week.length, timeZone),
+    [spanningEvents, week, timeZone],
   );
   const barRows = useMemo(() => stackBars(bars), [bars]);
 
@@ -118,12 +142,12 @@ function WeekRow({
       }}
     >
       {week.map((day, dayIdx) => {
-        const isToday = isSameDay(day, today);
-        const inMonth = isSameMonth(day, anchor);
+        const isToday = isSameDay(day, today, timeZone);
+        const inMonth = isSameMonth(day, anchor, timeZone);
         const cellTimed = events
           .filter(
             (e) =>
-              !e.isAllDay && !crossesMidnight(e) && touchesDay(e, day),
+              !e.isAllDay && !crossesMidnight(e, timeZone) && touchesDay(e, day, timeZone),
           )
           .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
         // Number of bar rows that intersect this day decides how many
@@ -149,15 +173,23 @@ function WeekRow({
                 dayIdx < 6 ? "1px solid rgba(0,0,0,0.08)" : undefined,
               opacity: inMonth ? 1 : 0.45,
             }}
+            onDoubleClick={(event) => {
+              if (!onDayCreate) return;
+              if ((event.target as HTMLElement | null)?.closest("button")) return;
+              onDayCreate({
+                startsAt: zonedDateAtMinute(day, 9 * 60, timeZone),
+                point: { x: event.clientX, y: event.clientY },
+              });
+            }}
           >
             <div className="flex justify-end">
               {isToday ? (
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#0A84FF] text-white text-[11px] font-semibold tabular-nums">
-                  {day.getDate()}
+                  {formatInTimeZone(day, timeZone, { day: "numeric" })}
                 </span>
               ) : (
                 <span className="text-[11px] font-semibold text-text-primary tabular-nums">
-                  {day.getDate()}
+                  {formatInTimeZone(day, timeZone, { day: "numeric" })}
                 </span>
               )}
             </div>
@@ -171,6 +203,7 @@ function WeekRow({
                   calendarsById={calendarsById}
                   onEventSelect={onEventSelect}
                   getDisclosure={getDisclosure}
+                  timeZone={timeZone}
                 />
               ))}
               {overflowCount > 0 ? (
@@ -255,15 +288,17 @@ function TimedChip({
   calendarsById,
   onEventSelect,
   getDisclosure,
+  timeZone,
 }: {
   event: CalendarEvent;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone: string;
 }) {
   const cal = calendarsById.get(event.calendarId);
   const color = cal?.colorHex ?? "#7A7A7A";
-  const time = new Date(event.startsAt).toLocaleTimeString(undefined, {
+  const time = formatInTimeZone(event.startsAt, timeZone, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -322,24 +357,17 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function crossesMidnight(ev: CalendarEvent): boolean {
+function crossesMidnight(ev: CalendarEvent, timeZone: string): boolean {
   const start = new Date(ev.startsAt);
   const end = new Date(ev.endsAt);
-  return (
-    start.getFullYear() !== end.getFullYear() ||
-    start.getMonth() !== end.getMonth() ||
-    start.getDate() !== end.getDate()
-  );
+  return !isSameZonedDay(start, end, timeZone);
 }
 
-function touchesDay(ev: CalendarEvent, day: Date): boolean {
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+function touchesDay(ev: CalendarEvent, day: Date, timeZone: string): boolean {
+  const { startsAt, endsAt } = zonedDayRange(day, timeZone);
   const start = new Date(ev.startsAt).getTime();
   const end = new Date(ev.endsAt).getTime();
-  return end > dayStart.getTime() && start < dayEnd.getTime();
+  return end > startsAt.getTime() && start < endsAt.getTime();
 }
 
 function barTouchesIndex(bar: AllDayBar, idx: number): boolean {

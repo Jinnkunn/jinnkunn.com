@@ -12,7 +12,7 @@ export const NOTES_MODULE: WorkspaceModuleDefinition = {
   surface: {
     id: "notes",
     title: "Notes",
-    description: "Local Notion-like notes",
+    description: "Pages",
     icon: <NotesIcon />,
     Component: NotesSurface,
     navGroups: NOTES_NAV_GROUPS,

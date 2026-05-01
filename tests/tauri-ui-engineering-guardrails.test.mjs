@@ -397,6 +397,8 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(sourceSidebar, /application\/x-calendar-source/);
   assert.match(sourceSidebar, /moveSourceTo\(sourceId, src\.id, edge\)/);
   assert.match(sourceSidebar, /draggable/);
+  assert.match(sourceSidebar, /calendar-source-row__menu/);
+  assert.doesNotMatch(sourceSidebar, /onSetCalendarDefault/);
   assert.doesNotMatch(sourceSidebar, /borderRight:/);
   assert.match(todosNav, /TODOS_FOCUS_NAV_GROUP_ID/);
   assert.match(todosNav, /TODOS_SCHEDULE_NAV_GROUP_ID/);
@@ -422,6 +424,11 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(sidebar, /data-surface-reorderable/);
   assert.match(styles, /\.calendar-workspace-split/);
   assert.match(styles, /\.calendar-commandbar__supplement/);
+  assert.match(styles, /\.calendar-publish-panel/);
+  assert.match(styles, /\.calendar-event-composer--inspector/);
+  assert.match(calendar, /CalendarPublishPanel/);
+  assert.match(calendar, /CalendarUndoToast/);
+  assert.doesNotMatch(styles, /\.calendar-commandbar__sync/);
   assert.match(styles, /\.calendar-source-group__header/);
   assert.match(styles, /\.calendar-source-group__drag/);
   assert.match(
@@ -466,7 +473,10 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   // (`modules/notes/api.ts`) when the surfaces directory was reorganised.
   // `lib/tauri.ts` now only carries shell-level commands.
   const tauriWrappers = await read("apps/workspace/src/modules/notes/api.ts");
-  const tauriMain = await read("apps/workspace/src-tauri/src/main.rs");
+  const tauriEntrypoint = [
+    await read("apps/workspace/src-tauri/src/main.rs"),
+    await read("apps/workspace/src-tauri/src/lib.rs"),
+  ].join("\n");
   const notesRs = await read("apps/workspace/src-tauri/src/notes.rs");
   const localDb = await read("apps/workspace/src-tauri/src/local_db.rs");
   const styles = await readWorkspaceCssBundle();
@@ -550,9 +560,9 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   assert.match(tauriWrappers, /export function notesList/);
   assert.match(tauriWrappers, /export function notesMove/);
   assert.match(tauriWrappers, /export function notesSearch/);
-  assert.match(tauriMain, /mod notes;/);
-  assert.match(tauriMain, /notes::notes_list/);
-  assert.match(tauriMain, /notes::notes_archive/);
+  assert.match(tauriEntrypoint, /mod notes;/);
+  assert.match(tauriEntrypoint, /notes::notes_list/);
+  assert.match(tauriEntrypoint, /notes::notes_archive/);
   assert.match(localDb, /CREATE TABLE IF NOT EXISTS notes/);
   assert.match(localDb, /idx_notes_parent_order/);
   assert.match(notesRs, /cannot move a note inside one of its descendants/);

@@ -183,9 +183,6 @@ export function StatusPanel() {
           <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
             Status
           </h1>
-          <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-            Runtime provider, source store, and deploy readiness snapshot.
-          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
@@ -230,81 +227,83 @@ export function StatusPanel() {
         </div>
       </div>
 
-      <section className="release-health" aria-label="Site sync and release health">
-        <div className="release-health__head">
-          <div>
-            <h2>Release Health</h2>
-            <p>Source, content, active deploy, Worker candidate, and release readiness.</p>
-          </div>
-          <strong>{nextActionLabel(data, productionReadOnly)}</strong>
-        </div>
-        <div className="release-health__grid">
-          {releaseHealthItems(data, productionReadOnly, environment.label).map((item) => (
-            <div
-              className="release-health__item"
-              data-tone={item.tone}
-              key={item.label}
-            >
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <p>{item.detail}</p>
+      <details className="surface-details status-details">
+        <summary>Release details</summary>
+        <section className="release-health" aria-label="Site sync and release health">
+          <div className="release-health__head">
+            <div>
+              <h2>Release Health</h2>
             </div>
-          ))}
-        </div>
-      </section>
+            <strong>{nextActionLabel(data, productionReadOnly)}</strong>
+          </div>
+          <div className="release-health__grid">
+            {releaseHealthItems(data, productionReadOnly, environment.label).map((item) => (
+              <div
+                className="release-health__item"
+                data-tone={item.tone}
+                key={item.label}
+              >
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <dl className="key-values">
-        <div>
-          <dt>Runtime Provider</dt>
-          <dd>{data?.env?.runtimeProvider || "-"}</dd>
-        </div>
-        <div>
-          <dt>Content Source</dt>
-          <dd>{sourceStoreLabel(data?.source)}</dd>
-        </div>
-        <div>
-          <dt>Source Location</dt>
-          <dd>{sourceLocation(data?.source)}</dd>
-        </div>
-        <div>
-          <dt>Source Head</dt>
-          <dd>{shortSha(data?.source?.headSha)}</dd>
-        </div>
-        <div>
-          <dt>Code SHA</dt>
-          <dd>{shortSha(data?.source?.codeSha)}</dd>
-        </div>
-        <div>
-          <dt>Content SHA</dt>
-          <dd>
-            {data?.source?.contentSha
-              ? shortSha(data.source.contentSha)
-              : sourceStoreKind(data?.source) === "db"
-                ? "D1 rows"
-                : "-"}
-          </dd>
-        </div>
-        <div>
-          <dt>Deployable Version</dt>
-          <dd>{candidateLabel(data?.source)}</dd>
-        </div>
-        <div>
-          <dt>Active Version</dt>
-          <dd>{shortId(data?.deployments?.active?.versionId)}</dd>
-        </div>
-        <div>
-          <dt>Latest Uploaded Version</dt>
-          <dd>{shortId(data?.deployments?.latestUploaded?.versionId)}</dd>
-        </div>
-        <div>
-          <dt>Deploy State</dt>
-          <dd>{deployStateLabel(data?.source)}</dd>
-        </div>
-        <div>
-          <dt>Deploy Target Ready</dt>
-          <dd>{data?.env?.hasDeployTarget ? "Yes" : "No"}</dd>
-        </div>
-      </dl>
+        <dl className="key-values">
+          <div>
+            <dt>Runtime Provider</dt>
+            <dd>{data?.env?.runtimeProvider || "-"}</dd>
+          </div>
+          <div>
+            <dt>Content Source</dt>
+            <dd>{sourceStoreLabel(data?.source)}</dd>
+          </div>
+          <div>
+            <dt>Source Location</dt>
+            <dd>{sourceLocation(data?.source)}</dd>
+          </div>
+          <div>
+            <dt>Source Head</dt>
+            <dd>{shortSha(data?.source?.headSha)}</dd>
+          </div>
+          <div>
+            <dt>Code SHA</dt>
+            <dd>{shortSha(data?.source?.codeSha)}</dd>
+          </div>
+          <div>
+            <dt>Content SHA</dt>
+            <dd>
+              {data?.source?.contentSha
+                ? shortSha(data.source.contentSha)
+                : sourceStoreKind(data?.source) === "db"
+                  ? "D1 rows"
+                  : "-"}
+            </dd>
+          </div>
+          <div>
+            <dt>Deployable Version</dt>
+            <dd>{candidateLabel(data?.source)}</dd>
+          </div>
+          <div>
+            <dt>Active Version</dt>
+            <dd>{shortId(data?.deployments?.active?.versionId)}</dd>
+          </div>
+          <div>
+            <dt>Latest Uploaded Version</dt>
+            <dd>{shortId(data?.deployments?.latestUploaded?.versionId)}</dd>
+          </div>
+          <div>
+            <dt>Deploy State</dt>
+            <dd>{deployStateLabel(data?.source)}</dd>
+          </div>
+          <div>
+            <dt>Deploy Target Ready</dt>
+            <dd>{data?.env?.hasDeployTarget ? "Yes" : "No"}</dd>
+          </div>
+        </dl>
+      </details>
 
       {notes.length > 0 && (
         <p className="m-0 text-[12px] text-text-muted">{notes.join(" ")}</p>

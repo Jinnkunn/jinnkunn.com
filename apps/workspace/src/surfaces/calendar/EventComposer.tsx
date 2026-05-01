@@ -1,7 +1,19 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { calendarCreateEvent, type RecurrenceFrequency } from "./api";
+import {
+  isLocalCalendarId,
+  localCalendarCreateEvent,
+} from "../../modules/calendar/localCalendarApi";
 import type { Calendar, CalendarEvent } from "./types";
+import {
+  calendarTimeZoneShortLabel,
+  fromZonedDateTimeInputValue,
+  formatInTimeZone,
+  toZonedDateTimeInputValue,
+  zonedDateAtMinute,
+  zonedMinuteOfDay,
+} from "../../../../../lib/shared/calendar-timezone.ts";
 
 const RECURRENCE_OPTIONS: Array<{
   value: "none" | RecurrenceFrequency;
@@ -38,33 +50,12 @@ const RECURRENCE_DEFAULT_COUNT: Record<RecurrenceFrequency, number> = {
 
 const ROUND_TO_NEAREST_MINUTES = 15;
 
-function roundUpToQuarterHour(d: Date): Date {
-  const out = new Date(d);
-  out.setSeconds(0, 0);
-  const rem = out.getMinutes() % ROUND_TO_NEAREST_MINUTES;
-  if (rem !== 0) out.setMinutes(out.getMinutes() + (ROUND_TO_NEAREST_MINUTES - rem));
-  return out;
-}
-
-function toLocalInputValue(d: Date): string {
-  // <input type="datetime-local"> wants `YYYY-MM-DDTHH:MM` in local
-  // time. Date.toISOString() emits UTC; we splice manually instead.
-  const yyyy = d.getFullYear().toString().padStart(4, "0");
-  const mm = (d.getMonth() + 1).toString().padStart(2, "0");
-  const dd = d.getDate().toString().padStart(2, "0");
-  const hh = d.getHours().toString().padStart(2, "0");
-  const mi = d.getMinutes().toString().padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-}
-
-function fromLocalInputValue(value: string): string {
-  // Convert the local-flavored datetime-local string back to an ISO
-  // 8601 with offset. Date(value) interprets the input in local time;
-  // toISOString gives us UTC. EventKit accepts both — we send the
-  // ISO-with-Z form for clarity.
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) return "";
-  return new Date(ms).toISOString();
+function roundUpToQuarterHour(d: Date, timeZone: string): Date {
+  const minute = zonedMinuteOfDay(d, timeZone);
+  const rem = minute % ROUND_TO_NEAREST_MINUTES;
+  const rounded =
+    rem === 0 ? minute : minute + (ROUND_TO_NEAREST_MINUTES - rem);
+  return zonedDateAtMinute(d, Math.min(24 * 60, rounded), timeZone);
 }
 
 export interface EventComposerProps {
@@ -75,38 +66,73 @@ export interface EventComposerProps {
   /** Anchored time the operator is currently looking at. Defaults
    * to now. */
   anchor: Date;
+  /** Optional end time from timeline drag-create. */
+  initialEndsAt?: Date;
+  /** Display / input time zone. Underlying events are still saved as
+   * absolute ISO instants. */
+  timeZone: string;
   /** Fires after a successful save so the parent can splice + refocus. */
   onCreated: (event: CalendarEvent) => void;
   /** Fires on cancel / dismiss so the parent can hide the composer. */
   onClose: () => void;
+  /** Presentation mode. Popover matches macOS quick-create; inspector
+   * remains available for narrow fallback surfaces. */
+  variant?: "popover" | "inspector";
+  /** Optional escape hatch when the user has no writable platform
+   * calendar yet. Creates a local-first workspace calendar and returns
+   * it so the composer can select it immediately. */
+  onCreateWorkspaceCalendar?: () => Promise<Calendar | null>;
 }
 
 export function EventComposer({
   calendars,
   anchor,
+  initialEndsAt,
+  timeZone,
   onCreated,
   onClose,
+  variant = "popover",
+  onCreateWorkspaceCalendar,
 }: EventComposerProps) {
-  const writableCalendars = calendars.filter((c) => c.allowsModifications);
+  const writableCalendars = useMemo(
+    () => calendars.filter((c) => c.allowsModifications),
+    [calendars],
+  );
   const [calendarId, setCalendarId] = useState<string>(
     () => writableCalendars[0]?.id ?? "",
   );
   const [title, setTitle] = useState("");
   const [startsAt, setStartsAt] = useState(() =>
-    toLocalInputValue(roundUpToQuarterHour(anchor)),
+    toZonedDateTimeInputValue(
+      initialEndsAt ? anchor : roundUpToQuarterHour(anchor, timeZone),
+      timeZone,
+    ),
   );
   const [endsAt, setEndsAt] = useState(() => {
-    const start = roundUpToQuarterHour(anchor);
+    if (initialEndsAt) return toZonedDateTimeInputValue(initialEndsAt, timeZone);
+    const start = roundUpToQuarterHour(anchor, timeZone);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
-    return toLocalInputValue(end);
+    return toZonedDateTimeInputValue(end, timeZone);
   });
   const [isAllDay, setIsAllDay] = useState(false);
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [recurrence, setRecurrence] = useState<"none" | RecurrenceFrequency>(
     "none",
   );
   const [recurrenceCount, setRecurrenceCount] = useState(14);
   const [busy, setBusy] = useState(false);
+  const [creatingWorkspaceCalendar, setCreatingWorkspaceCalendar] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (calendarId && writableCalendars.some((calendar) => calendar.id === calendarId)) {
+      return;
+    }
+    setCalendarId(writableCalendars[0]?.id ?? "");
+  }, [calendarId, writableCalendars]);
 
   // ESC dismisses the composer; matches the rest of the surface's
   // popover convention. Mounted on the window (rather than the form)
@@ -126,32 +152,51 @@ export function EventComposer({
     if (busy) return;
     setError(null);
     if (!calendarId) {
-      setError("No writable calendars available.");
+      setError("No writable calendar available.");
       return;
     }
     if (!title.trim()) {
       setError("Title is required.");
       return;
     }
-    const startIso = fromLocalInputValue(startsAt);
-    const endIso = fromLocalInputValue(endsAt);
+    const startDate = fromZonedDateTimeInputValue(startsAt, timeZone);
+    const endDate = fromZonedDateTimeInputValue(endsAt, timeZone);
+    const startIso = startDate?.toISOString() ?? "";
+    const endIso = endDate?.toISOString() ?? "";
     if (!startIso || !endIso) {
       setError("Couldn't parse the start/end time.");
       return;
     }
     setBusy(true);
     try {
-      const saved = await calendarCreateEvent({
-        calendarId,
-        title: title.trim(),
-        startsAt: startIso,
-        endsAt: endIso,
-        isAllDay,
-        recurrence:
-          recurrence === "none"
-            ? undefined
-            : { frequency: recurrence, count: recurrenceCount },
-      });
+      // Local-first calendars route to a separate Tauri command — no
+      // EventKit involved. Recurrence isn't supported in v1; the form
+      // disables the dropdown for local calendars so we don't have to
+      // worry about silently dropping it here.
+      const saved = isLocalCalendarId(calendarId)
+        ? await localCalendarCreateEvent({
+            calendarId,
+            title: title.trim(),
+            startsAt: startIso,
+            endsAt: endIso,
+            isAllDay,
+            notes: notes.trim() || null,
+            location: location.trim() || null,
+            url: null,
+          })
+        : await calendarCreateEvent({
+            calendarId,
+            title: title.trim(),
+            startsAt: startIso,
+            endsAt: endIso,
+            isAllDay,
+            notes: notes.trim() || undefined,
+            location: location.trim() || undefined,
+            recurrence:
+              recurrence === "none"
+                ? undefined
+                : { frequency: recurrence, count: recurrenceCount },
+          });
       onCreated(saved);
       onClose();
     } catch (err) {
@@ -161,16 +206,61 @@ export function EventComposer({
     }
   }
 
+  async function createWorkspaceCalendar() {
+    if (!onCreateWorkspaceCalendar || creatingWorkspaceCalendar) return;
+    setError(null);
+    setCreatingWorkspaceCalendar(true);
+    try {
+      const calendar = await onCreateWorkspaceCalendar();
+      if (calendar) setCalendarId(calendar.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreatingWorkspaceCalendar(false);
+    }
+  }
+
   return (
-    <form className="calendar-event-composer" onSubmit={onSubmit}>
+    <form
+      className={`calendar-event-composer calendar-event-composer--${variant}`}
+      onSubmit={onSubmit}
+    >
+      <header className="calendar-event-composer__header">
+        <div>
+          <strong>New Event</strong>
+          <span>
+            {formatComposerRange(startsAt, endsAt, isAllDay, timeZone)}
+            {" · "}
+            {calendarTimeZoneShortLabel(timeZone)}
+          </span>
+        </div>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>
+          Close
+        </button>
+      </header>
+      {writableCalendars.length === 0 && onCreateWorkspaceCalendar ? (
+        <div className="calendar-event-composer__empty">
+          <p>No writable calendar yet.</p>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={creatingWorkspaceCalendar}
+            onClick={() => void createWorkspaceCalendar()}
+          >
+            {creatingWorkspaceCalendar
+              ? "Creating..."
+              : "Create Workspace calendar"}
+          </button>
+        </div>
+      ) : null}
       <div className="calendar-event-composer__row">
         <label className="calendar-event-composer__field">
-          <span>Title</span>
+          <span>Event</span>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Office hours, talk, meeting…"
+            placeholder="New Event"
             autoFocus
             required
           />
@@ -224,49 +314,86 @@ export function EventComposer({
           />
         </label>
       </div>
-      <div className="calendar-event-composer__row">
-        <label className="calendar-event-composer__field">
-          <span>Repeats</span>
-          <select
-            value={recurrence}
-            onChange={(e) => {
-              const next = e.target.value as "none" | RecurrenceFrequency;
-              setRecurrence(next);
-              if (next !== "none") {
-                // Reset to a sensible default count for the chosen
-                // frequency so a class-meeting flow defaults to a
-                // 14-week semester instead of the previous picker's
-                // value.
-                setRecurrenceCount(RECURRENCE_DEFAULT_COUNT[next]);
-              }
-            }}
-          >
-            {RECURRENCE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {recurrence !== "none" ? (
-          <label className="calendar-event-composer__field">
-            <span>Occurrences</span>
-            <input
-              type="number"
-              min={1}
-              max={200}
-              step={1}
-              value={recurrenceCount}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value, 10);
-                setRecurrenceCount(
-                  Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
-                );
-              }}
-            />
-          </label>
-        ) : null}
-      </div>
+      {detailsOpen ? (
+        <>
+          <div className="calendar-event-composer__row">
+            <label className="calendar-event-composer__field">
+              <span>Location</span>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Location"
+              />
+            </label>
+          </div>
+          <div className="calendar-event-composer__row">
+            <label className="calendar-event-composer__field">
+              <span>Notes</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notes"
+                rows={3}
+              />
+            </label>
+          </div>
+          <div className="calendar-event-composer__row">
+            <label className="calendar-event-composer__field">
+              <span>Repeats</span>
+              <select
+                value={isLocalCalendarId(calendarId) ? "none" : recurrence}
+                disabled={isLocalCalendarId(calendarId)}
+                title={
+                  isLocalCalendarId(calendarId)
+                    ? "Workspace calendars do not repeat yet"
+                    : undefined
+                }
+                onChange={(e) => {
+                  const next = e.target.value as "none" | RecurrenceFrequency;
+                  setRecurrence(next);
+                  if (next !== "none") {
+                    setRecurrenceCount(RECURRENCE_DEFAULT_COUNT[next]);
+                  }
+                }}
+              >
+                {RECURRENCE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {recurrence !== "none" && !isLocalCalendarId(calendarId) ? (
+              <label className="calendar-event-composer__field">
+                <span>Occurrences</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={recurrenceCount}
+                  onChange={(e) => {
+                    const parsed = Number.parseInt(e.target.value, 10);
+                    setRecurrenceCount(
+                      Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
+                    );
+                  }}
+                />
+              </label>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+      {!detailsOpen ? (
+        <button
+          type="button"
+          className="calendar-event-composer__details-toggle"
+          onClick={() => setDetailsOpen(true)}
+        >
+          Add location, notes, or repeat
+        </button>
+      ) : null}
       {error ? (
         <p className="calendar-event-composer__error">{error}</p>
       ) : null}
@@ -275,9 +402,48 @@ export function EventComposer({
           Cancel
         </button>
         <button type="submit" className="btn btn--primary" disabled={busy}>
-          {busy ? "Saving…" : "Create event"}
+          {busy ? "Saving..." : "Add"}
         </button>
       </div>
     </form>
   );
+}
+
+function formatComposerRange(
+  startsAt: string,
+  endsAt: string,
+  isAllDay: boolean,
+  timeZone: string,
+): string {
+  const start = fromZonedDateTimeInputValue(startsAt, timeZone);
+  const end = fromZonedDateTimeInputValue(endsAt, timeZone);
+  if (
+    !start ||
+    !end ||
+    !Number.isFinite(start.getTime()) ||
+    !Number.isFinite(end.getTime())
+  ) {
+    return "Calendar";
+  }
+  if (isAllDay) {
+    return formatInTimeZone(start, timeZone, {
+      day: "numeric",
+      month: "short",
+      weekday: "short",
+    });
+  }
+  const date = formatInTimeZone(start, timeZone, {
+    day: "numeric",
+    month: "short",
+    weekday: "short",
+  });
+  const startTime = formatInTimeZone(start, timeZone, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const endTime = formatInTimeZone(end, timeZone, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date}, ${startTime} - ${endTime}`;
 }

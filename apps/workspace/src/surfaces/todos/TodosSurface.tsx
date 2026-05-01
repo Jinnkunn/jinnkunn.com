@@ -159,28 +159,32 @@ function filterLabel(filter: TodoFilter): string {
 function emptyLabel(filter: TodoFilter): string {
   switch (filter) {
     case "completed":
-      return "No completed todos.";
+      return "No completed todos";
     case "inbox":
-      return "Inbox is clear.";
+      return "Inbox clear";
     case "scheduled":
-      return "No scheduled todos.";
+      return "No scheduled todos";
     case "today":
-      return "No todos for today.";
+      return "No todos";
     case "unscheduled":
-      return "No unscheduled todos.";
+      return "No unscheduled todos";
     case "upcoming":
-      return "No upcoming todos.";
+      return "No upcoming todos";
   }
 }
 
-function formatTodosError(error: unknown): string {
+function isNativeBridgeUnavailable(error: unknown): boolean {
   const message = String(error);
-  if (
+  return (
     message.includes("invoke") ||
     message.includes("__TAURI_INTERNALS__") ||
     message.includes("is not a function")
-  ) {
-    return "Todo data is available in the desktop app.";
+  );
+}
+
+function formatTodosError(error: unknown): string {
+  if (isNativeBridgeUnavailable(error)) {
+    return "Todo data unavailable in this preview.";
   }
   return String(error);
 }
@@ -269,7 +273,9 @@ export function TodosSurface() {
         if (!cancelled) setTodos(sortTodos(rows));
       })
       .catch((error) => {
-        if (!cancelled) setMessage(`Failed to load todos: ${formatTodosError(error)}`);
+        if (!cancelled && !isNativeBridgeUnavailable(error)) {
+          setMessage(`Failed to load todos: ${formatTodosError(error)}`);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -493,6 +499,7 @@ export function TodosSurface() {
       setMessage(`Failed to clear completed todos: ${String(error)}`);
     }
   };
+  const hasPlanningDraft = Boolean(dueDate || scheduledAt || estimatedMinutes);
 
   return (
     <WorkspaceSurfaceFrame className="todos-surface">
@@ -506,51 +513,63 @@ export function TodosSurface() {
               void createTodo();
             }}
           >
-            <input
-              aria-label="Todo title"
-              placeholder="New todo"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <input
-              aria-label="Due date"
-              type="date"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-            />
-            <input
-              aria-label="Scheduled time"
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(event) => {
-                setScheduledAt(event.target.value);
-                if (event.target.value && !estimatedMinutes) {
-                  setEstimatedMinutes("30");
-                }
-              }}
-            />
-            <input
-              aria-label="Estimate minutes"
-              min="1"
-              max="1440"
-              placeholder="30m"
-              type="number"
-              value={estimatedMinutes}
-              onChange={(event) => setEstimatedMinutes(event.target.value)}
-            />
-            <WorkspaceCommandButton
-              disabled={saving || !title.trim()}
-              tone="accent"
-              type="submit"
+            <div className="todos-composer__main">
+              <input
+                aria-label="Todo title"
+                placeholder="New todo…"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+              <WorkspaceCommandButton
+                disabled={saving || !title.trim()}
+                tone="accent"
+                type="submit"
+              >
+                Add
+              </WorkspaceCommandButton>
+            </div>
+            <details
+              className="todos-composer__planning"
+              open={hasPlanningDraft ? true : undefined}
             >
-              Add
-            </WorkspaceCommandButton>
+              <summary>Plan</summary>
+              <div className="todos-composer__planning-grid">
+                <input
+                  aria-label="Due date"
+                  type="date"
+                  value={dueDate}
+                  onChange={(event) => setDueDate(event.target.value)}
+                />
+                <input
+                  aria-label="Scheduled time"
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(event) => {
+                    setScheduledAt(event.target.value);
+                    if (event.target.value && !estimatedMinutes) {
+                      setEstimatedMinutes("30");
+                    }
+                  }}
+                />
+                <input
+                  aria-label="Estimate minutes"
+                  min="1"
+                  max="1440"
+                  placeholder="30"
+                  type="number"
+                  value={estimatedMinutes}
+                  onChange={(event) => setEstimatedMinutes(event.target.value)}
+                />
+              </div>
+            </details>
           </form>
         }
         trailing={
           <WorkspaceCommandGroup align="end" className="todos-commandbar__meta">
             <span className="todos-counts">
-              {viewLabel}: {visibleTodos.length} / {activeCount} open / {completedCount} done
+              {activeCount || completedCount
+                ? `${viewLabel}: ${visibleTodos.length} / ${activeCount} open / ${completedCount} done`
+                : viewLabel}
             </span>
             <WorkspaceCommandButton
               disabled={completedCount === 0}
@@ -571,7 +590,7 @@ export function TodosSurface() {
 
       <section className="todos-list-shell" aria-busy={loading ? "true" : undefined}>
         {loading ? (
-          <div className="todos-empty">Loading todos...</div>
+          <div className="todos-empty">Loading todos…</div>
         ) : visibleTodos.length === 0 ? (
           <div className="todos-empty">
             {emptyLabel(filter)}
