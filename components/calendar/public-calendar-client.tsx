@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   PublicCalendarView,
+  type PublicCalendarEventAnchor,
   type PublicCalendarViewMode,
 } from "@/components/calendar/public-calendar-view";
 import { summarizeTags } from "@/lib/shared/calendar-tags";
@@ -87,6 +88,11 @@ const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
   failed: "Could not refresh",
 };
 
+type SelectedCalendarEvent = {
+  id: string;
+  anchor: PublicCalendarEventAnchor | null;
+};
+
 export function PublicCalendarClient({
   initialData,
 }: {
@@ -100,7 +106,8 @@ export function PublicCalendarClient({
       : "month",
   );
   const [anchorIso, setAnchorIso] = useState(() => new Date().toISOString());
-  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] =
+    useState<SelectedCalendarEvent | null>(null);
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
   const [timeZone, setTimeZone] = useState<string>(() =>
     readTimeZoneFromLocation(),
@@ -116,10 +123,12 @@ export function PublicCalendarClient({
   const [selectedTags, setSelectedTags] = useState<readonly string[]>(() =>
     readTagsFromLocation(),
   );
+  const expandedEventId = selectedEvent?.id ?? null;
   useEffect(() => {
     const onPopState = () => {
       setSelectedTags(readTagsFromLocation());
       setTimeZone(readTimeZoneFromLocation());
+      setSelectedEvent(null);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -129,12 +138,46 @@ export function PublicCalendarClient({
     // share captures the filtered view + a refresh preserves it.
     writeTagsToLocation(next);
     setSelectedTags(next);
+    setSelectedEvent(null);
   }, []);
   const handleTimeZoneChange = useCallback((next: string) => {
     const normalized = normalizeCalendarTimeZone(next);
     writeTimeZoneToLocation(normalized);
     setTimeZone(normalized);
+    setSelectedEvent(null);
   }, []);
+  const handleViewChange = useCallback((next: PublicCalendarViewMode) => {
+    setView(next);
+    setSelectedEvent(null);
+  }, []);
+  const handleAnchorChange = useCallback((date: Date) => {
+    setAnchorIso(date.toISOString());
+    setSelectedEvent(null);
+  }, []);
+  const handleEventToggle = useCallback(
+    (id: string, anchor: PublicCalendarEventAnchor | null = null) => {
+      setSelectedEvent((current) =>
+        current?.id === id ? null : { id, anchor },
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!selectedEvent) return;
+    const close = () => setSelectedEvent(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, { passive: true });
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [selectedEvent]);
   // Hoist the tag summary so it's only rebuilt when the events list
   // actually changes, not when the operator pages anchor / switches
   // view. The view component then receives this stable reference and
@@ -185,17 +228,17 @@ export function PublicCalendarClient({
         selectedTags={selectedTags}
         onSelectedTagsChange={handleSelectedTagsChange}
         tagSummary={tagSummary}
-        onViewChange={setView}
-        onAnchorChange={(date) => setAnchorIso(date.toISOString())}
+        onViewChange={handleViewChange}
+        onAnchorChange={handleAnchorChange}
         onAgendaDaysChange={setAgendaDays}
         onTimeZoneChange={handleTimeZoneChange}
         expandedEventId={expandedEventId}
-        onEventToggle={(id) =>
-          setExpandedEventId((current) => (current === id ? null : id))
-        }
+        selectedEventAnchor={selectedEvent?.anchor ?? null}
+        onEventToggle={handleEventToggle}
         onDaySelect={(date) => {
           setAnchorIso(date.toISOString());
           setView("day");
+          setSelectedEvent(null);
         }}
       />
       {syncStatus !== "idle" ? (

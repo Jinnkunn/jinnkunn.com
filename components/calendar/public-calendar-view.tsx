@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, type CSSProperties, type MouseEvent } from "react";
 
 import {
   eventMatchesAnyTag,
@@ -24,6 +24,17 @@ import type { PublicCalendarData, PublicCalendarEvent } from "@/lib/shared/publi
 
 export type PublicCalendarViewMode = "month" | "week" | "day" | "agenda";
 
+export type PublicCalendarEventAnchor = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  width: number;
+  height: number;
+  viewportWidth: number;
+  viewportHeight: number;
+};
+
 const VIEW_LABELS: Array<{ value: PublicCalendarViewMode; label: string }> = [
   { value: "month", label: "Month" },
   { value: "week", label: "Week" },
@@ -40,6 +51,93 @@ type DecoratedEvent = PublicCalendarEvent & {
 };
 
 type DayIndex = Map<string, DecoratedEvent[]>;
+
+type EventToggleHandler = (
+  id: string,
+  anchor?: PublicCalendarEventAnchor | null,
+) => void;
+
+type DetailPlacement = "left" | "right" | "bottom" | "center";
+
+const DETAIL_POPOVER_WIDTH = 324;
+const DETAIL_POPOVER_ESTIMATED_HEIGHT = 220;
+const DETAIL_POPOVER_MARGIN = 14;
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function anchorFromClick(
+  event: MouseEvent<HTMLElement>,
+): PublicCalendarEventAnchor {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return {
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  };
+}
+
+function detailGeometryForAnchor(anchor?: PublicCalendarEventAnchor | null): {
+  placement: DetailPlacement;
+  style: CSSProperties;
+} {
+  if (!anchor) {
+    return {
+      placement: "center",
+      style: {
+        "--detail-popover-left": `calc(100vw - ${DETAIL_POPOVER_WIDTH + 24}px)`,
+        "--detail-popover-top": "104px",
+        "--detail-arrow-y": "28px",
+      } as CSSProperties,
+    };
+  }
+
+  if (anchor.viewportWidth <= 720) {
+    return {
+      placement: "bottom",
+      style: {
+        "--detail-popover-left": "10px",
+        "--detail-popover-top": "auto",
+        "--detail-arrow-y": "24px",
+      } as CSSProperties,
+    };
+  }
+
+  const maxLeft =
+    anchor.viewportWidth - DETAIL_POPOVER_WIDTH - DETAIL_POPOVER_MARGIN;
+  const top = clampNumber(
+    anchor.top - 18,
+    86,
+    anchor.viewportHeight -
+      DETAIL_POPOVER_ESTIMATED_HEIGHT -
+      DETAIL_POPOVER_MARGIN,
+  );
+  const rightSpace = anchor.viewportWidth - anchor.right - DETAIL_POPOVER_MARGIN;
+  const leftSpace = anchor.left - DETAIL_POPOVER_MARGIN;
+  const placeRight =
+    rightSpace >= DETAIL_POPOVER_WIDTH + 12 || rightSpace >= leftSpace;
+  const rawLeft = placeRight
+    ? anchor.right + 12
+    : anchor.left - DETAIL_POPOVER_WIDTH - 12;
+  const left = clampNumber(rawLeft, DETAIL_POPOVER_MARGIN, maxLeft);
+  const arrowY = clampNumber(anchor.top + anchor.height / 2 - top, 20, 178);
+
+  return {
+    placement: placeRight ? "right" : "left",
+    style: {
+      "--detail-popover-left": `${left}px`,
+      "--detail-popover-top": `${top}px`,
+      "--detail-arrow-y": `${arrowY}px`,
+    } as CSSProperties,
+  };
+}
 
 function keyForDate(
   date: Date,
@@ -269,6 +367,7 @@ export function PublicCalendarView({
   onAgendaDaysChange,
   onDaySelect,
   expandedEventId,
+  selectedEventAnchor,
   onEventToggle,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
   onTimeZoneChange,
@@ -285,7 +384,8 @@ export function PublicCalendarView({
   onAgendaDaysChange?: (days: 30 | 90) => void;
   onDaySelect?: (date: Date) => void;
   expandedEventId?: string | null;
-  onEventToggle?: (id: string) => void;
+  selectedEventAnchor?: PublicCalendarEventAnchor | null;
+  onEventToggle?: EventToggleHandler;
   timeZone?: string;
   onTimeZoneChange?: (timeZone: string) => void;
   /** Currently-active tag filter. Empty = show every event. The
@@ -622,7 +722,8 @@ export function PublicCalendarView({
         <EventDetailPanel
           event={selectedEvent}
           timeZone={timeZone}
-          onClose={() => onEventToggle?.(selectedEvent.id)}
+          anchor={selectedEventAnchor}
+          onClose={() => onEventToggle?.(selectedEvent.id, null)}
         />
       ) : null}
     </div>
@@ -658,7 +759,7 @@ function MonthCalendar({
   timeZone: string;
   selectedEventId?: string | null;
   onDaySelect?: (date: Date) => void;
-  onEventToggle?: (id: string) => void;
+  onEventToggle?: EventToggleHandler;
 }) {
   const days = useMemo(() => monthGridDays(anchor, timeZone), [anchor, timeZone]);
   const todayKey = keyForDate(new Date(), timeZone);
@@ -728,7 +829,7 @@ function WeekCalendar({
   anchor: Date;
   timeZone: string;
   expandedEventId?: string | null;
-  onEventToggle?: (id: string) => void;
+  onEventToggle?: EventToggleHandler;
 }) {
   const days = useMemo(
     () =>
@@ -775,7 +876,7 @@ function DayCalendar({
   anchor: Date;
   timeZone: string;
   expandedEventId?: string | null;
-  onEventToggle?: (id: string) => void;
+  onEventToggle?: EventToggleHandler;
 }) {
   const dayEvents = eventsForDay(dayIndex, anchor, timeZone);
   return (
@@ -805,7 +906,7 @@ function AgendaCalendar({
   groups: Array<[string, DecoratedEvent[]]>;
   timeZone: string;
   expandedEventId?: string | null;
-  onEventToggle?: (id: string) => void;
+  onEventToggle?: EventToggleHandler;
 }) {
   return (
     <div className="public-calendar__agenda">
@@ -841,7 +942,7 @@ function EventPill({
 }: {
   event: DecoratedEvent;
   selected?: boolean;
-  onEventToggle?: (id: string) => void;
+  onEventToggle?: EventToggleHandler;
 }) {
   return (
     <button
@@ -851,7 +952,7 @@ function EventPill({
       title={`${event.formattedTime} ${event.title}`}
       onClick={(e) => {
         e.stopPropagation();
-        onEventToggle?.(event.id);
+        onEventToggle?.(event.id, anchorFromClick(e));
       }}
       aria-pressed={selected}
       style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
@@ -865,10 +966,12 @@ function EventPill({
 function EventDetailPanel({
   event,
   timeZone,
+  anchor,
   onClose,
 }: {
   event: DecoratedEvent;
   timeZone: string;
+  anchor?: PublicCalendarEventAnchor | null;
   onClose: () => void;
 }) {
   const dateLabel = formatInTimeZone(event.startsAt, timeZone, {
@@ -877,8 +980,12 @@ function EventDetailPanel({
     day: "numeric",
     year: "numeric",
   });
+  const geometry = detailGeometryForAnchor(anchor);
   return (
-    <div className="public-calendar__detail-layer">
+    <div
+      className="public-calendar__detail-layer"
+      data-placement={geometry.placement}
+    >
       <button
         type="button"
         className="public-calendar__detail-scrim"
@@ -887,11 +994,17 @@ function EventDetailPanel({
       />
       <aside
         className="public-calendar__detail-panel"
-        style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
+        style={
+          {
+            "--calendar-color": event.colorHex ?? "#9b9a97",
+            ...geometry.style,
+          } as CSSProperties
+        }
         role="dialog"
         aria-modal="false"
         aria-labelledby="public-calendar-detail-title"
       >
+        <span className="public-calendar__detail-arrow" aria-hidden="true" />
         <div className="public-calendar__detail-rail" aria-hidden="true" />
         <div className="public-calendar__detail-main">
           <header className="public-calendar__detail-header">
@@ -907,7 +1020,7 @@ function EventDetailPanel({
               onClick={onClose}
               aria-label="Close event details"
             >
-              Close
+              <span aria-hidden="true">×</span>
             </button>
           </header>
           <dl className="public-calendar__detail-meta">
@@ -959,7 +1072,7 @@ function EventCard({
   event: DecoratedEvent;
   compact?: boolean;
   selected?: boolean;
-  onEventToggle?: (id: string) => void;
+  onEventToggle?: EventToggleHandler;
 }) {
   return (
     <div
@@ -977,7 +1090,7 @@ function EventCard({
         <button
           type="button"
           className="public-calendar__event-toggle"
-          onClick={() => onEventToggle?.(event.id)}
+          onClick={(e) => onEventToggle?.(event.id, anchorFromClick(e))}
           aria-pressed={selected}
           aria-haspopup="dialog"
         >
