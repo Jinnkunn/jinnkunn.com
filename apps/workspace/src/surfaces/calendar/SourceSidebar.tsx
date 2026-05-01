@@ -1,20 +1,12 @@
 import { useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 
+import {
+  LOCAL_CALENDAR_SOURCE_ID,
+  isLocalCalendarId,
+} from "../../modules/calendar/localCalendarApi";
 import { WorkspaceSidebarRow } from "../../ui/primitives";
-import type { CalendarPublicVisibility } from "./publicProjection";
 import type { Calendar, CalendarSource } from "./types";
-
-const DEFAULT_VISIBILITY_LABELS: Array<{
-  value: CalendarPublicVisibility;
-  label: string;
-  hint: string;
-}> = [
-  { value: "hidden", label: "Hidden", hint: "Skip every event in this calendar from /calendar" },
-  { value: "busy", label: "Busy", hint: "Show as anonymous busy block on /calendar" },
-  { value: "titleOnly", label: "Title", hint: "Show title + time, hide notes/location" },
-  { value: "full", label: "Full", hint: "Show title, time, notes, location, URL" },
-];
 
 const SOURCE_ORDER_STORAGE_KEY = "workspace.calendar.sourceOrder.v1";
 const SOURCE_COLLAPSED_STORAGE_KEY = "workspace.calendar.sourceCollapsed.v1";
@@ -92,21 +84,30 @@ export function SourceSidebar({
   sources,
   calendarsBySource,
   visible,
-  calendarDefaults,
+  message,
   onToggleVisible,
-  onSetCalendarDefault,
+  onCreateLocalCalendar,
+  onRenameLocalCalendar,
+  onRecolorLocalCalendar,
+  onArchiveLocalCalendar,
 }: {
   sources: CalendarSource[];
   calendarsBySource: Map<string, Calendar[]>;
   visible: Set<string>;
-  /** Per-calendar default publish visibility. Calendars without an
-   * entry fall back to the global "busy" default at projection time. */
-  calendarDefaults: ReadonlyMap<string, CalendarPublicVisibility>;
+  /** Optional inline status / error from the parent (e.g. "failed to
+   * archive workspace calendar"). Surfaces just below the section
+   * header so the user sees feedback even without the inspector. */
+  message?: string | null;
   onToggleVisible: (id: string) => void;
-  /** Update the default visibility for `calendarId`. Per-event
-   * overrides still beat this — see `metadataForEvent` resolution
-   * order in publicProjection.ts. */
-  onSetCalendarDefault: (calendarId: string, visibility: CalendarPublicVisibility) => void;
+  /** Spawn a new local-first calendar under the synthetic Workspace
+   * source. The parent owns the actual create call (so optimistic
+   * state stays single-sourced); we just trigger it. */
+  onCreateLocalCalendar?: () => void | Promise<void>;
+  /** Rename a local calendar in place. EventKit calendars can't be
+   * renamed from this surface — the row just won't expose the affordance. */
+  onRenameLocalCalendar?: (id: string, title: string) => void;
+  onRecolorLocalCalendar?: (id: string, colorHex: string) => void;
+  onArchiveLocalCalendar?: (id: string) => void;
 }) {
   const [sourceOrder, setSourceOrder] = useState<string[]>(() =>
     loadStringList(SOURCE_ORDER_STORAGE_KEY),
@@ -126,7 +127,13 @@ export function SourceSidebar({
   const visibleSourceGroups = useMemo(
     () =>
       orderedSources.filter(
-        (source) => (calendarsBySource.get(source.id) ?? []).length > 0,
+        (source) =>
+          // Always keep the synthetic Workspace source, even when it
+          // has no calendars yet — that's where the "+ New" affordance
+          // lives, and hiding it would mean the user has no entry
+          // point to create their first local calendar.
+          source.id === LOCAL_CALENDAR_SOURCE_ID ||
+          (calendarsBySource.get(source.id) ?? []).length > 0,
       ),
     [calendarsBySource, orderedSources],
   );
@@ -176,18 +183,33 @@ export function SourceSidebar({
     >
       <div className="calendar-source-sidebar__header">
         <p className="sidebar-context-section__label">Calendars</p>
-        <span className="sidebar-context-section__count">
-          {visibleCalendarCount}/{calendarCount}
-        </span>
+        {calendarCount > 0 ? (
+          <span className="sidebar-context-section__count">
+            {visibleCalendarCount}/{calendarCount}
+          </span>
+        ) : null}
       </div>
       {sources.length === 0 ? (
         <p className="calendar-source-sidebar__empty">
           No accounts found. Add one in System Settings - Internet Accounts.
         </p>
       ) : null}
+      {message ? (
+        <p
+          className="calendar-source-sidebar__empty"
+          role="status"
+          style={{ color: "var(--color-text-danger, #b00020)" }}
+        >
+          {message}
+        </p>
+      ) : null}
       {visibleSourceGroups.map((src) => {
         const cals = calendarsBySource.get(src.id) ?? [];
-        if (cals.length === 0) return null;
+        const isLocalSource = src.id === LOCAL_CALENDAR_SOURCE_ID;
+        // Hide non-local sources with no calendars; the synthetic
+        // Workspace source stays visible because that's where the
+        // "+ New" affordance lives.
+        if (cals.length === 0 && !isLocalSource) return null;
         const collapsed = Boolean(sourceCollapsed[src.id]);
         const listId = `calendar-source-list-${src.id.replace(/[^a-z0-9_-]/gi, "_")}`;
         return (
@@ -256,15 +278,45 @@ export function SourceSidebar({
                   <ChevronRight absoluteStrokeWidth size={10} strokeWidth={2} />
                 </span>
                 <span className="calendar-source-group__title">{src.title}</span>
-                <span className="calendar-source-group__count">{cals.length}</span>
+                {cals.length > 0 ? (
+                  <span className="calendar-source-group__count">{cals.length}</span>
+                ) : null}
                 <span className="calendar-source-group__drag" aria-hidden="true" />
               </button>
+              {isLocalSource && onCreateLocalCalendar ? (
+                <button
+                  type="button"
+                  className="calendar-source-group__add"
+                  aria-label="Add a workspace calendar"
+                  title="Add a workspace calendar"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCreateLocalCalendar();
+                  }}
+                >
+                  <Plus absoluteStrokeWidth size={12} strokeWidth={1.6} />
+                </button>
+              ) : null}
             </WorkspaceSidebarRow>
             {!collapsed ? (
               <ul id={listId} className="calendar-source-group__list">
+                {cals.length === 0 && isLocalSource ? (
+                  <li className="calendar-source-row__empty">
+                    {onCreateLocalCalendar ? (
+                      <button
+                        type="button"
+                        className="calendar-source-row__empty-action"
+                        onClick={() => {
+                          void onCreateLocalCalendar();
+                        }}
+                      >
+                        Create workspace calendar
+                      </button>
+                    ) : null}
+                  </li>
+                ) : null}
                 {cals.map((cal) => {
-                  const currentDefault =
-                    calendarDefaults.get(cal.id) ?? "busy";
+                  const isLocal = isLocalCalendarId(cal.id);
                   return (
                     <li key={cal.id}>
                       <WorkspaceSidebarRow className="calendar-source-row" depth={1}>
@@ -281,34 +333,84 @@ export function SourceSidebar({
                             style={{ background: cal.colorHex }}
                             aria-hidden="true"
                           />
-                          <span className="calendar-source-row__title">{cal.title}</span>
+                          <span className="calendar-source-row__title">
+                            {cal.title}
+                          </span>
                         </label>
-                        <select
-                          // Default visibility for events in this
-                          // calendar that don't have a per-event
-                          // override. Saves the operator from
-                          // classifying every recurring class meeting
-                          // by hand. "Hidden" is the public-site off
-                          // switch; all other values include the
-                          // calendar on /calendar. Per-event overrides
-                          // still win at resolution time.
-                          className="calendar-source-row__default"
-                          value={currentDefault}
-                          onChange={(event) =>
-                            onSetCalendarDefault(
-                              cal.id,
-                              event.target.value as CalendarPublicVisibility,
-                            )
-                          }
-                          title="Default visibility for events in this calendar (per-event overrides win)"
-                          aria-label={`Default visibility for ${cal.title}`}
-                        >
-                          {DEFAULT_VISIBILITY_LABELS.map((opt) => (
-                            <option key={opt.value} value={opt.value} title={opt.hint}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
+                        {isLocal ? (
+                          <details className="calendar-source-row__menu">
+                            <summary
+                              className="calendar-source-row__menu-button"
+                              aria-label={`Manage ${cal.title}`}
+                            >
+                              <MoreHorizontal
+                                absoluteStrokeWidth
+                                size={13}
+                                strokeWidth={1.8}
+                              />
+                            </summary>
+                            <div className="calendar-source-row__menu-popover">
+                              {onRenameLocalCalendar ? (
+                                <label className="calendar-source-row__menu-field">
+                                  <span>Name</span>
+                                  <input
+                                    type="text"
+                                    defaultValue={cal.title}
+                                    onBlur={(event) => {
+                                      const next = event.currentTarget.value.trim();
+                                      if (next && next !== cal.title) {
+                                        onRenameLocalCalendar(cal.id, next);
+                                      }
+                                      if (!next) {
+                                        event.currentTarget.value = cal.title;
+                                      }
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.preventDefault();
+                                        event.currentTarget.blur();
+                                      }
+                                      if (event.key === "Escape") {
+                                        event.currentTarget.value = cal.title;
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              ) : null}
+                              {onRecolorLocalCalendar ? (
+                                <label className="calendar-source-row__menu-field calendar-source-row__menu-field--inline">
+                                  <span>Color</span>
+                                  <input
+                                    type="color"
+                                    value={cal.colorHex}
+                                    onChange={(event) =>
+                                      onRecolorLocalCalendar(
+                                        cal.id,
+                                        event.currentTarget.value,
+                                      )
+                                    }
+                                    aria-label={`Color for ${cal.title}`}
+                                  />
+                                </label>
+                              ) : null}
+                              {onArchiveLocalCalendar ? (
+                                <button
+                                  type="button"
+                                  className="calendar-source-row__menu-action"
+                                  onClick={() => onArchiveLocalCalendar(cal.id)}
+                                >
+                                  <Trash2
+                                    absoluteStrokeWidth
+                                    size={13}
+                                    strokeWidth={1.7}
+                                  />
+                                  Archive calendar
+                                </button>
+                              ) : null}
+                            </div>
+                          </details>
+                        ) : null}
                       </WorkspaceSidebarRow>
                     </li>
                   );

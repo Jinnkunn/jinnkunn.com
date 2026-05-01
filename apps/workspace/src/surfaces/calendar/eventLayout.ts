@@ -19,6 +19,13 @@
  * and `width = 100% / totalColumns`, the same equal-split layout the
  * native app uses. */
 
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  addZonedDays,
+  isSameZonedDay,
+  zonedDayRange,
+  zonedMinuteOfDay,
+} from "../../../../../lib/shared/calendar-timezone.ts";
 import type { CalendarEvent } from "./types";
 
 export interface PositionedEvent {
@@ -45,11 +52,11 @@ const MIN_VISIBLE_MINUTES = 15;
 export function layoutDayEvents(
   events: CalendarEvent[],
   day: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): PositionedEvent[] {
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayStartMs = dayStart.getTime();
-  const dayEndMs = dayStartMs + MINUTES_PER_DAY * 60_000;
+  const dayRange = zonedDayRange(day, timeZone);
+  const dayStartMs = dayRange.startsAt.getTime();
+  const dayEndMs = dayRange.endsAt.getTime();
 
   type Candidate = {
     event: CalendarEvent;
@@ -68,8 +75,14 @@ export function layoutDayEvents(
 
     const clippedStart = Math.max(startMs, dayStartMs);
     const clippedEnd = Math.min(endMs, dayEndMs);
-    const startMinute = Math.round((clippedStart - dayStartMs) / 60_000);
-    let endMinute = Math.round((clippedEnd - dayStartMs) / 60_000);
+    const startMinute =
+      clippedStart <= dayStartMs
+        ? 0
+        : zonedMinuteOfDay(new Date(clippedStart), timeZone);
+    let endMinute =
+      clippedEnd >= dayEndMs
+        ? MINUTES_PER_DAY
+        : zonedMinuteOfDay(new Date(clippedEnd), timeZone);
     // Force a minimum block height so 5-minute meetings stay clickable.
     if (endMinute - startMinute < MIN_VISIBLE_MINUTES) {
       endMinute = Math.min(MINUTES_PER_DAY, startMinute + MIN_VISIBLE_MINUTES);
@@ -136,34 +149,33 @@ export function layoutAllDayEvents(
   events: CalendarEvent[],
   windowStart: Date,
   dayCount: number,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): AllDayBar[] {
-  const startMs = startOfLocalDay(windowStart).getTime();
-  const endMs = startMs + dayCount * MINUTES_PER_DAY * 60_000;
+  const dayRanges = Array.from({ length: dayCount }, (_, index) =>
+    zonedDayRange(addZonedDays(windowStart, index, timeZone), timeZone),
+  );
 
   const bars: AllDayBar[] = [];
   for (const ev of events) {
-    if (!ev.isAllDay && !spansMultipleDays(ev)) continue;
+    if (!ev.isAllDay && !spansMultipleDays(ev, timeZone)) continue;
     const evStartMs = new Date(ev.startsAt).getTime();
     const evEndMs = new Date(ev.endsAt).getTime();
-    if (evEndMs <= startMs || evStartMs >= endMs) continue;
-
-    const clippedStart = Math.max(evStartMs, startMs);
-    const clippedEnd = Math.min(evEndMs, endMs);
-    const startIndex = Math.floor(
-      (clippedStart - startMs) / (MINUTES_PER_DAY * 60_000),
-    );
-    // EventKit reports all-day events as start-of-day to start-of-next-day,
-    // so a single-day event has length 1, not 0. `Math.ceil` over the
-    // remaining range keeps that consistent for both all-day and timed
-    // multi-day events.
-    const lengthDays = Math.max(
-      1,
-      Math.ceil(
-        (clippedEnd - clippedStart - 1) / (MINUTES_PER_DAY * 60_000),
-      ),
-    );
-    const length = Math.min(lengthDays, dayCount - startIndex);
-    bars.push({ event: ev, startIndex, length });
+    let firstIndex = -1;
+    let lastIndex = -1;
+    for (let index = 0; index < dayRanges.length; index += 1) {
+      const range = dayRanges[index];
+      if (evEndMs <= range.startsAt.getTime() || evStartMs >= range.endsAt.getTime()) {
+        continue;
+      }
+      if (firstIndex === -1) firstIndex = index;
+      lastIndex = index;
+    }
+    if (firstIndex === -1 || lastIndex === -1) continue;
+    bars.push({
+      event: ev,
+      startIndex: firstIndex,
+      length: lastIndex - firstIndex + 1,
+    });
   }
 
   // Stable sort: earlier-starting and longer-running bars first, so
@@ -175,18 +187,11 @@ export function layoutAllDayEvents(
   return bars;
 }
 
-function startOfLocalDay(d: Date): Date {
-  const out = new Date(d);
-  out.setHours(0, 0, 0, 0);
-  return out;
-}
-
-function spansMultipleDays(ev: CalendarEvent): boolean {
+function spansMultipleDays(
+  ev: CalendarEvent,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): boolean {
   const start = new Date(ev.startsAt);
   const end = new Date(ev.endsAt);
-  return (
-    start.getFullYear() !== end.getFullYear() ||
-    start.getMonth() !== end.getMonth() ||
-    start.getDate() !== end.getDate()
-  );
+  return !isSameZonedDay(start, end, timeZone);
 }

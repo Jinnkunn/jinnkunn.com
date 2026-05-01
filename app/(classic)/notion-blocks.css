@@ -108,7 +108,7 @@
 .notion-root span[data-link-style="icon"] > a.notion-link.link,
 .notion-root a[data-link-style="icon"].notion-link.link {
   text-decoration-line: underline;
-  text-decoration-color: rgba(55, 53, 47, 0.55);
+  text-decoration-color: var(--ds-toc-underline);
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
   text-decoration-skip-ink: auto;

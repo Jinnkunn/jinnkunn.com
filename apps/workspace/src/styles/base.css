@@ -111,6 +111,55 @@ code {
 }
 
 /* ------------------------------------------------------------------ *
+ * Material helpers
+ *
+ * These are intentionally low-contrast. The goal is a tactile edge and
+ * a faint frosted texture on raised panes, while preserving the quiet
+ * productivity-app tone of the workspace.
+ * ------------------------------------------------------------------ */
+.material-panel,
+.material-popover {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 42%),
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--color-text-primary) 7%, transparent) 0 0.45px,
+      transparent 0.72px
+    ),
+    var(--surface-tint);
+  background-size: auto, 3px 3px, auto;
+  box-shadow: var(--shadow-raised);
+}
+
+.material-popover {
+  background:
+    linear-gradient(180deg, var(--surface-highlight), transparent 38%),
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
+      transparent 0.72px
+    ),
+    color-mix(in srgb, var(--color-bg-popover) 98%, transparent);
+  background-size: auto, 3px 3px, auto;
+  box-shadow: var(--shadow-floating);
+}
+
+@supports (backdrop-filter: blur(22px)) or (-webkit-backdrop-filter: blur(22px)) {
+  .material-panel,
+  .material-popover {
+    backdrop-filter: saturate(180%) blur(22px);
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+  }
+
+  .material-popover {
+    backdrop-filter: saturate(220%) blur(30px);
+    -webkit-backdrop-filter: saturate(220%) blur(30px);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * macOS-style overlay scrollbars. Mac has thin (8 px) scrollbars
  * that fade in on hover and disappear when idle; the web default is
  * a fat 17 px persistent strip. The `scrollbar-width: thin` /

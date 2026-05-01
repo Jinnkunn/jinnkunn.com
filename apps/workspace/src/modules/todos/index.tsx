@@ -12,7 +12,7 @@ export const TODOS_MODULE: WorkspaceModuleDefinition = {
   surface: {
     id: "todos",
     title: "Todos",
-    description: "Local task list",
+    description: "Tasks",
     icon: <TodosIcon />,
     Component: TodosSurface,
     navGroups: TODOS_NAV_GROUPS,
@@ -21,7 +21,7 @@ export const TODOS_MODULE: WorkspaceModuleDefinition = {
   dashboardActions: [
     {
       id: "todos:open",
-      description: "Today plan",
+      description: "Today",
       label: "Todos",
       navItemId: TODOS_DEFAULT_NAV_ITEM_ID,
       surfaceId: "todos",
@@ -30,7 +30,7 @@ export const TODOS_MODULE: WorkspaceModuleDefinition = {
   commandActions: [
     {
       id: "quick:todos",
-      hint: "Today plan",
+      hint: "Today",
       keywords: "todos tasks checklist today upcoming scheduled inbox due",
       label: "Open Today",
       navItemId: TODOS_DEFAULT_NAV_ITEM_ID,

@@ -5,6 +5,10 @@ description = "Personal workspace shell (site-admin first)"
 authors = ["Jinnkunn"]
 edition = "2021"
 
+[lib]
+name = "jinnkunn_workspace"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
 

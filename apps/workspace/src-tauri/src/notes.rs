@@ -525,6 +525,11 @@ pub async fn notes_update(
         .unwrap_or(Some(existing.title))
         .map(|value| normalize_title(Some(value)))
         .unwrap_or_else(|| DEFAULT_TITLE.to_string());
+    let body_changed = params
+        .body_mdx
+        .as_ref()
+        .map(|next| next != &existing.body_mdx)
+        .unwrap_or(false);
     let body_mdx = params.body_mdx.unwrap_or(existing.body_mdx);
     let icon = match params.icon {
         Some(next) => normalize_icon(next),
@@ -538,6 +543,16 @@ pub async fn notes_update(
         params![title, body_mdx, icon, now, id],
     )
     .map_err(|err| format!("notes_update: update failed: {err}"))?;
+    // Re-resolve `@<contact name>` mentions whenever the body actually
+    // changed. Skipping no-op saves avoids a redundant re-scan on
+    // title-only updates. Errors here are non-fatal — the note write
+    // is the user's primary intent and mention rows can re-sync on
+    // the next save.
+    if body_changed {
+        if let Err(err) = crate::contacts::sync_note_mentions(&conn, &id, &body_mdx) {
+            eprintln!("[notes_update] mention sync failed: {err}");
+        }
+    }
     notes_get(app, id)
         .await?
         .ok_or_else(|| "notes_update: updated note disappeared".to_string())

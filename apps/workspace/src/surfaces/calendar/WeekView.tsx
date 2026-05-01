@@ -3,9 +3,18 @@ import { useEffect, useMemo, useRef } from "react";
 import { isSameDay, weekDays } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents } from "./eventLayout";
-import { TimeGrid, HOUR_HEIGHT, TIME_GUTTER_WIDTH } from "./TimeGrid";
+import {
+  TimeGrid,
+  HOUR_HEIGHT,
+  TIME_GUTTER_WIDTH,
+  type CalendarTimeSlotSelection,
+} from "./TimeGrid";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import type { TodoRow } from "../../modules/todos/api";
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  formatInTimeZone,
+} from "../../../../../lib/shared/calendar-timezone.ts";
 
 const ALL_DAY_BAR_HEIGHT = 18;
 const ALL_DAY_BAR_GAP = 2;
@@ -22,7 +31,9 @@ export function WeekView({
   onEventSelect,
   onTodoSelect,
   onTodoToggle,
+  onSlotCreate,
   getDisclosure,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
   anchor: Date;
   events: CalendarEvent[];
@@ -31,13 +42,15 @@ export function WeekView({
   onEventSelect?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
+  onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone?: string;
 }) {
-  const days = useMemo(() => weekDays(anchor), [anchor]);
+  const days = useMemo(() => weekDays(anchor, timeZone), [anchor, timeZone]);
 
   const allDayBars = useMemo(
-    () => layoutAllDayEvents(events, days[0], days.length),
-    [events, days],
+    () => layoutAllDayEvents(events, days[0], days.length, timeZone),
+    [events, days, timeZone],
   );
 
   const allDayRowCount = stackRows(allDayBars).length;
@@ -52,7 +65,7 @@ export function WeekView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <WeekHeader days={days} />
+      <WeekHeader days={days} timeZone={timeZone} />
       {allDayBars.length > 0 ? (
         <AllDayStrip
           days={days}
@@ -72,14 +85,16 @@ export function WeekView({
           onEventSelect={onEventSelect}
           onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
+          onSlotCreate={onSlotCreate}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
         />
       </div>
     </div>
   );
 }
 
-function WeekHeader({ days }: { days: Date[] }) {
+function WeekHeader({ days, timeZone }: { days: Date[]; timeZone: string }) {
   const today = new Date();
   return (
     <div
@@ -90,14 +105,14 @@ function WeekHeader({ days }: { days: Date[] }) {
     >
       <div />
       {days.map((day) => {
-        const isToday = isSameDay(day, today);
+        const isToday = isSameDay(day, today, timeZone);
         return (
           <div
             key={day.toISOString()}
             className="flex flex-col items-center justify-center py-2 gap-0.5"
           >
             <span className="text-[10px] font-semibold tracking-[0.06em] text-text-muted uppercase">
-              {day.toLocaleDateString(undefined, { weekday: "short" })}
+              {formatInTimeZone(day, timeZone, { weekday: "short" })}
             </span>
             <span
               className={
@@ -106,7 +121,7 @@ function WeekHeader({ days }: { days: Date[] }) {
                   : "text-[13px] font-semibold text-text-primary tabular-nums"
               }
             >
-              {day.getDate()}
+              {formatInTimeZone(day, timeZone, { day: "numeric" })}
             </span>
           </div>
         );

@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent, type PointerEvent } from "react";
 
 import { isSameDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutDayEvents, type PositionedEvent } from "./eventLayout";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import type { TodoRow } from "../../modules/todos/api";
+import {
+  DEFAULT_CALENDAR_TIME_ZONE,
+  formatInTimeZone,
+  zonedDateAtMinute,
+  zonedMinuteOfDay,
+} from "../../../../../lib/shared/calendar-timezone.ts";
 import {
   todoTimelineEnd,
   todoTimelineKind,
@@ -19,7 +25,18 @@ export const HOUR_HEIGHT = 44;
 export const TIME_GUTTER_WIDTH = 56;
 
 const HOURS_PER_DAY = 24;
+const MINUTES_PER_DAY = HOURS_PER_DAY * 60;
 const APPLE_RED = "#FF3B30";
+const CREATE_SLOT_MINUTES = 15;
+
+export interface CalendarTimeSlotSelection {
+  startsAt: Date;
+  endsAt?: Date;
+  point: {
+    x: number;
+    y: number;
+  };
+}
 
 /** Shared timeline used by Day and Week views. Renders one column per
  * date in `days`, each with hour gridlines and absolutely positioned
@@ -36,7 +53,9 @@ export function TimeGrid({
   onEventSelect,
   onTodoSelect,
   onTodoToggle,
+  onSlotCreate,
   getDisclosure,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
   days: Date[];
   events: CalendarEvent[];
@@ -50,12 +69,14 @@ export function TimeGrid({
   /** Leading todo controls flip completion. The parent keeps the
    * source-of-truth list in sync (optimistic + retry). */
   onTodoToggle?: (id: string, completed: boolean) => void;
+  onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone?: string;
 }) {
   const totalHeight = HOUR_HEIGHT * HOURS_PER_DAY;
   const now = useNow();
-  const todayIdx = days.findIndex((d) => isSameDay(d, now));
-  const nowMinute = now.getHours() * 60 + now.getMinutes();
+  const todayIdx = days.findIndex((d) => isSameDay(d, now, timeZone));
+  const nowMinute = zonedMinuteOfDay(now, timeZone);
   const nowTopPx = (nowMinute / 60) * HOUR_HEIGHT;
 
   return (
@@ -67,8 +88,8 @@ export function TimeGrid({
     >
       <HourGutter totalHeight={totalHeight} nowTopPx={todayIdx >= 0 ? nowTopPx : null} />
       {days.map((day, idx) => {
-        const positioned = layoutDayEvents(events, day);
-        const dayTodos = layoutDayTodos(todos, day);
+        const positioned = layoutDayEvents(events, day, timeZone);
+        const dayTodos = layoutDayTodos(todos, day, timeZone);
         const isToday = idx === todayIdx;
         return (
           <DayColumn
@@ -80,7 +101,9 @@ export function TimeGrid({
             onEventSelect={onEventSelect}
             onTodoSelect={onTodoSelect}
             onTodoToggle={onTodoToggle}
+            onSlotCreate={onSlotCreate}
             getDisclosure={getDisclosure}
+            timeZone={timeZone}
             totalHeight={totalHeight}
             nowTopPx={isToday ? nowTopPx : null}
             // Right edge of each column except the last gets a vertical
@@ -109,24 +132,28 @@ const TODO_CHIP_HEIGHT = 22;
  * comparison) and stamp each with the within-day minute offset the
  * chip should sit at. Untimed and archived todos are dropped — those
  * belong in the Todos surface, not the timeline. */
-function layoutDayTodos(todos: readonly TodoRow[], day: Date): PositionedTodo[] {
+function layoutDayTodos(
+  todos: readonly TodoRow[],
+  day: Date,
+  timeZone: string,
+): PositionedTodo[] {
   const out: PositionedTodo[] = [];
   for (const todo of todos) {
     if (todo.archivedAt !== null) continue;
     const start = todoTimelineStart(todo);
     if (start === null) continue;
     const startDate = new Date(start);
-    if (!isSameDay(startDate, day)) continue;
+    if (!isSameDay(startDate, day, timeZone)) continue;
     const end = todoTimelineEnd(todo);
     const endDate = end === null ? null : new Date(end);
     const endMinute =
-      endDate !== null && isSameDay(endDate, day)
-        ? endDate.getHours() * 60 + endDate.getMinutes()
+      endDate !== null && isSameDay(endDate, day, timeZone)
+        ? zonedMinuteOfDay(endDate, timeZone)
         : null;
     out.push({
       todo,
       kind: todoTimelineKind(todo),
-      startMinute: startDate.getHours() * 60 + startDate.getMinutes(),
+      startMinute: zonedMinuteOfDay(startDate, timeZone),
       endMinute,
     });
   }
@@ -188,7 +215,9 @@ function DayColumn({
   onEventSelect,
   onTodoSelect,
   onTodoToggle,
+  onSlotCreate,
   getDisclosure,
+  timeZone,
   totalHeight,
   nowTopPx,
   withRightBorder,
@@ -200,11 +229,46 @@ function DayColumn({
   onEventSelect?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
+  onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone: string;
   totalHeight: number;
   nowTopPx: number | null;
   withRightBorder: boolean;
 }) {
+  const [dragSelection, setDragSelection] = useState<{
+    startMinute: number;
+    endMinute: number;
+    originY: number;
+    pointerId: number;
+    point: { x: number; y: number };
+  } | null>(null);
+  const selectedStartMinute = dragSelection
+    ? Math.min(dragSelection.startMinute, dragSelection.endMinute)
+    : 0;
+  const selectedEndMinute = dragSelection
+    ? Math.max(dragSelection.startMinute, dragSelection.endMinute)
+    : 0;
+  const selectedHeight = Math.max(
+    CREATE_SLOT_MINUTES,
+    selectedEndMinute - selectedStartMinute,
+  );
+
+  const minuteFromPointer = (
+    event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const rawY = Math.max(0, Math.min(totalHeight, event.clientY - rect.top));
+    const rawMinute = (rawY / HOUR_HEIGHT) * 60;
+    return Math.max(
+      0,
+      Math.min(
+        MINUTES_PER_DAY,
+        Math.round(rawMinute / CREATE_SLOT_MINUTES) * CREATE_SLOT_MINUTES,
+      ),
+    );
+  };
+
   return (
     <div
       className="relative"
@@ -223,7 +287,84 @@ function DayColumn({
           : undefined,
       }}
       data-day={day.toISOString()}
+      onPointerDown={(event) => {
+        if (!onSlotCreate) return;
+        if (event.button !== 0) return;
+        if ((event.target as HTMLElement | null)?.closest("button")) return;
+        const minute = minuteFromPointer(event);
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setDragSelection({
+          startMinute: minute,
+          endMinute: minute,
+          originY: event.clientY,
+          pointerId: event.pointerId,
+          point: { x: event.clientX, y: event.clientY },
+        });
+      }}
+      onPointerMove={(event) => {
+        if (!dragSelection || event.pointerId !== dragSelection.pointerId) return;
+        const minute = minuteFromPointer(event);
+        setDragSelection((current) =>
+          current && current.pointerId === event.pointerId
+            ? { ...current, endMinute: minute }
+            : current,
+        );
+      }}
+      onPointerUp={(event) => {
+        if (!dragSelection || event.pointerId !== dragSelection.pointerId) return;
+        const moved = Math.abs(event.clientY - dragSelection.originY);
+        const startMinute = Math.min(
+          dragSelection.startMinute,
+          dragSelection.endMinute,
+        );
+        let endMinute = Math.max(
+          dragSelection.startMinute,
+          dragSelection.endMinute,
+        );
+        if (endMinute <= startMinute) endMinute = startMinute + CREATE_SLOT_MINUTES;
+        endMinute = Math.min(MINUTES_PER_DAY, endMinute);
+        setDragSelection(null);
+        if (moved < 6 && endMinute - startMinute <= CREATE_SLOT_MINUTES) return;
+        onSlotCreate?.({
+          startsAt: zonedDateAtMinute(day, startMinute, timeZone),
+          endsAt: zonedDateAtMinute(day, endMinute, timeZone),
+          point: dragSelection.point,
+        });
+      }}
+      onPointerCancel={() => setDragSelection(null)}
+      onDoubleClick={(event) => {
+        if (!onSlotCreate) return;
+        if ((event.target as HTMLElement | null)?.closest("button")) return;
+        const minute = minuteFromPointer(event);
+        onSlotCreate({
+          startsAt: zonedDateAtMinute(day, minute, timeZone),
+          endsAt: zonedDateAtMinute(
+            day,
+            Math.min(MINUTES_PER_DAY, minute + CREATE_SLOT_MINUTES * 4),
+            timeZone,
+          ),
+          point: { x: event.clientX, y: event.clientY },
+        });
+      }}
     >
+      {dragSelection ? (
+        <div
+          className="calendar-time-selection"
+          style={{
+            top: `${(selectedStartMinute / 60) * HOUR_HEIGHT}px`,
+            height: `${(selectedHeight / 60) * HOUR_HEIGHT}px`,
+          }}
+          aria-hidden="true"
+        >
+          <span>
+            {formatMinuteOfDay(selectedStartMinute)}
+            {" - "}
+            {formatMinuteOfDay(
+              Math.min(MINUTES_PER_DAY, selectedStartMinute + selectedHeight),
+            )}
+          </span>
+        </div>
+      ) : null}
       {positioned.map((p) => (
         <EventBlock
           key={`${p.event.eventIdentifier}-${day.toISOString()}`}
@@ -231,6 +372,7 @@ function DayColumn({
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
         />
       ))}
       {todos.map((t) => (
@@ -269,11 +411,13 @@ function EventBlock({
   calendarsById,
   onEventSelect,
   getDisclosure,
+  timeZone,
 }: {
   positioned: PositionedEvent;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone: string;
 }) {
   const { event, column, totalColumns, startMinute, endMinute } = positioned;
   const cal = calendarsById.get(event.calendarId);
@@ -312,7 +456,7 @@ function EventBlock({
         ) : null}
         {height >= HOUR_HEIGHT * 0.6 && !event.isAllDay ? (
           <div className="text-text-secondary truncate">
-            {formatHM(event.startsAt)}
+            {formatHM(event.startsAt, timeZone)}
             {event.location ? ` · ${event.location}` : ""}
           </div>
         ) : null}
@@ -430,8 +574,8 @@ function formatHourLabel(hour: number): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric" });
 }
 
-function formatHM(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, {
+function formatHM(iso: string, timeZone: string): string {
+  return formatInTimeZone(iso, timeZone, {
     hour: "numeric",
     minute: "2-digit",
   });

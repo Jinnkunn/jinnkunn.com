@@ -284,7 +284,7 @@
 }
 
 .sidebar-context-header__title {
-  margin: 2px 0 0;
+  margin: 0;
   overflow: hidden;
   color: var(--color-text-primary);
   font-size: var(--font-size-subhead);

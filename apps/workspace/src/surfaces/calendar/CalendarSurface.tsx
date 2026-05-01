@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { Settings2 } from "lucide-react";
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
@@ -78,6 +86,7 @@ import {
   saveVisibilityPrefs,
 } from "./visibilityPrefs";
 import { WeekView } from "./WeekView";
+import type { CalendarTimeSlotSelection } from "./TimeGrid";
 import {
   todosList,
   todosUpdate,
@@ -100,12 +109,77 @@ import {
   type TodoSchedulePreset,
 } from "../../modules/todos/planning";
 import { todoTimelineStart } from "../../modules/todos/time";
+import {
+  LOCAL_CALENDAR_SOURCE,
+  LOCAL_CALENDAR_SOURCE_ID,
+  isLocalCalendarId,
+  isLocalEventId,
+  localCalendarArchiveCalendar,
+  localCalendarArchiveEvent,
+  localCalendarCreateCalendar,
+  localCalendarFetchEvents,
+  localCalendarListCalendars,
+  localCalendarUpdateCalendar,
+  localCalendarUpdateEvent,
+  localCalendarUnarchiveEvent,
+  type LocalCalendarRow,
+  type LocalCalendarEventRow,
+} from "../../modules/calendar/localCalendarApi";
+import {
+  CALENDAR_TIME_ZONE_OPTIONS,
+  DEFAULT_CALENDAR_TIME_ZONE,
+  calendarTimeZoneLabel,
+  formatInTimeZone,
+  fromZonedDateTimeInputValue,
+  normalizeCalendarTimeZone,
+  toZonedDateTimeInputValue,
+} from "../../../../../lib/shared/calendar-timezone.ts";
+
+/** localStorage key for the "skip EventKit gate" preference. Stored as
+ * the string `"true"` when set; absent otherwise. Kept here so the
+ * useState initializer has a single source of truth. */
+const LOCAL_ONLY_STORAGE_KEY = "workspace.calendar.localOnly.v1";
+const TIME_ZONE_STORAGE_KEY = "workspace.calendar.timeZone.v1";
+const DEFAULT_WORKSPACE_CALENDAR_TITLE = "Personal";
+const DEFAULT_WORKSPACE_CALENDAR_COLOR = "#0a84ff";
+
+const DEFAULT_VISIBILITY_LABELS: Array<{
+  value: CalendarPublicVisibility;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "hidden",
+    label: "Hidden",
+    hint: "Skip every event in this calendar from /calendar",
+  },
+  {
+    value: "busy",
+    label: "Busy",
+    hint: "Show as anonymous busy block on /calendar",
+  },
+  {
+    value: "titleOnly",
+    label: "Title",
+    hint: "Show title + time, hide notes/location",
+  },
+  {
+    value: "full",
+    label: "Full",
+    hint: "Show title, time, notes, location, URL",
+  },
+];
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = "idle" | "publishing" | "success" | "error";
 type PublishSummary = Record<CalendarPublicVisibility, number>;
 type CalendarSyncReason = "auto" | "manual";
 type TodoUpdatePatch = Omit<TodosUpdateParams, "id">;
+type EventComposerDraft = {
+  anchor: Date;
+  endsAt?: Date;
+  point: { x: number; y: number } | null;
+};
 type CalendarSyncHealth = {
   lastSyncedAt: string | null;
   eventCount: number;
@@ -119,16 +193,43 @@ function isAuthorized(status: CalendarAuthorizationStatus): boolean {
   return status === "fullAccess" || status === "writeOnly";
 }
 
+function loadCalendarTimeZone(): string {
+  try {
+    return normalizeCalendarTimeZone(
+      localStorage.getItem(TIME_ZONE_STORAGE_KEY) ?? DEFAULT_CALENDAR_TIME_ZONE,
+    );
+  } catch {
+    return DEFAULT_CALENDAR_TIME_ZONE;
+  }
+}
+
 /** Top-level orchestrator. Owns the auth handshake, the
  * sources/calendars/events data fetch, and the active view +
  * navigation anchor. Each rendered view (Day / Week / Month / Agenda)
  * is a thin presentation component over the same event list. */
 export function CalendarSurface() {
   const { setContextAccessory } = useSurfaceNav();
+  const [timeZone, setTimeZoneState] = useState<string>(() =>
+    loadCalendarTimeZone(),
+  );
   const [view, setView] = useState<ViewKind>("week");
-  const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
+  const [anchor, setAnchor] = useState<Date>(() =>
+    startOfDay(new Date(), loadCalendarTimeZone()),
+  );
 
   const [auth, setAuth] = useState<CalendarAuthorizationStatus>("notDetermined");
+  // Opt-out of the EventKit gate. When the user clicks "Skip — use
+  // workspace calendar only" on the permission prompt, we set this
+  // flag so the surface renders even with `notDetermined`/`denied`
+  // status, falling back to local-first calendars exclusively. The
+  // setting is persisted so a relaunch lands on the same path.
+  const [localOnlyMode, setLocalOnlyMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LOCAL_ONLY_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sources, setSources] = useState<CalendarSource[]>([]);
@@ -166,6 +267,20 @@ export function CalendarSurface() {
     [],
   );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  // Local-first workspace calendars + their events. Live entirely in
+  // workspace.db (see local_calendar.rs); loaded independently of
+  // EventKit so the surface keeps working when calendar permission is
+  // denied or the user hasn't granted it yet. Merged into the
+  // sources/calendars/events arrays via the memos below so views,
+  // SourceSidebar, and EventComposer all see one unified list.
+  const [localCalendars, setLocalCalendars] = useState<LocalCalendarRow[]>([]);
+  const [localCalendarsLoaded, setLocalCalendarsLoaded] = useState(false);
+  const [localEvents, setLocalEvents] = useState<LocalCalendarEventRow[]>([]);
+  const [localCalendarMessage, setLocalCalendarMessage] = useState<string | null>(
+    null,
+  );
+  const [localEventUndo, setLocalEventUndo] =
+    useState<LocalCalendarEventRow | null>(null);
   // Todos overlaid on the timeline (Day / Week views) and folded into
   // the Agenda list. Loaded once at mount + after every toggle so the
   // overlay stays in sync without subscribing to a Tauri event we
@@ -173,6 +288,13 @@ export function CalendarSurface() {
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
+  const [composerDraft, setComposerDraft] = useState<EventComposerDraft | null>(
+    null,
+  );
+  const [publishPanelOpen, setPublishPanelOpen] = useState(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
+  const [todoTrayExpanded, setTodoTrayExpanded] = useState(false);
   const [todoMessage, setTodoMessage] = useState<string | null>(null);
   const [publishMetadata, setPublishMetadata] =
     useState<CalendarPublishMetadataStore>(() => emptyMetadataStore());
@@ -190,10 +312,42 @@ export function CalendarSurface() {
   });
   const lastAutoSyncKeyRef = useRef("");
   const initializedVisibleCalendarsRef = useRef(false);
+  const defaultWorkspaceCalendarCreatedRef = useRef(false);
+
+  const openEventComposer = useCallback(
+    (
+      nextAnchor: Date = anchor,
+      point: EventComposerDraft["point"] = null,
+      endsAt?: Date,
+    ) => {
+      setSelectedEvent(null);
+      setSelectedTodoId(null);
+      setComposerDraft({
+        anchor: new Date(nextAnchor),
+        endsAt: endsAt ? new Date(endsAt) : undefined,
+        point,
+      });
+    },
+    [anchor],
+  );
+
+  const handleTimeZoneChange = useCallback((nextValue: string) => {
+    const next = normalizeCalendarTimeZone(nextValue);
+    try {
+      localStorage.setItem(TIME_ZONE_STORAGE_KEY, next);
+    } catch {
+      // Keep the in-memory selection even when storage is unavailable.
+    }
+    setTimeZoneState(next);
+    setAnchor((current) => startOfDay(current, next));
+  }, []);
 
   // Refetch whenever the user pages forward/back or switches view —
   // each combination implies a different EventKit query window.
-  const range = useMemo(() => rangeForView(view, anchor), [view, anchor]);
+  const range = useMemo(
+    () => rangeForView(view, anchor, timeZone),
+    [view, anchor, timeZone],
+  );
 
   // Read authorization status (no prompt) on mount.
   useEffect(() => {
@@ -309,6 +463,227 @@ export function CalendarSurface() {
     };
   }, []);
 
+  // Local calendars also live in workspace.db — completely independent
+  // of EventKit. Load once on mount; CRUD callbacks below keep state
+  // in sync after the initial fetch.
+  useEffect(() => {
+    let cancelled = false;
+    localCalendarListCalendars()
+      .then((rows) => {
+        if (!cancelled) {
+          setLocalCalendars(rows);
+          setLocalCalendarsLoaded(true);
+        }
+      })
+      .catch(() => {
+        // Quiet — local calendar is optional. Errors will resurface
+        // the next time the user attempts a CRUD action via setMessage.
+        if (!cancelled) setLocalCalendarsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Local events refetch whenever the visible range changes, mirroring
+  // the EventKit fetch but driven from workspace.db. Independent of
+  // auth — runs even when calendar permission is denied.
+  useEffect(() => {
+    let cancelled = false;
+    localCalendarFetchEvents({
+      startsAt: range.startsAt,
+      endsAt: range.endsAt,
+      calendarIds: [],
+    })
+      .then((rows) => {
+        if (!cancelled) setLocalEvents(rows);
+      })
+      .catch(() => {
+        // Quiet — same rationale as the calendar list above.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
+
+  const upsertLocalCalendar = useCallback((row: LocalCalendarRow) => {
+    setLocalCalendars((prev) => {
+      const existingIdx = prev.findIndex((c) => c.id === row.id);
+      if (existingIdx === -1) return [...prev, row];
+      const next = [...prev];
+      next[existingIdx] = row;
+      return next;
+    });
+  }, []);
+
+  const upsertLocalEvent = useCallback((row: LocalCalendarEventRow) => {
+    setLocalEvents((prev) => {
+      const existingIdx = prev.findIndex(
+        (e) => e.eventIdentifier === row.eventIdentifier,
+      );
+      if (existingIdx === -1) return [...prev, row];
+      const next = [...prev];
+      next[existingIdx] = row;
+      return next;
+    });
+  }, []);
+
+  const handleComposerCreated = useCallback(
+    (saved: CalendarEvent) => {
+      if (isLocalEventId(saved.eventIdentifier)) {
+        upsertLocalEvent(saved as LocalCalendarEventRow);
+      } else {
+        setEvents((prev) => [...prev, saved]);
+        setCalendarChangeRevision((revision) => revision + 1);
+      }
+      setComposerDraft(null);
+      setSelectedTodoId(null);
+      setSelectedEvent(saved);
+    },
+    [upsertLocalEvent],
+  );
+
+  const createLocalCalendar = useCallback(
+    async (
+      params: { title?: string; colorHex?: string } = {},
+    ): Promise<LocalCalendarRow | null> => {
+      setLocalCalendarMessage(null);
+      try {
+        const row = await localCalendarCreateCalendar(params);
+        upsertLocalCalendar(row);
+        return row;
+      } catch (error) {
+        setLocalCalendarMessage(
+          `Failed to create workspace calendar: ${String(error)}`,
+        );
+        return null;
+      }
+    },
+    [upsertLocalCalendar],
+  );
+
+  const updateLocalCalendar = useCallback(
+    async (id: string, patch: { title?: string; colorHex?: string }) => {
+      setLocalCalendarMessage(null);
+      try {
+        const row = await localCalendarUpdateCalendar({ id, ...patch });
+        upsertLocalCalendar(row);
+      } catch (error) {
+        setLocalCalendarMessage(
+          `Failed to update workspace calendar: ${String(error)}`,
+        );
+      }
+    },
+    [upsertLocalCalendar],
+  );
+
+  const archiveLocalCalendar = useCallback(
+    async (id: string) => {
+      setLocalCalendarMessage(null);
+      try {
+        await localCalendarArchiveCalendar(id);
+        setLocalCalendars((prev) => prev.filter((c) => c.id !== id));
+        // The events list must also drop archived rows so views don't
+        // keep stale data on screen until the next range refetch.
+        setLocalEvents((prev) => prev.filter((e) => e.calendarId !== id));
+      } catch (error) {
+        setLocalCalendarMessage(
+          `Failed to archive workspace calendar: ${String(error)}`,
+        );
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!localOnlyMode || !localCalendarsLoaded) return;
+    if (localCalendars.length > 0) return;
+    if (defaultWorkspaceCalendarCreatedRef.current) return;
+    defaultWorkspaceCalendarCreatedRef.current = true;
+    void createLocalCalendar({
+      colorHex: DEFAULT_WORKSPACE_CALENDAR_COLOR,
+      title: DEFAULT_WORKSPACE_CALENDAR_TITLE,
+    }).then((row) => {
+      if (!row) {
+        defaultWorkspaceCalendarCreatedRef.current = false;
+        return;
+      }
+      setLocalCalendarMessage(
+        `Created ${DEFAULT_WORKSPACE_CALENDAR_TITLE} workspace calendar.`,
+      );
+    });
+  }, [
+    createLocalCalendar,
+    localCalendars.length,
+    localCalendarsLoaded,
+    localOnlyMode,
+  ]);
+
+  const updateLocalEvent = useCallback(
+    async (
+      id: string,
+      patch: {
+        calendarId?: string;
+        title?: string;
+        startsAt?: string;
+        endsAt?: string;
+        isAllDay?: boolean;
+        notes?: string | null;
+        location?: string | null;
+        url?: string | null;
+      },
+    ) => {
+      setLocalCalendarMessage(null);
+      try {
+        const row = await localCalendarUpdateEvent({ id, ...patch });
+        upsertLocalEvent(row);
+        // Keep the inspector in sync with the freshly-saved row.
+        if (selectedEvent && selectedEvent.eventIdentifier === id) {
+          setSelectedEvent(row);
+        }
+      } catch (error) {
+        setLocalCalendarMessage(`Failed to update event: ${String(error)}`);
+      }
+    },
+    [selectedEvent, upsertLocalEvent],
+  );
+
+  const archiveLocalEvent = useCallback(
+    async (id: string) => {
+      setLocalCalendarMessage(null);
+      try {
+        const archived =
+          localEvents.find((event) => event.eventIdentifier === id) ??
+          (selectedEvent && selectedEvent.eventIdentifier === id
+            ? (selectedEvent as LocalCalendarEventRow)
+            : null);
+        await localCalendarArchiveEvent(id);
+        setLocalEvents((prev) => prev.filter((e) => e.eventIdentifier !== id));
+        if (archived) setLocalEventUndo(archived);
+        if (selectedEvent && selectedEvent.eventIdentifier === id) {
+          setSelectedEvent(null);
+        }
+      } catch (error) {
+        setLocalCalendarMessage(`Failed to archive event: ${String(error)}`);
+      }
+    },
+    [localEvents, selectedEvent],
+  );
+
+  const undoArchiveLocalEvent = useCallback(async () => {
+    if (!localEventUndo) return;
+    setLocalCalendarMessage(null);
+    try {
+      const row = await localCalendarUnarchiveEvent(localEventUndo.eventIdentifier);
+      upsertLocalEvent(row);
+      setSelectedTodoId(null);
+      setSelectedEvent(row);
+      setLocalEventUndo(null);
+    } catch (error) {
+      setLocalCalendarMessage(`Failed to restore event: ${String(error)}`);
+    }
+  }, [localEventUndo, upsertLocalEvent]);
+
   const upsertTodo = useCallback((row: TodoRow) => {
     setTodos((prev) =>
       sortCalendarTodos([
@@ -324,11 +699,13 @@ export function CalendarSurface() {
   );
 
   const handleTodoSelect = useCallback((todo: TodoRow) => {
+    setComposerDraft(null);
     setSelectedEvent(null);
     setSelectedTodoId(todo.id);
   }, []);
 
   const handleEventSelect = useCallback((event: CalendarEvent) => {
+    setComposerDraft(null);
     setSelectedTodoId(null);
     setSelectedEvent(event);
   }, []);
@@ -447,11 +824,27 @@ export function CalendarSurface() {
         target?.isContentEditable;
       if (isEditable) return;
       event.preventDefault();
-      setComposerOpen(true);
+      openEventComposer();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [openEventComposer]);
+
+  useEffect(() => {
+    if (!composerDraft) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(".calendar-event-composer") ||
+        target?.closest(".calendar-commandbar__actions")
+      ) {
+        return;
+      }
+      setComposerDraft(null);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [composerDraft]);
 
   // Bridge native AppKit menubar → calendar actions. The `useNativeMenu`
   // hook (mounted in App.tsx) re-broadcasts every menu selection as a
@@ -464,16 +857,16 @@ export function CalendarSurface() {
       if (!id) return;
       switch (id) {
         case "menu-new-event":
-          setComposerOpen(true);
+          openEventComposer();
           break;
         case "menu-cal-today":
-          setAnchor(startOfDay(new Date()));
+          setAnchor(startOfDay(new Date(), timeZone));
           break;
         case "menu-cal-prev":
-          setAnchor((current) => navigateView(view, current, -1));
+          setAnchor((current) => navigateView(view, current, -1, timeZone));
           break;
         case "menu-cal-next":
-          setAnchor((current) => navigateView(view, current, 1));
+          setAnchor((current) => navigateView(view, current, 1, timeZone));
           break;
         case "menu-cal-day":
           setView("day");
@@ -493,23 +886,75 @@ export function CalendarSurface() {
     }
     window.addEventListener("workspace:menu", onMenu);
     return () => window.removeEventListener("workspace:menu", onMenu);
-  }, [view]);
+  }, [openEventComposer, timeZone, view]);
+
+  // Merge EventKit + local-first sources. The synthetic Workspace
+  // source is always included so the SourceSidebar can render an
+  // "Add calendar" affordance even before any local calendars exist.
+  // Local calendars carry sourceId = LOCAL_CALENDAR_SOURCE_ID; the
+  // grouping by source below collects them under the synthetic header.
+  const mergedSources = useMemo<CalendarSource[]>(() => {
+    const out = [...sources];
+    if (!out.some((s) => s.id === LOCAL_CALENDAR_SOURCE_ID)) {
+      out.push(LOCAL_CALENDAR_SOURCE);
+    }
+    return out;
+  }, [sources]);
+
+  const mergedCalendars = useMemo<Calendar[]>(
+    () => [...calendars, ...localCalendars],
+    [calendars, localCalendars],
+  );
+
+  // Combined event pool seen by views. Publishing logic uses the
+  // EventKit-only `events` slice instead — local events are local-
+  // first by design and never go to the public /calendar projection.
+  const mergedEvents = useMemo<CalendarEvent[]>(
+    () => [...events, ...localEvents],
+    [events, localEvents],
+  );
 
   const calendarsBySource = useMemo(() => {
     const map = new Map<string, Calendar[]>();
-    for (const c of calendars) {
+    for (const c of mergedCalendars) {
       const arr = map.get(c.sourceId) ?? [];
       arr.push(c);
       map.set(c.sourceId, arr);
     }
     return map;
-  }, [calendars]);
+  }, [mergedCalendars]);
 
   const calendarsById = useMemo(() => {
     const map = new Map<string, Calendar>();
-    for (const c of calendars) map.set(c.id, c);
+    for (const c of mergedCalendars) map.set(c.id, c);
     return map;
-  }, [calendars]);
+  }, [mergedCalendars]);
+
+  // Whenever a freshly-loaded local calendar appears, treat it as
+  // visible by default — same UX as a brand-new EventKit calendar.
+  // The reconcile call inside loadAll only knows about EventKit
+  // calendars, so this effect closes the gap for local rows.
+  useEffect(() => {
+    if (localCalendars.length === 0) return;
+    setSelectedCalendarIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const cal of localCalendars) {
+        if (knownCalendarIdsRef.current.has(cal.id)) continue;
+        knownCalendarIdsRef.current.add(cal.id);
+        if (!next.has(cal.id)) {
+          next.add(cal.id);
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      saveVisibilityPrefs({
+        visible: next,
+        knownIds: knownCalendarIdsRef.current,
+      });
+      return next;
+    });
+  }, [localCalendars]);
 
   const [searchQuery, setSearchQuery] = useState("");
   // Separate event pool used only when the search box has a query —
@@ -562,8 +1007,6 @@ export function CalendarSurface() {
     // anchored at first-search time, which is fine for a session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, searchQuery]);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
   // Bumped after the operator saves edited rules; resolver memos
   // depend on it so the next render re-classifies events using the
   // freshly-loaded rule sheet without needing a full reload.
@@ -579,10 +1022,15 @@ export function CalendarSurface() {
     const trimmed = searchQuery.trim().toLowerCase();
     // When search is active, draw from the wider `searchEvents` pool
     // so a query for "office hours" finds matches across ±180 days,
-    // not just the current week. The calendar filter still applies
+    // not just the current week. Local events are always included in
+    // the source list — they don't have a wider-window analog yet, so
+    // the local pool acts as its own narrow band layered on top of
+    // the EventKit search hits. The calendar filter still applies
     // (hidden calendars stay hidden in search results too).
     const source =
-      trimmed.length > 0 && searchEvents.length > 0 ? searchEvents : events;
+      trimmed.length > 0 && searchEvents.length > 0
+        ? [...searchEvents, ...localEvents]
+        : mergedEvents;
     const calendarFiltered = source.filter((e) =>
       selectedCalendarIds.has(e.calendarId),
     );
@@ -597,7 +1045,10 @@ export function CalendarSurface() {
       if (event.notes && event.notes.toLowerCase().includes(trimmed)) return true;
       return false;
     });
-  }, [events, searchEvents, searchQuery, selectedCalendarIds]);
+  }, [mergedEvents, localEvents, searchEvents, searchQuery, selectedCalendarIds]);
+  // Publishing scope is intentionally EventKit-only. Local-first events
+  // never go to the public /calendar projection — that's the whole
+  // point of the "Workspace" source.
   const publishedEvents = events;
 
   const publishSummary = useMemo(
@@ -685,24 +1136,67 @@ export function CalendarSurface() {
     });
   }, []);
 
+  const setCalendarVisible = useCallback((id: string, visible: boolean) => {
+    setSelectedCalendarIds((prev) => {
+      const next = new Set(prev);
+      if (visible) next.add(id);
+      else next.delete(id);
+      if (next.size === prev.size && next.has(id) === prev.has(id)) return prev;
+      saveVisibilityPrefs({
+        visible: next,
+        knownIds: knownCalendarIdsRef.current,
+      });
+      return next;
+    });
+  }, []);
+
+  const setSourceVisible = useCallback(
+    (sourceId: string, visible: boolean) => {
+      const sourceCalendars = calendarsBySource.get(sourceId) ?? [];
+      if (sourceCalendars.length === 0) return;
+      setSelectedCalendarIds((prev) => {
+        const next = new Set(prev);
+        for (const calendar of sourceCalendars) {
+          if (visible) next.add(calendar.id);
+          else next.delete(calendar.id);
+        }
+        saveVisibilityPrefs({
+          visible: next,
+          knownIds: knownCalendarIdsRef.current,
+        });
+        return next;
+      });
+    },
+    [calendarsBySource],
+  );
+
   const sourceSidebar = useMemo(
     () => (
       <SourceSidebar
-        sources={sources}
+        sources={mergedSources}
         calendarsBySource={calendarsBySource}
         visible={selectedCalendarIds}
-        calendarDefaults={calendarDefaults}
+        message={localCalendarMessage}
         onToggleVisible={toggleCalendar}
-        onSetCalendarDefault={setCalendarDefault}
+        onCreateLocalCalendar={() => void createLocalCalendar()}
+        onRenameLocalCalendar={(id, title) =>
+          void updateLocalCalendar(id, { title })
+        }
+        onRecolorLocalCalendar={(id, colorHex) =>
+          void updateLocalCalendar(id, { colorHex })
+        }
+        onArchiveLocalCalendar={(id) => void archiveLocalCalendar(id)}
       />
     ),
     [
-      calendarDefaults,
+      archiveLocalCalendar,
       calendarsBySource,
+      createLocalCalendar,
+      localCalendarMessage,
+      mergedSources,
       selectedCalendarIds,
-      setCalendarDefault,
-      sources,
       toggleCalendar,
+      updateLocalCalendar,
     ],
   );
 
@@ -810,7 +1304,7 @@ export function CalendarSurface() {
         error: null,
       });
       setPublishMessage(
-        `${reason === "auto" ? "Auto-synced" : "Synced"} ${payload.events.length} public events to ${result.baseUrl}. The website calendar reads this projection dynamically. Save SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
+        `${reason === "auto" ? "Auto-synced" : "Synced"} ${payload.events.length} events. SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
       );
     } catch (err) {
       setPublishState("error");
@@ -870,12 +1364,40 @@ export function CalendarSurface() {
     syncCalendarProjection,
   ]);
 
-  if (auth === "notDetermined") {
-    return <PermissionGate onRequest={requestAccess} error={errorMessage} />;
+  const enableLocalOnlyMode = useCallback(() => {
+    try {
+      localStorage.setItem(LOCAL_ONLY_STORAGE_KEY, "true");
+    } catch {
+      // Storage may be disabled in some sandboxes — proceed in
+      // memory-only mode; the user just has to re-skip on next launch.
+    }
+    setLocalOnlyMode(true);
+  }, []);
+
+  if (auth === "notDetermined" && !localOnlyMode) {
+    return (
+      <PermissionGate
+        onRequest={requestAccess}
+        onSkip={enableLocalOnlyMode}
+        error={errorMessage}
+      />
+    );
   }
-  if (auth === "denied" || auth === "restricted") {
-    return <PermissionBlocked status={auth} />;
+  if ((auth === "denied" || auth === "restricted") && !localOnlyMode) {
+    return (
+      <PermissionBlocked
+        status={auth}
+        onSkip={enableLocalOnlyMode}
+      />
+    );
   }
+
+  const composerPopoverStyle = composerDraft?.point
+    ? ({
+        "--calendar-event-composer-x": `${composerDraft.point.x}px`,
+        "--calendar-event-composer-y": `${composerDraft.point.y}px`,
+      } as CSSProperties)
+    : undefined;
 
   return (
     // panel-shell normally lets its content overflow up into the App's
@@ -890,7 +1412,12 @@ export function CalendarSurface() {
       <WorkspaceCommandBar
         className="calendar-commandbar"
         leading={
-          <DateNav view={view} anchor={anchor} onAnchorChange={setAnchor} />
+          <DateNav
+            view={view}
+            anchor={anchor}
+            timeZone={timeZone}
+            onAnchorChange={setAnchor}
+          />
         }
         center={
           <ViewSwitcher view={view} onChange={setView} />
@@ -902,32 +1429,44 @@ export function CalendarSurface() {
           >
             <WorkspaceCommandButton
               tone="ghost"
-              onClick={() => setComposerOpen((open) => !open)}
-              aria-pressed={composerOpen}
-              title="Create a new event in macOS Calendar (Cmd+N from native)"
+              onClick={() => setSettingsPanelOpen((open) => !open)}
+              aria-pressed={settingsPanelOpen}
+              title="Calendar settings"
+            >
+              <Settings2
+                absoluteStrokeWidth
+                aria-hidden="true"
+                size={14}
+                strokeWidth={1.7}
+              />
+              Settings
+            </WorkspaceCommandButton>
+            <WorkspaceCommandButton
+              tone="ghost"
+              onClick={() => {
+                if (composerDraft) {
+                  setComposerDraft(null);
+                } else {
+                  openEventComposer();
+                }
+              }}
+              aria-pressed={composerDraft !== null}
+              title="Create a new calendar event"
             >
               + Event
             </WorkspaceCommandButton>
             <WorkspaceCommandButton
-              tone="ghost"
-              onClick={() => setRulesEditorOpen((open) => !open)}
-              aria-pressed={rulesEditorOpen}
-              title="Edit smart visibility rules (regex → visibility)"
-            >
-              Rules
-            </WorkspaceCommandButton>
-            <WorkspaceCommandButton
-              className="calendar-commandbar__sync-button"
-              tone={hasPendingSyncChanges ? "accent" : "default"}
-              disabled={publishState === "publishing" || !rulesLoaded}
-              onClick={() => void syncCalendarProjection("manual")}
+              className="calendar-commandbar__publish-button"
+              tone={hasPendingSyncChanges ? "accent" : "ghost"}
+              onClick={() => setPublishPanelOpen((open) => !open)}
+              aria-pressed={publishPanelOpen}
               title={
                 lastSyncSnapshot
-                  ? `Will publish: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
-                  : "First sync - every published event will be added."
+                  ? `Publish panel: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
+                  : "Open website calendar publish panel"
               }
             >
-              {publishState === "publishing" ? "Syncing..." : "Sync now"}
+              Publish
             </WorkspaceCommandButton>
           </WorkspaceCommandGroup>
         }
@@ -938,7 +1477,7 @@ export function CalendarSurface() {
             <input
               type="search"
               className="calendar-search-input"
-              placeholder="Search events..."
+              placeholder="Search events…"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               aria-label="Search events"
@@ -950,50 +1489,56 @@ export function CalendarSurface() {
                 className="calendar-search-pending"
                 aria-live="polite"
                 title="Loading wider event range for search"
-              >
-                ...
+            >
+                …
               </span>
             ) : null}
           </div>
-          <WorkspaceCommandGroup
-            align="end"
-            className="calendar-commandbar__sync"
-            aria-label="Website calendar sync"
-          >
-            <CalendarPublishSummary summary={publishSummary} />
-            <CalendarSyncHealthPill health={syncHealth} state={publishState} />
-            <SyncPreviewChip diff={syncPreviewDiff} hasBaseline={lastSyncSnapshot !== null} />
-          </WorkspaceCommandGroup>
+          <label className="calendar-time-zone-select">
+            <span>Time zone</span>
+            <select
+              value={timeZone}
+              onChange={(event) => handleTimeZoneChange(event.currentTarget.value)}
+              aria-label="Calendar time zone"
+            >
+              {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        {publishMessage && publishState === "error" ? (
-          <p
-            className="calendar-sync-error"
-          >
-            {publishMessage}
-          </p>
-        ) : null}
-        <CalendarSyncHealthPanel health={syncHealth} state={publishState} />
-        {rulesEditorOpen ? (
-          <SmartRulesEditor
-            onClose={() => setRulesEditorOpen(false)}
-            onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
+        {settingsPanelOpen ? (
+          <CalendarSettingsPanel
+            calendarsBySource={calendarsBySource}
+            sources={mergedSources}
+            timeZone={timeZone}
+            visible={selectedCalendarIds}
+            onClose={() => setSettingsPanelOpen(false)}
+            onCreateLocalCalendar={() => void createLocalCalendar()}
+            onSetCalendarVisible={setCalendarVisible}
+            onSetSourceVisible={setSourceVisible}
+            onTimeZoneChange={handleTimeZoneChange}
           />
         ) : null}
-        {composerOpen ? (
-          <EventComposer
-            calendars={calendars}
-            anchor={anchor}
-            onClose={() => setComposerOpen(false)}
-            onCreated={(saved) => {
-              // Splice optimistically: EventKit will fire its change
-              // notification a beat later and we'll refetch — but
-              // showing the new event immediately keeps the create
-              // flow feeling responsive.
-              setEvents((prev) => [...prev, saved]);
-              setCalendarChangeRevision((revision) => revision + 1);
-              setSelectedTodoId(null);
-              setSelectedEvent(saved);
-            }}
+        {publishPanelOpen ? (
+          <CalendarPublishPanel
+            calendarDefaults={calendarDefaults}
+            calendars={mergedCalendars}
+            diff={syncPreviewDiff}
+            hasBaseline={lastSyncSnapshot !== null}
+            health={syncHealth}
+            publishMessage={publishMessage}
+            publishState={publishState}
+            rulesEditorOpen={rulesEditorOpen}
+            rulesLoaded={rulesLoaded}
+            summary={publishSummary}
+            onClose={() => setPublishPanelOpen(false)}
+            onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
+            onSetCalendarDefault={setCalendarDefault}
+            onSync={() => void syncCalendarProjection("manual")}
+            onToggleRulesEditor={() => setRulesEditorOpen((open) => !open)}
           />
         ) : null}
       </div>
@@ -1002,18 +1547,42 @@ export function CalendarSurface() {
       >
         <CalendarTodoTray
           anchor={anchor}
+          expanded={todoTrayExpanded}
           todos={todos}
           message={todoMessage}
           onClear={clearTodoPlanning}
           onPreset={applyTodoPreset}
           onScheduleAt={scheduleTodoAt}
+          onToggleExpanded={() => setTodoTrayExpanded((expanded) => !expanded)}
           onTodoSelect={handleTodoSelect}
           onTodoToggle={handleTodoToggle}
         />
+        {localEventUndo ? (
+          <CalendarUndoToast
+            event={localEventUndo}
+            onDismiss={() => setLocalEventUndo(null)}
+            onUndo={() => void undoArchiveLocalEvent()}
+          />
+        ) : null}
         <WorkspaceSplitView
           className="calendar-workspace-split"
           inspector={
-            selectedEvent ? (
+            selectedEvent && isLocalEventId(selectedEvent.eventIdentifier) ? (
+              <LocalEventInspector
+                key={`${selectedEvent.eventIdentifier}-${timeZone}`}
+                event={selectedEvent}
+                calendar={calendarsById.get(selectedEvent.calendarId)}
+                calendars={localCalendars}
+                timeZone={timeZone}
+                onClose={() => setSelectedEvent(null)}
+                onUpdate={(patch) =>
+                  void updateLocalEvent(selectedEvent.eventIdentifier, patch)
+                }
+                onArchive={() =>
+                  void archiveLocalEvent(selectedEvent.eventIdentifier)
+                }
+              />
+            ) : selectedEvent ? (
               <CalendarEventInspector
                 event={selectedEvent}
                 calendar={calendarsById.get(selectedEvent.calendarId)}
@@ -1033,6 +1602,7 @@ export function CalendarSurface() {
                 publishMessage={publishMessage}
                 rulesLoaded={rulesLoaded}
                 publishState={publishState}
+                timeZone={timeZone}
                 onClose={() => setSelectedEvent(null)}
                 onMetadataChange={updateSelectedMetadata}
                 onPublish={() => void syncCalendarProjection("manual")}
@@ -1066,14 +1636,37 @@ export function CalendarSurface() {
             events={visibleEvents}
             calendarsById={calendarsById}
             todos={todos}
-            loadState={loadState}
-            errorMessage={errorMessage}
+            loadState={localOnlyMode ? "ready" : loadState}
+            errorMessage={localOnlyMode ? null : errorMessage}
             getDisclosure={getDisclosure}
+            timeZone={timeZone}
             onEventSelect={handleEventSelect}
+            onSlotCreate={({ startsAt, endsAt, point }) =>
+              openEventComposer(startsAt, point, endsAt)
+            }
             onTodoSelect={handleTodoSelect}
             onTodoToggle={handleTodoToggle}
           />
         </WorkspaceSplitView>
+        {composerDraft ? (
+          <div
+            className="calendar-event-composer-popover"
+            data-anchored={composerDraft.point ? "true" : undefined}
+            style={composerPopoverStyle}
+          >
+            <EventComposer
+              key={`${composerDraft.anchor.toISOString()}-${composerDraft.endsAt?.toISOString() ?? "auto"}-${timeZone}`}
+              anchor={composerDraft.anchor}
+              initialEndsAt={composerDraft.endsAt}
+              calendars={mergedCalendars}
+              timeZone={timeZone}
+              onClose={() => setComposerDraft(null)}
+              onCreateWorkspaceCalendar={() => createLocalCalendar()}
+              onCreated={handleComposerCreated}
+              variant="popover"
+            />
+          </div>
+        ) : null}
       </div>
     </WorkspaceSurfaceFrame>
   );
@@ -1133,17 +1726,47 @@ function formatClockTime(timestamp: number): string {
   });
 }
 
+function CalendarUndoToast({
+  event,
+  onDismiss,
+  onUndo,
+}: {
+  event: LocalCalendarEventRow;
+  onDismiss: () => void;
+  onUndo: () => void;
+}) {
+  return (
+    <div className="calendar-undo-toast" role="status">
+      <span>Archived {event.title || "event"}.</span>
+      <button type="button" onClick={onUndo}>
+        Undo
+      </button>
+      <button
+        type="button"
+        className="calendar-undo-toast__dismiss"
+        aria-label="Dismiss"
+        onClick={onDismiss}
+      >
+        Close
+      </button>
+    </div>
+  );
+}
+
 function CalendarTodoTray({
   anchor,
+  expanded,
   todos,
   message,
   onClear,
   onPreset,
   onScheduleAt,
+  onToggleExpanded,
   onTodoSelect,
   onTodoToggle,
 }: {
   anchor: Date;
+  expanded: boolean;
   todos: TodoRow[];
   message: string | null;
   onClear: (todo: TodoRow) => void;
@@ -1153,6 +1776,7 @@ function CalendarTodoTray({
     scheduledStartAt: number,
     estimatedMinutes: number | null,
   ) => void;
+  onToggleExpanded: () => void;
   onTodoSelect: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
@@ -1174,26 +1798,37 @@ function CalendarTodoTray({
       className="calendar-todo-tray"
       aria-label="Unscheduled todos"
       data-empty={unscheduled.length === 0 ? "true" : undefined}
+      data-expanded={expanded ? "true" : undefined}
     >
       <div className="calendar-todo-tray__header">
         <div>
           <strong>Unscheduled Todos</strong>
-          <span>{unscheduled.length} open without a time block</span>
+          <span>{unscheduled.length} unscheduled</span>
         </div>
-        {unscheduled.length > visible.length ? (
-          <span className="calendar-todo-tray__overflow">
-            +{unscheduled.length - visible.length} more in Todos
-          </span>
-        ) : null}
+        <div className="calendar-todo-tray__header-actions">
+          {unscheduled.length > visible.length ? (
+            <span className="calendar-todo-tray__overflow">
+              +{unscheduled.length - visible.length} more in Todos
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="calendar-todo-tray__toggle"
+            aria-expanded={expanded}
+            onClick={onToggleExpanded}
+          >
+            {expanded ? "Hide" : "Plan"}
+          </button>
+        </div>
       </div>
       {message ? (
         <p className="calendar-todo-tray__message" role="status">
           {message}
         </p>
       ) : null}
-      {visible.length === 0 ? (
+      {!expanded ? null : visible.length === 0 ? (
         <p className="calendar-todo-tray__empty">
-          All open todos have either a scheduled block or no active work.
+          Nothing to schedule.
         </p>
       ) : (
         <ul className="calendar-todo-tray__list" role="list">
@@ -1577,7 +2212,9 @@ function ViewPane({
   loadState,
   errorMessage,
   getDisclosure,
+  timeZone,
   onEventSelect,
+  onSlotCreate,
   onTodoSelect,
   onTodoToggle,
 }: {
@@ -1589,7 +2226,9 @@ function ViewPane({
   loadState: LoadState;
   errorMessage: string | null;
   getDisclosure: EventDisclosureResolver;
+  timeZone: string;
   onEventSelect: (event: CalendarEvent) => void;
+  onSlotCreate: (selection: CalendarTimeSlotSelection) => void;
   onTodoSelect: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
@@ -1620,7 +2259,9 @@ function ViewPane({
           calendarsById={calendarsById}
           todos={todos}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
           onEventSelect={onEventSelect}
+          onSlotCreate={onSlotCreate}
           onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
         />
@@ -1633,7 +2274,9 @@ function ViewPane({
           calendarsById={calendarsById}
           todos={todos}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
           onEventSelect={onEventSelect}
+          onSlotCreate={onSlotCreate}
           onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
         />
@@ -1645,6 +2288,8 @@ function ViewPane({
           events={events}
           calendarsById={calendarsById}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
+          onDayCreate={onSlotCreate}
           onEventSelect={onEventSelect}
         />
       );
@@ -1654,8 +2299,9 @@ function ViewPane({
           events={events}
           calendarsById={calendarsById}
           todos={todos}
-          rangeLabel={formatViewTitle("agenda", anchor)}
+          rangeLabel={formatViewTitle("agenda", anchor, timeZone)}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
           onEventSelect={onEventSelect}
           onTodoSelect={onTodoSelect}
           onTodoToggle={onTodoToggle}
@@ -1762,6 +2408,291 @@ function CalendarPublishSummary({ summary }: { summary: PublishSummary }) {
   );
 }
 
+function CalendarSettingsPanel({
+  calendarsBySource,
+  sources,
+  timeZone,
+  visible,
+  onClose,
+  onCreateLocalCalendar,
+  onSetCalendarVisible,
+  onSetSourceVisible,
+  onTimeZoneChange,
+}: {
+  calendarsBySource: ReadonlyMap<string, Calendar[]>;
+  sources: readonly CalendarSource[];
+  timeZone: string;
+  visible: ReadonlySet<string>;
+  onClose: () => void;
+  onCreateLocalCalendar: () => void;
+  onSetCalendarVisible: (calendarId: string, visible: boolean) => void;
+  onSetSourceVisible: (sourceId: string, visible: boolean) => void;
+  onTimeZoneChange: (timeZone: string) => void;
+}) {
+  const totalCalendars = sources.reduce(
+    (count, source) => count + (calendarsBySource.get(source.id)?.length ?? 0),
+    0,
+  );
+  const visibleCalendars = sources.reduce(
+    (count, source) =>
+      count +
+      (calendarsBySource.get(source.id)?.filter((calendar) =>
+        visible.has(calendar.id),
+      ).length ?? 0),
+    0,
+  );
+  return (
+    <section className="calendar-settings-panel" aria-label="Calendar settings">
+      <header className="calendar-settings-panel__header">
+        <div>
+          <strong>Calendar Settings</strong>
+          <span>
+            {visibleCalendars}/{totalCalendars} visible ·{" "}
+            {calendarTimeZoneLabel(timeZone)}
+          </span>
+        </div>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>
+          Close
+        </button>
+      </header>
+      <div className="calendar-settings-panel__summary">
+        <label className="calendar-settings-panel__timezone">
+          <span>Display time zone</span>
+          <select
+            value={timeZone}
+            onChange={(event) => onTimeZoneChange(event.currentTarget.value)}
+          >
+            {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn"
+          onClick={onCreateLocalCalendar}
+        >
+          New Workspace calendar
+        </button>
+      </div>
+      <div className="calendar-settings-panel__accounts">
+        {sources.map((source) => {
+          const sourceCalendars = calendarsBySource.get(source.id) ?? [];
+          const sourceVisibleCount = sourceCalendars.filter((calendar) =>
+            visible.has(calendar.id),
+          ).length;
+          const allVisible =
+            sourceCalendars.length > 0 &&
+            sourceVisibleCount === sourceCalendars.length;
+          return (
+            <article className="calendar-settings-account" key={source.id}>
+              <header className="calendar-settings-account__header">
+                <div>
+                  <strong>{source.title}</strong>
+                  <span>
+                    {source.sourceType} · {sourceVisibleCount}/
+                    {sourceCalendars.length || 0}
+                  </span>
+                </div>
+                {sourceCalendars.length > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => onSetSourceVisible(source.id, !allVisible)}
+                  >
+                    {allVisible ? "Hide all" : "Show all"}
+                  </button>
+                ) : null}
+              </header>
+              {sourceCalendars.length === 0 ? (
+                <p className="calendar-settings-account__empty">
+                  No calendars in this account.
+                </p>
+              ) : (
+                <div className="calendar-settings-account__list">
+                  {sourceCalendars.map((calendar) => (
+                    <label
+                      className="calendar-settings-calendar"
+                      key={calendar.id}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visible.has(calendar.id)}
+                        onChange={(event) =>
+                          onSetCalendarVisible(
+                            calendar.id,
+                            event.currentTarget.checked,
+                          )
+                        }
+                      />
+                      <span
+                        className="calendar-settings-calendar__swatch"
+                        style={{ background: calendar.colorHex }}
+                        aria-hidden="true"
+                      />
+                      <span className="calendar-settings-calendar__title">
+                        {calendar.title}
+                      </span>
+                      <span className="calendar-settings-calendar__meta">
+                        {calendar.allowsModifications
+                          ? isLocalCalendarId(calendar.id)
+                            ? "Workspace"
+                            : "Writable"
+                          : "Read only"}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CalendarPublishPanel({
+  calendarDefaults,
+  calendars,
+  diff,
+  hasBaseline,
+  health,
+  publishMessage,
+  publishState,
+  rulesEditorOpen,
+  rulesLoaded,
+  summary,
+  onClose,
+  onRulesSaved,
+  onSetCalendarDefault,
+  onSync,
+  onToggleRulesEditor,
+}: {
+  calendarDefaults: ReadonlyMap<string, CalendarPublicVisibility>;
+  calendars: readonly Calendar[];
+  diff: ReturnType<typeof diffSnapshots>;
+  hasBaseline: boolean;
+  health: CalendarSyncHealth;
+  publishMessage: string;
+  publishState: PublishState;
+  rulesEditorOpen: boolean;
+  rulesLoaded: boolean;
+  summary: PublishSummary;
+  onClose: () => void;
+  onRulesSaved: () => void;
+  onSetCalendarDefault: (
+    calendarId: string,
+    visibility: CalendarPublicVisibility,
+  ) => void;
+  onSync: () => void;
+  onToggleRulesEditor: () => void;
+}) {
+  const publishCalendars = calendars.filter(
+    (calendar) => !isLocalCalendarId(calendar.id),
+  );
+
+  return (
+    <section className="calendar-publish-panel" aria-label="Website calendar publish">
+      <header className="calendar-publish-panel__header">
+        <div>
+          <strong>Website Publish</strong>
+          <span>Public calendar settings.</span>
+        </div>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>
+          Close
+        </button>
+      </header>
+      <div className="calendar-publish-panel__status">
+        <CalendarPublishSummary summary={summary} />
+        <CalendarSyncHealthPill health={health} state={publishState} />
+        <SyncPreviewChip diff={diff} hasBaseline={hasBaseline} />
+      </div>
+      <div className="calendar-publish-panel__actions">
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={publishState === "publishing" || !rulesLoaded}
+          onClick={onSync}
+        >
+          {publishState === "publishing" ? "Syncing..." : "Sync now"}
+        </button>
+        <button type="button" className="btn" onClick={onToggleRulesEditor}>
+          {rulesEditorOpen ? "Hide rules" : "Edit rules"}
+        </button>
+      </div>
+      {publishMessage ? (
+        <p
+          className={
+            publishState === "error"
+              ? "calendar-sync-error"
+              : "calendar-publish-panel__message"
+          }
+        >
+          {publishMessage}
+        </p>
+      ) : null}
+      <CalendarSyncHealthPanel health={health} state={publishState} />
+      <section className="calendar-publish-defaults">
+        <header>
+          <h3>Calendar defaults</h3>
+          <p>Used when no event rule applies.</p>
+        </header>
+        {publishCalendars.length === 0 ? (
+          <p className="calendar-publish-defaults__empty">
+            No platform calendars loaded.
+          </p>
+        ) : (
+          <div className="calendar-publish-defaults__list">
+            {publishCalendars.map((calendar) => {
+              const currentDefault = calendarDefaults.get(calendar.id) ?? "busy";
+              return (
+                <label key={calendar.id} className="calendar-publish-defaults__row">
+                  <span
+                    className="calendar-publish-defaults__swatch"
+                    style={{ background: calendar.colorHex }}
+                    aria-hidden="true"
+                  />
+                  <span className="calendar-publish-defaults__title">
+                    {calendar.title}
+                  </span>
+                  <select
+                    value={currentDefault}
+                    onChange={(event) =>
+                      onSetCalendarDefault(
+                        calendar.id,
+                        event.currentTarget.value as CalendarPublicVisibility,
+                      )
+                    }
+                  >
+                    {DEFAULT_VISIBILITY_LABELS.map((option) => (
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        title={option.hint}
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </section>
+      {rulesEditorOpen ? (
+        <SmartRulesEditor
+          onClose={onToggleRulesEditor}
+          onRulesSaved={onRulesSaved}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 function CalendarEventInspector({
   event,
   calendar,
@@ -1771,6 +2702,7 @@ function CalendarEventInspector({
   publishMessage,
   rulesLoaded,
   publishState,
+  timeZone,
   onClose,
   onMetadataChange,
   onPublish,
@@ -1793,6 +2725,7 @@ function CalendarEventInspector({
   publishMessage: string;
   rulesLoaded: boolean;
   publishState: PublishState;
+  timeZone: string;
   onClose: () => void;
   onMetadataChange: (patch: Partial<typeof metadata>) => void;
   onPublish: () => void;
@@ -1823,7 +2756,11 @@ function CalendarEventInspector({
           <dl className="workspace-inspector__meta">
             <div>
               <dt>Time</dt>
-              <dd>{event.isAllDay ? "All day" : `${formatDateTime(event.startsAt)} - ${formatDateTime(event.endsAt)}`}</dd>
+              <dd>
+                {event.isAllDay
+                  ? "All day"
+                  : `${formatDateTime(event.startsAt, timeZone)} - ${formatDateTime(event.endsAt, timeZone)}`}
+              </dd>
             </div>
             {event.location ? (
               <div>
@@ -1831,18 +2768,9 @@ function CalendarEventInspector({
                 <dd>{event.location}</dd>
               </div>
             ) : null}
-            <div>
-              <dt>Key</dt>
-              <dd>
-                <code>{calendarEventKey(event)}</code>
-              </dd>
-            </div>
           </dl>
         </WorkspaceInspectorSection>
-        <WorkspaceInspectorSection
-          heading="Website"
-          description="Only this sanitized projection is sent to the public site."
-        >
+        <WorkspaceInspectorSection heading="Website">
           <WorkspaceSelectField
             label="Public visibility"
             value={metadata.visibility}
@@ -1860,20 +2788,14 @@ function CalendarEventInspector({
           <p
             className="calendar-inspector__visibility-source"
             data-source={resolution.source}
-            // Tells the operator whether the visibility above is
-            // their explicit per-event choice or a default firing
-            // from the resolver chain. Without this, "Busy" looks
-            // identical regardless of whether they set it manually
-            // or it came from the global fallback — and that matters
-            // when they wonder "why is this not showing on /calendar".
           >
             {resolution.source === "override"
-              ? "Source: per-event override (clear it to fall back to defaults)"
+              ? "Using event setting"
               : resolution.source === "smart-rule"
-                ? "Source: smart rule matched the event metadata"
+                ? "Using smart rule"
                 : resolution.source === "calendar-default"
-                  ? `Source: ${calendar?.title ?? "calendar"} default`
-                  : "Source: global default (no rule matched)"}
+                  ? "Using calendar default"
+                  : "Using default"}
           </p>
           {showPublicFields ? (
             <WorkspaceTextField
@@ -1917,20 +2839,18 @@ function CalendarEventInspector({
                 visibility: e.currentTarget.checked ? "busy" : "hidden",
               })
             }
-            hint="Busy events sync only the blocked time. Hidden events are never written to the public calendar projection."
+            hint="Busy shows time only. Hidden is not published."
           >
             Include this event on /calendar
           </WorkspaceCheckboxField>
         </WorkspaceInspectorSection>
         <WorkspaceInspectorSection heading="Website sync">
           <p className="m-0 text-[12px] text-text-muted">
-            {publicEventCount} visible events are eligible for /calendar. The app
-            auto-syncs the public projection; unconfigured events sync as Busy
-            by default, with no title, notes, location, or URL.
+            {publicEventCount} events are eligible. Busy hides title and details.
           </p>
           {!rulesLoaded ? (
             <p className="m-0 text-[12px] text-text-muted">
-              Loading saved disclosure rules...
+              Loading rules...
             </p>
           ) : null}
           <button
@@ -1958,8 +2878,11 @@ function CalendarEventInspector({
   );
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+function formatDateTime(
+  iso: string,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): string {
+  return formatInTimeZone(iso, timeZone, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -1967,11 +2890,216 @@ function formatDateTime(iso: string): string {
   });
 }
 
+function isoToDateTimeInput(
+  iso: string,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): string {
+  const timestamp = Date.parse(iso);
+  return Number.isFinite(timestamp)
+    ? toZonedDateTimeInputValue(new Date(timestamp), timeZone)
+    : "";
+}
+
+function dateTimeInputToIso(
+  value: string,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): string | null {
+  return fromZonedDateTimeInputValue(value, timeZone)?.toISOString() ?? null;
+}
+
+/** Inspector for local-first workspace events. Skips the publishing /
+ * disclosure controls (those don't apply to local-only events) and
+ * surfaces edit + archive directly. The save path uses field-level
+ * commit-on-blur so each edit is its own atomic write — same pattern
+ * as the rest of the workspace's local-first surfaces. */
+function LocalEventInspector({
+  event,
+  calendar,
+  calendars,
+  timeZone,
+  onClose,
+  onUpdate,
+  onArchive,
+}: {
+  event: CalendarEvent;
+  calendar: Calendar | undefined;
+  calendars: readonly Calendar[];
+  timeZone: string;
+  onClose: () => void;
+  onUpdate: (patch: {
+    calendarId?: string;
+    title?: string;
+    startsAt?: string;
+    endsAt?: string;
+    isAllDay?: boolean;
+    notes?: string | null;
+    location?: string | null;
+    url?: string | null;
+  }) => void;
+  onArchive: () => void;
+}) {
+  const [titleDraft, setTitleDraft] = useState(event.title);
+  const [calendarIdDraft, setCalendarIdDraft] = useState(event.calendarId);
+  const [startsAtDraft, setStartsAtDraft] = useState(() =>
+    isoToDateTimeInput(event.startsAt, timeZone),
+  );
+  const [endsAtDraft, setEndsAtDraft] = useState(() =>
+    isoToDateTimeInput(event.endsAt, timeZone),
+  );
+  const [notesDraft, setNotesDraft] = useState(event.notes ?? "");
+  const [locationDraft, setLocationDraft] = useState(event.location ?? "");
+  const [urlDraft, setUrlDraft] = useState(event.url ?? "");
+  const [timeError, setTimeError] = useState<string | null>(null);
+
+  const commitTime = () => {
+    const startsAt = dateTimeInputToIso(startsAtDraft, timeZone);
+    const endsAt = dateTimeInputToIso(endsAtDraft, timeZone);
+    if (!startsAt || !endsAt) {
+      setTimeError("Enter a valid start and end time.");
+      return;
+    }
+    if (Date.parse(endsAt) <= Date.parse(startsAt)) {
+      setTimeError("End time must be after start time.");
+      return;
+    }
+    setTimeError(null);
+    const patch: { startsAt?: string; endsAt?: string } = {};
+    if (Date.parse(startsAt) !== Date.parse(event.startsAt)) {
+      patch.startsAt = startsAt;
+    }
+    if (Date.parse(endsAt) !== Date.parse(event.endsAt)) {
+      patch.endsAt = endsAt;
+    }
+    if (patch.startsAt || patch.endsAt) onUpdate(patch);
+  };
+
+  return (
+    <WorkspaceInspector
+      className="calendar-inspector"
+      label="Workspace event"
+      style={{ border: 0, borderRadius: 0, padding: "14px" }}
+    >
+      <WorkspaceInspectorHeader
+        heading={event.title || "(Workspace event)"}
+        kicker={calendar?.title ?? "Workspace"}
+        actions={
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Close
+          </button>
+        }
+      />
+      <div className="workspace-inspector__body">
+        <WorkspaceInspectorSection heading="Details">
+          <p className="m-0 text-[12px] text-text-muted">
+            {calendar?.title ?? "Workspace"} ·{" "}
+            {formatDateTime(event.startsAt, timeZone)} –{" "}
+            {formatDateTime(event.endsAt, timeZone)}
+          </p>
+          <WorkspaceSelectField
+            label="Calendar"
+            value={calendarIdDraft}
+            onChange={(e) => {
+              const next = e.currentTarget.value;
+              setCalendarIdDraft(next);
+              if (next !== event.calendarId) onUpdate({ calendarId: next });
+            }}
+          >
+            {calendars.map((cal) => (
+              <option key={cal.id} value={cal.id}>
+                {cal.title}
+              </option>
+            ))}
+          </WorkspaceSelectField>
+          <WorkspaceTextField
+            label="Title"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.currentTarget.value)}
+            onBlur={() => {
+              const next = titleDraft.trim();
+              if (!next || next === event.title) return;
+              onUpdate({ title: next });
+            }}
+          />
+          <WorkspaceTextField
+            label="Starts"
+            type="datetime-local"
+            value={startsAtDraft}
+            onChange={(e) => setStartsAtDraft(e.currentTarget.value)}
+            onBlur={commitTime}
+          />
+          <WorkspaceTextField
+            label="Ends"
+            type="datetime-local"
+            value={endsAtDraft}
+            onChange={(e) => setEndsAtDraft(e.currentTarget.value)}
+            onBlur={commitTime}
+          />
+          {timeError ? (
+            <p className="calendar-local-event__error">{timeError}</p>
+          ) : null}
+          <WorkspaceTextField
+            label="Location"
+            value={locationDraft}
+            onChange={(e) => setLocationDraft(e.currentTarget.value)}
+            onBlur={() => {
+              const next = locationDraft.trim();
+              if ((event.location ?? "") === next) return;
+              onUpdate({ location: next === "" ? null : next });
+            }}
+          />
+          <WorkspaceTextField
+            label="URL"
+            value={urlDraft}
+            onChange={(e) => setUrlDraft(e.currentTarget.value)}
+            onBlur={() => {
+              const next = urlDraft.trim();
+              if ((event.url ?? "") === next) return;
+              onUpdate({ url: next === "" ? null : next });
+            }}
+          />
+          <WorkspaceTextareaField
+            label="Notes"
+            value={notesDraft}
+            onChange={(e) => setNotesDraft(e.currentTarget.value)}
+            onBlur={() => {
+              if ((event.notes ?? "") === notesDraft) return;
+              onUpdate({ notes: notesDraft === "" ? null : notesDraft });
+            }}
+          />
+          <WorkspaceCheckboxField
+            checked={event.isAllDay}
+            onChange={(e) =>
+              onUpdate({ isAllDay: e.currentTarget.checked })
+            }
+            hint="No specific time."
+          >
+            All-day event
+          </WorkspaceCheckboxField>
+        </WorkspaceInspectorSection>
+        <WorkspaceInspectorSection heading="Manage">
+          <p className="m-0 text-[12px] text-text-muted">
+            Private to Workspace. Archive hides it; undo appears below.
+          </p>
+          <button
+            type="button"
+            className="btn"
+            onClick={onArchive}
+          >
+            Archive event
+          </button>
+        </WorkspaceInspectorSection>
+      </div>
+    </WorkspaceInspector>
+  );
+}
+
 function PermissionGate({
   onRequest,
+  onSkip,
   error,
 }: {
   onRequest: () => void;
+  onSkip: () => void;
   error: string | null;
 }) {
   return (
@@ -1984,18 +3112,15 @@ function PermissionGate({
           Connect your calendars
         </h1>
         <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">
-          We read directly from macOS Calendar — every account you&apos;ve already
-          added in System Settings (iCloud, Outlook, Google, CalDAV) shows up
-          automatically. No separate sign-in.
+          Use macOS calendars or stay local in Workspace.
         </p>
       </header>
-      <p className="text-[13px] text-text-secondary">
-        macOS will show a one-time permission prompt. You can revoke it any
-        time in System Settings → Privacy &amp; Security → Calendars.
-      </p>
       <div className="mt-3 flex gap-2">
         <button type="button" className="btn btn--primary" onClick={onRequest}>
-          Allow calendar access
+          Allow access
+        </button>
+        <button type="button" className="btn" onClick={onSkip}>
+          Use Workspace only
         </button>
       </div>
       {error ? (
@@ -2005,10 +3130,16 @@ function PermissionGate({
   );
 }
 
-function PermissionBlocked({ status }: { status: CalendarAuthorizationStatus }) {
+function PermissionBlocked({
+  status,
+  onSkip,
+}: {
+  status: CalendarAuthorizationStatus;
+  onSkip: () => void;
+}) {
   const reason =
     status === "restricted"
-      ? "Calendar access is restricted on this device — usually by an MDM profile."
+      ? "Calendar access is restricted on this device."
       : "Calendar access was denied.";
   return (
     <section className="surface-card" aria-live="polite">
@@ -2019,9 +3150,13 @@ function PermissionBlocked({ status }: { status: CalendarAuthorizationStatus }) 
         <p className="m-0 mt-0.5 text-[12.5px] text-text-muted">{reason}</p>
       </header>
       <p className="text-[13px] text-text-secondary">
-        Open System Settings → Privacy &amp; Security → Calendars and enable
-        access for <strong>Jinnkunn Workspace</strong>, then relaunch the app.
+        Enable access in System Settings, or continue with Workspace calendars.
       </p>
+      <div className="mt-3">
+        <button type="button" className="btn btn--primary" onClick={onSkip}>
+          Use Workspace calendar instead
+        </button>
+      </div>
     </section>
   );
 }

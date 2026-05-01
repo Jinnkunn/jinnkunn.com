@@ -8,14 +8,14 @@ export const CALENDAR_MODULE: WorkspaceModuleDefinition = {
   surface: {
     id: "calendar",
     title: "Calendar",
-    description: "Aggregated from macOS Calendar",
+    description: "Events",
     icon: <CalendarIcon />,
     Component: CalendarSurface,
   },
   dashboardActions: [
     {
       id: "calendar:open",
-      description: "Daily schedule",
+      description: "Events",
       label: "Calendar",
       surfaceId: "calendar",
     },

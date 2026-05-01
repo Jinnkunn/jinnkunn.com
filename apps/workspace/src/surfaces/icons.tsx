@@ -12,6 +12,7 @@ import {
   Route,
   Settings,
   SquareCheckBig,
+  Users,
 } from "lucide-react";
 
 function createWorkspaceIcon(Icon: LucideIcon, size = 16) {
@@ -32,6 +33,7 @@ export const SiteAdminIcon = createWorkspaceIcon(Globe2);
 export const CalendarIcon = createWorkspaceIcon(CalendarDays);
 export const NotesIcon = createWorkspaceIcon(NotebookText);
 export const TodosIcon = createWorkspaceIcon(SquareCheckBig);
+export const ContactsIcon = createWorkspaceIcon(Users);
 export const WorkspaceIcon = createWorkspaceIcon(LayoutGrid);
 export const StatusIcon = createWorkspaceIcon(Activity, 14);
 export const ConfigIcon = createWorkspaceIcon(Settings, 14);

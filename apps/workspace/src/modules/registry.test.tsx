@@ -6,6 +6,7 @@ import {
   getDashboardActions,
   getDefaultEnabledModuleIds,
   getEnabledModuleSurfaces,
+  reconcileEnabledModules,
   WORKSPACE_MODULES,
 } from "./registry";
 
@@ -17,12 +18,14 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "contacts",
     ]);
     expect(WORKSPACE_MODULES.map((module) => module.id)).toEqual([
       "site-admin",
       "calendar",
       "notes",
       "todos",
+      "contacts",
     ]);
   });
 
@@ -33,6 +36,7 @@ describe("workspace module registry", () => {
       "site-admin:components",
       "calendar:open",
       "todos:open",
+      "contacts:open",
     ]);
     expect(getCommandActions().map((action) => action.id)).toEqual([
       "quick:site-status",
@@ -40,6 +44,7 @@ describe("workspace module registry", () => {
       "quick:shared-content",
       "quick:site-links",
       "quick:todos",
+      "quick:contacts",
     ]);
   });
 
@@ -49,6 +54,7 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "contacts",
     ]);
     expect(getEnabledModuleSurfaces(["notes", "todos"]).map((surface) => surface.id)).toEqual([
       "workspace",
@@ -61,5 +67,59 @@ describe("workspace module registry", () => {
     expect(getCommandActions(["todos"]).map((action) => action.id)).toEqual([
       "quick:todos",
     ]);
+  });
+
+  it("reconciles fresh installs by handing out the registry defaults", () => {
+    const result = reconcileEnabledModules(null, null);
+    expect(result.enabled).toEqual([
+      "site-admin",
+      "calendar",
+      "notes",
+      "todos",
+      "contacts",
+    ]);
+    expect(result.knownModuleIds).toEqual([
+      "site-admin",
+      "calendar",
+      "notes",
+      "todos",
+      "contacts",
+    ]);
+  });
+
+  it("reconcile preserves prior opt-outs for modules already known", () => {
+    // User had every module known and disabled "todos" + "contacts"
+    // explicitly in a previous session.
+    const result = reconcileEnabledModules(
+      ["site-admin", "calendar", "notes"],
+      ["site-admin", "calendar", "notes", "todos", "contacts"],
+    );
+    expect(result.enabled).toEqual(["site-admin", "calendar", "notes"]);
+  });
+
+  it("reconcile auto-enables newly-added enabled-by-default modules", () => {
+    // Old install: user had calendar/notes/todos but had never seen
+    // contacts (it shipped after their last save). The migration
+    // should append contacts because its enabledByDefault is true.
+    const result = reconcileEnabledModules(
+      ["site-admin", "calendar", "notes", "todos"],
+      ["site-admin", "calendar", "notes", "todos"],
+    );
+    expect(result.enabled).toEqual([
+      "site-admin",
+      "calendar",
+      "notes",
+      "todos",
+      "contacts",
+    ]);
+    expect(result.knownModuleIds).toContain("contacts");
+  });
+
+  it("reconcile drops persisted ids that no longer match a real module", () => {
+    const result = reconcileEnabledModules(
+      ["site-admin", "calendar", "long-gone-module"],
+      ["site-admin", "calendar", "long-gone-module"],
+    );
+    expect(result.enabled).not.toContain("long-gone-module");
   });
 });

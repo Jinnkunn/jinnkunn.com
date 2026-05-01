@@ -339,6 +339,147 @@ pub fn fetch_events(request: &FetchEventsRequest) -> Result<Vec<CalendarEvent>, 
     Ok(out)
 }
 
+/// One participant slot inside `EventAttendeeBundle`. We strip the
+/// `mailto:` URL prefix so the consumer can do a case-insensitive
+/// match against contact emails without re-parsing.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventAttendee {
+    pub email: Option<String>,
+    pub name: Option<String>,
+    pub is_current_user: bool,
+}
+
+/// Subset of an EKEvent's data, with the participant list resolved.
+/// Only used by the contacts auto-derive flow — the standard
+/// `fetch_events` deliberately omits attendees because most consumers
+/// (calendar views, publish projection) don't need them and including
+/// them in every fetch would balloon the wire shape.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventAttendeeBundle {
+    pub event_identifier: String,
+    pub external_identifier: Option<String>,
+    pub title: String,
+    pub starts_at: String,
+    pub attendees: Vec<EventAttendee>,
+}
+
+/// Pull just the email (if any) out of an EKParticipant.URL like
+/// `mailto:alice@example.com`. Returns lowercased so callers can use
+/// it as a case-insensitive map key.
+fn participant_email(participant: &objc2_event_kit::EKParticipant) -> Option<String> {
+    let url = unsafe { participant.URL() };
+    let raw = url.absoluteString().map(|s| s.to_string()).unwrap_or_default();
+    let prefix = "mailto:";
+    let address = if let Some(stripped) = raw
+        .strip_prefix(prefix)
+        .or_else(|| raw.strip_prefix("MAILTO:"))
+    {
+        stripped
+    } else if raw.contains('@') {
+        // Some account integrations (notably internal CalDAV) hand us
+        // the bare address — accept it as long as it looks email-ish.
+        raw.as_str()
+    } else {
+        return None;
+    };
+    let trimmed = address.trim().trim_end_matches('?');
+    if !trimmed.contains('@') {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
+}
+
+/// Variant of `fetch_events` that also reads the attendee list per
+/// event. Returns one bundle per event whose attendee list is
+/// non-empty after current-user filtering — this is the input the
+/// contacts auto-derive command iterates over to log interactions.
+pub fn fetch_events_with_attendees(
+    request: &FetchEventsRequest,
+) -> Result<Vec<EventAttendeeBundle>, String> {
+    let starts = parse_iso(&request.starts_at)?;
+    let ends = parse_iso(&request.ends_at)?;
+    if ends <= starts {
+        return Err("ends_at must be after starts_at".to_string());
+    }
+
+    let store: Retained<EKEventStore> = unsafe { EKEventStore::new() };
+    let calendars_array: Option<Retained<NSArray<EKCalendar>>> = if request.calendar_ids.is_empty()
+    {
+        None
+    } else {
+        let all_cals = unsafe { store.calendarsForEntityType(EKEntityType::Event) };
+        let filtered: Vec<Retained<EKCalendar>> = all_cals
+            .iter()
+            .filter(|c| {
+                let id = unsafe { c.calendarIdentifier() }.to_string();
+                request.calendar_ids.iter().any(|wanted| wanted == &id)
+            })
+            .collect();
+        if filtered.is_empty() {
+            return Ok(Vec::new());
+        }
+        Some(NSArray::from_retained_slice(&filtered))
+    };
+
+    let start_date = datetime_to_nsdate(starts);
+    let end_date = datetime_to_nsdate(ends);
+    let predicate = unsafe {
+        store.predicateForEventsWithStartDate_endDate_calendars(
+            &start_date,
+            &end_date,
+            calendars_array.as_deref(),
+        )
+    };
+    let events = unsafe { store.eventsMatchingPredicate(&predicate) };
+
+    let mut out = Vec::with_capacity(events.len());
+    for ev in events.iter() {
+        let attendees_raw = unsafe { ev.attendees() };
+        let Some(attendees_array) = attendees_raw else {
+            continue;
+        };
+        if attendees_array.len() == 0 {
+            continue;
+        }
+        let mut attendees: Vec<EventAttendee> =
+            Vec::with_capacity(attendees_array.len());
+        for participant in attendees_array.iter() {
+            let is_current_user = unsafe { participant.isCurrentUser() };
+            let email = participant_email(&participant);
+            let name = unsafe { participant.name() }.map(|s| s.to_string());
+            attendees.push(EventAttendee {
+                email,
+                name,
+                is_current_user,
+            });
+        }
+        // Skip events that *only* contain the current user — those are
+        // 1:1 self-blocks and don't constitute an interaction.
+        if attendees.iter().all(|a| a.is_current_user) {
+            continue;
+        }
+        let event_identifier = unsafe { ev.eventIdentifier() }
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let external_identifier =
+            unsafe { ev.calendarItemExternalIdentifier() }.map(|s| s.to_string());
+        let title = unsafe { ev.title() }.to_string();
+        let start_ns = unsafe { ev.startDate() };
+        let starts_at = nsdate_to_iso(&start_ns);
+
+        out.push(EventAttendeeBundle {
+            event_identifier,
+            external_identifier,
+            title,
+            starts_at,
+            attendees,
+        });
+    }
+    Ok(out)
+}
+
 /// Create a new event in the supplied calendar and persist it via
 /// EKEventStore.save. Returns the saved event re-projected into the
 /// same `CalendarEvent` shape `fetch_events` produces, so the

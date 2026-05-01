@@ -101,7 +101,7 @@ export function metadataForEvent(
   //      busy, "any event with a URL" → titleOnly. See
   //      smartDefaults.ts for the rule list.
   //   3. Per-calendar default — "everything in Teaching defaults
-  //      to titleOnly" set via the SourceSidebar dropdown.
+  //      to titleOnly" set via the Calendar publish panel.
   //   4. Global fallback "busy" — events without any of the above
   //      stay anonymous until the operator decides otherwise.
   // Args 3-4 are optional so existing callers (tests, simple status

@@ -56,7 +56,8 @@ function todoBadge(
   counts: TodoNavCounts,
   id: TodoNavItemId,
 ): SurfaceNavItem["badge"] {
-  return counts[id] === undefined ? undefined : String(counts[id]);
+  const count = counts[id];
+  return count ? String(count) : undefined;
 }
 
 function todoItem(

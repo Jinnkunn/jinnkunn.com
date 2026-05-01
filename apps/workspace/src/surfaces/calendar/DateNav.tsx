@@ -9,18 +9,20 @@ export function DateNav({
   view,
   anchor,
   onAnchorChange,
+  timeZone,
 }: {
   view: ViewKind;
   anchor: Date;
   onAnchorChange: (next: Date) => void;
+  timeZone: string;
 }) {
-  const title = formatViewTitle(view, anchor);
+  const title = formatViewTitle(view, anchor, timeZone);
   return (
     <div className="calendar-date-nav">
       <button
         type="button"
         className="calendar-date-nav__button"
-        onClick={() => onAnchorChange(navigateView(view, anchor, -1))}
+        onClick={() => onAnchorChange(navigateView(view, anchor, -1, timeZone))}
         aria-label="Previous"
       >
         <Chevron dir="left" />
@@ -31,14 +33,14 @@ export function DateNav({
         // wider padding than the chevrons so it reads as the primary
         // navigation action of the trio.
         className="calendar-date-nav__today"
-        onClick={() => onAnchorChange(navigateView(view, anchor, 0))}
+        onClick={() => onAnchorChange(navigateView(view, anchor, 0, timeZone))}
       >
         Today
       </button>
       <button
         type="button"
         className="calendar-date-nav__button"
-        onClick={() => onAnchorChange(navigateView(view, anchor, 1))}
+        onClick={() => onAnchorChange(navigateView(view, anchor, 1, timeZone))}
         aria-label="Next"
       >
         <Chevron dir="right" />

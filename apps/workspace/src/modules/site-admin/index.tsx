@@ -12,7 +12,7 @@ export const SITE_ADMIN_MODULE: WorkspaceModuleDefinition = {
   surface: {
     id: "site-admin",
     title: "Site Admin",
-    description: "Web publishing control plane",
+    description: "Publish",
     icon: <SiteAdminIcon />,
     Component: SiteAdminSurface,
     navGroups: SITE_ADMIN_NAV_GROUPS,
@@ -21,22 +21,22 @@ export const SITE_ADMIN_MODULE: WorkspaceModuleDefinition = {
   dashboardActions: [
     {
       id: "site-admin:status",
-      description: "Deploy health",
-      label: "Site status",
+      description: "Status",
+      label: "Status",
       navItemId: "status",
       surfaceId: "site-admin",
     },
     {
       id: "site-admin:home",
-      description: "Landing page",
-      label: "Home editor",
+      description: "Home",
+      label: "Home",
       navItemId: "home",
       surfaceId: "site-admin",
     },
     {
       id: "site-admin:components",
-      description: "Reusable blocks",
-      label: "Shared content",
+      description: "Shared",
+      label: "Shared",
       navItemId: "components",
       surfaceId: "site-admin",
     },

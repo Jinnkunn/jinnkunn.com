@@ -12,10 +12,37 @@
   height: 100vh;
   overflow: hidden;
   isolation: isolate;
-  background: var(--color-bg-window);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 26%),
+    var(--color-bg-window);
+}
+
+.app-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(125deg, transparent 0 18%, var(--ambient-cool) 38%, transparent 68%),
+    linear-gradient(232deg, transparent 0 20%, var(--ambient-warm) 46%, transparent 76%),
+    linear-gradient(16deg, transparent 0 36%, var(--ambient-fresh) 62%, transparent 88%);
+  opacity: 0.72;
+}
+
+:root[data-theme="dark"] .app-shell {
+  background:
+    linear-gradient(180deg, rgba(255, 244, 226, 0.035), transparent 30%),
+    var(--color-bg-window);
+}
+
+:root[data-theme="dark"] .app-shell::before {
+  opacity: 0.62;
 }
 
 .app-body {
+  position: relative;
+  z-index: 1;
   display: flex;
   box-sizing: border-box;
   height: 100%;
@@ -488,22 +515,26 @@ body[data-window-focused="true"] .titlebar-shell {
   width: var(--spacing-sidebar);
   height: 100%;
   margin: 0;
-  background: var(--color-bg-window);
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 34%),
+    color-mix(in srgb, var(--color-bg-window) 84%, transparent);
   border: 0;
   border-radius: 0;
   display: flex;
   flex-direction: row;
   min-height: 0;
   overflow: hidden;
-  box-shadow: none;
+  box-shadow: inset -1px 0 0 var(--hairline);
   transition: width 180ms var(--ease-spring);
 }
 
 @supports (backdrop-filter: blur(28px)) or (-webkit-backdrop-filter: blur(28px)) {
   .sidebar-surface {
-    background: var(--color-bg-window);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    background:
+      linear-gradient(180deg, var(--surface-highlight-soft), transparent 34%),
+      color-mix(in srgb, var(--color-bg-window-blend) 86%, transparent);
+    backdrop-filter: saturate(132%) blur(18px);
+    -webkit-backdrop-filter: saturate(132%) blur(18px);
   }
 }
 
@@ -512,15 +543,15 @@ body[data-window-focused="true"] .titlebar-shell {
 }
 
 body[data-window-focused="true"] .sidebar-surface {
-  box-shadow: none;
+  box-shadow: inset -1px 0 0 var(--hairline);
 }
 
 :root[data-theme="dark"] .sidebar-surface {
-  box-shadow: none;
+  box-shadow: inset -1px 0 0 var(--hairline);
 }
 
 :root[data-theme="dark"] body[data-window-focused="true"] .sidebar-surface {
-  box-shadow: none;
+  box-shadow: inset -1px 0 0 var(--hairline);
 }
 
 /* ------------------------------------------------------------------ *
@@ -609,12 +640,18 @@ body[data-window-focused="true"] .sidebar-surface {
   width: min(1120px, 88vw);
   height: min(760px, 78vh);
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--color-bg-popover) 94%, transparent);
-  box-shadow:
-    0 28px 80px rgba(15, 15, 15, 0.22),
-    0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, var(--surface-highlight), transparent 34%),
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
+      transparent 0.72px
+    ),
+    color-mix(in srgb, var(--color-bg-popover) 94%, transparent);
+  background-size: auto, 3px 3px, auto;
+  box-shadow: var(--shadow-floating);
 }
 
 .settings-window__sidebar {
@@ -622,8 +659,10 @@ body[data-window-focused="true"] .sidebar-surface {
   flex-direction: column;
   gap: 6px;
   padding: 28px 10px 14px;
-  background: color-mix(in srgb, var(--color-bg-window) 64%, transparent);
-  box-shadow: none;
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 42%),
+    color-mix(in srgb, var(--color-bg-window) 64%, transparent);
+  box-shadow: inset -1px 0 0 var(--hairline);
 }
 
 .settings-window__sidebar-title {
@@ -651,9 +690,12 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .settings-window__nav-item[aria-current="page"] {
-  background: var(--fill-secondary);
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 62%),
+    var(--fill-secondary);
   color: var(--color-text-primary);
   font-weight: 600;
+  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
 }
 
 .settings-window__main {
@@ -661,7 +703,9 @@ body[data-window-focused="true"] .sidebar-surface {
   min-width: 0;
   overflow: hidden auto;
   padding: 40px 48px;
-  background: color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 28%),
+    color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
 }
 
 .settings-window__close {
@@ -755,8 +799,11 @@ body[data-window-focused="true"] .sidebar-surface {
   gap: 10px;
   min-width: 0;
   padding: 9px 10px;
-  border-radius: 8px;
-  background: var(--fill-tertiary);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 62%),
+    var(--fill-tertiary);
+  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
 }
 
 .settings-module-row__icon {
@@ -767,7 +814,10 @@ body[data-window-focused="true"] .sidebar-surface {
   height: 28px;
   border-radius: 7px;
   color: color-mix(in srgb, var(--color-accent) 84%, var(--color-text-secondary));
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--fill-tertiary));
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 58%),
+    color-mix(in srgb, var(--color-accent) 12%, var(--fill-tertiary));
+  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
 }
 
 .settings-module-row__body {
@@ -822,7 +872,7 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .settings-module-toggle[data-on="true"] {
-  background: color-mix(in srgb, var(--color-accent) 72%, var(--fill-primary));
+  background: var(--accent-gradient);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 

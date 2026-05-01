@@ -75,6 +75,14 @@ function isSurfaceEnabled(
   return Boolean(surface && !surface.disabled);
 }
 
+function formatDashboardDate(date = new Date()): string {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    weekday: "long",
+  }).format(date);
+}
+
 export function WorkspaceDashboard({
   events,
   favorites,
@@ -86,11 +94,11 @@ export function WorkspaceDashboard({
   recentItems,
   surfaces,
 }: WorkspaceDashboardProps) {
-  const tools = surfaces.filter((surface) => surface.id !== "workspace");
   const dashboardActions = getDashboardActions().filter((action) => {
     const surface = surfaces.find((entry) => entry.id === action.surfaceId);
     return surface && !surface.disabled;
   });
+  const todayLabel = useMemo(() => formatDashboardDate(), []);
 
   const openAction = (action: DashboardActionContribution) => {
     const target = surfaces.find((surface) => surface.id === action.surfaceId);
@@ -112,24 +120,31 @@ export function WorkspaceDashboard({
     <section className="workspace-dashboard" aria-label="Workspace dashboard">
       <header className="workspace-dashboard__hero">
         <div>
-          <p className="workspace-dashboard__eyebrow">Jinnkunn Workspace</p>
-          <h1>Command center</h1>
-          <p>{tools.length} tools / {recentItems.length} recent / {favorites.length} pinned</p>
+          <p className="workspace-dashboard__eyebrow">Workspace</p>
+          <h1>Today</h1>
+          <p>{todayLabel}</p>
         </div>
         <button
           type="button"
           className="btn btn--secondary"
           onClick={onOpenCommandPalette}
         >
-          Open Command Menu
+          Command Menu
         </button>
       </header>
 
       <div className="workspace-dashboard__grid">
-        <section className="workspace-dashboard__panel workspace-dashboard__panel--wide">
+        <TodayUpcomingPanel
+          onRecordRecent={onRecordRecent}
+          onSelectNavItem={onSelectNavItem}
+          onSelectSurface={onSelectSurface}
+          surfaces={surfaces}
+        />
+
+        <section className="workspace-dashboard__panel workspace-dashboard__panel--quick">
           <div className="workspace-dashboard__panel-header">
-            <h2>Launch</h2>
-            <span>Staging-first workspace</span>
+            <h2>Quick Actions</h2>
+            <span>{dashboardActions.length}</span>
           </div>
           <div className="workspace-dashboard__action-grid">
             {dashboardActions.map((action) => (
@@ -140,49 +155,15 @@ export function WorkspaceDashboard({
                 onClick={() => openAction(action)}
               >
                 <span>{action.label}</span>
-                <small>{action.description}</small>
               </button>
             ))}
           </div>
         </section>
-
-        <section className="workspace-dashboard__panel">
-          <div className="workspace-dashboard__panel-header">
-            <h2>Tools</h2>
-            <span>{tools.length}</span>
-          </div>
-          <div className="workspace-dashboard__tool-list">
-            {tools.map((surface) => (
-              <button
-                type="button"
-                className="workspace-dashboard__tool"
-                key={surface.id}
-                onClick={() => onSelectSurface(surface.id)}
-                disabled={surface.disabled}
-              >
-                <span className="workspace-dashboard__tool-icon" aria-hidden="true">
-                  {surface.icon}
-                </span>
-                <span>
-                  <strong>{surface.title}</strong>
-                  {surface.description ? <small>{surface.description}</small> : null}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <TodayUpcomingPanel
-          onRecordRecent={onRecordRecent}
-          onSelectNavItem={onSelectNavItem}
-          onSelectSurface={onSelectSurface}
-          surfaces={surfaces}
-        />
 
         <section className="workspace-dashboard__panel">
           <div className="workspace-dashboard__panel-header">
             <h2>Recent</h2>
-            <span>{recentItems.length}</span>
+            {recentItems.length > 0 ? <span>{recentItems.length}</span> : null}
           </div>
           {recentItems.length ? (
             <ul className="workspace-dashboard__list" role="list">
@@ -210,14 +191,14 @@ export function WorkspaceDashboard({
               ))}
             </ul>
           ) : (
-            <p className="workspace-dashboard__empty">No recent items.</p>
+            <p className="workspace-dashboard__empty">No recent</p>
           )}
         </section>
 
         <section className="workspace-dashboard__panel">
           <div className="workspace-dashboard__panel-header">
             <h2>Pinned</h2>
-            <span>{favorites.length}</span>
+            {favorites.length > 0 ? <span>{favorites.length}</span> : null}
           </div>
           {favorites.length ? (
             <ul className="workspace-dashboard__list" role="list">
@@ -244,7 +225,7 @@ export function WorkspaceDashboard({
               ))}
             </ul>
           ) : (
-            <p className="workspace-dashboard__empty">No pinned shortcuts.</p>
+            <p className="workspace-dashboard__empty">No pinned</p>
           )}
         </section>
 
@@ -259,9 +240,7 @@ export function WorkspaceDashboard({
               >
                 Clear
               </button>
-            ) : (
-              <span>0</span>
-            )}
+            ) : null}
           </div>
           {events.length ? (
             <ul className="workspace-activity-list" role="list">
@@ -283,7 +262,7 @@ export function WorkspaceDashboard({
               ))}
             </ul>
           ) : (
-            <p className="workspace-dashboard__empty">No activity yet.</p>
+            <p className="workspace-dashboard__empty">No activity</p>
           )}
         </section>
       </div>
@@ -360,9 +339,7 @@ function TodayUpcomingPanel({
           }
         } catch (error) {
           const calendarError = formatWorkspaceDataError("Calendar", error);
-          next.error = next.error
-            ? `${next.error} / ${calendarError}`
-            : calendarError;
+          next.error = appendDashboardError(next.error, calendarError);
         }
       }
       if (!cancelled) setState(next);
@@ -402,12 +379,14 @@ function TodayUpcomingPanel({
     <section className="workspace-dashboard__panel workspace-dashboard__panel--wide workspace-dashboard__panel--today">
       <div className="workspace-dashboard__panel-header">
         <h2>Today / Upcoming</h2>
-        <span>{today.length + upcoming.length}</span>
+        {today.length + upcoming.length > 0 ? (
+          <span>{today.length + upcoming.length}</span>
+        ) : null}
       </div>
       {state.loading ? (
-        <p className="workspace-dashboard__empty">Loading schedule.</p>
+        <p className="workspace-dashboard__empty">Loading schedule…</p>
       ) : empty ? (
-        <p className="workspace-dashboard__empty">Nothing scheduled.</p>
+        <p className="workspace-dashboard__empty">Clear</p>
       ) : (
         <div className="workspace-dashboard__today-grid">
           <TimelineBucket
@@ -463,7 +442,7 @@ function TimelineBucket({
           ))}
         </ul>
       ) : (
-        <p className="workspace-dashboard__empty">Clear.</p>
+        <p className="workspace-dashboard__empty">Clear</p>
       )}
     </section>
   );
@@ -549,6 +528,15 @@ function navItemForDashboardTodo(item: TodayUpcomingItem): string {
     : TODOS_UPCOMING_NAV_ID;
 }
 
+function appendDashboardError(
+  current: string | null,
+  next: string,
+): string {
+  if (!current) return next;
+  if (current === next) return current;
+  return `${current} / ${next}`;
+}
+
 function formatWorkspaceDataError(label: string, error: unknown): string {
   const message = String(error);
   if (
@@ -556,7 +544,7 @@ function formatWorkspaceDataError(label: string, error: unknown): string {
     message.includes("__TAURI_INTERNALS__") ||
     message.includes("is not a function")
   ) {
-    return `${label} data is available in the desktop app.`;
+    return "Desktop data unavailable in preview.";
   }
   return `${label} unavailable.`;
 }

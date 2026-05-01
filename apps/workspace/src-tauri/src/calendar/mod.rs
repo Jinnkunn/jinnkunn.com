@@ -12,4 +12,4 @@
 pub mod commands;
 #[cfg(target_os = "macos")]
 pub mod eventkit;
-mod types;
+pub mod types;

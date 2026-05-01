@@ -133,11 +133,7 @@ export function SmartRulesEditor({
       <header className="smart-rules-editor__header">
         <div>
           <h2>Smart visibility rules</h2>
-          <p>
-            Pattern matches over title / location / notes. The first rule
-            to hit decides the visibility, before the per-calendar
-            default and global fallback.
-          </p>
+          <p>First match wins. Defaults apply after rules.</p>
         </div>
         <button type="button" className="btn btn--ghost" onClick={onClose}>
           Close
@@ -150,7 +146,7 @@ export function SmartRulesEditor({
               type="text"
               value={rule.pattern}
               onChange={(e) => update(idx, { pattern: e.target.value })}
-              placeholder="regex pattern (case-insensitive)"
+              placeholder="Pattern"
               spellCheck={false}
               aria-invalid={errors[idx] ? "true" : "false"}
             />
@@ -178,7 +174,7 @@ export function SmartRulesEditor({
                     | undefined,
                 })
               }
-              title="Optional: only match when the named field is present"
+              title="Requires field"
             >
               {REQUIRES_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -205,7 +201,7 @@ export function SmartRulesEditor({
         <button type="button" onClick={add}>
           + Add rule
         </button>
-        <button type="button" onClick={reset} title="Replace draft with the bundled starter rules">
+        <button type="button" onClick={reset} title="Reset rules">
           Reset to defaults
         </button>
         <button type="button" className="btn btn--primary" onClick={save}>
