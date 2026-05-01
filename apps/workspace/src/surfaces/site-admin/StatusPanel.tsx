@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { PublishPipelineCard } from "./PublishPipelineCard";
+import { SiteOverviewCard } from "./SiteOverviewCard";
 import {
   candidateLabel,
   deployStateLabel,
@@ -177,6 +178,7 @@ export function StatusPanel() {
 
   return (
     <section className="surface-card">
+      <SiteOverviewCard />
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="m-0 text-[20px] font-semibold text-text-primary tracking-[-0.01em]">
