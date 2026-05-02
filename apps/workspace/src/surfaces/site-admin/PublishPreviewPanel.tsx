@@ -296,8 +296,8 @@ function QueuedDeployRecovery({
       <div>
         <strong>Staging release queued</strong>
         <span>
-          GitHub Actions is rebuilding staging. Recheck status when the workflow
-          finishes.
+          GitHub Actions fallback is rebuilding staging. Recheck status when
+          the workflow finishes.
         </span>
       </div>
       <div className="publish-preview__recovery-actions">
@@ -315,7 +315,7 @@ function QueuedDeployRecovery({
           disabled={!canOpen}
           onClick={onOpenQueuedWorkflow}
         >
-          Open GitHub Actions
+          Open GitHub fallback
         </button>
       </div>
     </div>

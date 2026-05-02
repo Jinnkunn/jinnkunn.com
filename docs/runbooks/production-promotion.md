@@ -36,14 +36,15 @@ Current staging release candidate:
   - Vercel status contexts are intentionally not required.
 - Production promotion requires explicit approval and one of:
   - one-click in the workspace: **Promote to Production** button on the
-    Site Admin top bar (only visible when connected to staging). Calls
-    `/api/site-admin/promote-to-production`, which runs the same
-    staging-vs-main check as the CLI wrapper and dispatches the
-    `release-production` GitHub Action.
+    Site Admin Release Center (only visible when connected to staging).
+    It reads `/api/site-admin/promote-to-production` for preflight, then
+    runs `npm run release:prod:from-staging` locally from the repo
+    checkout.
   - one-shot promote-from-staging (CLI):
     `npm run release:prod:from-staging`
   - the older guarded release: `npm run release:prod`
   - manual GitHub Actions `workflow_dispatch` with `target=production`
+    as a fallback only
 - Prefer `release:prod:from-staging` for routine releases. It reads the
   staging Worker, refuses to proceed unless staging matches local
   `main` HEAD, runs the heavy verifications automatically, snapshots the
@@ -93,13 +94,13 @@ flow back (e.g. during a one-off GitHub-storage rehearsal), set
 1. Open the Tauri workspace, connect to the **staging** profile.
 2. Confirm the editor's saved content is what you want in production
    (e.g. via the Tauri editor acceptance checklist below).
-3. Click **Promote to Production** on the top bar. The panel shows
+3. Click **Promote to Production** in Release Center. The panel shows
    `main` HEAD, the staging Worker's deployed code SHA, and the
-   current production version. The button refuses to dispatch unless
+   current production version. The button refuses to run unless
    staging matches main.
-4. Click again to confirm. The endpoint dispatches the
-   `release-production` Action; the panel exposes a direct link to
-   the run so you can watch the build.
+4. Click again to confirm. The app runs
+   `npm run release:prod:from-staging` locally from the repo checkout
+   and keeps GitHub Actions as an explicit fallback.
 
 If the button is greyed out:
 - "Promote (staging stale)" — staging hasn't been re-released since

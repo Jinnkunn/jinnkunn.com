@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 use url::Url;
@@ -51,6 +53,16 @@ pub struct SiteAdminBrowserLoginResult {
     token: String,
     login: String,
     expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SiteAdminReleaseCommandResult {
+    command: String,
+    cwd: String,
+    status: i32,
+    duration_ms: u64,
+    stdout_tail: String,
+    stderr_tail: String,
 }
 
 fn normalize_base_url(input: &str) -> String {
@@ -183,6 +195,132 @@ pub async fn site_admin_http_request(
         status,
         body,
     })
+}
+
+fn package_json_looks_like_repo_root(path: &Path) -> bool {
+    let package_json = path.join("package.json");
+    let Ok(raw) = std::fs::read_to_string(package_json) else {
+        return false;
+    };
+    raw.contains("\"name\": \"jinnkunn.com\"")
+        && raw.contains("\"release:staging\"")
+        && path.join("scripts/release-cloudflare.mjs").exists()
+}
+
+fn resolve_release_repo_root() -> Result<PathBuf, String> {
+    for key in [
+        "SITE_ADMIN_LOCAL_RELEASE_ROOT",
+        "JINNKUNN_SITE_ROOT",
+        "JINNKUNN_COM_ROOT",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            let candidate = PathBuf::from(value.trim());
+            if package_json_looks_like_repo_root(&candidate) {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    if let Ok(current) = std::env::current_dir() {
+        for candidate in current.ancestors() {
+            if package_json_looks_like_repo_root(candidate) {
+                return Ok(candidate.to_path_buf());
+            }
+        }
+    }
+
+    let personal_default = PathBuf::from("/Users/jinnkunn/Desktop/jinnkunn.com");
+    if package_json_looks_like_repo_root(&personal_default) {
+        return Ok(personal_default);
+    }
+
+    Err(
+        "Could not find jinnkunn.com repo root. Set SITE_ADMIN_LOCAL_RELEASE_ROOT to the checkout path."
+            .to_string(),
+    )
+}
+
+fn allowed_release_script(script: &str) -> Option<&'static str> {
+    match script.trim() {
+        "release:staging" => Some("release:staging"),
+        "release:prod:from-staging" => Some("release:prod:from-staging"),
+        "release:prod:from-staging:dry-run" => {
+            Some("release:prod:from-staging:dry-run")
+        }
+        _ => None,
+    }
+}
+
+fn tail_text(input: &[u8], max_chars: usize) -> String {
+    let text = String::from_utf8_lossy(input);
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max_chars {
+        return text.to_string();
+    }
+    chars[chars.len().saturating_sub(max_chars)..]
+        .iter()
+        .collect()
+}
+
+#[tauri::command]
+pub async fn site_admin_run_release_command(
+    script: String,
+) -> Result<SiteAdminReleaseCommandResult, String> {
+    let Some(script) = allowed_release_script(&script) else {
+        return Err("Unsupported release script.".to_string());
+    };
+    let cwd = resolve_release_repo_root()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = Instant::now();
+        let output = Command::new("npm")
+            .arg("run")
+            .arg(script)
+            .current_dir(&cwd)
+            .env("NO_COLOR", "1")
+            .output()
+            .or_else(|err| {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    return Err(err);
+                }
+                Command::new("/bin/zsh")
+                    .arg("-lc")
+                    .arg(format!("npm run {script}"))
+                    .current_dir(&cwd)
+                    .env("NO_COLOR", "1")
+                    .output()
+            })
+            .map_err(|err| format!("Failed to start npm run {script}: {err}"))?;
+        let status = output.status.code().unwrap_or(-1);
+        let result = SiteAdminReleaseCommandResult {
+            command: format!("npm run {script}"),
+            cwd: cwd.display().to_string(),
+            status,
+            duration_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+            stdout_tail: tail_text(&output.stdout, 5000),
+            stderr_tail: tail_text(&output.stderr, 5000),
+        };
+        if output.status.success() {
+            Ok(result)
+        } else {
+            let detail = [result.stdout_tail.as_str(), result.stderr_tail.as_str()]
+                .into_iter()
+                .filter(|part| !part.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            Err(format!(
+                "{} failed with status {}{}",
+                result.command,
+                status,
+                if detail.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n{}", detail)
+                },
+            ))
+        }
+    })
+    .await
+    .map_err(|err| format!("Release task failed: {err}"))?
 }
 
 fn write_browser_callback_response(

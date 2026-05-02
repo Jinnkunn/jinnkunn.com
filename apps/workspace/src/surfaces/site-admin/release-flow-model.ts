@@ -6,11 +6,15 @@ export const DEPLOY_ON_CONTENT_ACTIONS_URL =
 export const RELEASE_FROM_DISPATCH_ACTIONS_URL =
   "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/release-from-dispatch.yml";
 
-export const RELEASE_STAGING_COMMAND = "npm run release:staging";
+export const RELEASE_STAGING_SCRIPT = "release:staging";
+export const RELEASE_PROD_FROM_STAGING_SCRIPT = "release:prod:from-staging";
+export const RELEASE_PROD_FROM_STAGING_DRY_RUN_SCRIPT =
+  "release:prod:from-staging:dry-run";
+export const RELEASE_STAGING_COMMAND = `npm run ${RELEASE_STAGING_SCRIPT}`;
 export const RELEASE_PROD_FROM_STAGING_COMMAND =
-  "npm run release:prod:from-staging";
+  `npm run ${RELEASE_PROD_FROM_STAGING_SCRIPT}`;
 export const RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND =
-  "npm run release:prod:from-staging:dry-run";
+  `npm run ${RELEASE_PROD_FROM_STAGING_DRY_RUN_SCRIPT}`;
 export const LEGACY_RELEASE_PROD_COMMAND = [
   'export CONFIRM_PRODUCTION_DEPLOY=1',
   'export CONFIRM_PRODUCTION_SHA="$(git rev-parse HEAD)"',
@@ -25,16 +29,18 @@ export type ReleaseFlowStage =
   | "current"
   | "unknown";
 
-export type ReleaseWorkflowKind = "deploy-auto" | "release-dispatch";
+export type ReleaseWorkflowKind = "local-cloudflare" | "github-fallback";
 
 export interface ReleaseWorkflowRecovery {
   actionsUrl: string;
   command: string;
   copyLabel: string;
   detail: string;
+  fallbackLabel: string;
   kind: ReleaseWorkflowKind;
   label: string;
   openLabel: string;
+  script: typeof RELEASE_STAGING_SCRIPT;
   waitText: string;
 }
 
@@ -152,25 +158,29 @@ export function releaseWorkflowRecovery(
     return {
       actionsUrl: RELEASE_FROM_DISPATCH_ACTIONS_URL,
       command: RELEASE_STAGING_COMMAND,
-      copyLabel: "Copy staging release command",
-      detail: `Staging needs a release workflow rebuild for ${target}.`,
-      kind: "release-dispatch",
-      label: "Release workflow",
-      openLabel: "Open Release Workflow",
+      copyLabel: "Copy local release command",
+      detail: `Staging needs a local Cloudflare release for ${target}.`,
+      fallbackLabel: "GitHub dispatch fallback",
+      kind: "local-cloudflare",
+      label: "Local Cloudflare release",
+      openLabel: "Open GitHub fallback",
+      script: RELEASE_STAGING_SCRIPT,
       waitText:
-        "Wait for GitHub Actions “Release from dispatch” to finish, or run npm run release:staging, then recheck.",
+        "Run npm run release:staging on this Mac, then recheck. Use GitHub Actions only as a fallback.",
     };
   }
   return {
     actionsUrl: DEPLOY_ON_CONTENT_ACTIONS_URL,
     command: RELEASE_STAGING_COMMAND,
-    copyLabel: "Copy staging release command",
+    copyLabel: "Copy local release command",
     detail: `Staging needs a rebuilt Worker candidate for ${target}.`,
-    kind: "deploy-auto",
-    label: "Deploy (auto)",
-    openLabel: "Open Deploy Action",
+    fallbackLabel: "Deploy (auto) fallback",
+    kind: "local-cloudflare",
+    label: "Local Cloudflare release",
+    openLabel: "Open GitHub fallback",
+    script: RELEASE_STAGING_SCRIPT,
     waitText:
-      "Wait for GitHub Actions “Deploy (auto)” to finish, or run npm run release:staging, then recheck.",
+      "Run npm run release:staging on this Mac, then recheck. Use GitHub Actions only as a fallback.",
   };
 }
 

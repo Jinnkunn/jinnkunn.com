@@ -35,6 +35,26 @@ export function siteAdminBrowserLogin(
   return invoke("site_admin_browser_login", { baseUrl: base_url });
 }
 
+export type SiteAdminReleaseScript =
+  | "release:staging"
+  | "release:prod:from-staging"
+  | "release:prod:from-staging:dry-run";
+
+export interface SiteAdminReleaseCommandResult {
+  command: string;
+  cwd: string;
+  status: number;
+  duration_ms: number;
+  stdout_tail: string;
+  stderr_tail: string;
+}
+
+export function siteAdminRunReleaseCommand(
+  script: SiteAdminReleaseScript,
+): Promise<SiteAdminReleaseCommandResult> {
+  return invoke("site_admin_run_release_command", { script });
+}
+
 export interface SyncPullParams {
   base_url: string;
   bearer_token?: string;

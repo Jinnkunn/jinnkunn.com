@@ -197,8 +197,8 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Advanced command fallback",
-    "Release panel command fallback",
+    "Local release commands",
+    "Release panel local release commands",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),

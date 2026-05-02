@@ -42,9 +42,9 @@ operator just looked at on staging.
 - `tests/release-from-dispatch-contract.test.mjs` re-asserts the pin and
   fails any future change that re-binds `SITE_ADMIN_DB_ENV` to
   `TARGET_ENV`.
-- `.github/workflows/snapshot-staging-d1.yml` runs daily and opens a
-  PR whenever staging D1 has drifted from `content/*` in main, so the
-  git tree stays a recoverable baseline.
+- `.github/workflows/snapshot-staging-d1.yml` is manual-only. Dispatch it
+  when staging D1 needs a git recovery/audit snapshot; the weekday
+  schedule stays disabled to avoid routine Actions minutes.
 - `.github/workflows/post-deploy-visual-check.yml` runs on every
   successful release-from-dispatch run and Playwright-compares
   staging.jinkunchen.com to jinkunchen.com — catches a class of "deploy
@@ -78,7 +78,7 @@ Until then: leave it.
 ## See also
 
 - `docs/runbooks/production-promotion.md` — the full promote flow
-- `lib/server/promote-to-production-service.ts` — preflight + dispatch
-  service that powers the workspace's "Promote to Production" button
+- `lib/server/promote-to-production-service.ts` — preflight + GitHub
+  fallback service used by the workspace's production promotion panel
 - `scripts/dump-content-from-db.mjs` — the dump script (with `--diff-only`)
 - `tests/release-from-dispatch-contract.test.mjs` — workflow guardrails

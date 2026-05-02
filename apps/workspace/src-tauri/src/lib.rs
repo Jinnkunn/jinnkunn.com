@@ -71,6 +71,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             site_admin::site_admin_http_request,
             site_admin::site_admin_browser_login,
+            site_admin::site_admin_run_release_command,
             secrets::secure_store_set,
             secrets::secure_store_get,
             secrets::secure_store_delete,

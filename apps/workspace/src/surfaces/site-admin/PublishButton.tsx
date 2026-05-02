@@ -4,6 +4,7 @@ import {
   deployCandidateBlockedMessage,
   parseDeployResponseSummary,
   releaseWorkflowRecovery,
+  sourceStoreKind,
   type DeployResponseSummary,
 } from "./release-flow-model";
 import { editorDiagnosticsSummary } from "./editor-diagnostics";
@@ -24,9 +25,9 @@ import type { UseLocalSyncResult } from "./use-local-sync";
 import type { OutboxHookValue } from "./use-outbox";
 
 /**
- * Triggers /api/site-admin/deploy. GitHub/content-branch mode promotes the
- * currently uploaded Worker version; D1 mode dispatches the staging release
- * workflow and returns immediately with a queued state.
+ * Opens the publish preview. The routine D1/content path is a local
+ * Cloudflare release command; /api/site-admin/deploy remains for the
+ * uploaded-version path and the GitHub fallback branch.
  */
 export function PublishButton({
   contentDirty = false,
@@ -208,7 +209,7 @@ export function PublishButton({
     const command = releaseWorkflowRecovery(sourceSnapshot).command;
     try {
       await navigator.clipboard.writeText(command);
-      setMessage("success", `Copied: ${command}`);
+      setMessage("success", `Copied local release command: ${command}`);
     } catch {
       setMessage("warn", `Run locally: ${command}`);
     }
@@ -230,11 +231,11 @@ export function PublishButton({
       setQueuedDeploy(summary);
       setConfirming(true);
       const actionDetail = summary.workflowRunsListUrl
-        ? ` Open ${workflow.label} from the publish panel or GitHub Actions.`
+        ? ` Open ${workflow.fallbackLabel} from the publish panel.`
         : "";
       setMessage(
         "success",
-        `Staging release queued in GitHub Actions.${actionDetail} Recheck when the workflow finishes.`,
+        `GitHub Actions fallback queued for staging.${actionDetail} Recheck when the workflow finishes.`,
       );
     },
     [applyStatusSnapshot, clearPollTimers, request, setMessage, sourceSnapshot],
@@ -273,6 +274,22 @@ export function PublishButton({
     }
     if (sourceSnapshot?.deployableVersionReady === false) {
       setMessage("warn", deployCandidateBlockedMessage(sourceSnapshot));
+      return;
+    }
+    if (sourceStoreKind(sourceSnapshot ?? undefined) === "db") {
+      const command = releaseWorkflowRecovery(sourceSnapshot).command;
+      try {
+        await navigator.clipboard.writeText(command);
+        setMessage(
+          "warn",
+          `Copied ${command}. D1-backed publishing defaults to local Cloudflare; GitHub dispatch is fallback only.`,
+        );
+      } catch {
+        setMessage(
+          "warn",
+          `Run locally: ${command}. D1-backed publishing defaults to local Cloudflare; GitHub dispatch is fallback only.`,
+        );
+      }
       return;
     }
     setBusy(true);
@@ -425,7 +442,7 @@ export function PublishButton({
             void openExternalUrl(url).catch((error) => {
               setMessage(
                 "warn",
-                `Could not open GitHub Actions: ${String(error)}. URL: ${url}`,
+                `Could not open GitHub fallback: ${String(error)}. URL: ${url}`,
               );
             });
           }}
@@ -433,7 +450,7 @@ export function PublishButton({
             void openExternalUrl(workflowRecovery.actionsUrl).catch((error) => {
               setMessage(
                 "warn",
-                `Could not open the release action: ${String(error)}. URL: ${workflowRecovery.actionsUrl}`,
+                `Could not open GitHub fallback: ${String(error)}. URL: ${workflowRecovery.actionsUrl}`,
               );
             });
           }}
