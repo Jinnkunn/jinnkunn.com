@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Check } from "lucide-react";
 
 import { isSameDay, startOfDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
@@ -191,18 +192,14 @@ function renderTodoEntry(
           }}
         >
           {completed ? (
-            <svg
-              viewBox="0 0 12 12"
-              width="8"
-              height="8"
-              fill="none"
-              stroke="white"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2.5 6.25l2.25 2L9.5 3.75" />
-            </svg>
+            <Check
+              absoluteStrokeWidth
+              aria-hidden="true"
+              color="white"
+              focusable="false"
+              size={8}
+              strokeWidth={1.8}
+            />
           ) : null}
         </button>
         <span className="w-[72px] flex-shrink-0 text-[12px] text-text-muted tabular-nums">

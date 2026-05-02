@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCommandActions } from "../modules/registry";
 import { notesCreate, notesList, notesUpdate } from "../modules/notes/api";
 import {
+  NOTE_ICON_INBOX,
   NOTES_INBOX_TITLE,
   findNoteByTitle,
   hasQuickNotePrefix,
@@ -323,7 +324,7 @@ export function WorkspaceCommandPalette({
               title: NOTES_INBOX_TITLE,
             });
             const inboxDetail = await notesUpdate({
-              icon: "◇",
+              icon: NOTE_ICON_INBOX,
               id: createdInbox.note.id,
             });
             inbox = noteRowFromDetail(inboxDetail);

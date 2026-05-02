@@ -179,12 +179,19 @@ export interface NoteTemplate {
   title: string;
 }
 
+export const NOTE_ICON_INBOX = "i:inbox";
+export const NOTE_ICON_DAILY_NOTE = "i:calendar";
+export const NOTE_ICON_DAILY_REVIEW = "i:review";
+export const NOTE_ICON_MEETING = "i:meeting";
+export const NOTE_ICON_PROJECT = "i:project";
+export const NOTE_ICON_RESEARCH = "i:research";
+
 export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
   {
     bodyMdx:
       "# Daily Review\n\n## Wins\n\n- \n\n## Open loops\n\n- \n\n## Tomorrow\n\n- ",
     description: "Short personal review with open loops and next actions.",
-    icon: "◷",
+    icon: NOTE_ICON_DAILY_REVIEW,
     id: "daily-review",
     title: "Daily Review",
   },
@@ -192,7 +199,7 @@ export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
     bodyMdx:
       "# Meeting Notes\n\n## Context\n\n\n## Decisions\n\n- \n\n## Action items\n\n- ",
     description: "Capture decisions and follow-ups without over-structuring.",
-    icon: "◇",
+    icon: NOTE_ICON_MEETING,
     id: "meeting",
     title: "Meeting Notes",
   },
@@ -200,7 +207,7 @@ export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
     bodyMdx:
       "# Project Note\n\n## Goal\n\n\n## Current state\n\n\n## Next steps\n\n- ",
     description: "A lightweight project brief that can grow over time.",
-    icon: "□",
+    icon: NOTE_ICON_PROJECT,
     id: "project",
     title: "Project Note",
   },
@@ -208,7 +215,7 @@ export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
     bodyMdx:
       "# Research Note\n\n## Question\n\n\n## Sources\n\n- \n\n## Findings\n\n- ",
     description: "Collect research questions, sources, and distilled findings.",
-    icon: "✦",
+    icon: NOTE_ICON_RESEARCH,
     id: "research",
     title: "Research Note",
   },

@@ -354,6 +354,9 @@ test("tauri-ui-engineering: workspace primitives exist for future UI migration",
   ]) {
     assert.match(styles, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.match(styles, /--focus-ring/);
+  assert.match(styles, /\.workspace-action-menu__field/);
+  assert.match(styles, /\.workspace-split-view__inspector > \.workspace-inspector/);
   assert.ok(
     workspacePkg.dependencies["lucide-react"],
     "Workspace app should use lucide-react as the shared maintained icon library",
@@ -372,8 +375,14 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   const calendar = await read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx");
   const viewSwitcher = await read("apps/workspace/src/surfaces/calendar/ViewSwitcher.tsx");
   const sourceSidebar = await read("apps/workspace/src/surfaces/calendar/SourceSidebar.tsx");
+  const calendarBackgroundSync = await read("apps/workspace/src/surfaces/calendar/CalendarBackgroundSync.tsx");
+  const calendarPublicSync = await read("apps/workspace/src/surfaces/calendar/publicSync.ts");
+  const calendarProductionPolicy = await read("apps/workspace/src/surfaces/calendar/productionSyncPolicy.ts");
+  const calendarSiteAdminBridge = await read("apps/workspace/src/surfaces/calendar/siteAdminBridge.ts");
+  const syncSnapshot = await read("apps/workspace/src/surfaces/calendar/syncSnapshot.ts");
   const todosNav = await read("apps/workspace/src/surfaces/todos/nav.tsx");
   const todosSurface = await read("apps/workspace/src/surfaces/todos/TodosSurface.tsx");
+  const contactsSurface = await read("apps/workspace/src/surfaces/contacts/ContactsSurface.tsx");
   const sidebar = await read("apps/workspace/src/shell/Sidebar.tsx");
   const app = await read("apps/workspace/src/App.tsx");
   const styles = await readWorkspaceCssBundle();
@@ -407,6 +416,11 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.doesNotMatch(todosNav, /hideHeader: true/);
   assert.match(todosSurface, /setNavGroupItems/);
   assert.match(todosSurface, /createTodosNavGroups\(navCounts\)/);
+  assert.match(todosSurface, /WorkspaceActionMenu/);
+  assert.match(todosSurface, /todos-composer__planning/);
+  assert.match(todosSurface, /WorkspaceIconButton/);
+  assert.match(contactsSurface, /contacts-detail__action-panel/);
+  assert.match(contactsSurface, /Next Action/);
   const titlebar = await read("apps/workspace/src/shell/Titlebar.tsx");
   const settingsWindow = await read("apps/workspace/src/shell/SettingsWindow.tsx");
   assert.match(app, /SIDEBAR_COLLAPSED_STORAGE_KEY/);
@@ -419,11 +433,26 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(app, /SURFACE_ORDER_STORAGE_KEY/);
   assert.match(app, /orderWorkspaceSurfaces/);
   assert.match(app, /onReorderSurface=\{handleReorderSurface\}/);
+  assert.match(app, /CalendarBackgroundSync/);
+  assert.match(app, /enabled=\{enabledSurfaceIds\.has\("calendar"\)\}/);
+  assert.match(calendarBackgroundSync, /onCalendarChanged/);
+  assert.match(calendarBackgroundSync, /INITIAL_SYNC_DELAY_MS/);
+  assert.match(calendarBackgroundSync, /CHANGE_DEBOUNCE_MS/);
+  assert.match(calendarPublicSync, /fingerprintPublicCalendarPayload/);
+  assert.match(calendarPublicSync, /skipIfUnchanged/);
+  assert.match(calendarPublicSync, /promotePublicCalendarToProduction/);
+  assert.match(calendarProductionPolicy, /auto-promote/);
+  assert.match(calendarSiteAdminBridge, /\/api\/site-admin\/promote-to-production/);
+  assert.match(calendar, /productionSyncPolicy/);
+  assert.match(styles, /\.calendar-publish-policy/);
+  assert.match(syncSnapshot, /lastPublishedProjectionFingerprint/);
   assert.match(sidebar, /application\/x-workspace-surface/);
   assert.match(sidebar, /FIXED_APP_RAIL_SURFACE_ID = "workspace"/);
   assert.match(sidebar, /data-surface-reorderable/);
   assert.match(styles, /\.calendar-workspace-split/);
-  assert.match(styles, /\.calendar-commandbar__supplement/);
+  assert.match(calendar, /WorkspaceActionMenu/);
+  assert.match(calendar, /calendar-commandbar__more/);
+  assert.doesNotMatch(calendar, /calendar-commandbar__supplement/);
   assert.match(styles, /\.calendar-publish-panel/);
   assert.match(styles, /\.calendar-event-composer--inspector/);
   assert.match(calendar, /CalendarPublishPanel/);
@@ -501,6 +530,14 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   assert.match(styles, /\.workspace-editor-title-input \{/);
   assert.match(styles, /--workspace-editor-title-line-height/);
   assert.match(styles, /\.notes-editor__title \{[^}]*--workspace-editor-title-size/);
+  assert.match(styles, /\.notes-editor \{[\s\S]*--notes-editor-edge-padding/);
+  assert.match(
+    styles,
+    /\.notes-editor \{[\s\S]*calc\(var\(--notes-editor-edge-padding\) \+ var\(--notes-editor-gutter\)\)/,
+    "Notes editor keeps the title icon gutter inside the paper surface",
+  );
+  assert.match(styles, /\.notes-editor \{[\s\S]*color-bg-surface/);
+  assert.match(styles, /\.notes-icon-picker \{[\s\S]*overflow: visible;/);
   assert.match(
     styles,
     /\.mdx-document-editor__title \{[^}]*--workspace-editor-title-size/,
@@ -638,6 +675,69 @@ test("tauri-ui-engineering: root package exposes workspace UI smoke", async () =
   );
 });
 
+test("tauri-ui-engineering: drag payloads stay Tauri-compatible", async () => {
+  const sidebar = await read("apps/workspace/src/shell/Sidebar.tsx");
+  const calendarSources = await read(
+    "apps/workspace/src/surfaces/calendar/SourceSidebar.tsx",
+  );
+  const blocksEditor = await read(
+    "apps/workspace/src/surfaces/site-admin/blocks-editor.tsx",
+  );
+
+  assert.match(sidebar, /const STANDARD_TEXT_DRAG_TYPE = "text\/plain"/);
+  assert.match(sidebar, /event\.dataTransfer\.setData\(\s*APP_RAIL_SURFACE_DRAG_TYPE,\s*surface\.id,?\s*\)/);
+  assert.match(sidebar, /event\.dataTransfer\.setData\(\s*SIDEBAR_NAV_ITEM_DRAG_TYPE,\s*item\.id,?\s*\)/);
+  assert.match(sidebar, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*surface\.id,?\s*\)/);
+  assert.match(sidebar, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*item\.id,?\s*\)/);
+  assert.match(sidebar, /draggingAppSurfaceId !== null[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
+  assert.match(sidebar, /draggingItemId !== null[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
+  assert.match(calendarSources, /event\.dataTransfer\.setData\(\s*CALENDAR_SOURCE_DRAG_TYPE,\s*src\.id,?\s*\)/);
+  assert.match(calendarSources, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*src\.id,?\s*\)/);
+  assert.match(calendarSources, /draggingSourceId !== null[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
+  assert.match(blocksEditor, /event\.dataTransfer\.setData\(\s*MDX_BLOCK_DRAG_TYPE,\s*block\.id,?\s*\)/);
+  assert.match(blocksEditor, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*block\.id,?\s*\)/);
+  assert.match(blocksEditor, /draggingBlockId !== ""[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
+});
+
+test("tauri-ui-engineering: notes and recent icons use the shared icon system", async () => {
+  const noteIcons = await read("apps/workspace/src/surfaces/notes/noteIcons.tsx");
+  const notesWorkflow = await read("apps/workspace/src/modules/notes/workflow.ts");
+  const notesSurface = await read("apps/workspace/src/surfaces/notes/NotesSurface.tsx");
+  const notesTree = await read("apps/workspace/src/surfaces/notes/tree.tsx");
+  const iconPicker = await read("apps/workspace/src/surfaces/notes/IconPicker.tsx");
+  const sidebar = await read("apps/workspace/src/shell/Sidebar.tsx");
+  const commandPalette = await read("apps/workspace/src/shell/WorkspaceCommandPalette.tsx");
+  const localDb = await read("apps/workspace/src-tauri/src/local_db.rs");
+  const blockEditor = await read("apps/workspace/src/surfaces/site-admin/block-editor.tsx");
+  const slashCommands = await read(
+    "apps/workspace/src/surfaces/site-admin/editor-slash-commands.ts",
+  );
+
+  assert.match(noteIcons, /from "lucide-react"/);
+  assert.match(noteIcons, /NOTE_TOKEN_ICONS/);
+  assert.match(notesWorkflow, /NOTE_ICON_INBOX = "i:inbox"/);
+  assert.match(notesWorkflow, /NOTE_ICON_DAILY_NOTE = "i:calendar"/);
+  assert.match(notesSurface, /NoteIconGlyph/);
+  assert.match(notesTree, /NoteIconGlyph/);
+  assert.match(iconPicker, /isNoteIconToken/);
+  assert.match(sidebar, /Clock3/);
+  assert.match(commandPalette, /NOTE_ICON_INBOX/);
+  assert.match(localDb, /notes_icon_tokens_v1/);
+  assert.match(blockEditor, /type BlockEditorCommandIcon = string \| LucideIcon/);
+  assert.match(blockEditor, /absoluteStrokeWidth/);
+  assert.match(slashCommands, /from "lucide-react"/);
+  assert.match(slashCommands, /icon: Type/);
+  assert.match(slashCommands, /icon: Heading1/);
+  assert.match(slashCommands, /icon: ListTodo/);
+  assert.doesNotMatch(slashCommands, /icon: "/);
+  assert.doesNotMatch(notesWorkflow, /[◇◷□✦]/);
+  assert.doesNotMatch(notesSurface, /[◇◷□✦]/);
+  assert.doesNotMatch(notesTree, /[◇◷□✦]/);
+  assert.doesNotMatch(sidebar, /[◇◷□✦]/);
+  assert.doesNotMatch(commandPalette, /[◇◷□✦]/);
+  assert.doesNotMatch(slashCommands, /[☑❝•▸▢▶⇩⌐⌬📰🗞📑💼🎓▥✶🗂▦⚐]/);
+});
+
 test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebuild step", async () => {
   const publishButton = await read(
     "apps/workspace/src/surfaces/site-admin/PublishButton.tsx",
@@ -710,7 +810,7 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Promotion Checklist/);
   assert.match(releasePanel, /Environment comparison/);
   assert.match(releasePanel, /Production differs/);
-  assert.match(releasePanel, /Release preflight reads staging and production deployments live/);
+  assert.match(releasePanel, /Live Cloudflare comparison/);
 });
 
 test("tauri-ui-engineering: site admin has a unified topbar save action", async () => {

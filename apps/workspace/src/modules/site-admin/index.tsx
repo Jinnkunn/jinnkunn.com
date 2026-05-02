@@ -1,10 +1,17 @@
+import { lazy } from "react";
+
 import { SiteAdminIcon } from "../../surfaces/icons";
 import {
   SITE_ADMIN_DEFAULT_TAB,
   SITE_ADMIN_NAV_GROUPS,
 } from "../../surfaces/site-admin/nav";
-import { SiteAdminSurface } from "../../surfaces/site-admin/SiteAdminSurface";
 import type { WorkspaceModuleDefinition } from "../types";
+
+const SiteAdminSurface = lazy(() =>
+  import("../../surfaces/site-admin/SiteAdminSurface").then((module) => ({
+    default: module.SiteAdminSurface,
+  })),
+);
 
 export const SITE_ADMIN_MODULE: WorkspaceModuleDefinition = {
   id: "site-admin",

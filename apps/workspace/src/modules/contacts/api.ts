@@ -1,4 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  cachedResource,
+  invalidateCachedResourcePrefix,
+} from "../resourceCache";
 
 /** One labelled contact method (email or phone). The server stores
  * an array of these per contact in JSON, so the wire shape is the
@@ -128,68 +132,87 @@ export interface ContactInteractionUpdateParams {
 }
 
 export function contactsList(): Promise<ContactRow[]> {
-  return invoke("contacts_list");
+  return cachedResource("contacts:list", () => invoke("contacts_list"));
 }
 
 export function contactsListArchived(): Promise<ContactRow[]> {
-  return invoke("contacts_list_archived");
+  return cachedResource("contacts:archived", () =>
+    invoke("contacts_list_archived"),
+  );
 }
 
 export function contactsGet(id: string): Promise<ContactRow | null> {
-  return invoke("contacts_get", { id });
+  return cachedResource(`contacts:detail:${id}`, () =>
+    invoke("contacts_get", { id }),
+  );
 }
 
 export function contactsCreate(
   params: ContactCreateParams,
 ): Promise<ContactRow> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contacts_create", { params });
 }
 
 export function contactsUpdate(
   params: ContactUpdateParams,
 ): Promise<ContactRow> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contacts_update", { params });
 }
 
 export function contactsArchive(id: string): Promise<void> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contacts_archive", { id });
 }
 
 export function contactsUnarchive(id: string): Promise<ContactRow> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contacts_unarchive", { id });
 }
 
 export function contactsSearch(query: string): Promise<ContactSearchResult[]> {
-  return invoke("contacts_search", { params: { query } });
+  const normalized = query.trim().toLowerCase();
+  return cachedResource(`contacts:search:${normalized}`, () =>
+    invoke("contacts_search", { params: { query } }),
+  );
 }
 
 export function contactsUpcomingBirthdays(
   daysAhead?: number,
 ): Promise<UpcomingBirthday[]> {
-  return invoke("contacts_upcoming_birthdays", {
-    params: { daysAhead: daysAhead ?? null },
-  });
+  const normalized = daysAhead ?? "default";
+  return cachedResource(`contacts:birthdays:${normalized}`, () =>
+    invoke("contacts_upcoming_birthdays", {
+      params: { daysAhead: daysAhead ?? null },
+    }),
+  );
 }
 
 export function contactInteractionsList(
   contactId: string,
 ): Promise<ContactInteractionRow[]> {
-  return invoke("contact_interactions_list", { contactId });
+  return cachedResource(`contacts:interactions:${contactId}`, () =>
+    invoke("contact_interactions_list", { contactId }),
+  );
 }
 
 export function contactInteractionsCreate(
   params: ContactInteractionCreateParams,
 ): Promise<ContactInteractionRow> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contact_interactions_create", { params });
 }
 
 export function contactInteractionsUpdate(
   params: ContactInteractionUpdateParams,
 ): Promise<ContactInteractionRow> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contact_interactions_update", { params });
 }
 
 export function contactInteractionsDelete(id: string): Promise<void> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contact_interactions_delete", { id });
 }
 
@@ -210,6 +233,7 @@ export interface DeriveCalendarInteractionsResult {
 export function contactsDeriveCalendarInteractions(
   range: { startsAt?: string; endsAt?: string } = {},
 ): Promise<DeriveCalendarInteractionsResult> {
+  invalidateCachedResourcePrefix("contacts:");
   return invoke("contacts_derive_calendar_interactions", {
     params: {
       startsAt: range.startsAt ?? null,
@@ -237,5 +261,7 @@ export interface ContactBacklink {
 export function contactsListBacklinks(
   contactId: string,
 ): Promise<ContactBacklink[]> {
-  return invoke("contacts_list_backlinks", { contactId });
+  return cachedResource(`contacts:backlinks:${contactId}`, () =>
+    invoke("contacts_list_backlinks", { contactId }),
+  );
 }

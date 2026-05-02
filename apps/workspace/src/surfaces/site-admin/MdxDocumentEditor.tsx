@@ -35,14 +35,11 @@ import {
   WorkspaceInspectorSection,
 } from "../../ui/primitives";
 import { WorkspaceEditorRuntimeProvider } from "../../ui/editor-runtime";
-// Block-editor canvas + its public types live in `./blocks-editor` so
-// surfaces that just need the canvas (Notes) don't drag in this whole
-// document chrome / publish flow file.
 import {
   BlocksEditor,
   type BlocksEditorProps,
   type RequestFn,
-} from "./blocks-editor";
+} from "./LazyBlocksEditor";
 
 type DocumentEditorMode = "blocks" | "source";
 type DocumentExitAction = "saved" | "deleted" | "cancel";

@@ -1122,10 +1122,7 @@ pub struct ResolvedMention {
 /// `@Alice Wong` resolves to "Alice Wong" before falling back to
 /// "Alice". `@` followed by something we can't resolve is silently
 /// ignored — the user sees no chip but no crash either.
-pub fn resolve_mentions(
-    body: &str,
-    contacts: &[(String, String)],
-) -> Vec<ResolvedMention> {
+pub fn resolve_mentions(body: &str, contacts: &[(String, String)]) -> Vec<ResolvedMention> {
     if body.is_empty() || contacts.is_empty() {
         return Vec::new();
     }
@@ -1255,11 +1252,7 @@ fn chars_equal_ignore_ascii_case(a: char, b: char) -> bool {
 /// transaction so partial writes never leave half-resolved rows
 /// behind. Returns the number of new rows inserted (helpful for the
 /// caller's optimistic UI).
-pub fn sync_note_mentions(
-    conn: &Connection,
-    note_id: &str,
-    body: &str,
-) -> Result<usize, String> {
+pub fn sync_note_mentions(conn: &Connection, note_id: &str, body: &str) -> Result<usize, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, display_name FROM contacts
@@ -1377,7 +1370,9 @@ pub struct DeriveCalendarInteractionsResult {
 /// event. The map's value is the contact id; primary lookup on
 /// lowercased email since contact_emails come back lowercased from
 /// `participant_email` and we lowercase contact entries on the way in.
-fn build_email_index(conn: &Connection) -> Result<std::collections::HashMap<String, String>, String> {
+fn build_email_index(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, String>, String> {
     let mut stmt = conn
         .prepare("SELECT id, emails_json FROM contacts WHERE archived_at IS NULL")
         .map_err(|err| format!("derive build_email_index prepare: {err}"))?;
@@ -1476,10 +1471,7 @@ pub async fn contacts_derive_calendar_interactions(
             if !event_contacts.insert(contact_id.clone()) {
                 continue;
             }
-            let source = format!(
-                "calendar:{}:{}",
-                bundle.event_identifier, contact_id
-            );
+            let source = format!("calendar:{}:{}", bundle.event_identifier, contact_id);
             if interaction_source_exists(&conn, &source)? {
                 skipped += 1;
                 continue;
@@ -1934,7 +1926,7 @@ mod tests {
         // We can't pin "today" without injecting a clock, but we can
         // assert the sort + filter behaviour by creating contacts at
         // month boundaries and reading the result back.
-        let today = Utc::now().date_naive();
+        let today = Local::now().date_naive();
         // 1) Birthday today.
         let today_birthday = create_contact(
             &conn,
@@ -2109,13 +2101,13 @@ mod tests {
         )
         .expect("seed note");
 
-        let inserted = sync_note_mentions(&conn, "note_1", "@Alice and @Bob shipped it")
-            .expect("first sync");
+        let inserted =
+            sync_note_mentions(&conn, "note_1", "@Alice and @Bob shipped it").expect("first sync");
         assert_eq!(inserted, 2);
 
         // Re-running with the same body should keep the same set.
-        let again = sync_note_mentions(&conn, "note_1", "@Alice and @Bob shipped it")
-            .expect("re-sync");
+        let again =
+            sync_note_mentions(&conn, "note_1", "@Alice and @Bob shipped it").expect("re-sync");
         assert_eq!(again, 2);
         let count: i64 = conn
             .query_row(
@@ -2127,13 +2119,11 @@ mod tests {
         assert_eq!(count, 2);
 
         // Editing the body to drop Bob removes that backlink.
-        let dropped = sync_note_mentions(&conn, "note_1", "Just @Alice this time")
-            .expect("drop bob");
+        let dropped =
+            sync_note_mentions(&conn, "note_1", "Just @Alice this time").expect("drop bob");
         assert_eq!(dropped, 1);
         let only_alice: Vec<String> = conn
-            .prepare(
-                "SELECT contact_id FROM note_contact_mentions WHERE note_id = 'note_1'",
-            )
+            .prepare("SELECT contact_id FROM note_contact_mentions WHERE note_id = 'note_1'")
             .expect("prepare")
             .query_map([], |row| row.get::<_, String>(0))
             .expect("query")

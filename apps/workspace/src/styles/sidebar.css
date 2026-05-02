@@ -779,13 +779,11 @@
   gap: 8px;
 }
 
-.sidebar-recent__clock {
+.sidebar-recent__icon {
   flex-shrink: 0;
   width: 18px;
+  height: 18px;
   color: var(--color-text-muted);
-  font-size: var(--font-size-body);
-  line-height: 1.35;
-  text-align: center;
 }
 
 .sidebar-recent__body {

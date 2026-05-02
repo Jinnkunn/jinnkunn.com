@@ -1,8 +1,7 @@
 // Standalone Notion-style block editor canvas. Split from
 // MdxDocumentEditor.tsx so surfaces that just need the block-editing
 // canvas (Notes) don't drag in the document-level chrome (publish flow,
-// frontmatter inspector, draft restore, useSiteAdmin context). The
-// site-admin MdxDocumentEditor still imports BlocksEditor from here.
+// frontmatter inspector, draft restore, useSiteAdmin context).
 import {
   useCallback,
   useEffect,
@@ -75,6 +74,9 @@ export type RequestFn = (
   method?: string,
   body?: unknown,
 ) => Promise<NormalizedApiResponse>;
+
+const MDX_BLOCK_DRAG_TYPE = "application/x-mdx-block";
+const STANDARD_TEXT_DRAG_TYPE = "text/plain";
 
 function cssEscape(value: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -358,7 +360,7 @@ export function BlocksEditor({
         }}
         onDragEnter={(event: DragEvent<HTMLDivElement>) => {
           if (readOnly) return;
-          if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block"))
+          if (Array.from(event.dataTransfer.types).includes(MDX_BLOCK_DRAG_TYPE))
             return;
           event.preventDefault();
           setDragDepth((depth) => depth + 1);
@@ -369,7 +371,7 @@ export function BlocksEditor({
         }}
         onDrop={(event) => {
           if (readOnly) return;
-          if (Array.from(event.dataTransfer.types).includes("application/x-mdx-block"))
+          if (Array.from(event.dataTransfer.types).includes(MDX_BLOCK_DRAG_TYPE))
             return;
           event.preventDefault();
           setDragDepth(0);
@@ -757,7 +759,12 @@ function EditableBlocksList({
           onDragOver={
             enableDrag
               ? (event) => {
-                  if (!Array.from(event.dataTransfer.types).includes("application/x-mdx-block"))
+                  const types = Array.from(event.dataTransfer.types);
+                  const hasBlockDrag =
+                    types.includes(MDX_BLOCK_DRAG_TYPE) ||
+                    (draggingBlockId !== "" &&
+                      types.includes(STANDARD_TEXT_DRAG_TYPE));
+                  if (!hasBlockDrag)
                     return;
                   event.preventDefault();
                   setDragOverBlockId(block.id);
@@ -767,7 +774,10 @@ function EditableBlocksList({
           onDrop={
             enableDrag
               ? (event) => {
-                  const draggedId = event.dataTransfer.getData("application/x-mdx-block");
+                  const draggedId =
+                    event.dataTransfer.getData(MDX_BLOCK_DRAG_TYPE) ||
+                    draggingBlockId ||
+                    event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
                   if (!draggedId) return;
                   event.preventDefault();
                   event.stopPropagation();
@@ -792,7 +802,8 @@ function EditableBlocksList({
                   return;
                 }
                 setDraggingBlockId(block.id);
-                event.dataTransfer.setData("application/x-mdx-block", block.id);
+                event.dataTransfer.setData(MDX_BLOCK_DRAG_TYPE, block.id);
+                event.dataTransfer.setData(STANDARD_TEXT_DRAG_TYPE, block.id);
                 event.dataTransfer.effectAllowed = "move";
               }}
               onDragEnd={() => {
@@ -1398,4 +1409,3 @@ function CodeOrRawTextarea({
     </div>
   );
 }
-

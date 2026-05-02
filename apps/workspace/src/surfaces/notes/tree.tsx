@@ -1,7 +1,7 @@
-import { PagesIcon } from "../icons";
 import type { SurfaceNavItem } from "../types";
 import type { NotesMutation } from "../../modules/notes/api";
 import type { NoteRow, NoteTreeNode } from "./types";
+import { NoteIconGlyph } from "./noteIcons";
 
 export const NOTES_ROOT_NAV_ID = "notes:root";
 export const NOTES_ARCHIVE_NAV_ID = "notes:archive";
@@ -63,7 +63,7 @@ export function noteTreeToNavItems(nodes: readonly NoteTreeNode[]): SurfaceNavIt
     id: noteNavId(node.id),
     label: node.title || "Untitled",
     renameValue: node.title || "Untitled",
-    icon: node.icon ? <span aria-hidden="true">{node.icon}</span> : <PagesIcon />,
+    icon: <NoteIconGlyph icon={node.icon} />,
     canAddChild: true,
     children: noteTreeToNavItems(node.children),
     draggable: true,

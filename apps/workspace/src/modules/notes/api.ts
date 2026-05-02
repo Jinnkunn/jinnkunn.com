@@ -1,4 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  cachedResource,
+  invalidateCachedResourcePrefix,
+} from "../resourceCache";
 
 export interface NoteRow {
   id: string;
@@ -42,11 +46,11 @@ export interface NoteAssetResult {
 }
 
 export function notesList(): Promise<NoteRow[]> {
-  return invoke("notes_list");
+  return cachedResource("notes:list", () => invoke("notes_list"));
 }
 
 export function notesListArchived(): Promise<NoteRow[]> {
-  return invoke("notes_list_archived");
+  return cachedResource("notes:archived", () => invoke("notes_list_archived"));
 }
 
 export function notesGet(id: string): Promise<NoteDetail | null> {
@@ -62,6 +66,7 @@ export function notesCreate(params: {
   if (params.afterId !== undefined) payload.afterId = params.afterId;
   if (params.parentId !== undefined) payload.parentId = params.parentId;
   if (params.title !== undefined) payload.title = params.title;
+  invalidateCachedResourcePrefix("notes:");
   return invoke("notes_create", { params: payload });
 }
 
@@ -80,6 +85,8 @@ export function notesUpdate(params: {
   if (params.bodyMdx !== undefined) payload.bodyMdx = params.bodyMdx;
   if (params.icon !== undefined) payload.icon = params.icon;
   if (params.title !== undefined) payload.title = params.title;
+  invalidateCachedResourcePrefix("notes:");
+  invalidateCachedResourcePrefix("todos:note:");
   return invoke("notes_update", { params: payload });
 }
 
@@ -98,19 +105,25 @@ export function notesMove(params: {
   if (params.edge !== undefined) payload.edge = params.edge;
   if (params.parentId !== undefined) payload.parentId = params.parentId;
   if (params.targetId !== undefined) payload.targetId = params.targetId;
+  invalidateCachedResourcePrefix("notes:");
   return invoke("notes_move", { params: payload });
 }
 
 export function notesArchive(id: string): Promise<NotesMutation> {
+  invalidateCachedResourcePrefix("notes:");
   return invoke("notes_archive", { id });
 }
 
 export function notesUnarchive(id: string): Promise<NotesMutation> {
+  invalidateCachedResourcePrefix("notes:");
   return invoke("notes_unarchive", { id });
 }
 
 export function notesSearch(query: string): Promise<NoteSearchResult[]> {
-  return invoke("notes_search", { params: { query } });
+  const normalized = query.trim().toLowerCase();
+  return cachedResource(`notes:search:${normalized}`, () =>
+    invoke("notes_search", { params: { query } }),
+  );
 }
 
 export function notesSaveAsset(params: {

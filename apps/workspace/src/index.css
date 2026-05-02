@@ -4,10 +4,6 @@
 @import "./styles/shell.css";
 @import "./styles/workspace-primitives.css";
 @import "./styles/sidebar.css";
-@import "./styles/surfaces/site-admin-shell.css";
 @import "./styles/surfaces/workspace-panels.css";
-@import "./styles/editor-canvas.css";
-@import "./styles/editor-document.css";
 @import "./styles/legacy-controls.css";
-@import "./styles/surfaces/site-admin-content.css";
 @import "./styles/utilities.css";

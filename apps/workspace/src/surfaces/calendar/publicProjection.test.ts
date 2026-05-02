@@ -5,6 +5,7 @@ import {
   emptyMetadataStore,
   metadataForEvent,
 } from "./publicProjection";
+import { fingerprintPublicCalendarPayload } from "./syncSnapshot";
 import type { Calendar, CalendarEvent } from "./types";
 
 const event: CalendarEvent = {
@@ -158,5 +159,43 @@ describe("calendar public projection", () => {
       endsAt: "2026-04-28T15:00:00.000Z",
       colorHex: "#9B9A97",
     });
+  });
+
+  it("fingerprints substantive projection fields without generatedAt churn", () => {
+    const payload = buildPublicCalendarPayload({
+      events: [event],
+      calendarsById: new Map([[calendar.id, calendar]]),
+      metadata: {
+        schemaVersion: 1,
+        byEventKey: {
+          "external-1": {
+            visibility: "full",
+          },
+        },
+      },
+      range: {
+        startsAt: "2026-04-28T00:00:00.000Z",
+        endsAt: "2026-04-29T00:00:00.000Z",
+      },
+    });
+
+    const firstGeneratedAt = {
+      ...payload,
+      generatedAt: "2026-05-01T00:00:00.000Z",
+    };
+    const secondGeneratedAt = {
+      ...payload,
+      generatedAt: "2026-05-01T01:00:00.000Z",
+    };
+    expect(fingerprintPublicCalendarPayload(firstGeneratedAt)).toBe(
+      fingerprintPublicCalendarPayload(secondGeneratedAt),
+    );
+
+    expect(
+      fingerprintPublicCalendarPayload({
+        ...payload,
+        events: [{ ...payload.events[0], url: "https://example.com/changed" }],
+      }),
+    ).not.toBe(fingerprintPublicCalendarPayload(payload));
   });
 });

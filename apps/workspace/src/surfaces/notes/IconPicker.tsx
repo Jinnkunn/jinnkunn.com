@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
+import { isNoteIconToken, NoteIconGlyph } from "./noteIcons";
+
 const COMMON_EMOJIS = [
   "📝", "📄", "📋", "📌", "🔖", "💡", "⭐", "❤️",
   "🔥", "✨", "🎯", "🎨", "📚", "🗂", "📂", "🗒",
@@ -56,7 +58,7 @@ export function NoteIconPicker({
         aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
       >
-        {value ? <span aria-hidden="true">{value}</span> : <PlusGlyph />}
+        {value ? <NoteIconGlyph icon={value} size={16} /> : <PlusGlyph />}
       </button>
       {open ? (
         <div
@@ -87,7 +89,7 @@ export function NoteIconPicker({
               type="text"
               className="notes-icon-picker__custom"
               placeholder="Type custom"
-              value={value}
+              value={isNoteIconToken(value) ? "" : value}
               maxLength={8}
               onChange={(event) => onChange(event.currentTarget.value)}
             />

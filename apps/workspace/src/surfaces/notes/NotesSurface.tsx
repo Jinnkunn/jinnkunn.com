@@ -33,16 +33,22 @@ import {
 import {
   todosArchive,
   todosCreate,
-  todosList,
+  todosListByNoteSource,
   todosUpdate,
   type TodoRow,
 } from "../../modules/todos/api";
+import {
+  projectsList,
+  type ProjectRow,
+} from "../../modules/projects/api";
 import {
   buildNoteTodoSource,
   filterTodosLinkedToNote,
 } from "../../modules/notes/todoLinks";
 import {
   NOTE_TEMPLATES,
+  NOTE_ICON_DAILY_NOTE,
+  NOTE_ICON_INBOX,
   NOTES_DAILY_PARENT_TITLE,
   NOTES_INBOX_TITLE,
   dailyNoteBody,
@@ -55,9 +61,13 @@ import {
 } from "../../modules/notes/workflow";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
+  WorkspaceActionMenu,
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceEmptyState,
+  WorkspaceInlineStatus,
+  WorkspaceSplitView,
   WorkspaceSurfaceFrame,
 } from "../../ui/primitives";
 import {
@@ -66,6 +76,7 @@ import {
 } from "../../ui/editor-runtime";
 import { BlocksEditor } from "../site-admin/LazyBlocksEditor";
 import { NoteIconPicker } from "./IconPicker";
+import { NoteIconGlyph } from "./noteIcons";
 import {
   NOTES_EMPTY_PAGE_NAV_ITEM,
   NOTES_PAGES_NAV_GROUP_ID,
@@ -91,9 +102,13 @@ import {
   TODOS_UNSCHEDULED_NAV_ID,
   TODOS_UPCOMING_NAV_ID,
 } from "../todos/nav";
+import { projectNavId } from "../projects/nav";
 import { addLocalDays, startOfLocalDay } from "../../modules/todos/planning";
 import { todoTimelineStart } from "../../modules/todos/time";
 import type { NotesSaveState } from "./types";
+import "../../styles/editor-canvas.css";
+import "../../styles/editor-document.css";
+import "../../styles/surfaces/notes.css";
 
 const SAVE_DEBOUNCE_MS = 600;
 const DEFAULT_NOTE_TITLE = "Untitled";
@@ -308,6 +323,7 @@ export function NotesSurface() {
   const [linkedTodos, setLinkedTodos] = useState<TodoRow[]>([]);
   const [linkedTodosLoading, setLinkedTodosLoading] = useState(false);
   const [linkedTodosBusyId, setLinkedTodosBusyId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [saveState, setSaveState] = useState<NotesSaveState>("idle");
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const [query, setQuery] = useState("");
@@ -339,6 +355,10 @@ export function NotesSurface() {
   const navItems = useMemo(() => noteTreeToNavItems(tree), [tree]);
   const recentNotes = useMemo(() => getRecentNotes(rows), [rows]);
   const isArchiveView = activeNavItemId === NOTES_ARCHIVE_NAV_ID;
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -366,7 +386,7 @@ export function NotesSurface() {
     setLinkedTodos([]);
     setLinkedTodosLoading(true);
     try {
-      const rows = await todosList();
+      const rows = await todosListByNoteSource(noteId);
       setLinkedTodos(sortLinkedTodos(filterTodosLinkedToNote(rows, noteId)));
     } catch (error) {
       setMessage({
@@ -382,6 +402,25 @@ export function NotesSurface() {
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    projectsList()
+      .then((next) => {
+        if (!cancelled) setProjects(next);
+      })
+      .catch((error) => {
+        if (!cancelled && !isNativeBridgeUnavailable(error)) {
+          setMessage({
+            kind: "error",
+            text: `Load projects failed: ${String(error)}`,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isArchiveView) {
@@ -517,7 +556,7 @@ export function NotesSurface() {
     setBusy(true);
     try {
       const inbox = await ensureNote({
-        icon: "◇",
+        icon: NOTE_ICON_INBOX,
         title: NOTES_INBOX_TITLE,
       });
       setActiveNavItemId(noteNavId(inbox.id));
@@ -534,12 +573,12 @@ export function NotesSurface() {
     setBusy(true);
     try {
       const parent = await ensureNote({
-        icon: "◷",
+        icon: NOTE_ICON_DAILY_NOTE,
         title: NOTES_DAILY_PARENT_TITLE,
       });
       const today = await ensureNote({
         bodyMdx: dailyNoteBody(),
-        icon: "◷",
+        icon: NOTE_ICON_DAILY_NOTE,
         parentId: parent.id,
         title: dailyNoteTitle(),
       });
@@ -1220,49 +1259,59 @@ export function NotesSurface() {
               New note
             </WorkspaceCommandButton>
             {showEditor ? (
-              <>
-                <WorkspaceCommandButton
-                  tone="ghost"
+              <WorkspaceActionMenu label="More">
+                <button
+                  type="button"
+                  className="notes-command-menu__item"
                   disabled={!selectedNote || busy || creatingTodos}
-                  title="Create a todo linked to this note"
                   onClick={() => void createTodoFromNote()}
                 >
-                  Todo
-                </WorkspaceCommandButton>
+                  New todo
+                </button>
                 {extractedTodos.length > 0 ? (
-                  <WorkspaceCommandButton
-                    tone="ghost"
+                  <button
+                    type="button"
+                    className="notes-command-menu__item"
                     disabled={!selectedNote || busy || creatingTodos}
-                    title="Create todos from unchecked tasks and action items"
                     onClick={() => void createTodosFromActions(extractedTodos)}
                   >
                     Extract {extractedTodos.length}
-                  </WorkspaceCommandButton>
+                  </button>
                 ) : null}
-                <WorkspaceCommandButton
-                  tone="ghost"
+                <button
+                  type="button"
+                  className="notes-command-menu__item"
                   disabled={!selectedNote || busy}
-                  title={`Archive (${SHORTCUT_META}⌫)`}
                   onClick={() => void archiveSelected()}
                 >
                   Archive
-                </WorkspaceCommandButton>
-              </>
+                </button>
+              </WorkspaceActionMenu>
             ) : null}
           </WorkspaceCommandGroup>
         }
       />
 
       {message ? (
-        <div className="notes-message" data-kind={message.kind} role="status">
+        <WorkspaceInlineStatus
+          className="notes-message"
+          data-kind={message.kind}
+          tone={
+            message.kind === "error"
+              ? "error"
+              : message.kind === "success"
+                ? "success"
+                : "default"
+          }
+        >
           {message.text}
-        </div>
+        </WorkspaceInlineStatus>
       ) : null}
 
       {query.trim() ? (
         <section className="notes-search-results" aria-label="Search results">
           <div className="notes-search-results__head">
-            {searching ? "Searching..." : `${searchResults.length} results`}
+            {searching ? "Searching…" : `${searchResults.length} results`}
           </div>
           {searchResults.map((result, index) => (
             <button
@@ -1296,35 +1345,47 @@ export function NotesSurface() {
           onRestore={(id) => void restoreArchived(id)}
         />
       ) : showEditor ? (
-        <article className="notes-editor" aria-busy={loadingNote ? "true" : undefined}>
-          <div className="notes-editor__head">
-            <NoteIconPicker value={icon} onChange={setIcon} />
-            <input
-              aria-label="Note title"
-              className="notes-editor__title workspace-editor-title-input"
-              value={title}
-              placeholder={DEFAULT_NOTE_TITLE}
-              onChange={(event) => setTitle(event.currentTarget.value)}
-            />
-          </div>
-          <LinkedTodosPanel
-            busyId={linkedTodosBusyId}
-            counts={linkedTodoCounts}
-            loading={linkedTodosLoading}
-            todos={linkedTodos}
-            onArchive={(todo) => void archiveLinkedTodo(todo)}
-            onOpen={(todo) => openLinkedTodo(todo)}
-            onToggle={(todo) => void toggleLinkedTodo(todo)}
-          />
-          <WorkspaceEditorRuntimeProvider runtime={editorRuntime}>
-            <BlocksEditor
-              value={body}
-              onChange={setBody}
-              minHeight={520}
-              placeholder="Type / for blocks"
-            />
-          </WorkspaceEditorRuntimeProvider>
-        </article>
+        <WorkspaceSplitView
+          className="notes-editor-split"
+          inspector={
+            linkedTodos.length > 0 ? (
+              <LinkedTodosPanel
+                busyId={linkedTodosBusyId}
+                counts={linkedTodoCounts}
+                loading={linkedTodosLoading}
+                projectById={projectById}
+                todos={linkedTodos}
+                onArchive={(todo) => void archiveLinkedTodo(todo)}
+                onOpen={(todo) => openLinkedTodo(todo)}
+                onOpenProject={(projectId) =>
+                  selectWorkspaceNavItem("projects", projectNavId(projectId))
+                }
+                onToggle={(todo) => void toggleLinkedTodo(todo)}
+              />
+            ) : null
+          }
+        >
+          <article className="notes-editor" aria-busy={loadingNote ? "true" : undefined}>
+            <div className="notes-editor__head">
+              <NoteIconPicker value={icon} onChange={setIcon} />
+              <input
+                aria-label="Note title"
+                className="notes-editor__title workspace-editor-title-input"
+                value={title}
+                placeholder={DEFAULT_NOTE_TITLE}
+                onChange={(event) => setTitle(event.currentTarget.value)}
+              />
+            </div>
+            <WorkspaceEditorRuntimeProvider runtime={editorRuntime}>
+              <BlocksEditor
+                value={body}
+                onChange={setBody}
+                minHeight={520}
+                placeholder="Type / for blocks"
+              />
+            </WorkspaceEditorRuntimeProvider>
+          </article>
+        </WorkspaceSplitView>
       ) : (
         <NotesHome
           busy={busy}
@@ -1350,7 +1411,9 @@ function LinkedTodosPanel({
   loading,
   onArchive,
   onOpen,
+  onOpenProject,
   onToggle,
+  projectById,
   todos,
 }: {
   busyId: string | null;
@@ -1358,7 +1421,9 @@ function LinkedTodosPanel({
   loading: boolean;
   onArchive: (todo: TodoRow) => void;
   onOpen: (todo: TodoRow) => void;
+  onOpenProject: (projectId: string) => void;
   onToggle: (todo: TodoRow) => void;
+  projectById: ReadonlyMap<string, ProjectRow>;
   todos: readonly TodoRow[];
 }) {
   if (todos.length === 0) return null;
@@ -1377,6 +1442,7 @@ function LinkedTodosPanel({
         {todos.map((todo) => {
           const completed = todo.completedAt !== null;
           const disabled = busyId !== null;
+          const project = todo.projectId ? projectById.get(todo.projectId) : null;
           return (
             <li
               className="notes-linked-todo"
@@ -1395,7 +1461,19 @@ function LinkedTodosPanel({
               </button>
               <div className="notes-linked-todo__body">
                 <strong>{todo.title}</strong>
-                <small>{formatLinkedTodoMeta(todo)}</small>
+                <span className="notes-linked-todo__meta">
+                  <small>{formatLinkedTodoMeta(todo)}</small>
+                  {project ? (
+                    <button
+                      type="button"
+                      className="notes-linked-todo__project"
+                      disabled={disabled}
+                      onClick={() => onOpenProject(project.id)}
+                    >
+                      {project.title}
+                    </button>
+                  ) : null}
+                </span>
               </div>
               <button
                 type="button"
@@ -1474,6 +1552,11 @@ function NotesHome({
               disabled={busy}
               onClick={onOpenInbox}
             >
+              <NoteIconGlyph
+                className="notes-home__action-icon"
+                icon={NOTE_ICON_INBOX}
+                size={16}
+              />
               <span>Inbox</span>
               {inboxCount > 0 ? <small>{inboxCount} open</small> : null}
             </button>
@@ -1483,6 +1566,11 @@ function NotesHome({
               disabled={busy}
               onClick={onOpenToday}
             >
+              <NoteIconGlyph
+                className="notes-home__action-icon"
+                icon={NOTE_ICON_DAILY_NOTE}
+                size={16}
+              />
               <span>Today</span>
               <small>{hasTodayNote ? "Open" : "Create"}</small>
             </button>
@@ -1517,7 +1605,11 @@ function NotesHome({
             {recentNotes.length > 0 ? <span>{recentNotes.length}</span> : null}
           </header>
           {recentNotes.length === 0 ? (
-            <p className="notes-home__empty">No notes</p>
+            <WorkspaceEmptyState
+              className="notes-home__empty"
+              compact
+              title="No notes"
+            />
           ) : (
             <div className="notes-home__recent-list">
               {recentNotes.map((note) => (
@@ -1527,7 +1619,11 @@ function NotesHome({
                   className="notes-home__recent"
                   onClick={() => onOpenRecent(note.id)}
                 >
-                  <span aria-hidden="true">{note.icon || "#"}</span>
+                  <NoteIconGlyph
+                    className="notes-home__recent-icon"
+                    icon={note.icon}
+                    size={15}
+                  />
                   <strong>{note.title || DEFAULT_NOTE_TITLE}</strong>
                 </button>
               ))}
@@ -1571,8 +1667,14 @@ function CommandBarCenter({
                 data-current="true"
                 aria-current="page"
               >
-                {node.icon ? `${node.icon} ` : null}
-                {node.title || DEFAULT_NOTE_TITLE}
+                <NoteIconGlyph
+                  className="notes-breadcrumb__icon"
+                  icon={node.icon}
+                  size={13}
+                />
+                <span className="notes-breadcrumb__text">
+                  {node.title || DEFAULT_NOTE_TITLE}
+                </span>
               </span>
             ) : (
               <button
@@ -1580,8 +1682,14 @@ function CommandBarCenter({
                 className="notes-breadcrumb__crumb"
                 onClick={() => onSelectBreadcrumb(node.id)}
               >
-                {node.icon ? `${node.icon} ` : null}
-                {node.title || DEFAULT_NOTE_TITLE}
+                <NoteIconGlyph
+                  className="notes-breadcrumb__icon"
+                  icon={node.icon}
+                  size={13}
+                />
+                <span className="notes-breadcrumb__text">
+                  {node.title || DEFAULT_NOTE_TITLE}
+                </span>
               </button>
             )}
           </span>
@@ -1612,15 +1720,23 @@ function ArchivePanel({
         <h1>Archived</h1>
       </header>
       {loading ? (
-        <div className="notes-archive__empty">Loading…</div>
+        <WorkspaceEmptyState
+          className="notes-archive__empty"
+          compact
+          title="Loading"
+        />
       ) : rows.length === 0 ? (
-        <div className="notes-archive__empty">No archived notes.</div>
+        <WorkspaceEmptyState
+          className="notes-archive__empty"
+          compact
+          title="No archived notes"
+        />
       ) : (
         <ul className="notes-archive__list">
           {rows.map((row) => (
             <li key={row.id} className="notes-archive__row">
               <span className="notes-archive__icon" aria-hidden="true">
-                {row.icon || "·"}
+                <NoteIconGlyph icon={row.icon} size={15} />
               </span>
               <span className="notes-archive__title">
                 {row.title || DEFAULT_NOTE_TITLE}

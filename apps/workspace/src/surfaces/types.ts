@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, LazyExoticComponent, ReactNode } from "react";
 
 /** One leaf nav item inside a surface's nested tree. Rendered as an
  * indented row under its group in the shell sidebar. May itself host
@@ -78,7 +78,7 @@ export interface SurfaceDefinition {
   /** Sidebar item icon — inline SVG string or React node. */
   icon?: ReactNode;
   /** Component rendered in the main pane when this surface is active. */
-  Component: ComponentType;
+  Component: ComponentType | LazyExoticComponent<ComponentType>;
   /** Disabled surfaces render as greyed-out sidebar items. Use for
    * placeholders (e.g. "Calendar — coming soon"). */
   disabled?: boolean;

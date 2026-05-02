@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import {
@@ -51,6 +59,12 @@ const ENABLED_MODULES_STORAGE_KEY = "workspace.enabledModules.v1";
  * "this module was added in a build after the user's last save". */
 const KNOWN_MODULES_STORAGE_KEY = "workspace.modules.known.v1";
 
+const CalendarBackgroundSync = lazy(() =>
+  import("./surfaces/calendar/CalendarBackgroundSync").then((module) => ({
+    default: module.CalendarBackgroundSync,
+  })),
+);
+
 function createWorkspaceTab(
   surfaceId: string,
   navItemId: string | null,
@@ -79,6 +93,14 @@ function persistBoolean(storageKey: string, value: boolean): void {
   } catch {
     // ignore quota / private-mode errors; state stays in-memory
   }
+}
+
+function WorkspaceSurfaceLoading({ title }: { title: string }) {
+  return (
+    <div className="workspace-surface-loading" role="status">
+      {title}
+    </div>
+  );
 }
 
 function readStringListFromStorage(key: string): readonly string[] | null {
@@ -368,6 +390,7 @@ export function App() {
           delete next[itemId];
           return next;
         }
+        if (prev[itemId] === children) return prev;
         return { ...prev, [itemId]: children };
       });
     },
@@ -382,6 +405,7 @@ export function App() {
           delete next[groupId];
           return next;
         }
+        if (prev[groupId] === items) return prev;
         return { ...prev, [groupId]: items };
       });
     },
@@ -759,6 +783,14 @@ export function App() {
 
   return (
     <div className="app-shell">
+      {enabledSurfaceIds.has("calendar") ? (
+        <Suspense fallback={null}>
+          <CalendarBackgroundSync
+            enabled={enabledSurfaceIds.has("calendar")}
+            onWorkspaceEvent={recordWorkspaceEvent}
+          />
+        </Suspense>
+      ) : null}
       <Titlebar
         activeSurface={renderedActiveSurface}
         activeNavItemId={activeNavItemId}
@@ -811,7 +843,11 @@ export function App() {
                   surfaces={derivedSurfaces}
                 />
               ) : (
-                <ActiveComponent />
+                <Suspense
+                  fallback={<WorkspaceSurfaceLoading title={activeSurface.title} />}
+                >
+                  <ActiveComponent />
+                </Suspense>
               )}
             </SurfaceNavProvider>
           </ErrorBoundary>

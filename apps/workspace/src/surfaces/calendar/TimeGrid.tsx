@@ -1,4 +1,11 @@
-import { useEffect, useState, type MouseEvent, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
+import { Check } from "lucide-react";
 
 import { isSameDay } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
@@ -78,6 +85,16 @@ export function TimeGrid({
   const todayIdx = days.findIndex((d) => isSameDay(d, now, timeZone));
   const nowMinute = zonedMinuteOfDay(now, timeZone);
   const nowTopPx = (nowMinute / 60) * HOUR_HEIGHT;
+  const dayLayouts = useMemo(
+    () =>
+      days.map((day) => ({
+        day,
+        dayKey: day.toISOString(),
+        positioned: layoutDayEvents(events, day, timeZone),
+        todos: layoutDayTodos(todos, day, timeZone),
+      })),
+    [days, events, timeZone, todos],
+  );
 
   return (
     <div
@@ -87,13 +104,11 @@ export function TimeGrid({
       }}
     >
       <HourGutter totalHeight={totalHeight} nowTopPx={todayIdx >= 0 ? nowTopPx : null} />
-      {days.map((day, idx) => {
-        const positioned = layoutDayEvents(events, day, timeZone);
-        const dayTodos = layoutDayTodos(todos, day, timeZone);
+      {dayLayouts.map(({ day, dayKey, positioned, todos: dayTodos }, idx) => {
         const isToday = idx === todayIdx;
         return (
           <DayColumn
-            key={day.toISOString()}
+            key={dayKey}
             day={day}
             positioned={positioned}
             todos={dayTodos}
@@ -531,18 +546,14 @@ function TodoChip({
         }}
       >
         {completed ? (
-          <svg
-            viewBox="0 0 12 12"
-            width="8"
-            height="8"
-            fill="none"
-            stroke="white"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M2.5 6.25l2.25 2L9.5 3.75" />
-          </svg>
+          <Check
+            absoluteStrokeWidth
+            aria-hidden="true"
+            color="white"
+            focusable="false"
+            size={8}
+            strokeWidth={1.8}
+          />
         ) : null}
       </button>
       <button

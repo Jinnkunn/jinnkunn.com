@@ -402,7 +402,7 @@ export function EventComposer({
           Cancel
         </button>
         <button type="submit" className="btn btn--primary" disabled={busy}>
-          {busy ? "Saving..." : "Add"}
+          {busy ? "Saving…" : "Add"}
         </button>
       </div>
     </form>
