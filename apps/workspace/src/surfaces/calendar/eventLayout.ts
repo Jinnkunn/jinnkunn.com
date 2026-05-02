@@ -135,7 +135,7 @@ export function layoutDayEvents(
  *
  * Returned in display order with span info so callers can render each
  * as a continuous bar across cells. The span is clamped to the
- * provided window — an event running Mon..Fri shown in a Mon..Sun
+ * provided window — an event running Sun..Thu shown in a Sun..Sat
  * week renders as a 5-day bar starting at offset 0. */
 export interface AllDayBar {
   event: CalendarEvent;
