@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { isSameDay, weekDays } from "./dateRange";
+import { isSameDay, isWeekend, weekDays } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents } from "./eventLayout";
 import {
@@ -19,7 +19,7 @@ import {
 const ALL_DAY_BAR_HEIGHT = 18;
 const ALL_DAY_BAR_GAP = 2;
 
-/** Mon–Sun timeline. Header shows weekday + date number per column,
+/** Sun–Sat timeline. Header shows weekday + date number per column,
  * with a blue circle on today's number. The all-day strip stacks
  * multi-day bars vertically so a Mon..Fri trip and a Wed birthday
  * don't visually fight for the same row. */
@@ -74,6 +74,7 @@ export function WeekView({
           stripHeight={stripHeight}
           onEventSelect={onEventSelect}
           getDisclosure={getDisclosure}
+          timeZone={timeZone}
         />
       ) : null}
       <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto">
@@ -109,7 +110,8 @@ function WeekHeader({ days, timeZone }: { days: Date[]; timeZone: string }) {
         return (
           <div
             key={day.toISOString()}
-            className="flex flex-col items-center justify-center py-2 gap-0.5"
+            className="calendar-week-header-cell flex flex-col items-center justify-center py-2 gap-0.5"
+            data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
           >
             <span className="text-[10px] font-semibold tracking-[0.06em] text-text-muted uppercase">
               {formatInTimeZone(day, timeZone, { weekday: "short" })}
@@ -137,6 +139,7 @@ function AllDayStrip({
   stripHeight,
   onEventSelect,
   getDisclosure,
+  timeZone,
 }: {
   days: Date[];
   bars: ReturnType<typeof layoutAllDayEvents>;
@@ -144,6 +147,7 @@ function AllDayStrip({
   stripHeight: number;
   onEventSelect?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
+  timeZone: string;
 }) {
   // Stack bars into rows so two events on the same day don't overlap.
   const rows = stackRows(bars);
@@ -162,6 +166,15 @@ function AllDayStrip({
         className="col-span-7 relative"
         style={{ gridColumn: `2 / span ${days.length}` }}
       >
+        <div className="calendar-all-day-strip__background" aria-hidden="true">
+          {days.map((day) => (
+            <span
+              className="calendar-all-day-strip__cell"
+              data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
+              key={day.toISOString()}
+            />
+          ))}
+        </div>
         {rows.map((row, rowIdx) =>
           row.map((bar) => {
             const cal = calendarsById.get(bar.event.calendarId);

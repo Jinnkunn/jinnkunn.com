@@ -13,12 +13,12 @@ import {
   addZonedMonths,
   calendarTimeZoneLabel,
   formatInTimeZone,
+  getZonedDateParts,
   isSameZonedMonth,
   zonedDateFromDayKey,
   zonedDayKey,
   zonedStartOfDay,
   zonedStartOfMonth,
-  zonedStartOfWeek,
 } from "@/lib/shared/calendar-timezone";
 import type { PublicCalendarData, PublicCalendarEvent } from "@/lib/shared/public-calendar";
 
@@ -168,11 +168,28 @@ function addDays(
   return addZonedDays(date, days, timeZone);
 }
 
+function dayOfWeek(
+  date: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): number {
+  const parts = getZonedDateParts(date, timeZone);
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
+}
+
 function startOfWeek(
   date: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Date {
-  return zonedStartOfWeek(date, timeZone);
+  const start = startOfDay(date, timeZone);
+  return addDays(start, -dayOfWeek(start, timeZone), timeZone);
+}
+
+function isWeekend(
+  date: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): boolean {
+  const weekday = dayOfWeek(date, timeZone);
+  return weekday === 0 || weekday === 6;
 }
 
 function startOfMonth(
@@ -731,13 +748,16 @@ export function PublicCalendarView({
 }
 
 function WeekdayLabels({ timeZone }: { timeZone: string }) {
-  const monday = zonedDateFromDayKey("2024-01-01", timeZone);
+  const sunday = zonedDateFromDayKey("2024-01-07", timeZone);
   return (
     <div className="public-calendar__weekdays">
       {Array.from({ length: 7 }, (_, i) => {
-        const day = addDays(monday, i, timeZone);
+        const day = addDays(sunday, i, timeZone);
         return (
-          <span key={day.toISOString()}>
+          <span
+            data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
+            key={day.toISOString()}
+          >
             {formatInTimeZone(day, timeZone, { weekday: "short" })}
           </span>
         );
@@ -771,10 +791,12 @@ function MonthCalendar({
           const key = keyForDate(day, timeZone);
           const dayEvents = eventsForDayKey(dayIndex, key);
           const inMonth = isSameZonedMonth(day, anchor, timeZone);
+          const weekend = isWeekend(day, timeZone);
           return (
             <section
               className="public-calendar__month-cell"
               data-muted={inMonth ? "false" : "true"}
+              data-weekend={weekend ? "true" : "false"}
               key={key}
             >
               <button
@@ -843,7 +865,11 @@ function WeekCalendar({
       <WeekdayLabels timeZone={timeZone} />
       <div className="public-calendar__week-grid">
         {days.map((day) => (
-          <section className="public-calendar__week-day" key={day.toISOString()}>
+          <section
+            className="public-calendar__week-day"
+            data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
+            key={day.toISOString()}
+          >
             <div className="public-calendar__week-date">
               <span>{formatInTimeZone(day, timeZone, { day: "numeric" })}</span>
             </div>

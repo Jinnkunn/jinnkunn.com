@@ -5,6 +5,14 @@
   gap: 10px;
 }
 
+.calendar-surface-body {
+  --calendar-weekend-background: color-mix(
+    in srgb,
+    var(--color-text-primary) 3.5%,
+    transparent
+  );
+}
+
 .calendar-commandbar .workspace-commandbar__leading,
 .calendar-commandbar .workspace-commandbar__trailing {
   min-width: 236px;
@@ -503,6 +511,31 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+.calendar-weekday-cell[data-weekend="true"],
+.calendar-week-header-cell[data-weekend="true"],
+.calendar-month-cell[data-weekend="true"],
+.calendar-time-grid__day[data-weekend="true"],
+.calendar-all-day-strip__cell[data-weekend="true"] {
+  background-color: var(--calendar-weekend-background);
+}
+
+.calendar-all-day-strip__background {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  pointer-events: none;
+}
+
+.calendar-all-day-strip__cell {
+  min-width: 0;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.08);
+}
+
+.calendar-all-day-strip__cell:last-child {
+  box-shadow: none;
 }
 
 .calendar-todo-tray {

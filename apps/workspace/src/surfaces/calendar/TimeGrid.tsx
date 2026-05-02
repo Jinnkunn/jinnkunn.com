@@ -7,7 +7,7 @@ import {
 } from "react";
 import { Check } from "lucide-react";
 
-import { isSameDay } from "./dateRange";
+import { isSameDay, isWeekend } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutDayEvents, type PositionedEvent } from "./eventLayout";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
@@ -268,6 +268,7 @@ function DayColumn({
     CREATE_SLOT_MINUTES,
     selectedEndMinute - selectedStartMinute,
   );
+  const weekend = isWeekend(day, timeZone);
 
   const minuteFromPointer = (
     event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
@@ -286,7 +287,8 @@ function DayColumn({
 
   return (
     <div
-      className="relative"
+      className="calendar-time-grid__day relative"
+      data-weekend={weekend ? "true" : "false"}
       style={{
         height: `${totalHeight}px`,
         // 1px hour rows via repeating gradient — pixel-perfect with

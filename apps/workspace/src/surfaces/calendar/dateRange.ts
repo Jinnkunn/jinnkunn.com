@@ -9,7 +9,6 @@ import {
   zonedEndOfMonth,
   zonedStartOfDay,
   zonedStartOfMonth,
-  zonedStartOfWeek,
 } from "../../../../../lib/shared/calendar-timezone.ts";
 
 /** Date math + view-aware range/navigation/title helpers.
@@ -18,9 +17,8 @@ import {
  * defaults to Halifax, but users can switch the display time zone
  * without mutating the underlying EventKit/local event instants.
  *
- * Week boundaries follow ISO 8601 (Monday-first). Switching to
- * Sunday-first would be a one-line change in `startOfISOWeek` plus
- * adjusting the WeekView header order. */
+ * Week boundaries follow the same Sunday-first convention as macOS
+ * Calendar in North American locales. */
 
 export type ViewKind = "day" | "week" | "month" | "agenda";
 
@@ -62,12 +60,28 @@ export function daysInMonth(
   return new Date(Date.UTC(parts.year, parts.month, 0)).getUTCDate();
 }
 
-/** ISO-8601 week (Monday-first). For Sunday inputs we move *back* 6 days. */
-export function startOfISOWeek(
+function dayOfWeek(
+  d: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): number {
+  const parts = getZonedDateParts(d, timeZone);
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
+}
+
+export function startOfCalendarWeek(
   d: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Date {
-  return zonedStartOfWeek(d, timeZone);
+  const start = startOfDay(d, timeZone);
+  return addDays(start, -dayOfWeek(start, timeZone), timeZone);
+}
+
+export function isWeekend(
+  d: Date,
+  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+): boolean {
+  const weekday = dayOfWeek(d, timeZone);
+  return weekday === 0 || weekday === 6;
 }
 
 export function startOfMonth(
@@ -101,8 +115,8 @@ export function isSameMonth(
 }
 
 /** Range of events to fetch for the given view + anchor. The month
- * range is intentionally widened to the rendered grid (Mon-before-1st
- * through Sun-after-last) so events on overflow days still appear. */
+ * range is intentionally widened to the rendered grid (Sun-before-1st
+ * through Sat-after-last) so events on overflow days still appear. */
 export function rangeForView(
   view: ViewKind,
   anchor: Date,
@@ -117,17 +131,21 @@ export function rangeForView(
       };
     case "week":
     case "agenda": {
-      const monday = startOfISOWeek(start, timeZone);
+      const weekStart = startOfCalendarWeek(start, timeZone);
       return {
-        startsAt: monday.toISOString(),
-        endsAt: addDays(monday, 7, timeZone).toISOString(),
+        startsAt: weekStart.toISOString(),
+        endsAt: addDays(weekStart, 7, timeZone).toISOString(),
       };
     }
     case "month": {
       const firstOfMonth = startOfMonth(start, timeZone);
       const lastOfMonth = addDays(endOfMonth(start, timeZone), -1, timeZone);
-      const gridStart = startOfISOWeek(firstOfMonth, timeZone);
-      const gridEnd = addDays(startOfISOWeek(lastOfMonth, timeZone), 7, timeZone);
+      const gridStart = startOfCalendarWeek(firstOfMonth, timeZone);
+      const gridEnd = addDays(
+        startOfCalendarWeek(lastOfMonth, timeZone),
+        7,
+        timeZone,
+      );
       return {
         startsAt: gridStart.toISOString(),
         endsAt: gridEnd.toISOString(),
@@ -174,13 +192,13 @@ export function formatViewTitle(
       });
     case "week":
     case "agenda": {
-      const monday = startOfISOWeek(anchor, timeZone);
-      const sunday = addDays(monday, 6, timeZone);
-      const mondayParts = getZonedDateParts(monday, timeZone);
-      const sundayParts = getZonedDateParts(sunday, timeZone);
-      const sameMonth = mondayParts.month === sundayParts.month;
-      const sameYear = mondayParts.year === sundayParts.year;
-      const startStr = formatInTimeZone(monday, timeZone, {
+      const weekStart = startOfCalendarWeek(anchor, timeZone);
+      const weekEnd = addDays(weekStart, 6, timeZone);
+      const weekStartParts = getZonedDateParts(weekStart, timeZone);
+      const weekEndParts = getZonedDateParts(weekEnd, timeZone);
+      const sameMonth = weekStartParts.month === weekEndParts.month;
+      const sameYear = weekStartParts.year === weekEndParts.year;
+      const startStr = formatInTimeZone(weekStart, timeZone, {
         month: "short",
         day: "numeric",
       });
@@ -189,8 +207,8 @@ export function formatViewTitle(
         ...(sameMonth ? {} : { month: "short" }),
         ...(sameYear ? {} : { year: "numeric" }),
       };
-      const endStr = formatInTimeZone(sunday, timeZone, endOpts);
-      const yearStr = sameYear ? `, ${mondayParts.year}` : "";
+      const endStr = formatInTimeZone(weekEnd, timeZone, endOpts);
+      const yearStr = sameYear ? `, ${weekStartParts.year}` : "";
       return `${startStr} – ${endStr}${yearStr}`;
     }
     case "month":
@@ -201,18 +219,18 @@ export function formatViewTitle(
   }
 }
 
-/** The 7 days (Mon..Sun) that the week view should render given an
+/** The 7 days (Sun..Sat) that the week view should render given an
  * anchor. Returned as a fresh array of midnights in local time. */
 export function weekDays(
   anchor: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Date[] {
-  const monday = startOfISOWeek(anchor, timeZone);
-  return Array.from({ length: 7 }, (_, i) => addDays(monday, i, timeZone));
+  const weekStart = startOfCalendarWeek(anchor, timeZone);
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i, timeZone));
 }
 
 /** All days the month grid should show: 5 or 6 weeks (35 or 42 cells)
- * starting on the Monday before the 1st of the month. */
+ * starting on the Sunday before the 1st of the month. */
 export function monthGridDays(
   anchor: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,

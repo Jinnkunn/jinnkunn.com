@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { isSameDay, isSameMonth, monthGridDays } from "./dateRange";
+import { isSameDay, isSameMonth, isWeekend, monthGridDays } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents, type AllDayBar } from "./eventLayout";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
@@ -17,7 +17,7 @@ const BAR_HEIGHT = 18;
 const BAR_GAP = 2;
 const MAX_VISIBLE_BARS = 3;
 
-/** macOS-style month grid. Each row is one week (Mon..Sun); spanning
+/** macOS-style month grid. Each row is one week (Sun..Sat); spanning
  * events render as continuous bars across the row, single-day timed
  * events render as chips inside each cell, and a "+N more" footer
  * appears when a cell has too many to fit. */
@@ -68,22 +68,25 @@ export function MonthView({
 }
 
 function WeekdayHeader({ timeZone }: { timeZone: string }) {
-  // Use a known Monday so locale-aware short names render correctly
+  // Use a known Sunday so locale-aware short names render correctly
   // (some locales return different abbreviations than `["Mon", "Tue", ...]`).
-  const monday = new Date(2024, 0, 1); // Mon 2024-01-01
+  const sunday = new Date(2024, 0, 7); // Sun 2024-01-07
   const labels = Array.from({ length: 7 }, (_, i) => {
-    return formatInTimeZone(addZonedDays(monday, i, timeZone), timeZone, {
-      weekday: "short",
-    });
+    const day = addZonedDays(sunday, i, timeZone);
+    return {
+      day,
+      label: formatInTimeZone(day, timeZone, { weekday: "short" }),
+    };
   });
   return (
     <div className="grid grid-cols-7 border-b border-[rgba(0,0,0,0.08)]">
-      {labels.map((l) => (
+      {labels.map(({ day, label }) => (
         <div
-          key={l}
-          className="text-center py-2 text-[10.5px] font-semibold tracking-[0.06em] uppercase text-text-muted"
+          key={day.toISOString()}
+          className="calendar-weekday-cell text-center py-2 text-[10.5px] font-semibold tracking-[0.06em] uppercase text-text-muted"
+          data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
         >
-          {l}
+          {label}
         </div>
       ))}
     </div>
@@ -144,6 +147,7 @@ function WeekRow({
       {week.map((day, dayIdx) => {
         const isToday = isSameDay(day, today, timeZone);
         const inMonth = isSameMonth(day, anchor, timeZone);
+        const weekend = isWeekend(day, timeZone);
         const cellTimed = events
           .filter(
             (e) =>
@@ -167,7 +171,8 @@ function WeekRow({
         return (
           <div
             key={day.toISOString()}
-            className="relative flex flex-col px-1 pt-1 pb-0.5 min-h-0"
+            className="calendar-month-cell relative flex flex-col px-1 pt-1 pb-0.5 min-h-0"
+            data-weekend={weekend ? "true" : "false"}
             style={{
               borderRight:
                 dayIdx < 6 ? "1px solid rgba(0,0,0,0.08)" : undefined,

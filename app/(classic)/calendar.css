@@ -723,6 +723,10 @@
   text-transform: uppercase;
 }
 
+.public-calendar__weekdays span[data-weekend="true"] {
+  background: color-mix(in srgb, var(--ds-text-primary) 3.5%, transparent);
+}
+
 .public-calendar__month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -736,6 +740,11 @@
   padding: 7px;
   border-right: 1px solid color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
+}
+
+.public-calendar__month-cell[data-weekend="true"],
+.public-calendar__week-day[data-weekend="true"] {
+  background: color-mix(in srgb, var(--ds-text-primary) 3.5%, transparent);
 }
 
 .public-calendar__month-cell:nth-child(7n) {
