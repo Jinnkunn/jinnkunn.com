@@ -54,6 +54,8 @@ import {
   TODO_PLANNING_NAV_IDS,
   type TodoNavCounts,
   createTodosNavGroups,
+  todoIdFromNavItem,
+  todoNavId,
   TODOS_COMPLETED_NAV_ID,
   TODOS_DEFAULT_NAV_ITEM_ID,
   TODOS_FOCUS_NAV_GROUP_ID,
@@ -66,6 +68,8 @@ import {
   TODOS_UPCOMING_NAV_ID,
 } from "./nav";
 import "../../styles/surfaces/todos.css";
+
+const WORKSPACE_ENTITY_DRAG_TYPE = "application/x-workspace-entity";
 
 type TodoFilter =
   | "completed"
@@ -222,7 +226,11 @@ export function TodosSurface() {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!activeNavItemId || !TODO_PLANNING_NAV_IDS.has(activeNavItemId)) {
+    if (
+      !activeNavItemId ||
+      (!TODO_PLANNING_NAV_IDS.has(activeNavItemId) &&
+        !todoIdFromNavItem(activeNavItemId))
+    ) {
       setActiveNavItemId(TODOS_DEFAULT_NAV_ITEM_ID);
     }
   }, [activeNavItemId, setActiveNavItemId]);
@@ -267,10 +275,31 @@ export function TodosSurface() {
   );
 
   useEffect(() => {
+    const targetTodoId = todoIdFromNavItem(activeNavItemId);
+    if (!targetTodoId) return;
+    const target = todos.find((todo) => todo.id === targetTodoId);
+    if (!target) return;
+    setSelectedTodoId(target.id);
+    setActiveNavItemId(navItemForTodo(target));
+  }, [activeNavItemId, setActiveNavItemId, todos]);
+
+  useEffect(() => {
     if (selectedTodo && !filterTodo(selectedTodo, filter)) {
       setSelectedTodoId(null);
     }
   }, [filter, selectedTodo]);
+
+  useEffect(() => {
+    if (!selectedTodoId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      setSelectedTodoId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedTodoId]);
 
   const activeCount = todos.filter((todo) => !todo.archivedAt && !todo.completedAt).length;
   const completedCount = todos.filter((todo) => !todo.archivedAt && todo.completedAt).length;
@@ -692,7 +721,14 @@ export function TodosSurface() {
                     className="todos-row"
                     data-completed={completed ? "true" : undefined}
                     data-selected={selectedTodoId === todo.id ? "true" : undefined}
+                    draggable
                     key={todo.id}
+                    onDragStart={(event) => {
+                      const itemId = todoNavId(todo.id);
+                      event.dataTransfer.setData(WORKSPACE_ENTITY_DRAG_TYPE, itemId);
+                      event.dataTransfer.setData("text/plain", itemId);
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
                     onClick={(event) => {
                       const target = event.target as HTMLElement | null;
                       if (target?.closest("button, input, a, select, textarea")) return;

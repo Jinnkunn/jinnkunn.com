@@ -17,14 +17,19 @@ describe("calendar productionSyncPolicy", () => {
     });
   });
 
-  it("defaults to manual promotion", () => {
-    expect(normalizeCalendarProductionSyncPolicy(null)).toBe("manual");
-    expect(normalizeCalendarProductionSyncPolicy("unknown")).toBe("manual");
-    expect(loadCalendarProductionSyncPolicy()).toBe("manual");
+  it("defaults to guarded auto-promotion", () => {
+    expect(normalizeCalendarProductionSyncPolicy(null)).toBe("auto-promote");
+    expect(normalizeCalendarProductionSyncPolicy("unknown")).toBe("auto-promote");
+    expect(loadCalendarProductionSyncPolicy()).toBe("auto-promote");
   });
 
   it("persists the guarded auto-promote mode", () => {
     saveCalendarProductionSyncPolicy("auto-promote");
     expect(loadCalendarProductionSyncPolicy()).toBe("auto-promote");
+  });
+
+  it("persists manual mode as an explicit opt-out", () => {
+    saveCalendarProductionSyncPolicy("manual");
+    expect(loadCalendarProductionSyncPolicy()).toBe("manual");
   });
 });

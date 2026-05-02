@@ -83,6 +83,7 @@ const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
 const ITEM_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.itemTrees.v1";
 const APP_RAIL_SURFACE_DRAG_TYPE = "application/x-workspace-surface";
 const SIDEBAR_NAV_ITEM_DRAG_TYPE = "application/x-sidebar-nav-item";
+const WORKSPACE_ENTITY_DRAG_TYPE = "application/x-workspace-entity";
 const STANDARD_TEXT_DRAG_TYPE = "text/plain";
 const FIXED_APP_RAIL_SURFACE_ID = "workspace";
 // Per-context-section collapse state. Currently keyed for "recent" and
@@ -179,7 +180,7 @@ interface RenderNavItemArgs {
   onDragEnd: () => void;
   onDragOver: (itemId: string | null) => void;
   onDragStart: (itemId: string) => void;
-  onDrop: (targetItemId: string) => void;
+  onDrop: (targetItemId: string, sourceItemId: string | null) => void;
   onReorderNavItem?: (surfaceId: string, itemId: string, direction: "up" | "down") => void;
   onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
@@ -382,6 +383,7 @@ function renderNavItem({
                 const types = Array.from(event.dataTransfer.types);
                 const hasSidebarItemDrag =
                   types.includes(SIDEBAR_NAV_ITEM_DRAG_TYPE) ||
+                  types.includes(WORKSPACE_ENTITY_DRAG_TYPE) ||
                   (draggingItemId !== null &&
                     types.includes(STANDARD_TEXT_DRAG_TYPE));
                 if (!hasSidebarItemDrag) {
@@ -405,12 +407,13 @@ function renderNavItem({
             ? (event) => {
                 const sourceId =
                   event.dataTransfer.getData(SIDEBAR_NAV_ITEM_DRAG_TYPE) ||
+                  event.dataTransfer.getData(WORKSPACE_ENTITY_DRAG_TYPE) ||
                   draggingItemId ||
                   event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
                 event.preventDefault();
                 event.stopPropagation();
                 onDragOver(null);
-                if (sourceId && sourceId !== item.id) onDrop(item.id);
+                if (sourceId && sourceId !== item.id) onDrop(item.id, sourceId);
               }
             : undefined
         }
@@ -760,14 +763,15 @@ export function Sidebar({
     setSurfaceDropTarget(null);
   }, []);
   const dropOnto = useCallback(
-    (surfaceId: string, targetItemId: string) => {
+    (surfaceId: string, targetItemId: string, sourceItemId: string | null) => {
+      const source = sourceItemId ?? draggingItemId;
       if (
         onMoveNavItem &&
-        draggingItemId &&
-        dragSurfaceId === surfaceId &&
-        draggingItemId !== targetItemId
+        source &&
+        (dragSurfaceId === null || dragSurfaceId === surfaceId) &&
+        source !== targetItemId
       ) {
-        onMoveNavItem(surfaceId, draggingItemId, targetItemId);
+        onMoveNavItem(surfaceId, source, targetItemId);
       }
       endDrag();
     },
@@ -1225,7 +1229,8 @@ export function Sidebar({
                             onDragEnd: endDrag,
                             onDragOver: setDragOverItemId,
                             onDragStart: (id) => startDrag(activeSurface.id, id),
-                            onDrop: (targetId) => dropOnto(activeSurface.id, targetId),
+                            onDrop: (targetId, sourceId) =>
+                              dropOnto(activeSurface.id, targetId, sourceId),
                             onReorderNavItem,
                             onRecordRecent,
                             onSelectNavItem,

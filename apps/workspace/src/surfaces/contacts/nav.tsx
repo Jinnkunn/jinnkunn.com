@@ -19,6 +19,7 @@ export const CONTACTS_RECENT_NAV_ID = "contacts:recent";
 export const CONTACTS_BIRTHDAYS_NAV_ID = "contacts:birthdays";
 export const CONTACTS_ARCHIVED_NAV_ID = "contacts:archived";
 export const CONTACTS_DEFAULT_NAV_ITEM_ID = CONTACTS_HOME_NAV_ID;
+export const CONTACT_NAV_PREFIX = "contact:";
 const CONTACTS_FOCUS_GROUP_ID = "contacts:focus";
 
 export type ContactsNavItemId =
@@ -31,6 +32,17 @@ export type ContactsNavItemId =
   | typeof CONTACTS_ARCHIVED_NAV_ID;
 
 export type ContactsNavCounts = Partial<Record<ContactsNavItemId, number>>;
+
+export function contactNavId(id: string): string {
+  return `${CONTACT_NAV_PREFIX}${id}`;
+}
+
+export function contactIdFromNavItem(
+  navItemId: string | null | undefined,
+): string | null {
+  if (!navItemId?.startsWith(CONTACT_NAV_PREFIX)) return null;
+  return navItemId.slice(CONTACT_NAV_PREFIX.length) || null;
+}
 
 function navIcon(Icon: LucideIcon) {
   return (

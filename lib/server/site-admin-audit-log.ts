@@ -22,6 +22,7 @@ type SiteAdminAuditAction =
   | "pages.move"
   | "pages.tree.save"
   | "calendar.public.save"
+  | "calendar.public.live.save"
   | "redirects.delete"
   | "assets.upload"
   | "assets.delete"

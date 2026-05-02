@@ -38,6 +38,7 @@ import {
   WorkspaceSurfaceFrame,
 } from "../../ui/primitives";
 import { noteNavId } from "../notes/tree";
+import { todoIdFromNavItem } from "../todos/nav";
 import { ProjectDetailView } from "./ProjectDetail";
 import { ProjectsHome, ProjectsListView } from "./ProjectsHome";
 import {
@@ -147,10 +148,10 @@ export function ProjectsSurface() {
     [projects],
   );
 
-  const refreshProjects = async () => {
+  const refreshProjects = useCallback(async () => {
     const rows = await projectsList();
     setProjects(sortProjects(rows));
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +257,28 @@ export function ProjectsSurface() {
     setMoveNavItemHandler(async (fromId, toId) => {
       const fromProjectId = projectIdFromNavItem(fromId);
       const toProjectId = projectIdFromNavItem(toId);
+      const fromTodoId = todoIdFromNavItem(fromId);
+      if (fromTodoId && toProjectId) {
+        try {
+          const row = await todosUpdate({
+            id: fromTodoId,
+            projectId: toProjectId,
+          });
+          setAllTodos((current) => mergeTodo(current, row));
+          setProjectTodos((current) =>
+            selectedProject?.id === toProjectId
+              ? mergeTodo(current, row)
+              : current.filter((todo) => todo.id !== row.id),
+          );
+          await refreshProjects();
+        } catch (error) {
+          setNotice({
+            kind: "error",
+            text: `Failed to assign todo: ${formatProjectsError(error)}`,
+          });
+        }
+        return;
+      }
       if (!fromProjectId || !toProjectId || fromProjectId === toProjectId) return;
       try {
         const rows = await projectsMove({
@@ -272,7 +295,7 @@ export function ProjectsSurface() {
       }
     });
     return () => setMoveNavItemHandler(null);
-  }, [setMoveNavItemHandler]);
+  }, [refreshProjects, selectedProject?.id, setMoveNavItemHandler]);
 
   useEffect(() => {
     setReorderNavItemHandler(async (itemId, direction) => {

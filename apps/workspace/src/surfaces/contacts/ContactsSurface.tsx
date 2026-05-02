@@ -52,6 +52,7 @@ import {
   CONTACTS_HOME_NAV_ID,
   CONTACTS_PINNED_NAV_ID,
   CONTACTS_RECENT_NAV_ID,
+  contactIdFromNavItem,
   type ContactsNavCounts,
   createContactsNavGroups,
 } from "./nav";
@@ -95,6 +96,7 @@ interface ContactsNotice {
 }
 
 function filterFromNavItem(id: string | null): ContactsFilter {
+  if (contactIdFromNavItem(id)) return "all";
   if (id === CONTACTS_FOLLOW_UP_NAV_ID) return "followup";
   if (id === CONTACTS_ALL_NAV_ID) return "all";
   if (id === CONTACTS_PINNED_NAV_ID) return "pinned";
@@ -294,7 +296,11 @@ export function ContactsSurface() {
   const [syncingCalendar, setSyncingCalendar] = useState(false);
 
   useEffect(() => {
-    if (!activeNavItemId || !CONTACTS_NAV_IDS.includes(activeNavItemId)) {
+    if (
+      !activeNavItemId ||
+      (!CONTACTS_NAV_IDS.includes(activeNavItemId) &&
+        !contactIdFromNavItem(activeNavItemId))
+    ) {
       setActiveNavItemId(CONTACTS_DEFAULT_NAV_ITEM_ID);
     }
   }, [activeNavItemId, setActiveNavItemId]);
@@ -396,6 +402,19 @@ export function ContactsSurface() {
     () => [...contacts, ...archivedContacts].find((c) => c.id === selectedId) ?? null,
     [archivedContacts, contacts, selectedId],
   );
+
+  useEffect(() => {
+    const targetContactId = contactIdFromNavItem(activeNavItemId);
+    if (!targetContactId) return;
+    const target = [...contacts, ...archivedContacts].find(
+      (contact) => contact.id === targetContactId,
+    );
+    if (!target) return;
+    setSelectedId(target.id);
+    setActiveNavItemId(
+      target.archivedAt === null ? CONTACTS_ALL_NAV_ID : CONTACTS_ARCHIVED_NAV_ID,
+    );
+  }, [activeNavItemId, archivedContacts, contacts, setActiveNavItemId]);
 
   const shouldRenderSplit =
     isSearching ||

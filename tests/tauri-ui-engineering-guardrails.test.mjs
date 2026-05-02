@@ -440,9 +440,9 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(calendarBackgroundSync, /CHANGE_DEBOUNCE_MS/);
   assert.match(calendarPublicSync, /fingerprintPublicCalendarPayload/);
   assert.match(calendarPublicSync, /skipIfUnchanged/);
-  assert.match(calendarPublicSync, /promotePublicCalendarToProduction/);
+  assert.match(calendarPublicSync, /publishPublicCalendarToProduction/);
   assert.match(calendarProductionPolicy, /auto-promote/);
-  assert.match(calendarSiteAdminBridge, /\/api\/site-admin\/promote-to-production/);
+  assert.match(calendarSiteAdminBridge, /\/api\/site-admin\/calendar-public\/live/);
   assert.match(calendar, /productionSyncPolicy/);
   assert.match(styles, /\.calendar-publish-policy/);
   assert.match(syncSnapshot, /lastPublishedProjectionFingerprint/);
