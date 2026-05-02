@@ -451,7 +451,7 @@ function EventBlock({
   return (
     <button
       type="button"
-      className="absolute overflow-hidden text-left text-[11.5px] leading-tight rounded-[4px] border-0 p-0 cursor-pointer"
+      className="absolute box-border overflow-hidden text-left text-[11.5px] leading-tight rounded-[4px] border-0 p-0 cursor-pointer"
       onClick={() => onEventSelect?.(event)}
       title={event.title || "(No title)"}
       style={{
@@ -505,7 +505,7 @@ function TodoChip({
   const completed = todo.completedAt !== null;
   return (
     <div
-      className="absolute overflow-hidden text-left text-[11.5px] leading-tight flex items-start gap-1.5 px-1.5 py-1 rounded-[4px]"
+      className="absolute box-border overflow-hidden text-left text-[11.5px] leading-tight flex items-start gap-1.5 px-1.5 py-1 rounded-[4px]"
       title={
         todo.notes
           ? `${todo.title || "(Untitled)"}\n${todo.notes}`
