@@ -15,6 +15,13 @@ export function openExternalUrl(url: string): Promise<void> {
   return invoke("open_external_url", { url });
 }
 
+/** Open the operating-system account manager where EventKit calendars
+ * are added/removed. Calendar accounts remain owned by macOS; the app
+ * only refreshes and filters the calendars it can read. */
+export function openCalendarAccountSettings(): Promise<void> {
+  return invoke("open_calendar_account_settings");
+}
+
 /** Raw keyring access — prefer `createNamespacedSecureStorage` so modules
  * don't collide on key names. */
 export function secureStoreSet(key: string, value: string): Promise<void> {

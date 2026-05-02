@@ -1,11 +1,28 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ChevronRight,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Settings,
+} from "lucide-react";
 
 import {
   LOCAL_CALENDAR_SOURCE_ID,
   isLocalCalendarId,
 } from "../../modules/calendar/localCalendarApi";
 import { WorkspaceSidebarRow } from "../../ui/primitives";
+import {
+  calendarCapability,
+  sourceCanOpenSystemSettings,
+  sourceManagementLabel,
+  sourceTypeLabel,
+  summarizeSourceVisibility,
+} from "./calendarManagement";
 import type { Calendar, CalendarSource } from "./types";
 
 const SOURCE_ORDER_STORAGE_KEY = "workspace.calendar.sourceOrder.v1";
@@ -78,6 +95,10 @@ function orderSources(
   return ordered;
 }
 
+function closeDetails(start: HTMLElement | null) {
+  start?.closest("details")?.removeAttribute("open");
+}
+
 /** Workspace context pane showing every account header (EKSource) with
  * its calendars, mirroring the macOS Calendar sidebar grouping. The
  * checkbox state is owned by `CalendarSurface` so all views (Day,
@@ -88,10 +109,14 @@ export function SourceSidebar({
   visible,
   message,
   onToggleVisible,
+  onSetSourceVisible,
   onCreateLocalCalendar,
   onRenameLocalCalendar,
   onRecolorLocalCalendar,
   onArchiveLocalCalendar,
+  onOpenAccountSettings,
+  onOpenSettingsPanel,
+  onRefreshSources,
 }: {
   sources: CalendarSource[];
   calendarsBySource: Map<string, Calendar[]>;
@@ -101,6 +126,7 @@ export function SourceSidebar({
    * header so the user sees feedback even without the inspector. */
   message?: string | null;
   onToggleVisible: (id: string) => void;
+  onSetSourceVisible?: (sourceId: string, visible: boolean) => void;
   /** Spawn a new local-first calendar under the synthetic Workspace
    * source. The parent owns the actual create call (so optimistic
    * state stays single-sourced); we just trigger it. */
@@ -110,6 +136,9 @@ export function SourceSidebar({
   onRenameLocalCalendar?: (id: string, title: string) => void;
   onRecolorLocalCalendar?: (id: string, colorHex: string) => void;
   onArchiveLocalCalendar?: (id: string) => void;
+  onOpenAccountSettings?: () => void | Promise<void>;
+  onOpenSettingsPanel?: () => void;
+  onRefreshSources?: () => void | Promise<void>;
 }) {
   const [sourceOrder, setSourceOrder] = useState<string[]>(() =>
     loadStringList(SOURCE_ORDER_STORAGE_KEY),
@@ -122,6 +151,8 @@ export function SourceSidebar({
     edge: "before" | "after";
     id: string;
   } | null>(null);
+  const [confirmArchiveCalendarId, setConfirmArchiveCalendarId] =
+    useState<string | null>(null);
   const orderedSources = useMemo(
     () => orderSources(sources, sourceOrder),
     [sourceOrder, sources],
@@ -214,6 +245,10 @@ export function SourceSidebar({
         if (cals.length === 0 && !isLocalSource) return null;
         const collapsed = Boolean(sourceCollapsed[src.id]);
         const listId = `calendar-source-list-${src.id.replace(/[^a-z0-9_-]/gi, "_")}`;
+        const visibilitySummary = summarizeSourceVisibility(cals, visible);
+        const canToggleSource =
+          cals.length > 0 && typeof onSetSourceVisible === "function";
+        const nextSourceVisible = visibilitySummary.state !== "visible";
         return (
           <section
             key={src.id}
@@ -284,10 +319,34 @@ export function SourceSidebar({
                 </span>
                 <span className="calendar-source-group__title">{src.title}</span>
                 {cals.length > 0 ? (
-                  <span className="calendar-source-group__count">{cals.length}</span>
+                  <span
+                    className="calendar-source-group__count"
+                    data-state={visibilitySummary.state}
+                  >
+                    {visibilitySummary.countLabel}
+                  </span>
                 ) : null}
                 <span className="calendar-source-group__drag" aria-hidden="true" />
               </button>
+              {canToggleSource ? (
+                <button
+                  type="button"
+                  className="calendar-source-group__visibility"
+                  data-state={visibilitySummary.state}
+                  aria-label={`${nextSourceVisible ? "Show" : "Hide"} ${src.title}`}
+                  title={`${nextSourceVisible ? "Show" : "Hide"} ${src.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSetSourceVisible?.(src.id, nextSourceVisible);
+                  }}
+                >
+                  {visibilitySummary.state === "hidden" ? (
+                    <EyeOff absoluteStrokeWidth size={12} strokeWidth={1.8} />
+                  ) : (
+                    <Eye absoluteStrokeWidth size={12} strokeWidth={1.8} />
+                  )}
+                </button>
+              ) : null}
               {isLocalSource && onCreateLocalCalendar ? (
                 <button
                   type="button"
@@ -302,6 +361,113 @@ export function SourceSidebar({
                   <Plus absoluteStrokeWidth size={12} strokeWidth={1.6} />
                 </button>
               ) : null}
+              <details className="calendar-source-row__menu calendar-source-group__menu">
+                <summary
+                  className="calendar-source-row__menu-button"
+                  aria-label={`Manage ${src.title}`}
+                >
+                  <MoreHorizontal
+                    absoluteStrokeWidth
+                    size={13}
+                    strokeWidth={1.8}
+                  />
+                </summary>
+                <div className="calendar-source-row__menu-popover">
+                  <div className="calendar-source-row__menu-heading">
+                    <strong>{src.title}</strong>
+                    <span>
+                      {sourceTypeLabel(src.sourceType)} ·{" "}
+                      {sourceManagementLabel(src)}
+                    </span>
+                  </div>
+                  {canToggleSource ? (
+                    <button
+                      type="button"
+                      className="calendar-source-row__menu-action"
+                      data-tone="normal"
+                      onClick={(event) => {
+                        onSetSourceVisible?.(src.id, nextSourceVisible);
+                        closeDetails(event.currentTarget);
+                      }}
+                    >
+                      {nextSourceVisible ? (
+                        <Eye absoluteStrokeWidth size={13} strokeWidth={1.7} />
+                      ) : (
+                        <EyeOff absoluteStrokeWidth size={13} strokeWidth={1.7} />
+                      )}
+                      {visibilitySummary.toggleLabel}
+                    </button>
+                  ) : null}
+                  {isLocalSource && onCreateLocalCalendar ? (
+                    <button
+                      type="button"
+                      className="calendar-source-row__menu-action"
+                      data-tone="normal"
+                      onClick={(event) => {
+                        void onCreateLocalCalendar();
+                        closeDetails(event.currentTarget);
+                      }}
+                    >
+                      <Plus absoluteStrokeWidth size={13} strokeWidth={1.7} />
+                      New workspace calendar
+                    </button>
+                  ) : null}
+                  {sourceCanOpenSystemSettings(src) && onOpenAccountSettings ? (
+                    <button
+                      type="button"
+                      className="calendar-source-row__menu-action"
+                      data-tone="normal"
+                      onClick={(event) => {
+                        void onOpenAccountSettings();
+                        closeDetails(event.currentTarget);
+                      }}
+                    >
+                      <ExternalLink
+                        absoluteStrokeWidth
+                        size={13}
+                        strokeWidth={1.7}
+                      />
+                      Manage in macOS
+                    </button>
+                  ) : null}
+                  {onRefreshSources ? (
+                    <button
+                      type="button"
+                      className="calendar-source-row__menu-action"
+                      data-tone="normal"
+                      onClick={(event) => {
+                        void onRefreshSources();
+                        closeDetails(event.currentTarget);
+                      }}
+                    >
+                      <RefreshCw
+                        absoluteStrokeWidth
+                        size={13}
+                        strokeWidth={1.7}
+                      />
+                      Refresh accounts
+                    </button>
+                  ) : null}
+                  {onOpenSettingsPanel ? (
+                    <button
+                      type="button"
+                      className="calendar-source-row__menu-action"
+                      data-tone="normal"
+                      onClick={(event) => {
+                        onOpenSettingsPanel();
+                        closeDetails(event.currentTarget);
+                      }}
+                    >
+                      <Settings
+                        absoluteStrokeWidth
+                        size={13}
+                        strokeWidth={1.7}
+                      />
+                      Calendar settings
+                    </button>
+                  ) : null}
+                </div>
+              </details>
             </WorkspaceSidebarRow>
             {!collapsed ? (
               <ul id={listId} className="calendar-source-group__list">
@@ -322,6 +488,9 @@ export function SourceSidebar({
                 ) : null}
                 {cals.map((cal) => {
                   const isLocal = isLocalCalendarId(cal.id);
+                  const capability = calendarCapability(cal);
+                  const calendarVisible = visible.has(cal.id);
+                  const archiveConfirming = confirmArchiveCalendarId === cal.id;
                   return (
                     <li key={cal.id}>
                       <WorkspaceSidebarRow className="calendar-source-row" depth={1}>
@@ -329,7 +498,7 @@ export function SourceSidebar({
                           <input
                             type="checkbox"
                             style={{ accentColor: cal.colorHex }}
-                            checked={visible.has(cal.id)}
+                            checked={calendarVisible}
                             onChange={() => onToggleVisible(cal.id)}
                             title="Show in Workspace"
                           />
@@ -342,20 +511,49 @@ export function SourceSidebar({
                             {cal.title}
                           </span>
                         </label>
-                        {isLocal ? (
-                          <details className="calendar-source-row__menu">
-                            <summary
-                              className="calendar-source-row__menu-button"
-                              aria-label={`Manage ${cal.title}`}
+                        <details className="calendar-source-row__menu">
+                          <summary
+                            className="calendar-source-row__menu-button"
+                            aria-label={`Manage ${cal.title}`}
+                          >
+                            <MoreHorizontal
+                              absoluteStrokeWidth
+                              size={13}
+                              strokeWidth={1.8}
+                            />
+                          </summary>
+                          <div className="calendar-source-row__menu-popover">
+                            <div className="calendar-source-row__menu-heading">
+                              <strong>{cal.title}</strong>
+                              <span>{capability.label}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="calendar-source-row__menu-action"
+                              data-tone="normal"
+                              onClick={(event) => {
+                                onToggleVisible(cal.id);
+                                closeDetails(event.currentTarget);
+                              }}
                             >
-                              <MoreHorizontal
-                                absoluteStrokeWidth
-                                size={13}
-                                strokeWidth={1.8}
-                              />
-                            </summary>
-                            <div className="calendar-source-row__menu-popover">
-                              {onRenameLocalCalendar ? (
+                              {calendarVisible ? (
+                                <EyeOff
+                                  absoluteStrokeWidth
+                                  size={13}
+                                  strokeWidth={1.7}
+                                />
+                              ) : (
+                                <Eye
+                                  absoluteStrokeWidth
+                                  size={13}
+                                  strokeWidth={1.7}
+                                />
+                              )}
+                              {calendarVisible ? "Hide calendar" : "Show calendar"}
+                            </button>
+                            {isLocal ? (
+                              <>
+                                {onRenameLocalCalendar ? (
                                 <label className="calendar-source-row__menu-field">
                                   <span>Name</span>
                                   <input
@@ -382,8 +580,8 @@ export function SourceSidebar({
                                     }}
                                   />
                                 </label>
-                              ) : null}
-                              {onRecolorLocalCalendar ? (
+                                ) : null}
+                                {onRecolorLocalCalendar ? (
                                 <label className="calendar-source-row__menu-field calendar-source-row__menu-field--inline">
                                   <span>Color</span>
                                   <input
@@ -398,24 +596,53 @@ export function SourceSidebar({
                                     aria-label={`Color for ${cal.title}`}
                                   />
                                 </label>
-                              ) : null}
-                              {onArchiveLocalCalendar ? (
+                                ) : null}
+                                {onArchiveLocalCalendar ? (
                                 <button
                                   type="button"
                                   className="calendar-source-row__menu-action"
-                                  onClick={() => onArchiveLocalCalendar(cal.id)}
+                                  data-tone="danger"
+                                  onClick={(event) => {
+                                    if (!archiveConfirming) {
+                                      setConfirmArchiveCalendarId(cal.id);
+                                      return;
+                                    }
+                                    onArchiveLocalCalendar(cal.id);
+                                    setConfirmArchiveCalendarId(null);
+                                    closeDetails(event.currentTarget);
+                                  }}
                                 >
-                                  <Trash2
+                                  <Archive
                                     absoluteStrokeWidth
                                     size={13}
                                     strokeWidth={1.7}
                                   />
-                                  Archive calendar
+                                  {archiveConfirming
+                                    ? "Confirm archive"
+                                    : "Archive calendar"}
                                 </button>
-                              ) : null}
-                            </div>
-                          </details>
-                        ) : null}
+                                ) : null}
+                              </>
+                            ) : onOpenAccountSettings ? (
+                              <button
+                                type="button"
+                                className="calendar-source-row__menu-action"
+                                data-tone="normal"
+                                onClick={(event) => {
+                                  void onOpenAccountSettings();
+                                  closeDetails(event.currentTarget);
+                                }}
+                              >
+                                <ExternalLink
+                                  absoluteStrokeWidth
+                                  size={13}
+                                  strokeWidth={1.7}
+                                />
+                                Manage account
+                              </button>
+                            ) : null}
+                          </div>
+                        </details>
                       </WorkspaceSidebarRow>
                     </li>
                   );

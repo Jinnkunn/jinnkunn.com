@@ -71,6 +71,9 @@ export interface EventComposerProps {
   /** Display / input time zone. Underlying events are still saved as
    * absolute ISO instants. */
   timeZone: string;
+  /** Preferred writable calendar selected from Calendar Settings. Falls
+   * back to the first writable calendar when missing or no longer valid. */
+  preferredCalendarId?: string | null;
   /** Fires after a successful save so the parent can splice + refocus. */
   onCreated: (event: CalendarEvent) => void;
   /** Fires on cancel / dismiss so the parent can hide the composer. */
@@ -89,6 +92,7 @@ export function EventComposer({
   anchor,
   initialEndsAt,
   timeZone,
+  preferredCalendarId,
   onCreated,
   onClose,
   variant = "popover",
@@ -99,7 +103,10 @@ export function EventComposer({
     [calendars],
   );
   const [calendarId, setCalendarId] = useState<string>(
-    () => writableCalendars[0]?.id ?? "",
+    () =>
+      writableCalendars.some((calendar) => calendar.id === preferredCalendarId)
+        ? (preferredCalendarId ?? "")
+        : (writableCalendars[0]?.id ?? ""),
   );
   const [title, setTitle] = useState("");
   const [startsAt, setStartsAt] = useState(() =>

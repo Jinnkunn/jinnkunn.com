@@ -79,6 +79,24 @@ pub fn open_external_url(url: String) -> Result<(), String> {
     open::that(parsed.as_str()).map_err(|err| err.to_string())
 }
 
+/// Open the OS-owned Calendar account manager. EventKit account add/remove
+/// flows belong to macOS; Workspace can refresh and filter calendars but
+/// should not pretend to delete iCloud/Google accounts itself.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn open_calendar_account_settings() -> Result<(), String> {
+    open::that("x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension")
+        .or_else(|_| open::that("x-apple.systempreferences:com.apple.preferences.internetaccounts"))
+        .or_else(|_| open::that("x-apple.systempreferences:"))
+        .map_err(|err| err.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn open_calendar_account_settings() -> Result<(), String> {
+    Err("Calendar accounts are managed by the operating system.".to_string())
+}
+
 /// Bring the main webview back into view from the menubar tray or a
 /// dock-click after the user closed the window. Hidden windows survive
 /// "close" because our `CloseRequested` handler swallows the close
