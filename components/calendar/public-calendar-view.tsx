@@ -475,6 +475,7 @@ export function PublicCalendarView({
       }),
     [data.generatedAt, timeZone],
   );
+  const timeZoneLabel = calendarTimeZoneLabel(timeZone);
 
   const selectedEvent = useMemo(
     () => decoratedEvents.find((event) => event.id === expandedEventId) ?? null,
@@ -556,14 +557,18 @@ export function PublicCalendarView({
             {formatToolbarTitle(view, anchor, timeZone)}
           </strong>
         </div>
-        <label className="public-calendar__time-zone-select">
+        <label
+          className="public-calendar__time-zone-select"
+          title={`Times shown in ${timeZoneLabel}`}
+        >
           <span className="public-calendar__time-zone-label">Time zone</span>
           <span className="public-calendar__time-zone-value">
-            {calendarTimeZoneLabel(timeZone)}
+            {timeZoneLabel}
           </span>
           <select
             value={timeZone}
             aria-label="Time zone"
+            title={timeZoneLabel}
             onChange={(event) => onTimeZoneChange?.(event.currentTarget.value)}
           >
             {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
@@ -573,7 +578,10 @@ export function PublicCalendarView({
             ))}
           </select>
         </label>
-        <div className="public-calendar__view-switch" aria-label="Calendar view">
+        <div
+          className="public-calendar__view-switch public-calendar__view-switch--views"
+          aria-label="Calendar view"
+        >
           {VIEW_LABELS.map((item) => (
             <button
               key={item.value}
@@ -587,7 +595,10 @@ export function PublicCalendarView({
           ))}
         </div>
         {view === "agenda" ? (
-          <div className="public-calendar__view-switch" aria-label="Agenda range">
+          <div
+            className="public-calendar__view-switch public-calendar__view-switch--agenda"
+            aria-label="Agenda range"
+          >
             {([30, 90] as const).map((days) => (
               <button
                 key={days}
@@ -692,7 +703,7 @@ export function PublicCalendarView({
       ) : null}
       <p className="public-calendar__sync-note">
         Last updated {lastUpdatedLabel}. Times shown in{" "}
-        {calendarTimeZoneLabel(timeZone)}.
+        {timeZoneLabel}.
         {selectedTagSet.size > 0 ? (
           <>
             {" "}Filtered by{" "}

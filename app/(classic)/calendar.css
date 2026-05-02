@@ -14,11 +14,10 @@
 }
 
 .public-calendar__toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto minmax(220px, 270px) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 14px;
-  flex-wrap: wrap;
   padding-bottom: 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--ds-text-primary) 9%, transparent);
 }
@@ -28,6 +27,22 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.public-calendar__nav {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.public-calendar__view-switch--views {
+  grid-column: 2;
+  justify-self: center;
+}
+
+.public-calendar__view-switch--agenda {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: center;
 }
 
 .public-calendar__nav-button,
@@ -81,13 +96,15 @@
 .public-calendar__time-zone-select {
   position: relative;
   display: inline-grid;
-  grid-template-columns: auto auto;
+  grid-column: 3;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
   min-height: 30px;
   padding: 0 29px 0 10px;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--ds-text-primary) 10%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--ds-bg-primary) 88%, var(--ds-text-primary) 3%);
@@ -136,7 +153,6 @@
 }
 
 .public-calendar__time-zone-value {
-  max-width: 20ch;
   color: var(--ds-text-primary);
   font-weight: 750;
 }
@@ -157,16 +173,16 @@
 }
 
 /* Subscribe button mirrors the toolbar's view-button rhythm but uses
- * the accent color so it reads as a CTA. Pinned to the right end of
- * the toolbar via `margin-inline-start: auto` so it pushes itself
- * past the agenda-range chips in agenda view, and sits flush after
- * the view switcher in every other view. */
+ * the accent color so it reads as a CTA. The toolbar grid keeps this
+ * action independent from the time-zone pill so long labels cannot
+ * push it into unexpected positions. */
 .public-calendar__subscribe {
+  grid-column: 4;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 30px;
-  margin-inline-start: auto;
+  margin-inline-start: 0;
   padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--ds-accent) 38%, transparent);
   border-radius: 6px;
@@ -179,6 +195,36 @@
   text-decoration: none;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease;
+}
+
+@media (max-width: 1120px) {
+  .public-calendar__toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 270px);
+  }
+
+  .public-calendar__time-zone-select {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .public-calendar__view-switch--views {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .public-calendar__view-switch--agenda {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+  }
+
+  .public-calendar__subscribe {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
 }
 
 .public-calendar__subscribe:hover,
@@ -943,16 +989,28 @@
 
 @media (max-width: 720px) {
   .public-calendar__toolbar {
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
 
   .public-calendar__nav,
-  .public-calendar__view-switch {
+  .public-calendar__time-zone-select,
+  .public-calendar__view-switch,
+  .public-calendar__subscribe {
+    grid-column: 1;
+    grid-row: auto;
     width: 100%;
   }
 
   .public-calendar__view-switch {
     overflow-x: auto;
+  }
+
+  .public-calendar__time-zone-select,
+  .public-calendar__view-switch--views,
+  .public-calendar__view-switch--agenda,
+  .public-calendar__subscribe {
+    justify-self: stretch;
   }
 
   .public-calendar__range-title {

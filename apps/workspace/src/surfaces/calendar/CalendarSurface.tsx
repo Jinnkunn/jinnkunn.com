@@ -2888,7 +2888,10 @@ function CalendarSettingsPanel({
 
       {activeTab === "defaults" ? (
         <div className="calendar-settings-panel__defaults">
-          <label className="calendar-settings-panel__timezone">
+          <label
+            className="calendar-settings-panel__timezone"
+            title={`Times shown in ${calendarTimeZoneLabel(timeZone)}`}
+          >
             <span>Display time zone</span>
             <strong className="calendar-settings-panel__timezone-value">
               {calendarTimeZoneLabel(timeZone)}
@@ -2896,6 +2899,7 @@ function CalendarSettingsPanel({
             <select
               value={timeZone}
               aria-label="Display time zone"
+              title={calendarTimeZoneLabel(timeZone)}
               onChange={(event) => onTimeZoneChange(event.currentTarget.value)}
             >
               {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
@@ -2905,7 +2909,10 @@ function CalendarSettingsPanel({
               ))}
             </select>
           </label>
-          <label className="calendar-settings-panel__timezone">
+          <label
+            className="calendar-settings-panel__timezone"
+            title={defaultEventCalendarLabel}
+          >
             <span>New events</span>
             <strong className="calendar-settings-panel__timezone-value">
               {defaultEventCalendarLabel}
@@ -2913,6 +2920,7 @@ function CalendarSettingsPanel({
             <select
               value={effectiveDefaultEventCalendarId}
               aria-label="Default calendar for new events"
+              title={defaultEventCalendarLabel}
               onChange={(event) =>
                 onDefaultEventCalendarChange(event.currentTarget.value)
               }

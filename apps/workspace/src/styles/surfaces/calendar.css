@@ -250,13 +250,14 @@
 .calendar-settings-panel__timezone {
   position: relative;
   display: inline-grid;
-  grid-template-columns: auto minmax(0, auto);
+  grid-template-columns: auto minmax(0, 1fr);
   justify-content: start;
   gap: 8px;
-  width: fit-content;
-  max-width: 100%;
+  width: min(100%, 320px);
+  min-width: 0;
   min-height: 30px;
   padding: 0 29px 0 10px;
+  box-sizing: border-box;
   border-radius: 999px;
   background: var(--fill-tertiary);
   color: var(--color-text-secondary);
@@ -299,7 +300,6 @@
 }
 
 .calendar-settings-panel__timezone-value {
-  max-width: 22ch;
   color: var(--color-text-primary);
   font-size: var(--font-size-small);
   font-weight: 760;
