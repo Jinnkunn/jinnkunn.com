@@ -1,8 +1,9 @@
 name: Snapshot staging D1 to git
 
-# Daily-ish scheduled job that dumps staging D1 into `content/*` and
-# opens a PR if anything moved. Together with the staging-first
-# release pipeline this gives us:
+# Manual fallback job that dumps staging D1 into `content/*` and opens
+# a PR if anything moved. The old weekday schedule is intentionally disabled
+# so routine content/calendar edits do not consume GitHub Actions minutes.
+# Together with the staging-first release pipeline this gives us:
 #
 #   1. Disaster recovery — if D1 corrupts or is accidentally cleared,
 #      the previous day's commit has every file the public site needs,
@@ -14,16 +15,10 @@ name: Snapshot staging D1 to git
 #      stays within ~24h of D1, the diff command's output is short and
 #      directly answers "what's edited but not yet snapshotted."
 #
-# Doesn't run on weekends — the volume of human edits there is low and
-# the noise/value ratio of weekend snapshots tilts toward "skip." Run
-# on-demand via workflow_dispatch when needed.
+# Run on-demand via workflow_dispatch when a git recovery/audit snapshot
+# is worth the Actions cost.
 
 on:
-  schedule:
-    # 04:00 UTC = 00:00 EDT / 21:00 PDT — quiet window for a single
-    # operator's workflow. Cron is best-effort on GitHub free tier;
-    # missed runs just wait for tomorrow.
-    - cron: "0 4 * * 1-5"
   workflow_dispatch:
 
 permissions:

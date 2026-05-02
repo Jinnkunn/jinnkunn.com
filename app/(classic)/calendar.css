@@ -3,6 +3,7 @@
 }
 
 .public-calendar {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -15,9 +16,12 @@
 
 .public-calendar__toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto minmax(220px, 270px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 260px) auto;
+  grid-template-areas:
+    "nav timezone subscribe"
+    "views views views";
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--ds-text-primary) 9%, transparent);
 }
@@ -30,19 +34,19 @@
 }
 
 .public-calendar__nav {
-  grid-column: 1;
+  grid-area: nav;
   min-width: 0;
 }
 
 .public-calendar__view-switch--views {
-  grid-column: 2;
-  justify-self: center;
+  grid-area: views;
+  justify-self: start;
 }
 
 .public-calendar__view-switch--agenda {
-  grid-column: 2;
-  grid-row: 2;
-  justify-self: center;
+  grid-column: 1 / -1;
+  grid-row: 3;
+  justify-self: start;
 }
 
 .public-calendar__nav-button,
@@ -96,7 +100,7 @@
 .public-calendar__time-zone-select {
   position: relative;
   display: inline-grid;
-  grid-column: 3;
+  grid-area: timezone;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
@@ -177,9 +181,10 @@
  * action independent from the time-zone pill so long labels cannot
  * push it into unexpected positions. */
 .public-calendar__subscribe {
-  grid-column: 4;
+  grid-area: subscribe;
   display: inline-flex;
   align-items: center;
+  justify-self: end;
   gap: 6px;
   min-height: 30px;
   margin-inline-start: 0;
@@ -197,33 +202,27 @@
   transition: background 160ms ease, border-color 160ms ease;
 }
 
-@media (max-width: 1120px) {
+@container (min-width: 920px) {
   .public-calendar__toolbar {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 270px);
-  }
-
-  .public-calendar__time-zone-select {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
+    grid-template-columns: minmax(260px, 1fr) auto minmax(220px, 270px) auto;
+    grid-template-areas: "nav views timezone subscribe";
+    row-gap: 12px;
   }
 
   .public-calendar__view-switch--views {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: start;
+    justify-self: center;
   }
 
   .public-calendar__view-switch--agenda {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-  }
-
-  .public-calendar__subscribe {
     grid-column: 2;
     grid-row: 2;
-    justify-self: end;
+    justify-self: center;
+  }
+}
+
+@media (max-width: 1120px) {
+  .public-calendar__toolbar {
+    row-gap: 10px;
   }
 }
 
@@ -397,11 +396,15 @@
 }
 
 .public-calendar__range-title {
+  min-width: 0;
   margin-left: 8px;
+  overflow: hidden;
   color: var(--ds-text-primary);
   font-size: 18px;
   font-weight: 750;
   line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .public-calendar__sync-note {

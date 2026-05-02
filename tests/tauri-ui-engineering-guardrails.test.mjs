@@ -771,12 +771,12 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(publishPreviewPanel, /Staging candidate is stale/);
   assert.match(publishPreflightPanel, /blockingDiagnostics/);
   assert.match(publishButton, /DEPLOY_VERSION_STALE/);
-  assert.match(releaseFlow, /GitHub Actions “Deploy \(auto\)”/);
-  assert.match(releaseFlow, /GitHub Actions “Release from dispatch”/);
+  assert.match(releaseFlow, /Local Cloudflare release/);
+  assert.match(releaseFlow, /GitHub Actions only as a fallback/);
   assert.match(releaseFlow, /npm run release:staging/);
   assert.match(publishButton, /Recheck/);
   assert.match(publishButton, /parseDeployResponseSummary/);
-  assert.match(publishButton, /Staging release queued in GitHub Actions/);
+  assert.match(publishButton, /GitHub Actions fallback queued for staging/);
   assert.doesNotMatch(
     publishButton,
     /Publish failed: \$\{response\.code\}: \$\{response\.error\}[\s\S]*DEPLOY_VERSION_STALE/,
@@ -805,12 +805,23 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /\/api\/site-admin\/promote-to-production/);
   assert.doesNotMatch(releasePanel, /localStorage/);
   assert.match(releasePanel, /PromoteToProductionButton/);
-  assert.match(releasePanel, /Advanced command fallback/);
+  assert.match(releasePanel, /Local release commands/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
   assert.match(releasePanel, /Promotion Checklist/);
   assert.match(releasePanel, /Environment comparison/);
   assert.match(releasePanel, /Production differs/);
   assert.match(releasePanel, /Live Cloudflare comparison/);
+});
+
+test("tauri-ui-engineering: staging D1 snapshot workflow is manual-only", async () => {
+  const snapshotWorkflow = await read(".github/workflows/snapshot-staging-d1.yml");
+  const d1Runbook = await read("docs/runbooks/d1-bindings.md");
+
+  assert.match(snapshotWorkflow, /^\s*workflow_dispatch:/m);
+  assert.doesNotMatch(snapshotWorkflow, /^\s*schedule:/m);
+  assert.match(snapshotWorkflow, /schedule is intentionally\s+disabled/i);
+  assert.match(d1Runbook, /manual-only/);
+  assert.match(d1Runbook, /schedule stays disabled/);
 });
 
 test("tauri-ui-engineering: site admin has a unified topbar save action", async () => {

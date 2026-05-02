@@ -2,14 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { openExternalUrl } from "../../lib/tauri";
 import { notify } from "../../lib/notify";
+import {
+  siteAdminRunReleaseCommand,
+  type SiteAdminReleaseCommandResult,
+} from "../../modules/site-admin/tauri";
+import { RELEASE_PROD_FROM_STAGING_SCRIPT } from "./release-flow-model";
 import { useSiteAdmin } from "./state";
 
 // "Promote to Production" — the workspace counterpart to running
 // `npm run release:prod:from-staging`. Only renders when connected to
-// staging; calls /api/site-admin/promote-to-production for both the
-// read-only preflight (GET) and the dispatch (POST). The dispatch
-// hands off to GitHub Actions, so the UI completes immediately and
-// surfaces the run URL — clicking through opens the live workflow log.
+// staging. The primary path runs the local Cloudflare release script on
+// this Mac; GitHub Actions remains a clearly marked fallback link.
 
 interface EnvironmentSnapshot {
   workerName: string;
@@ -36,11 +39,6 @@ type PromotePreview =
       code: string;
       detail: string;
     };
-
-interface DispatchResult {
-  runsListUrl: string;
-  dispatchedAt: string;
-}
 
 const POLL_PREVIEW_MS = 60_000;
 
@@ -100,7 +98,7 @@ const FRIENDLY_REASONS: Record<string, string> = {
   STAGING_BEHIND_MAIN: "Staging hasn't been re-released since the last commit on main. Run release:staging (or click Publish on this surface) first.",
   STAGING_NO_DEPLOYMENT: "Staging worker has no active deployment. Release staging before promoting.",
   STAGING_METADATA_UNREADABLE: "Staging deployment annotation has no code= SHA. Re-release staging via release-cloudflare so the metadata is set.",
-  MISSING_GITHUB_APP: "GitHub App credentials are not configured on the staging worker. The promotion needs them to dispatch the release-production workflow.",
+  MISSING_GITHUB_APP: "GitHub App credentials are not configured on the staging worker, so remote preflight/fallback state is unavailable. Prefer the local production command.",
   MISSING_CLOUDFLARE_CREDENTIALS: "CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not configured on the staging worker.",
   MISSING_WORKER_NAMES: "Production / staging Worker names not configured.",
   MAIN_REF_UNREADABLE: "Could not read main HEAD via GitHub App. Check App permissions.",
@@ -114,15 +112,15 @@ export function PromoteToProductionButton() {
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<DispatchResult | null>(null);
-  // Watch state — set when a dispatch succeeds, cleared when production
+  const [result, setResult] = useState<SiteAdminReleaseCommandResult | null>(null);
+  // Watch state — set when a local release succeeds, cleared when production
   // catches up (success notification fired) or after a hard timeout
   // (failure notification fired). Persisted across re-renders via
   // useState so the watcher effect re-fires correctly.
   const [watchTarget, setWatchTarget] = useState<{
     stagingSha: string;
     previousProductionSha: string | null;
-    dispatchedAtMs: number;
+    startedAtMs: number;
   } | null>(null);
   // Single-shot guard — without this the watcher would fire a
   // notification every poll interval after the deploy lands.
@@ -167,9 +165,9 @@ export function PromoteToProductionButton() {
     return () => window.clearTimeout(t);
   }, [confirming]);
 
-  // Deploy-completion watcher. After a successful dispatch we set
+  // Deploy-completion watcher. After a successful local release we set
   // watchTarget; this effect polls the preview endpoint until the
-  // production codeSha matches the dispatched stagingSha, then fires a
+  // production codeSha matches the promoted stagingSha, then fires a
   // native "Production deploy complete" notification. Bails after 20
   // minutes with a "deploy timed out" failure notification — long
   // enough for a normal CI run, short enough that a stuck workflow
@@ -182,7 +180,7 @@ export function PromoteToProductionButton() {
     let cancelled = false;
     const tick = async () => {
       if (cancelled || watchFiredRef.current) return;
-      const elapsed = Date.now() - watchTarget.dispatchedAtMs;
+      const elapsed = Date.now() - watchTarget.startedAtMs;
       // Read fresh preview state. Don't rely on the existing `preview`
       // variable — its identity changes on every state update and
       // would re-arm this effect on each tick, which is wasteful.
@@ -208,7 +206,7 @@ export function PromoteToProductionButton() {
         watchFiredRef.current = true;
         void notify({
           title: "Production deploy still pending",
-          body: "Polled for 20 minutes without seeing the new SHA on production. Check GitHub Actions for the run.",
+          body: "Polled for 20 minutes without seeing the new SHA on production. Recheck Cloudflare or use the GitHub fallback if needed.",
         });
         setWatchTarget(null);
       }
@@ -239,31 +237,23 @@ export function PromoteToProductionButton() {
     }
     setConfirming(false);
     setBusy(true);
-    const response = await request("/api/site-admin/promote-to-production", "POST", {});
-    setBusy(false);
-    if (!response.ok) {
-      const friendly = FRIENDLY_REASONS[response.code] || response.error;
-      setMessage("error", `Promote failed: ${friendly}`);
-      // Re-pull the preview so the UI reflects whatever changed (e.g.
-      // staging was just rebuilt or the GitHub App permissions slipped).
+    try {
+      const data = await siteAdminRunReleaseCommand(RELEASE_PROD_FROM_STAGING_SCRIPT);
+      setResult(data);
+    } catch (error) {
+      setBusy(false);
+      setMessage("error", `Promote failed locally: ${String(error)}`);
       await loadPreview();
       return;
     }
-    const data = asRecord(response.data);
-    const runsListUrl = asString(data.runsListUrl);
-    const dispatchedAt = asString(data.dispatchedAt);
-    setResult({ runsListUrl, dispatchedAt });
+    setBusy(false);
     setMessage(
       "success",
-      "Production release dispatched. GitHub Actions is building, uploading, and verifying.",
+      "Local production release completed. Rechecking production status.",
     );
-    // Fire a "started" notification so the operator can step away from
-    // the app during the 5-10 min build/deploy/verify window. The
-    // watcher below polls until production catches up to staging and
-    // then fires a "complete" notification.
     void notify({
-      title: "Production release dispatched",
-      body: "GitHub Actions is building, uploading, and verifying. You'll be notified when it's live.",
+      title: "Production release completed locally",
+      body: "Cloudflare deploy finished from this Mac. Workspace is checking that production caught up.",
     });
     // Snapshot the SHA we expect production to land on so the watcher
     // can compare future preview pulls against a stable target. Without
@@ -271,7 +261,7 @@ export function PromoteToProductionButton() {
     setWatchTarget({
       stagingSha: preview.stagingSha,
       previousProductionSha: asString(asRecord(asRecord(preview).production).codeSha) || null,
-      dispatchedAtMs: Date.now(),
+      startedAtMs: Date.now(),
     });
   }
 
@@ -279,6 +269,7 @@ export function PromoteToProductionButton() {
   const stagingMain = ok ? preview.stagingMatchesMain : false;
   const nothingToPromote = ok && !preview.productionDifferent;
   const blocked = !ok || !stagingMain || nothingToPromote;
+  const fallbackRunsListUrl = ok ? preview.runsListUrl : "";
 
   return (
     <div className="promote-prod">
@@ -305,12 +296,12 @@ export function PromoteToProductionButton() {
                   : nothingToPromote
                     ? "Production already runs the same code SHA as staging."
                     : confirming
-                      ? "Click again to confirm. Runs in GitHub Actions."
-                      : "Dispatch the release-production workflow on GitHub Actions."
+                      ? "Click again to run the local Cloudflare production release."
+                      : "Run npm run release:prod:from-staging locally on this Mac."
         }
       >
         {busy
-          ? "Dispatching…"
+          ? "Promoting…"
           : loading
             ? "Checking…"
             : !ok
@@ -327,9 +318,9 @@ export function PromoteToProductionButton() {
         <details className="promote-prod__panel" role="status" open>
           <summary>
             {result
-              ? "Production release dispatched"
+              ? "Production release completed"
               : ok && stagingMain
-                ? "Confirm release-production dispatch"
+                ? "Confirm local production release"
                 : "Promotion not ready"}
           </summary>
           <div className="promote-prod__body">
@@ -364,36 +355,32 @@ export function PromoteToProductionButton() {
             {result && (
               <div className="promote-prod__result">
                 <p>
-                  Dispatched at{" "}
-                  {result.dispatchedAt
-                    ? new Date(result.dispatchedAt).toLocaleTimeString()
-                    : "now"}
-                  . The Action runs build → upload → deploy → smoke ping in
-                  ~8–10 min.
+                  Ran <code>{result.command}</code> from <code>{result.cwd}</code>{" "}
+                  in {Math.round(result.duration_ms / 1000)}s.
                 </p>
                 <button
                   type="button"
-                  className="btn btn--primary"
+                  className="btn btn--secondary"
                   onClick={() => {
-                    if (!result.runsListUrl) return;
-                    void openExternalUrl(result.runsListUrl).catch((error) => {
+                    if (!fallbackRunsListUrl) return;
+                    void openExternalUrl(fallbackRunsListUrl).catch((error) => {
                       setMessage(
                         "warn",
-                        `Could not open the run in your browser: ${String(error)}. URL: ${result.runsListUrl}`,
+                        `Could not open GitHub fallback: ${String(error)}. URL: ${fallbackRunsListUrl}`,
                       );
                     });
                   }}
-                  disabled={!result.runsListUrl}
+                  disabled={!fallbackRunsListUrl}
                 >
-                  Open GitHub Actions run
+                  Open GitHub fallback
                 </button>
               </div>
             )}
             {!result && (
               <p className="promote-prod__hint">
-                Promotion runs in GitHub Actions — the desktop editor stays
-                usable. Use “Open GitHub Actions” on the result panel to
-                follow progress.
+                Primary path runs the local Cloudflare release command on this
+                Mac. Use GitHub Actions only as a fallback if the local release
+                cannot run.
               </p>
             )}
           </div>

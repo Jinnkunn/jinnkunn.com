@@ -3,18 +3,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PromoteToProductionButton } from "./PromoteToProductionButton";
 import { openExternalUrl } from "../../lib/tauri";
 import {
+  siteAdminRunReleaseCommand,
+  type SiteAdminReleaseCommandResult,
+} from "../../modules/site-admin/tauri";
+import {
   candidateLabel,
   branchLabel,
   LEGACY_RELEASE_PROD_COMMAND,
   RELEASE_PROD_FROM_STAGING_COMMAND,
   RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND,
+  RELEASE_STAGING_SCRIPT,
   RELEASE_STAGING_COMMAND,
-  parseDeployResponseSummary,
   releaseWorkflowRecovery,
   shortId,
   shortSha,
   normalizeStatusPayload,
-  type DeployResponseSummary,
 } from "./release-flow-model";
 import { deriveSiteHealth } from "./site-health-model";
 import { useSiteAdmin } from "./state";
@@ -330,7 +333,7 @@ export function ReleasePanel() {
   const [stagingDeployConfirming, setStagingDeployConfirming] = useState(false);
   const [stagingDeployError, setStagingDeployError] = useState("");
   const [stagingDeployResult, setStagingDeployResult] =
-    useState<DeployResponseSummary | null>(null);
+    useState<SiteAdminReleaseCommandResult | null>(null);
 
   const stagingProfile = useMemo(
     () =>
@@ -442,7 +445,7 @@ export function ReleasePanel() {
       try {
         await openExternalUrl(url);
       } catch (err) {
-        setMessage("warn", `Could not open GitHub Actions: ${String(err)}. URL: ${url}`);
+        setMessage("warn", `Could not open GitHub fallback: ${String(err)}. URL: ${url}`);
       }
     },
     [setMessage],
@@ -477,30 +480,24 @@ export function ReleasePanel() {
     setStagingDeployBusy(true);
     setStagingDeployError("");
     setStagingDeployResult(null);
-    const response = await request("/api/site-admin/deploy", "POST", {});
-    setStagingDeployBusy(false);
-    if (!response.ok) {
-      const msg = `${response.code}: ${response.error}`;
+    try {
+      const result = await siteAdminRunReleaseCommand(RELEASE_STAGING_SCRIPT);
+      setStagingDeployResult(result);
+      setMessage("success", "Local staging release completed.");
+    } catch (error) {
+      const msg = String(error);
       setStagingDeployError(msg);
-      setMessage("error", `Staging deploy failed: ${msg}`);
+      setMessage("error", `Local staging release failed: ${msg}`);
       await loadStatus({ silent: true });
+      setStagingDeployBusy(false);
       return;
     }
-
-    const result = parseDeployResponseSummary(response.data);
-    setStagingDeployResult(result);
-    setMessage(
-      "success",
-      result.queued
-        ? "Staging release queued in GitHub Actions."
-        : "Staging deploy triggered.",
-    );
+    setStagingDeployBusy(false);
     await loadStatus({ silent: true });
   }, [
     isStaging,
     loadStatus,
     ready,
-    request,
     setMessage,
     stagingDeployConfirming,
     stagingProfile,
@@ -727,15 +724,15 @@ export function ReleasePanel() {
           <div className="release-panel__operation-copy">
             <span>Step 1</span>
             <h2>Deploy Staging</h2>
-            <p>Runs staging only.</p>
+            <p>Runs local Cloudflare release.</p>
             <dl>
               <div>
-                <dt>Workflow</dt>
+                <dt>Primary</dt>
                 <dd>{stagingWorkflow.label}</dd>
               </div>
               <div>
                 <dt>Target</dt>
-                <dd>{stagingWorkflow.kind === "release-dispatch" ? "Staging build" : "Staging deploy"}</dd>
+                <dd>Staging Worker</dd>
               </div>
             </dl>
           </div>
@@ -755,16 +752,16 @@ export function ReleasePanel() {
                     : status?.env?.hasDeployTarget === false
                       ? "Staging deploy target is missing."
                       : stagingDeployConfirming
-                        ? "Click again to dispatch the staging workflow."
-                        : "Run the guarded staging release workflow."
+                        ? "Click again to run npm run release:staging locally."
+                        : "Run the local Cloudflare staging release."
               }
             >
               {stagingDeployBusy
-                ? "Dispatching…"
+                ? "Releasing…"
                 : !isStaging
                   ? "Switch to Staging"
                   : stagingDeployConfirming
-                    ? "Confirm Deploy"
+                    ? "Confirm Local Deploy"
                     : "Deploy Staging"}
             </button>
             <button
@@ -772,11 +769,12 @@ export function ReleasePanel() {
               type="button"
               onClick={() => void openActions(stagingWorkflow.actionsUrl)}
             >
-              Open Actions
+              GitHub Fallback
             </button>
             {stagingDeployResult ? (
               <ActionResultPanel
                 result={stagingDeployResult}
+                fallbackUrl={stagingWorkflow.actionsUrl}
                 onOpenActions={openActions}
               />
             ) : stagingDeployError ? (
@@ -785,7 +783,7 @@ export function ReleasePanel() {
               </div>
             ) : stagingDeployConfirming ? (
               <div className="release-panel__action-hint" role="status">
-                Staging deploy starts a CI release. Production is not touched.
+                Runs <code>{RELEASE_STAGING_COMMAND}</code> on this Mac. Production is not touched.
               </div>
             ) : null}
           </div>
@@ -822,7 +820,7 @@ export function ReleasePanel() {
       </section>
 
       <details className="release-panel__commands" aria-label="Release commands">
-        <summary>Advanced command fallback</summary>
+        <summary>Local release commands</summary>
         <div className="release-panel__commands-grid">
           <div>
             <h2>Staging</h2>
@@ -858,30 +856,29 @@ export function ReleasePanel() {
 }
 
 function ActionResultPanel({
+  fallbackUrl,
   onOpenActions,
   result,
 }: {
+  fallbackUrl: string;
   onOpenActions: (url: string) => Promise<void>;
-  result: DeployResponseSummary;
+  result: SiteAdminReleaseCommandResult;
 }) {
   return (
     <div className="release-panel__action-result" role="status">
       <div>
-        <strong>{result.queued ? "Queued" : "Triggered"}</strong>
+        <strong>Completed locally</strong>
         <span>
-          {result.workflowEventType || result.provider || "deploy"} ·{" "}
-          {result.triggeredAt
-            ? new Date(result.triggeredAt).toLocaleTimeString()
-            : "now"}
+          {result.command} · {Math.round(result.duration_ms / 1000)}s
         </span>
       </div>
-      {result.workflowRunsListUrl ? (
+      {fallbackUrl ? (
         <button
           className="btn btn--secondary"
           type="button"
-          onClick={() => void onOpenActions(result.workflowRunsListUrl)}
+          onClick={() => void onOpenActions(fallbackUrl)}
         >
-          Open Run
+          GitHub Fallback
         </button>
       ) : null}
     </div>

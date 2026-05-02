@@ -135,7 +135,7 @@ export function PublishPipelineCard({
           <div>
             <strong>Candidate rebuild required</strong>
             <span>
-              {workflow.waitText} Routine local fallback: <code>{workflow.command}</code>.
+              Primary path: <code>{workflow.command}</code>. GitHub Actions is fallback only.
             </span>
           </div>
           <div className="publish-pipeline__actions">
