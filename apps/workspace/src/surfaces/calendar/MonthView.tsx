@@ -267,7 +267,7 @@ function Bar({
   return (
     <button
       type="button"
-      className="absolute text-[10.5px] truncate px-1.5 rounded leading-[16px] border-0 text-left cursor-pointer pointer-events-auto"
+      className="absolute box-border max-w-full text-[10.5px] truncate px-1.5 rounded leading-[16px] border-0 text-left cursor-pointer pointer-events-auto"
       onClick={() => onEventSelect?.(bar.event)}
       title={bar.event.title || "(No title)"}
       style={{

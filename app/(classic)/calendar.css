@@ -588,7 +588,9 @@
 }
 
 .public-calendar__event-card {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   display: grid;
   grid-template-columns: 5px minmax(0, 1fr);
   gap: 14px;
@@ -805,10 +807,12 @@
 }
 
 .public-calendar__event-pill {
+  box-sizing: border-box;
   appearance: none;
   border: 0;
   display: block;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   min-height: 18px;
