@@ -287,7 +287,7 @@ async function checkHomePreview({ origin, cookie }) {
 async function main() {
   // Use deployed remote secrets from `.env`; `.env.local` may intentionally
   // contain a local dev auth secret that staging cannot validate.
-  loadProjectEnv({ override: false, files: [".env"] });
+  loadProjectEnv({ override: true, files: [".env"] });
 
   const origin = normalizeOrigin(
     argValue("origin") ||
