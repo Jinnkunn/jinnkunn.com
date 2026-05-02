@@ -557,9 +557,13 @@ export function PublicCalendarView({
           </strong>
         </div>
         <label className="public-calendar__time-zone-select">
-          <span>Time zone</span>
+          <span className="public-calendar__time-zone-label">Time zone</span>
+          <span className="public-calendar__time-zone-value">
+            {calendarTimeZoneLabel(timeZone)}
+          </span>
           <select
             value={timeZone}
+            aria-label="Time zone"
             onChange={(event) => onTimeZoneChange?.(event.currentTarget.value)}
           >
             {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (

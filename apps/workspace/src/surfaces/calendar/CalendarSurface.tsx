@@ -6,7 +6,19 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import {
+  Archive,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Palette,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+} from "lucide-react";
 
+import { openCalendarAccountSettings } from "../../lib/tauri";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceActionMenu,
@@ -122,6 +134,14 @@ import {
   type LocalCalendarEventRow,
 } from "../../modules/calendar/localCalendarApi";
 import {
+  calendarCapability,
+  calendarSettingsSearchText,
+  sourceCanOpenSystemSettings,
+  sourceManagementLabel,
+  sourceTypeLabel,
+  summarizeSourceVisibility,
+} from "./calendarManagement";
+import {
   CALENDAR_TIME_ZONE_OPTIONS,
   DEFAULT_CALENDAR_TIME_ZONE,
   calendarTimeZoneLabel,
@@ -148,6 +168,8 @@ import "../../styles/surfaces/calendar.css";
  * useState initializer has a single source of truth. */
 const LOCAL_ONLY_STORAGE_KEY = "workspace.calendar.localOnly.v1";
 const TIME_ZONE_STORAGE_KEY = "workspace.calendar.timeZone.v1";
+const DEFAULT_EVENT_CALENDAR_STORAGE_KEY =
+  "workspace.calendar.defaultEventCalendar.v1";
 const DEFAULT_WORKSPACE_CALENDAR_TITLE = "Personal";
 const DEFAULT_WORKSPACE_CALENDAR_COLOR = "#0a84ff";
 
@@ -210,6 +232,14 @@ function loadCalendarTimeZone(): string {
   }
 }
 
+function loadDefaultEventCalendarId(): string {
+  try {
+    return localStorage.getItem(DEFAULT_EVENT_CALENDAR_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function closeContainingActionMenu(start: HTMLElement | null) {
   start?.closest("details")?.removeAttribute("open");
 }
@@ -223,6 +253,8 @@ export function CalendarSurface() {
   const [timeZone, setTimeZoneState] = useState<string>(() =>
     loadCalendarTimeZone(),
   );
+  const [defaultEventCalendarId, setDefaultEventCalendarIdState] =
+    useState<string>(() => loadDefaultEventCalendarId());
   const [view, setView] = useState<ViewKind>("week");
   const [anchor, setAnchor] = useState<Date>(() =>
     startOfDay(new Date(), loadCalendarTimeZone()),
@@ -366,6 +398,19 @@ export function CalendarSurface() {
     }
     setTimeZoneState(next);
     setAnchor((current) => startOfDay(current, next));
+  }, []);
+
+  const handleDefaultEventCalendarChange = useCallback((calendarId: string) => {
+    try {
+      if (calendarId) {
+        localStorage.setItem(DEFAULT_EVENT_CALENDAR_STORAGE_KEY, calendarId);
+      } else {
+        localStorage.removeItem(DEFAULT_EVENT_CALENDAR_STORAGE_KEY);
+      }
+    } catch {
+      // Keep the in-memory preference even when localStorage is unavailable.
+    }
+    setDefaultEventCalendarIdState(calendarId);
   }, []);
 
   // Refetch whenever the user pages forward/back or switches view —
@@ -1198,6 +1243,30 @@ export function CalendarSurface() {
     [calendarsBySource],
   );
 
+  const refreshCalendarAccounts = useCallback(async () => {
+    if (!isAuthorized(auth)) {
+      const nextAuth = await calendarAuthorizationStatus();
+      setAuth(nextAuth);
+      if (!isAuthorized(nextAuth)) {
+        setLocalCalendarMessage("Calendar access is not granted yet.");
+        return;
+      }
+    }
+    await loadAll();
+    setLocalCalendarMessage("Calendar accounts refreshed.");
+  }, [auth, loadAll]);
+
+  const openSystemCalendarAccounts = useCallback(async () => {
+    try {
+      await openCalendarAccountSettings();
+      setLocalCalendarMessage(
+        "Opened macOS account settings. Return here and refresh accounts after changes.",
+      );
+    } catch (error) {
+      setLocalCalendarMessage(`Could not open macOS account settings: ${String(error)}`);
+    }
+  }, []);
+
   const sourceSidebar = useMemo(
     () => (
       <SourceSidebar
@@ -1206,6 +1275,7 @@ export function CalendarSurface() {
         visible={selectedCalendarIds}
         message={localCalendarMessage}
         onToggleVisible={toggleCalendar}
+        onSetSourceVisible={setSourceVisible}
         onCreateLocalCalendar={() => void createLocalCalendar()}
         onRenameLocalCalendar={(id, title) =>
           void updateLocalCalendar(id, { title })
@@ -1214,15 +1284,21 @@ export function CalendarSurface() {
           void updateLocalCalendar(id, { colorHex })
         }
         onArchiveLocalCalendar={(id) => void archiveLocalCalendar(id)}
+        onOpenAccountSettings={() => void openSystemCalendarAccounts()}
+        onOpenSettingsPanel={() => setSettingsPanelOpen(true)}
+        onRefreshSources={() => void refreshCalendarAccounts()}
       />
     ),
     [
       archiveLocalCalendar,
       calendarsBySource,
       createLocalCalendar,
+      openSystemCalendarAccounts,
+      refreshCalendarAccounts,
       localCalendarMessage,
       mergedSources,
       selectedCalendarIds,
+      setSourceVisible,
       toggleCalendar,
       updateLocalCalendar,
     ],
@@ -1583,13 +1659,25 @@ export function CalendarSurface() {
             settingsPanelOpen ? (
               <CalendarSettingsPanel
                 calendarsBySource={calendarsBySource}
+                calendars={mergedCalendars}
+                defaultEventCalendarId={defaultEventCalendarId}
                 sources={mergedSources}
                 timeZone={timeZone}
                 visible={selectedCalendarIds}
                 onClose={() => setSettingsPanelOpen(false)}
                 onCreateLocalCalendar={() => void createLocalCalendar()}
+                onArchiveLocalCalendar={(id) => void archiveLocalCalendar(id)}
+                onRenameLocalCalendar={(id, title) =>
+                  void updateLocalCalendar(id, { title })
+                }
+                onRecolorLocalCalendar={(id, colorHex) =>
+                  void updateLocalCalendar(id, { colorHex })
+                }
+                onOpenAccountSettings={() => void openSystemCalendarAccounts()}
+                onRefreshAccounts={() => void refreshCalendarAccounts()}
                 onSetCalendarVisible={setCalendarVisible}
                 onSetSourceVisible={setSourceVisible}
+                onDefaultEventCalendarChange={handleDefaultEventCalendarChange}
                 onTimeZoneChange={handleTimeZoneChange}
               />
             ) : publishPanelOpen ? (
@@ -1705,6 +1793,7 @@ export function CalendarSurface() {
               initialEndsAt={composerDraft.endsAt}
               calendars={mergedCalendars}
               timeZone={timeZone}
+              preferredCalendarId={defaultEventCalendarId}
               onClose={() => setComposerDraft(null)}
               onCreateWorkspaceCalendar={() => createLocalCalendar()}
               onCreated={handleComposerCreated}
@@ -2430,39 +2519,105 @@ function CalendarPublishSummary({ summary }: { summary: PublishSummary }) {
   );
 }
 
+type CalendarSettingsTab = "accounts" | "calendars" | "defaults";
+
 function CalendarSettingsPanel({
   calendarsBySource,
+  calendars,
+  defaultEventCalendarId,
   sources,
   timeZone,
   visible,
   onClose,
   onCreateLocalCalendar,
+  onArchiveLocalCalendar,
+  onRenameLocalCalendar,
+  onRecolorLocalCalendar,
+  onOpenAccountSettings,
+  onRefreshAccounts,
   onSetCalendarVisible,
   onSetSourceVisible,
+  onDefaultEventCalendarChange,
   onTimeZoneChange,
 }: {
   calendarsBySource: ReadonlyMap<string, Calendar[]>;
+  calendars: readonly Calendar[];
+  defaultEventCalendarId: string;
   sources: readonly CalendarSource[];
   timeZone: string;
   visible: ReadonlySet<string>;
   onClose: () => void;
   onCreateLocalCalendar: () => void;
+  onArchiveLocalCalendar: (calendarId: string) => void;
+  onRenameLocalCalendar: (calendarId: string, title: string) => void;
+  onRecolorLocalCalendar: (calendarId: string, colorHex: string) => void;
+  onOpenAccountSettings: () => void;
+  onRefreshAccounts: () => void;
   onSetCalendarVisible: (calendarId: string, visible: boolean) => void;
   onSetSourceVisible: (sourceId: string, visible: boolean) => void;
+  onDefaultEventCalendarChange: (calendarId: string) => void;
   onTimeZoneChange: (timeZone: string) => void;
 }) {
-  const totalCalendars = sources.reduce(
-    (count, source) => count + (calendarsBySource.get(source.id)?.length ?? 0),
-    0,
+  const [activeTab, setActiveTab] = useState<CalendarSettingsTab>("accounts");
+  const [calendarQuery, setCalendarQuery] = useState("");
+  const [confirmArchiveCalendarId, setConfirmArchiveCalendarId] =
+    useState<string | null>(null);
+  const sourceById = useMemo(
+    () => new Map(sources.map((source) => [source.id, source])),
+    [sources],
   );
-  const visibleCalendars = sources.reduce(
-    (count, source) =>
-      count +
-      (calendarsBySource.get(source.id)?.filter((calendar) =>
-        visible.has(calendar.id),
-      ).length ?? 0),
-    0,
+  const calendarRows = useMemo(
+    () =>
+      sources.flatMap((source) =>
+        (calendarsBySource.get(source.id) ?? []).map((calendar) => ({
+          calendar,
+          source,
+        })),
+      ),
+    [calendarsBySource, sources],
   );
+  const filteredCalendarRows = useMemo(() => {
+    const query = calendarQuery.trim().toLowerCase();
+    if (!query) return calendarRows;
+    return calendarRows.filter(({ calendar, source }) =>
+      calendarSettingsSearchText(calendar, source).includes(query),
+    );
+  }, [calendarQuery, calendarRows]);
+  const totalCalendars = calendarRows.length;
+  const visibleCalendars = calendarRows.filter(({ calendar }) =>
+    visible.has(calendar.id),
+  ).length;
+  const writableCalendars = calendars.filter(
+    (calendar) => calendar.allowsModifications,
+  );
+  const effectiveDefaultEventCalendarId = writableCalendars.some(
+    (calendar) => calendar.id === defaultEventCalendarId,
+  )
+    ? defaultEventCalendarId
+    : "";
+  const effectiveDefaultEventCalendar = effectiveDefaultEventCalendarId
+    ? writableCalendars.find(
+        (calendar) => calendar.id === effectiveDefaultEventCalendarId,
+      )
+    : undefined;
+  const defaultEventCalendarSource = effectiveDefaultEventCalendar
+    ? sourceById.get(effectiveDefaultEventCalendar.sourceId)
+    : undefined;
+  const defaultEventCalendarLabel = effectiveDefaultEventCalendar
+    ? `${defaultEventCalendarSource ? `${defaultEventCalendarSource.title} / ` : ""}${
+        effectiveDefaultEventCalendar.title
+      }`
+    : "First writable calendar";
+
+  function archiveCalendar(calendar: Calendar) {
+    if (confirmArchiveCalendarId !== calendar.id) {
+      setConfirmArchiveCalendarId(calendar.id);
+      return;
+    }
+    onArchiveLocalCalendar(calendar.id);
+    setConfirmArchiveCalendarId(null);
+  }
+
   return (
     <section className="calendar-settings-panel" aria-label="Calendar settings">
       <header className="calendar-settings-panel__header">
@@ -2477,101 +2632,319 @@ function CalendarSettingsPanel({
           Close
         </button>
       </header>
-      <div className="calendar-settings-panel__summary">
-        <label className="calendar-settings-panel__timezone">
-          <span>Display time zone</span>
-          <select
-            value={timeZone}
-            onChange={(event) => onTimeZoneChange(event.currentTarget.value)}
+
+      <div className="calendar-settings-panel__tabs" role="tablist">
+        {(["accounts", "calendars", "defaults"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            data-active={activeTab === tab ? "true" : undefined}
+            onClick={() => setActiveTab(tab)}
           >
-            {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="btn"
-          onClick={onCreateLocalCalendar}
-        >
-          New Workspace calendar
+            {tab === "accounts" ? "Accounts" : tab === "calendars" ? "Calendars" : "Defaults"}
+          </button>
+        ))}
+      </div>
+
+      <div className="calendar-settings-panel__quick-actions">
+        <button type="button" className="btn" onClick={onCreateLocalCalendar}>
+          <Plus absoluteStrokeWidth size={13} strokeWidth={1.8} />
+          Workspace calendar
+        </button>
+        <button type="button" className="btn" onClick={onOpenAccountSettings}>
+          <ExternalLink absoluteStrokeWidth size={13} strokeWidth={1.8} />
+          macOS Accounts
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={onRefreshAccounts}>
+          <RefreshCw absoluteStrokeWidth size={13} strokeWidth={1.8} />
+          Refresh
         </button>
       </div>
-      <div className="calendar-settings-panel__accounts">
-        {sources.map((source) => {
-          const sourceCalendars = calendarsBySource.get(source.id) ?? [];
-          const sourceVisibleCount = sourceCalendars.filter((calendar) =>
-            visible.has(calendar.id),
-          ).length;
-          const allVisible =
-            sourceCalendars.length > 0 &&
-            sourceVisibleCount === sourceCalendars.length;
-          return (
-            <article className="calendar-settings-account" key={source.id}>
-              <header className="calendar-settings-account__header">
-                <div>
-                  <strong>{source.title}</strong>
-                  <span>
-                    {source.sourceType} · {sourceVisibleCount}/
-                    {sourceCalendars.length || 0}
-                  </span>
-                </div>
-                {sourceCalendars.length > 0 ? (
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    onClick={() => onSetSourceVisible(source.id, !allVisible)}
-                  >
-                    {allVisible ? "Hide all" : "Show all"}
-                  </button>
-                ) : null}
-              </header>
-              {sourceCalendars.length === 0 ? (
-                <p className="calendar-settings-account__empty">
-                  No calendars in this account.
-                </p>
-              ) : (
-                <div className="calendar-settings-account__list">
-                  {sourceCalendars.map((calendar) => (
-                    <label
-                      className="calendar-settings-calendar"
-                      key={calendar.id}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visible.has(calendar.id)}
-                        onChange={(event) =>
-                          onSetCalendarVisible(
-                            calendar.id,
-                            event.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <span
-                        className="calendar-settings-calendar__swatch"
-                        style={{ background: calendar.colorHex }}
-                        aria-hidden="true"
-                      />
-                      <span className="calendar-settings-calendar__title">
-                        {calendar.title}
+
+      {activeTab === "accounts" ? (
+        <div className="calendar-settings-panel__accounts">
+          {sources.map((source) => {
+            const sourceCalendars = calendarsBySource.get(source.id) ?? [];
+            const summary = summarizeSourceVisibility(sourceCalendars, visible);
+            const nextVisible = summary.state !== "visible";
+            return (
+              <article
+                className="calendar-settings-account"
+                key={source.id}
+                data-state={summary.state}
+              >
+                <header className="calendar-settings-account__header">
+                  <div>
+                    <strong>{source.title}</strong>
+                    <span>
+                      {sourceTypeLabel(source.sourceType)} ·{" "}
+                      {sourceManagementLabel(source)} · {summary.countLabel}
+                    </span>
+                  </div>
+                  <div className="calendar-settings-account__actions">
+                    {sourceCalendars.length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => onSetSourceVisible(source.id, nextVisible)}
+                      >
+                        {nextVisible ? (
+                          <Eye absoluteStrokeWidth size={13} strokeWidth={1.8} />
+                        ) : (
+                          <EyeOff absoluteStrokeWidth size={13} strokeWidth={1.8} />
+                        )}
+                        {summary.toggleLabel}
+                      </button>
+                    ) : null}
+                    {sourceCanOpenSystemSettings(source) ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={onOpenAccountSettings}
+                      >
+                        <Settings absoluteStrokeWidth size={13} strokeWidth={1.8} />
+                        Manage
+                      </button>
+                    ) : null}
+                  </div>
+                </header>
+                {sourceCalendars.length === 0 ? (
+                  <div className="calendar-settings-account__empty">
+                    <span>No calendars.</span>
+                    {sourceCanOpenSystemSettings(source) ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={onOpenAccountSettings}
+                      >
+                        Manage
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={onCreateLocalCalendar}
+                      >
+                        Create
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="calendar-settings-account__list">
+                    {sourceCalendars.map((calendar) => {
+                      const capability = calendarCapability(calendar);
+                      return (
+                        <label
+                          className="calendar-settings-account__calendar"
+                          key={calendar.id}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visible.has(calendar.id)}
+                            onChange={(event) =>
+                              onSetCalendarVisible(
+                                calendar.id,
+                                event.currentTarget.checked,
+                              )
+                            }
+                          />
+                          <span
+                            className="calendar-settings-calendar__swatch"
+                            style={{ background: calendar.colorHex }}
+                            aria-hidden="true"
+                          />
+                          <span className="calendar-settings-calendar__title">
+                            {calendar.title}
+                          </span>
+                          <span
+                            className="calendar-settings-calendar__meta"
+                            data-tone={capability.tone}
+                          >
+                            {visible.has(calendar.id) ? capability.label : "Hidden"}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {activeTab === "calendars" ? (
+        <div className="calendar-settings-panel__calendars">
+          <label className="calendar-settings-search">
+            <Search absoluteStrokeWidth size={13} strokeWidth={1.8} />
+            <input
+              type="search"
+              value={calendarQuery}
+              placeholder="Search calendars"
+              onChange={(event) => setCalendarQuery(event.currentTarget.value)}
+            />
+          </label>
+          <div className="calendar-settings-calendar-list">
+            {filteredCalendarRows.map(({ calendar, source }) => {
+              const capability = calendarCapability(calendar);
+              const calendarVisible = visible.has(calendar.id);
+              const confirming = confirmArchiveCalendarId === calendar.id;
+              return (
+                <article className="calendar-settings-calendar-row" key={calendar.id}>
+                  <label className="calendar-settings-calendar-row__main">
+                    <input
+                      type="checkbox"
+                      checked={calendarVisible}
+                      onChange={(event) =>
+                        onSetCalendarVisible(calendar.id, event.currentTarget.checked)
+                      }
+                    />
+                    <span
+                      className="calendar-settings-calendar__swatch"
+                      style={{ background: calendar.colorHex }}
+                      aria-hidden="true"
+                    />
+                    <span className="calendar-settings-calendar-row__copy">
+                      <strong>{calendar.title}</strong>
+                      <span>
+                        {source.title} · {capability.label}
                       </span>
-                      <span className="calendar-settings-calendar__meta">
-                        {calendar.allowsModifications
-                          ? isLocalCalendarId(calendar.id)
-                            ? "Workspace"
-                            : "Writable"
-                          : "Read only"}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                    </span>
+                  </label>
+                  <div className="calendar-settings-calendar-row__actions">
+                    {capability.canEditAppearance ? (
+                      <>
+                        <label className="calendar-settings-inline-field">
+                          <span>Name</span>
+                          <input
+                            type="text"
+                            defaultValue={calendar.title}
+                            onBlur={(event) => {
+                              const next = event.currentTarget.value.trim();
+                              if (next && next !== calendar.title) {
+                                onRenameLocalCalendar(calendar.id, next);
+                              }
+                              if (!next) event.currentTarget.value = calendar.title;
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                event.currentTarget.blur();
+                              }
+                              if (event.key === "Escape") {
+                                event.currentTarget.value = calendar.title;
+                                event.currentTarget.blur();
+                              }
+                            }}
+                          />
+                        </label>
+                        <label
+                          className="calendar-settings-icon-field"
+                          title="Change color"
+                        >
+                          <Palette absoluteStrokeWidth size={13} strokeWidth={1.8} />
+                          <input
+                            type="color"
+                            value={calendar.colorHex}
+                            onChange={(event) =>
+                              onRecolorLocalCalendar(
+                                calendar.id,
+                                event.currentTarget.value,
+                              )
+                            }
+                            aria-label={`Color for ${calendar.title}`}
+                          />
+                        </label>
+                      </>
+                    ) : sourceCanOpenSystemSettings(sourceById.get(calendar.sourceId) ?? source) ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={onOpenAccountSettings}
+                      >
+                        <ExternalLink absoluteStrokeWidth size={13} strokeWidth={1.8} />
+                        Manage
+                      </button>
+                    ) : null}
+                    {capability.canArchive ? (
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={() => archiveCalendar(calendar)}
+                      >
+                        <Archive absoluteStrokeWidth size={13} strokeWidth={1.8} />
+                        {confirming ? "Confirm" : "Archive"}
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "defaults" ? (
+        <div className="calendar-settings-panel__defaults">
+          <label className="calendar-settings-panel__timezone">
+            <span>Display time zone</span>
+            <strong className="calendar-settings-panel__timezone-value">
+              {calendarTimeZoneLabel(timeZone)}
+            </strong>
+            <select
+              value={timeZone}
+              aria-label="Display time zone"
+              onChange={(event) => onTimeZoneChange(event.currentTarget.value)}
+            >
+              {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="calendar-settings-panel__timezone">
+            <span>New events</span>
+            <strong className="calendar-settings-panel__timezone-value">
+              {defaultEventCalendarLabel}
+            </strong>
+            <select
+              value={effectiveDefaultEventCalendarId}
+              aria-label="Default calendar for new events"
+              onChange={(event) =>
+                onDefaultEventCalendarChange(event.currentTarget.value)
+              }
+            >
+              <option value="">First writable calendar</option>
+              {writableCalendars.map((calendar) => {
+                const source = sourceById.get(calendar.sourceId);
+                return (
+                  <option key={calendar.id} value={calendar.id}>
+                    {source ? `${source.title} / ` : ""}
+                    {calendar.title}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <div className="calendar-settings-note">
+            <strong>Account ownership</strong>
+            <span>
+              Workspace can hide external calendars here. Adding or deleting iCloud,
+              Google, Exchange, and subscribed accounts stays in macOS.
+            </span>
+          </div>
+          <div className="calendar-settings-note">
+            <strong>Local calendars</strong>
+            <span>
+              Workspace calendars are local-first and can be renamed, recolored, or
+              archived from this panel.
+            </span>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
