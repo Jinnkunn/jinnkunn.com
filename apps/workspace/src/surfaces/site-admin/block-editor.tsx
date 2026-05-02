@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
+
+type BlockEditorCommandIcon = string | LucideIcon;
 
 export interface BlockEditorCommand {
   description: string;
@@ -6,10 +9,7 @@ export interface BlockEditorCommand {
   // renders sectioned headers in input order. Commands without a group fall
   // into an "Other" section at the end.
   group?: string;
-  // Short glyph (1–2 chars) shown to the left of each menu row. Pure unicode
-  // — no SVG / image deps. Falls back to the first letter of the label when
-  // omitted.
-  icon?: string;
+  icon?: BlockEditorCommandIcon;
   id: string;
   keywords: string[];
   label: string;
@@ -52,7 +52,9 @@ function renderCommandButton<TCommand extends BlockEditorCommand>(
   active: boolean,
   onActive?: (command: TCommand) => void,
 ) {
-  const icon = command.icon ?? command.label.charAt(0);
+  const Icon = typeof command.icon === "function" ? command.icon : null;
+  const fallbackIcon =
+    typeof command.icon === "string" ? command.icon : command.label.charAt(0);
   return (
     <button
       type="button"
@@ -65,7 +67,17 @@ function renderCommandButton<TCommand extends BlockEditorCommand>(
       onClick={() => onChoose(command)}
     >
       <span className="block-editor-command__icon" aria-hidden="true">
-        {icon}
+        {Icon ? (
+          <Icon
+            absoluteStrokeWidth
+            aria-hidden="true"
+            focusable="false"
+            size={16}
+            strokeWidth={1.75}
+          />
+        ) : (
+          fallbackIcon
+        )}
       </span>
       <span className="block-editor-command__body">
         <strong>{command.label}</strong>

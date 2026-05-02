@@ -1,6 +1,13 @@
+import { lazy } from "react";
+
 import { CalendarIcon } from "../../surfaces/icons";
-import { CalendarSurface } from "../../surfaces/calendar/CalendarSurface";
 import type { WorkspaceModuleDefinition } from "../types";
+
+const CalendarSurface = lazy(() =>
+  import("../../surfaces/calendar/CalendarSurface").then((module) => ({
+    default: module.CalendarSurface,
+  })),
+);
 
 export const CALENDAR_MODULE: WorkspaceModuleDefinition = {
   id: "calendar",

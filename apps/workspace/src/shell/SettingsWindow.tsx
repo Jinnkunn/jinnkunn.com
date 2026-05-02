@@ -1,22 +1,16 @@
 import { useEffect } from "react";
+import { Settings } from "lucide-react";
 import type { WorkspaceModuleDefinition } from "../modules/types";
 
 function SettingsIconLarge() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="28"
-      height="28"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Settings
+      absoluteStrokeWidth
       aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="3.1" />
-      <path d="M12 2.75v2.2M12 19.05v2.2M4.05 4.05l1.55 1.55M18.4 18.4l1.55 1.55M2.75 12h2.2M19.05 12h2.2M4.05 19.95l1.55-1.55M18.4 5.6l1.55-1.55" />
-    </svg>
+      focusable="false"
+      size={28}
+      strokeWidth={1.6}
+    />
   );
 }
 

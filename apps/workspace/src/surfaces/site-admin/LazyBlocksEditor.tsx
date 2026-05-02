@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 
-import type { BlocksEditorProps } from "./blocks-editor";
+import type { BlocksEditorProps, RequestFn } from "./blocks-editor";
 
 const BlocksEditorImpl = lazy(() =>
   import("./blocks-editor").then((module) => ({
@@ -8,7 +8,7 @@ const BlocksEditorImpl = lazy(() =>
   })),
 );
 
-export type { BlocksEditorProps };
+export type { BlocksEditorProps, RequestFn };
 
 export function BlocksEditor(props: BlocksEditorProps) {
   const minHeight = props.minHeight ?? 360;

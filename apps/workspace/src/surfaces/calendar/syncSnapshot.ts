@@ -9,6 +9,10 @@
 // per event) and makes the diff cheap (compare two Maps).
 
 import type { CalendarPublicVisibility } from "./publicProjection";
+import type {
+  PublicCalendarEventPayload,
+  PublicCalendarPayload,
+} from "./publicProjection";
 
 // The snapshot stores the same three visibility levels the public
 // projection actually emits — the workspace's internal "hidden"
@@ -28,6 +32,9 @@ export interface SyncSnapshot {
   syncedAt: string;
   events: SnapshotEventEntry[];
 }
+
+const FINGERPRINT_STORAGE_KEY =
+  "workspace.calendar.lastPublishedProjectionFingerprint.v1";
 
 export function loadSyncSnapshot(): SyncSnapshot | null {
   try {
@@ -65,6 +72,47 @@ export function saveSyncSnapshot(snapshot: SyncSnapshot): void {
   } catch {
     // Quota / private mode — degrade silently. The diff just shows
     // every event as "new" until the next successful save lands.
+  }
+}
+
+export function fingerprintPublicCalendarPayload(
+  payload: Pick<PublicCalendarPayload, "schemaVersion" | "range" | "events">,
+): string {
+  return JSON.stringify({
+    schemaVersion: payload.schemaVersion,
+    range: payload.range,
+    events: payload.events.map((event: PublicCalendarEventPayload) => ({
+      id: event.id,
+      calendarId: event.calendarId ?? null,
+      calendarTitle: event.calendarTitle ?? null,
+      colorHex: event.colorHex ?? null,
+      title: event.title,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      isAllDay: event.isAllDay,
+      visibility: event.visibility,
+      description: event.description ?? null,
+      location: event.location ?? null,
+      url: event.url ?? null,
+    })),
+  });
+}
+
+export function loadProjectionFingerprint(): string | null {
+  try {
+    return localStorage.getItem(FINGERPRINT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveProjectionFingerprint(fingerprint: string): void {
+  try {
+    localStorage.setItem(FINGERPRINT_STORAGE_KEY, fingerprint);
+  } catch {
+    // Fingerprints are an optimization to suppress redundant writes. If
+    // storage is unavailable, syncing still works; it may just publish
+    // again on the next app launch.
   }
 }
 

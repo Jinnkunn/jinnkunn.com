@@ -1284,12 +1284,14 @@
   border-radius: 5px;
   background: var(--color-bg-surface-alt);
   color: var(--color-text-primary);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas,
-    monospace;
   font-size: var(--font-size-small);
   font-weight: 600;
   line-height: 1;
+}
+
+.block-editor-command__icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .block-editor-command__body {

@@ -10,6 +10,8 @@ import type { Calendar, CalendarSource } from "./types";
 
 const SOURCE_ORDER_STORAGE_KEY = "workspace.calendar.sourceOrder.v1";
 const SOURCE_COLLAPSED_STORAGE_KEY = "workspace.calendar.sourceCollapsed.v1";
+const CALENDAR_SOURCE_DRAG_TYPE = "application/x-calendar-source";
+const STANDARD_TEXT_DRAG_TYPE = "text/plain";
 
 type CollapseMap = Record<string, boolean>;
 
@@ -226,11 +228,12 @@ export function SourceSidebar({
                 dragOverSource?.id === src.id ? dragOverSource.edge : undefined
               }
               onDragOver={(event) => {
-                if (
-                  !Array.from(event.dataTransfer.types).includes(
-                    "application/x-calendar-source",
-                  )
-                ) {
+                const types = Array.from(event.dataTransfer.types);
+                const hasCalendarSourceDrag =
+                  types.includes(CALENDAR_SOURCE_DRAG_TYPE) ||
+                  (draggingSourceId !== null &&
+                    types.includes(STANDARD_TEXT_DRAG_TYPE));
+                if (!hasCalendarSourceDrag) {
                   return;
                 }
                 event.preventDefault();
@@ -244,9 +247,10 @@ export function SourceSidebar({
                 if (dragOverSource?.id === src.id) setDragOverSource(null);
               }}
               onDrop={(event) => {
-                const sourceId = event.dataTransfer.getData(
-                  "application/x-calendar-source",
-                );
+                const sourceId =
+                  event.dataTransfer.getData(CALENDAR_SOURCE_DRAG_TYPE) ||
+                  draggingSourceId ||
+                  event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
                 event.preventDefault();
                 event.stopPropagation();
                 const edge = dragOverSource?.id === src.id
@@ -265,7 +269,8 @@ export function SourceSidebar({
                 aria-expanded={!collapsed}
                 onClick={() => toggleSourceCollapsed(src.id)}
                 onDragStart={(event) => {
-                  event.dataTransfer.setData("application/x-calendar-source", src.id);
+                  event.dataTransfer.setData(CALENDAR_SOURCE_DRAG_TYPE, src.id);
+                  event.dataTransfer.setData(STANDARD_TEXT_DRAG_TYPE, src.id);
                   event.dataTransfer.effectAllowed = "move";
                   setDraggingSourceId(src.id);
                 }}

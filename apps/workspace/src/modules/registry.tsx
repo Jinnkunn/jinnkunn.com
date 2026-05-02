@@ -3,6 +3,7 @@ import type { SurfaceDefinition } from "../surfaces/types";
 import { CALENDAR_MODULE } from "./calendar";
 import { CONTACTS_MODULE } from "./contacts";
 import { NOTES_MODULE } from "./notes";
+import { PROJECTS_MODULE } from "./projects";
 import { SITE_ADMIN_MODULE } from "./site-admin";
 import { TODOS_MODULE } from "./todos";
 import type {
@@ -28,6 +29,7 @@ export const WORKSPACE_MODULES: readonly WorkspaceModuleDefinition[] = [
   CALENDAR_MODULE,
   NOTES_MODULE,
   TODOS_MODULE,
+  PROJECTS_MODULE,
   CONTACTS_MODULE,
 ];
 

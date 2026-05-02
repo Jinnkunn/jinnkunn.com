@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type { JSX } from "react";
+import { Search } from "lucide-react";
 import { useSiteAdmin } from "./state";
 import { stripTrailingSlash } from "./utils";
 import type { SiteAdminTab } from "./types";
@@ -436,29 +437,14 @@ export function CommandPalette({
         onKeyDown={onKeyDown}
       >
         <div className="command-palette__input-wrap">
-          <svg
-            viewBox="0 0 16 16"
-            width="14"
-            height="14"
+          <Search
+            absoluteStrokeWidth
             aria-hidden="true"
             className="command-palette__icon"
-          >
-            <circle
-              cx="7"
-              cy="7"
-              r="4.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M10.5 10.5L14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
+            focusable="false"
+            size={14}
+            strokeWidth={1.65}
+          />
           <input
             ref={inputRef}
             className="command-palette__input"

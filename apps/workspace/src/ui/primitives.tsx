@@ -244,7 +244,7 @@ export function WorkspaceActionMenu({
   return (
     <details className={joinClassNames("workspace-action-menu", className)} {...props}>
       <summary className="workspace-action-menu__trigger">{label}</summary>
-      <div className="workspace-action-menu__popover" role="menu">
+      <div className="workspace-action-menu__popover">
         {children}
       </div>
     </details>
@@ -455,6 +455,69 @@ export function WorkspaceStatusBanner({
       role={role}
       {...props}
     />
+  );
+}
+
+export interface WorkspaceInlineStatusProps
+  extends HTMLAttributes<HTMLDivElement> {
+  tone?: "default" | "muted" | "success" | "warn" | "error";
+}
+
+export function WorkspaceInlineStatus({
+  className,
+  role = "status",
+  tone = "default",
+  ...props
+}: WorkspaceInlineStatusProps) {
+  return (
+    <div
+      aria-live={role === "status" ? "polite" : undefined}
+      className={joinClassNames(
+        "workspace-inline-status",
+        `workspace-inline-status--${tone}`,
+        className,
+      )}
+      role={role}
+      {...props}
+    />
+  );
+}
+
+export interface WorkspaceEmptyStateProps
+  extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+  action?: ReactNode;
+  compact?: boolean;
+  icon?: ReactNode;
+  title: ReactNode;
+}
+
+export function WorkspaceEmptyState({
+  action,
+  children,
+  className,
+  compact = false,
+  icon,
+  title,
+  ...props
+}: WorkspaceEmptyStateProps) {
+  return (
+    <div
+      className={joinClassNames(
+        "workspace-empty-state",
+        compact && "workspace-empty-state--compact",
+        className,
+      )}
+      {...props}
+    >
+      {icon ? (
+        <span className="workspace-empty-state__icon" aria-hidden="true">
+          {icon}
+        </span>
+      ) : null}
+      <strong>{title}</strong>
+      {children ? <p>{children}</p> : null}
+      {action ? <div className="workspace-empty-state__action">{action}</div> : null}
+    </div>
   );
 }
 

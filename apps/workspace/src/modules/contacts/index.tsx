@@ -1,10 +1,17 @@
+import { lazy } from "react";
+
 import { ContactsIcon } from "../../surfaces/icons";
 import {
   CONTACTS_DEFAULT_NAV_ITEM_ID,
   CONTACTS_NAV_GROUPS,
 } from "../../surfaces/contacts/nav";
-import { ContactsSurface } from "../../surfaces/contacts/ContactsSurface";
 import type { WorkspaceModuleDefinition } from "../types";
+
+const ContactsSurface = lazy(() =>
+  import("../../surfaces/contacts/ContactsSurface").then((module) => ({
+    default: module.ContactsSurface,
+  })),
+);
 
 export const CONTACTS_MODULE: WorkspaceModuleDefinition = {
   id: "contacts",

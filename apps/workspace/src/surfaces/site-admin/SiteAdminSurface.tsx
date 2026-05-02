@@ -23,6 +23,10 @@ import type {
 } from "./types";
 import { normalizePageListRow, normalizePostListRow } from "./utils";
 import { SITE_COMPONENT_NAMES } from "../../../../../lib/site-admin/component-registry.ts";
+import "../../styles/editor-canvas.css";
+import "../../styles/editor-document.css";
+import "../../styles/surfaces/site-admin-content.css";
+import "../../styles/surfaces/site-admin-shell.css";
 
 const ComponentsPanel = lazy(() =>
   import("./ComponentsPanel").then((module) => ({

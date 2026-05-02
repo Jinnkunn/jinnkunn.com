@@ -118,6 +118,9 @@
   --color-border-subtle: rgba(55, 53, 47, 0.08);
   --color-border-default: rgba(55, 53, 47, 0.14);
   --color-border-strong: rgba(55, 53, 47, 0.22);
+  --focus-ring:
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 52%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--color-accent) 13%, transparent);
 
   /* ----------------------------------------------------------------- *
    * Spacing — 4 px base, 5 stops. Replaces the ad-hoc 6/8/10/12/14/18
@@ -341,6 +344,9 @@
   --color-border-subtle: rgba(242, 235, 223, 0.08);
   --color-border-default: rgba(242, 235, 223, 0.14);
   --color-border-strong: rgba(242, 235, 223, 0.2);
+  --focus-ring:
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 58%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--color-accent) 18%, transparent);
 
   --color-accent: hsl(30, 90%, 62%);
   --color-accent-strong: hsl(30, 90%, 70%);

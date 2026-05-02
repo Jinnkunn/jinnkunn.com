@@ -130,6 +130,44 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_notes_title
             ON notes (title);
 
+        -- Local-first Projects surface. Projects are a lightweight
+        -- context layer over notes/todos/contacts/calendar references,
+        -- not a website portfolio model. They use archive semantics and
+        -- keep enough presentation metadata for a fast local UI.
+        CREATE TABLE IF NOT EXISTS projects (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'active',
+            color       TEXT,
+            icon        TEXT,
+            due_at      INTEGER,
+            pinned_at   INTEGER,
+            sort_order  INTEGER NOT NULL,
+            archived_at INTEGER,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_projects_status_order
+            ON projects (archived_at, status, pinned_at DESC, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_projects_due
+            ON projects (archived_at, due_at);
+        CREATE INDEX IF NOT EXISTS idx_projects_updated_at
+            ON projects (updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS project_links (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            target_type TEXT NOT NULL,
+            target_id   TEXT NOT NULL,
+            label       TEXT NOT NULL,
+            url         TEXT,
+            created_at  INTEGER NOT NULL,
+            UNIQUE(project_id, target_type, target_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_links_project
+            ON project_links (project_id, created_at DESC);
+
         -- Local-first Todos module. These rows stay in workspace.db
         -- alongside notes and use archive semantics so clearing a task
         -- does not physically delete it from the local store.
@@ -137,6 +175,7 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
             id                 TEXT PRIMARY KEY,
             title              TEXT NOT NULL,
             notes              TEXT NOT NULL DEFAULT '',
+            project_id         TEXT REFERENCES projects(id) ON DELETE SET NULL,
             due_at             INTEGER,
             scheduled_start_at INTEGER,
             scheduled_end_at   INTEGER,
@@ -339,6 +378,7 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     ensure_todos_column(conn, "scheduled_start_at", "INTEGER")?;
     ensure_todos_column(conn, "scheduled_end_at", "INTEGER")?;
     ensure_todos_column(conn, "estimated_minutes", "INTEGER")?;
+    ensure_todos_column(conn, "project_id", "TEXT")?;
     ensure_table_column(conn, "contacts", "next_follow_up_at", "INTEGER")?;
     ensure_table_column(conn, "contacts", "cadence_days", "INTEGER")?;
     conn.execute(
@@ -347,6 +387,12 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
         [],
     )
     .map_err(|err| format!("failed to create todos schedule index: {err}"))?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_todos_project_status
+            ON todos (project_id, archived_at, completed_at, scheduled_start_at, due_at, sort_order)",
+        [],
+    )
+    .map_err(|err| format!("failed to create todos project index: {err}"))?;
 
     // One-shot backfill so existing notes get into the FTS index after
     // upgrading. The marker in sync_state lets us skip the rebuild on
@@ -355,6 +401,31 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
         conn.execute("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')", [])
             .map_err(|err| format!("failed to backfill notes_fts: {err}"))?;
         write_sync_state_int(conn, "notes_fts_backfill_v1", 1)?;
+    }
+
+    if read_sync_state_int(conn, "notes_icon_tokens_v1")? == 0 {
+        conn.execute_batch(
+            r#"
+            UPDATE notes
+               SET icon = CASE
+                   WHEN icon = '◇' AND title = 'Inbox' THEN 'i:inbox'
+                   WHEN icon = '◇' THEN 'i:meeting'
+                   WHEN icon = '◷'
+                        AND (
+                            title = 'Daily Notes'
+                            OR title GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                        )
+                       THEN 'i:calendar'
+                   WHEN icon = '◷' THEN 'i:review'
+                   WHEN icon = '□' THEN 'i:project'
+                   WHEN icon = '✦' THEN 'i:research'
+                   ELSE icon
+               END
+             WHERE icon IN ('◇', '◷', '□', '✦');
+            "#,
+        )
+        .map_err(|err| format!("failed to migrate notes icon tokens: {err}"))?;
+        write_sync_state_int(conn, "notes_icon_tokens_v1", 1)?;
     }
 
     Ok(())

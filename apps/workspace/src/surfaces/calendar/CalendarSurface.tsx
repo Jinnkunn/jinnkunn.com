@@ -6,10 +6,10 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Settings2 } from "lucide-react";
 
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
+  WorkspaceActionMenu,
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
@@ -44,10 +44,8 @@ import { DayView } from "./DayView";
 import type { EventDisclosureResolver } from "./types";
 import { MonthView } from "./MonthView";
 import {
-  buildPublicCalendarPayload,
   resolveVisibility,
   type ResolvedVisibility,
-  calendarEventKey,
   metadataForEvent,
   emptyMetadataStore,
   updateMetadataForEvent,
@@ -58,7 +56,6 @@ import {
   loadCalendarPublishRules,
   saveCalendarPublishRules,
 } from "./publishRulesStore";
-import { syncPublicCalendarProjection } from "./siteAdminBridge";
 import { SourceSidebar } from "./SourceSidebar";
 import type {
   Calendar,
@@ -77,7 +74,6 @@ import { SmartRulesEditor } from "./SmartRulesEditor";
 import {
   diffSnapshots,
   loadSyncSnapshot,
-  saveSyncSnapshot,
   type SnapshotEventEntry,
 } from "./syncSnapshot";
 import {
@@ -88,7 +84,7 @@ import {
 import { WeekView } from "./WeekView";
 import type { CalendarTimeSlotSelection } from "./TimeGrid";
 import {
-  todosList,
+  todosListWindow,
   todosUpdate,
   type TodoRow,
   type TodosUpdateParams,
@@ -134,6 +130,18 @@ import {
   normalizeCalendarTimeZone,
   toZonedDateTimeInputValue,
 } from "../../../../../lib/shared/calendar-timezone.ts";
+import {
+  serializeCalendarDefaults,
+  syncCurrentEventKitCalendarProjection,
+  type CalendarSyncReason,
+} from "./publicSync";
+import {
+  CALENDAR_PRODUCTION_SYNC_OPTIONS,
+  loadCalendarProductionSyncPolicy,
+  saveCalendarProductionSyncPolicy,
+  type CalendarProductionSyncPolicy,
+} from "./productionSyncPolicy";
+import "../../styles/surfaces/calendar.css";
 
 /** localStorage key for the "skip EventKit gate" preference. Stored as
  * the string `"true"` when set; absent otherwise. Kept here so the
@@ -173,7 +181,6 @@ const DEFAULT_VISIBILITY_LABELS: Array<{
 type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = "idle" | "publishing" | "success" | "error";
 type PublishSummary = Record<CalendarPublicVisibility, number>;
-type CalendarSyncReason = "auto" | "manual";
 type TodoUpdatePatch = Omit<TodosUpdateParams, "id">;
 type EventComposerDraft = {
   anchor: Date;
@@ -201,6 +208,10 @@ function loadCalendarTimeZone(): string {
   } catch {
     return DEFAULT_CALENDAR_TIME_ZONE;
   }
+}
+
+function closeContainingActionMenu(start: HTMLElement | null) {
+  start?.closest("details")?.removeAttribute("open");
 }
 
 /** Top-level orchestrator. Owns the auth handshake, the
@@ -292,6 +303,10 @@ export function CalendarSurface() {
     null,
   );
   const [publishPanelOpen, setPublishPanelOpen] = useState(false);
+  const [productionSyncPolicy, setProductionSyncPolicy] =
+    useState<CalendarProductionSyncPolicy>(() =>
+      loadCalendarProductionSyncPolicy(),
+    );
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
   const [todoTrayExpanded, setTodoTrayExpanded] = useState(false);
@@ -314,12 +329,23 @@ export function CalendarSurface() {
   const initializedVisibleCalendarsRef = useRef(false);
   const defaultWorkspaceCalendarCreatedRef = useRef(false);
 
+  const setCalendarProductionSyncPolicy = useCallback(
+    (policy: CalendarProductionSyncPolicy) => {
+      const next = policy === "auto-promote" ? "auto-promote" : "manual";
+      setProductionSyncPolicy(next);
+      saveCalendarProductionSyncPolicy(next);
+    },
+    [],
+  );
+
   const openEventComposer = useCallback(
     (
       nextAnchor: Date = anchor,
       point: EventComposerDraft["point"] = null,
       endsAt?: Date,
     ) => {
+      setSettingsPanelOpen(false);
+      setPublishPanelOpen(false);
       setSelectedEvent(null);
       setSelectedTodoId(null);
       setComposerDraft({
@@ -450,7 +476,10 @@ export function CalendarSurface() {
   // local state in sync between fetches via optimistic update.
   useEffect(() => {
     let cancelled = false;
-    todosList()
+    todosListWindow({
+      startsAt: new Date(range.startsAt).getTime(),
+      endsAt: new Date(range.endsAt).getTime(),
+    })
       .then((next) => {
         if (!cancelled) setTodos(sortCalendarTodos(next));
       })
@@ -461,7 +490,7 @@ export function CalendarSurface() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [range.endsAt, range.startsAt]);
 
   // Local calendars also live in workspace.db — completely independent
   // of EventKit. Load once on mount; CRUD callbacks below keep state
@@ -700,12 +729,16 @@ export function CalendarSurface() {
 
   const handleTodoSelect = useCallback((todo: TodoRow) => {
     setComposerDraft(null);
+    setSettingsPanelOpen(false);
+    setPublishPanelOpen(false);
     setSelectedEvent(null);
     setSelectedTodoId(todo.id);
   }, []);
 
   const handleEventSelect = useCallback((event: CalendarEvent) => {
     setComposerDraft(null);
+    setSettingsPanelOpen(false);
+    setPublishPanelOpen(false);
     setSelectedTodoId(null);
     setSelectedEvent(event);
   }, []);
@@ -1097,11 +1130,6 @@ export function CalendarSurface() {
     () => diffSnapshots(pendingSyncEntries, lastSyncSnapshot?.events ?? []),
     [lastSyncSnapshot, pendingSyncEntries],
   );
-  const hasPendingSyncChanges =
-    lastSyncSnapshot === null ||
-    syncPreviewDiff.added.length > 0 ||
-    syncPreviewDiff.visibilityChanged.length > 0 ||
-    syncPreviewDiff.removed.length > 0;
   const publicEventCount =
     publishSummary.busy + publishSummary.titleOnly + publishSummary.full;
   const getDisclosure = useCallback<EventDisclosureResolver>(
@@ -1235,38 +1263,17 @@ export function CalendarSurface() {
     if (!isAuthorized(auth)) return;
     setPublishState("publishing");
     setPublishMessage("");
-    const starts = startOfDay(new Date());
-    const ends = new Date(starts);
-    ends.setFullYear(ends.getFullYear() + 1);
-    const publishWindow = {
-      startsAt: starts.toISOString(),
-      endsAt: ends.toISOString(),
-    };
     try {
-      const snapshotEvents = await calendarFetchEvents({
-        ...publishWindow,
-        calendarIds: [],
-      });
-      const mergedEvents = mergeCalendarEvents(snapshotEvents, events);
-      const projectedRange = {
-        startsAt:
-          Date.parse(range.startsAt) < Date.parse(publishWindow.startsAt)
-            ? range.startsAt
-            : publishWindow.startsAt,
-        endsAt:
-          Date.parse(range.endsAt) > Date.parse(publishWindow.endsAt)
-            ? range.endsAt
-            : publishWindow.endsAt,
-      };
-      const payload = buildPublicCalendarPayload({
-        events: mergedEvents,
+      const result = await syncCurrentEventKitCalendarProjection({
         calendarsById,
         metadata: publishMetadata,
         calendarDefaults,
-        smartResolver: resolveSmartDefault,
-        range: projectedRange,
+        extraEvents: events,
+        extraRange: { startsAt: range.startsAt, endsAt: range.endsAt },
+        productionPolicy: productionSyncPolicy,
+        reason,
+        skipIfUnchanged: reason !== "manual",
       });
-      const result = await syncPublicCalendarProjection(payload);
       if (!result.ok) {
         setPublishState("error");
         setPublishMessage(`Calendar sync failed via ${result.baseUrl}: ${result.error}`);
@@ -1279,33 +1286,30 @@ export function CalendarSurface() {
         return;
       }
       setPublishState("success");
-      // Persist a thin snapshot of the just-synced projection so the
-      // next sync's preview can diff against it. We only store the
-      // surface fields the diff needs (id + title + visibility), not
-      // the full payload — the file-sha is the source of truth on
-      // the server side.
-      const snapshotEntries: SnapshotEventEntry[] = payload.events.map((entry) => ({
-        id: entry.id,
-        title: entry.title,
-        visibility: entry.visibility,
-      }));
-      const snapshot = {
-        syncedAt: new Date().toISOString(),
-        events: snapshotEntries,
-      };
-      saveSyncSnapshot(snapshot);
-      setLastSyncSnapshot(snapshot);
-      setSyncHealth({
+      setLastSyncSnapshot(result.snapshot);
+      setSyncHealth((prev) => ({
         lastSyncedAt: new Date().toISOString(),
-        eventCount: payload.events.length,
-        baseUrl: result.baseUrl,
-        fileSha: result.fileSha,
+        eventCount: result.eventCount,
+        baseUrl: result.baseUrl || prev.baseUrl,
+        fileSha: result.fileSha || prev.fileSha,
         reason,
         error: null,
-      });
-      setPublishMessage(
-        `${reason === "auto" ? "Auto-synced" : "Synced"} ${payload.events.length} events. SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
-      );
+      }));
+      if (result.status === "unchanged") {
+        setPublishMessage(`Calendar already up to date (${result.eventCount} events).`);
+      } else if (result.production?.ok) {
+        setPublishMessage(
+          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events. Production release dispatched.`,
+        );
+      } else if (result.production && !result.production.ok) {
+        setPublishMessage(
+          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events. Production promote failed: ${result.production.error}`,
+        );
+      } else {
+        setPublishMessage(
+          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events. SHA ${result.fileSha.slice(0, 8) || "updated"}.`,
+        );
+      }
     } catch (err) {
       setPublishState("error");
       setPublishMessage(`Calendar sync failed: ${String(err)}`);
@@ -1320,6 +1324,7 @@ export function CalendarSurface() {
     calendarDefaults,
     calendarsById,
     publishMetadata,
+    productionSyncPolicy,
     range.endsAt,
     range.startsAt,
     rulesLoaded,
@@ -1332,6 +1337,7 @@ export function CalendarSurface() {
         calendarDefaults: serializeCalendarDefaults(calendarDefaults),
         calendarChangeRevision,
         metadata: publishMetadata,
+        productionSyncPolicy,
         rulesLoaded,
         loadState,
         smartRulesRevision,
@@ -1341,6 +1347,7 @@ export function CalendarSurface() {
       calendarDefaults,
       loadState,
       publishMetadata,
+      productionSyncPolicy,
       rulesLoaded,
       smartRulesRevision,
     ],
@@ -1428,21 +1435,7 @@ export function CalendarSurface() {
             className="calendar-commandbar__actions"
           >
             <WorkspaceCommandButton
-              tone="ghost"
-              onClick={() => setSettingsPanelOpen((open) => !open)}
-              aria-pressed={settingsPanelOpen}
-              title="Calendar settings"
-            >
-              <Settings2
-                absoluteStrokeWidth
-                aria-hidden="true"
-                size={14}
-                strokeWidth={1.7}
-              />
-              Settings
-            </WorkspaceCommandButton>
-            <WorkspaceCommandButton
-              tone="ghost"
+              tone="accent"
               onClick={() => {
                 if (composerDraft) {
                   setComposerDraft(null);
@@ -1455,93 +1448,105 @@ export function CalendarSurface() {
             >
               + Event
             </WorkspaceCommandButton>
-            <WorkspaceCommandButton
-              className="calendar-commandbar__publish-button"
-              tone={hasPendingSyncChanges ? "accent" : "ghost"}
-              onClick={() => setPublishPanelOpen((open) => !open)}
-              aria-pressed={publishPanelOpen}
-              title={
-                lastSyncSnapshot
-                  ? `Publish panel: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
-                  : "Open website calendar publish panel"
-              }
+            <WorkspaceActionMenu
+              className="calendar-commandbar__more"
+              label="More"
             >
-              Publish
-            </WorkspaceCommandButton>
+              <div className="workspace-action-menu__section calendar-commandbar__menu-section">
+                <label className="workspace-action-menu__field">
+                  <span>Search</span>
+                  <div className="calendar-search-wrapper calendar-search-wrapper--menu">
+                    <input
+                      type="search"
+                      className="calendar-search-input"
+                      placeholder="Search events…"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      aria-label="Search events"
+                    />
+                    {searchEventsLoading ? (
+                      <span
+                        className="calendar-search-pending"
+                        aria-live="polite"
+                        title="Loading wider event range for search"
+                      >
+                        …
+                      </span>
+                    ) : null}
+                  </div>
+                </label>
+                <label className="workspace-action-menu__field">
+                  <span>Time Zone</span>
+                  <select
+                    value={timeZone}
+                    onChange={(event) =>
+                      handleTimeZoneChange(event.currentTarget.value)
+                    }
+                    aria-label="Calendar time zone"
+                  >
+                    {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="workspace-action-menu__section">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    closeContainingActionMenu(event.currentTarget);
+                    setSettingsPanelOpen((open) => {
+                      const next = !open;
+                      if (next) {
+                        setPublishPanelOpen(false);
+                        setComposerDraft(null);
+                        setSelectedEvent(null);
+                        setSelectedTodoId(null);
+                      }
+                      return next;
+                    });
+                  }}
+                  aria-pressed={settingsPanelOpen}
+                >
+                  Settings
+                </button>
+                <button
+                  type="button"
+                  className="calendar-commandbar__menu-publish"
+                  data-active={publishPanelOpen ? "true" : undefined}
+                  onClick={(event) => {
+                    closeContainingActionMenu(event.currentTarget);
+                    setPublishPanelOpen((open) => {
+                      const next = !open;
+                      if (next) {
+                        setSettingsPanelOpen(false);
+                        setComposerDraft(null);
+                        setSelectedEvent(null);
+                        setSelectedTodoId(null);
+                      }
+                      return next;
+                    });
+                  }}
+                  aria-pressed={publishPanelOpen}
+                  title={
+                    lastSyncSnapshot
+                      ? `Publish panel: +${syncPreviewDiff.added.length} · ~${syncPreviewDiff.visibilityChanged.length} · -${syncPreviewDiff.removed.length}`
+                      : "Open website calendar publish panel"
+                  }
+                >
+                  <span>Publish</span>
+                  <SyncPreviewChip
+                    diff={syncPreviewDiff}
+                    hasBaseline={lastSyncSnapshot !== null}
+                  />
+                </button>
+              </div>
+            </WorkspaceActionMenu>
           </WorkspaceCommandGroup>
         }
       />
-      <div className="calendar-commandbar__supplement">
-        <div className="calendar-commandbar__secondary">
-          <div className="calendar-search-wrapper">
-            <input
-              type="search"
-              className="calendar-search-input"
-              placeholder="Search events…"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              aria-label="Search events"
-              // The fetch widens to +/-180 days on a 300ms debounce;
-              // see the search effect in the parent for the rationale.
-            />
-            {searchEventsLoading ? (
-              <span
-                className="calendar-search-pending"
-                aria-live="polite"
-                title="Loading wider event range for search"
-            >
-                …
-              </span>
-            ) : null}
-          </div>
-          <label className="calendar-time-zone-select">
-            <span>Time zone</span>
-            <select
-              value={timeZone}
-              onChange={(event) => handleTimeZoneChange(event.currentTarget.value)}
-              aria-label="Calendar time zone"
-            >
-              {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {settingsPanelOpen ? (
-          <CalendarSettingsPanel
-            calendarsBySource={calendarsBySource}
-            sources={mergedSources}
-            timeZone={timeZone}
-            visible={selectedCalendarIds}
-            onClose={() => setSettingsPanelOpen(false)}
-            onCreateLocalCalendar={() => void createLocalCalendar()}
-            onSetCalendarVisible={setCalendarVisible}
-            onSetSourceVisible={setSourceVisible}
-            onTimeZoneChange={handleTimeZoneChange}
-          />
-        ) : null}
-        {publishPanelOpen ? (
-          <CalendarPublishPanel
-            calendarDefaults={calendarDefaults}
-            calendars={mergedCalendars}
-            diff={syncPreviewDiff}
-            hasBaseline={lastSyncSnapshot !== null}
-            health={syncHealth}
-            publishMessage={publishMessage}
-            publishState={publishState}
-            rulesEditorOpen={rulesEditorOpen}
-            rulesLoaded={rulesLoaded}
-            summary={publishSummary}
-            onClose={() => setPublishPanelOpen(false)}
-            onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
-            onSetCalendarDefault={setCalendarDefault}
-            onSync={() => void syncCalendarProjection("manual")}
-            onToggleRulesEditor={() => setRulesEditorOpen((open) => !open)}
-          />
-        ) : null}
-      </div>
       <div
         className="panel-shell__body calendar-surface-body"
       >
@@ -1567,7 +1572,39 @@ export function CalendarSurface() {
         <WorkspaceSplitView
           className="calendar-workspace-split"
           inspector={
-            selectedEvent && isLocalEventId(selectedEvent.eventIdentifier) ? (
+            settingsPanelOpen ? (
+              <CalendarSettingsPanel
+                calendarsBySource={calendarsBySource}
+                sources={mergedSources}
+                timeZone={timeZone}
+                visible={selectedCalendarIds}
+                onClose={() => setSettingsPanelOpen(false)}
+                onCreateLocalCalendar={() => void createLocalCalendar()}
+                onSetCalendarVisible={setCalendarVisible}
+                onSetSourceVisible={setSourceVisible}
+                onTimeZoneChange={handleTimeZoneChange}
+              />
+            ) : publishPanelOpen ? (
+              <CalendarPublishPanel
+                calendarDefaults={calendarDefaults}
+                calendars={mergedCalendars}
+                diff={syncPreviewDiff}
+                hasBaseline={lastSyncSnapshot !== null}
+                health={syncHealth}
+                publishMessage={publishMessage}
+                publishState={publishState}
+                productionSyncPolicy={productionSyncPolicy}
+                rulesEditorOpen={rulesEditorOpen}
+                rulesLoaded={rulesLoaded}
+                summary={publishSummary}
+                onClose={() => setPublishPanelOpen(false)}
+                onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
+                onSetCalendarDefault={setCalendarDefault}
+                onSetProductionSyncPolicy={setCalendarProductionSyncPolicy}
+                onSync={() => void syncCalendarProjection("manual")}
+                onToggleRulesEditor={() => setRulesEditorOpen((open) => !open)}
+              />
+            ) : selectedEvent && isLocalEventId(selectedEvent.eventIdentifier) ? (
               <LocalEventInspector
                 key={`${selectedEvent.eventIdentifier}-${timeZone}`}
                 event={selectedEvent}
@@ -2310,29 +2347,6 @@ function ViewPane({
   }
 }
 
-function mergeCalendarEvents(
-  primary: CalendarEvent[],
-  secondary: CalendarEvent[],
-): CalendarEvent[] {
-  const seen = new Set<string>();
-  const out: CalendarEvent[] = [];
-  for (const event of [...primary, ...secondary]) {
-    const key = `${calendarEventKey(event)}::${event.startsAt}::${event.endsAt}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(event);
-  }
-  return out;
-}
-
-function serializeCalendarDefaults(
-  defaults: ReadonlyMap<string, CalendarPublicVisibility>,
-): Array<[string, CalendarPublicVisibility]> {
-  return [...defaults.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-}
-
 function summarizePublishVisibility(
   events: CalendarEvent[],
   store: CalendarPublishMetadataStore,
@@ -2562,12 +2576,14 @@ function CalendarPublishPanel({
   health,
   publishMessage,
   publishState,
+  productionSyncPolicy,
   rulesEditorOpen,
   rulesLoaded,
   summary,
   onClose,
   onRulesSaved,
   onSetCalendarDefault,
+  onSetProductionSyncPolicy,
   onSync,
   onToggleRulesEditor,
 }: {
@@ -2578,6 +2594,7 @@ function CalendarPublishPanel({
   health: CalendarSyncHealth;
   publishMessage: string;
   publishState: PublishState;
+  productionSyncPolicy: CalendarProductionSyncPolicy;
   rulesEditorOpen: boolean;
   rulesLoaded: boolean;
   summary: PublishSummary;
@@ -2587,6 +2604,7 @@ function CalendarPublishPanel({
     calendarId: string,
     visibility: CalendarPublicVisibility,
   ) => void;
+  onSetProductionSyncPolicy: (policy: CalendarProductionSyncPolicy) => void;
   onSync: () => void;
   onToggleRulesEditor: () => void;
 }) {
@@ -2617,7 +2635,7 @@ function CalendarPublishPanel({
           disabled={publishState === "publishing" || !rulesLoaded}
           onClick={onSync}
         >
-          {publishState === "publishing" ? "Syncing..." : "Sync now"}
+          {publishState === "publishing" ? "Syncing…" : "Sync now"}
         </button>
         <button type="button" className="btn" onClick={onToggleRulesEditor}>
           {rulesEditorOpen ? "Hide rules" : "Edit rules"}
@@ -2635,10 +2653,31 @@ function CalendarPublishPanel({
         </p>
       ) : null}
       <CalendarSyncHealthPanel health={health} state={publishState} />
+      <section className="calendar-publish-policy">
+        <header>
+          <h3>Production</h3>
+        </header>
+        <label className="calendar-publish-policy__row">
+          <span>Promotion</span>
+          <select
+            value={productionSyncPolicy}
+            onChange={(event) =>
+              onSetProductionSyncPolicy(
+                event.currentTarget.value as CalendarProductionSyncPolicy,
+              )
+            }
+          >
+            {CALENDAR_PRODUCTION_SYNC_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value} title={option.hint}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
       <section className="calendar-publish-defaults">
         <header>
           <h3>Calendar defaults</h3>
-          <p>Used when no event rule applies.</p>
         </header>
         {publishCalendars.length === 0 ? (
           <p className="calendar-publish-defaults__empty">
@@ -2850,7 +2889,7 @@ function CalendarEventInspector({
           </p>
           {!rulesLoaded ? (
             <p className="m-0 text-[12px] text-text-muted">
-              Loading rules...
+              Loading rules…
             </p>
           ) : null}
           <button
@@ -2859,7 +2898,7 @@ function CalendarEventInspector({
             disabled={publishState === "publishing" || !rulesLoaded}
             onClick={onPublish}
           >
-            {publishState === "publishing" ? "Syncing..." : "Sync calendar now"}
+            {publishState === "publishing" ? "Syncing…" : "Sync calendar now"}
           </button>
           {publishMessage ? (
             <p

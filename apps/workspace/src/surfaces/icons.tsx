@@ -5,6 +5,7 @@ import {
   CalendarDays,
   FileText,
   Files,
+  FolderKanban,
   Globe2,
   Home,
   LayoutGrid,
@@ -33,6 +34,7 @@ export const SiteAdminIcon = createWorkspaceIcon(Globe2);
 export const CalendarIcon = createWorkspaceIcon(CalendarDays);
 export const NotesIcon = createWorkspaceIcon(NotebookText);
 export const TodosIcon = createWorkspaceIcon(SquareCheckBig);
+export const ProjectsIcon = createWorkspaceIcon(FolderKanban);
 export const ContactsIcon = createWorkspaceIcon(Users);
 export const WorkspaceIcon = createWorkspaceIcon(LayoutGrid);
 export const StatusIcon = createWorkspaceIcon(Activity, 14);

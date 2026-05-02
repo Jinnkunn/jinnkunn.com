@@ -1,0 +1,473 @@
+/* ------------------------------------------------------------------ *
+ * Todos surface
+ * ------------------------------------------------------------------ */
+.todos-surface {
+  flex: 1;
+  min-height: 0;
+}
+
+.todos-commandbar {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 6px;
+}
+
+.todos-commandbar .workspace-commandbar__center {
+  display: none;
+}
+
+.todos-commandbar .workspace-commandbar__leading,
+.todos-commandbar .workspace-commandbar__trailing {
+  width: 100%;
+  min-width: 0;
+}
+
+.todos-commandbar__meta {
+  justify-content: flex-end;
+}
+
+.todos-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.todos-composer__main {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.todos-composer__planning {
+  position: relative;
+  align-self: start;
+  min-width: 0;
+}
+
+.todos-composer__planning .workspace-action-menu__trigger {
+  height: 30px;
+}
+
+.todos-composer__planning .workspace-action-menu__popover {
+  min-width: 260px;
+}
+
+.todos-composer__planning-grid {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.todos-composer__planning-clear {
+  justify-content: center;
+}
+
+.todos-composer__main input,
+.todos-row__title,
+.todos-row__date,
+.todos-row__schedule,
+.todos-row__estimate {
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.todos-composer__main input {
+  height: 30px;
+  min-width: 0;
+  padding: 0 10px;
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 60%),
+    var(--fill-tertiary);
+  font-size: var(--font-size-small);
+  font-weight: 550;
+  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
+}
+
+.todos-composer__main input:first-child {
+  width: 100%;
+}
+
+.todos-composer__main input:focus-visible,
+.todos-row__title:focus-visible,
+.todos-row__date:focus-visible,
+.todos-row__schedule:focus-visible,
+.todos-row__estimate:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 48%, var(--hairline)),
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.todos-counts {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.todos-message {
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-danger) 9%, transparent);
+  color: var(--color-danger);
+  font-size: var(--font-size-small);
+  font-weight: 600;
+}
+
+.todos-list-shell {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+}
+
+.todos-split-view {
+  --workspace-split-inspector-width: minmax(280px, 340px);
+  flex: 1;
+  min-height: 0;
+}
+
+.todos-split-view .workspace-split-view__detail {
+  background: transparent;
+}
+
+.todos-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todos-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  cursor: default;
+  box-shadow: inset 0 -1px 0 var(--hairline);
+}
+
+.todos-row:hover {
+  background: var(--fill-quaternary);
+  box-shadow: none;
+}
+
+.todos-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--color-accent) 11%, var(--fill-tertiary));
+  box-shadow:
+    inset 0 1px 0 var(--surface-highlight-soft),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.todos-row[data-completed="true"] {
+  opacity: 0.72;
+}
+
+.todos-row__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-secondary);
+  color: var(--color-bg-popover);
+  cursor: pointer;
+}
+
+.todos-row__check span {
+  width: 12px;
+  height: 7px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.todos-row__check[aria-pressed="true"] {
+  background: var(--color-success);
+}
+
+.todos-row__check[aria-pressed="true"] span {
+  opacity: 1;
+}
+
+.todos-row__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.todos-row__title {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-body);
+  font-weight: 650;
+}
+
+.todos-row[data-completed="true"] .todos-row__title {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.todos-row__meta {
+  padding-left: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.todos-row__chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 6px;
+  overflow: hidden;
+}
+
+.todos-row__chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-quaternary);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todos-row__source {
+  justify-self: start;
+  max-width: min(100%, 320px);
+  height: 21px;
+  min-width: 0;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--fill-quaternary));
+  color: var(--color-accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todos-row__source:hover,
+.todos-row__source:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--fill-tertiary));
+}
+
+.todos-row__source[data-archived="true"] {
+  background: var(--fill-quaternary);
+  color: var(--color-text-muted);
+}
+
+.todos-row__date,
+.todos-row__schedule,
+.todos-row__estimate {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  background: var(--fill-quaternary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-small);
+}
+
+.todos-row__date {
+  width: 132px;
+}
+
+.todos-row__schedule {
+  width: 174px;
+}
+
+.todos-row__estimate {
+  width: 72px;
+}
+
+.todos-row__details {
+  width: 28px;
+  height: 28px;
+}
+
+.todos-row__details:hover,
+.todos-row__details:focus-visible,
+.todos-row__details[aria-pressed="true"] {
+  outline: none;
+  background: var(--fill-secondary);
+  color: var(--color-text-primary);
+}
+
+.todos-detail-panel {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.todos-detail-panel__complete,
+.todos-detail-panel__archive {
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+
+.todos-detail-panel__complete {
+  background: var(--fill-secondary);
+  color: var(--color-text-primary);
+}
+
+.todos-detail-panel__complete[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-success) 15%, var(--fill-tertiary));
+  color: var(--color-success);
+}
+
+.todos-detail-panel__archive {
+  background: color-mix(in srgb, var(--color-danger) 9%, transparent);
+  color: var(--color-danger);
+}
+
+.todos-detail-panel__quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.todos-detail-panel__quick button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-quaternary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.todos-detail-panel__quick button:hover,
+.todos-detail-panel__quick button:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-accent) 13%, var(--fill-tertiary));
+  color: var(--color-accent-strong);
+}
+
+.todos-detail-panel__field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.todos-detail-panel__field span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.todos-detail-panel__field input,
+.todos-detail-panel__field select,
+.todos-detail-panel__field textarea {
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--fill-quaternary);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+
+.todos-detail-panel__field input,
+.todos-detail-panel__field select {
+  height: 32px;
+  padding: 0 10px;
+}
+
+.todos-detail-panel__field textarea {
+  min-height: 82px;
+  resize: vertical;
+  padding: 8px 10px;
+  line-height: 1.4;
+}
+
+.todos-detail-panel__field input:focus-visible,
+.todos-detail-panel__field select:focus-visible,
+.todos-detail-panel__field textarea:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 48%, var(--hairline)),
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.todos-detail-panel__link {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 7px 9px;
+  background: var(--fill-quaternary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.todos-detail-panel__link:hover,
+.todos-detail-panel__link:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-accent) 11%, var(--fill-tertiary));
+}
+
+.todos-detail-panel__link strong,
+.todos-detail-panel__link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todos-detail-panel__link strong {
+  font-size: var(--font-size-small);
+  font-weight: 720;
+}
+
+.todos-detail-panel__link span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}

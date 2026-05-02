@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PanelRightOpen } from "lucide-react";
 
 import {
   todosArchive,
@@ -8,9 +9,13 @@ import {
   todosUpdate,
   type TodoRow,
 } from "../../modules/todos/api";
-import { parseNoteTodoSource } from "../../modules/notes/todoLinks";
 import {
-  todoTimelineKind,
+  projectsList,
+  type ProjectRow,
+} from "../../modules/projects/api";
+import { parseNoteTodoSource } from "../../modules/notes/todoLinks";
+import type { NoteTodoSource } from "../../modules/notes/todoLinks";
+import {
   todoTimelineStart,
 } from "../../modules/todos/time";
 import {
@@ -30,10 +35,19 @@ import {
 } from "../../modules/todos/planning";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import { noteNavId } from "../notes/tree";
+import { projectNavId } from "../projects/nav";
 import {
+  WorkspaceActionMenu,
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceEmptyState,
+  WorkspaceIconButton,
+  WorkspaceInlineStatus,
+  WorkspaceInspector,
+  WorkspaceInspectorHeader,
+  WorkspaceInspectorSection,
+  WorkspaceSplitView,
   WorkspaceSurfaceFrame,
 } from "../../ui/primitives";
 import {
@@ -51,6 +65,7 @@ import {
   TODOS_UNSCHEDULED_NAV_ID,
   TODOS_UPCOMING_NAV_ID,
 } from "./nav";
+import "../../styles/surfaces/todos.css";
 
 type TodoFilter =
   | "completed"
@@ -82,25 +97,6 @@ function formatTime(timestamp: number): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function formatTodoMeta(todo: TodoRow): string {
-  const parts: string[] = [];
-  const timelineStart = todoTimelineStart(todo);
-  if (timelineStart !== null && todoTimelineKind(todo) === "scheduled") {
-    parts.push(`Scheduled ${formatTime(timelineStart)}`);
-  } else if (todo.dueAt !== null) {
-    parts.push(`Due ${formatDueDate(todo.dueAt)}`);
-  } else {
-    parts.push("Unscheduled");
-  }
-  if (todo.estimatedMinutes !== null) {
-    parts.push(`${todo.estimatedMinutes}m`);
-  }
-  if (todo.scheduledStartAt !== null && todo.dueAt !== null) {
-    parts.push(`due ${formatDueDate(todo.dueAt)}`);
-  }
-  return parts.join(" / ");
 }
 
 function todoPlanningTimestamp(todo: TodoRow): number | null {
@@ -204,44 +200,6 @@ function sortTodos(rows: readonly TodoRow[]): TodoRow[] {
   });
 }
 
-function TodoQuickScheduleActions({
-  todo,
-  onClear,
-  onPreset,
-}: {
-  todo: TodoRow;
-  onClear: (todo: TodoRow) => Promise<void>;
-  onPreset: (todo: TodoRow, preset: TodoSchedulePreset) => Promise<void>;
-}) {
-  const plannedDate = dateInputValue(todoTimelineStart(todo));
-  return (
-    <div className="todos-row__quick" aria-label="Quick schedule">
-      {TODO_SCHEDULE_PRESETS.map((preset) => {
-        const presetDate = dateInputValue(todoPresetUpdateParams(preset).dueAt);
-        return (
-          <button
-            type="button"
-            key={preset}
-            className="todos-row__quick-button"
-            data-active={plannedDate === presetDate ? "true" : undefined}
-            onClick={() => void onPreset(todo, preset)}
-          >
-            {todoSchedulePresetLabel(preset)}
-          </button>
-        );
-      })}
-      <button
-        type="button"
-        className="todos-row__quick-button"
-        disabled={todo.scheduledStartAt === null && todo.dueAt === null}
-        onClick={() => void onClear(todo)}
-      >
-        Clear
-      </button>
-    </div>
-  );
-}
-
 export function TodosSurface() {
   const {
     activeNavItemId,
@@ -253,9 +211,12 @@ export function TodosSurface() {
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [draftTitles, setDraftTitles] = useState<Record<string, string>>({});
+  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -268,9 +229,12 @@ export function TodosSurface() {
 
   useEffect(() => {
     let cancelled = false;
-    todosList()
-      .then((rows) => {
-        if (!cancelled) setTodos(sortTodos(rows));
+    Promise.all([todosList(), projectsList().catch(() => [])])
+      .then(([rows, projectRows]) => {
+        if (!cancelled) {
+          setTodos(sortTodos(rows));
+          setProjects(projectRows);
+        }
       })
       .catch((error) => {
         if (!cancelled && !isNativeBridgeUnavailable(error)) {
@@ -289,6 +253,24 @@ export function TodosSurface() {
   const visibleTodos = useMemo(() => {
     return todos.filter((todo) => filterTodo(todo, filter));
   }, [filter, todos]);
+  const selectedTodo = useMemo(
+    () => todos.find((todo) => todo.id === selectedTodoId) ?? null,
+    [selectedTodoId, todos],
+  );
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
+  const activeProjects = useMemo(
+    () => projects.filter((project) => project.archivedAt === null),
+    [projects],
+  );
+
+  useEffect(() => {
+    if (selectedTodo && !filterTodo(selectedTodo, filter)) {
+      setSelectedTodoId(null);
+    }
+  }, [filter, selectedTodo]);
 
   const activeCount = todos.filter((todo) => !todo.archivedAt && !todo.completedAt).length;
   const completedCount = todos.filter((todo) => !todo.archivedAt && todo.completedAt).length;
@@ -357,12 +339,14 @@ export function TodosSurface() {
       const row = await todosCreate({
         dueAt: dateInputToTimestamp(dueDate),
         estimatedMinutes: estimate,
+        projectId: projectId || null,
         scheduledEndAt: scheduleEndTimestamp(scheduledStartAt, estimate),
         scheduledStartAt,
         title: normalized,
       });
       setTitle("");
       setDueDate("");
+      setProjectId("");
       setScheduledAt("");
       setEstimatedMinutes("");
       upsertTodoAndRoute(row);
@@ -451,6 +435,31 @@ export function TodosSurface() {
     }
   };
 
+  const updateProject = async (todo: TodoRow, value: string) => {
+    try {
+      const row = await todosUpdate({
+        id: todo.id,
+        projectId: value || null,
+      });
+      upsertTodo(row);
+    } catch (error) {
+      setMessage(`Failed to update project: ${String(error)}`);
+    }
+  };
+
+  const updateNotes = async (todo: TodoRow, value: string) => {
+    if (value === todo.notes) return;
+    try {
+      const row = await todosUpdate({
+        id: todo.id,
+        notes: value,
+      });
+      upsertTodo(row);
+    } catch (error) {
+      setMessage(`Failed to update notes: ${String(error)}`);
+    }
+  };
+
   const applySchedulePreset = async (
     todo: TodoRow,
     preset: TodoSchedulePreset,
@@ -480,6 +489,7 @@ export function TodosSurface() {
 
   const archiveTodo = async (todo: TodoRow) => {
     setTodos((current) => current.filter((row) => row.id !== todo.id));
+    if (selectedTodoId === todo.id) setSelectedTodoId(null);
     try {
       await todosArchive(todo.id);
     } catch (error) {
@@ -499,7 +509,7 @@ export function TodosSurface() {
       setMessage(`Failed to clear completed todos: ${String(error)}`);
     }
   };
-  const hasPlanningDraft = Boolean(dueDate || scheduledAt || estimatedMinutes);
+  const hasPlanningDraft = Boolean(dueDate || scheduledAt || estimatedMinutes || projectId);
 
   return (
     <WorkspaceSurfaceFrame className="todos-surface">
@@ -516,6 +526,8 @@ export function TodosSurface() {
             <div className="todos-composer__main">
               <input
                 aria-label="Todo title"
+                autoComplete="off"
+                name="todo-title"
                 placeholder="New todo…"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -528,173 +540,431 @@ export function TodosSurface() {
                 Add
               </WorkspaceCommandButton>
             </div>
-            <details
+            <WorkspaceActionMenu
               className="todos-composer__planning"
-              open={hasPlanningDraft ? true : undefined}
+              label={hasPlanningDraft ? "Planned" : "Plan"}
             >
-              <summary>Plan</summary>
               <div className="todos-composer__planning-grid">
-                <input
-                  aria-label="Due date"
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                />
-                <input
-                  aria-label="Scheduled time"
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(event) => {
-                    setScheduledAt(event.target.value);
-                    if (event.target.value && !estimatedMinutes) {
-                      setEstimatedMinutes("30");
-                    }
-                  }}
-                />
-                <input
-                  aria-label="Estimate minutes"
-                  min="1"
-                  max="1440"
-                  placeholder="30"
-                  type="number"
-                  value={estimatedMinutes}
-                  onChange={(event) => setEstimatedMinutes(event.target.value)}
-                />
+                <label className="workspace-action-menu__field">
+                  <span>Due</span>
+                  <input
+                    aria-label="Due date"
+                    name="todo-due-date"
+                    type="date"
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                  />
+                </label>
+                <label className="workspace-action-menu__field">
+                  <span>Scheduled</span>
+                  <input
+                    aria-label="Scheduled time"
+                    name="todo-scheduled-time"
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(event) => {
+                      setScheduledAt(event.target.value);
+                      if (event.target.value && !estimatedMinutes) {
+                        setEstimatedMinutes("30");
+                      }
+                    }}
+                  />
+                </label>
+                <label className="workspace-action-menu__field">
+                  <span>Estimate</span>
+                  <input
+                    aria-label="Estimate minutes"
+                    min="1"
+                    max="1440"
+                    name="todo-estimate-minutes"
+                    placeholder="30"
+                    type="number"
+                    value={estimatedMinutes}
+                    onChange={(event) => setEstimatedMinutes(event.target.value)}
+                  />
+                </label>
+                {activeProjects.length ? (
+                  <label className="workspace-action-menu__field">
+                    <span>Project</span>
+                    <select
+                      aria-label="Project"
+                      value={projectId}
+                      onChange={(event) => setProjectId(event.currentTarget.value)}
+                    >
+                      <option value="">No project</option>
+                      {activeProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {hasPlanningDraft ? (
+                  <button
+                    type="button"
+                    className="todos-composer__planning-clear"
+                    onClick={() => {
+                      setDueDate("");
+                      setProjectId("");
+                      setScheduledAt("");
+                      setEstimatedMinutes("");
+                    }}
+                  >
+                    Clear Plan
+                  </button>
+                ) : null}
               </div>
-            </details>
+            </WorkspaceActionMenu>
           </form>
         }
         trailing={
           <WorkspaceCommandGroup align="end" className="todos-commandbar__meta">
-            <span className="todos-counts">
-              {activeCount || completedCount
-                ? `${viewLabel}: ${visibleTodos.length} / ${activeCount} open / ${completedCount} done`
-                : viewLabel}
+            <span
+              className="todos-counts"
+              title={`${activeCount} open / ${completedCount} done`}
+            >
+              {viewLabel} · {visibleTodos.length}
             </span>
             <WorkspaceCommandButton
               disabled={completedCount === 0}
               onClick={() => void clearCompleted()}
               tone="ghost"
             >
-              Clear Done
+              Clear done
             </WorkspaceCommandButton>
           </WorkspaceCommandGroup>
         }
       />
 
       {message ? (
-        <div className="todos-message" role="status">
+        <WorkspaceInlineStatus
+          className="todos-message"
+          role="status"
+          tone={message.startsWith("Failed") ? "error" : "success"}
+        >
           {message}
-        </div>
+        </WorkspaceInlineStatus>
       ) : null}
 
-      <section className="todos-list-shell" aria-busy={loading ? "true" : undefined}>
-        {loading ? (
-          <div className="todos-empty">Loading todos…</div>
-        ) : visibleTodos.length === 0 ? (
-          <div className="todos-empty">
-            {emptyLabel(filter)}
-          </div>
-        ) : (
-          <ul className="todos-list" role="list">
-            {visibleTodos.map((todo) => {
-              const completed = Boolean(todo.completedAt);
-              const noteSource = parseNoteTodoSource(todo.notes);
-              return (
-                <li
-                  className="todos-row"
-                  data-completed={completed ? "true" : undefined}
-                  key={todo.id}
-                >
-                  <button
-                    type="button"
-                    className="todos-row__check"
-                    aria-label={completed ? "Mark open" : "Mark done"}
-                    aria-pressed={completed}
-                    onClick={() => void toggleCompleted(todo)}
+      <WorkspaceSplitView
+        className="todos-split-view"
+        inspector={
+          selectedTodo ? (
+            <TodoDetailInspector
+              noteSource={parseNoteTodoSource(selectedTodo.notes)}
+              project={selectedTodo.projectId ? projectById.get(selectedTodo.projectId) : null}
+              todo={selectedTodo}
+              onArchive={() => void archiveTodo(selectedTodo)}
+              onClear={() => void clearPlanning(selectedTodo)}
+              onClose={() => setSelectedTodoId(null)}
+              onDueDateChange={(value) => void updateDueDate(selectedTodo, value)}
+              onEstimateChange={(value) => void updateEstimate(selectedTodo, value)}
+              onNotesChange={(value) => void updateNotes(selectedTodo, value)}
+              onOpenNote={(noteId) => selectWorkspaceNavItem("notes", noteNavId(noteId))}
+              onOpenProject={(projectId) => selectWorkspaceNavItem("projects", projectNavId(projectId))}
+              onPreset={(preset) => void applySchedulePreset(selectedTodo, preset)}
+              onProjectChange={(value) => void updateProject(selectedTodo, value)}
+              onScheduleChange={(value) => void updateSchedule(selectedTodo, value)}
+              onToggle={() => void toggleCompleted(selectedTodo)}
+              projects={projects}
+            />
+          ) : null
+        }
+      >
+        <section className="todos-list-shell" aria-busy={loading ? "true" : undefined}>
+          {loading ? (
+            <WorkspaceEmptyState className="todos-empty" title="Loading todos" />
+          ) : visibleTodos.length === 0 ? (
+            <WorkspaceEmptyState className="todos-empty" title={emptyLabel(filter)} />
+          ) : (
+            <ul className="todos-list" role="list">
+              {visibleTodos.map((todo) => {
+                const completed = Boolean(todo.completedAt);
+                const noteSource = parseNoteTodoSource(todo.notes);
+                const project = todo.projectId ? projectById.get(todo.projectId) : null;
+                const projectLabel = project
+                  ? `${project.title}${project.archivedAt ? " (Archived)" : ""}`
+                  : null;
+                const timeline = todoTimelineStart(todo);
+                return (
+                  <li
+                    className="todos-row"
+                    data-completed={completed ? "true" : undefined}
+                    data-selected={selectedTodoId === todo.id ? "true" : undefined}
+                    key={todo.id}
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement | null;
+                      if (target?.closest("button, input, a, select, textarea")) return;
+                      setSelectedTodoId(todo.id);
+                    }}
                   >
-                    <span aria-hidden="true" />
-                  </button>
-                  <div className="todos-row__body">
-                    <input
-                      aria-label="Todo title"
-                      className="todos-row__title"
-                      value={draftTitles[todo.id] ?? todo.title}
-                      onBlur={() => void commitTitle(todo)}
-                      onChange={(event) =>
-                        setDraftTitles((current) => ({
-                          ...current,
-                          [todo.id]: event.target.value,
-                        }))
+                    <button
+                      type="button"
+                      className="todos-row__check"
+                      aria-label={completed ? "Mark open" : "Mark done"}
+                      aria-pressed={completed}
+                      onClick={() => void toggleCompleted(todo)}
+                    >
+                      <span aria-hidden="true" />
+                    </button>
+                    <div className="todos-row__body">
+                      <input
+                        aria-label="Todo title"
+                        className="todos-row__title"
+                        value={draftTitles[todo.id] ?? todo.title}
+                        onFocus={() => setSelectedTodoId(todo.id)}
+                        onBlur={() => void commitTitle(todo)}
+                        onChange={(event) =>
+                          setDraftTitles((current) => ({
+                            ...current,
+                            [todo.id]: event.target.value,
+                          }))
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                          if (event.key === "Escape") {
+                            setDraftTitles((current) => {
+                              const copy = { ...current };
+                              delete copy[todo.id];
+                              return copy;
+                            });
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                      <div className="todos-row__chips">
+                        <span className="todos-row__chip">
+                          {timeline === null ? "Unscheduled" : formatDueDate(timeline)}
+                        </span>
+                        {todo.scheduledStartAt !== null ? (
+                          <span className="todos-row__chip">
+                            {formatTime(todo.scheduledStartAt)}
+                          </span>
+                        ) : null}
+                        {todo.estimatedMinutes !== null ? (
+                          <span className="todos-row__chip">
+                            {todo.estimatedMinutes}m
+                          </span>
+                        ) : null}
+                        {project ? (
+                          <button
+                            type="button"
+                            className="todos-row__source"
+                            data-archived={project.archivedAt ? "true" : undefined}
+                            onClick={() =>
+                              selectWorkspaceNavItem("projects", projectNavId(project.id))
+                            }
+                          >
+                            {projectLabel}
+                          </button>
+                        ) : null}
+                        {noteSource ? (
+                          <button
+                            type="button"
+                            className="todos-row__source"
+                            onClick={() =>
+                              selectWorkspaceNavItem("notes", noteNavId(noteSource.id))
+                            }
+                          >
+                            {noteSource.title}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <WorkspaceIconButton
+                      className="todos-row__details"
+                      aria-label={
+                        selectedTodoId === todo.id
+                          ? "Close todo details"
+                          : "Open todo details"
                       }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                        if (event.key === "Escape") {
-                          setDraftTitles((current) => {
-                            const copy = { ...current };
-                            delete copy[todo.id];
-                            return copy;
-                          });
-                          event.currentTarget.blur();
-                        }
-                      }}
-                    />
-                    <span className="todos-row__meta">
-                      {formatTodoMeta(todo)}
-                    </span>
-                    {noteSource ? (
-                      <button
-                        type="button"
-                        className="todos-row__source"
-                        onClick={() =>
-                          selectWorkspaceNavItem("notes", noteNavId(noteSource.id))
-                        }
-                      >
-                        From {noteSource.title}
-                      </button>
-                    ) : null}
-                    <TodoQuickScheduleActions
-                      todo={todo}
-                      onClear={clearPlanning}
-                      onPreset={applySchedulePreset}
-                    />
-                  </div>
-                  <input
-                    aria-label="Due date"
-                    className="todos-row__date"
-                    type="date"
-                    value={dateInputValue(todo.dueAt)}
-                    onChange={(event) => void updateDueDate(todo, event.target.value)}
-                  />
-                  <input
-                    aria-label="Scheduled time"
-                    className="todos-row__schedule"
-                    type="datetime-local"
-                    value={dateTimeInputValue(todo.scheduledStartAt)}
-                    onChange={(event) => void updateSchedule(todo, event.target.value)}
-                  />
-                  <input
-                    aria-label="Estimate minutes"
-                    className="todos-row__estimate"
-                    min="1"
-                    max="1440"
-                    type="number"
-                    value={todo.estimatedMinutes ?? ""}
-                    onChange={(event) => void updateEstimate(todo, event.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="todos-row__archive"
-                    onClick={() => void archiveTodo(todo)}
-                  >
-                    Archive
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                      aria-pressed={selectedTodoId === todo.id}
+                      onClick={() =>
+                        setSelectedTodoId((current) =>
+                          current === todo.id ? null : todo.id,
+                        )
+                      }
+                    >
+                      <PanelRightOpen
+                        absoluteStrokeWidth
+                        aria-hidden="true"
+                        size={14}
+                        strokeWidth={1.8}
+                      />
+                    </WorkspaceIconButton>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </WorkspaceSplitView>
     </WorkspaceSurfaceFrame>
+  );
+}
+
+function TodoDetailInspector({
+  noteSource,
+  onArchive,
+  onClear,
+  onClose,
+  onDueDateChange,
+  onEstimateChange,
+  onNotesChange,
+  onOpenNote,
+  onOpenProject,
+  onPreset,
+  onProjectChange,
+  onScheduleChange,
+  onToggle,
+  project,
+  projects,
+  todo,
+}: {
+  noteSource: NoteTodoSource | null;
+  onArchive: () => void;
+  onClear: () => void;
+  onClose: () => void;
+  onDueDateChange: (value: string) => void;
+  onEstimateChange: (value: string) => void;
+  onNotesChange: (value: string) => void;
+  onOpenNote: (noteId: string) => void;
+  onOpenProject: (projectId: string) => void;
+  onPreset: (preset: TodoSchedulePreset) => void;
+  onProjectChange: (value: string) => void;
+  onScheduleChange: (value: string) => void;
+  onToggle: () => void;
+  project: ProjectRow | null | undefined;
+  projects: readonly ProjectRow[];
+  todo: TodoRow;
+}) {
+  const completed = todo.completedAt !== null;
+
+  return (
+    <WorkspaceInspector className="todos-detail-panel" label="Todo details">
+      <WorkspaceInspectorHeader
+        heading={todo.title}
+        kicker={completed ? "Done" : "Todo"}
+        actions={
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Close
+          </button>
+        }
+      />
+      <WorkspaceInspectorSection>
+        <button
+          type="button"
+          className="todos-detail-panel__complete"
+          aria-pressed={completed}
+          onClick={onToggle}
+        >
+          {completed ? "Reopen" : "Done"}
+        </button>
+      </WorkspaceInspectorSection>
+      <WorkspaceInspectorSection heading="Plan">
+        <div className="todos-detail-panel__quick">
+          {TODO_SCHEDULE_PRESETS.map((preset) => (
+            <button
+              type="button"
+              key={preset}
+              onClick={() => onPreset(preset)}
+            >
+              {todoSchedulePresetLabel(preset)}
+            </button>
+          ))}
+          <button type="button" onClick={onClear}>
+            Clear
+          </button>
+        </div>
+        <label className="todos-detail-panel__field">
+          <span>Due</span>
+          <input
+            type="date"
+            value={dateInputValue(todo.dueAt)}
+            onChange={(event) => onDueDateChange(event.currentTarget.value)}
+          />
+        </label>
+        <label className="todos-detail-panel__field">
+          <span>Scheduled</span>
+          <input
+            type="datetime-local"
+            value={dateTimeInputValue(todo.scheduledStartAt)}
+            onChange={(event) => onScheduleChange(event.currentTarget.value)}
+          />
+        </label>
+        <label className="todos-detail-panel__field">
+          <span>Estimate</span>
+          <input
+            min="1"
+            max="1440"
+            type="number"
+            value={todo.estimatedMinutes ?? ""}
+            onChange={(event) => onEstimateChange(event.currentTarget.value)}
+          />
+        </label>
+        {projects.length ? (
+          <label className="todos-detail-panel__field">
+            <span>Project</span>
+            <select
+              value={todo.projectId ?? ""}
+              onChange={(event) => onProjectChange(event.currentTarget.value)}
+            >
+              <option value="">No project</option>
+              {projects.map((project) => (
+                <option
+                  disabled={project.archivedAt !== null}
+                  key={project.id}
+                  value={project.id}
+                >
+                  {project.title}
+                  {project.archivedAt ? " (Archived)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </WorkspaceInspectorSection>
+      <WorkspaceInspectorSection heading="Context">
+        {project ? (
+          <button
+            type="button"
+            className="todos-detail-panel__link"
+            onClick={() => onOpenProject(project.id)}
+          >
+            <strong>{project.title}</strong>
+            <span>Project</span>
+          </button>
+        ) : null}
+        {noteSource ? (
+          <button
+            type="button"
+            className="todos-detail-panel__link"
+            onClick={() => onOpenNote(noteSource.id)}
+          >
+            <strong>{noteSource.title}</strong>
+            <span>Source note</span>
+          </button>
+        ) : null}
+        <label className="todos-detail-panel__field">
+          <span>Notes</span>
+          <textarea
+            key={`${todo.id}:notes`}
+            rows={4}
+            defaultValue={todo.notes}
+            onBlur={(event) => onNotesChange(event.currentTarget.value)}
+          />
+        </label>
+      </WorkspaceInspectorSection>
+      <WorkspaceInspectorSection heading="Actions">
+        <button
+          type="button"
+          className="todos-detail-panel__archive"
+          onClick={onArchive}
+        >
+          Archive
+        </button>
+      </WorkspaceInspectorSection>
+    </WorkspaceInspector>
   );
 }

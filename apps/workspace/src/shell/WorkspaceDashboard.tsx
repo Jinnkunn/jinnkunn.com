@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  Activity,
+  Command,
+  History,
+  Pin,
+  Zap,
+} from "lucide-react";
 
 import { getDashboardActions } from "../modules/registry";
 import {
-  todosList,
+  todosListWindow,
   type TodoRow,
 } from "../modules/todos/api";
 import {
@@ -24,9 +32,11 @@ import {
 } from "../surfaces/todos/nav";
 import type { DashboardActionContribution } from "../modules/types";
 import type { SurfaceDefinition } from "../surfaces/types";
+import { WorkspaceEmptyState } from "../ui/primitives";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import type { WorkspaceEvent } from "./workspaceEvents";
+import "../styles/surfaces/workspace-dashboard.css";
 
 interface WorkspaceDashboardProps {
   events: readonly WorkspaceEvent[];
@@ -61,6 +71,27 @@ function surfaceTitle(
   fallback = surfaceId,
 ): string {
   return surfaces.find((surface) => surface.id === surfaceId)?.title ?? fallback;
+}
+
+function surfaceIcon(
+  surfaces: readonly SurfaceDefinition[],
+  surfaceId: string,
+): ReactNode {
+  return surfaces.find((surface) => surface.id === surfaceId)?.icon ?? null;
+}
+
+function DashboardIcon({
+  children,
+  fallback,
+}: {
+  children?: ReactNode;
+  fallback: ReactNode;
+}) {
+  return (
+    <span className="workspace-dashboard__icon" aria-hidden="true">
+      {children ?? fallback}
+    </span>
+  );
 }
 
 function isCalendarAuthorized(status: CalendarAuthorizationStatus): boolean {
@@ -99,6 +130,11 @@ export function WorkspaceDashboard({
     return surface && !surface.disabled;
   });
   const todayLabel = useMemo(() => formatDashboardDate(), []);
+  const hasRail =
+    dashboardActions.length > 0 ||
+    recentItems.length > 0 ||
+    favorites.length > 0 ||
+    events.length > 0;
 
   const openAction = (action: DashboardActionContribution) => {
     const target = surfaces.find((surface) => surface.id === action.surfaceId);
@@ -126,145 +162,196 @@ export function WorkspaceDashboard({
         </div>
         <button
           type="button"
-          className="btn btn--secondary"
+          className="workspace-dashboard__command"
           onClick={onOpenCommandPalette}
         >
-          Command Menu
+          <Command
+            absoluteStrokeWidth
+            aria-hidden="true"
+            focusable="false"
+            size={14}
+            strokeWidth={1.7}
+          />
+          <span>Command Menu</span>
         </button>
       </header>
 
-      <div className="workspace-dashboard__grid">
-        <TodayUpcomingPanel
-          onRecordRecent={onRecordRecent}
-          onSelectNavItem={onSelectNavItem}
-          onSelectSurface={onSelectSurface}
-          surfaces={surfaces}
-        />
+      <div className="workspace-dashboard__layout" data-has-rail={hasRail}>
+        <main className="workspace-dashboard__primary">
+          <TodayUpcomingPanel
+            onRecordRecent={onRecordRecent}
+            onSelectNavItem={onSelectNavItem}
+            onSelectSurface={onSelectSurface}
+            surfaces={surfaces}
+          />
+        </main>
 
-        <section className="workspace-dashboard__panel workspace-dashboard__panel--quick">
-          <div className="workspace-dashboard__panel-header">
-            <h2>Quick Actions</h2>
-            <span>{dashboardActions.length}</span>
-          </div>
-          <div className="workspace-dashboard__action-grid">
-            {dashboardActions.map((action) => (
-              <button
-                type="button"
-                className="workspace-dashboard__action"
-                key={action.id}
-                onClick={() => openAction(action)}
-              >
-                <span>{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="workspace-dashboard__panel">
-          <div className="workspace-dashboard__panel-header">
-            <h2>Recent</h2>
-            {recentItems.length > 0 ? <span>{recentItems.length}</span> : null}
-          </div>
-          {recentItems.length ? (
-            <ul className="workspace-dashboard__list" role="list">
-              {recentItems.slice(0, 6).map((item) => (
-                <li key={`${item.surfaceId}:${item.itemId}`}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onRecordRecent({
-                        itemId: item.itemId,
-                        label: item.label,
-                        surfaceId: item.surfaceId,
-                        surfaceTitle: item.surfaceTitle,
-                      });
-                      onSelectNavItem(item.surfaceId, item.itemId);
-                    }}
-                  >
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>{item.surfaceTitle}</small>
-                    </span>
-                    <time>{formatRelativeTime(item.visitedAt)}</time>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="workspace-dashboard__empty">No recent</p>
-          )}
-        </section>
-
-        <section className="workspace-dashboard__panel">
-          <div className="workspace-dashboard__panel-header">
-            <h2>Pinned</h2>
-            {favorites.length > 0 ? <span>{favorites.length}</span> : null}
-          </div>
-          {favorites.length ? (
-            <ul className="workspace-dashboard__list" role="list">
-              {favorites.slice(0, 6).map((item) => (
-                <li key={`${item.surfaceId}:${item.itemId}`}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onRecordRecent({
-                        itemId: item.itemId,
-                        label: item.label,
-                        surfaceId: item.surfaceId,
-                        surfaceTitle: surfaceTitle(surfaces, item.surfaceId),
-                      });
-                      onSelectNavItem(item.surfaceId, item.itemId);
-                    }}
-                  >
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>{surfaceTitle(surfaces, item.surfaceId)}</small>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="workspace-dashboard__empty">No pinned</p>
-          )}
-        </section>
-
-        <section className="workspace-dashboard__panel workspace-dashboard__panel--wide">
-          <div className="workspace-dashboard__panel-header">
-            <h2>Activity</h2>
-            {events.length ? (
-              <button
-                type="button"
-                className="workspace-dashboard__text-button"
-                onClick={onClearEvents}
-              >
-                Clear
-              </button>
+        {hasRail ? (
+          <aside className="workspace-dashboard__rail" aria-label="Workspace summary">
+            {dashboardActions.length ? (
+              <section className="workspace-dashboard__panel workspace-dashboard__panel--actions">
+                <div className="workspace-dashboard__panel-header">
+                  <h2>Actions</h2>
+                  <span>{dashboardActions.length}</span>
+                </div>
+                <div className="workspace-dashboard__action-grid">
+                  {dashboardActions.map((action) => (
+                    <button
+                      type="button"
+                      className="workspace-dashboard__action"
+                      key={action.id}
+                      onClick={() => openAction(action)}
+                    >
+                      <DashboardIcon
+                        fallback={
+                          <Zap
+                            absoluteStrokeWidth
+                            size={14}
+                            strokeWidth={1.7}
+                          />
+                        }
+                      >
+                        {surfaceIcon(surfaces, action.surfaceId)}
+                      </DashboardIcon>
+                      <span>
+                        <strong>{action.label}</strong>
+                        <small>{surfaceTitle(surfaces, action.surfaceId)}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             ) : null}
-          </div>
-          {events.length ? (
-            <ul className="workspace-activity-list" role="list">
-              {events.slice(0, 8).map((event) => (
-                <li
-                  className="workspace-activity-list__item"
-                  data-tone={event.tone}
-                  key={event.id}
-                >
-                  <span className="workspace-activity-list__dot" aria-hidden="true" />
-                  <span className="workspace-activity-list__body">
-                    <strong>{event.title}</strong>
-                    {event.detail ? <small>{event.detail}</small> : null}
-                  </span>
-                  <span className="workspace-activity-list__meta">
-                    {event.source} / {formatRelativeTime(event.createdAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="workspace-dashboard__empty">No activity</p>
-          )}
-        </section>
+
+            {recentItems.length ? (
+              <section className="workspace-dashboard__panel">
+                <div className="workspace-dashboard__panel-header">
+                  <h2>Recent</h2>
+                  <span>{recentItems.length}</span>
+                </div>
+                <ul className="workspace-dashboard__list" role="list">
+                  {recentItems.slice(0, 5).map((item) => (
+                    <li key={`${item.surfaceId}:${item.itemId}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onRecordRecent({
+                            itemId: item.itemId,
+                            label: item.label,
+                            surfaceId: item.surfaceId,
+                            surfaceTitle: item.surfaceTitle,
+                          });
+                          onSelectNavItem(item.surfaceId, item.itemId);
+                        }}
+                      >
+                        <DashboardIcon
+                          fallback={
+                            <History
+                              absoluteStrokeWidth
+                              size={14}
+                              strokeWidth={1.7}
+                            />
+                          }
+                        >
+                          {surfaceIcon(surfaces, item.surfaceId)}
+                        </DashboardIcon>
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.surfaceTitle}</small>
+                        </span>
+                        <time>{formatRelativeTime(item.visitedAt)}</time>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {favorites.length ? (
+              <section className="workspace-dashboard__panel">
+                <div className="workspace-dashboard__panel-header">
+                  <h2>Pinned</h2>
+                  <span>{favorites.length}</span>
+                </div>
+                <ul className="workspace-dashboard__list" role="list">
+                  {favorites.slice(0, 4).map((item) => (
+                    <li key={`${item.surfaceId}:${item.itemId}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onRecordRecent({
+                            itemId: item.itemId,
+                            label: item.label,
+                            surfaceId: item.surfaceId,
+                            surfaceTitle: surfaceTitle(surfaces, item.surfaceId),
+                          });
+                          onSelectNavItem(item.surfaceId, item.itemId);
+                        }}
+                      >
+                        <DashboardIcon
+                          fallback={
+                            <Pin
+                              absoluteStrokeWidth
+                              size={14}
+                              strokeWidth={1.7}
+                            />
+                          }
+                        >
+                          {surfaceIcon(surfaces, item.surfaceId)}
+                        </DashboardIcon>
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{surfaceTitle(surfaces, item.surfaceId)}</small>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {events.length ? (
+              <section className="workspace-dashboard__panel workspace-dashboard__panel--activity">
+                <div className="workspace-dashboard__panel-header">
+                  <h2>Activity</h2>
+                  <button
+                    type="button"
+                    className="workspace-dashboard__text-button"
+                    onClick={onClearEvents}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <ul className="workspace-activity-list" role="list">
+                  {events.slice(0, 5).map((event) => (
+                    <li
+                      className="workspace-activity-list__item"
+                      data-tone={event.tone}
+                      key={event.id}
+                    >
+                      <DashboardIcon
+                        fallback={
+                          <Activity
+                            absoluteStrokeWidth
+                            size={14}
+                            strokeWidth={1.7}
+                          />
+                        }
+                      />
+                      <span className="workspace-activity-list__body">
+                        <strong>{event.title}</strong>
+                        {event.detail ? <small>{event.detail}</small> : null}
+                      </span>
+                      <span className="workspace-activity-list__meta">
+                        {event.source} / {formatRelativeTime(event.createdAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </aside>
+        ) : null}
       </div>
     </section>
   );
@@ -276,6 +363,7 @@ interface TodayUpcomingItem {
   title: string;
   meta: string;
   timestamp: number;
+  timeLabel: string;
   tone: "event" | "scheduled" | "due";
 }
 
@@ -322,7 +410,10 @@ function TodayUpcomingPanel({
       };
       try {
         if (todosEnabled) {
-          next.todos = await todosList();
+          next.todos = await todosListWindow({
+            startsAt: start.getTime(),
+            endsAt: end.getTime(),
+          });
         }
       } catch (error) {
         next.error = formatWorkspaceDataError("Todos", error);
@@ -354,6 +445,10 @@ function TodayUpcomingPanel({
     () => buildTodayUpcomingItems(state.events, state.todos),
     [state.events, state.todos],
   );
+  const nextItem = today[0] ?? upcoming[0] ?? null;
+  const todayItems = nextItem?.id === today[0]?.id ? today.slice(1) : today;
+  const upcomingItems =
+    nextItem?.id === upcoming[0]?.id ? upcoming.slice(1) : upcoming;
   const calendarUnavailable =
     calendarEnabled && state.auth !== null && !isCalendarAuthorized(state.auth);
   const empty = today.length === 0 && upcoming.length === 0;
@@ -378,28 +473,42 @@ function TodayUpcomingPanel({
   return (
     <section className="workspace-dashboard__panel workspace-dashboard__panel--wide workspace-dashboard__panel--today">
       <div className="workspace-dashboard__panel-header">
-        <h2>Today / Upcoming</h2>
+        <h2>Today</h2>
         {today.length + upcoming.length > 0 ? (
           <span>{today.length + upcoming.length}</span>
         ) : null}
       </div>
       {state.loading ? (
-        <p className="workspace-dashboard__empty">Loading schedule…</p>
+        <WorkspaceEmptyState compact title="Loading" />
       ) : empty ? (
-        <p className="workspace-dashboard__empty">Clear</p>
+        <WorkspaceEmptyState compact title="Clear" />
       ) : (
-        <div className="workspace-dashboard__today-grid">
-          <TimelineBucket
-            items={today}
-            label="Today"
-            onOpenItem={openItem}
-          />
-          <TimelineBucket
-            items={upcoming}
-            label="Upcoming"
-            onOpenItem={openItem}
-          />
-        </div>
+        <>
+          {nextItem ? (
+            <button
+              type="button"
+              className="workspace-dashboard__next"
+              data-tone={nextItem.tone}
+              onClick={() => openItem(nextItem)}
+            >
+              <span className="workspace-dashboard__next-kicker">Next</span>
+              <strong>{nextItem.title}</strong>
+              <small>{nextItem.meta} / {nextItem.timeLabel}</small>
+            </button>
+          ) : null}
+          <div className="workspace-dashboard__today-grid">
+            <TimelineBucket
+              items={todayItems}
+              label={nextItem?.id === today[0]?.id ? "Later Today" : "Today"}
+              onOpenItem={openItem}
+            />
+            <TimelineBucket
+              items={upcomingItems}
+              label="Upcoming"
+              onOpenItem={openItem}
+            />
+          </div>
+        </>
       )}
       {calendarUnavailable || state.error ? (
         <p className="workspace-dashboard__today-note">
@@ -436,13 +545,13 @@ function TimelineBucket({
                   <strong>{item.title}</strong>
                   <small>{item.meta}</small>
                 </span>
-                <time>{formatTimelineTime(item.timestamp)}</time>
+                <time>{item.timeLabel}</time>
               </button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="workspace-dashboard__empty">Clear</p>
+        <WorkspaceEmptyState compact title="Clear" />
       )}
     </section>
   );
@@ -468,8 +577,9 @@ function buildTodayUpcomingItems(
     items.push({
       id: `event:${event.eventIdentifier}:${event.startsAt}`,
       kind: "event",
-      meta: event.isAllDay ? "All day event" : "Calendar event",
+      meta: "Calendar event",
       timestamp,
+      timeLabel: event.isAllDay ? "All day" : formatTimelineTime(timestamp),
       title: event.title || "(No title)",
       tone: "event",
     });
@@ -485,6 +595,7 @@ function buildTodayUpcomingItems(
       kind: "todo",
       meta: formatTodoTimelineMeta(todo, timestamp),
       timestamp,
+      timeLabel: formatTimelineTime(timestamp),
       title: todo.title || "(Untitled)",
       tone: kind === "scheduled" ? "scheduled" : "due",
     });

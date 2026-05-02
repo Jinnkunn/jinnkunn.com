@@ -18,6 +18,7 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "projects",
       "contacts",
     ]);
     expect(WORKSPACE_MODULES.map((module) => module.id)).toEqual([
@@ -25,6 +26,7 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "projects",
       "contacts",
     ]);
   });
@@ -36,6 +38,7 @@ describe("workspace module registry", () => {
       "site-admin:components",
       "calendar:open",
       "todos:open",
+      "projects:open",
       "contacts:open",
     ]);
     expect(getCommandActions().map((action) => action.id)).toEqual([
@@ -44,6 +47,7 @@ describe("workspace module registry", () => {
       "quick:shared-content",
       "quick:site-links",
       "quick:todos",
+      "quick:projects",
       "quick:contacts",
     ]);
   });
@@ -54,6 +58,7 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "projects",
       "contacts",
     ]);
     expect(getEnabledModuleSurfaces(["notes", "todos"]).map((surface) => surface.id)).toEqual([
@@ -76,6 +81,7 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "projects",
       "contacts",
     ]);
     expect(result.knownModuleIds).toEqual([
@@ -83,6 +89,7 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "projects",
       "contacts",
     ]);
   });
@@ -91,16 +98,16 @@ describe("workspace module registry", () => {
     // User had every module known and disabled "todos" + "contacts"
     // explicitly in a previous session.
     const result = reconcileEnabledModules(
-      ["site-admin", "calendar", "notes"],
-      ["site-admin", "calendar", "notes", "todos", "contacts"],
+      ["site-admin", "calendar", "notes", "projects"],
+      ["site-admin", "calendar", "notes", "todos", "projects", "contacts"],
     );
-    expect(result.enabled).toEqual(["site-admin", "calendar", "notes"]);
+    expect(result.enabled).toEqual(["site-admin", "calendar", "notes", "projects"]);
   });
 
   it("reconcile auto-enables newly-added enabled-by-default modules", () => {
     // Old install: user had calendar/notes/todos but had never seen
-    // contacts (it shipped after their last save). The migration
-    // should append contacts because its enabledByDefault is true.
+    // projects/contacts (they shipped after their last save). The
+    // migration should append them because they are enabled by default.
     const result = reconcileEnabledModules(
       ["site-admin", "calendar", "notes", "todos"],
       ["site-admin", "calendar", "notes", "todos"],
@@ -110,8 +117,10 @@ describe("workspace module registry", () => {
       "calendar",
       "notes",
       "todos",
+      "projects",
       "contacts",
     ]);
+    expect(result.knownModuleIds).toContain("projects");
     expect(result.knownModuleIds).toContain("contacts");
   });
 

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Clock3,
   MoreHorizontal,
   Settings,
   Star,
@@ -81,6 +82,8 @@ interface SidebarProps {
 const GROUP_COLLAPSE_STORAGE_KEY = "workspace.sidebar.groups.v1";
 const ITEM_TREE_COLLAPSE_STORAGE_KEY = "workspace.sidebar.itemTrees.v1";
 const APP_RAIL_SURFACE_DRAG_TYPE = "application/x-workspace-surface";
+const SIDEBAR_NAV_ITEM_DRAG_TYPE = "application/x-sidebar-nav-item";
+const STANDARD_TEXT_DRAG_TYPE = "text/plain";
 const FIXED_APP_RAIL_SURFACE_ID = "workspace";
 // Per-context-section collapse state. Currently keyed for "recent" and
 // "favorites"; the surface tree under "Navigation" is intentionally not
@@ -376,11 +379,12 @@ function renderNavItem({
         onDragOver={
           item.droppable
             ? (event) => {
-                if (
-                  !Array.from(event.dataTransfer.types).includes(
-                    "application/x-sidebar-nav-item",
-                  )
-                ) {
+                const types = Array.from(event.dataTransfer.types);
+                const hasSidebarItemDrag =
+                  types.includes(SIDEBAR_NAV_ITEM_DRAG_TYPE) ||
+                  (draggingItemId !== null &&
+                    types.includes(STANDARD_TEXT_DRAG_TYPE));
+                if (!hasSidebarItemDrag) {
                   return;
                 }
                 event.preventDefault();
@@ -399,9 +403,10 @@ function renderNavItem({
         onDrop={
           item.droppable
             ? (event) => {
-                const sourceId = event.dataTransfer.getData(
-                  "application/x-sidebar-nav-item",
-                );
+                const sourceId =
+                  event.dataTransfer.getData(SIDEBAR_NAV_ITEM_DRAG_TYPE) ||
+                  draggingItemId ||
+                  event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
                 event.preventDefault();
                 event.stopPropagation();
                 onDragOver(null);
@@ -449,10 +454,8 @@ function renderNavItem({
             onDragStart={
               item.draggable
                 ? (event) => {
-                    event.dataTransfer.setData(
-                      "application/x-sidebar-nav-item",
-                      item.id,
-                    );
+                    event.dataTransfer.setData(SIDEBAR_NAV_ITEM_DRAG_TYPE, item.id);
+                    event.dataTransfer.setData(STANDARD_TEXT_DRAG_TYPE, item.id);
                     event.dataTransfer.effectAllowed = "move";
                     onDragStart(item.id);
                   }
@@ -877,6 +880,10 @@ export function Sidebar({
                           APP_RAIL_SURFACE_DRAG_TYPE,
                           surface.id,
                         );
+                        event.dataTransfer.setData(
+                          STANDARD_TEXT_DRAG_TYPE,
+                          surface.id,
+                        );
                         event.dataTransfer.effectAllowed = "move";
                         setDraggingAppSurfaceId(surface.id);
                       }
@@ -885,16 +892,18 @@ export function Sidebar({
                 onDragOver={
                   reorderable
                     ? (event) => {
-                        if (
-                          !Array.from(event.dataTransfer.types).includes(
-                            APP_RAIL_SURFACE_DRAG_TYPE,
-                          )
-                        ) {
+                        const types = Array.from(event.dataTransfer.types);
+                        const hasSurfaceDrag =
+                          types.includes(APP_RAIL_SURFACE_DRAG_TYPE) ||
+                          (draggingAppSurfaceId !== null &&
+                            types.includes(STANDARD_TEXT_DRAG_TYPE));
+                        if (!hasSurfaceDrag) {
                           return;
                         }
                         const sourceId =
                           draggingAppSurfaceId ||
-                          event.dataTransfer.getData(APP_RAIL_SURFACE_DRAG_TYPE);
+                          event.dataTransfer.getData(APP_RAIL_SURFACE_DRAG_TYPE) ||
+                          event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
                         if (
                           !sourceId ||
                           sourceId === surface.id ||
@@ -925,9 +934,10 @@ export function Sidebar({
                 onDrop={
                   reorderable
                     ? (event) => {
-                        const sourceId = event.dataTransfer.getData(
-                          APP_RAIL_SURFACE_DRAG_TYPE,
-                        );
+                        const sourceId =
+                          event.dataTransfer.getData(APP_RAIL_SURFACE_DRAG_TYPE) ||
+                          draggingAppSurfaceId ||
+                          event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
                         const edge = dropEdge ?? "before";
                         event.preventDefault();
                         event.stopPropagation();
@@ -1042,9 +1052,14 @@ export function Sidebar({
                         }
                         aria-current={selected ? "page" : undefined}
                       >
-                        <span className="sidebar-recent__clock" aria-hidden="true">
-                          ◷
-                        </span>
+                        <Clock3
+                          absoluteStrokeWidth
+                          aria-hidden="true"
+                          className="sidebar-recent__icon"
+                          focusable="false"
+                          size={15}
+                          strokeWidth={1.65}
+                        />
                         <span className="sidebar-recent__body">
                           <span className="sidebar-tree__item-label">
                             {recent.label}

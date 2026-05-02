@@ -532,6 +532,36 @@ function main() {
     "noteTreeToNavItems",
     "Notes sidebar tree adapter",
   );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/notes/noteIcons.tsx"),
+    "NOTE_TOKEN_ICONS",
+    "Notes icon token renderer",
+  );
+  assertExcludes(
+    read("apps/workspace/src/modules/notes/workflow.ts"),
+    "◇",
+    "Notes workflow should not create legacy glyph icons",
+  );
+  assertExcludes(
+    read("apps/workspace/src/modules/notes/workflow.ts"),
+    "◷",
+    "Notes workflow should not create legacy glyph icons",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/block-editor.tsx"),
+    "LucideIcon",
+    "Slash command menu icon type",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/editor-slash-commands.ts"),
+    'from "lucide-react"',
+    "Slash command icons use lucide",
+  );
+  assertExcludes(
+    read("apps/workspace/src/surfaces/site-admin/editor-slash-commands.ts"),
+    'icon: "',
+    "Slash command icons should not use text glyphs",
+  );
   for (const command of [
     "notesList",
     "notesGet",
@@ -714,6 +744,11 @@ function main() {
     "Sidebar recent navigation",
   );
   assertIncludes(
+    read("apps/workspace/src/shell/Sidebar.tsx"),
+    "Clock3",
+    "Sidebar recent uses lucide icon",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/block-editor.tsx"),
     "activeCommandId",
     "Block command menu keyboard active state",
@@ -781,8 +816,19 @@ function main() {
   );
   assertIncludes(
     workspaceCss,
-    ".calendar-commandbar__supplement",
-    "Calendar command bar supplement CSS",
+    ".calendar-commandbar__more",
+    "Calendar command bar more menu CSS",
+  );
+  assertIncludes(workspaceCss, "--focus-ring", "shared focus ring token");
+  assertIncludes(
+    workspaceCss,
+    ".contacts-detail__action-panel",
+    "Contacts action-first detail CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    ".todos-composer__planning",
+    "Todos planning menu CSS",
   );
   assertIncludes(
     workspaceCss,
@@ -793,6 +839,16 @@ function main() {
     workspaceCss,
     ".notes-editor__title",
     "Notes editor title CSS",
+  );
+  assertIncludes(
+    workspaceCss,
+    "--notes-editor-edge-padding",
+    "Notes editor safe icon gutter",
+  );
+  assertIncludes(
+    workspaceCss,
+    "calc(var(--notes-editor-edge-padding) + var(--notes-editor-gutter))",
+    "Notes editor internal icon gutter",
   );
   assertIncludes(
     workspaceCss,

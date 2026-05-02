@@ -6,6 +6,15 @@ interface NativeMenuHandlers {
   onCheckUpdates?: () => void;
 }
 
+function safeUnlisten(unlisten: UnlistenFn): void {
+  try {
+    unlisten();
+  } catch {
+    // Tauri's dev-time listener registry can already be gone during HMR
+    // teardown. Production shutdown is unaffected; this keeps the console clean.
+  }
+}
+
 /** Bridge native AppKit menubar selections into the React app. The
  * Rust side fires `menu://action` with the menu id as payload (see
  * `src-tauri/src/main.rs`). This hook re-broadcasts the id as a
@@ -43,7 +52,7 @@ export function useNativeMenu(handlers: NativeMenuHandlers): void {
     })
       .then((fn) => {
         if (cancelled) {
-          fn();
+          safeUnlisten(fn);
           return;
         }
         unlisten = fn;
@@ -51,7 +60,7 @@ export function useNativeMenu(handlers: NativeMenuHandlers): void {
       .catch(() => undefined);
     return () => {
       cancelled = true;
-      unlisten?.();
+      if (unlisten) safeUnlisten(unlisten);
     };
   }, [onCheckUpdates, onOpenPalette]);
 }

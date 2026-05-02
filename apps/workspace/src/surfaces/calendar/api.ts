@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import {
+  cachedResource,
+  invalidateCachedResourcePrefix,
+} from "../../modules/resourceCache";
 import type {
   Calendar,
   CalendarAuthorizationStatus,
@@ -17,25 +21,30 @@ import type {
 /** Read the current authorization without prompting. Returns
  * `notDetermined` on first launch, before `requestAccess` is called. */
 export function calendarAuthorizationStatus(): Promise<CalendarAuthorizationStatus> {
-  return invoke("calendar_authorization_status");
+  return cachedResource("calendar:auth", () =>
+    invoke("calendar_authorization_status"),
+  );
 }
 
 /** Trigger the system permission prompt. Resolves with the resulting
  * authorization status (e.g. `fullAccess` after user approves). */
 export function calendarRequestAccess(): Promise<CalendarAuthorizationStatus> {
+  invalidateCachedResourcePrefix("calendar:");
   return invoke("calendar_request_access");
 }
 
 /** List all account-level sources (iCloud, Exchange, CalDAV, …). One
  * entry per macOS Calendar sidebar header. */
 export function calendarListSources(): Promise<CalendarSource[]> {
-  return invoke("calendar_list_sources");
+  return cachedResource("calendar:sources", () => invoke("calendar_list_sources"));
 }
 
 /** List calendars across all (or a specific) source. When `sourceId` is
  * omitted the bridge returns calendars for every source. */
 export function calendarListCalendars(sourceId?: string): Promise<Calendar[]> {
-  return invoke("calendar_list_calendars", { sourceId });
+  return cachedResource(`calendar:calendars:${sourceId ?? "all"}`, () =>
+    invoke("calendar_list_calendars", { sourceId }),
+  );
 }
 
 /** Fetch occurrences in a date range. Recurring events are expanded by
@@ -43,7 +52,11 @@ export function calendarListCalendars(sourceId?: string): Promise<Calendar[]> {
 export function calendarFetchEvents(
   request: FetchEventsRequest,
 ): Promise<CalendarEvent[]> {
-  return invoke("calendar_fetch_events", { request });
+  return cachedResource(
+    `calendar:events:${request.startsAt}:${request.endsAt}:${request.calendarIds.join(",")}`,
+    () => invoke("calendar_fetch_events", { request }),
+    5_000,
+  );
 }
 
 export type RecurrenceFrequency = "daily" | "weekly" | "biweekly" | "monthly";
@@ -82,6 +95,7 @@ export interface CreateEventRequest {
 export function calendarCreateEvent(
   request: CreateEventRequest,
 ): Promise<CalendarEvent> {
+  invalidateCachedResourcePrefix("calendar:events:");
   return invoke("calendar_create_event", { request });
 }
 
@@ -89,5 +103,8 @@ export function calendarCreateEvent(
  * source updates — invalidate caches and re-fetch. Returns the unlisten
  * fn; callers MUST call it on unmount. */
 export function onCalendarChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("calendar://changed", () => handler());
+  return listen("calendar://changed", () => {
+    invalidateCachedResourcePrefix("calendar:");
+    handler();
+  });
 }

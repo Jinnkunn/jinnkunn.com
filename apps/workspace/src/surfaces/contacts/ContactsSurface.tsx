@@ -18,6 +18,8 @@ import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceEmptyState,
+  WorkspaceInlineStatus,
   WorkspaceSurfaceFrame,
 } from "../../ui/primitives";
 import {
@@ -53,6 +55,7 @@ import {
   type ContactsNavCounts,
   createContactsNavGroups,
 } from "./nav";
+import "../../styles/surfaces/contacts.css";
 
 const CONTACTS_NAV_IDS: ReadonlyArray<string> = [
   CONTACTS_HOME_NAV_ID,
@@ -349,7 +352,10 @@ export function ContactsSurface() {
 
   const filter = filterFromNavItem(activeNavItemId);
   const isSearching = searchQuery.trim().length > 0;
-  const activeContacts = contacts.filter((contact) => contact.archivedAt === null);
+  const activeContacts = useMemo(
+    () => contacts.filter((contact) => contact.archivedAt === null),
+    [contacts],
+  );
   const dueContacts = useMemo(
     () =>
       sortContactsByFollowUp(
@@ -651,7 +657,7 @@ export function ContactsSurface() {
 
   const renderSplit = () => {
     if (loading && contacts.length === 0) {
-      return <p className="contacts-empty">Loading contacts…</p>;
+      return <WorkspaceEmptyState className="contacts-empty" title="Loading contacts" />;
     }
     if (visibleContacts.length === 0) {
       return (
@@ -689,7 +695,7 @@ export function ContactsSurface() {
             }
           />
         ) : (
-          <div className="contacts-empty">Select a contact.</div>
+          <WorkspaceEmptyState className="contacts-empty" title="Select a contact" />
         )}
       </div>
     );
@@ -730,14 +736,18 @@ export function ContactsSurface() {
         }
       />
       {notice ? (
-        <p className="contacts-message" data-kind={notice.kind} role="status">
+        <WorkspaceInlineStatus
+          className="contacts-message"
+          data-kind={notice.kind}
+          tone={notice.kind === "error" ? "error" : "success"}
+        >
           <span>{notice.text}</span>
           {undoContact ? (
             <button type="button" onClick={() => void handleRestore(undoContact)}>
               Undo
             </button>
           ) : null}
-        </p>
+        </WorkspaceInlineStatus>
       ) : null}
       <div className="contacts-body">
         {filter === "archived" ? (
@@ -795,15 +805,18 @@ function EmptyState({
           ? "No follow-ups"
           : "No contacts";
   return (
-    <div className="contacts-empty">
-      <p>{message}</p>
-      {!searching ? (
-        <button type="button" className="btn btn--primary" onClick={onAdd}>
-          <Plus {...iconProps()} />
-          New contact
-        </button>
-      ) : null}
-    </div>
+    <WorkspaceEmptyState
+      action={
+        !searching ? (
+          <button type="button" className="btn btn--primary" onClick={onAdd}>
+            <Plus {...iconProps()} />
+            New contact
+          </button>
+        ) : null
+      }
+      className="contacts-empty"
+      title={message}
+    />
   );
 }
 
@@ -895,13 +908,16 @@ function ContactsHome({
 
   if (contacts.length === 0) {
     return (
-      <div className="contacts-empty">
-        <p>No contacts</p>
-        <button type="button" className="btn btn--primary" onClick={onAdd}>
-          <Plus {...iconProps()} />
-          New contact
-        </button>
-      </div>
+      <WorkspaceEmptyState
+        action={
+          <button type="button" className="btn btn--primary" onClick={onAdd}>
+            <Plus {...iconProps()} />
+            New contact
+          </button>
+        }
+        className="contacts-empty"
+        title="No contacts"
+      />
     );
   }
 
@@ -1270,50 +1286,30 @@ function ContactDetail({
         />
       </section>
 
-      <section className="contacts-detail__section" aria-label="Follow-up">
-        <div className="contacts-detail__grid contacts-detail__grid--compact">
-          <label className="contacts-detail__field">
-            <span>Next follow-up</span>
-            <input
-              type="date"
-              value={followUpDraft}
-              onChange={(e) => setFollowUpDraft(e.target.value)}
-              onBlur={commitFollowUp}
-            />
-          </label>
-          <label className="contacts-detail__field">
-            <span>Cadence days</span>
-            <input
-              type="number"
-              min={1}
-              value={cadenceDraft}
-              onChange={(e) => setCadenceDraft(e.target.value)}
-              onBlur={commitCadence}
-              placeholder="-"
-            />
-          </label>
+      <section className="contacts-detail__action-panel" aria-label="Next action">
+        <div className="contacts-detail__action-head">
+          <div>
+            <span>Next Action</span>
+            <strong>{formatFollowUp(contact.nextFollowUpAt, nowMs)}</strong>
+          </div>
+          <div className="contacts-detail__quick-actions">
+            <button
+              type="button"
+              onClick={() => onUpdate({ nextFollowUpAt: Date.now() + 7 * DAY_MS })}
+            >
+              7d
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdate({ nextFollowUpAt: Date.now() + 30 * DAY_MS })}
+            >
+              30d
+            </button>
+            <button type="button" onClick={() => onUpdate({ nextFollowUpAt: null })}>
+              Clear
+            </button>
+          </div>
         </div>
-        <div className="contacts-detail__quick-actions">
-          <button
-            type="button"
-            onClick={() => onUpdate({ nextFollowUpAt: Date.now() + 7 * DAY_MS })}
-          >
-            7d
-          </button>
-          <button
-            type="button"
-            onClick={() => onUpdate({ nextFollowUpAt: Date.now() + 30 * DAY_MS })}
-          >
-            30d
-          </button>
-          <button type="button" onClick={() => onUpdate({ nextFollowUpAt: null })}>
-            Clear
-          </button>
-        </div>
-      </section>
-
-      <section className="contacts-detail__section" aria-label="Interaction log">
-        <h3 className="contacts-detail__section-heading">Log touch</h3>
         <form
           className="contacts-detail__interaction-form"
           onSubmit={submitInteraction}
@@ -1333,7 +1329,7 @@ function ContactDetail({
             type="text"
             value={interactionNote}
             onChange={(e) => setInteractionNote(e.target.value)}
-            placeholder="Add a short note"
+            placeholder="Short note…"
           />
           <button type="submit" className="btn btn--primary">
             Log
@@ -1341,126 +1337,159 @@ function ContactDetail({
         </form>
       </section>
 
-      <section className="contacts-detail__section" aria-label="Notes">
-        <label className="contacts-detail__field contacts-detail__field--block">
-          <span>Notes</span>
-          <textarea
-            value={notesDraft}
-            onChange={(e) => setNotesDraft(e.target.value)}
-            onBlur={() => {
-              if (notesDraft === contact.notes) return;
-              onUpdate({ notes: notesDraft });
-            }}
-            rows={5}
-            placeholder="Context, preferences, open loops"
-          />
-        </label>
-      </section>
+      <details className="contacts-detail__more">
+        <summary>Follow-up</summary>
+        <section className="contacts-detail__section" aria-label="Follow-up">
+          <div className="contacts-detail__grid contacts-detail__grid--compact">
+            <label className="contacts-detail__field">
+              <span>Next follow-up</span>
+              <input
+                type="date"
+                value={followUpDraft}
+                onChange={(e) => setFollowUpDraft(e.target.value)}
+                onBlur={commitFollowUp}
+              />
+            </label>
+            <label className="contacts-detail__field">
+              <span>Cadence days</span>
+              <input
+                type="number"
+                min={1}
+                value={cadenceDraft}
+                onChange={(e) => setCadenceDraft(e.target.value)}
+                onBlur={commitCadence}
+                placeholder="-"
+              />
+            </label>
+          </div>
+        </section>
+      </details>
 
-      <section className="contacts-detail__section" aria-label="Contact info">
-        <div className="contacts-detail__grid">
+      <details className="contacts-detail__more">
+        <summary>Notes</summary>
+        <section className="contacts-detail__section" aria-label="Notes">
+          <label className="contacts-detail__field contacts-detail__field--block">
+            <span>Notes</span>
+            <textarea
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              onBlur={() => {
+                if (notesDraft === contact.notes) return;
+                onUpdate({ notes: notesDraft });
+              }}
+              rows={5}
+              placeholder="Context, preferences, open loops…"
+            />
+          </label>
+        </section>
+      </details>
+
+      <details className="contacts-detail__more">
+        <summary>Profile</summary>
+        <section className="contacts-detail__section" aria-label="Contact info">
+          <div className="contacts-detail__grid">
+            <label className="contacts-detail__field">
+              <span>Company</span>
+              <input
+                type="text"
+                value={companyDraft}
+                onChange={(e) => setCompanyDraft(e.target.value)}
+                onBlur={() => {
+                  const next = companyDraft.trim();
+                  if (next === (contact.company ?? "")) return;
+                  onUpdate({ company: next || null });
+                }}
+                placeholder="-"
+              />
+            </label>
+            <label className="contacts-detail__field">
+              <span>Role</span>
+              <input
+                type="text"
+                value={roleDraft}
+                onChange={(e) => setRoleDraft(e.target.value)}
+                onBlur={() => {
+                  const next = roleDraft.trim();
+                  if (next === (contact.role ?? "")) return;
+                  onUpdate({ role: next || null });
+                }}
+                placeholder="-"
+              />
+            </label>
+            <label className="contacts-detail__field">
+              <span>Email</span>
+              <input
+                type="email"
+                value={emailDraft}
+                onChange={(e) => setEmailDraft(e.target.value)}
+                onBlur={() => commitMethod("emails", emailDraft)}
+                placeholder="-"
+              />
+            </label>
+            <label className="contacts-detail__field">
+              <span>Phone</span>
+              <input
+                type="tel"
+                value={phoneDraft}
+                onChange={(e) => setPhoneDraft(e.target.value)}
+                onBlur={() => commitMethod("phones", phoneDraft)}
+                placeholder="-"
+              />
+            </label>
+          </div>
+        </section>
+        <section className="contacts-detail__section" aria-label="Birthday and tags">
+          <div className="contacts-detail__birthday">
+            <span className="contacts-detail__field-label">Birthday</span>
+            <input
+              type="number"
+              min={1}
+              max={12}
+              value={birthMonthDraft}
+              onChange={(e) => setBirthMonthDraft(e.target.value)}
+              onBlur={commitBirthday}
+              aria-label="Birthday month"
+              placeholder="MM"
+            />
+            <input
+              type="number"
+              min={1}
+              max={31}
+              value={birthDayDraft}
+              onChange={(e) => setBirthDayDraft(e.target.value)}
+              onBlur={commitBirthday}
+              aria-label="Birthday day"
+              placeholder="DD"
+            />
+            <input
+              type="number"
+              min={1900}
+              max={2200}
+              value={birthYearDraft}
+              onChange={(e) => setBirthYearDraft(e.target.value)}
+              onBlur={commitBirthday}
+              aria-label="Birthday year"
+              placeholder="YYYY"
+            />
+          </div>
           <label className="contacts-detail__field">
-            <span>Company</span>
+            <span>Tags</span>
             <input
               type="text"
-              value={companyDraft}
-              onChange={(e) => setCompanyDraft(e.target.value)}
-              onBlur={() => {
-                const next = companyDraft.trim();
-                if (next === (contact.company ?? "")) return;
-                onUpdate({ company: next || null });
-              }}
-              placeholder="-"
+              value={tagsDraft}
+              onChange={(e) => setTagsDraft(e.target.value)}
+              onBlur={commitTags}
+              placeholder="friend, mentor…"
             />
           </label>
-          <label className="contacts-detail__field">
-            <span>Role</span>
-            <input
-              type="text"
-              value={roleDraft}
-              onChange={(e) => setRoleDraft(e.target.value)}
-              onBlur={() => {
-                const next = roleDraft.trim();
-                if (next === (contact.role ?? "")) return;
-                onUpdate({ role: next || null });
-              }}
-              placeholder="-"
-            />
-          </label>
-          <label className="contacts-detail__field">
-            <span>Email</span>
-            <input
-              type="email"
-              value={emailDraft}
-              onChange={(e) => setEmailDraft(e.target.value)}
-              onBlur={() => commitMethod("emails", emailDraft)}
-              placeholder="-"
-            />
-          </label>
-          <label className="contacts-detail__field">
-            <span>Phone</span>
-            <input
-              type="tel"
-              value={phoneDraft}
-              onChange={(e) => setPhoneDraft(e.target.value)}
-              onBlur={() => commitMethod("phones", phoneDraft)}
-              placeholder="-"
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="contacts-detail__section" aria-label="Birthday and tags">
-        <div className="contacts-detail__birthday">
-          <span className="contacts-detail__field-label">Birthday</span>
-          <input
-            type="number"
-            min={1}
-            max={12}
-            value={birthMonthDraft}
-            onChange={(e) => setBirthMonthDraft(e.target.value)}
-            onBlur={commitBirthday}
-            aria-label="Birthday month"
-            placeholder="MM"
-          />
-          <input
-            type="number"
-            min={1}
-            max={31}
-            value={birthDayDraft}
-            onChange={(e) => setBirthDayDraft(e.target.value)}
-            onBlur={commitBirthday}
-            aria-label="Birthday day"
-            placeholder="DD"
-          />
-          <input
-            type="number"
-            min={1900}
-            max={2200}
-            value={birthYearDraft}
-            onChange={(e) => setBirthYearDraft(e.target.value)}
-            onBlur={commitBirthday}
-            aria-label="Birthday year"
-            placeholder="YYYY"
-          />
-        </div>
-        <label className="contacts-detail__field">
-          <span>Tags</span>
-          <input
-            type="text"
-            value={tagsDraft}
-            onChange={(e) => setTagsDraft(e.target.value)}
-            onBlur={commitTags}
-            placeholder="friend, mentor"
-          />
-        </label>
-      </section>
+        </section>
+      </details>
 
       <section className="contacts-detail__section" aria-label="Recent interactions">
         <h3 className="contacts-detail__section-heading">Timeline</h3>
         <ul className="contacts-detail__interactions">
           {interactions.length === 0 ? (
-            <li className="contacts-detail__empty">No interactions.</li>
+            <li className="contacts-detail__empty">No interactions</li>
           ) : (
             interactions.map((entry) => (
               <li key={entry.id} className="contacts-detail__interaction">
@@ -1491,34 +1520,34 @@ function ContactDetail({
         </ul>
       </section>
 
-      <section className="contacts-detail__section" aria-label="Mentioned in">
-        <h3 className="contacts-detail__section-heading">
-          Notes {backlinks.length}
-        </h3>
-        {backlinks.length === 0 ? (
-          <p className="contacts-detail__empty">No linked notes.</p>
-        ) : (
-          <ul className="contacts-detail__backlinks">
-            {backlinks.map((link) => (
-              <li key={`${link.noteId}:${link.charOffset}`}>
-                <button
-                  type="button"
-                  className="contacts-detail__backlink"
-                  onClick={() => onOpenNote(link.noteId)}
-                >
-                  <span aria-hidden="true">
-                    {link.noteIcon ?? <StickyNote {...iconProps(15)} />}
-                  </span>
-                  <span className="contacts-detail__backlink-body">
-                    <strong>{link.noteTitle || "(Untitled note)"}</strong>
-                    <span>{formatShortDate(link.noteUpdatedAt)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <details className="contacts-detail__more">
+        <summary>Linked Notes {backlinks.length}</summary>
+        <section className="contacts-detail__section" aria-label="Mentioned in">
+          {backlinks.length === 0 ? (
+            <p className="contacts-detail__empty">No linked notes</p>
+          ) : (
+            <ul className="contacts-detail__backlinks">
+              {backlinks.map((link) => (
+                <li key={`${link.noteId}:${link.charOffset}`}>
+                  <button
+                    type="button"
+                    className="contacts-detail__backlink"
+                    onClick={() => onOpenNote(link.noteId)}
+                  >
+                    <span aria-hidden="true">
+                      {link.noteIcon ?? <StickyNote {...iconProps(15)} />}
+                    </span>
+                    <span className="contacts-detail__backlink-body">
+                      <strong>{link.noteTitle || "(Untitled note)"}</strong>
+                      <span>{formatShortDate(link.noteUpdatedAt)}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </details>
     </article>
   );
 }
@@ -1556,9 +1585,10 @@ function BirthdayPane({
 }) {
   if (birthdays.length === 0) {
     return (
-      <div className="contacts-empty">
-        <p>No upcoming birthdays.</p>
-      </div>
+      <WorkspaceEmptyState
+        className="contacts-empty"
+        title="No upcoming birthdays"
+      />
     );
   }
   const lookup = new Map(contactsById.map((c) => [c.id, c]));
@@ -1610,9 +1640,7 @@ function ArchivedPane({
 }) {
   if (contacts.length === 0) {
     return (
-      <div className="contacts-empty">
-        <p>Archive is empty.</p>
-      </div>
+      <WorkspaceEmptyState className="contacts-empty" title="Archive is empty" />
     );
   }
   return (

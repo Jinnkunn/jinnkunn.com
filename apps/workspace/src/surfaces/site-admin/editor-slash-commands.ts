@@ -3,6 +3,38 @@ import {
   type BlockEditorCommand,
 } from "./block-editor";
 import {
+  Bookmark,
+  BookOpen,
+  Braces,
+  BriefcaseBusiness,
+  CalendarDays,
+  Code2,
+  Columns3,
+  Database,
+  File,
+  FileDown,
+  GraduationCap,
+  Heading1,
+  Heading2,
+  Heading3,
+  Image,
+  LayoutTemplate,
+  Link,
+  Link2,
+  List,
+  ListCollapse,
+  ListTodo,
+  MessageSquareWarning,
+  Minus,
+  Newspaper,
+  PanelTop,
+  Quote,
+  Rows3,
+  Table2,
+  Type,
+  Video,
+} from "lucide-react";
+import {
   createMdxBlock,
   type MdxBlock,
   type MdxBlockType,
@@ -21,7 +53,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Plain paragraph text",
     group: "Basic",
-    icon: "T",
+    icon: Type,
     id: "text",
     keywords: ["text", "paragraph", "plain"],
     label: "Text",
@@ -30,7 +62,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Large section heading",
     group: "Basic",
-    icon: "H₁",
+    icon: Heading1,
     id: "heading1",
     keywords: ["h1", "heading1", "title"],
     label: "Heading 1",
@@ -39,7 +71,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Medium section heading",
     group: "Basic",
-    icon: "H₂",
+    icon: Heading2,
     id: "heading2",
     keywords: ["h2", "heading", "heading2"],
     label: "Heading 2",
@@ -48,7 +80,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Small section heading",
     group: "Basic",
-    icon: "H₃",
+    icon: Heading3,
     id: "heading3",
     keywords: ["h3", "heading3", "subheading"],
     label: "Heading 3",
@@ -57,7 +89,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Quote or excerpt",
     group: "Basic",
-    icon: "❝",
+    icon: Quote,
     id: "quote",
     keywords: ["quote", "blockquote"],
     label: "Quote",
@@ -66,7 +98,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Bulleted or numbered list",
     group: "Basic",
-    icon: "•",
+    icon: List,
     id: "list",
     keywords: ["list", "bullet", "bulleted", "numbered"],
     label: "List",
@@ -75,7 +107,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Checkbox list with completion",
     group: "Basic",
-    icon: "☑",
+    icon: ListTodo,
     id: "todo",
     keywords: ["todo", "task", "check", "checkbox", "checklist"],
     label: "To-do list",
@@ -84,7 +116,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Collapsible section with hidden content",
     group: "Basic",
-    icon: "▸",
+    icon: ListCollapse,
     id: "toggle",
     keywords: ["toggle", "collapse", "details", "expand"],
     label: "Toggle",
@@ -94,7 +126,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Upload or paste an image",
     group: "Media",
-    icon: "▢",
+    icon: Image,
     id: "image",
     keywords: ["image", "img", "photo", "media"],
     label: "Image",
@@ -103,7 +135,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "YouTube or Vimeo video",
     group: "Media",
-    icon: "▶",
+    icon: Video,
     id: "video",
     keywords: ["video", "youtube", "vimeo"],
     label: "Video",
@@ -112,7 +144,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Uploaded file attachment",
     group: "Media",
-    icon: "⇩",
+    icon: FileDown,
     id: "file",
     keywords: ["file", "upload", "attachment", "pdf"],
     label: "File",
@@ -122,7 +154,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Link preview card",
     group: "Embeds",
-    icon: "⌐",
+    icon: Bookmark,
     id: "bookmark",
     keywords: ["bookmark", "link", "url", "preview"],
     label: "Bookmark",
@@ -131,7 +163,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Iframe embed (CodePen, Loom, Figma, …)",
     group: "Embeds",
-    icon: "⌬",
+    icon: PanelTop,
     id: "embed",
     keywords: ["embed", "iframe"],
     label: "Embed",
@@ -140,7 +172,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Link to another page in this site",
     group: "Embeds",
-    icon: "→",
+    icon: Link2,
     id: "page-link",
     keywords: ["page", "link", "internal"],
     label: "Page link",
@@ -152,7 +184,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Latest news entries from content/pages/news.mdx",
     group: "Data",
-    icon: "📰",
+    icon: Newspaper,
     id: "news-block",
     keywords: ["news", "updates", "feed"],
     label: "News",
@@ -161,7 +193,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "A single dated entry inside the news page",
     group: "Data",
-    icon: "🗞",
+    icon: CalendarDays,
     id: "news-entry",
     keywords: ["news", "entry", "post", "dated", "feed-item"],
     label: "News entry",
@@ -170,7 +202,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Publication list from content/pages/publications.mdx",
     group: "Data",
-    icon: "📚",
+    icon: BookOpen,
     id: "publications-block",
     keywords: ["publications", "papers", "research", "academic"],
     label: "Publications",
@@ -179,7 +211,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "A single publication inside the publications page",
     group: "Data",
-    icon: "📑",
+    icon: File,
     id: "publications-entry",
     keywords: ["publication", "paper", "entry", "research"],
     label: "Publication",
@@ -188,7 +220,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Recent + past work entries from content/pages/works.mdx",
     group: "Data",
-    icon: "💼",
+    icon: BriefcaseBusiness,
     id: "works-block",
     keywords: ["works", "experience", "jobs", "projects", "career"],
     label: "Works",
@@ -197,7 +229,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "A single role / position inside the works page",
     group: "Data",
-    icon: "🧑‍💼",
+    icon: Rows3,
     id: "works-entry",
     keywords: ["works", "entry", "role", "job", "position"],
     label: "Works entry",
@@ -206,7 +238,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Teaching activities from content/pages/teaching.mdx",
     group: "Data",
-    icon: "🎓",
+    icon: GraduationCap,
     id: "teaching-block",
     keywords: ["teaching", "courses", "education", "classes"],
     label: "Teaching",
@@ -215,7 +247,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "A single teaching activity inside the teaching page",
     group: "Data",
-    icon: "🎓",
+    icon: GraduationCap,
     id: "teaching-entry",
     keywords: ["teaching", "entry", "course", "class", "term"],
     label: "Teaching entry",
@@ -225,7 +257,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Side-by-side columns (Notion-style)",
     group: "Layout",
-    icon: "▥",
+    icon: Columns3,
     id: "columns",
     keywords: ["columns", "column", "split", "side", "grid", "two", "three"],
     label: "Columns",
@@ -234,7 +266,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Profile image + headline (home-hero CSS)",
     group: "Layout",
-    icon: "✶",
+    icon: LayoutTemplate,
     id: "hero-block",
     keywords: ["hero", "intro", "profile", "headline", "landing"],
     label: "Hero",
@@ -243,7 +275,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Stack, grid, or inline row of links",
     group: "Layout",
-    icon: "🔗",
+    icon: Link,
     id: "link-list-block",
     keywords: ["links", "list", "buttons", "navigation"],
     label: "Link list",
@@ -252,7 +284,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Card grid linking to other pages on the site",
     group: "Layout",
-    icon: "🗂",
+    icon: Database,
     id: "featured-pages-block",
     keywords: ["featured", "cards", "pages", "grid"],
     label: "Featured pages",
@@ -261,7 +293,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Markdown table",
     group: "Layout",
-    icon: "▦",
+    icon: Table2,
     id: "table",
     keywords: ["table", "grid", "matrix", "spreadsheet"],
     label: "Table",
@@ -270,7 +302,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Visual separator",
     group: "Layout",
-    icon: "—",
+    icon: Minus,
     id: "divider",
     keywords: ["divider", "hr", "line"],
     label: "Divider",
@@ -279,7 +311,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Highlighted note",
     group: "Layout",
-    icon: "⚐",
+    icon: MessageSquareWarning,
     id: "callout",
     keywords: ["callout", "note", "tip"],
     label: "Callout",
@@ -288,7 +320,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Fenced code block",
     group: "Layout",
-    icon: "{}",
+    icon: Code2,
     id: "code",
     keywords: ["code", "snippet"],
     label: "Code",
@@ -297,7 +329,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   {
     description: "Advanced MDX",
     group: "Layout",
-    icon: "◇",
+    icon: Braces,
     id: "raw",
     keywords: ["raw", "mdx", "html"],
     label: "Raw MDX",

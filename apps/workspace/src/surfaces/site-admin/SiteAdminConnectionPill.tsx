@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useSiteAdmin } from "./state";
 import { normalizeString, stripTrailingSlash } from "./utils";
 
@@ -166,25 +167,17 @@ export function SiteAdminConnectionPill() {
             {environmentLabel}
           </span>
         ) : null}
-        <svg
-          viewBox="0 0 10 10"
-          width="8"
-          height="8"
+        <ChevronDown
+          absoluteStrokeWidth
           aria-hidden="true"
+          focusable="false"
+          size={11}
+          strokeWidth={1.7}
           style={{
             transition: "transform 140ms ease",
             transform: open ? "rotate(180deg)" : "rotate(0deg)",
           }}
-        >
-          <path
-            d="M2 4l3 3 3-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        />
       </button>
 
       {open && (

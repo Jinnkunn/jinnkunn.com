@@ -222,7 +222,7 @@ export function deriveReleaseFlow(
 
   if (!status) {
     stage = "checking";
-    publishLabel = "Checking...";
+    publishLabel = "Checking…";
     statusTone = "muted";
   } else if (options.productionReadOnly) {
     stage = "production-read-only";
