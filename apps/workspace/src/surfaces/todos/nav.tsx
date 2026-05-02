@@ -20,6 +20,7 @@ export const TODOS_DEFAULT_NAV_ITEM_ID = TODOS_TODAY_NAV_ID;
 export const TODOS_FOCUS_NAV_GROUP_ID = "todos:focus";
 export const TODOS_SCHEDULE_NAV_GROUP_ID = "todos:schedule";
 export const TODOS_REVIEW_NAV_GROUP_ID = "todos:review";
+export const TODO_NAV_PREFIX = "todo:";
 
 export type TodoNavItemId =
   | typeof TODOS_COMPLETED_NAV_ID
@@ -39,6 +40,17 @@ export const TODO_PLANNING_NAV_IDS = new Set<string>([
   TODOS_UNSCHEDULED_NAV_ID,
   TODOS_COMPLETED_NAV_ID,
 ]);
+
+export function todoNavId(id: string): string {
+  return `${TODO_NAV_PREFIX}${id}`;
+}
+
+export function todoIdFromNavItem(
+  navItemId: string | null | undefined,
+): string | null {
+  if (!navItemId?.startsWith(TODO_NAV_PREFIX)) return null;
+  return navItemId.slice(TODO_NAV_PREFIX.length) || null;
+}
 
 function todoNavIcon(Icon: LucideIcon) {
   return (

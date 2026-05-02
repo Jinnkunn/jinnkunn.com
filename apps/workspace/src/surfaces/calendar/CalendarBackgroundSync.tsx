@@ -108,21 +108,21 @@ export function CalendarBackgroundSync({
             detail: `${result.eventCount} events synced to staging`,
             tone: "success",
           });
-          if (result.production?.ok) {
-            emit({
-              source: "Calendar",
-              title: "Production release dispatched",
-              detail: "Calendar changes are moving from staging to production",
-              tone: "success",
-            });
-          } else if (result.production && !result.production.ok) {
-            emit({
-              source: "Calendar",
-              title: "Production promote failed",
-              detail: result.production.error,
-              tone: "warn",
-            });
-          }
+        }
+        if (result.production?.ok) {
+          emit({
+            source: "Calendar",
+            title: "Production calendar updated",
+            detail: `${result.production.eventCount || result.eventCount} events synced to production`,
+            tone: "success",
+          });
+        } else if (result.production && !result.production.ok) {
+          emit({
+            source: "Calendar",
+            title: "Production calendar sync failed",
+            detail: result.production.error,
+            tone: "warn",
+          });
         }
       } catch (err) {
         if (!active || isTauriUnavailable(err)) return;

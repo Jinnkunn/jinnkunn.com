@@ -1104,8 +1104,8 @@ export function CalendarSurface() {
   // Project the events that WOULD publish on the next sync, then diff
   // against the last-synced snapshot so the toolbar can show "+3
   // added · 2 visibility changed · 1 removed". This is the same
-  // pattern the promote-to-production button uses for code SHAs —
-  // surface the upcoming change before the operator commits.
+  // pattern as release previews — surface the upcoming change before
+  // the operator commits.
   const pendingSyncEntries = useMemo<SnapshotEventEntry[]>(() => {
     const entries: SnapshotEventEntry[] = [];
     for (const event of publishedEvents) {
@@ -1295,15 +1295,23 @@ export function CalendarSurface() {
         reason,
         error: null,
       }));
-      if (result.status === "unchanged") {
+      if (result.status === "unchanged" && result.production?.ok) {
+        setPublishMessage(
+          `Calendar already up to date (${result.eventCount} events). Production calendar updated.`,
+        );
+      } else if (result.status === "unchanged" && result.production && !result.production.ok) {
+        setPublishMessage(
+          `Calendar already up to date (${result.eventCount} events). Production calendar sync failed: ${result.production.error}`,
+        );
+      } else if (result.status === "unchanged") {
         setPublishMessage(`Calendar already up to date (${result.eventCount} events).`);
       } else if (result.production?.ok) {
         setPublishMessage(
-          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events. Production release dispatched.`,
+          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events to staging and production.`,
         );
       } else if (result.production && !result.production.ok) {
         setPublishMessage(
-          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events. Production promote failed: ${result.production.error}`,
+          `${reason === "auto" ? "Auto-synced" : "Synced"} ${result.eventCount} events to staging. Production calendar sync failed: ${result.production.error}`,
         );
       } else {
         setPublishMessage(
@@ -2658,7 +2666,7 @@ function CalendarPublishPanel({
           <h3>Production</h3>
         </header>
         <label className="calendar-publish-policy__row">
-          <span>Promotion</span>
+          <span>Sync</span>
           <select
             value={productionSyncPolicy}
             onChange={(event) =>

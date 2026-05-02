@@ -35,6 +35,8 @@ export interface SyncSnapshot {
 
 const FINGERPRINT_STORAGE_KEY =
   "workspace.calendar.lastPublishedProjectionFingerprint.v1";
+const PRODUCTION_PROMOTION_FINGERPRINT_STORAGE_KEY =
+  "workspace.calendar.lastProductionPromotionFingerprint.v1";
 
 export function loadSyncSnapshot(): SyncSnapshot | null {
   try {
@@ -113,6 +115,23 @@ export function saveProjectionFingerprint(fingerprint: string): void {
     // Fingerprints are an optimization to suppress redundant writes. If
     // storage is unavailable, syncing still works; it may just publish
     // again on the next app launch.
+  }
+}
+
+export function loadProductionPromotionFingerprint(): string | null {
+  try {
+    return localStorage.getItem(PRODUCTION_PROMOTION_FINGERPRINT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveProductionPromotionFingerprint(fingerprint: string): void {
+  try {
+    localStorage.setItem(PRODUCTION_PROMOTION_FINGERPRINT_STORAGE_KEY, fingerprint);
+  } catch {
+    // This only gates redundant production dispatches. If storage is
+    // unavailable, auto-promote still works; it may retry more often.
   }
 }
 

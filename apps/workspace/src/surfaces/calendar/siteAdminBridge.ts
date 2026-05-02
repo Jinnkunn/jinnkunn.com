@@ -9,6 +9,7 @@ import type { PublicCalendarPayload } from "./publicProjection";
 
 const CONNECTION_STORAGE_KEY = "workspace.site-admin.connection.v1";
 const DEFAULT_BASE_URL = "https://staging.jinkunchen.com";
+const PRODUCTION_BASE_URL = "https://jinkunchen.com";
 const secureStorage = createNamespacedSecureStorage("site-admin");
 
 interface StoredConnection {
@@ -69,12 +70,18 @@ export async function syncPublicCalendarProjection(
 
 async function calendarSiteAdminRequest(
   baseUrl: string,
-  request: { path: string; method: string; body?: unknown },
+  request: {
+    path: string;
+    method: string;
+    body?: unknown;
+    credentialBaseUrl?: string;
+  },
 ) {
+  const credentialBaseUrl = request.credentialBaseUrl ?? baseUrl;
   const [authToken, cfAccessClientId, cfAccessClientSecret] = await Promise.all([
-    secureStorage.get(tokenStoreKeyForBase(baseUrl)),
-    secureStorage.get(cfAccessIdStoreKeyForBase(baseUrl)),
-    secureStorage.get(cfAccessSecretStoreKeyForBase(baseUrl)),
+    secureStorage.get(tokenStoreKeyForBase(credentialBaseUrl)),
+    secureStorage.get(cfAccessIdStoreKeyForBase(credentialBaseUrl)),
+    secureStorage.get(cfAccessSecretStoreKeyForBase(credentialBaseUrl)),
   ]);
   return siteAdminRequest({
     baseUrl,
@@ -101,8 +108,8 @@ export type CalendarProductionPromotionResult =
   | {
       ok: true;
       baseUrl: string;
-      dispatchedAt: string;
-      runsListUrl: string;
+      eventCount: number;
+      publishedAt: string;
     }
   | {
       ok: false;
@@ -111,27 +118,38 @@ export type CalendarProductionPromotionResult =
       error: string;
     };
 
-export async function promotePublicCalendarToProduction(): Promise<CalendarProductionPromotionResult> {
-  const baseUrl = calendarPublishBaseUrl();
-  const result = await calendarSiteAdminRequest(baseUrl, {
-    path: "/api/site-admin/promote-to-production",
+export async function publishPublicCalendarToProduction(
+  data: PublicCalendarPayload,
+): Promise<CalendarProductionPromotionResult> {
+  const credentialBaseUrl = calendarPublishBaseUrl();
+  let result = await calendarSiteAdminRequest(PRODUCTION_BASE_URL, {
+    path: "/api/site-admin/calendar-public/live",
     method: "POST",
-    body: {},
+    body: { data },
+    credentialBaseUrl,
   });
+  if (!result.response.ok && credentialBaseUrl !== PRODUCTION_BASE_URL) {
+    result = await calendarSiteAdminRequest(PRODUCTION_BASE_URL, {
+      path: "/api/site-admin/calendar-public/live",
+      method: "POST",
+      body: { data },
+      credentialBaseUrl: PRODUCTION_BASE_URL,
+    });
+  }
   if (!result.response.ok) {
     return {
       ok: false,
-      baseUrl,
+      baseUrl: PRODUCTION_BASE_URL,
       code: result.response.code,
       error: `${result.response.code}: ${result.response.error}`,
     };
   }
-  const data = asRecord(result.response.data);
+  const dataRecord = asRecord(result.response.data);
   return {
     ok: true,
-    baseUrl,
-    dispatchedAt: asString(data.dispatchedAt),
-    runsListUrl: asString(data.runsListUrl),
+    baseUrl: PRODUCTION_BASE_URL,
+    eventCount: Number(dataRecord.eventCount ?? 0),
+    publishedAt: asString(dataRecord.updatedAt) || new Date().toISOString(),
   };
 }
 

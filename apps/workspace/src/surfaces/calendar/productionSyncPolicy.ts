@@ -1,6 +1,8 @@
 export type CalendarProductionSyncPolicy = "manual" | "auto-promote";
 
-const STORAGE_KEY = "workspace.calendar.productionSyncPolicy.v1";
+const LEGACY_STORAGE_KEY = "workspace.calendar.productionSyncPolicy.v1";
+const STORAGE_KEY = "workspace.calendar.productionSyncPolicy.v2";
+const DEFAULT_POLICY: CalendarProductionSyncPolicy = "auto-promote";
 
 export const CALENDAR_PRODUCTION_SYNC_OPTIONS: ReadonlyArray<{
   value: CalendarProductionSyncPolicy;
@@ -8,28 +10,34 @@ export const CALENDAR_PRODUCTION_SYNC_OPTIONS: ReadonlyArray<{
   hint: string;
 }> = [
   {
+    value: "auto-promote",
+    label: "Auto",
+    hint: "When the desktop app is running, sync staging and dispatch production after real calendar changes.",
+  },
+  {
     value: "manual",
     label: "Manual",
     hint: "Sync staging automatically; promote production from Release Center.",
-  },
-  {
-    value: "auto-promote",
-    label: "Auto",
-    hint: "After a real staging calendar sync, dispatch the guarded production release.",
   },
 ];
 
 export function normalizeCalendarProductionSyncPolicy(
   raw: unknown,
 ): CalendarProductionSyncPolicy {
-  return raw === "auto-promote" ? "auto-promote" : "manual";
+  if (raw === "manual") return "manual";
+  if (raw === "auto-promote") return "auto-promote";
+  return DEFAULT_POLICY;
 }
 
 export function loadCalendarProductionSyncPolicy(): CalendarProductionSyncPolicy {
   try {
-    return normalizeCalendarProductionSyncPolicy(localStorage.getItem(STORAGE_KEY));
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current !== null) return normalizeCalendarProductionSyncPolicy(current);
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy === "auto-promote") return "auto-promote";
+    return DEFAULT_POLICY;
   } catch {
-    return "manual";
+    return DEFAULT_POLICY;
   }
 }
 
@@ -42,6 +50,7 @@ export function saveCalendarProductionSyncPolicy(
       normalizeCalendarProductionSyncPolicy(policy),
     );
   } catch {
-    // Local preference only. Fallback stays manual.
+    // Local preference only. Fallback stays auto-promote for the light
+    // background-sync workflow.
   }
 }

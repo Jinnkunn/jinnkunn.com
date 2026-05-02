@@ -358,6 +358,7 @@ export function WorkspaceDashboard({
 }
 
 interface TodayUpcomingItem {
+  endsAt?: number;
   id: string;
   kind: "event" | "todo";
   title: string;
@@ -395,6 +396,7 @@ function TodayUpcomingPanel({
     loading: true,
     todos: [],
   });
+  const [renderNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -441,17 +443,18 @@ function TodayUpcomingPanel({
     };
   }, [calendarEnabled, todosEnabled]);
 
-  const { today, upcoming } = useMemo(
-    () => buildTodayUpcomingItems(state.events, state.todos),
+  const { later, next, now } = useMemo(
+    () => buildTodayWorkbenchItems(state.events, state.todos),
     [state.events, state.todos],
   );
-  const nextItem = today[0] ?? upcoming[0] ?? null;
-  const todayItems = nextItem?.id === today[0]?.id ? today.slice(1) : today;
-  const upcomingItems =
-    nextItem?.id === upcoming[0]?.id ? upcoming.slice(1) : upcoming;
+  const featuredItem = now[0] ?? next[0] ?? later[0] ?? null;
+  const nowItems = featuredItem?.id === now[0]?.id ? now.slice(1) : now;
+  const nextItems = featuredItem?.id === next[0]?.id ? next.slice(1) : next;
+  const laterItems = featuredItem?.id === later[0]?.id ? later.slice(1) : later;
   const calendarUnavailable =
     calendarEnabled && state.auth !== null && !isCalendarAuthorized(state.auth);
-  const empty = today.length === 0 && upcoming.length === 0;
+  const totalCount = now.length + next.length + later.length;
+  const empty = totalCount === 0;
 
   const openItem = (item: TodayUpcomingItem) => {
     if (item.kind === "event") {
@@ -474,9 +477,7 @@ function TodayUpcomingPanel({
     <section className="workspace-dashboard__panel workspace-dashboard__panel--wide workspace-dashboard__panel--today">
       <div className="workspace-dashboard__panel-header">
         <h2>Today</h2>
-        {today.length + upcoming.length > 0 ? (
-          <span>{today.length + upcoming.length}</span>
-        ) : null}
+        {totalCount > 0 ? <span>{totalCount}</span> : null}
       </div>
       {state.loading ? (
         <WorkspaceEmptyState compact title="Loading" />
@@ -484,27 +485,36 @@ function TodayUpcomingPanel({
         <WorkspaceEmptyState compact title="Clear" />
       ) : (
         <>
-          {nextItem ? (
+          {featuredItem ? (
             <button
               type="button"
               className="workspace-dashboard__next"
-              data-tone={nextItem.tone}
-              onClick={() => openItem(nextItem)}
+              data-tone={featuredItem.tone}
+              onClick={() => openItem(featuredItem)}
             >
-              <span className="workspace-dashboard__next-kicker">Next</span>
-              <strong>{nextItem.title}</strong>
-              <small>{nextItem.meta} / {nextItem.timeLabel}</small>
+              <span className="workspace-dashboard__next-kicker">
+                {featuredItem.timestamp <= renderNowMs + 2 * 60 * 60_000
+                  ? "Now"
+                  : "Next"}
+              </span>
+              <strong>{featuredItem.title}</strong>
+              <small>{featuredItem.meta} / {featuredItem.timeLabel}</small>
             </button>
           ) : null}
           <div className="workspace-dashboard__today-grid">
             <TimelineBucket
-              items={todayItems}
-              label={nextItem?.id === today[0]?.id ? "Later Today" : "Today"}
+              items={nowItems}
+              label="Now"
               onOpenItem={openItem}
             />
             <TimelineBucket
-              items={upcomingItems}
-              label="Upcoming"
+              items={nextItems}
+              label="Next"
+              onOpenItem={openItem}
+            />
+            <TimelineBucket
+              items={laterItems}
+              label="Later"
               onOpenItem={openItem}
             />
           </div>
@@ -557,24 +567,36 @@ function TimelineBucket({
   );
 }
 
-function buildTodayUpcomingItems(
+function buildTodayWorkbenchItems(
   events: readonly CalendarEvent[],
   todos: readonly TodoRow[],
 ): {
-  today: TodayUpcomingItem[];
-  upcoming: TodayUpcomingItem[];
+  later: TodayUpcomingItem[];
+  next: TodayUpcomingItem[];
+  now: TodayUpcomingItem[];
 } {
   const todayStart = startOfDay(new Date());
   const todayEnd = addDays(todayStart, 1);
   const windowEnd = addDays(todayStart, 8).getTime();
+  const nowMs = Date.now();
+  const focusEndMs = nowMs + 2 * 60 * 60_000;
   const todayStartMs = todayStart.getTime();
   const todayEndMs = todayEnd.getTime();
   const items: TodayUpcomingItem[] = [];
 
   for (const event of events) {
     const timestamp = new Date(event.startsAt).getTime();
+    const endsAt = new Date(event.endsAt).getTime();
     if (!Number.isFinite(timestamp) || timestamp >= windowEnd) continue;
+    if (
+      !event.isAllDay &&
+      Number.isFinite(endsAt) &&
+      endsAt < nowMs - 5 * 60_000
+    ) {
+      continue;
+    }
     items.push({
+      endsAt: Number.isFinite(endsAt) ? endsAt : undefined,
       id: `event:${event.eventIdentifier}:${event.startsAt}`,
       kind: "event",
       meta: "Calendar event",
@@ -603,10 +625,17 @@ function buildTodayUpcomingItems(
 
   items.sort((left, right) => left.timestamp - right.timestamp);
   return {
-    today: items.filter((item) =>
-      item.timestamp < todayEndMs || item.timestamp < todayStartMs,
+    now: items.filter((item) =>
+      item.timestamp < todayStartMs ||
+      item.timestamp <= focusEndMs ||
+      (item.endsAt !== undefined &&
+        item.timestamp <= nowMs &&
+        item.endsAt >= nowMs),
     ),
-    upcoming: items.filter((item) =>
+    next: items.filter((item) =>
+      item.timestamp >= focusEndMs && item.timestamp < todayEndMs,
+    ),
+    later: items.filter((item) =>
       item.timestamp >= todayEndMs && item.timestamp < windowEnd,
     ),
   };

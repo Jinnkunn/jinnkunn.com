@@ -17,14 +17,16 @@ import {
 } from "./publicProjection";
 import { loadCalendarPublishRules } from "./publishRulesStore";
 import {
-  promotePublicCalendarToProduction,
+  publishPublicCalendarToProduction,
   syncPublicCalendarProjection,
   type CalendarProductionPromotionResult,
 } from "./siteAdminBridge";
 import {
   fingerprintPublicCalendarPayload,
   loadProjectionFingerprint,
+  loadProductionPromotionFingerprint,
   saveProjectionFingerprint,
+  saveProductionPromotionFingerprint,
   saveSyncSnapshot,
   type SnapshotEventEntry,
   type SyncSnapshot,
@@ -123,6 +125,18 @@ async function runSerializedSync(
   return syncInFlight;
 }
 
+async function maybePromotePublicCalendarToProduction(
+  policy: CalendarProductionSyncPolicy,
+  fingerprint: string,
+  payload: PublicCalendarPayload,
+): Promise<CalendarProductionPromotionResult | null> {
+  if (policy !== "auto-promote") return null;
+  if (loadProductionPromotionFingerprint() === fingerprint) return null;
+  const production = await publishPublicCalendarToProduction(payload);
+  if (production.ok) saveProductionPromotionFingerprint(fingerprint);
+  return production;
+}
+
 export async function publishCalendarProjection(input: {
   calendarsById: ReadonlyMap<string, Calendar>;
   calendarDefaults: ReadonlyMap<string, CalendarPublicVisibility>;
@@ -145,11 +159,18 @@ export async function publishCalendarProjection(input: {
     });
     const fingerprint = fingerprintPublicCalendarPayload(payload);
     const snapshot = syncSnapshotForPayload(payload);
+    const productionPolicy =
+      input.productionPolicy ?? loadCalendarProductionSyncPolicy();
 
     if (input.skipIfUnchanged !== false) {
       const previous = loadProjectionFingerprint();
       if (previous && previous === fingerprint) {
         saveSyncSnapshot(snapshot);
+        const production = await maybePromotePublicCalendarToProduction(
+          productionPolicy,
+          fingerprint,
+          payload,
+        );
         return {
           ok: true,
           status: "unchanged",
@@ -159,7 +180,7 @@ export async function publishCalendarProjection(input: {
           fileSha: "",
           fingerprint,
           payload,
-          production: null,
+          production,
           snapshot,
         };
       }
@@ -177,12 +198,11 @@ export async function publishCalendarProjection(input: {
 
     saveProjectionFingerprint(fingerprint);
     saveSyncSnapshot(snapshot);
-    const productionPolicy =
-      input.productionPolicy ?? loadCalendarProductionSyncPolicy();
-    const production =
-      productionPolicy === "auto-promote"
-        ? await promotePublicCalendarToProduction()
-        : null;
+    const production = await maybePromotePublicCalendarToProduction(
+      productionPolicy,
+      fingerprint,
+      payload,
+    );
     return {
       ok: true,
       status: "synced",

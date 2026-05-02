@@ -65,6 +65,11 @@ const CalendarBackgroundSync = lazy(() =>
   })),
 );
 
+interface WorkspaceNavLocation {
+  navItemId: string | null;
+  surfaceId: string;
+}
+
 function createWorkspaceTab(
   surfaceId: string,
   navItemId: string | null,
@@ -308,6 +313,8 @@ export function App() {
     loadBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY),
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const navHistoryRef = useRef<WorkspaceNavLocation[]>([]);
+  const [navHistoryVersion, setNavHistoryVersion] = useState(0);
 
   const updateActiveTab = useCallback(
     (patch: Partial<Omit<WorkspaceTitlebarTab, "id">>) => {
@@ -320,11 +327,68 @@ export function App() {
     [activeTabId],
   );
 
+  const rememberCurrentLocation = useCallback(
+    (next: WorkspaceNavLocation) => {
+      const current: WorkspaceNavLocation = {
+        navItemId: activeNavItemId,
+        surfaceId: activeSurfaceId,
+      };
+      if (
+        current.surfaceId === next.surfaceId &&
+        current.navItemId === next.navItemId
+      ) {
+        return;
+      }
+      const last = navHistoryRef.current.at(-1);
+      if (
+        last?.surfaceId === current.surfaceId &&
+        last.navItemId === current.navItemId
+      ) {
+        return;
+      }
+      navHistoryRef.current = [...navHistoryRef.current.slice(-23), current];
+      setNavHistoryVersion((version) => version + 1);
+    },
+    [activeNavItemId, activeSurfaceId],
+  );
+
+  const navigateToLocation = useCallback(
+    (location: WorkspaceNavLocation) => {
+      const surface = enabledSurfaces.find(
+        (entry) => entry.id === location.surfaceId,
+      );
+      if (!surface || surface.disabled) return;
+      const nextNavItemId =
+        location.navItemId ?? resolveInitialNavItemId(surface);
+      setActiveSurfaceId(surface.id);
+      setActiveNavItemIdState(nextNavItemId);
+      updateActiveTab({ navItemId: nextNavItemId, surfaceId: surface.id });
+      localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, surface.id);
+      if (nextNavItemId) {
+        try {
+          localStorage.setItem(navItemStorageKey(surface.id), nextNavItemId);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [enabledSurfaces, updateActiveTab],
+  );
+
+  const goBack = useCallback(() => {
+    const previous = navHistoryRef.current.at(-1);
+    if (!previous) return;
+    navHistoryRef.current = navHistoryRef.current.slice(0, -1);
+    setNavHistoryVersion((version) => version + 1);
+    navigateToLocation(previous);
+  }, [navigateToLocation]);
+
   const selectSurface = useCallback(
     (id: string) => {
       const target = enabledSurfaces.find((surface) => surface.id === id);
       if (!target || target.disabled) return;
       const nextNavItemId = resolveInitialNavItemId(target);
+      rememberCurrentLocation({ navItemId: nextNavItemId, surfaceId: id });
       if (id !== activeSurfaceId) {
         setActiveSurfaceId(id);
         localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, id);
@@ -332,13 +396,14 @@ export function App() {
       setActiveNavItemIdState(nextNavItemId);
       updateActiveTab({ navItemId: nextNavItemId, surfaceId: id });
     },
-    [activeSurfaceId, enabledSurfaces, updateActiveTab],
+    [activeSurfaceId, enabledSurfaces, rememberCurrentLocation, updateActiveTab],
   );
 
   const selectNavItem = useCallback(
     (surfaceId: string, navItemId: string) => {
       const target = enabledSurfaces.find((surface) => surface.id === surfaceId);
       if (!target || target.disabled) return;
+      rememberCurrentLocation({ navItemId, surfaceId });
       if (surfaceId !== activeSurfaceId) {
         setActiveSurfaceId(surfaceId);
         localStorage.setItem(ACTIVE_SURFACE_STORAGE_KEY, surfaceId);
@@ -351,12 +416,13 @@ export function App() {
         // ignore
       }
     },
-    [activeSurfaceId, enabledSurfaces, updateActiveTab],
+    [activeSurfaceId, enabledSurfaces, rememberCurrentLocation, updateActiveTab],
   );
 
   const setActiveNavItemId = useCallback(
     (id: string) => {
       if (!activeSurface) return;
+      rememberCurrentLocation({ navItemId: id, surfaceId: activeSurface.id });
       setActiveNavItemIdState(id);
       updateActiveTab({ navItemId: id, surfaceId: activeSurface.id });
       try {
@@ -365,7 +431,7 @@ export function App() {
         // ignore
       }
     },
-    [activeSurface, updateActiveTab],
+    [activeSurface, rememberCurrentLocation, updateActiveTab],
   );
 
   // Dynamic child trees published by the active surface (e.g. site-admin
@@ -759,6 +825,11 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey;
       if (!meta || event.altKey) return;
+      if (event.key === "[") {
+        event.preventDefault();
+        goBack();
+        return;
+      }
       if (event.key.toLowerCase() !== "k") return;
 
       if (event.shiftKey || activeSurfaceId !== "site-admin") {
@@ -768,7 +839,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeSurfaceId]);
+  }, [activeSurfaceId, goBack]);
 
   if (!activeSurface) {
     // The module registry always contributes the core workspace surface.
@@ -863,6 +934,8 @@ export function App() {
         favorites={visibleFavorites}
         recentItems={visibleRecentItems}
         onClearWorkspaceEvents={clearWorkspaceEvents}
+        canGoBack={navHistoryVersion > 0}
+        onGoBack={goBack}
         onOpenWorkspaceDashboard={() => selectSurface("workspace")}
         onRecordRecent={recordRecentItem}
         onSelectSurface={selectSurface}
