@@ -1,10 +1,10 @@
 // Generic text-file store used by site-admin CRUD endpoints (MDX posts/pages).
 // Two backends implement the `ContentStore` interface:
 //   - "local": reads/writes files under <repoRoot>/content/...  (dev)
-//   - "github": reads/writes via GitHub Contents API            (staging/prod)
+//   - "db":    reads/writes Cloudflare D1 content_files rows   (staging)
 //
 // The backend picker lives in `content-store-resolver.ts` so this module stays
-// dependency-free (doesn't pull in node:crypto / GitHub client).
+// dependency-free.
 
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -234,5 +234,4 @@ export function createLocalContentStore(opts?: { rootDir?: string }): ContentSto
   };
 }
 
-// Picker lives in content-store-resolver.ts to avoid a circular import loop
-// (github-content-store depends on types/classes exported from this module).
+// Picker lives in content-store-resolver.ts to avoid a circular import loop.

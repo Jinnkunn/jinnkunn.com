@@ -1,10 +1,8 @@
-// Lightweight GitHub REST client shared across site-admin CRUD stores.
-// Patterned after the GitHub App auth in site-admin-source-store; duplicated
-// intentionally rather than refactored out of the existing config store, to
-// keep production-critical code paths untouched by this change.
+// Lightweight GitHub REST client used by explicit GitHub Actions fallback
+// dispatch and related tests.
 //
 // Scope: authenticated JSON requests + installation-token caching.
-// Specific endpoint calls live in higher-level modules (github-content-store).
+// Specific endpoint calls live in higher-level modules (github-workflow-dispatch).
 // No `server-only` marker: we need to import this in the node:test runner for
 // unit coverage, and the module has no client-safe twin so accidental client
 // use is implausible (node:crypto + fetch to api.github.com).

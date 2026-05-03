@@ -25,9 +25,12 @@ export function DayView({
   calendarsById,
   todos,
   onEventSelect,
+  onEventContextMenu,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
   onSlotCreate,
+  onSlotContextMenu,
   getDisclosure,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
@@ -36,9 +39,12 @@ export function DayView({
   calendarsById: Map<string, Calendar>;
   todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
+  onTodoContextMenu?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
   onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
+  onSlotContextMenu?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone?: string;
 }) {
@@ -65,6 +71,7 @@ export function DayView({
           events={allDayEvents}
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           getDisclosure={getDisclosure}
         />
       ) : null}
@@ -75,9 +82,12 @@ export function DayView({
           calendarsById={calendarsById}
           todos={todos}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           onTodoSelect={onTodoSelect}
+          onTodoContextMenu={onTodoContextMenu}
           onTodoToggle={onTodoToggle}
           onSlotCreate={onSlotCreate}
+          onSlotContextMenu={onSlotContextMenu}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
         />
@@ -127,11 +137,13 @@ function AllDayStrip({
   events,
   calendarsById,
   onEventSelect,
+  onEventContextMenu,
   getDisclosure,
 }: {
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
   return (
@@ -152,6 +164,11 @@ function AllDayStrip({
               key={ev.eventIdentifier}
               className="text-[11.5px] truncate px-1.5 py-0.5 rounded border-0 text-left cursor-pointer"
               onClick={() => onEventSelect?.(ev)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onEventContextMenu?.(ev);
+              }}
               title={ev.title || "(No title)"}
               style={{
                 background: tint(color),

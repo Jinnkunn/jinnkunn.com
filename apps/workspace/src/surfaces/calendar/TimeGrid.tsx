@@ -58,9 +58,12 @@ export function TimeGrid({
   calendarsById,
   todos = [],
   onEventSelect,
+  onEventContextMenu,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
   onSlotCreate,
+  onSlotContextMenu,
   getDisclosure,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
@@ -71,12 +74,15 @@ export function TimeGrid({
    * todos are filtered out by the timeline layout. */
   todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   /** Selecting a todo opens the parent inspector/editor. */
   onTodoSelect?: (todo: TodoRow) => void;
+  onTodoContextMenu?: (todo: TodoRow) => void;
   /** Leading todo controls flip completion. The parent keeps the
    * source-of-truth list in sync (optimistic + retry). */
   onTodoToggle?: (id: string, completed: boolean) => void;
   onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
+  onSlotContextMenu?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone?: string;
 }) {
@@ -114,9 +120,12 @@ export function TimeGrid({
             todos={dayTodos}
             calendarsById={calendarsById}
             onEventSelect={onEventSelect}
+            onEventContextMenu={onEventContextMenu}
             onTodoSelect={onTodoSelect}
+            onTodoContextMenu={onTodoContextMenu}
             onTodoToggle={onTodoToggle}
             onSlotCreate={onSlotCreate}
+            onSlotContextMenu={onSlotContextMenu}
             getDisclosure={getDisclosure}
             timeZone={timeZone}
             totalHeight={totalHeight}
@@ -228,9 +237,12 @@ function DayColumn({
   todos,
   calendarsById,
   onEventSelect,
+  onEventContextMenu,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
   onSlotCreate,
+  onSlotContextMenu,
   getDisclosure,
   timeZone,
   totalHeight,
@@ -242,9 +254,12 @@ function DayColumn({
   todos: PositionedTodo[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
+  onTodoContextMenu?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
   onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
+  onSlotContextMenu?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone: string;
   totalHeight: number;
@@ -363,6 +378,21 @@ function DayColumn({
           point: { x: event.clientX, y: event.clientY },
         });
       }}
+      onContextMenu={(event) => {
+        if (!onSlotContextMenu) return;
+        if ((event.target as HTMLElement | null)?.closest("button")) return;
+        event.preventDefault();
+        const minute = minuteFromPointer(event);
+        onSlotContextMenu({
+          startsAt: zonedDateAtMinute(day, minute, timeZone),
+          endsAt: zonedDateAtMinute(
+            day,
+            Math.min(MINUTES_PER_DAY, minute + CREATE_SLOT_MINUTES * 4),
+            timeZone,
+          ),
+          point: { x: event.clientX, y: event.clientY },
+        });
+      }}
     >
       {dragSelection ? (
         <div
@@ -388,6 +418,7 @@ function DayColumn({
           positioned={p}
           calendarsById={calendarsById}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
         />
@@ -397,6 +428,7 @@ function DayColumn({
           key={`todo-${t.todo.id}-${day.toISOString()}`}
           positioned={t}
           onTodoSelect={onTodoSelect}
+          onTodoContextMenu={onTodoContextMenu}
           onTodoToggle={onTodoToggle}
         />
       ))}
@@ -427,12 +459,14 @@ function EventBlock({
   positioned,
   calendarsById,
   onEventSelect,
+  onEventContextMenu,
   getDisclosure,
   timeZone,
 }: {
   positioned: PositionedEvent;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone: string;
 }) {
@@ -453,6 +487,11 @@ function EventBlock({
       type="button"
       className="absolute box-border overflow-hidden text-left text-[11.5px] leading-tight rounded-[4px] border-0 p-0 cursor-pointer"
       onClick={() => onEventSelect?.(event)}
+      onContextMenu={(menuEvent) => {
+        menuEvent.preventDefault();
+        menuEvent.stopPropagation();
+        onEventContextMenu?.(event);
+      }}
       title={event.title || "(No title)"}
       style={{
         left: `calc(${leftPct}% + 1px)`,
@@ -489,10 +528,12 @@ function EventBlock({
 function TodoChip({
   positioned,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
 }: {
   positioned: PositionedTodo;
   onTodoSelect?: (todo: TodoRow) => void;
+  onTodoContextMenu?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
 }) {
   const { todo, kind, startMinute, endMinute } = positioned;
@@ -513,6 +554,11 @@ function TodoChip({
       }
       data-completed={completed ? "true" : undefined}
       data-kind={kind}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onTodoContextMenu?.(todo);
+      }}
       style={{
         left: "1px",
         right: "1px",

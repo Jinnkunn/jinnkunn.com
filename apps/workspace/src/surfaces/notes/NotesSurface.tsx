@@ -59,6 +59,11 @@ import {
   type ExtractedNoteTodo,
   type NoteTemplate,
 } from "../../modules/notes/workflow";
+import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceActionMenu,
@@ -1448,6 +1453,37 @@ function LinkedTodosPanel({
               className="notes-linked-todo"
               data-completed={completed ? "true" : undefined}
               key={todo.id}
+              onContextMenu={(event) => {
+                if (disabled) return;
+                event.preventDefault();
+                const entries = [
+                  {
+                    label: "Open in Todos",
+                    run: () => onOpen(todo),
+                  },
+                  {
+                    label: completed ? "Mark open" : "Mark done",
+                    run: () => onToggle(todo),
+                  },
+                  project && CONTEXT_MENU_SEPARATOR,
+                  project && {
+                    label: "Open project",
+                    run: () => onOpenProject(project.id),
+                  },
+                  CONTEXT_MENU_SEPARATOR,
+                  {
+                    label: "Copy title",
+                    run: () => copyTextToClipboard(todo.title || "(Untitled)"),
+                  },
+                  {
+                    label: "Archive todo",
+                    run: () => onArchive(todo),
+                  },
+                ].filter(Boolean) as Parameters<
+                  typeof showContextMenuWithActions
+                >[0];
+                showContextMenuWithActions(entries);
+              }}
             >
               <button
                 type="button"
@@ -1551,6 +1587,16 @@ function NotesHome({
               className="notes-home__action"
               disabled={busy}
               onClick={onOpenInbox}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                showContextMenuWithActions([
+                  { label: "Open Inbox", run: onOpenInbox },
+                  {
+                    label: "Copy title",
+                    run: () => copyTextToClipboard("Inbox"),
+                  },
+                ]);
+              }}
             >
               <NoteIconGlyph
                 className="notes-home__action-icon"
@@ -1565,6 +1611,16 @@ function NotesHome({
               className="notes-home__action"
               disabled={busy}
               onClick={onOpenToday}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                showContextMenuWithActions([
+                  { label: hasTodayNote ? "Open Today" : "Create Today", run: onOpenToday },
+                  {
+                    label: "Copy title",
+                    run: () => copyTextToClipboard("Today"),
+                  },
+                ]);
+              }}
             >
               <NoteIconGlyph
                 className="notes-home__action-icon"
@@ -1590,6 +1646,19 @@ function NotesHome({
                 className="notes-home__template"
                 disabled={busy}
                 onClick={() => onCreateFromTemplate(template)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  showContextMenuWithActions([
+                    {
+                      label: "Use template",
+                      run: () => onCreateFromTemplate(template),
+                    },
+                    {
+                      label: "Copy title",
+                      run: () => copyTextToClipboard(template.title),
+                    },
+                  ]);
+                }}
                 title={template.description}
               >
                 <NoteTemplateIcon id={template.id} />
@@ -1618,6 +1687,20 @@ function NotesHome({
                   key={note.id}
                   className="notes-home__recent"
                   onClick={() => onOpenRecent(note.id)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    showContextMenuWithActions([
+                      {
+                        label: "Open note",
+                        run: () => onOpenRecent(note.id),
+                      },
+                      {
+                        label: "Copy title",
+                        run: () =>
+                          copyTextToClipboard(note.title || DEFAULT_NOTE_TITLE),
+                      },
+                    ]);
+                  }}
                 >
                   <NoteIconGlyph
                     className="notes-home__recent-icon"
@@ -1734,7 +1817,25 @@ function ArchivePanel({
       ) : (
         <ul className="notes-archive__list">
           {rows.map((row) => (
-            <li key={row.id} className="notes-archive__row">
+            <li
+              key={row.id}
+              className="notes-archive__row"
+              onContextMenu={(event) => {
+                event.preventDefault();
+                showContextMenuWithActions([
+                  {
+                    label: "Restore",
+                    enabled: !busy,
+                    run: () => onRestore(row.id),
+                  },
+                  {
+                    label: "Copy title",
+                    run: () =>
+                      copyTextToClipboard(row.title || DEFAULT_NOTE_TITLE),
+                  },
+                ]);
+              }}
+            >
               <span className="notes-archive__icon" aria-hidden="true">
                 <NoteIconGlyph icon={row.icon} size={15} />
               </span>

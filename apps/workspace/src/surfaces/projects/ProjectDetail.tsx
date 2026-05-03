@@ -24,6 +24,11 @@ import type {
 import { projectTodoStats } from "../../modules/projects/model";
 import type { TodoRow } from "../../modules/todos/api";
 import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
+import {
   WorkspaceCommandButton,
   WorkspaceEmptyState,
   WorkspaceIconButton,
@@ -59,6 +64,7 @@ export function ProjectDetailView({
   onDeleteLink,
   onLinkDraftChange,
   onOpenNote,
+  onOpenTodo,
   onRestore,
   onSetNewTodoTitle,
   onToggleTodo,
@@ -76,6 +82,7 @@ export function ProjectDetailView({
   onDeleteLink: (link: ProjectLinkRow) => void;
   onLinkDraftChange: (draft: ProjectLinkDraft) => void;
   onOpenNote: (noteId: string) => void;
+  onOpenTodo: (todo: TodoRow) => void;
   onRestore: () => void;
   onSetNewTodoTitle: (value: string) => void;
   onToggleTodo: (todo: TodoRow) => void;
@@ -224,14 +231,22 @@ export function ProjectDetailView({
               Add
             </WorkspaceCommandButton>
           </form>
-          <TodoList todos={openTodos} onToggleTodo={onToggleTodo} />
+          <TodoList
+            todos={openTodos}
+            onOpenTodo={onOpenTodo}
+            onToggleTodo={onToggleTodo}
+          />
           {completedTodos.length ? (
             <>
               <div className="projects-detail__section-header projects-detail__section-header--subtle">
                 <h2>Done</h2>
                 <span>{completedTodos.length}</span>
               </div>
-              <TodoList todos={completedTodos.slice(0, 5)} onToggleTodo={onToggleTodo} />
+              <TodoList
+                todos={completedTodos.slice(0, 5)}
+                onOpenTodo={onOpenTodo}
+                onToggleTodo={onToggleTodo}
+              />
             </>
           ) : null}
         </section>
@@ -265,6 +280,35 @@ export function ProjectDetailView({
                         if (!openable) return;
                         if (link.targetType === "note") onOpenNote(link.targetId);
                         else if (url) window.open(url, "_blank", "noopener,noreferrer");
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const entries = [
+                          openable && {
+                            label: "Open link",
+                            run: () => {
+                              if (link.targetType === "note") onOpenNote(link.targetId);
+                              else if (url) window.open(url, "_blank", "noopener,noreferrer");
+                            },
+                          },
+                          {
+                            label: "Copy label",
+                            run: () => copyTextToClipboard(link.label),
+                          },
+                          url && {
+                            label: "Copy URL",
+                            run: () => copyTextToClipboard(url),
+                          },
+                          CONTEXT_MENU_SEPARATOR,
+                          {
+                            label: "Delete link",
+                            run: () => onDeleteLink(link),
+                          },
+                        ].filter(Boolean) as Parameters<
+                          typeof showContextMenuWithActions
+                        >[0];
+                        showContextMenuWithActions(entries);
                       }}
                     >
                       <strong>{link.label}</strong>
@@ -425,9 +469,11 @@ function ProjectLinkComposer({
 }
 
 function TodoList({
+  onOpenTodo,
   onToggleTodo,
   todos,
 }: {
+  onOpenTodo: (todo: TodoRow) => void;
   onToggleTodo: (todo: TodoRow) => void;
   todos: readonly TodoRow[];
 }) {
@@ -443,7 +489,29 @@ function TodoList({
   return (
     <ul className="projects-todo-list" role="list">
       {todos.map((todo) => (
-        <li key={todo.id} data-completed={todo.completedAt ? "true" : undefined}>
+        <li
+          key={todo.id}
+          data-completed={todo.completedAt ? "true" : undefined}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            const completed = todo.completedAt !== null;
+            showContextMenuWithActions([
+              {
+                label: "Open in Todos",
+                run: () => onOpenTodo(todo),
+              },
+              {
+                label: completed ? "Mark open" : "Mark done",
+                run: () => onToggleTodo(todo),
+              },
+              CONTEXT_MENU_SEPARATOR,
+              {
+                label: "Copy title",
+                run: () => copyTextToClipboard(todo.title || "(Untitled)"),
+              },
+            ]);
+          }}
+        >
           <button
             type="button"
             className="projects-todo-list__check"

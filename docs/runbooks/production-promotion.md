@@ -28,7 +28,9 @@ Current staging release candidate:
 ## Guardrails
 
 - Pushes to `main` must not auto-deploy production.
-- Push-triggered deploys are staging-only via `site-admin-staging`.
+- Push-triggered GitHub jobs are not the routine deploy path. Use local
+  Cloudflare release commands from the Tauri workspace or CLI; keep
+  GitHub Actions as an explicit fallback only.
 - `main` is protected by GitHub branch protection:
   - required checks: `build`, `workspace-quality`
   - strict status checks: enabled
@@ -46,8 +48,8 @@ Current staging release candidate:
   - manual GitHub Actions `workflow_dispatch` with `target=production`
     as a fallback only
 - Prefer `release:prod:from-staging` for routine releases. It reads the
-  staging Worker, refuses to proceed unless staging matches local
-  `main` HEAD, runs the heavy verifications automatically, snapshots the
+  staging Worker, refuses to proceed unless staging matches the local
+  release-source HEAD, runs the heavy verifications automatically, snapshots the
   outgoing production version into
   [production-version-history.md](./production-version-history.md), then
   invokes `release:prod --skip-checks` with the confirmation env vars
@@ -68,7 +70,7 @@ After a successful `npm run release:staging`, watch for the
 `content/ now differs from git` hint in the script's tail output.
 That means the D1 dump pulled bytes that `main` doesn't yet have —
 the staging worker is correct, but git hasn't caught up. Commit
-the diff to keep main in sync:
+the diff when you want git to remain a rollback/audit baseline:
 
 ```bash
 git add content/
@@ -83,9 +85,9 @@ production promotion path snapshots both code and content SHAs
 into `production-version-history.md`, so a stale main makes the
 log harder to read.
 
-If you ever need the legacy `site-admin-staging`-branch overlay
-flow back (e.g. during a one-off GitHub-storage rehearsal), set
-`USE_GITHUB_OVERLAY=1` for a single release.
+If unrelated local files are dirty, staging release builds from a clean
+snapshot of committed HEAD under `.cache/release/snapshots/`. Dirty
+`content/` still blocks by default because the D1 dump would overwrite it.
 
 ## Routine Release (recommended)
 
@@ -95,19 +97,19 @@ flow back (e.g. during a one-off GitHub-storage rehearsal), set
 2. Confirm the editor's saved content is what you want in production
    (e.g. via the Tauri editor acceptance checklist below).
 3. Click **Promote to Production** in Release Center. The panel shows
-   `main` HEAD, the staging Worker's deployed code SHA, and the
-   current production version. The button refuses to run unless
-   staging matches main.
+   local release-source SHA, the staging Worker's deployed code SHA,
+   and the current production version. The button refuses to run unless
+   staging matches that release source.
 4. Click again to confirm. The app runs
    `npm run release:prod:from-staging` locally from the repo checkout
    and keeps GitHub Actions as an explicit fallback.
 
 If the button is greyed out:
 - "Promote (staging stale)" — staging hasn't been re-released since
-  the last commit on main. Run `npm run release:staging` (or click
+  the current release-source commit. Run `npm run release:staging` (or click
   Publish on this surface) and retry.
-- "No changes vs prod" — production is already on the same code SHA
-  as staging.
+- "No changes vs prod" — production is already on the same code/content
+  snapshot as staging.
 
 ### CLI fallback
 
@@ -115,7 +117,7 @@ If the button is greyed out:
 git switch main
 git pull --ff-only
 git status --short
-npm run release:staging              # if staging is behind main
+npm run release:staging              # if staging is behind the release source
 npm run release:prod:from-staging:dry-run  # preview the plan
 npm run release:prod:from-staging          # do it
 ```
@@ -124,8 +126,8 @@ npm run release:prod:from-staging          # do it
 
 - the local branch is not `main`;
 - the working tree is dirty;
-- the staging worker's deployed `code=` SHA does not match local
-  `main` HEAD (i.e. you forgot to run `release:staging` after a new
+- the staging worker's deployed `code=` SHA does not match the local
+  release-source HEAD (i.e. you forgot to run `release:staging` after a new
   commit landed).
 
 Pass `--skip-visual` to skip the slow Playwright pass, or
@@ -326,5 +328,3 @@ after explicit production approval.
 - Do not run direct `wrangler deploy --env production` for normal promotion.
 - Do not use `npm run deploy:cf:prod` as a substitute for the guarded release
   path unless the release owner has approved an emergency manual deploy.
-- Do not re-enable `main` push auto-deploy in
-  `.github/workflows/deploy-on-content.yml`.

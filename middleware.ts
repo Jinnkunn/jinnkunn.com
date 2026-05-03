@@ -116,29 +116,25 @@ export async function middleware(req: NextRequest) {
   const pathname = normalizePathname(req.nextUrl.pathname || "/");
   if (isBypassedPath(pathname)) return NextResponse.next();
 
-  if (pathname === "/site-admin/login" || pathname.startsWith("/site-admin/login/")) {
-    return NextResponse.next();
-  }
-  if (pathname === "/site-admin" || pathname.startsWith("/site-admin/")) {
-    const ok = await isSiteAdminAuthorized(req);
-    if (!ok) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/site-admin/login";
-      url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url, 302);
-    }
-  }
+  // The browser /site-admin pages were removed in 2026-05; the Tauri
+  // workspace app is the only admin UI now and its authenticated calls
+  // hit `/api/site-admin/*` directly (auth handled inside each route via
+  // withSiteAdminContext, not the edge middleware).
 
-  // On staging: anything that reaches this point (not bypassed, not
-  // already handled by the /site-admin branch above) is a public page
-  // we still want to hide. Gate it behind the same NextAuth cookie so
+  // On staging: anything that reaches this point (not bypassed) is a
+  // public page we still want to hide. Gate it behind the same NextAuth
+  // cookie so
   // one GitHub sign-in covers both the marketing pages and the admin.
   if (STAGING_GATE) {
     const ok = await isSiteAdminAuthorized(req);
     if (!ok) {
+      // The dedicated /site-admin/login page was removed when the
+      // browser-based admin UI was retired. Send unauthenticated visitors
+      // to the NextAuth-provided /api/auth/signin flow, with a callback
+      // back to the original page after sign-in.
       const url = req.nextUrl.clone();
-      url.pathname = "/site-admin/login";
-      url.searchParams.set("next", pathname);
+      url.pathname = "/api/auth/signin";
+      url.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(url, 302);
     }
   }

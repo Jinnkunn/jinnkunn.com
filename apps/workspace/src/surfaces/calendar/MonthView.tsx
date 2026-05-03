@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { isSameDay, isSameMonth, isWeekend, monthGridDays } from "./dateRange";
 import { DisclosureBadge } from "./DisclosureBadge";
 import { layoutAllDayEvents, type AllDayBar } from "./eventLayout";
+import type { CalendarTimeSlotSelection } from "./TimeGrid";
 import type { Calendar, CalendarEvent, EventDisclosureResolver } from "./types";
 import {
   DEFAULT_CALENDAR_TIME_ZONE,
@@ -26,7 +27,9 @@ export function MonthView({
   events,
   calendarsById,
   onEventSelect,
+  onEventContextMenu,
   onDayCreate,
+  onDayContextMenu,
   getDisclosure,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
@@ -34,10 +37,12 @@ export function MonthView({
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   onDayCreate?: (selection: {
     startsAt: Date;
     point: { x: number; y: number };
   }) => void;
+  onDayContextMenu?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone?: string;
 }) {
@@ -57,7 +62,9 @@ export function MonthView({
             anchor={anchor}
             isFirstRow={idx === 0}
             onEventSelect={onEventSelect}
+            onEventContextMenu={onEventContextMenu}
             onDayCreate={onDayCreate}
+            onDayContextMenu={onDayContextMenu}
             getDisclosure={getDisclosure}
             timeZone={timeZone}
           />
@@ -100,7 +107,9 @@ function WeekRow({
   anchor,
   isFirstRow,
   onEventSelect,
+  onEventContextMenu,
   onDayCreate,
+  onDayContextMenu,
   getDisclosure,
   timeZone,
 }: {
@@ -110,10 +119,12 @@ function WeekRow({
   anchor: Date;
   isFirstRow: boolean;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   onDayCreate?: (selection: {
     startsAt: Date;
     point: { x: number; y: number };
   }) => void;
+  onDayContextMenu?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone: string;
 }) {
@@ -186,6 +197,16 @@ function WeekRow({
                 point: { x: event.clientX, y: event.clientY },
               });
             }}
+            onContextMenu={(event) => {
+              if (!onDayContextMenu) return;
+              if ((event.target as HTMLElement | null)?.closest("button")) return;
+              event.preventDefault();
+              onDayContextMenu({
+                startsAt: zonedDateAtMinute(day, 9 * 60, timeZone),
+                endsAt: zonedDateAtMinute(day, 10 * 60, timeZone),
+                point: { x: event.clientX, y: event.clientY },
+              });
+            }}
           >
             <div className="flex justify-end">
               {isToday ? (
@@ -207,6 +228,7 @@ function WeekRow({
                   event={ev}
                   calendarsById={calendarsById}
                   onEventSelect={onEventSelect}
+                  onEventContextMenu={onEventContextMenu}
                   getDisclosure={getDisclosure}
                   timeZone={timeZone}
                 />
@@ -235,6 +257,7 @@ function WeekRow({
                 weekDayCount={week.length}
                 calendarsById={calendarsById}
                 onEventSelect={onEventSelect}
+                onEventContextMenu={onEventContextMenu}
                 getDisclosure={getDisclosure}
               />
             )),
@@ -251,6 +274,7 @@ function Bar({
   weekDayCount,
   calendarsById,
   onEventSelect,
+  onEventContextMenu,
   getDisclosure,
 }: {
   bar: AllDayBar;
@@ -258,6 +282,7 @@ function Bar({
   weekDayCount: number;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
 }) {
   const cal = calendarsById.get(bar.event.calendarId);
@@ -269,6 +294,11 @@ function Bar({
       type="button"
       className="absolute box-border max-w-full text-[10.5px] truncate px-1.5 rounded leading-[16px] border-0 text-left cursor-pointer pointer-events-auto"
       onClick={() => onEventSelect?.(bar.event)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onEventContextMenu?.(bar.event);
+      }}
       title={bar.event.title || "(No title)"}
       style={{
         left: `calc(${leftPct}% + 2px)`,
@@ -292,12 +322,14 @@ function TimedChip({
   event,
   calendarsById,
   onEventSelect,
+  onEventContextMenu,
   getDisclosure,
   timeZone,
 }: {
   event: CalendarEvent;
   calendarsById: Map<string, Calendar>;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone: string;
 }) {
@@ -312,6 +344,11 @@ function TimedChip({
       type="button"
       className="flex items-center gap-1 text-[10.5px] truncate px-1 leading-[16px] border-0 bg-transparent text-left cursor-pointer"
       onClick={() => onEventSelect?.(event)}
+      onContextMenu={(menuEvent) => {
+        menuEvent.preventDefault();
+        menuEvent.stopPropagation();
+        onEventContextMenu?.(event);
+      }}
       title={event.title || "(No title)"}
       style={{ color: "var(--color-text-primary, currentColor)" }}
     >

@@ -184,7 +184,7 @@ function productionCommandFor(
   );
   const lines = [RELEASE_PROD_FROM_STAGING_COMMAND];
   if (preview?.ok && preview.mainSha) {
-    lines.push(`# main: ${shortSha(preview.mainSha)}`);
+    lines.push(`# release source: ${shortSha(preview.mainSha)}`);
   }
   if (contentSha || contentBranch) {
     lines.push(
@@ -219,11 +219,11 @@ function releaseChecks(
     {
       detail:
         previewReady && preview.stagingMatchesMain
-          ? "Staging active deployment matches main."
+          ? "Staging active deployment matches the release source."
           : previewReady
-            ? "Staging is behind main; release staging before promoting."
+            ? "Staging runtime and active deployment disagree; release staging before promoting."
             : "Promotion preflight could not read both environments yet.",
-      label: "Main preflight",
+      label: "Release preflight",
       tone: previewReady && preview.stagingMatchesMain ? "ok" : "blocked",
       value: previewReady && preview.stagingMatchesMain ? "Matched" : "Needs staging",
     },
@@ -262,7 +262,7 @@ function releaseChecks(
       detail: previewReady
         ? productionDifferent
           ? "Production differs from the validated staging candidate."
-          : "Production already runs the same active deployment revision."
+          : "Production already runs the same active code/content snapshot."
         : preview?.detail || "Load promotion preflight from Staging.",
       label: "Production delta",
       tone: previewReady ? (productionDifferent ? "warn" : "ok") : "muted",
@@ -589,7 +589,7 @@ export function ReleasePanel() {
         <div>
           <span>Code</span>
           <strong>{shortSha(status?.source?.codeSha)}</strong>
-          <code>main</code>
+          <code>release source</code>
         </div>
         <div>
           <span>Content</span>
@@ -605,8 +605,8 @@ export function ReleasePanel() {
           note={
             preview?.ok
               ? preview.stagingMatchesMain
-                ? "Live staging deployment matches main."
-                : "Live staging deployment is behind main."
+                ? "Live staging deployment matches the release source."
+                : "Live staging runtime and active deployment disagree."
               : isStaging
                 ? preview?.detail || "Loading live staging deployment."
                 : "Switch to Staging to load live promotion state."
@@ -793,7 +793,7 @@ export function ReleasePanel() {
           <div className="release-panel__operation-copy">
             <span>Step 2</span>
             <h2>Promote Production</h2>
-            <p>Enabled after staging matches main.</p>
+            <p>Enabled after staging preflight passes.</p>
             <dl>
               <div>
                 <dt>Preflight</dt>

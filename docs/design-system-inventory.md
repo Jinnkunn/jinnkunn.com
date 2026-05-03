@@ -24,7 +24,7 @@ Notion/classic look while the codebase gains shared contracts for future work.
 | Surface | Owner | Styling Source | Rule |
 | --- | --- | --- | --- |
 | Public classic pages | Web public | `public/styles/super*.css`, `public/styles/notion.css`, `app/(classic)/*.css` | Preserve production appearance unless explicitly approved. |
-| Site Admin web | Web admin | `app/design-system.css`, `app/(classic)/site-admin/styles/*.css`, `components/ui/*` | Prefer shared primitives and `--ds-*` tokens. |
+| Site Admin workspace | Desktop admin | `apps/workspace/src/surfaces/site-admin/*`, `apps/workspace/src/index.css`, `components/ui/*` | Prefer shared primitives and `--ds-*` tokens. |
 | Tauri workspace | Desktop app | `apps/workspace/src/index.css` | Keep macOS-native layout, expose `--ds-*` aliases for shared semantics. |
 | Home preview iframe | Tauri/Web bridge | `apps/workspace/src/surfaces/site-admin/home-builder/preview-document.ts` and preview API stylesheets | Use built public CSS assets, not hand-rolled preview-only styling. |
 | Compatibility bridge | Migration layer | `app/(classic)/design-system-bridge.css` | Bridge legacy variables only; new names start in `--ds-*`. |

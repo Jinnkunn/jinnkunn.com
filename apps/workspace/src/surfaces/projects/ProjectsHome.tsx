@@ -10,6 +10,10 @@ import {
   recentProjects,
 } from "../../modules/projects/model";
 import type { TodoRow } from "../../modules/todos/api";
+import {
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
 import { WorkspaceEmptyState } from "../../ui/primitives";
 import {
   attentionReasonLabel,
@@ -20,10 +24,12 @@ import {
 
 export function ProjectsHome({
   onOpenProject,
+  onProjectContextMenu,
   projects,
   todos,
 }: {
   onOpenProject: (project: ProjectRow) => void;
+  onProjectContextMenu?: (project: ProjectRow) => void;
   projects: readonly ProjectRow[];
   todos?: readonly TodoRow[];
 }) {
@@ -45,12 +51,14 @@ export function ProjectsHome({
         }
         todos={todos}
         onOpenProject={onOpenProject}
+        onProjectContextMenu={onProjectContextMenu}
       />
       <ProjectSection
         label="Active projects"
         projects={active}
         todos={todos}
         onOpenProject={onOpenProject}
+        onProjectContextMenu={onProjectContextMenu}
       />
       <ProjectSection
         label="Due soon"
@@ -58,6 +66,7 @@ export function ProjectsHome({
         renderMeta={(project) => formatShortDate(project.dueAt)}
         todos={todos}
         onOpenProject={onOpenProject}
+        onProjectContextMenu={onProjectContextMenu}
       />
       <ProjectSection
         label="Recent"
@@ -65,6 +74,7 @@ export function ProjectsHome({
         renderMeta={(project) => formatShortDate(project.updatedAt)}
         todos={todos}
         onOpenProject={onOpenProject}
+        onProjectContextMenu={onProjectContextMenu}
       />
     </section>
   );
@@ -73,6 +83,7 @@ export function ProjectsHome({
 export function ProjectsListView({
   emptyLabel,
   onOpenProject,
+  onProjectContextMenu,
   onRestore,
   projects,
   todos,
@@ -80,6 +91,7 @@ export function ProjectsListView({
 }: {
   emptyLabel: string;
   onOpenProject: (project: ProjectRow) => void;
+  onProjectContextMenu?: (project: ProjectRow) => void;
   onRestore: (project: ProjectRow) => void;
   projects: readonly ProjectRow[];
   todos?: readonly TodoRow[];
@@ -109,6 +121,7 @@ export function ProjectsListView({
           }
           key={project.id}
           onOpen={() => onOpenProject(project)}
+          onContextMenu={() => onProjectContextMenu?.(project)}
           project={project}
           todos={todos}
         />
@@ -120,12 +133,14 @@ export function ProjectsListView({
 function ProjectSection({
   label,
   onOpenProject,
+  onProjectContextMenu,
   projects,
   renderMeta,
   todos,
 }: {
   label: string;
   onOpenProject: (project: ProjectRow) => void;
+  onProjectContextMenu?: (project: ProjectRow) => void;
   projects: readonly ProjectRow[];
   renderMeta?: (project: ProjectRow) => string;
   todos?: readonly TodoRow[];
@@ -143,6 +158,7 @@ function ProjectSection({
               key={project.id}
               meta={renderMeta?.(project)}
               onOpen={() => onOpenProject(project)}
+              onContextMenu={() => onProjectContextMenu?.(project)}
               project={project}
               todos={todos}
             />
@@ -163,12 +179,14 @@ function ProjectCard({
   action,
   meta,
   onOpen,
+  onContextMenu,
   project,
   todos,
 }: {
   action?: ReactNode;
   meta?: string;
   onOpen: () => void;
+  onContextMenu?: () => void;
   project: ProjectRow;
   todos?: readonly TodoRow[];
 }) {
@@ -181,6 +199,20 @@ function ProjectCard({
       className="projects-card"
       data-status={project.status}
       onClick={onOpen}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        if (onContextMenu) {
+          onContextMenu();
+          return;
+        }
+        showContextMenuWithActions([
+          { label: "Open project", run: onOpen },
+          {
+            label: "Copy title",
+            run: () => copyTextToClipboard(project.title),
+          },
+        ]);
+      }}
     >
       <span className="projects-card__accent" style={{ background: project.color ?? undefined }} />
       <span className="projects-card__body">

@@ -12,21 +12,11 @@ function normalizeEnvName(value: unknown): "staging" | "production" | null {
 export function resolveCloudflareTargetEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): "staging" | "production" {
-  const explicit =
+  return (
     normalizeEnvName(env.CLOUDFLARE_DEPLOY_ENV) ||
-    normalizeEnvName(env.DEPLOY_ENV);
-  if (explicit) return explicit;
-
-  const currentBranch = asString(env.SITE_ADMIN_REPO_BRANCH).toLowerCase();
-  const stagingBranch = asString(env.SITE_ADMIN_REPO_BRANCH_STAGING || "site-admin-staging")
-    .toLowerCase();
-  const productionBranch = asString(env.SITE_ADMIN_REPO_BRANCH_PRODUCTION || "main")
-    .toLowerCase();
-
-  if (currentBranch && currentBranch === stagingBranch) return "staging";
-  if (currentBranch && currentBranch === productionBranch) return "production";
-
-  return "production";
+    normalizeEnvName(env.DEPLOY_ENV) ||
+    "staging"
+  );
 }
 
 export function resolveCloudflareWorkerName(env: NodeJS.ProcessEnv = process.env): string {

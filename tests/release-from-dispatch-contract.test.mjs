@@ -61,18 +61,17 @@ test("release-from-dispatch: workflow_dispatch + repository_dispatch triggers ar
   );
 });
 
-test("release-from-dispatch: staging≡main SHA guard fires on production releases", () => {
-  // Defense-in-depth for the Promote-to-Production path. The workspace
-  // already refuses to dispatch unless the deployed staging SHA matches main
-  // HEAD; the workflow re-checks because `gh workflow run … -f env=production`
-  // bypasses the workspace path entirely. Comparing CF API + GITHUB_SHA in
-  // the runner means an out-of-band trigger can't ship code staging hasn't
-  // validated.
+test("release-from-dispatch: staging≡release-source SHA guard fires on production releases", () => {
+  // Defense-in-depth for the manual GitHub Actions fallback. The normal
+  // workspace path runs local Cloudflare release commands; this workflow
+  // re-checks because `gh workflow run … -f env=production` bypasses the
+  // local preflight entirely. Comparing CF API + GITHUB_SHA in the runner
+  // means an out-of-band trigger can't ship code staging hasn't validated.
   const yaml = readWorkflow();
   assert.match(
     yaml,
-    /Guard\s*—\s*staging matches main before production releases/,
-    "staging≡main guard step is missing or renamed",
+    /Guard\s*—\s*staging matches release source before production releases/,
+    "staging≡release-source guard step is missing or renamed",
   );
   assert.match(
     yaml,

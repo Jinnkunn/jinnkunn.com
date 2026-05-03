@@ -330,7 +330,7 @@ async function triggerCloudflareDeployment(
       return {
         ok: false,
         status: 409,
-        text: `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match current source (${mismatch}). Run the staging overlay build/upload before publishing.`,
+        text: `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match current source (${mismatch}). Run npm run release:staging before publishing.`,
         attempts: 1,
         provider: "cloudflare",
       };

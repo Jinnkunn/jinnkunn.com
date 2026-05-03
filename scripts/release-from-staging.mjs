@@ -11,7 +11,7 @@
 //   1. Read git state (must be on main, clean tree, fast-forwarded).
 //   2. GET the staging Worker's active deployment from Cloudflare.
 //   3. Parse the deployed version's annotation message and confirm
-//      its `code=` SHA matches the local main HEAD. If staging is
+//      its `code=` SHA matches the local release-source HEAD. If staging is
 //      behind, bail with a clear "release:staging first" message.
 //   4. Read the current production version (so we can both record it
 //      for rollback AND tell release:prod to verify it didn't drift
@@ -24,8 +24,8 @@
 //   7. Invoke `release:prod --skip-checks` with all confirmation env
 //      vars pre-populated. We pass `--skip-checks` because staging
 //      already proved the same code SHA passes lint/tests/etc.; the
-//      build is still re-run because production uses content from
-//      main rather than the staging content overlay.
+//      production build still runs so it can bundle the latest staging
+//      D1 content into the production Worker.
 //   8. After success, snapshot the new production version too — gives
 //      a continuous history without an extra command.
 //
@@ -40,6 +40,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "./load-project-env.mjs";
+import { readActiveDeployment } from "./_lib/cloudflare-api.mjs";
+import {
+  compareDeploymentToReleaseSource,
+  effectiveCodeSha,
+} from "./_lib/deploy-metadata.mjs";
+import { readMarker } from "./_lib/release-cache.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -59,9 +65,25 @@ function parseArgs(argv = process.argv.slice(2)) {
     dryRun: argv.includes("--dry-run"),
     skipVisual: argv.includes("--skip-visual"),
     skipAuthenticated: argv.includes("--skip-authenticated"),
+    // --force-verify forces a re-run of verify:staging:authenticated +
+    // check:staging-visual even when release-cloudflare.mjs cached a
+    // recent successful staging verify for the same SHA. Default is to
+    // honor the cache — the operator typically promotes within minutes
+    // of a green staging release, and re-running adds 1-3 min for no
+    // additional safety.
+    forceVerify: argv.includes("--force-verify"),
     note,
   };
 }
+
+// Reuse the staging-verify cache that release-cloudflare.mjs writes
+// after a successful `verify:cf:staging`. 30 minutes is the
+// release-from-staging "warm window" — long enough that
+// release:staging → release:prod:from-staging in one sitting hits the
+// cache, short enough that an operator coming back from lunch re-runs
+// the gates fresh.
+const STAGING_VERIFY_TTL_MS = 30 * 60 * 1000;
+const STAGING_VERIFY_BUCKET = "staging-verified";
 
 function readEnv(name) {
   return String(process.env[name] || "").trim();
@@ -115,98 +137,6 @@ function readGitState() {
     sha,
     branch: branch === "HEAD" ? "detached" : branch,
     dirty: status.length > 0,
-  };
-}
-
-async function cfRequest({ accountId, apiToken, method, path: apiPath }) {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
-    accountId,
-  )}${apiPath}`;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
-    },
-  });
-  const text = await response.text();
-  let payload;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    throw new Error(
-      `Cloudflare API ${method} ${apiPath} returned non-JSON: ${text.slice(0, 200)}`,
-    );
-  }
-  if (!response.ok || !payload || payload.success === false) {
-    const errors =
-      payload?.errors?.map((e) => e.message).join("; ") ||
-      text ||
-      response.statusText;
-    throw new Error(
-      `Cloudflare API ${method} ${apiPath} failed (${response.status}): ${errors}`,
-    );
-  }
-  return payload.result ?? payload;
-}
-
-function parseDeployMessage(messageRaw) {
-  const message = String(messageRaw || "");
-  const token = (name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const hit = new RegExp(`\\b${escaped}=([^\\s]+)`, "i").exec(message);
-    return hit?.[1] || "";
-  };
-  return {
-    sourceSha: token("source"),
-    sourceBranch: token("branch"),
-    codeSha: token("code"),
-    codeBranch: token("codeBranch"),
-    contentSha: token("content"),
-    contentBranch: token("contentBranch"),
-  };
-}
-
-// Cloudflare list endpoints wrap arrays under type-specific keys
-// (`{ deployments: [...] }`, `{ items: [...] }`). Walk all array values
-// so this stays resilient to which key the API picks.
-function pickFirst(payload) {
-  if (Array.isArray(payload)) return payload[0] ?? null;
-  if (!payload || typeof payload !== "object") return null;
-  for (const value of Object.values(payload)) {
-    if (Array.isArray(value) && value.length > 0) return value[0];
-  }
-  return null;
-}
-
-async function readActiveDeployment({ accountId, apiToken, workerName }) {
-  const deployments = await cfRequest({
-    accountId,
-    apiToken,
-    method: "GET",
-    path: `/workers/scripts/${encodeURIComponent(workerName)}/deployments`,
-  });
-  const active = pickFirst(deployments);
-  if (!active) return null;
-  const versions = Array.isArray(active.versions) ? active.versions : [];
-  versions.sort(
-    (a, b) => Number(b.percentage ?? 0) - Number(a.percentage ?? 0),
-  );
-  const primary = versions[0];
-  if (!primary?.version_id) return null;
-  const versionDetail = await cfRequest({
-    accountId,
-    apiToken,
-    method: "GET",
-    path: `/workers/scripts/${encodeURIComponent(workerName)}/versions/${encodeURIComponent(primary.version_id)}`,
-  });
-  const annotations = (versionDetail && versionDetail.annotations) || {};
-  const message = annotations["workers/message"] || versionDetail?.message || "";
-  return {
-    deploymentId: String(active.id || ""),
-    versionId: primary.version_id,
-    versionMessage: message,
-    meta: parseDeployMessage(message),
   };
 }
 
@@ -274,28 +204,19 @@ async function main() {
   // The release-cloudflare upload message embeds `code=<sha>`; that's the
   // value we compare against local HEAD. (Older deployments only had a
   // single `source=` token, in which case sourceSha is the codeSha.)
-  const stagingCodeSha = staging.meta.codeSha || staging.meta.sourceSha;
-  if (!stagingCodeSha) {
-    fail(
-      `Cannot read code SHA from staging deployment annotation: ${JSON.stringify(staging.meta)}`,
-    );
-  }
-  if (stagingCodeSha.toLowerCase() !== git.sha.toLowerCase()) {
-    const message = [
-      `Staging is on a different code SHA:`,
-      `  staging: ${stagingCodeSha}`,
-      `  main:    ${git.sha}`,
-      ``,
-      `Run \`npm run release:staging\` first so staging matches main, then retry.`,
-    ].join("\n");
-    if (args.dryRun) {
-      console.log(`[release-from-staging] (dry-run) staging mismatch:\n${message}`);
+  const verdict = compareDeploymentToReleaseSource({ meta: staging.meta, sourceSha: git.sha });
+  if (!verdict.ok) {
+    if (verdict.code === "STAGING_METADATA_UNREADABLE") {
+      fail(verdict.detail);
+    } else if (args.dryRun) {
+      console.log(`[release-from-staging] (dry-run) ${verdict.code}:\n${verdict.detail}`);
     } else {
-      fail(message);
+      fail(verdict.detail);
     }
   }
+  const stagingCodeSha = effectiveCodeSha(staging.meta);
   console.log(
-    `[release-from-staging] staging matches main: code=${stagingCodeSha} versionId=${staging.versionId}`,
+    `[release-from-staging] staging matches release source: code=${stagingCodeSha} versionId=${staging.versionId}`,
   );
 
   console.log(`[release-from-staging] reading production worker ${productionWorker}…`);
@@ -347,13 +268,27 @@ async function main() {
     return;
   }
 
-  if (!args.skipAuthenticated) {
+  const verifyCache = args.forceVerify
+    ? null
+    : readMarker({
+        repoRoot: ROOT,
+        bucket: STAGING_VERIFY_BUCKET,
+        sha: git.sha,
+        maxAgeMs: STAGING_VERIFY_TTL_MS,
+      });
+  if (verifyCache) {
+    const ageMin = Math.round((Date.now() - verifyCache._writtenAtMs) / 60000);
+    console.log(
+      `[release-from-staging] reusing staging verify cache for ${git.sha.slice(0, 12)} (${ageMin}m old). Pass --force-verify to re-run.`,
+    );
+  }
+  if (!args.skipAuthenticated && !verifyCache) {
     console.log(`[release-from-staging] verify:staging:authenticated`);
     run("npm", ["run", "verify:staging:authenticated"], {
       label: "verify:staging:authenticated",
     });
   }
-  if (!args.skipVisual) {
+  if (!args.skipVisual && !verifyCache) {
     console.log(`[release-from-staging] check:staging-visual`);
     run("npm", ["run", "check:staging-visual"], {
       label: "check:staging-visual",
