@@ -93,16 +93,26 @@ function gitValue(args) {
   return run("git", args, { capture: true, label: `git ${args.join(" ")}` }).trim();
 }
 
+function gitOutput(args) {
+  return run("git", args, { capture: true, label: `git ${args.join(" ")}` });
+}
+
+function parsePorcelainPath(line) {
+  const path = String(line || "").slice(3).trim();
+  const renameArrow = " -> ";
+  return path.includes(renameArrow) ? path.split(renameArrow).at(-1).trim() : path;
+}
+
 function readGitState() {
   const sha = gitValue(["rev-parse", "HEAD"]);
   const branchRaw = gitValue(["rev-parse", "--abbrev-ref", "HEAD"]);
   const branch = branchRaw === "HEAD" ? "detached" : branchRaw;
-  const status = gitValue(["status", "--porcelain"]);
+  const status = gitOutput(["status", "--porcelain"]);
   const dirtyFiles = status
     ? status
         .split(/\r?\n/)
         .filter(Boolean)
-        .map((line) => line.slice(3).trim())
+        .map(parsePorcelainPath)
     : [];
   return {
     sha,
@@ -281,12 +291,12 @@ function autoCommitContentDrift({ git, env: targetEnv }) {
   if (git.branch !== "main") {
     return { committed: false, reason: `not on main (branch=${git.branch})` };
   }
-  const allDirty = gitValue(["status", "--porcelain"]);
+  const allDirty = gitOutput(["status", "--porcelain"]);
   if (!allDirty) return { committed: false, reason: "clean tree" };
   const dirtyFiles = allDirty
     .split(/\r?\n/)
     .filter(Boolean)
-    .map((line) => line.slice(3).trim());
+    .map(parsePorcelainPath);
   const offContent = dirtyFiles.filter((file) => !file.startsWith("content/"));
   if (offContent.length > 0) {
     return {

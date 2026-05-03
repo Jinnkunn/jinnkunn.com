@@ -130,6 +130,10 @@ function gitValue(args) {
   return run("git", args, { capture: true, label: `git ${args.join(" ")}` }).trim();
 }
 
+function gitOutput(args) {
+  return run("git", args, { capture: true, label: `git ${args.join(" ")}` });
+}
+
 function parsePorcelainPath(line) {
   const path = String(line || "").slice(3).trim();
   const renameArrow = " -> ";
@@ -137,7 +141,7 @@ function parsePorcelainPath(line) {
 }
 
 function readDirtyFiles() {
-  const status = gitValue(["status", "--porcelain"]);
+  const status = gitOutput(["status", "--porcelain"]);
   return status
     ? status.split(/\r?\n/).filter(Boolean).map(parsePorcelainPath)
     : [];
@@ -150,7 +154,7 @@ function isOnlyProductionHistoryDirty(files) {
 function readGitState() {
   const sha = gitValue(["rev-parse", "HEAD"]);
   const branch = gitValue(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const status = gitValue(["status", "--porcelain"]);
+  const status = gitOutput(["status", "--porcelain"]);
   return {
     sha,
     branch: branch === "HEAD" ? "detached" : branch,
