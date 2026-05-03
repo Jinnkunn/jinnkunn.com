@@ -51,6 +51,30 @@ async function checkHttp({ name, url, expectedStatus, locationIncludes }) {
   console.log(`[verify-cloudflare] ${name}: ${response.status}`);
 }
 
+function isSiteLoginRedirect(location) {
+  return (
+    location.includes("/api/auth/signin") ||
+    location.includes("/site-admin/login")
+  );
+}
+
+async function checkStagingLoginRedirect({ name, url }) {
+  const response = await fetch(url, { redirect: "manual", cache: "no-store" });
+  const location = response.headers.get("location") || "";
+  assert(response.status === 302, `${name} returned wrong status`, {
+    url,
+    status: response.status,
+    expectedStatus: 302,
+    location,
+  });
+  assert(isSiteLoginRedirect(location), `${name} redirect target drifted`, {
+    url,
+    location,
+    expectedLocationIncludes: ["/api/auth/signin", "/site-admin/login"],
+  });
+  console.log(`[verify-cloudflare] ${name}: ${response.status}`);
+}
+
 function normalizeGithubLogin(value) {
   return String(value || "").trim().replace(/^@+/, "").toLowerCase();
 }
@@ -87,7 +111,7 @@ async function checkAuthenticatedStaticShell({ name, url, contains }) {
     headers: { cookie },
   });
   const location = response.headers.get("location") || "";
-  if (response.status === 302 && location.includes("/site-admin/login")) {
+  if (response.status === 302 && isSiteLoginRedirect(location)) {
     if (process.env.VERIFY_CF_REQUIRE_STAGING_SYNTHETIC_AUTH === "1") {
       throw new Error(`${name} synthetic session was not accepted by staging`);
     }
@@ -148,17 +172,13 @@ async function verifyStaging() {
     ? configured
     : "https://staging.jinkunchen.com"
   ).replace(/\/+$/, "");
-  await checkHttp({
+  await checkStagingLoginRedirect({
     name: "staging /",
     url: `${origin}/`,
-    expectedStatus: 302,
-    locationIncludes: "/site-admin/login",
   });
-  await checkHttp({
+  await checkStagingLoginRedirect({
     name: "staging /blog",
     url: `${origin}/blog`,
-    expectedStatus: 302,
-    locationIncludes: "/site-admin/login",
   });
   await checkHttp({
     name: "staging /api/site-admin/status",
