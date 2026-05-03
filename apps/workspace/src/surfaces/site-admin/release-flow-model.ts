@@ -1,8 +1,6 @@
 import type { StatusPayload } from "./types";
 import { formatPendingDeploy, normalizeString } from "./utils";
 
-export const DEPLOY_ON_CONTENT_ACTIONS_URL =
-  "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/deploy-on-content.yml";
 export const RELEASE_FROM_DISPATCH_ACTIONS_URL =
   "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/release-from-dispatch.yml";
 
@@ -18,7 +16,7 @@ export const RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND =
 export const LEGACY_RELEASE_PROD_COMMAND = [
   'export CONFIRM_PRODUCTION_DEPLOY=1',
   'export CONFIRM_PRODUCTION_SHA="$(git rev-parse HEAD)"',
-  "PROMOTE_STAGING_CONTENT=1 npm run release:prod",
+  "npm run release:prod",
 ].join("\n");
 
 export type ReleaseFlowStage =
@@ -106,7 +104,6 @@ export function sourceStoreKind(source: StatusPayload["source"] | undefined): st
 export function sourceStoreLabel(source: StatusPayload["source"] | undefined): string {
   const kind = sourceStoreKind(source);
   if (kind === "db") return "D1 content database";
-  if (kind === "github") return "GitHub content branch";
   if (kind === "local") return "Local filesystem";
   return "Unknown source";
 }
@@ -152,29 +149,13 @@ export function deployCandidateTarget(source: StatusPayload["source"] | null | u
 export function releaseWorkflowRecovery(
   source: StatusPayload["source"] | null | undefined,
 ): ReleaseWorkflowRecovery {
-  const dbMode = sourceStoreKind(source ?? undefined) === "db";
   const target = deployCandidateTarget(source);
-  if (dbMode) {
-    return {
-      actionsUrl: RELEASE_FROM_DISPATCH_ACTIONS_URL,
-      command: RELEASE_STAGING_COMMAND,
-      copyLabel: "Copy local release command",
-      detail: `Staging needs a local Cloudflare release for ${target}.`,
-      fallbackLabel: "GitHub dispatch fallback",
-      kind: "local-cloudflare",
-      label: "Local Cloudflare release",
-      openLabel: "Open GitHub fallback",
-      script: RELEASE_STAGING_SCRIPT,
-      waitText:
-        "Run npm run release:staging on this Mac, then recheck. Use GitHub Actions only as a fallback.",
-    };
-  }
   return {
-    actionsUrl: DEPLOY_ON_CONTENT_ACTIONS_URL,
+    actionsUrl: RELEASE_FROM_DISPATCH_ACTIONS_URL,
     command: RELEASE_STAGING_COMMAND,
     copyLabel: "Copy local release command",
-    detail: `Staging needs a rebuilt Worker candidate for ${target}.`,
-    fallbackLabel: "Deploy (auto) fallback",
+    detail: `Staging needs a local Cloudflare release for ${target}.`,
+    fallbackLabel: "GitHub dispatch fallback",
     kind: "local-cloudflare",
     label: "Local Cloudflare release",
     openLabel: "Open GitHub fallback",

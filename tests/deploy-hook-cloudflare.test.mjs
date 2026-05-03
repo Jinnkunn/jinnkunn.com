@@ -184,12 +184,12 @@ test("deploy-hook cloudflare: refuses stale latest worker version metadata", asy
   assert.equal(deploymentCalls, 0);
 });
 
-test("deploy-hook cloudflare: prefers staging worker name on staging source branch", async (t) => {
+test("deploy-hook cloudflare: prefers staging worker name when CLOUDFLARE_DEPLOY_ENV=staging", async (t) => {
   withCleanDeployEnv(t, {
     DEPLOY_PROVIDER: "cloudflare",
     CLOUDFLARE_ACCOUNT_ID: "acc-1",
     CLOUDFLARE_API_TOKEN: "cf-token",
-    SITE_ADMIN_REPO_BRANCH: "site-admin-staging",
+    CLOUDFLARE_DEPLOY_ENV: "staging",
     CLOUDFLARE_WORKER_NAME_STAGING: "site-worker-staging",
     CLOUDFLARE_WORKER_NAME_PRODUCTION: "site-worker-production",
     CLOUDFLARE_WORKER_NAME: null,

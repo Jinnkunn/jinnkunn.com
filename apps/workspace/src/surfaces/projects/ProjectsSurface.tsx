@@ -22,6 +22,11 @@ import {
 } from "../../modules/projects/model";
 import { notesCreate, notesUpdate } from "../../modules/notes/api";
 import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
+import {
   todosCreate,
   todosList,
   todosListByProject,
@@ -38,7 +43,7 @@ import {
   WorkspaceSurfaceFrame,
 } from "../../ui/primitives";
 import { noteNavId } from "../notes/tree";
-import { todoIdFromNavItem } from "../todos/nav";
+import { todoIdFromNavItem, todoNavId } from "../todos/nav";
 import { ProjectDetailView } from "./ProjectDetail";
 import { ProjectsHome, ProjectsListView } from "./ProjectsHome";
 import {
@@ -443,6 +448,26 @@ export function ProjectsSurface() {
     }
   };
 
+  const createQuickProjectTodo = async (project: ProjectRow) => {
+    setNotice(null);
+    try {
+      const row = await todosCreate({
+        projectId: project.id,
+        title: "New next action",
+      });
+      setProjectTodos((current) =>
+        selectedProject?.id === project.id ? mergeTodo(current, row) : current,
+      );
+      setAllTodos((current) => mergeTodo(current, row));
+      await refreshProjects();
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text: `Failed to create todo: ${formatProjectsError(error)}`,
+      });
+    }
+  };
+
   const toggleTodo = async (todo: TodoRow) => {
     const optimistic = {
       ...todo,
@@ -533,6 +558,66 @@ export function ProjectsSurface() {
     }
   };
 
+  const openProject = (project: ProjectRow) => {
+    setActiveNavItemId(projectNavId(project.id));
+  };
+
+  const showProjectContextMenu = (project: ProjectRow) => {
+    const archived = project.archivedAt !== null;
+    const entries = [
+      {
+        label: "Open project",
+        run: () => openProject(project),
+      },
+      {
+        label: project.pinnedAt ? "Unpin project" : "Pin project",
+        run: () =>
+          void updateProject(project, { pinned: project.pinnedAt === null }),
+      },
+      CONTEXT_MENU_SEPARATOR,
+      {
+        label: "Set Active",
+        enabled: project.status !== "active",
+        run: () => void updateProject(project, { status: "active" }),
+      },
+      {
+        label: "Set Paused",
+        enabled: project.status !== "paused",
+        run: () => void updateProject(project, { status: "paused" }),
+      },
+      {
+        label: "Set Completed",
+        enabled: project.status !== "completed",
+        run: () => void updateProject(project, { status: "completed" }),
+      },
+      CONTEXT_MENU_SEPARATOR,
+      {
+        label: "New next action",
+        enabled: !archived,
+        run: () => void createQuickProjectTodo(project),
+      },
+      {
+        label: "Create project note",
+        run: () => void createProjectNote(project),
+      },
+      {
+        label: "Copy title",
+        run: () => copyTextToClipboard(project.title),
+      },
+      CONTEXT_MENU_SEPARATOR,
+      archived
+        ? {
+            label: "Restore project",
+            run: () => void restoreProject(project),
+          }
+        : {
+            label: "Archive project",
+            run: () => void archiveProject(project),
+          },
+    ] as Parameters<typeof showContextMenuWithActions>[0];
+    showContextMenuWithActions(entries);
+  };
+
   const activeProjects = filterProjects(projects, "active");
   const visibleProjects =
     view === "archived" ||
@@ -604,6 +689,9 @@ export function ProjectsSurface() {
           onDeleteLink={(link) => void deleteLink(link)}
           onLinkDraftChange={setLinkDraft}
           onOpenNote={(noteId) => selectWorkspaceNavItem("notes", noteNavId(noteId))}
+          onOpenTodo={(todo) =>
+            selectWorkspaceNavItem("todos", todoNavId(todo.id))
+          }
           onRestore={() => void restoreProject(selectedProject)}
           onSetNewTodoTitle={setNewTodoTitle}
           onToggleTodo={(todo) => void toggleTodo(todo)}
@@ -613,7 +701,8 @@ export function ProjectsSurface() {
         />
       ) : view === "home" ? (
         <ProjectsHome
-          onOpenProject={(project) => setActiveNavItemId(projectNavId(project.id))}
+          onOpenProject={openProject}
+          onProjectContextMenu={showProjectContextMenu}
           projects={projects}
           todos={allTodos}
         />
@@ -624,7 +713,8 @@ export function ProjectsSurface() {
               ? "No archived projects"
               : `No ${viewTitle(view).toLowerCase()} projects`
           }
-          onOpenProject={(project) => setActiveNavItemId(projectNavId(project.id))}
+          onOpenProject={openProject}
+          onProjectContextMenu={showProjectContextMenu}
           onRestore={(project) => void restoreProject(project)}
           projects={visibleProjects}
           todos={allTodos}

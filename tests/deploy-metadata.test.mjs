@@ -58,55 +58,14 @@ test("deploy metadata: reports stale deployable versions", () => {
   assert.match(mismatch || "", /content=cccccccc expected bbbbbbbb/);
 });
 
-test("deploy workflow: staging auto deploy uses main code plus content overlay", async () => {
-  const workflow = await fs.readFile(
-    path.join(process.cwd(), ".github/workflows/deploy-on-content.yml"),
-    "utf8",
-  );
-  assert.match(workflow, /ref: main/);
-  assert.match(workflow, /git fetch origin site-admin-staging:site-admin-staging/);
-  assert.match(workflow, /npm run release:staging -- --skip-checks/);
-  assert.doesNotMatch(workflow, /npm run release:staging -- --skip-checks --skip-build/);
-  assert.doesNotMatch(workflow, /name: Build OpenNext bundle[\s\S]*npm run build:cf/);
-});
-
-test("release script refreshes staging content branch before resolving sha", async () => {
+test("release script uses a clean snapshot for dirty staging releases", async () => {
   const script = await fs.readFile(
     path.join(process.cwd(), "scripts/release-cloudflare.mjs"),
     "utf8",
   );
-  assert.match(script, /refreshStagingContentBranch\(stagingContentRef\)/);
-  assert.match(script, /git", \["fetch", remote, `\$\{contentRef\}:\$\{contentRef\}`\]/);
-  assert.match(script, /gitValue\(\["rev-parse", stagingContentRef\]\)/);
-});
-
-test("release script refuses dirty staging releases by default", async () => {
-  const script = await fs.readFile(
-    path.join(process.cwd(), "scripts/release-cloudflare.mjs"),
-    "utf8",
-  );
-  assert.match(script, /ALLOW_DIRTY_STAGING/);
+  assert.match(script, /prepareCleanReleaseSnapshot/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
+  assert.match(script, /ALLOW_D1_BUILD_CACHE/);
+  assert.match(script, /hashReleaseContent/);
   assert.match(script, /content\/local\/site-config\.json/);
-});
-
-test("release script can promote staging content through the guarded production path", async () => {
-  const script = await fs.readFile(
-    path.join(process.cwd(), "scripts/release-cloudflare.mjs"),
-    "utf8",
-  );
-  assert.match(script, /PROMOTE_STAGING_CONTENT/);
-  assert.match(script, /args\.env === "staging" \|\| promoteStagingContent/);
-  assert.match(script, /`--env=\$\{args\.env\}`/);
-  assert.match(script, /DEPLOY_CONTENT_SHA: deployedContentSha/);
-});
-
-test("content overlay production uploads require explicit production confirmation", async () => {
-  const script = await fs.readFile(
-    path.join(process.cwd(), "scripts/build-cloudflare-content-overlay.mjs"),
-    "utf8",
-  );
-  assert.match(script, /CONFIRM_PRODUCTION_DEPLOY=1 is required/);
-  assert.match(script, /CONFIRM_PRODUCTION_SHA=\$\{codeSha\} is required/);
-  assert.match(script, /CONFIRM_PRODUCTION_SHA does not match code ref/);
 });

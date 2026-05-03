@@ -762,7 +762,6 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
 
   assert.match(releaseFlow, /export function deriveReleaseFlow/);
   assert.match(releaseFlow, /RELEASE_FROM_DISPATCH_ACTIONS_URL/);
-  assert.match(releaseFlow, /DEPLOY_ON_CONTENT_ACTIONS_URL/);
   assert.match(publishButton, /deriveSiteHealth/);
   assert.match(publishButton, /contentDirty/);
   assert.match(publishButton, /outbox\.status\.pending/);

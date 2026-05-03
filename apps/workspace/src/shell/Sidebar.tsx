@@ -34,6 +34,8 @@ interface SidebarProps {
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onOpenSettings: () => void;
   onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
+  onRemoveRecent: (entry: SidebarRecentItem) => void;
+  onClearRecent: (surfaceId?: string) => void;
   onToggleFavorite: (entry: SidebarFavorite) => void;
   isFavorite: (surfaceId: string, itemId: string) => boolean;
   /** Drop handler for drag-reparent. Sidebar fires this when a row
@@ -86,6 +88,7 @@ const SIDEBAR_NAV_ITEM_DRAG_TYPE = "application/x-sidebar-nav-item";
 const WORKSPACE_ENTITY_DRAG_TYPE = "application/x-workspace-entity";
 const STANDARD_TEXT_DRAG_TYPE = "text/plain";
 const FIXED_APP_RAIL_SURFACE_ID = "workspace";
+type ContextMenuEntries = Parameters<typeof showContextMenuWithActions>[0];
 // Per-context-section collapse state. Currently keyed for "recent" and
 // "favorites"; the surface tree under "Navigation" is intentionally not
 // collapsible at the section level — that's the primary nav and hiding
@@ -503,6 +506,17 @@ function renderNavItem({
                   label: treeOpen ? "Collapse" : "Expand",
                   run: () => toggleItemTree(treeKey),
                 },
+                item.orderable && onReorderNavItem && CONTEXT_MENU_SEPARATOR,
+                item.orderable && onReorderNavItem && {
+                  label: "Move up",
+                  enabled: siblingIndex > 0,
+                  run: () => onReorderNavItem(surfaceId, item.id, "up"),
+                },
+                item.orderable && onReorderNavItem && {
+                  label: "Move down",
+                  enabled: siblingIndex < siblingCount - 1,
+                  run: () => onReorderNavItem(surfaceId, item.id, "down"),
+                },
                 hasFavoriteAction && CONTEXT_MENU_SEPARATOR,
                 hasFavoriteAction && {
                   label: pinned ? "Unpin from favorites" : "Pin to favorites",
@@ -523,9 +537,7 @@ function renderNavItem({
                   label: "Rename…",
                   run: () => onStartRename(item.id),
                 },
-              ].filter(Boolean) as Parameters<
-                typeof showContextMenuWithActions
-              >[0];
+              ].filter(Boolean) as ContextMenuEntries;
               showContextMenuWithActions(entries);
             }}
             aria-current={selected ? "page" : undefined}
@@ -708,6 +720,8 @@ export function Sidebar({
   onSelectNavItem,
   onOpenSettings,
   onRecordRecent,
+  onRemoveRecent,
+  onClearRecent,
   onToggleFavorite,
   isFavorite,
   onMoveNavItem,
@@ -866,6 +880,22 @@ export function Sidebar({
               Boolean(onReorderSurface) &&
               !surface.disabled &&
               surface.id !== FIXED_APP_RAIL_SURFACE_ID;
+            const reorderableSurfaces = surfaces.filter(
+              (entry) =>
+                !entry.disabled && entry.id !== FIXED_APP_RAIL_SURFACE_ID,
+            );
+            const surfaceReorderIndex = reorderableSurfaces.findIndex(
+              (entry) => entry.id === surface.id,
+            );
+            const previousSurface =
+              surfaceReorderIndex > 0
+                ? reorderableSurfaces[surfaceReorderIndex - 1]
+                : null;
+            const nextSurface =
+              surfaceReorderIndex >= 0 &&
+              surfaceReorderIndex < reorderableSurfaces.length - 1
+                ? reorderableSurfaces[surfaceReorderIndex + 1]
+                : null;
             const dropEdge =
               surfaceDropTarget?.surfaceId === surface.id
                 ? surfaceDropTarget.edge
@@ -959,6 +989,48 @@ export function Sidebar({
                 }
                 onDragEnd={reorderable ? endAppSurfaceDrag : undefined}
                 onClick={() => onSelectSurface(surface.id)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  const entries = [
+                    !surface.disabled && {
+                      label: "Open",
+                      run: () => onSelectSurface(surface.id),
+                    },
+                    reorderable && CONTEXT_MENU_SEPARATOR,
+                    reorderable && {
+                      label: "Move up",
+                      enabled: Boolean(previousSurface),
+                      run: () => {
+                        if (previousSurface) {
+                          onReorderSurface?.(
+                            surface.id,
+                            previousSurface.id,
+                            "before",
+                          );
+                        }
+                      },
+                    },
+                    reorderable && {
+                      label: "Move down",
+                      enabled: Boolean(nextSurface),
+                      run: () => {
+                        if (nextSurface) {
+                          onReorderSurface?.(
+                            surface.id,
+                            nextSurface.id,
+                            "after",
+                          );
+                        }
+                      },
+                    },
+                    CONTEXT_MENU_SEPARATOR,
+                    {
+                      label: "Workspace settings",
+                      run: onOpenSettings,
+                    },
+                  ].filter(Boolean) as ContextMenuEntries;
+                  showContextMenuWithActions(entries);
+                }}
                 disabled={surface.disabled}
                 title={surface.description ?? surface.title}
                 aria-label={surface.title}
@@ -1054,6 +1126,48 @@ export function Sidebar({
                             onSelectNavItem(recent.surfaceId, recent.itemId);
                           }
                         }
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          const pinned = isFavorite(
+                            recent.surfaceId,
+                            recent.itemId,
+                          );
+                          const favoriteEntry = {
+                            surfaceId: recent.surfaceId,
+                            itemId: recent.itemId,
+                            label: recent.label,
+                          };
+                          const entries = [
+                            {
+                              label: "Open",
+                              run: () => {
+                                onRecordRecent({
+                                  itemId: recent.itemId,
+                                  label: recent.label,
+                                  surfaceId: recent.surfaceId,
+                                  surfaceTitle: recent.surfaceTitle,
+                                });
+                                onSelectNavItem(recent.surfaceId, recent.itemId);
+                              },
+                            },
+                            {
+                              label: pinned
+                                ? "Unpin from favorites"
+                                : "Pin to favorites",
+                              run: () => onToggleFavorite(favoriteEntry),
+                            },
+                            CONTEXT_MENU_SEPARATOR,
+                            {
+                              label: "Remove from Recent",
+                              run: () => onRemoveRecent(recent),
+                            },
+                            {
+                              label: `Clear ${recent.surfaceTitle} Recent`,
+                              run: () => onClearRecent(recent.surfaceId),
+                            },
+                          ] as ContextMenuEntries;
+                          showContextMenuWithActions(entries);
+                        }}
                         aria-current={selected ? "page" : undefined}
                       >
                         <Clock3
@@ -1135,6 +1249,32 @@ export function Sidebar({
                             onSelectNavItem(fav.surfaceId, fav.itemId);
                           }
                         }
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          const surface = surfaces.find(
+                            (entry) => entry.id === fav.surfaceId,
+                          );
+                          const entries = [
+                            {
+                              label: "Open",
+                              run: () => {
+                                onRecordRecent({
+                                  itemId: fav.itemId,
+                                  label: fav.label,
+                                  surfaceId: fav.surfaceId,
+                                  surfaceTitle: surface?.title ?? fav.surfaceId,
+                                });
+                                onSelectNavItem(fav.surfaceId, fav.itemId);
+                              },
+                            },
+                            CONTEXT_MENU_SEPARATOR,
+                            {
+                              label: "Unpin from favorites",
+                              run: () => onToggleFavorite(fav),
+                            },
+                          ] as ContextMenuEntries;
+                          showContextMenuWithActions(entries);
+                        }}
                         aria-current={selected ? "page" : undefined}
                       >
                         <span className="sidebar-favorites__star" aria-hidden="true">

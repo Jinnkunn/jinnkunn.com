@@ -12,6 +12,11 @@ import {
   UserRoundCheck,
 } from "lucide-react";
 
+import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import { noteNavId } from "../notes/tree";
 import {
@@ -674,6 +679,73 @@ export function ContactsSurface() {
     setSelectedId(id);
   };
 
+  const showContactContextMenu = (contact: ContactRow) => {
+    const archived = contact.archivedAt !== null;
+    const email = primaryMethod(contact.emails)?.value ?? "";
+    const phone = primaryMethod(contact.phones)?.value ?? "";
+    const entries = [
+      {
+        label: "Open contact",
+        run: () => openContact(contact.id),
+      },
+      !archived && {
+        label: contact.pinnedAt ? "Unpin contact" : "Pin contact",
+        run: () =>
+          void handleUpdate(contact, {
+            pinnedAt: contact.pinnedAt === null ? Date.now() : null,
+          }),
+      },
+      !archived && CONTEXT_MENU_SEPARATOR,
+      !archived && {
+        label: "Follow up today",
+        run: () => void handleUpdate(contact, { nextFollowUpAt: Date.now() }),
+      },
+      !archived && {
+        label: "Follow up in 7 days",
+        run: () =>
+          void handleUpdate(contact, {
+            nextFollowUpAt: Date.now() + 7 * DAY_MS,
+          }),
+      },
+      !archived && {
+        label: "Follow up in 30 days",
+        run: () =>
+          void handleUpdate(contact, {
+            nextFollowUpAt: Date.now() + 30 * DAY_MS,
+          }),
+      },
+      !archived && {
+        label: "Clear follow-up",
+        enabled: contact.nextFollowUpAt !== null,
+        run: () => void handleUpdate(contact, { nextFollowUpAt: null }),
+      },
+      CONTEXT_MENU_SEPARATOR,
+      email && {
+        label: "Copy email",
+        run: () => copyTextToClipboard(email),
+      },
+      phone && {
+        label: "Copy phone",
+        run: () => copyTextToClipboard(phone),
+      },
+      {
+        label: "Copy name",
+        run: () => copyTextToClipboard(contact.displayName),
+      },
+      CONTEXT_MENU_SEPARATOR,
+      archived
+        ? {
+            label: "Restore contact",
+            run: () => void handleRestore(contact),
+          }
+        : {
+            label: "Archive contact",
+            run: () => void handleArchive(contact),
+          },
+    ].filter(Boolean) as Parameters<typeof showContextMenuWithActions>[0];
+    showContextMenuWithActions(entries);
+  };
+
   const renderSplit = () => {
     if (loading && contacts.length === 0) {
       return <WorkspaceEmptyState className="contacts-empty" title="Loading contacts" />;
@@ -694,6 +766,7 @@ export function ContactsSurface() {
           selectedId={selectedId}
           now={nowMs}
           onSelect={setSelectedId}
+          onContextMenu={showContactContextMenu}
         />
         {selectedContact && selectedContact.archivedAt === null ? (
           <ContactDetail
@@ -772,6 +845,7 @@ export function ContactsSurface() {
         {filter === "archived" ? (
           <ArchivedPane
             contacts={visibleContacts}
+            onContextMenu={showContactContextMenu}
             onRestore={(contact) => void handleRestore(contact)}
           />
         ) : isSearching || shouldRenderSplit ? (
@@ -781,6 +855,7 @@ export function ContactsSurface() {
             birthdays={birthdays}
             contactsById={contacts}
             onSelect={openContact}
+            onContextMenu={showContactContextMenu}
           />
         ) : (
           <ContactsHome
@@ -790,6 +865,7 @@ export function ContactsSurface() {
             birthdays={birthdays}
             now={nowMs}
             onSelect={openContact}
+            onContextMenu={showContactContextMenu}
             onOpenFilter={setActiveNavItemId}
             onAdd={() => setShowNewContactDialog(true)}
           />
@@ -844,11 +920,13 @@ function ContactList({
   selectedId,
   now,
   onSelect,
+  onContextMenu,
 }: {
   contacts: ContactRow[];
   selectedId: string | null;
   now: number;
   onSelect: (id: string) => void;
+  onContextMenu: (contact: ContactRow) => void;
 }) {
   return (
     <ul className="contacts-list" role="listbox">
@@ -868,6 +946,10 @@ function ContactList({
               data-active={contact.id === selectedId ? "true" : undefined}
               className="contacts-list__row"
               onClick={() => onSelect(contact.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                onContextMenu(contact);
+              }}
             >
               <span className="contacts-list__avatar" aria-hidden="true">
                 {getInitials(contact.displayName)}
@@ -899,6 +981,7 @@ function ContactsHome({
   birthdays,
   now,
   onSelect,
+  onContextMenu,
   onOpenFilter,
   onAdd,
 }: {
@@ -908,6 +991,7 @@ function ContactsHome({
   birthdays: UpcomingBirthday[];
   now: number;
   onSelect: (id: string) => void;
+  onContextMenu: (contact: ContactRow) => void;
   onOpenFilter: (id: string) => void;
   onAdd: () => void;
 }) {
@@ -960,6 +1044,7 @@ function ContactsHome({
             empty="Nothing due."
             meta={(contact) => formatFollowUp(contact.nextFollowUpAt, now)}
             onSelect={onSelect}
+            onContextMenu={onContextMenu}
           />
         </HomePanel>
         <HomePanel
@@ -973,6 +1058,7 @@ function ContactsHome({
             empty="No scheduled follow-ups."
             meta={(contact) => formatFollowUp(contact.nextFollowUpAt, now)}
             onSelect={onSelect}
+            onContextMenu={onContextMenu}
           />
         </HomePanel>
         <HomePanel
@@ -991,6 +1077,14 @@ function ContactsHome({
                     type="button"
                     className="contacts-mini-row"
                     onClick={() => onSelect(birthday.contactId)}
+                    onContextMenu={(event) => {
+                      const contact = contacts.find(
+                        (entry) => entry.id === birthday.contactId,
+                      );
+                      if (!contact) return;
+                      event.preventDefault();
+                      onContextMenu(contact);
+                    }}
                   >
                     <span className="contacts-list__avatar" aria-hidden="true">
                       {getInitials(birthday.displayName)}
@@ -1011,6 +1105,7 @@ function ContactsHome({
             empty="No interactions yet."
             meta={(contact) => formatLastInteraction(contact.lastInteractionAt)}
             onSelect={onSelect}
+            onContextMenu={onContextMenu}
           />
         </HomePanel>
       </div>
@@ -1061,11 +1156,13 @@ function MiniContactList({
   empty,
   meta,
   onSelect,
+  onContextMenu,
 }: {
   contacts: ContactRow[];
   empty: string;
   meta: (contact: ContactRow) => string;
   onSelect: (id: string) => void;
+  onContextMenu: (contact: ContactRow) => void;
 }) {
   return (
     <ul className="contacts-mini-list">
@@ -1078,6 +1175,10 @@ function MiniContactList({
               type="button"
               className="contacts-mini-row"
               onClick={() => onSelect(contact.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                onContextMenu(contact);
+              }}
             >
               <span className="contacts-list__avatar" aria-hidden="true">
                 {getInitials(contact.displayName)}
@@ -1511,7 +1612,25 @@ function ContactDetail({
             <li className="contacts-detail__empty">No interactions</li>
           ) : (
             interactions.map((entry) => (
-              <li key={entry.id} className="contacts-detail__interaction">
+              <li
+                key={entry.id}
+                className="contacts-detail__interaction"
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  showContextMenuWithActions([
+                    {
+                      label: "Copy note",
+                      enabled: Boolean(entry.note),
+                      run: () => copyTextToClipboard(entry.note ?? ""),
+                    },
+                    CONTEXT_MENU_SEPARATOR,
+                    {
+                      label: "Delete interaction",
+                      run: () => onDeleteInteraction(entry),
+                    },
+                  ]);
+                }}
+              >
                 <div>
                   <strong>{entry.kind}</strong>
                   <span>
@@ -1552,6 +1671,23 @@ function ContactDetail({
                     type="button"
                     className="contacts-detail__backlink"
                     onClick={() => onOpenNote(link.noteId)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      showContextMenuWithActions([
+                        {
+                          label: "Open note",
+                          run: () => onOpenNote(link.noteId),
+                        },
+                        {
+                          label: "Copy note title",
+                          run: () =>
+                            copyTextToClipboard(
+                              link.noteTitle || "(Untitled note)",
+                            ),
+                        },
+                      ]);
+                    }}
                   >
                     <span aria-hidden="true">
                       {link.noteIcon ?? <StickyNote {...iconProps(15)} />}
@@ -1597,10 +1733,12 @@ function BirthdayPane({
   birthdays,
   contactsById,
   onSelect,
+  onContextMenu,
 }: {
   birthdays: UpcomingBirthday[];
   contactsById: ContactRow[];
   onSelect: (id: string) => void;
+  onContextMenu: (contact: ContactRow) => void;
 }) {
   if (birthdays.length === 0) {
     return (
@@ -1622,6 +1760,11 @@ function BirthdayPane({
                 type="button"
                 className="contacts-birthdays__row"
                 onClick={() => onSelect(b.contactId)}
+                onContextMenu={(event) => {
+                  if (!contact) return;
+                  event.preventDefault();
+                  onContextMenu(contact);
+                }}
               >
                 <span className="contacts-list__avatar" aria-hidden="true">
                   {getInitials(b.displayName)}
@@ -1652,9 +1795,11 @@ function BirthdayPane({
 
 function ArchivedPane({
   contacts,
+  onContextMenu,
   onRestore,
 }: {
   contacts: ContactRow[];
+  onContextMenu: (contact: ContactRow) => void;
   onRestore: (contact: ContactRow) => void;
 }) {
   if (contacts.length === 0) {
@@ -1667,7 +1812,13 @@ function ArchivedPane({
       <ul className="contacts-archived__list">
         {contacts.map((contact) => (
           <li key={contact.id}>
-            <div className="contacts-archived__row">
+            <div
+              className="contacts-archived__row"
+              onContextMenu={(event) => {
+                event.preventDefault();
+                onContextMenu(contact);
+              }}
+            >
               <span className="contacts-list__avatar" aria-hidden="true">
                 {getInitials(contact.displayName)}
               </span>

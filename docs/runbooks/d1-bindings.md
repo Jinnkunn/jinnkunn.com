@@ -5,9 +5,9 @@
 - **Staging D1 is the source of truth** for every operator-edited file
   (nav, page bodies, blog posts, link audit, etc.).
 - **Production D1 exists but is unused.** Both staging *and* production
-  builds dump from staging D1 (pinned in
-  `.github/workflows/release-from-dispatch.yml`); production D1 receives
-  no writes through any operator path.
+  builds dump from staging D1 (`scripts/release-cloudflare.mjs` for the
+  local path, `.github/workflows/release-from-dispatch.yml` for fallback);
+  production D1 receives no writes through any operator path.
 - **We don't delete production D1** — leaving it bound costs $0 and
   removing the binding would break wrangler config without any benefit.
   Just don't trust its contents for anything.
@@ -39,9 +39,17 @@ operator just looked at on staging.
 
 ## Guardrails
 
-- `tests/release-from-dispatch-contract.test.mjs` re-asserts the pin and
-  fails any future change that re-binds `SITE_ADMIN_DB_ENV` to
-  `TARGET_ENV`.
+- `scripts/release-cloudflare.mjs` forces build-time `SITE_ADMIN_DB_ENV=staging`
+  for both local staging and production releases.
+- The release script records a post-build `content=` snapshot hash in Worker
+  metadata. This is what lets production preflight detect content-only edits
+  even when `code=` is unchanged.
+- `build:cf` artifact reuse is disabled by default because staging D1 can
+  change without a git commit. `ALLOW_D1_BUILD_CACHE=1` is an explicit
+  operator override, not the routine path.
+- `tests/release-from-dispatch-contract.test.mjs` re-asserts the fallback
+  workflow pin and fails any future change that re-binds
+  `SITE_ADMIN_DB_ENV` to `TARGET_ENV`.
 - `.github/workflows/snapshot-staging-d1.yml` is manual-only. Dispatch it
   when staging D1 needs a git recovery/audit snapshot; the weekday
   schedule stays disabled to avoid routine Actions minutes.
@@ -78,7 +86,7 @@ Until then: leave it.
 ## See also
 
 - `docs/runbooks/production-promotion.md` — the full promote flow
-- `lib/server/promote-to-production-service.ts` — preflight + GitHub
-  fallback service used by the workspace's production promotion panel
+- `lib/server/promote-to-production-service.ts` — Cloudflare preflight +
+  GitHub fallback URL service used by the workspace's production promotion panel
 - `scripts/dump-content-from-db.mjs` — the dump script (with `--diff-only`)
 - `tests/release-from-dispatch-contract.test.mjs` — workflow guardrails

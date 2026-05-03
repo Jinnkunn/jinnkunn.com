@@ -33,6 +33,11 @@ import {
 import type { DashboardActionContribution } from "../modules/types";
 import type { SurfaceDefinition } from "../surfaces/types";
 import { WorkspaceEmptyState } from "../ui/primitives";
+import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "./contextMenu";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import type { WorkspaceEvent } from "./workspaceEvents";
@@ -44,8 +49,11 @@ interface WorkspaceDashboardProps {
   onClearEvents: () => void;
   onOpenCommandPalette: () => void;
   onRecordRecent: (entry: Omit<SidebarRecentItem, "visitedAt">) => void;
+  onRemoveRecent: (entry: SidebarRecentItem) => void;
   onSelectNavItem: (surfaceId: string, navItemId: string) => void;
   onSelectSurface: (id: string) => void;
+  onToggleFavorite: (entry: SidebarFavorite) => void;
+  isFavorite: (surfaceId: string, itemId: string) => boolean;
   recentItems: readonly SidebarRecentItem[];
   surfaces: readonly SurfaceDefinition[];
 }
@@ -120,8 +128,11 @@ export function WorkspaceDashboard({
   onClearEvents,
   onOpenCommandPalette,
   onRecordRecent,
+  onRemoveRecent,
   onSelectNavItem,
   onSelectSurface,
+  onToggleFavorite,
+  isFavorite,
   recentItems,
   surfaces,
 }: WorkspaceDashboardProps) {
@@ -199,9 +210,22 @@ export function WorkspaceDashboard({
                     <button
                       type="button"
                       className="workspace-dashboard__action"
-                      key={action.id}
-                      onClick={() => openAction(action)}
-                    >
+                              key={action.id}
+                              onClick={() => openAction(action)}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                showContextMenuWithActions([
+                                  {
+                                    label: "Open",
+                                    run: () => openAction(action),
+                                  },
+                                  {
+                                    label: "Copy label",
+                                    run: () => copyTextToClipboard(action.label),
+                                  },
+                                ]);
+                              }}
+                            >
                       <DashboardIcon
                         fallback={
                           <Zap
@@ -242,6 +266,40 @@ export function WorkspaceDashboard({
                             surfaceTitle: item.surfaceTitle,
                           });
                           onSelectNavItem(item.surfaceId, item.itemId);
+                        }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          const favoriteEntry = {
+                            itemId: item.itemId,
+                            label: item.label,
+                            surfaceId: item.surfaceId,
+                          };
+                          const pinned = isFavorite(item.surfaceId, item.itemId);
+                          showContextMenuWithActions([
+                            {
+                              label: "Open",
+                              run: () => {
+                                onRecordRecent({
+                                  itemId: item.itemId,
+                                  label: item.label,
+                                  surfaceId: item.surfaceId,
+                                  surfaceTitle: item.surfaceTitle,
+                                });
+                                onSelectNavItem(item.surfaceId, item.itemId);
+                              },
+                            },
+                            {
+                              label: pinned
+                                ? "Unpin from favorites"
+                                : "Pin to favorites",
+                              run: () => onToggleFavorite(favoriteEntry),
+                            },
+                            CONTEXT_MENU_SEPARATOR,
+                            {
+                              label: "Remove from Recent",
+                              run: () => onRemoveRecent(item),
+                            },
+                          ]);
                         }}
                       >
                         <DashboardIcon
@@ -287,6 +345,31 @@ export function WorkspaceDashboard({
                           });
                           onSelectNavItem(item.surfaceId, item.itemId);
                         }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          showContextMenuWithActions([
+                            {
+                              label: "Open",
+                              run: () => {
+                                onRecordRecent({
+                                  itemId: item.itemId,
+                                  label: item.label,
+                                  surfaceId: item.surfaceId,
+                                  surfaceTitle: surfaceTitle(
+                                    surfaces,
+                                    item.surfaceId,
+                                  ),
+                                });
+                                onSelectNavItem(item.surfaceId, item.itemId);
+                              },
+                            },
+                            CONTEXT_MENU_SEPARATOR,
+                            {
+                              label: "Unpin from favorites",
+                              run: () => onToggleFavorite(item),
+                            },
+                          ]);
+                        }}
                       >
                         <DashboardIcon
                           fallback={
@@ -328,6 +411,24 @@ export function WorkspaceDashboard({
                       className="workspace-activity-list__item"
                       data-tone={event.tone}
                       key={event.id}
+                      onContextMenu={(menuEvent) => {
+                        menuEvent.preventDefault();
+                        showContextMenuWithActions([
+                          {
+                            label: "Copy activity",
+                            run: () =>
+                              copyTextToClipboard(
+                                [event.title, event.detail]
+                                  .filter(Boolean)
+                                  .join("\n"),
+                              ),
+                          },
+                          {
+                            label: "Clear all activity",
+                            run: onClearEvents,
+                          },
+                        ]);
+                      }}
                     >
                       <DashboardIcon
                         fallback={
@@ -473,6 +574,23 @@ function TodayUpcomingPanel({
     onSelectNavItem("todos", navItemId);
   };
 
+  const showItemContextMenu = (item: TodayUpcomingItem) => {
+    showContextMenuWithActions([
+      {
+        label: item.kind === "event" ? "Open in Calendar" : "Open in Todos",
+        run: () => openItem(item),
+      },
+      {
+        label: "Copy title",
+        run: () => copyTextToClipboard(item.title),
+      },
+      {
+        label: "Copy time",
+        run: () => copyTextToClipboard(item.timeLabel),
+      },
+    ]);
+  };
+
   return (
     <section className="workspace-dashboard__panel workspace-dashboard__panel--wide workspace-dashboard__panel--today">
       <div className="workspace-dashboard__panel-header">
@@ -491,6 +609,10 @@ function TodayUpcomingPanel({
               className="workspace-dashboard__next"
               data-tone={featuredItem.tone}
               onClick={() => openItem(featuredItem)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                showItemContextMenu(featuredItem);
+              }}
             >
               <span className="workspace-dashboard__next-kicker">
                 {featuredItem.timestamp <= renderNowMs + 2 * 60 * 60_000
@@ -506,16 +628,19 @@ function TodayUpcomingPanel({
               items={nowItems}
               label="Now"
               onOpenItem={openItem}
+              onContextMenu={showItemContextMenu}
             />
             <TimelineBucket
               items={nextItems}
               label="Next"
               onOpenItem={openItem}
+              onContextMenu={showItemContextMenu}
             />
             <TimelineBucket
               items={laterItems}
               label="Later"
               onOpenItem={openItem}
+              onContextMenu={showItemContextMenu}
             />
           </div>
         </>
@@ -533,10 +658,12 @@ function TimelineBucket({
   items,
   label,
   onOpenItem,
+  onContextMenu,
 }: {
   items: TodayUpcomingItem[];
   label: string;
   onOpenItem: (item: TodayUpcomingItem) => void;
+  onContextMenu: (item: TodayUpcomingItem) => void;
 }) {
   return (
     <section className="workspace-dashboard__today-bucket">
@@ -549,6 +676,10 @@ function TimelineBucket({
                 type="button"
                 data-tone={item.tone}
                 onClick={() => onOpenItem(item)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  onContextMenu(item);
+                }}
               >
                 <span className="workspace-dashboard__today-dot" aria-hidden="true" />
                 <span className="workspace-dashboard__today-body">

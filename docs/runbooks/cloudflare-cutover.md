@@ -1,74 +1,70 @@
-# Cloudflare Cutover Runbook (Staging First)
+# Cloudflare Release Runbook (Local First)
 
 ## 1. Scope
 
 - Runtime target: Cloudflare Workers (Workers-first).
-- Source of truth: GitHub (`content/filesystem/*`), not Notion.
+- Routine release path: local Cloudflare scripts from the Tauri workspace
+  or CLI.
+- Staging content source of truth: D1 (`SITE_ADMIN_STORAGE=db`).
+- Production content source: bundled `content/*` snapshot generated from
+  staging D1 during the production build.
 - Fixed semantics:
-  - `Save` writes source branch only.
-  - `Deploy` promotes active Worker deployment.
+  - `Save` writes staging D1.
+  - `Release staging` builds and deploys the staging Worker locally.
+  - `Promote production` builds from staging D1 and deploys production
+    locally.
+  - GitHub Actions `release-from-dispatch.yml` is fallback only.
 
 ## 2. Required Configuration
 
 - Shared app env:
-  - `SITE_ADMIN_STORAGE=github`
-  - `GITHUB_APP_ID`
-  - `GITHUB_APP_PRIVATE_KEY` (or `GITHUB_APP_PRIVATE_KEY_FILE`)
-  - `GITHUB_APP_INSTALLATION_ID`
-  - `SITE_ADMIN_REPO_OWNER`
-  - `SITE_ADMIN_REPO_NAME`
+  - staging Worker: `SITE_ADMIN_STORAGE=db`
+  - production Worker: `SITE_ADMIN_STORAGE=local`
   - `DEPLOY_TOKEN`
 - Cloudflare deploy mode:
   - `DEPLOY_PROVIDER=cloudflare` (recommended)
   - `CLOUDFLARE_ACCOUNT_ID`
   - `CLOUDFLARE_API_TOKEN` (Workers Scripts Write)
   - `CLOUDFLARE_WORKER_NAME`
-  - optional audit sink:
-    - `SITE_ADMIN_AUDIT_D1_DATABASE_ID` (D1 database id for admin audit log)
-- Branch binding:
-  - staging: `SITE_ADMIN_REPO_BRANCH=site-admin-staging`
-  - production: `SITE_ADMIN_REPO_BRANCH=main`
+  - `CLOUDFLARE_WORKER_NAME_STAGING`
+  - `CLOUDFLARE_WORKER_NAME_PRODUCTION`
+- Optional GitHub fallback:
+  - `SITE_ADMIN_REPO_OWNER`
+  - `SITE_ADMIN_REPO_NAME`
+  - GitHub App secrets only if dispatch fallback is enabled.
 
 ## 2.1 Deployment Discipline (Strict Save/Deploy)
 
-- `Save` only writes source branch via `/api/site-admin/*`.
-- `Deploy` only promotes Worker version via `/api/site-admin/deploy` or `npm run deploy:cf:*`.
-- Avoid ad-hoc `wrangler deploy` without deployment message metadata.
-- Preferred staging release command:
+- `Save` writes D1 through `/api/site-admin/*`.
+- `Deploy` uses local Cloudflare scripts by default:
   - `npm run release:staging`
-- Staging release refuses dirty worktrees by default. Local-only site settings
-  belong in ignored `content/local/site-config.json`; keep
-  `content/filesystem/site-config.json` as the tracked release fallback.
-- Preferred promotion commands after a matching version is uploaded:
-  - `npm run deploy:cf:staging`
-  - `npm run deploy:cf:prod`
-- Staging release builds from `main` code/CSS and overlays only content-owned paths from `site-admin-staging`; content branches must not be used as the code source.
-- Those scripts stamp `workers/message` with `source=<sha> branch=<name> code=<sha> content=<sha> contentBranch=<name>` to keep `pendingDeploy` and deployable-version readiness deterministic.
+  - `npm run release:prod:from-staging`
+- Avoid ad-hoc `wrangler deploy` without deployment message metadata.
+- Staging releases may run from a dirty non-content worktree; the script
+  builds a clean snapshot of committed HEAD. Dirty `content/` still blocks
+  by default because the D1 dump would overwrite it.
+- Release scripts stamp `workers/message` with
+  `source=<sha> branch=<name> code=<sha> content=<sha> contentBranch=<name>`
+  to keep status/preflight deterministic.
 
 ## 3. Staging Setup
 
-1. Ensure source branch `site-admin-staging` exists and is seeded from `main`.
-2. Apply staging env vars (especially branch binding + Cloudflare deploy vars).
-3. Build/upload Cloudflare artifact with the content overlay:
+1. Apply staging env vars and D1 binding.
+2. Build and deploy staging from the local checkout:
    - `npm run release:staging`
-4. If a version has already been uploaded and status shows `deployableVersionReady=true`, promote with:
-   - `npm run deploy:cf:staging` (script auto-loads `.env` and overrides stale shell values)
-5. Open `/api/site-admin/status` and confirm:
-   - `source.storeKind=github` with `source.branch=site-admin-staging`, or
-     `source.storeKind=db` with `source.repo=d1:SITE_ADMIN_DB` when staging is
-     using the D1 content backend
+3. Open `/api/site-admin/status` and confirm:
+   - `source.storeKind=db` with `source.repo=d1:SITE_ADMIN_DB`
    - `source.deployableVersionReady=true`
    - `env.runtimeProvider=cloudflare` (or expected runtime provider)
-   - `source.pendingDeploy=false` for Git-backed content, or
-     `source.pendingDeploy=null` for DB-backed content
+   - `source.pendingDeploy=null` for DB-backed content
 
 ## 4. Staging Smoke
 
 1. Config flow:
-   - edit `/site-admin/config` -> Save
-   - verify commit appears on `site-admin-staging`
-   - verify status shows `pendingDeploy=true`
-   - click Deploy and verify `pendingDeploy=false` after rollout
+   - edit content from the workspace -> Save
+   - verify staging D1 reflects the change
+   - run `npm run release:staging`
+   - verify staging public route reflects the change
 2. Routes flow:
    - save one override + one protected rule
    - verify deploy preview and pending status behavior
@@ -91,37 +87,24 @@
     - deploy
     - pending deploy convergence check (`true -> false`)
 
-## 5. Production Cutover (Minimal)
+## 5. Production Promotion (Minimal)
 
-1. Set production branch binding to `main`.
-2. Run one low-risk config edit and Save.
-3. Verify GitHub commit appears, live site unchanged.
-4. Verify `pendingDeploy=true`.
-5. Trigger Deploy and verify `pendingDeploy=false`.
+1. Verify staging has the desired content.
+2. Run `npm run release:prod:from-staging:dry-run`.
+3. Run `npm run release:prod:from-staging`.
+4. Verify production routes and `/api/site-admin/status`.
 
 ### Scripted Minimal Verification
 
-- Minimal write/deploy smoke (production):
-  - `npm run smoke:site-admin:write:prod`
-  - This performs a low-risk save/restore cycle and one deploy, keeping end state unchanged.
+- Production smoke:
+  - `npm run verify:cf:prod`
+  - `curl -sS -o /dev/null -w '%{http_code}\n' https://jinkunchen.com/`
+  - `curl -sS -o /dev/null -w '%{http_code}\n' https://jinkunchen.com/blog`
 
 ## 6. Rollback
 
-1. Find bad source commit on active source branch.
-2. Revert commit (`git revert <sha>`).
-3. Trigger Deploy.
-4. Verify source head and active deployment are aligned.
-
-### Rollback Drill Commands
-
-- Staging drill:
-  - `npm run drill:rollback:staging`
-- Production drill:
-  - `npm run drill:rollback:prod`
-
-Each drill performs:
-- `git revert` on source branch
-- deploy trigger
-- verify status convergence
-- `git revert` of the revert (restore)
-- deploy trigger + verify convergence again
+1. Find the last good Worker version in Cloudflare or
+   `production-version-history.md`.
+2. Re-deploy that version or revert the code/content commit.
+3. Run the matching local release command.
+4. Verify source metadata and active deployment are aligned.

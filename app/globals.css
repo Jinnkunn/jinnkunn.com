@@ -73,7 +73,7 @@
 
 /* State page styles moved to: app/state-pages.css */
 
-/* Site Admin styles moved to: app/(classic)/site-admin/site-admin.css */
+/* Browser Site Admin styles retired; Tauri workspace owns the admin UI. */
 
 /* Reduced-motion link and embed loader styles moved to: app/(classic)/runtime-polish.css */
 

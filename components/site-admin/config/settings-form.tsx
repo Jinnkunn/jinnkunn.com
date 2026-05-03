@@ -35,7 +35,7 @@ export function SiteAdminSettingsForm({
   if (!draftSettings) {
     return (
       <p className="notion-text notion-text__content notion-semantic-string">
-        No Site Settings row found. Run `scripts/provision-site-admin.mjs` once to create the databases.
+        No Site Settings row found. Create one from the Tauri workspace Site Admin surface.
       </p>
     );
   }

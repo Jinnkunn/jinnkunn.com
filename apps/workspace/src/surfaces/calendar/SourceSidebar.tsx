@@ -15,6 +15,10 @@ import {
   LOCAL_CALENDAR_SOURCE_ID,
   isLocalCalendarId,
 } from "../../modules/calendar/localCalendarApi";
+import {
+  CONTEXT_MENU_SEPARATOR,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
 import { WorkspaceSidebarRow } from "../../ui/primitives";
 import {
   calendarCapability,
@@ -110,6 +114,8 @@ export function SourceSidebar({
   message,
   onToggleVisible,
   onSetSourceVisible,
+  onShowOnlySource,
+  onShowOnlyCalendar,
   onCreateLocalCalendar,
   onRenameLocalCalendar,
   onRecolorLocalCalendar,
@@ -127,6 +133,8 @@ export function SourceSidebar({
   message?: string | null;
   onToggleVisible: (id: string) => void;
   onSetSourceVisible?: (sourceId: string, visible: boolean) => void;
+  onShowOnlySource?: (sourceId: string) => void;
+  onShowOnlyCalendar?: (calendarId: string) => void;
   /** Spawn a new local-first calendar under the synthetic Workspace
    * source. The parent owns the actual create call (so optimistic
    * state stays single-sourced); we just trigger it. */
@@ -294,6 +302,42 @@ export function SourceSidebar({
                 setDragOverSource(null);
                 setDraggingSourceId(null);
                 if (sourceId) moveSourceTo(sourceId, src.id, edge);
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                const entries = [
+                  {
+                    label: collapsed ? "Expand account" : "Collapse account",
+                    run: () => toggleSourceCollapsed(src.id),
+                  },
+                  canToggleSource && {
+                    label: visibilitySummary.toggleLabel,
+                    run: () => onSetSourceVisible?.(src.id, nextSourceVisible),
+                  },
+                  canToggleSource && onShowOnlySource && {
+                    label: "Show only this account",
+                    run: () => onShowOnlySource(src.id),
+                  },
+                  isLocalSource && onCreateLocalCalendar && CONTEXT_MENU_SEPARATOR,
+                  isLocalSource && onCreateLocalCalendar && {
+                    label: "New workspace calendar",
+                    run: () => void onCreateLocalCalendar(),
+                  },
+                  CONTEXT_MENU_SEPARATOR,
+                  sourceCanOpenSystemSettings(src) && onOpenAccountSettings && {
+                    label: "Manage in macOS",
+                    run: () => void onOpenAccountSettings(),
+                  },
+                  onRefreshSources && {
+                    label: "Refresh accounts",
+                    run: () => void onRefreshSources(),
+                  },
+                  onOpenSettingsPanel && {
+                    label: "Calendar settings",
+                    run: () => onOpenSettingsPanel(),
+                  },
+                ].filter(Boolean) as Parameters<typeof showContextMenuWithActions>[0];
+                showContextMenuWithActions(entries);
               }}
             >
               <button
@@ -493,7 +537,50 @@ export function SourceSidebar({
                   const archiveConfirming = confirmArchiveCalendarId === cal.id;
                   return (
                     <li key={cal.id}>
-                      <WorkspaceSidebarRow className="calendar-source-row" depth={1}>
+                      <WorkspaceSidebarRow
+                        className="calendar-source-row"
+                        depth={1}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          const entries = [
+                            {
+                              label: calendarVisible
+                                ? "Hide calendar"
+                                : "Show calendar",
+                              run: () => onToggleVisible(cal.id),
+                            },
+                            onShowOnlyCalendar && {
+                              label: "Show only this calendar",
+                              run: () => onShowOnlyCalendar(cal.id),
+                            },
+                            CONTEXT_MENU_SEPARATOR,
+                            isLocal && onArchiveLocalCalendar && {
+                              label: archiveConfirming
+                                ? "Confirm archive calendar"
+                                : "Archive calendar",
+                              run: () => {
+                                if (!archiveConfirming) {
+                                  setConfirmArchiveCalendarId(cal.id);
+                                  return;
+                                }
+                                onArchiveLocalCalendar(cal.id);
+                                setConfirmArchiveCalendarId(null);
+                              },
+                            },
+                            !isLocal && onOpenAccountSettings && {
+                              label: "Manage account",
+                              run: () => void onOpenAccountSettings(),
+                            },
+                            onOpenSettingsPanel && {
+                              label: "Calendar settings",
+                              run: () => onOpenSettingsPanel(),
+                            },
+                          ].filter(Boolean) as Parameters<
+                            typeof showContextMenuWithActions
+                          >[0];
+                          showContextMenuWithActions(entries);
+                        }}
+                      >
                         <label className="calendar-source-row__main">
                           <input
                             type="checkbox"

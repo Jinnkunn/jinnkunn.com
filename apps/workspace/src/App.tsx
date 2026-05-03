@@ -769,6 +769,23 @@ export function App() {
     [],
   );
 
+  const removeRecentItem = useCallback((entry: SidebarRecentItem) => {
+    setRecentItems((current) =>
+      current.filter(
+        (item) =>
+          item.surfaceId !== entry.surfaceId || item.itemId !== entry.itemId,
+      ),
+    );
+  }, []);
+
+  const clearRecentItems = useCallback((surfaceId?: string) => {
+    setRecentItems((current) =>
+      surfaceId
+        ? current.filter((item) => item.surfaceId !== surfaceId)
+        : [],
+    );
+  }, []);
+
   const isFavorite = useCallback(
     (surfaceId: string, itemId: string) =>
       favoritesContain(favorites, surfaceId, itemId),
@@ -890,6 +907,8 @@ export function App() {
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleFavorite={toggleFavorite}
           onRecordRecent={recordRecentItem}
+          onRemoveRecent={removeRecentItem}
+          onClearRecent={clearRecentItems}
           isFavorite={isFavorite}
           onMoveNavItem={handleMoveNavItem}
           onReorderNavItem={handleReorderNavItem}
@@ -908,8 +927,11 @@ export function App() {
                   onClearEvents={clearWorkspaceEvents}
                   onOpenCommandPalette={() => setWorkspacePaletteOpen(true)}
                   onRecordRecent={recordRecentItem}
+                  onRemoveRecent={removeRecentItem}
                   onSelectNavItem={selectNavItem}
                   onSelectSurface={selectSurface}
+                  onToggleFavorite={toggleFavorite}
+                  isFavorite={isFavorite}
                   recentItems={visibleRecentItems}
                   surfaces={derivedSurfaces}
                 />

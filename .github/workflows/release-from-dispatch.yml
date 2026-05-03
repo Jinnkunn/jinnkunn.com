@@ -1,12 +1,10 @@
-name: Release on dispatch (db mode)
+name: Release on dispatch (fallback)
 
-# Triggered by the site-admin Deploy button when SITE_ADMIN_STORAGE=db.
-# Builds + uploads + deploys the Cloudflare Worker so the worker bundle
-# picks up the latest D1 content (prebuild dumps from D1 into content/*
-# at the start of the build).
-#
-# Github mode keeps using deploy-on-content.yml (push-triggered overlay
-# build); the two workflows do not overlap.
+# Explicit GitHub Actions fallback for cases where the Tauri/local
+# Cloudflare release path cannot run. The normal operator path uses
+# npm run release:staging / release:prod:from-staging from the local
+# checkout, so routine content and calendar releases do not consume
+# Actions minutes.
 #
 # Trigger from CF Worker:
 #   POST https://api.github.com/repos/<owner>/<repo>/dispatches
@@ -110,14 +108,13 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Guard — staging matches main before production releases
+      - name: Guard — staging matches release source before production releases
         # Defense-in-depth: the workspace's "Promote to Production" button
-        # already refuses to dispatch unless staging's deployed code SHA
-        # matches main HEAD. But this workflow is also reachable via
+        # runs locally by default. This fallback is also reachable via
         # `gh workflow run release-from-dispatch.yml -f env=production`,
-        # which bypasses that check. Re-run the same comparison here so
-        # an out-of-band trigger can't ship a code SHA that staging
-        # hasn't validated. (Uses jq instead of a multiline Python
+        # which bypasses the local preflight. Re-run the same comparison
+        # here so an out-of-band trigger can't ship a code SHA that
+        # staging hasn't validated. (Uses jq instead of a multiline Python
         # heredoc — column-0 lines inside `run: |` terminate YAML's
         # literal block scalar and silently strip workflow triggers.)
         if: env.TARGET_ENV == 'production'
@@ -136,10 +133,10 @@ jobs:
           fi
           main_sha=$(printf %s "$GITHUB_SHA" | tr 'A-Z' 'a-z')
           if [ "$staging_sha" != "$main_sha" ]; then
-            echo "::error::staging is on $staging_sha but main is on $main_sha; release:staging first"
+            echo "::error::staging is on $staging_sha but release source is on $main_sha; release:staging first"
             exit 1
           fi
-          echo "[guard] staging $staging_sha matches main $main_sha"
+          echo "[guard] staging $staging_sha matches release source $main_sha"
 
       - uses: actions/setup-node@v4
         with:

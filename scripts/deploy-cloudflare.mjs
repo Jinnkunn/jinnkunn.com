@@ -3,6 +3,11 @@
 import { loadProjectEnv } from "./load-project-env.mjs";
 import { spawnSync } from "node:child_process";
 
+import {
+  parseDeployMessage,
+  effectiveCodeSha,
+} from "./_lib/deploy-metadata.mjs";
+
 function readArgEnvName() {
   const arg = process.argv.find((it) => it.startsWith("--env="));
   const raw = arg ? arg.slice("--env=".length) : "";
@@ -36,21 +41,8 @@ function pickWorkerName(targetEnv) {
   );
 }
 
-function pickSourceBranch(targetEnv) {
-  const override = readStringEnv("DEPLOY_SOURCE_BRANCH");
-  if (override) return override;
-  if (targetEnv === "staging") {
-    return (
-      readStringEnv("SITE_ADMIN_REPO_BRANCH_STAGING") ||
-      readStringEnv("SITE_ADMIN_REPO_BRANCH") ||
-      "site-admin-staging"
-    );
-  }
-  return (
-    readStringEnv("SITE_ADMIN_REPO_BRANCH_PRODUCTION") ||
-    readStringEnv("SITE_ADMIN_REPO_BRANCH") ||
-    "main"
-  );
+function pickSourceBranch() {
+  return readStringEnv("DEPLOY_SOURCE_BRANCH") || "main";
 }
 
 function asRecord(value) {
@@ -69,34 +61,6 @@ function pickCloudflareError(body, fallback) {
     if (message) return message;
   }
   return fallback;
-}
-
-async function fetchGithubBranchHeadSha({ owner, repo, branch }) {
-  const o = asString(owner);
-  const r = asString(repo);
-  const b = asString(branch);
-  if (!o || !r || !b) return "";
-
-  const ghToken = readStringEnv("GITHUB_TOKEN") || readStringEnv("GH_TOKEN");
-  const headers = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "site-admin-cloudflare-deploy-script",
-    ...(ghToken ? { Authorization: `Bearer ${ghToken}` } : {}),
-  };
-  const url = `https://api.github.com/repos/${encodeURIComponent(o)}/${encodeURIComponent(
-    r,
-  )}/branches/${encodeURIComponent(b)}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers,
-    cache: "no-store",
-  }).catch(() => null);
-  if (!(res instanceof Response) || !res.ok) return "";
-  const raw = (await res.json().catch(() => null)) || null;
-  const sha = asString(raw?.commit?.sha);
-  if (!/^[a-f0-9]{40}$/i.test(sha)) return "";
-  return sha.toLowerCase();
 }
 
 async function cfRequest({ accountId, apiToken, method, path, body }) {
@@ -143,52 +107,18 @@ function readLocalGitHeadSha() {
   return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
 }
 
-function parseDeployMetadataMessage(messageRaw) {
-  const message = asString(messageRaw);
-  const token = (name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const hit = new RegExp(`\\b${escaped}=([^\\s]+)`, "i").exec(message);
-    return hit?.[1] || "";
-  };
-  const sha = (value) => {
-    const raw = asString(value).toLowerCase();
-    return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
-  };
-  const sourceSha = sha(token("source")) || sha(token("sourcesha"));
-  const sourceBranch = asString(token("branch"));
-  return {
-    sourceSha,
-    sourceBranch,
-    codeSha: sha(token("code")),
-    codeBranch: asString(token("codeBranch")),
-    contentSha: sha(token("content")) || sourceSha,
-    contentBranch: asString(token("contentBranch")) || sourceBranch,
-  };
-}
-
-function describeMetadataMismatch({ actual, expected }) {
-  if (expected.codeSha && actual.codeSha && actual.codeSha !== expected.codeSha) {
-    return `code=${actual.codeSha} expected ${expected.codeSha}`;
+function describeStagingMismatch({ actual, expectedCodeSha, expectedContentSha }) {
+  const got = effectiveCodeSha(actual);
+  if (!got) return `metadata missing code/source SHA; expected ${expectedCodeSha}`;
+  if (expectedCodeSha && got !== expectedCodeSha) {
+    return `code=${got} expected ${expectedCodeSha}`;
   }
-  if (expected.codeSha && !actual.codeSha) {
-    return `code metadata missing; expected ${expected.codeSha}`;
+  const gotContent = asString(actual.contentSha || actual.sourceSha).toLowerCase();
+  if (expectedContentSha && !gotContent) {
+    return `content metadata missing; expected ${expectedContentSha}`;
   }
-  if (
-    expected.contentSha &&
-    actual.contentSha &&
-    actual.contentSha !== expected.contentSha
-  ) {
-    return `content=${actual.contentSha} expected ${expected.contentSha}`;
-  }
-  if (expected.contentSha && !actual.contentSha) {
-    return `content metadata missing; expected ${expected.contentSha}`;
-  }
-  if (
-    expected.contentBranch &&
-    actual.contentBranch &&
-    actual.contentBranch !== expected.contentBranch
-  ) {
-    return `contentBranch=${actual.contentBranch} expected ${expected.contentBranch}`;
+  if (expectedContentSha && gotContent !== expectedContentSha) {
+    return `content=${gotContent} expected ${expectedContentSha}`;
   }
   return "";
 }
@@ -225,18 +155,13 @@ async function main() {
   if (!accountId) throw new Error("Missing CLOUDFLARE_ACCOUNT_ID (or CF_ACCOUNT_ID)");
   if (!apiToken) throw new Error("Missing CLOUDFLARE_API_TOKEN (or CF_API_TOKEN)");
   const workerName = pickWorkerName(targetEnv);
-  const sourceBranch = pickSourceBranch(targetEnv);
-  const sourceOwner = readStringEnv("SITE_ADMIN_REPO_OWNER");
-  const sourceRepo = readStringEnv("SITE_ADMIN_REPO_NAME");
-  const sourceSha =
-    pickContentShaOverride() ||
-    pickSourceShaOverride() ||
-    (await fetchGithubBranchHeadSha({
-      owner: sourceOwner,
-      repo: sourceRepo,
-      branch: sourceBranch,
-    }));
+  const sourceBranch = pickSourceBranch();
   const codeSha = pickCodeShaOverride() || readLocalGitHeadSha();
+  // db mode keeps code and content as separate metadata: code is the git
+  // SHA; content is the post-D1-dump snapshot hash. Direct invocations
+  // fall through to the local git HEAD for both.
+  const contentSha =
+    pickContentShaOverride() || pickSourceShaOverride() || codeSha;
   if (!workerName) {
     throw new Error(
       targetEnv === "staging"
@@ -255,26 +180,23 @@ async function main() {
   if (!latestVersion) {
     throw new Error("No Worker version available to deploy. Upload a version first.");
   }
-  if (targetEnv === "staging") {
-    const mismatch = describeMetadataMismatch({
-      actual: parseDeployMetadataMessage(latestVersion.message),
-      expected: {
-        codeSha,
-        contentSha: sourceSha,
-        contentBranch: sourceBranch,
-      },
+  if (targetEnv === "staging" && codeSha) {
+    const mismatch = describeStagingMismatch({
+      actual: parseDeployMessage(latestVersion.message),
+      expectedCodeSha: codeSha,
+      expectedContentSha: contentSha,
     });
     if (mismatch) {
       throw new Error(
-        `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match current staging source (${mismatch}). Run npm run release:staging so main code is rebuilt with the content overlay.`,
+        `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match the deploying source (${mismatch}). Run npm run release:staging to rebuild and re-upload at HEAD.`,
       );
     }
   }
 
   const deployPath = `/workers/scripts/${encodeURIComponent(workerName)}/deployments`;
   const dirtySuffix = readStringEnv("DEPLOY_SOURCE_DIRTY") === "1" ? " dirty=1" : "";
-  const deployMessage = sourceSha
-    ? `Manual deploy (${targetEnv}) source=${sourceSha} branch=${sourceBranch} content=${sourceSha} contentBranch=${sourceBranch}${codeSha ? ` code=${codeSha}` : ""}${dirtySuffix}`
+  const deployMessage = contentSha
+    ? `Manual deploy (${targetEnv}) source=${contentSha} branch=${sourceBranch} content=${contentSha} contentBranch=${sourceBranch}${codeSha ? ` code=${codeSha}` : ""}${dirtySuffix}`
     : `Manual deploy (${targetEnv}) branch=${sourceBranch}`;
   const baseDeployBody = {
     strategy: "percentage",

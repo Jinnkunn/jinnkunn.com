@@ -24,6 +24,7 @@ node_modules/
 /.playwright-cli/
 /output/
 /content/local/
+/.cache/
 
 # notion generated content/assets (synced at build time)
 /content/generated/*

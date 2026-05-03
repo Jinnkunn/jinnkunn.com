@@ -1,7 +1,6 @@
-// Triggers GitHub Actions workflows via the `repository_dispatch` API. Used
-// by the site-admin Deploy button in db mode to kick a fresh build (which
-// pulls the latest D1 state) instead of just promoting whatever stale
-// Worker version was last uploaded.
+// Triggers GitHub Actions workflows via the `repository_dispatch` API. This
+// is now an explicit fallback for cases where the local Cloudflare release
+// command cannot run.
 //
 // Reuses the existing GitHub App credentials from
 // createGitHubAppClientFromEnv. The App must have *Actions: Write*

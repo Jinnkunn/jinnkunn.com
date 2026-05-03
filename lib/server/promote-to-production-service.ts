@@ -3,30 +3,23 @@ import "server-only";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import {
-  createGitHubAppClientFromEnv,
-  GitHubApiError,
-  type GitHubClient,
-} from "./github-content-client";
-import {
   dispatchWorkflow,
   isWorkflowDispatchConfigured,
 } from "./github-workflow-dispatch";
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor";
 import type { DbExecutor } from "./db-content-store";
+import {
+  parseDeployMetadataMessage,
+  pickRuntimeCodeSha,
+  type DeployVersionMetadata,
+} from "./deploy-metadata";
 import { logWarn } from "./error-log";
 
 // Service that backs the "Promote to Production" button on the staging
-// site-admin. Encapsulates the read-side checks (staging vs main vs prod)
-// AND the dispatch action so the route file stays a thin wrapper.
-//
-// Why the staging worker can drive a production release:
-// - The staging worker has CLOUDFLARE_API_TOKEN at runtime (already used
-//   by the existing deploy hook to flip CF deployments).
-// - It also has GitHub App credentials (already used by the existing db-
-//   mode dispatch path).
-// - So the worker can read both Worker scripts (own + production) over
-//   the CF API and dispatch the `release-production` Action over the
-//   GitHub API. No new secrets, no new infrastructure.
+// site-admin. The primary path is a local Cloudflare release from the
+// Tauri app, so the normal preview uses Cloudflare deployment state only.
+// GitHub dispatch remains available as an explicit fallback, not as a gate
+// for the local release button.
 
 export type PromoteEnvironmentSnapshot = {
   workerName: string;
@@ -71,14 +64,11 @@ export type PromoteContentDelta = {
 
 export type PromotePreviewError =
   | "MISSING_CLOUDFLARE_CREDENTIALS"
-  | "MISSING_GITHUB_APP"
   | "MISSING_WORKER_NAMES"
   | "STAGING_NO_DEPLOYMENT"
   | "STAGING_METADATA_UNREADABLE"
-  | "MAIN_REF_UNREADABLE"
   | "STAGING_BEHIND_MAIN"
-  | "CLOUDFLARE_API_FAILED"
-  | "GITHUB_API_FAILED";
+  | "CLOUDFLARE_API_FAILED";
 
 export type PromotePreview =
   | {
@@ -154,6 +144,13 @@ function readRepoName(): string {
   return readEnv("SITE_ADMIN_REPO_NAME");
 }
 
+function readFallbackRunsListUrl(): string {
+  const owner = readRepoOwner();
+  const repo = readRepoName();
+  if (!owner || !repo) return "";
+  return `https://github.com/${owner}/${repo}/actions/workflows/release-from-dispatch.yml`;
+}
+
 async function cfRequest({
   accountId,
   apiToken,
@@ -209,28 +206,12 @@ function pickFirst(payload: unknown): unknown {
   return null;
 }
 
-function parseDeployMessage(messageRaw: unknown): {
-  sourceSha: string;
-  sourceBranch: string;
-  codeSha: string;
-  codeBranch: string;
-  contentSha: string;
-  contentBranch: string;
-} {
-  const message = String(messageRaw || "");
-  const token = (name: string): string => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const hit = new RegExp(`\\b${escaped}=([^\\s]+)`, "i").exec(message);
-    return hit?.[1] || "";
-  };
-  return {
-    sourceSha: token("source"),
-    sourceBranch: token("branch"),
-    codeSha: token("code"),
-    codeBranch: token("codeBranch"),
-    contentSha: token("content"),
-    contentBranch: token("contentBranch"),
-  };
+// `parseDeployMetadataMessage` (lib/server/deploy-metadata.ts) is the
+// single source of truth for Worker version annotation parsing. The
+// fields below are nullable in that shape; we coerce to "" at the use
+// sites that built the existing snapshot contract on plain strings.
+function metaString(value: string | null | undefined): string {
+  return typeof value === "string" ? value : "";
 }
 
 async function readActiveDeployment({
@@ -270,7 +251,7 @@ async function readActiveDeployment({
   const message =
     String(annotations["workers/message"] || "") ||
     String((versionDetail as { message?: unknown } | null)?.message || "");
-  const meta = parseDeployMessage(message);
+  const meta: DeployVersionMetadata = parseDeployMetadataMessage(message);
   // CF returns `created_on` as an ISO 8601 string. Parse to ms here so
   // the content-delta query can do a single integer comparison against
   // `content_files.updated_at` (which is unix ms by schema). NaN is
@@ -282,9 +263,9 @@ async function readActiveDeployment({
     workerName,
     versionId,
     deploymentId: String(active.id || ""),
-    codeSha: meta.codeSha || meta.sourceSha,
-    contentSha: meta.contentSha || meta.sourceSha,
-    contentBranch: meta.contentBranch || meta.sourceBranch,
+    codeSha: metaString(meta.codeSha) || metaString(meta.sourceSha),
+    contentSha: metaString(meta.contentSha) || metaString(meta.sourceSha),
+    contentBranch: metaString(meta.contentBranch) || metaString(meta.sourceBranch),
     deployedAtMs: Number.isFinite(createdOnMs) ? createdOnMs : null,
   };
 }
@@ -380,21 +361,6 @@ async function readContentDelta(
   };
 }
 
-async function readMainSha(client: GitHubClient): Promise<string> {
-  const owner = readRepoOwner();
-  const repo = readRepoName();
-  if (!owner || !repo) {
-    throw new Error("Missing SITE_ADMIN_REPO_OWNER / SITE_ADMIN_REPO_NAME");
-  }
-  const result = await client.request<{ object?: { sha?: unknown } }>({
-    method: "GET",
-    apiPath: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/main`,
-  });
-  const sha = String(result?.object?.sha ?? "").trim();
-  if (!sha) throw new Error("Main ref response missing object.sha");
-  return sha;
-}
-
 function fail(code: PromotePreviewError, detail: string): Extract<PromotePreview, { ok: false }> {
   return { ok: false, code, detail };
 }
@@ -411,14 +377,6 @@ export async function readPromotePreview(): Promise<PromotePreview> {
     return fail(
       "MISSING_WORKER_NAMES",
       "Set CLOUDFLARE_WORKER_NAME_STAGING and CLOUDFLARE_WORKER_NAME_PRODUCTION on the staging worker.",
-    );
-  }
-
-  const githubClient = createGitHubAppClientFromEnv();
-  if (!githubClient || !isWorkflowDispatchConfigured()) {
-    return fail(
-      "MISSING_GITHUB_APP",
-      "GitHub App credentials missing. Set SITE_ADMIN_GH_APP_* secrets on the staging worker.",
     );
   }
 
@@ -449,40 +407,28 @@ export async function readPromotePreview(): Promise<PromotePreview> {
     );
   }
 
-  let mainSha: string;
-  try {
-    mainSha = await readMainSha(githubClient);
-  } catch (error) {
-    if (error instanceof GitHubApiError) {
-      return fail("GITHUB_API_FAILED", `${error.status}: ${error.message}`);
-    }
-    return fail(
-      "MAIN_REF_UNREADABLE",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-
+  const runtimeCodeSha = pickRuntimeCodeSha();
+  const mainSha = runtimeCodeSha || stagingSha;
   const stagingMatchesMain =
     stagingSha.toLowerCase() === mainSha.toLowerCase();
   if (!stagingMatchesMain) {
     return fail(
       "STAGING_BEHIND_MAIN",
-      `Staging is on ${stagingSha.slice(0, 12)} but main is on ${mainSha.slice(0, 12)}. Re-release staging first.`,
+      `Staging active deployment is on ${stagingSha.slice(0, 12)} but the staging runtime reports ${mainSha.slice(0, 12)}. Re-release staging first.`,
     );
   }
-
-  const productionDifferent =
-    !production ||
-    (production.codeSha || "").toLowerCase() !== stagingSha.toLowerCase();
 
   // Content delta is informational, never blocks the promote — the
   // operator may legitimately want to ship a code-only change with no
   // D1 movement. Errors collapse to `error` field on the delta itself.
   const contentDelta = await readContentDelta(production?.deployedAtMs ?? null);
-
-  const owner = readRepoOwner();
-  const repo = readRepoName();
-  const runsListUrl = `https://github.com/${owner}/${repo}/actions/workflows/release-from-dispatch.yml`;
+  const stagingContentSha = (staging.contentSha || "").toLowerCase();
+  const productionContentSha = (production?.contentSha || "").toLowerCase();
+  const productionDifferent =
+    !production ||
+    (production.codeSha || "").toLowerCase() !== stagingSha.toLowerCase() ||
+    (stagingContentSha && productionContentSha !== stagingContentSha) ||
+    contentDelta.changedRows > 0;
 
   return {
     ok: true,
@@ -493,8 +439,8 @@ export async function readPromotePreview(): Promise<PromotePreview> {
     stagingMatchesMain: true,
     productionDifferent,
     workflowEventType: "release-production",
-    runsListUrl,
-    githubAppConfigured: true,
+    runsListUrl: readFallbackRunsListUrl(),
+    githubAppConfigured: isWorkflowDispatchConfigured(),
     contentDelta,
   };
 }

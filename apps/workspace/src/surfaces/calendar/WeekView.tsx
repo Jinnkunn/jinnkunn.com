@@ -29,9 +29,12 @@ export function WeekView({
   calendarsById,
   todos,
   onEventSelect,
+  onEventContextMenu,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
   onSlotCreate,
+  onSlotContextMenu,
   getDisclosure,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
@@ -40,9 +43,12 @@ export function WeekView({
   calendarsById: Map<string, Calendar>;
   todos?: TodoRow[];
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
+  onTodoContextMenu?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
   onSlotCreate?: (selection: CalendarTimeSlotSelection) => void;
+  onSlotContextMenu?: (selection: CalendarTimeSlotSelection) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone?: string;
 }) {
@@ -73,6 +79,7 @@ export function WeekView({
           calendarsById={calendarsById}
           stripHeight={stripHeight}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
         />
@@ -84,9 +91,12 @@ export function WeekView({
           calendarsById={calendarsById}
           todos={todos}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           onTodoSelect={onTodoSelect}
+          onTodoContextMenu={onTodoContextMenu}
           onTodoToggle={onTodoToggle}
           onSlotCreate={onSlotCreate}
+          onSlotContextMenu={onSlotContextMenu}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
         />
@@ -138,6 +148,7 @@ function AllDayStrip({
   calendarsById,
   stripHeight,
   onEventSelect,
+  onEventContextMenu,
   getDisclosure,
   timeZone,
 }: {
@@ -146,6 +157,7 @@ function AllDayStrip({
   calendarsById: Map<string, Calendar>;
   stripHeight: number;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   getDisclosure?: EventDisclosureResolver;
   timeZone: string;
 }) {
@@ -187,6 +199,11 @@ function AllDayStrip({
                 key={`${bar.event.eventIdentifier}-${bar.startIndex}`}
                 className="absolute box-border max-w-full text-[11px] truncate px-1.5 rounded leading-[16px] border-0 text-left cursor-pointer pointer-events-auto"
                 onClick={() => onEventSelect?.(bar.event)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onEventContextMenu?.(bar.event);
+                }}
                 title={bar.event.title || "(No title)"}
                 style={{
                   left: `calc(${leftPct}% + 2px)`,

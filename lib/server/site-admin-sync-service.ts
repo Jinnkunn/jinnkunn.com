@@ -4,8 +4,8 @@
 // — same trick scripts/dump-content-from-db.mjs uses.
 //
 // Only the *db* SITE_ADMIN_STORAGE backend exposes a meaningful
-// implementation. Local + GitHub modes return an empty batch with
-// ok=false so the Tauri client knows there's nothing to mirror locally.
+// implementation. Local mode returns ok=false so the Tauri client knows
+// there's nothing to mirror locally.
 //
 // No `server-only` marker so node:test can import this module directly.
 

@@ -77,7 +77,8 @@ export { parseGithubUserList };
  * @returns {Promise<SiteConfigRecord|null>}
  */
 export async function loadConfigFromAdminDatabases(adminPageId) {
-  // These databases are provisioned by `scripts/provision-site-admin.mjs`.
+  // Legacy Notion-backed databases. New operator edits go through the
+  // Tauri workspace and staging D1; keep this reader for historical imports.
   const databases = await findChildDatabases(adminPageId);
   const settingsDb = findDbByTitle(databases, "Site Settings");
   const navDb = findDbByTitle(databases, "Navigation");

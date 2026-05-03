@@ -101,25 +101,8 @@ test("design-system-contract: core primitives import the shared contract module"
   }
 });
 
-test("design-system-contract: gallery route documents all shared patterns", async () => {
-  const source = await fs.readFile(
-    path.join(ROOT, "app/(classic)/site-admin/design-system/page.tsx"),
-    "utf8",
-  );
-
-  const patternComponents = [
-    "TextLink",
-    "EmptyState",
-    "ListRow",
-    "Toolbar",
-    "LoadingState",
-    "DialogPanel",
-  ];
-
-  assert.match(source, /DESIGN_PATTERNS/, "gallery should render the shared pattern registry");
-  for (const componentName of patternComponents) {
-    assert.match(source, new RegExp(componentName), `gallery should render ${componentName}`);
-  }
-
-  assert.match(source, /aria-label=/, "gallery should keep icon/toolbar examples labelled");
-});
+// The browser-based design-system gallery lived under
+// `app/(classic)/site-admin/design-system/` and was removed alongside
+// the rest of the webview admin in 2026-05. The Tauri workspace app's
+// shared primitives (under `lib/design-system/`) are still asserted
+// against by other tests in this suite.

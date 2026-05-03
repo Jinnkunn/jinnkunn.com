@@ -95,15 +95,12 @@ function shortSha(value: string): string {
 }
 
 const FRIENDLY_REASONS: Record<string, string> = {
-  STAGING_BEHIND_MAIN: "Staging hasn't been re-released since the last commit on main. Run release:staging (or click Publish on this surface) first.",
+  STAGING_BEHIND_MAIN: "Staging runtime and active deployment disagree. Run release:staging first.",
   STAGING_NO_DEPLOYMENT: "Staging worker has no active deployment. Release staging before promoting.",
   STAGING_METADATA_UNREADABLE: "Staging deployment annotation has no code= SHA. Re-release staging via release-cloudflare so the metadata is set.",
-  MISSING_GITHUB_APP: "GitHub App credentials are not configured on the staging worker, so remote preflight/fallback state is unavailable. Prefer the local production command.",
   MISSING_CLOUDFLARE_CREDENTIALS: "CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not configured on the staging worker.",
   MISSING_WORKER_NAMES: "Production / staging Worker names not configured.",
-  MAIN_REF_UNREADABLE: "Could not read main HEAD via GitHub App. Check App permissions.",
   CLOUDFLARE_API_FAILED: "Cloudflare API request failed.",
-  GITHUB_API_FAILED: "GitHub API request failed.",
 };
 
 export function PromoteToProductionButton() {
@@ -168,15 +165,23 @@ export function PromoteToProductionButton() {
   // Deploy-completion watcher. After a successful local release we set
   // watchTarget; this effect polls the preview endpoint until the
   // production codeSha matches the promoted stagingSha, then fires a
-  // native "Production deploy complete" notification. Bails after 20
-  // minutes with a "deploy timed out" failure notification — long
-  // enough for a normal CI run, short enough that a stuck workflow
-  // doesn't leave the watcher polling overnight.
+  // native "Production deploy complete" notification.
+  //
+  // Local-release timing reality: `siteAdminRunReleaseCommand` already
+  // awaited the npm script to exit, which means wrangler successfully
+  // returned a deployment id — production should be live within a few
+  // seconds, dominated by edge propagation. The previous 20-min / 30-s
+  // poll was sized for the GitHub Actions dispatch path where we had
+  // no exit signal at all. With the local path that long timeout means
+  // a stuck CF API only surfaces ~20 min later. 3 min / 5 s gives the
+  // edge plenty of room while turning a real propagation hang into a
+  // visible problem fast. Operators can recover via the GitHub fallback
+  // button if this ever times out.
   useEffect(() => {
     if (!watchTarget) return;
     watchFiredRef.current = false;
-    const TIMEOUT_MS = 20 * 60 * 1000;
-    const POLL_MS = 30_000;
+    const TIMEOUT_MS = 3 * 60 * 1000;
+    const POLL_MS = 5_000;
     let cancelled = false;
     const tick = async () => {
       if (cancelled || watchFiredRef.current) return;
@@ -206,7 +211,7 @@ export function PromoteToProductionButton() {
         watchFiredRef.current = true;
         void notify({
           title: "Production deploy still pending",
-          body: "Polled for 20 minutes without seeing the new SHA on production. Recheck Cloudflare or use the GitHub fallback if needed.",
+          body: "Polled for 3 minutes without seeing the new SHA on production. Recheck Cloudflare or use the GitHub fallback if needed.",
         });
         setWatchTarget(null);
       }
@@ -215,7 +220,7 @@ export function PromoteToProductionButton() {
       void tick();
     }, POLL_MS);
     // Fire one tick right away so a fast deploy doesn't wait the full
-    // 30 s before reporting completion.
+    // poll interval before reporting completion.
     void tick();
     return () => {
       cancelled = true;
@@ -292,9 +297,9 @@ export function PromoteToProductionButton() {
               : !ok
                 ? `Not ready: ${preview?.detail ?? "unknown"}`
                 : !stagingMain
-                  ? "Staging is not on the same SHA as main. Release staging first."
+                  ? "Staging runtime and active deployment disagree. Release staging first."
                   : nothingToPromote
-                    ? "Production already runs the same code SHA as staging."
+                    ? "Production already runs the same code/content snapshot as staging."
                     : confirming
                       ? "Click again to run the local Cloudflare production release."
                       : "Run npm run release:prod:from-staging locally on this Mac."
@@ -306,8 +311,8 @@ export function PromoteToProductionButton() {
             ? "Checking…"
             : !ok
               ? "Promote (not ready)"
-              : !stagingMain
-                ? "Promote (staging stale)"
+                : !stagingMain
+                  ? "Promote (staging stale)"
                 : nothingToPromote
                   ? "No changes vs prod"
                   : confirming
@@ -327,7 +332,7 @@ export function PromoteToProductionButton() {
             {ok && (
               <div className="promote-prod__rows">
                 <div>
-                  <strong>main</strong>
+                  <strong>release source</strong>
                   <span>{shortSha(preview.mainSha)}</span>
                 </div>
                 <div>

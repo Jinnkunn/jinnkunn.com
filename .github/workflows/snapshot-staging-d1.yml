@@ -6,8 +6,8 @@ name: Snapshot staging D1 to git
 # Together with the staging-first release pipeline this gives us:
 #
 #   1. Disaster recovery — if D1 corrupts or is accidentally cleared,
-#      the previous day's commit has every file the public site needs,
-#      ready to import back via `npm run db:migrate:files`.
+#      the previous snapshot PR has every file the public site needs as
+#      a human-readable recovery baseline.
 #   2. A free audit log — the PR diff is human-readable; reviewing
 #      "what edits did I make in the workspace yesterday" turns into
 #      "look at yesterday's snapshot PR's file diff."

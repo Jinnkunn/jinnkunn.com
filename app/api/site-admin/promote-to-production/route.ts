@@ -6,12 +6,12 @@ import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 // Backs the workspace "Promote to Production" button. Two methods, one
 // purpose:
 //
-//   GET  -> read-only preflight: which SHA is on staging? what's main?
-//           what's currently in production? It's safe to spam this for
-//           the UI's "is the button green?" indicator.
+//   GET  -> read-only preflight: which SHA is on staging? what's currently
+//           in production? It's safe to spam this for the UI's "is the
+//           button green?" indicator.
 //
-//   POST -> same checks, then dispatch the `release-production`
-//           Action via the existing GitHub App. Audited.
+//   POST -> legacy GitHub dispatch fallback. Disabled by default so routine
+//           production promotion cannot accidentally spend Actions minutes.
 //
 // All real logic lives in `promote-to-production-service`; this file
 // stays a thin route wrapper to keep the auth/rate-limit boilerplate
@@ -46,6 +46,22 @@ export async function POST(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async (ctx) => {
+      if (process.env.ALLOW_SITE_ADMIN_GITHUB_DISPATCH !== "1") {
+        await writeSiteAdminAuditLog({
+          actor: ctx.login,
+          action: "deploy.promote-to-production",
+          endpoint: "/api/site-admin/promote-to-production",
+          method: "POST",
+          status: 409,
+          result: "error",
+          code: "LOCAL_RELEASE_REQUIRED",
+          message: "Production promotion runs locally by default.",
+        });
+        return apiError(
+          "Production promotion runs locally by default. Use `npm run release:prod:from-staging`; GitHub dispatch is manual fallback only.",
+          { status: 409, code: "LOCAL_RELEASE_REQUIRED" },
+        );
+      }
       const { readPromotePreview, dispatchPromoteToProduction } = await import(
         "@/lib/server/promote-to-production-service"
       );

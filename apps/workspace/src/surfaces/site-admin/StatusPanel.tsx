@@ -196,7 +196,7 @@ export function StatusPanel() {
         <div>
           <span>Runtime code</span>
           <strong>{shortSha(data?.source?.codeSha)}</strong>
-          <code>main code</code>
+          <code>release source</code>
         </div>
         <div>
           <span>Worker candidate</span>

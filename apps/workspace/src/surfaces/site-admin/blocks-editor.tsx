@@ -756,6 +756,15 @@ function EditableBlocksList({
             onSelectBlock?.(block.id);
           }}
           onBlurCapture={(event) => clearFocusedBlockIfLeaving(block.id, event)}
+          onContextMenu={(event) => {
+            if (readOnly) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setActionMenu({
+              anchor: event.currentTarget,
+              blockId: block.id,
+            });
+          }}
           onDragOver={
             enableDrag
               ? (event) => {

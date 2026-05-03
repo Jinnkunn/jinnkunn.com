@@ -1,6 +1,0 @@
-/* Route Explorer (/site-admin/routes) styles split by function */
-@import "./routes/base.css";
-@import "./routes/tree.css";
-@import "./routes/table.css";
-@import "./routes/admin.css";
-@import "./routes/responsive.css";

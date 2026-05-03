@@ -16,6 +16,11 @@ import {
 import { parseNoteTodoSource } from "../../modules/notes/todoLinks";
 import type { NoteTodoSource } from "../../modules/notes/todoLinks";
 import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
+import {
   todoTimelineStart,
 } from "../../modules/todos/time";
 import {
@@ -516,6 +521,23 @@ export function TodosSurface() {
     }
   };
 
+  const duplicateTodo = async (todo: TodoRow) => {
+    try {
+      const row = await todosCreate({
+        dueAt: todo.dueAt,
+        estimatedMinutes: todo.estimatedMinutes,
+        notes: todo.notes,
+        projectId: todo.projectId,
+        scheduledEndAt: todo.scheduledEndAt,
+        scheduledStartAt: todo.scheduledStartAt,
+        title: todo.title || null,
+      });
+      upsertTodoAndRoute(row);
+    } catch (error) {
+      setMessage(`Failed to duplicate todo: ${String(error)}`);
+    }
+  };
+
   const archiveTodo = async (todo: TodoRow) => {
     setTodos((current) => current.filter((row) => row.id !== todo.id));
     if (selectedTodoId === todo.id) setSelectedTodoId(null);
@@ -734,6 +756,75 @@ export function TodosSurface() {
                       if (target?.closest("button, input, a, select, textarea")) return;
                       setSelectedTodoId(todo.id);
                     }}
+                    onContextMenu={(event) => {
+                      const target = event.target as HTMLElement | null;
+                      if (target?.closest("input, textarea, select")) return;
+                      event.preventDefault();
+                      const entries = [
+                        {
+                          label: "Open details",
+                          run: () => setSelectedTodoId(todo.id),
+                        },
+                        {
+                          label: completed ? "Mark open" : "Mark done",
+                          run: () => void toggleCompleted(todo),
+                        },
+                        CONTEXT_MENU_SEPARATOR,
+                        ...TODO_SCHEDULE_PRESETS.map((preset) => ({
+                          label: todoSchedulePresetLabel(preset),
+                          run: () => void applySchedulePreset(todo, preset),
+                        })),
+                        {
+                          label: "Clear schedule",
+                          run: () => void clearPlanning(todo),
+                        },
+                        activeProjects.length ? CONTEXT_MENU_SEPARATOR : false,
+                        ...activeProjects.slice(0, 5).map((entry) => ({
+                          label:
+                            entry.id === todo.projectId
+                              ? `Assigned: ${entry.title}`
+                              : `Move to ${entry.title}`,
+                          enabled: entry.id !== todo.projectId,
+                          run: () => void updateProject(todo, entry.id),
+                        })),
+                        todo.projectId ? {
+                          label: "Remove project",
+                          run: () => void updateProject(todo, ""),
+                        } : false,
+                        CONTEXT_MENU_SEPARATOR,
+                        project && {
+                          label: "Open project",
+                          run: () =>
+                            selectWorkspaceNavItem(
+                              "projects",
+                              projectNavId(project.id),
+                            ),
+                        },
+                        noteSource && {
+                          label: "Open source note",
+                          run: () =>
+                            selectWorkspaceNavItem(
+                              "notes",
+                              noteNavId(noteSource.id),
+                            ),
+                        },
+                        {
+                          label: "Copy title",
+                          run: () => copyTextToClipboard(todo.title || "(Untitled)"),
+                        },
+                        {
+                          label: "Duplicate todo",
+                          run: () => void duplicateTodo(todo),
+                        },
+                        {
+                          label: "Archive todo",
+                          run: () => void archiveTodo(todo),
+                        },
+                      ].filter(Boolean) as Parameters<
+                        typeof showContextMenuWithActions
+                      >[0];
+                      showContextMenuWithActions(entries);
+                    }}
                   >
                     <button
                       type="button"
@@ -791,6 +882,27 @@ export function TodosSurface() {
                             onClick={() =>
                               selectWorkspaceNavItem("projects", projectNavId(project.id))
                             }
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const entries = [
+                                {
+                                  label: "Open project",
+                                  run: () =>
+                                    selectWorkspaceNavItem(
+                                      "projects",
+                                      projectNavId(project.id),
+                                    ),
+                                },
+                                {
+                                  label: "Remove project",
+                                  run: () => void updateProject(todo, ""),
+                                },
+                              ] as Parameters<
+                                typeof showContextMenuWithActions
+                              >[0];
+                              showContextMenuWithActions(entries);
+                            }}
                           >
                             {projectLabel}
                           </button>
@@ -802,6 +914,27 @@ export function TodosSurface() {
                             onClick={() =>
                               selectWorkspaceNavItem("notes", noteNavId(noteSource.id))
                             }
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const entries = [
+                                {
+                                  label: "Open source note",
+                                  run: () =>
+                                    selectWorkspaceNavItem(
+                                      "notes",
+                                      noteNavId(noteSource.id),
+                                    ),
+                                },
+                                {
+                                  label: "Copy note title",
+                                  run: () => copyTextToClipboard(noteSource.title),
+                                },
+                              ] as Parameters<
+                                typeof showContextMenuWithActions
+                              >[0];
+                              showContextMenuWithActions(entries);
+                            }}
                           >
                             {noteSource.title}
                           </button>

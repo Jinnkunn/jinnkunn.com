@@ -32,7 +32,7 @@ database_name = "jinnkunn-content-dev"
 database_id = "019ccb92-d904-4a66-b25e-4e208b0c6b2c"
 
 [vars]
-SITE_ADMIN_STORAGE = "github"
+SITE_ADMIN_STORAGE = "local"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
 [env.staging]
@@ -46,8 +46,6 @@ workers_dev = false
 # Both ContentStore (posts/pages/blob) and SiteAdminSourceStore
 # (structured config) now route through D1 in db mode — Phase 3a closed
 # the source-store gap that forced the previous revert. The
-# SITE_ADMIN_REPO_BRANCH below is no-op in db mode but kept for
-# fallback / read-only compatibility while we verify the cutover.
 SITE_ADMIN_STORAGE = "db"
 SITE_ADMIN_REPO_BRANCH = "site-admin-staging"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
@@ -80,7 +78,7 @@ SITE_ADMIN_SERVICE_TOKENS = "861cdfad2e676fb177cd85bef18351da.access"
 # button on the Tauri workspace lives on the staging worker, so it
 # needs to know:
 #   - which Cloudflare Workers to query (CLOUDFLARE_WORKER_NAME_*)
-#   - which GitHub repo to dispatch the release-production action to
+#   - which GitHub workflow URL to expose as a manual fallback
 #     (SITE_ADMIN_REPO_OWNER / SITE_ADMIN_REPO_NAME)
 # All four values are non-secret identifiers — the matching API token
 # + GitHub App credentials are still set as `wrangler secret put`.
@@ -113,7 +111,7 @@ database_id = "adb6f272-f7e6-471a-9c22-b257184b3adf"
 name = "jinnkunn-site"
 
 [env.production.vars]
-SITE_ADMIN_STORAGE = "github"
+SITE_ADMIN_STORAGE = "local"
 SITE_ADMIN_REPO_BRANCH = "main"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 

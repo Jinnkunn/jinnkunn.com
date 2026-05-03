@@ -85,6 +85,27 @@ export interface ContextMenuAction {
   run?: () => void;
 }
 
+export function copyTextToClipboard(text: string): void {
+  if (!text) return;
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    void navigator.clipboard.writeText(text);
+    return;
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  } catch {
+    // Clipboard is convenience-only for context menus.
+  }
+}
+
 export function showContextMenuWithActions(
   items: ReadonlyArray<ContextMenuAction | ContextMenuSeparator>,
 ): void {

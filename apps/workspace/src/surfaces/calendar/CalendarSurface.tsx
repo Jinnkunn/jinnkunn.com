@@ -19,6 +19,11 @@ import {
 } from "lucide-react";
 
 import { openCalendarAccountSettings } from "../../lib/tauri";
+import {
+  CONTEXT_MENU_SEPARATOR,
+  copyTextToClipboard,
+  showContextMenuWithActions,
+} from "../../shell/contextMenu";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceActionMenu,
@@ -97,6 +102,8 @@ import { WeekView } from "./WeekView";
 import type { CalendarTimeSlotSelection } from "./TimeGrid";
 import {
   todosListWindow,
+  todosCreate,
+  todosArchive,
   todosUpdate,
   type TodoRow,
   type TodosUpdateParams,
@@ -117,6 +124,7 @@ import {
   type TodoSchedulePreset,
 } from "../../modules/todos/planning";
 import { todoTimelineStart } from "../../modules/todos/time";
+import { todoNavId } from "../todos/nav";
 import {
   LOCAL_CALENDAR_SOURCE,
   LOCAL_CALENDAR_SOURCE_ID,
@@ -249,7 +257,7 @@ function closeContainingActionMenu(start: HTMLElement | null) {
  * navigation anchor. Each rendered view (Day / Week / Month / Agenda)
  * is a thin presentation component over the same event list. */
 export function CalendarSurface() {
-  const { setContextAccessory } = useSurfaceNav();
+  const { selectWorkspaceNavItem, setContextAccessory } = useSurfaceNav();
   const [timeZone, setTimeZoneState] = useState<string>(() =>
     loadCalendarTimeZone(),
   );
@@ -1243,6 +1251,236 @@ export function CalendarSurface() {
     [calendarsBySource],
   );
 
+  const showOnlySource = useCallback(
+    (sourceId: string) => {
+      const sourceCalendars = calendarsBySource.get(sourceId) ?? [];
+      if (sourceCalendars.length === 0) return;
+      setSelectedCalendarIds(() => {
+        const next = new Set(sourceCalendars.map((calendar) => calendar.id));
+        saveVisibilityPrefs({
+          visible: next,
+          knownIds: knownCalendarIdsRef.current,
+        });
+        return next;
+      });
+    },
+    [calendarsBySource],
+  );
+
+  const showOnlyCalendar = useCallback((calendarId: string) => {
+    setSelectedCalendarIds(() => {
+      const next = new Set([calendarId]);
+      saveVisibilityPrefs({
+        visible: next,
+        knownIds: knownCalendarIdsRef.current,
+      });
+      return next;
+    });
+  }, []);
+
+  const createTodoFromEvent = useCallback(
+    async (event: CalendarEvent) => {
+      setTodoMessage(null);
+      const startsAt = new Date(event.startsAt).getTime();
+      const endsAt = new Date(event.endsAt).getTime();
+      const durationMinutes =
+        Number.isFinite(startsAt) && Number.isFinite(endsAt) && endsAt > startsAt
+          ? Math.max(15, Math.round((endsAt - startsAt) / 60_000))
+          : null;
+      try {
+        const row = await todosCreate({
+          dueAt: event.isAllDay ? startsAt : null,
+          estimatedMinutes: event.isAllDay ? null : durationMinutes,
+          notes: event.location ? `From calendar: ${event.location}` : "From calendar",
+          scheduledEndAt: event.isAllDay ? null : endsAt,
+          scheduledStartAt: event.isAllDay ? null : startsAt,
+          title: event.title || "Calendar event",
+        });
+        upsertTodo(row);
+        setTodoMessage("Todo created from event.");
+      } catch (error) {
+        setTodoMessage(`Failed to create todo: ${formatTodoOverlayError(error)}`);
+      }
+    },
+    [upsertTodo],
+  );
+
+  const createTodoFromSlot = useCallback(
+    async (selection: CalendarTimeSlotSelection) => {
+      setTodoMessage(null);
+      const startsAt = selection.startsAt.getTime();
+      const endsAt = selection.endsAt?.getTime() ?? null;
+      const estimatedMinutes =
+        endsAt !== null && endsAt > startsAt
+          ? Math.max(15, Math.round((endsAt - startsAt) / 60_000))
+          : 30;
+      try {
+        const row = await todosCreate({
+          estimatedMinutes,
+          scheduledEndAt: endsAt,
+          scheduledStartAt: startsAt,
+          title: "New todo",
+        });
+        upsertTodo(row);
+        setSelectedEvent(null);
+        setComposerDraft(null);
+        setSelectedTodoId(row.id);
+      } catch (error) {
+        setTodoMessage(`Failed to create todo: ${formatTodoOverlayError(error)}`);
+      }
+    },
+    [upsertTodo],
+  );
+
+  const archiveCalendarTodo = useCallback(
+    async (todo: TodoRow) => {
+      setTodoMessage(null);
+      setTodos((prev) => prev.filter((row) => row.id !== todo.id));
+      if (selectedTodoId === todo.id) setSelectedTodoId(null);
+      try {
+        await todosArchive(todo.id);
+      } catch (error) {
+        upsertTodo(todo);
+        setTodoMessage(`Failed to archive todo: ${formatTodoOverlayError(error)}`);
+      }
+    },
+    [selectedTodoId, upsertTodo],
+  );
+
+  const handleEventContextMenu = useCallback(
+    (event: CalendarEvent) => {
+      const calendar = calendarsById.get(event.calendarId);
+      const timeSummary = event.isAllDay
+        ? "All day"
+        : `${formatInTimeZone(event.startsAt, timeZone, {
+            hour: "numeric",
+            minute: "2-digit",
+          })} - ${formatInTimeZone(event.endsAt, timeZone, {
+            hour: "numeric",
+            minute: "2-digit",
+          })}`;
+      const entries = [
+        {
+          label: "Open details",
+          run: () => handleEventSelect(event),
+        },
+        {
+          label: "Create todo from event",
+          run: () => void createTodoFromEvent(event),
+        },
+        {
+          label: "Copy title and time",
+          run: () =>
+            copyTextToClipboard(`${event.title || "(No title)"}\n${timeSummary}`),
+        },
+        CONTEXT_MENU_SEPARATOR,
+        calendar && {
+          label: "Hide this calendar",
+          run: () => setCalendarVisible(calendar.id, false),
+        },
+        calendar && {
+          label: "Show only this calendar",
+          run: () => showOnlyCalendar(calendar.id),
+        },
+        isLocalEventId(event.eventIdentifier) && CONTEXT_MENU_SEPARATOR,
+        isLocalEventId(event.eventIdentifier) && {
+          label: "Archive event",
+          run: () => void archiveLocalEvent(event.eventIdentifier),
+        },
+      ].filter(Boolean) as Parameters<typeof showContextMenuWithActions>[0];
+      showContextMenuWithActions(entries);
+    },
+    [
+      archiveLocalEvent,
+      calendarsById,
+      createTodoFromEvent,
+      handleEventSelect,
+      setCalendarVisible,
+      showOnlyCalendar,
+      timeZone,
+    ],
+  );
+
+  const handleSlotContextMenu = useCallback(
+    (selection: CalendarTimeSlotSelection) => {
+      const startLabel = formatInTimeZone(selection.startsAt, timeZone, {
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        month: "short",
+      });
+      const entries = [
+        {
+          label: "New event here",
+          run: () =>
+            openEventComposer(
+              selection.startsAt,
+              selection.point,
+              selection.endsAt,
+            ),
+        },
+        {
+          label: "New todo here",
+          run: () => void createTodoFromSlot(selection),
+        },
+        CONTEXT_MENU_SEPARATOR,
+        {
+          label: "Copy date/time",
+          run: () => copyTextToClipboard(startLabel),
+        },
+      ] as Parameters<typeof showContextMenuWithActions>[0];
+      showContextMenuWithActions(entries);
+    },
+    [createTodoFromSlot, openEventComposer, timeZone],
+  );
+
+  const handleTodoContextMenu = useCallback(
+    (todo: TodoRow) => {
+      const completed = todo.completedAt !== null;
+      const entries = [
+        {
+          label: "Open details",
+          run: () => handleTodoSelect(todo),
+        },
+        {
+          label: completed ? "Mark open" : "Mark done",
+          run: () => handleTodoToggle(todo.id, !completed),
+        },
+        CONTEXT_MENU_SEPARATOR,
+        ...TODO_SCHEDULE_PRESETS.map((preset) => ({
+          label: todoSchedulePresetLabel(preset),
+          run: () => applyTodoPreset(todo, preset),
+        })),
+        {
+          label: "Clear schedule",
+          run: () => clearTodoPlanning(todo),
+        },
+        CONTEXT_MENU_SEPARATOR,
+        {
+          label: "Open in Todos",
+          run: () => selectWorkspaceNavItem("todos", todoNavId(todo.id)),
+        },
+        {
+          label: "Copy title",
+          run: () => copyTextToClipboard(todo.title || "(Untitled)"),
+        },
+        {
+          label: "Archive todo",
+          run: () => void archiveCalendarTodo(todo),
+        },
+      ] as Parameters<typeof showContextMenuWithActions>[0];
+      showContextMenuWithActions(entries);
+    },
+    [
+      applyTodoPreset,
+      archiveCalendarTodo,
+      clearTodoPlanning,
+      handleTodoSelect,
+      handleTodoToggle,
+      selectWorkspaceNavItem,
+    ],
+  );
+
   const refreshCalendarAccounts = useCallback(async () => {
     if (!isAuthorized(auth)) {
       const nextAuth = await calendarAuthorizationStatus();
@@ -1276,6 +1514,8 @@ export function CalendarSurface() {
         message={localCalendarMessage}
         onToggleVisible={toggleCalendar}
         onSetSourceVisible={setSourceVisible}
+        onShowOnlySource={showOnlySource}
+        onShowOnlyCalendar={showOnlyCalendar}
         onCreateLocalCalendar={() => void createLocalCalendar()}
         onRenameLocalCalendar={(id, title) =>
           void updateLocalCalendar(id, { title })
@@ -1298,6 +1538,8 @@ export function CalendarSurface() {
       localCalendarMessage,
       mergedSources,
       selectedCalendarIds,
+      showOnlyCalendar,
+      showOnlySource,
       setSourceVisible,
       toggleCalendar,
       updateLocalCalendar,
@@ -1644,6 +1886,7 @@ export function CalendarSurface() {
           onScheduleAt={scheduleTodoAt}
           onToggleExpanded={() => setTodoTrayExpanded((expanded) => !expanded)}
           onTodoSelect={handleTodoSelect}
+          onTodoContextMenu={handleTodoContextMenu}
           onTodoToggle={handleTodoToggle}
         />
         {localEventUndo ? (
@@ -1774,10 +2017,13 @@ export function CalendarSurface() {
             getDisclosure={getDisclosure}
             timeZone={timeZone}
             onEventSelect={handleEventSelect}
+            onEventContextMenu={handleEventContextMenu}
             onSlotCreate={({ startsAt, endsAt, point }) =>
               openEventComposer(startsAt, point, endsAt)
             }
+            onSlotContextMenu={handleSlotContextMenu}
             onTodoSelect={handleTodoSelect}
+            onTodoContextMenu={handleTodoContextMenu}
             onTodoToggle={handleTodoToggle}
           />
         </WorkspaceSplitView>
@@ -1897,6 +2143,7 @@ function CalendarTodoTray({
   onScheduleAt,
   onToggleExpanded,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
 }: {
   anchor: Date;
@@ -1912,6 +2159,7 @@ function CalendarTodoTray({
   ) => void;
   onToggleExpanded: () => void;
   onTodoSelect: (todo: TodoRow) => void;
+  onTodoContextMenu: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
   const unscheduled = useMemo(
@@ -1975,6 +2223,7 @@ function CalendarTodoTray({
               onPreset={onPreset}
               onScheduleAt={onScheduleAt}
               onTodoSelect={onTodoSelect}
+              onTodoContextMenu={onTodoContextMenu}
               onTodoToggle={onTodoToggle}
             />
           ))}
@@ -1991,6 +2240,7 @@ function CalendarTodoTrayItem({
   onPreset,
   onScheduleAt,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
 }: {
   anchor: Date;
@@ -2003,6 +2253,7 @@ function CalendarTodoTrayItem({
     estimatedMinutes: number | null,
   ) => void;
   onTodoSelect: (todo: TodoRow) => void;
+  onTodoContextMenu: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
   const [dateValue, setDateValue] = useState(() =>
@@ -2026,7 +2277,13 @@ function CalendarTodoTrayItem({
   };
 
   return (
-    <li className="calendar-todo-tray__item">
+    <li
+      className="calendar-todo-tray__item"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onTodoContextMenu(todo);
+      }}
+    >
       <button
         type="button"
         className="calendar-todo-tray__check"
@@ -2348,8 +2605,11 @@ function ViewPane({
   getDisclosure,
   timeZone,
   onEventSelect,
+  onEventContextMenu,
   onSlotCreate,
+  onSlotContextMenu,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
 }: {
   view: ViewKind;
@@ -2362,8 +2622,11 @@ function ViewPane({
   getDisclosure: EventDisclosureResolver;
   timeZone: string;
   onEventSelect: (event: CalendarEvent) => void;
+  onEventContextMenu: (event: CalendarEvent) => void;
   onSlotCreate: (selection: CalendarTimeSlotSelection) => void;
+  onSlotContextMenu: (selection: CalendarTimeSlotSelection) => void;
   onTodoSelect: (todo: TodoRow) => void;
+  onTodoContextMenu: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
   if (loadState === "error") {
@@ -2395,8 +2658,11 @@ function ViewPane({
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           onSlotCreate={onSlotCreate}
+          onSlotContextMenu={onSlotContextMenu}
           onTodoSelect={onTodoSelect}
+          onTodoContextMenu={onTodoContextMenu}
           onTodoToggle={onTodoToggle}
         />
       );
@@ -2410,8 +2676,11 @@ function ViewPane({
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           onSlotCreate={onSlotCreate}
+          onSlotContextMenu={onSlotContextMenu}
           onTodoSelect={onTodoSelect}
+          onTodoContextMenu={onTodoContextMenu}
           onTodoToggle={onTodoToggle}
         />
       );
@@ -2424,7 +2693,9 @@ function ViewPane({
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onDayCreate={onSlotCreate}
+          onDayContextMenu={onSlotContextMenu}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
         />
       );
     case "agenda":
@@ -2437,7 +2708,9 @@ function ViewPane({
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onEventSelect={onEventSelect}
+          onEventContextMenu={onEventContextMenu}
           onTodoSelect={onTodoSelect}
+          onTodoContextMenu={onTodoContextMenu}
           onTodoToggle={onTodoToggle}
         />
       );

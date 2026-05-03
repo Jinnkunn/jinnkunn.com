@@ -33,7 +33,9 @@ export function AgendaView({
   rangeLabel,
   getDisclosure,
   onEventSelect,
+  onEventContextMenu,
   onTodoSelect,
+  onTodoContextMenu,
   onTodoToggle,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 }: {
@@ -44,7 +46,9 @@ export function AgendaView({
   rangeLabel: string;
   getDisclosure?: EventDisclosureResolver;
   onEventSelect?: (event: CalendarEvent) => void;
+  onEventContextMenu?: (event: CalendarEvent) => void;
   onTodoSelect?: (todo: TodoRow) => void;
+  onTodoContextMenu?: (todo: TodoRow) => void;
   onTodoToggle?: (id: string, completed: boolean) => void;
   timeZone?: string;
 }) {
@@ -101,11 +105,13 @@ export function AgendaView({
                     calendarsById,
                     getDisclosure,
                     onEventSelect,
+                    onEventContextMenu,
                     timeZone,
                   )
                 : renderTodoEntry(
                     entry.todo,
                     onTodoSelect,
+                    onTodoContextMenu,
                     onTodoToggle,
                     timeZone,
                   ),
@@ -122,6 +128,7 @@ function renderEventEntry(
   calendarsById: Map<string, Calendar>,
   getDisclosure: EventDisclosureResolver | undefined,
   onEventSelect: ((event: CalendarEvent) => void) | undefined,
+  onEventContextMenu: ((event: CalendarEvent) => void) | undefined,
   timeZone: string,
 ) {
   const cal = calendarsById.get(ev.calendarId);
@@ -132,6 +139,11 @@ function renderEventEntry(
         type="button"
         className="w-full flex items-start gap-3 px-2 py-1.5 rounded hover:bg-bg-surface-alt border-0 bg-transparent text-left cursor-pointer"
         onClick={() => onEventSelect?.(ev)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onEventContextMenu?.(ev);
+        }}
       >
         <span
           className="mt-1 inline-block w-1 self-stretch rounded-sm flex-shrink-0"
@@ -162,6 +174,7 @@ function renderEventEntry(
 function renderTodoEntry(
   todo: TodoRow,
   onTodoSelect: ((todo: TodoRow) => void) | undefined,
+  onTodoContextMenu: ((todo: TodoRow) => void) | undefined,
   onTodoToggle: ((id: string, completed: boolean) => void) | undefined,
   timeZone: string,
 ) {
@@ -176,6 +189,11 @@ function renderTodoEntry(
       <div
         className="w-full flex items-start gap-3 px-2 py-1.5 rounded hover:bg-bg-surface-alt text-left"
         data-completed={completed ? "true" : undefined}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onTodoContextMenu?.(todo);
+        }}
       >
         <button
           type="button"
