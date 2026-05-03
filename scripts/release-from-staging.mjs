@@ -84,6 +84,7 @@ function parseArgs(argv = process.argv.slice(2)) {
 // the gates fresh.
 const STAGING_VERIFY_TTL_MS = 30 * 60 * 1000;
 const STAGING_VERIFY_BUCKET = "staging-verified";
+const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
 
 function readEnv(name) {
   return String(process.env[name] || "").trim();
@@ -127,6 +128,23 @@ function run(command, args, options = {}) {
 
 function gitValue(args) {
   return run("git", args, { capture: true, label: `git ${args.join(" ")}` }).trim();
+}
+
+function parsePorcelainPath(line) {
+  const path = String(line || "").slice(3).trim();
+  const renameArrow = " -> ";
+  return path.includes(renameArrow) ? path.split(renameArrow).at(-1).trim() : path;
+}
+
+function readDirtyFiles() {
+  const status = gitValue(["status", "--porcelain"]);
+  return status
+    ? status.split(/\r?\n/).filter(Boolean).map(parsePorcelainPath)
+    : [];
+}
+
+function isOnlyProductionHistoryDirty(files) {
+  return files.length > 0 && files.every((file) => file === PRODUCTION_HISTORY_PATH);
 }
 
 function readGitState() {
@@ -312,15 +330,23 @@ async function main() {
   }
 
   console.log(`[release-from-staging] release:prod (build + upload + deploy + verify)`);
+  const productionReleaseEnv = {
+    CONFIRM_PRODUCTION_DEPLOY: "1",
+    CONFIRM_PRODUCTION_SHA: git.sha,
+    ...(productionVersionId
+      ? { RELEASE_EXPECT_PRODUCTION_VERSION: productionVersionId }
+      : {}),
+  };
+  const dirtyFilesAfterSnapshot = readDirtyFiles();
+  if (isOnlyProductionHistoryDirty(dirtyFilesAfterSnapshot)) {
+    productionReleaseEnv.ALLOW_DIRTY_PRODUCTION = "1";
+    console.log(
+      `[release-from-staging] allowing controlled dirty production history file during release: ${PRODUCTION_HISTORY_PATH}`,
+    );
+  }
   run("npm", ["run", "release:prod", "--", "--skip-checks"], {
     label: "release:prod",
-    env: {
-      CONFIRM_PRODUCTION_DEPLOY: "1",
-      CONFIRM_PRODUCTION_SHA: git.sha,
-      ...(productionVersionId
-        ? { RELEASE_EXPECT_PRODUCTION_VERSION: productionVersionId }
-        : {}),
-    },
+    env: productionReleaseEnv,
   });
 
   console.log(`[release-from-staging] snapshotting new production version`);
