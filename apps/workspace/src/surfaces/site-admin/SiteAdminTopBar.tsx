@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Bug } from "lucide-react";
 
 import { handleWindowDragMouseDown } from "../../shell/windowDrag";
+import { OUTBOX_RETRY_EVENT } from "../../shell/useTrayBindings";
 import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
@@ -64,6 +65,18 @@ export function SiteAdminTopBar() {
     [syncCredentials],
   );
   const outbox = useOutbox(outboxAuth);
+
+  // Tray's "Retry now" → drainNow handshake. The tray is mounted at the
+  // shell layer where credentials aren't available, so it dispatches a
+  // window event and we (with auth in scope) consume it. Cheap; the
+  // listener is no-op when the queue is empty.
+  useEffect(() => {
+    const onRetry = () => {
+      void outbox.drainNow();
+    };
+    window.addEventListener(OUTBOX_RETRY_EVENT, onRetry);
+    return () => window.removeEventListener(OUTBOX_RETRY_EVENT, onRetry);
+  }, [outbox]);
 
   return (
     <WorkspaceCommandBar

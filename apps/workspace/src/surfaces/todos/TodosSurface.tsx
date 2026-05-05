@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { QUICK_CAPTURE_TODO_EVENT } from "../../shell/useTrayBindings";
 import { PanelRightOpen } from "lucide-react";
 
 import {
@@ -229,6 +231,20 @@ export function TodosSurface() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const composerInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Tray's "New todo…" → focus the composer input. The shell brings the
+  // surface into view first; this hook focuses the field once it's
+  // mounted (or on the next event if it was already mounted).
+  useEffect(() => {
+    const onQuickCapture = () => {
+      composerInputRef.current?.focus();
+      composerInputRef.current?.select();
+    };
+    window.addEventListener(QUICK_CAPTURE_TODO_EVENT, onQuickCapture);
+    return () =>
+      window.removeEventListener(QUICK_CAPTURE_TODO_EVENT, onQuickCapture);
+  }, []);
 
   useEffect(() => {
     if (
@@ -576,6 +592,7 @@ export function TodosSurface() {
           >
             <div className="todos-composer__main">
               <input
+                ref={composerInputRef}
                 aria-label="Todo title"
                 autoComplete="off"
                 name="todo-title"
