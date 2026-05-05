@@ -36,6 +36,7 @@ import {
   WORKSPACE_EVENT_NAME,
   type WorkspaceEventInput,
 } from "./shell/workspaceEvents";
+import { useDeferredPersist } from "./shell/useDeferredPersist";
 import { useNativeMenu } from "./shell/useNativeMenu";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { runUpdateCheckSafely } from "./lib/updater";
@@ -613,29 +614,18 @@ export function App() {
     setWorkspaceEvents([]);
   }, []);
 
-  useEffect(() => {
-    persistFavorites(favorites);
-  }, [favorites]);
-
-  useEffect(() => {
-    persistRecentItems(recentItems);
-  }, [recentItems]);
-
-  useEffect(() => {
-    persistWorkspaceEvents(workspaceEvents);
-  }, [workspaceEvents]);
-
-  useEffect(() => {
-    persistSurfaceOrder(surfaceOrder);
-  }, [surfaceOrder]);
-
-  useEffect(() => {
-    persistEnabledModuleIds(enabledModuleIds);
-  }, [enabledModuleIds]);
-
-  useEffect(() => {
-    persistBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed);
-  }, [sidebarCollapsed]);
+  // All six slices deferred to idle time via `useDeferredPersist`, so a
+  // burst of state changes (drag-reorder, rapid favoriting, etc.) only
+  // pays one localStorage write at idle instead of N synchronous writes
+  // on the render-commit critical path.
+  useDeferredPersist(favorites, persistFavorites);
+  useDeferredPersist(recentItems, persistRecentItems);
+  useDeferredPersist(workspaceEvents, persistWorkspaceEvents);
+  useDeferredPersist(surfaceOrder, persistSurfaceOrder);
+  useDeferredPersist(enabledModuleIds, persistEnabledModuleIds);
+  useDeferredPersist(sidebarCollapsed, (value) =>
+    persistBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, value),
+  );
 
   const activateTab = useCallback((tabId: string) => {
     const tab = tabs.find((entry) => entry.id === tabId);
