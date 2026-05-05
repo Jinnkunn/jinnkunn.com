@@ -38,6 +38,7 @@ import {
 } from "./shell/workspaceEvents";
 import { useDeferredPersist } from "./shell/useDeferredPersist";
 import { useNativeMenu } from "./shell/useNativeMenu";
+import { useTrayBindings } from "./shell/useTrayBindings";
 import { useWindowFocus } from "./shell/useWindowFocus";
 import { runUpdateCheckSafely } from "./lib/updater";
 import {
@@ -791,6 +792,18 @@ export function App() {
     [enabledSurfaceIds, recentItems],
   );
 
+  // Aggregate tray-menu state (window visibility, sync pause toggle,
+  // outbox depth, deploy progress, recents) and push a fresh menu
+  // payload to the macOS menubar tray on every change. Returns
+  // `syncPaused` so the CalendarBackgroundSync mount below can AND it
+  // with the surface-enabled flag.
+  const { syncPaused: calendarSyncPaused } = useTrayBindings({
+    enabledSurfaceIds,
+    recentItems: visibleRecentItems,
+    onSelectSurface: selectSurface,
+    onSelectNavItem: selectNavItem,
+  });
+
   const derivedSurfaces = useMemo(() => {
     const orderedSurfaces = orderWorkspaceSurfaces(enabledSurfaces, surfaceOrder);
     if (
@@ -864,7 +877,7 @@ export function App() {
       {enabledSurfaceIds.has("calendar") ? (
         <Suspense fallback={null}>
           <CalendarBackgroundSync
-            enabled={enabledSurfaceIds.has("calendar")}
+            enabled={enabledSurfaceIds.has("calendar") && !calendarSyncPaused}
             onWorkspaceEvent={recordWorkspaceEvent}
           />
         </Suspense>
