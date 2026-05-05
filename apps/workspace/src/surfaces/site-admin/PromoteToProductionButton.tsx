@@ -6,6 +6,7 @@ import {
   siteAdminRunReleaseCommand,
   type SiteAdminReleaseCommandResult,
 } from "../../modules/site-admin/tauri";
+import { dispatchReleaseState } from "../../shell/useTrayBindings";
 import { RELEASE_PROD_FROM_STAGING_SCRIPT } from "./release-flow-model";
 import { useSiteAdmin } from "./state";
 
@@ -203,6 +204,7 @@ export function PromoteToProductionButton() {
               body: `${target.slice(0, 7)} is live on jinkunchen.com.`,
             });
             setWatchTarget(null);
+            dispatchReleaseState({ kind: "idle" });
             return;
           }
         }
@@ -214,6 +216,7 @@ export function PromoteToProductionButton() {
           body: "Polled for 3 minutes without seeing the new SHA on production. Recheck Cloudflare or use the GitHub fallback if needed.",
         });
         setWatchTarget(null);
+        dispatchReleaseState({ kind: "idle" });
       }
     };
     const id = window.setInterval(() => {
@@ -242,11 +245,16 @@ export function PromoteToProductionButton() {
     }
     setConfirming(false);
     setBusy(true);
+    dispatchReleaseState({
+      kind: "running",
+      info: `Promoting ${preview.stagingSha.slice(0, 7)} to production…`,
+    });
     try {
       const data = await siteAdminRunReleaseCommand(RELEASE_PROD_FROM_STAGING_SCRIPT);
       setResult(data);
     } catch (error) {
       setBusy(false);
+      dispatchReleaseState({ kind: "idle" });
       setMessage("error", `Promote failed locally: ${String(error)}`);
       await loadPreview();
       return;
@@ -267,6 +275,10 @@ export function PromoteToProductionButton() {
       stagingSha: preview.stagingSha,
       previousProductionSha: asString(asRecord(asRecord(preview).production).codeSha) || null,
       startedAtMs: Date.now(),
+    });
+    dispatchReleaseState({
+      kind: "watching",
+      info: `Waiting for production to catch up to ${preview.stagingSha.slice(0, 7)}…`,
     });
   }
 
