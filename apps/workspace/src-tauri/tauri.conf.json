@@ -11,6 +11,9 @@
   },
   "app": {
     "macOSPrivateApi": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: note-asset: https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*; frame-src 'none'; object-src 'none'; base-uri 'self'"
+    },
     "windows": [
       {
         "title": "",
@@ -24,7 +27,8 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "acceptFirstMouse": true,
-        "transparent": true
+        "transparent": true,
+        "dragDropEnabled": false
       }
     ]
   },

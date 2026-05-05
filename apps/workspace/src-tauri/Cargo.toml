@@ -129,3 +129,20 @@ objc2-event-kit = { version = "0.3", features = [
     # is hidden behind its own #[cfg(feature = "objc2-core-graphics")].
     "objc2-core-graphics",
 ] }
+
+# Release profile — Tauri default is Cargo's default, which leaves a lot
+# of binary size on the table. The webview is the perf bottleneck, not
+# the Rust side, so optimize for size:
+#   opt-level = "s" — favor size over speed; the Rust code is ~500 LOC
+#                     of glue, not a hot loop, so the perf delta is nil.
+#   lto = "fat"     — cross-crate inlining; biggest single win.
+#   codegen-units=1 — required for LTO to actually look across crates.
+#   strip = true    — drop debug symbols from the shipped binary.
+#   panic = "abort" — no unwind tables. Our commands return Result, so
+#                     we don't catch panics anywhere; aborting is fine.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
