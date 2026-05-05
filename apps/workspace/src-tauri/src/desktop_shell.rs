@@ -32,7 +32,11 @@ pub const TRAFFIC_LIGHTS_INSET: (f32, f32) = (12.0, 16.0);
 /// Once you find a value you like, update `TRAFFIC_LIGHTS_INSET` above so
 /// it persists through resize/focus events (the re-apply branch uses the
 /// const, not the last `set_traffic_lights_inset` call).
-#[cfg(target_os = "macos")]
+// Dev-only sliders for tweaking traffic-light position. Not registered
+// in release builds (see `lib.rs` invoke_handler! gating below) so a
+// shipped app surface can't expose this command at all. The body still
+// exists in dev to back the JS-side debug overlay.
+#[cfg(all(target_os = "macos", debug_assertions))]
 #[tauri::command]
 pub fn debug_set_traffic_lights(
     window: tauri::WebviewWindow,
@@ -46,7 +50,7 @@ pub fn debug_set_traffic_lights(
         .map_err(|e| e.to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), debug_assertions))]
 #[tauri::command]
 pub fn debug_set_traffic_lights(_x: f32, _y: f32) -> Result<(), String> {
     Ok(())

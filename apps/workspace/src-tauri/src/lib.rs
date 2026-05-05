@@ -77,6 +77,7 @@ pub fn run() {
             secrets::secure_store_delete,
             calendar::publish_rules::calendar_publish_rules_load,
             calendar::publish_rules::calendar_publish_rules_save,
+            #[cfg(debug_assertions)]
             desktop_shell::debug_set_traffic_lights,
             desktop_shell::open_calendar_account_settings,
             desktop_shell::open_external_url,
