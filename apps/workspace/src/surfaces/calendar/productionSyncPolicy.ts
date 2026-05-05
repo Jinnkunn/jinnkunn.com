@@ -34,8 +34,19 @@ export function loadCalendarProductionSyncPolicy(): CalendarProductionSyncPolicy
     const current = localStorage.getItem(STORAGE_KEY);
     if (current !== null) return normalizeCalendarProductionSyncPolicy(current);
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacy === "auto-promote") return "auto-promote";
-    return DEFAULT_POLICY;
+    if (legacy === null) return DEFAULT_POLICY;
+    // Migrate the legacy v1 entry to the current key so future loads
+    // skip the legacy lookup and the v1 entry can eventually be
+    // removed without breaking long-running clients. Drop the old key
+    // immediately — leaving it around lets a future v3 migration see
+    // two stale generations to reason about, which is the kind of
+    // thing that turns a one-line load into a three-step archaeology
+    // dig later.
+    const migrated: CalendarProductionSyncPolicy =
+      legacy === "auto-promote" ? "auto-promote" : DEFAULT_POLICY;
+    localStorage.setItem(STORAGE_KEY, migrated);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return migrated;
   } catch {
     return DEFAULT_POLICY;
   }
