@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsSection } from "./config/SettingsSection";
 import { useSiteAdmin, useSiteAdminEphemeral } from "./state";
 import type { ConfigSourceVersion, SiteSettings } from "./types";
@@ -49,6 +49,11 @@ export function ConfigPanel() {
   const [settingsDraft, setSettingsDraft] = useState<SiteSettings>(defaultSettings());
   const [loading, setLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  // Single-flight guard. `savingSettings` is state and only gates the
+  // disabled button after the next render — a Cmd+S followed by a fast
+  // second Cmd+S could fire two saves in parallel before React reconciles.
+  // Same pattern as `useOutbox.drainingRef`.
+  const savingSettingsRef = useRef(false);
   const [conflict, setConflict] = useState(false);
   const [savedNeedsPublish, setSavedNeedsPublish] = useState(false);
   const settingsDirty = useMemo(
@@ -121,6 +126,7 @@ export function ConfigPanel() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveSettings = useCallback(async () => {
+    if (savingSettingsRef.current) return;
     if (productionReadOnly) {
       setMessage(
         "warn",
@@ -172,6 +178,7 @@ export function ConfigPanel() {
       });
 
     setSavingSettings(true);
+    savingSettingsRef.current = true;
     const response = await postSettingsPatch(
       baseSettings.rowId,
       patch,
@@ -181,7 +188,7 @@ export function ConfigPanel() {
       setMessage("warn", "Config changed on source branch. Reloading latest and retrying your setting change.");
       const latest = await fetchConfigSnapshot({ silent: true });
       if (!latest) {
-        setSavingSettings(false);
+        setSavingSettings(false); savingSettingsRef.current = false;
         applyConflict("Save settings failed with SOURCE_CONFLICT and latest config could not be loaded.");
         return;
       }
@@ -189,7 +196,7 @@ export function ConfigPanel() {
       const mergedDraft = applySettingsPatch(latest.settings, patch);
       if (conflictKeys.length > 0) {
         applyConfigSnapshot(latest, { settingsDraft: mergedDraft });
-        setSavingSettings(false);
+        setSavingSettings(false); savingSettingsRef.current = false;
         applyConflict(
           `Save settings stopped because latest config changed the same field(s): ${conflictKeys.join(", ")}.`,
         );
@@ -198,7 +205,7 @@ export function ConfigPanel() {
       const retryPatch = settingsPatch(latest.settings, mergedDraft);
       if (!Object.keys(retryPatch).length) {
         applyConfigSnapshot(latest);
-        setSavingSettings(false);
+        setSavingSettings(false); savingSettingsRef.current = false;
         setSavedNeedsPublish(true);
         setMessage("success", "Latest config already contains your settings.");
         return;
@@ -210,7 +217,7 @@ export function ConfigPanel() {
       );
       if (!retryResponse.ok) {
         applyConfigSnapshot(latest, { settingsDraft: mergedDraft });
-        setSavingSettings(false);
+        setSavingSettings(false); savingSettingsRef.current = false;
         if (isSourceConflictResponse(retryResponse)) {
           applyConflict("Save settings failed with SOURCE_CONFLICT after reloading latest.");
           return;
@@ -221,7 +228,7 @@ export function ConfigPanel() {
         );
         return;
       }
-      setSavingSettings(false);
+      setSavingSettings(false); savingSettingsRef.current = false;
       setMessage(
         "success",
         "Settings saved to source branch after refreshing latest config. Publish staging separately.",
@@ -230,7 +237,7 @@ export function ConfigPanel() {
       await loadConfig({ preserveSavedNotice: true, silent: true });
       return;
     }
-    setSavingSettings(false);
+    setSavingSettings(false); savingSettingsRef.current = false;
     if (!response.ok) {
       setMessage("error", `Save settings failed: ${response.code}: ${response.error}`);
       return;
