@@ -776,6 +776,7 @@ function EditableBlocksList({
                   if (!hasBlockDrag)
                     return;
                   event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
                   setDragOverBlockId(block.id);
                 }
               : undefined
