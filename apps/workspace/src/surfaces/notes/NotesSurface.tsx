@@ -152,11 +152,13 @@ function normalizeIcon(value: string): string | null {
 }
 
 function noteSaveKey(input: { bodyMdx: string; icon: string | null; title: string }): string {
-  return JSON.stringify({
-    bodyMdx: input.bodyMdx,
-    icon: input.icon ?? "",
-    title: normalizeTitle(input.title),
-  });
+  // `\x00` is a safe delimiter — it never appears in a valid MDX body
+  // (the editor strips it on paste / typing). Replacing the previous
+  // `JSON.stringify` cuts the per-keystroke cost from "serialize an
+  // object with a 5 KB string" down to "concat three strings", which
+  // shows up on the hot path because the dirty check fires on every
+  // change event from the editor.
+  return `${normalizeTitle(input.title)}\x00${input.icon ?? ""}\x00${input.bodyMdx}`;
 }
 
 function mergeNoteRow(rows: readonly NoteRow[], detail: NoteDetail): NoteRow[] {
@@ -337,6 +339,14 @@ export function NotesSurface() {
   const [archivedRows, setArchivedRows] = useState<NoteRow[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
+  // Two-click archive confirmation. The first click / Cmd+Backspace
+  // arms the confirm state for that specific note id; the second
+  // commits. The 5 s auto-reset effect below clears stale confirms so
+  // a user who walked away and came back doesn't archive on a single
+  // click. Mirrors the calendar settings panel's confirm pattern.
+  const [confirmArchiveNoteId, setConfirmArchiveNoteId] = useState<string | null>(
+    null,
+  );
   const [, setDiagnostics] = useState<unknown[]>([]);
   const lastSavedKeyRef = useRef("");
   const pendingSaveRef = useRef<PendingNotePayload | null>(null);
@@ -408,14 +418,26 @@ export function NotesSurface() {
     void loadRows();
   }, [loadRows]);
 
+  // Project list is only consumed when rendering linked-todo rows in
+  // the open note's right panel, so defer the fetch until a note is
+  // actually selected. Boot path used to pay this IPC even when the
+  // user never opened a note. The ref tracks whether we've already
+  // pulled so subsequent note switches don't re-fetch.
+  const projectsLoadedRef = useRef(false);
   useEffect(() => {
+    if (projectsLoadedRef.current || !selectedNote) return;
+    projectsLoadedRef.current = true;
     let cancelled = false;
     projectsList()
       .then((next) => {
         if (!cancelled) setProjects(next);
       })
       .catch((error) => {
-        if (!cancelled && !isNativeBridgeUnavailable(error)) {
+        if (cancelled) return;
+        // Reset so the next note selection can retry — without this a
+        // transient error permanently blocks the project labels.
+        projectsLoadedRef.current = false;
+        if (!isNativeBridgeUnavailable(error)) {
           setMessage({
             kind: "error",
             text: `Load projects failed: ${String(error)}`,
@@ -425,7 +447,7 @@ export function NotesSurface() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedNote]);
 
   useEffect(() => {
     if (isArchiveView) {
@@ -1073,6 +1095,19 @@ export function NotesSurface() {
 
   const archiveSelected = useCallback(async () => {
     if (!selectedNote || busy) return;
+    // First-click guard. Arming the confirm state is enough — the user
+    // sees the button label flip to "Confirm archive" (or, for the
+    // keyboard path, gets a hint via the message bar) and a second
+    // press within 5 s commits.
+    if (confirmArchiveNoteId !== selectedNote.id) {
+      setConfirmArchiveNoteId(selectedNote.id);
+      setMessage({
+        kind: "info",
+        text: "Press archive again to confirm.",
+      });
+      return;
+    }
+    setConfirmArchiveNoteId(null);
     setBusy(true);
     try {
       const mutation = await notesArchive(selectedNote.id);
@@ -1089,13 +1124,26 @@ export function NotesSurface() {
     } finally {
       setBusy(false);
     }
-  }, [busy, selectFirstAvailable, selectedNote]);
+  }, [busy, confirmArchiveNoteId, selectFirstAvailable, selectedNote]);
 
   useEffect(() => {
     archiveSelectedRef.current = () => {
       void archiveSelected();
     };
   }, [archiveSelected]);
+
+  // Drop the armed confirm state when the user navigates away from
+  // the note (so coming back later doesn't act on stale arming) or
+  // after 5 s of no follow-up press.
+  useEffect(() => {
+    if (!confirmArchiveNoteId) return;
+    if (selectedNote?.id !== confirmArchiveNoteId) {
+      setConfirmArchiveNoteId(null);
+      return;
+    }
+    const handle = window.setTimeout(() => setConfirmArchiveNoteId(null), 5_000);
+    return () => window.clearTimeout(handle);
+  }, [confirmArchiveNoteId, selectedNote?.id]);
 
   const restoreArchived = useCallback(
     async (id: string) => {
@@ -1289,7 +1337,9 @@ export function NotesSurface() {
                   disabled={!selectedNote || busy}
                   onClick={() => void archiveSelected()}
                 >
-                  Archive
+                  {selectedNote && confirmArchiveNoteId === selectedNote.id
+                    ? "Confirm archive"
+                    : "Archive"}
                 </button>
               </WorkspaceActionMenu>
             ) : null}
@@ -1806,6 +1856,7 @@ function ArchivePanel({
         <WorkspaceEmptyState
           className="notes-archive__empty"
           compact
+          loading
           title="Loading"
         />
       ) : rows.length === 0 ? (

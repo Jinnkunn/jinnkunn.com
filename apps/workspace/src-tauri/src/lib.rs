@@ -81,6 +81,7 @@ pub fn run() {
             desktop_shell::debug_set_traffic_lights,
             desktop_shell::open_calendar_account_settings,
             desktop_shell::open_external_url,
+            desktop_shell::open_macos_calendar_privacy,
             desktop_shell::show_context_menu,
             desktop_shell::tray_set_menu,
             calendar::commands::calendar_authorization_status,

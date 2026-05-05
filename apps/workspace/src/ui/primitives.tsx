@@ -1,4 +1,5 @@
 import { forwardRef } from "react";
+import { Loader2 } from "lucide-react";
 import type {
   ButtonHTMLAttributes,
   CSSProperties,
@@ -488,6 +489,10 @@ export interface WorkspaceEmptyStateProps
   action?: ReactNode;
   compact?: boolean;
   icon?: ReactNode;
+  /** Renders a spin animation in the icon slot and applies
+   * `aria-busy="true"`/`role="status"` so SR users hear the loading
+   * state too. Overrides `icon` when both are passed. */
+  loading?: boolean;
   title: ReactNode;
 }
 
@@ -497,21 +502,36 @@ export function WorkspaceEmptyState({
   className,
   compact = false,
   icon,
+  loading = false,
   title,
   ...props
 }: WorkspaceEmptyStateProps) {
+  const resolvedIcon = loading ? (
+    <Loader2
+      absoluteStrokeWidth
+      aria-hidden="true"
+      className="workspace-empty-state__spinner"
+      size={18}
+      strokeWidth={1.8}
+    />
+  ) : (
+    icon
+  );
   return (
     <div
+      aria-busy={loading || undefined}
+      role={loading ? "status" : undefined}
       className={joinClassNames(
         "workspace-empty-state",
         compact && "workspace-empty-state--compact",
+        loading && "workspace-empty-state--loading",
         className,
       )}
       {...props}
     >
-      {icon ? (
+      {resolvedIcon ? (
         <span className="workspace-empty-state__icon" aria-hidden="true">
-          {icon}
+          {resolvedIcon}
         </span>
       ) : null}
       <strong>{title}</strong>

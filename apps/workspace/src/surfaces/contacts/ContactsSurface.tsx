@@ -748,7 +748,7 @@ export function ContactsSurface() {
 
   const renderSplit = () => {
     if (loading && contacts.length === 0) {
-      return <WorkspaceEmptyState className="contacts-empty" title="Loading contacts" />;
+      return <WorkspaceEmptyState className="contacts-empty" loading title="Loading contacts" />;
     }
     if (visibleContacts.length === 0) {
       return (

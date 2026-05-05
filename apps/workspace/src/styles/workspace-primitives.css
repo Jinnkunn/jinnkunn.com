@@ -676,6 +676,28 @@
   margin-top: 4px;
 }
 
+/* Loading variant — renders a spin animation in the icon slot so the
+ * surface communicates "fetching" rather than "empty" while data is
+ * in flight. Animation is `prefers-reduced-motion`-aware so the dot
+ * stays still for users who opted out of motion. */
+.workspace-empty-state--loading .workspace-empty-state__icon {
+  background: transparent;
+}
+.workspace-empty-state__spinner {
+  animation: workspace-empty-state-spin 1s linear infinite;
+  color: var(--color-accent);
+}
+@keyframes workspace-empty-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-empty-state__spinner {
+    animation: none;
+  }
+}
+
 .workspace-main {
   display: flex;
   flex: 1 1 0%;

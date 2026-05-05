@@ -10,6 +10,27 @@ body,
   overflow: hidden;
 }
 
+/* Keyboard-only focus indication. `:focus-visible` keeps the ring off
+ * mouse clicks (where it's noisy) but renders it on Tab traversal so
+ * keyboard users can see where they are. Per-component overrides can
+ * still target `:focus` directly when they need a different shape;
+ * this is the floor everyone gets for free. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* …but skip the ring on the contenteditable canvas — the BlocksEditor
+ * paints its own block-level focus state via `data-focused-block`, and
+ * stacking the global outline on every block edge clutters the
+ * document chrome. */
+[contenteditable="true"]:focus-visible,
+[contenteditable=""]:focus-visible,
+.mdx-document-block:focus-visible,
+.mdx-document-block:focus-visible * {
+  outline: none;
+}
+
 body {
   /* Promoted to the new `--font-system` token so SF Pro Display +
    * Text optical sizing kick in on macOS. The 13 px / 1.38 body
