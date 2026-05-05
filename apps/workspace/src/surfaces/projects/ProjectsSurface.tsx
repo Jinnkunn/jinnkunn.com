@@ -20,7 +20,7 @@ import {
   projectsNeedingAttention,
   sortProjects,
 } from "../../modules/projects/model";
-import { notesCreate, notesUpdate } from "../../modules/notes/api";
+import { notesArchive, notesCreate, notesUpdate } from "../../modules/notes/api";
 import {
   CONTEXT_MENU_SEPARATOR,
   copyTextToClipboard,
@@ -135,11 +135,27 @@ export function ProjectsSurface() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<ProjectsNotice | null>(null);
+  // Two-click archive guard. The same id covers both the row context-
+  // menu action and the detail-panel button — either path can be the
+  // confirming click. The 5 s auto-reset effect below clears stale
+  // arming.
+  const [confirmArchiveProjectId, setConfirmArchiveProjectId] = useState<
+    string | null
+  >(null);
   const [linkDraft, setLinkDraft] = useState<ProjectLinkDraft>({
     label: "",
     target: "",
     type: "url",
   });
+
+  useEffect(() => {
+    if (!confirmArchiveProjectId) return;
+    const handle = window.setTimeout(
+      () => setConfirmArchiveProjectId(null),
+      5_000,
+    );
+    return () => window.clearTimeout(handle);
+  }, [confirmArchiveProjectId]);
 
   const view = viewFromNavItem(activeNavItemId);
   const selectedProjectId = projectIdFromNavItem(activeNavItemId);
@@ -403,6 +419,19 @@ export function ProjectsSurface() {
   };
 
   const archiveProject = async (project: ProjectRow) => {
+    // Two-click guard. Arm the confirm state on first call; commit on
+    // the second within 5 s. Both the row context menu and the
+    // detail-panel button route through here so either can be the
+    // confirming click.
+    if (confirmArchiveProjectId !== project.id) {
+      setConfirmArchiveProjectId(project.id);
+      setNotice({
+        kind: "info",
+        text: "Press archive again to confirm.",
+      });
+      return;
+    }
+    setConfirmArchiveProjectId(null);
     setNotice(null);
     try {
       await projectsArchive(project.id);
@@ -496,8 +525,10 @@ export function ProjectsSurface() {
 
   const createProjectNote = async (project: ProjectRow) => {
     setNotice(null);
+    let createdNoteId: string | null = null;
     try {
       const created = await notesCreate({ title: project.title });
+      createdNoteId = created.note.id;
       const body = `# ${project.title}\n\n## Overview\n\n${project.description}\n\n## Next actions\n\n- `;
       const note = await notesUpdate({
         bodyMdx: body,
@@ -511,10 +542,26 @@ export function ProjectsSurface() {
         targetId: note.id,
         targetType: "note",
       });
+      // Link landed — the note is no longer at risk of orphaning even
+      // if anything below this line throws.
+      createdNoteId = null;
       setLinks((current) => [link, ...current.filter((item) => item.id !== link.id)]);
       setNotice({ kind: "info", text: "Project note created." });
       selectWorkspaceNavItem("notes", noteNavId(note.id));
     } catch (error) {
+      // Roll back the orphaned note if we failed before the link
+      // landed. Without this, the user sees "create failed" but the
+      // note shows up in the notes surface anyway with no project
+      // link — confusing and quietly accumulates dead rows over time.
+      if (createdNoteId) {
+        try {
+          await notesArchive(createdNoteId);
+        } catch {
+          // Best-effort rollback. If archive also fails the note is
+          // still discoverable in the notes surface; the user can
+          // archive it manually. Don't mask the original error.
+        }
+      }
       setNotice({
         kind: "error",
         text: `Failed to create project note: ${formatProjectsError(error)}`,
@@ -676,13 +723,14 @@ export function ProjectsSurface() {
       ) : null}
 
       {loading ? (
-        <WorkspaceEmptyState className="projects-empty" title="Loading projects" />
+        <WorkspaceEmptyState className="projects-empty" loading title="Loading projects" />
       ) : selectedProject && view === "detail" ? (
         <ProjectDetailView
           linkDraft={linkDraft}
           links={links}
           newTodoTitle={newTodoTitle}
           onAddLink={(event) => void addLink(selectedProject, event)}
+          archiveConfirming={confirmArchiveProjectId === selectedProject.id}
           onArchive={() => void archiveProject(selectedProject)}
           onCreateNote={() => void createProjectNote(selectedProject)}
           onCreateTodo={() => void createProjectTodo(selectedProject)}

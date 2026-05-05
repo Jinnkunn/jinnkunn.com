@@ -231,7 +231,35 @@ export function TodosSurface() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Two-click archive guard — same id covers both the detail-panel
+  // button and the row context-menu action so either path can be the
+  // confirming click. Auto-resets after 5 s of no follow-up.
+  const [confirmArchiveTodoId, setConfirmArchiveTodoId] = useState<string | null>(
+    null,
+  );
+  // Two-click guard for the bulk "Clear completed" action; same
+  // shape as the per-todo confirm above, but with a sentinel id since
+  // it doesn't target a specific row.
+  const [confirmClearCompleted, setConfirmClearCompleted] = useState(false);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!confirmArchiveTodoId) return;
+    const handle = window.setTimeout(
+      () => setConfirmArchiveTodoId(null),
+      5_000,
+    );
+    return () => window.clearTimeout(handle);
+  }, [confirmArchiveTodoId]);
+
+  useEffect(() => {
+    if (!confirmClearCompleted) return;
+    const handle = window.setTimeout(
+      () => setConfirmClearCompleted(false),
+      5_000,
+    );
+    return () => window.clearTimeout(handle);
+  }, [confirmClearCompleted]);
 
   // Tray's "New todo…" → focus the composer input. The shell brings the
   // surface into view first; this hook focuses the field once it's
@@ -325,29 +353,38 @@ export function TodosSurface() {
   const activeCount = todos.filter((todo) => !todo.archivedAt && !todo.completedAt).length;
   const completedCount = todos.filter((todo) => !todo.archivedAt && todo.completedAt).length;
   const viewLabel = filterLabel(filter);
-  const navCounts = useMemo<TodoNavCounts>(
-    () => ({
-      [TODOS_COMPLETED_NAV_ID]: todos.filter((todo) =>
-        filterTodo(todo, "completed"),
-      ).length,
-      [TODOS_INBOX_NAV_ID]: todos.filter((todo) =>
-        filterTodo(todo, "inbox"),
-      ).length,
-      [TODOS_SCHEDULED_NAV_ID]: todos.filter((todo) =>
-        filterTodo(todo, "scheduled"),
-      ).length,
-      [TODOS_TODAY_NAV_ID]: todos.filter((todo) =>
-        filterTodo(todo, "today"),
-      ).length,
-      [TODOS_UNSCHEDULED_NAV_ID]: todos.filter((todo) =>
-        filterTodo(todo, "unscheduled"),
-      ).length,
-      [TODOS_UPCOMING_NAV_ID]: todos.filter((todo) =>
-        filterTodo(todo, "upcoming"),
-      ).length,
-    }),
-    [todos],
-  );
+  // Single-pass aggregation. The previous implementation walked the
+  // `todos` array six times — once per category — and each `filterTodo`
+  // call recomputes timeline boundaries. With 100+ todos that's ~600
+  // iterations per re-render whenever the list mutates. One reduce
+  // gives the same answer in N steps.
+  const navCounts = useMemo<TodoNavCounts>(() => {
+    // Local non-Partial counters so the `++` increments type-check —
+    // every key is present from the start. Returned as the public
+    // (Partial) `TodoNavCounts` shape.
+    let completed = 0;
+    let inbox = 0;
+    let scheduled = 0;
+    let today = 0;
+    let unscheduled = 0;
+    let upcoming = 0;
+    for (const todo of todos) {
+      if (filterTodo(todo, "completed")) completed++;
+      if (filterTodo(todo, "inbox")) inbox++;
+      if (filterTodo(todo, "scheduled")) scheduled++;
+      if (filterTodo(todo, "today")) today++;
+      if (filterTodo(todo, "unscheduled")) unscheduled++;
+      if (filterTodo(todo, "upcoming")) upcoming++;
+    }
+    return {
+      [TODOS_COMPLETED_NAV_ID]: completed,
+      [TODOS_INBOX_NAV_ID]: inbox,
+      [TODOS_SCHEDULED_NAV_ID]: scheduled,
+      [TODOS_TODAY_NAV_ID]: today,
+      [TODOS_UNSCHEDULED_NAV_ID]: unscheduled,
+      [TODOS_UPCOMING_NAV_ID]: upcoming,
+    };
+  }, [todos]);
   const navGroups = useMemo(
     () => createTodosNavGroups(navCounts),
     [navCounts],
@@ -555,6 +592,16 @@ export function TodosSurface() {
   };
 
   const archiveTodo = async (todo: TodoRow) => {
+    // Two-click guard. Arm the confirm state on first call; commit on
+    // the second within 5 s. The auto-reset effect below clears stale
+    // arming. Same id covers both the detail-panel button and the row
+    // context-menu action so either path can be the "second click".
+    if (confirmArchiveTodoId !== todo.id) {
+      setConfirmArchiveTodoId(todo.id);
+      setMessage("Press archive again to confirm.");
+      return;
+    }
+    setConfirmArchiveTodoId(null);
     setTodos((current) => current.filter((row) => row.id !== todo.id));
     if (selectedTodoId === todo.id) setSelectedTodoId(null);
     try {
@@ -568,6 +615,17 @@ export function TodosSurface() {
   const clearCompleted = async () => {
     const completed = todos.filter((todo) => todo.completedAt);
     if (!completed.length) return;
+    // Two-click guard. The first press arms the confirm state and
+    // shows a hint with the count; the second press within 5 s
+    // commits. Mirrors the per-todo archive flow above.
+    if (!confirmClearCompleted) {
+      setConfirmClearCompleted(true);
+      setMessage(
+        `Press "Clear done" again to remove ${completed.length} completed todo${completed.length === 1 ? "" : "s"}.`,
+      );
+      return;
+    }
+    setConfirmClearCompleted(false);
     setTodos((current) => current.filter((todo) => !todo.completedAt));
     try {
       await todosClearCompleted();
@@ -699,7 +757,7 @@ export function TodosSurface() {
               onClick={() => void clearCompleted()}
               tone="ghost"
             >
-              Clear done
+              {confirmClearCompleted ? "Confirm clear" : "Clear done"}
             </WorkspaceCommandButton>
           </WorkspaceCommandGroup>
         }
@@ -724,6 +782,7 @@ export function TodosSurface() {
               project={selectedTodo.projectId ? projectById.get(selectedTodo.projectId) : null}
               todo={selectedTodo}
               onArchive={() => void archiveTodo(selectedTodo)}
+              archiveConfirming={confirmArchiveTodoId === selectedTodo.id}
               onClear={() => void clearPlanning(selectedTodo)}
               onClose={() => setSelectedTodoId(null)}
               onDueDateChange={(value) => void updateDueDate(selectedTodo, value)}
@@ -742,7 +801,7 @@ export function TodosSurface() {
       >
         <section className="todos-list-shell" aria-busy={loading ? "true" : undefined}>
           {loading ? (
-            <WorkspaceEmptyState className="todos-empty" title="Loading todos" />
+            <WorkspaceEmptyState className="todos-empty" loading title="Loading todos" />
           ) : visibleTodos.length === 0 ? (
             <WorkspaceEmptyState className="todos-empty" title={emptyLabel(filter)} />
           ) : (
@@ -991,6 +1050,7 @@ export function TodosSurface() {
 }
 
 function TodoDetailInspector({
+  archiveConfirming,
   noteSource,
   onArchive,
   onClear,
@@ -1008,6 +1068,7 @@ function TodoDetailInspector({
   projects,
   todo,
 }: {
+  archiveConfirming: boolean;
   noteSource: NoteTodoSource | null;
   onArchive: () => void;
   onClear: () => void;
@@ -1148,7 +1209,7 @@ function TodoDetailInspector({
           className="todos-detail-panel__archive"
           onClick={onArchive}
         >
-          Archive
+          {archiveConfirming ? "Confirm archive" : "Archive"}
         </button>
       </WorkspaceInspectorSection>
     </WorkspaceInspector>

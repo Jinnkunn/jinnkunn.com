@@ -8,6 +8,7 @@ import {
   type OutboxEntry,
   type OutboxStatus,
 } from "../../modules/site-admin/tauri";
+import { emitWorkspaceEvent } from "../../shell/workspaceEvents";
 
 // Hook that owns the workspace's view of the local write outbox: a
 // background drain timer, a window-focus drain, a status poll, and an
@@ -75,13 +76,32 @@ export function useOutbox(auth: OutboxAuth | null): OutboxHookValue {
   // process the queue.
   const drainingRef = useRef(false);
 
+  // Suppress repeated "outbox status check failed" toasts — the poll
+  // runs every 5 s, and a persistent local-DB fault would otherwise
+  // bury the activity feed under identical errors. We surface the
+  // first failure so the user knows something is off, and stay
+  // quiet until a successful read clears the suppression.
+  const statusFailureSurfacedRef = useRef(false);
+
   const refreshStatus = useCallback(async () => {
     try {
       const next = await outboxStatus();
       setStatus(next);
-    } catch {
-      // outbox commands return Err(String) on local DB faults; log and
-      // keep the previous status so the badge doesn't flicker.
+      statusFailureSurfacedRef.current = false;
+    } catch (error) {
+      // Local DB faults make the badge silently freeze. Keep the
+      // previous status so the badge doesn't flicker, but surface
+      // the failure once so the operator notices the queue is no
+      // longer being polled.
+      if (!statusFailureSurfacedRef.current) {
+        statusFailureSurfacedRef.current = true;
+        emitWorkspaceEvent({
+          source: "Outbox",
+          title: "Outbox status check failed",
+          detail: error instanceof Error ? error.message : String(error),
+          tone: "error",
+        });
+      }
     }
   }, []);
 

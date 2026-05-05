@@ -18,7 +18,7 @@ import {
   Settings,
 } from "lucide-react";
 
-import { openCalendarAccountSettings } from "../../lib/tauri";
+import { openCalendarAccountSettings, openMacosCalendarPrivacy } from "../../lib/tauri";
 import {
   CONTEXT_MENU_SEPARATOR,
   copyTextToClipboard,
@@ -3853,8 +3853,23 @@ function PermissionBlocked({
       <p className="text-[13px] text-text-secondary">
         Enable access in System Settings, or continue with Workspace calendars.
       </p>
-      <div className="mt-3">
-        <button type="button" className="btn btn--primary" onClick={onSkip}>
+      <div className="mt-3 flex flex-row gap-2">
+        {status === "denied" ? (
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => {
+              void openMacosCalendarPrivacy();
+            }}
+          >
+            Open System Settings
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={status === "denied" ? "btn" : "btn btn--primary"}
+          onClick={onSkip}
+        >
           Use Workspace calendar instead
         </button>
       </div>

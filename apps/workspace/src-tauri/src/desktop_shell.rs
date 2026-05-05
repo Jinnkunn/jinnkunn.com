@@ -101,6 +101,30 @@ pub fn open_calendar_account_settings() -> Result<(), String> {
     Err("Calendar accounts are managed by the operating system.".to_string())
 }
 
+/// Open the macOS Privacy → Calendars pane. Distinct from
+/// `open_calendar_account_settings` (which opens Internet Accounts so
+/// the user can add iCloud/Google) because EventKit access is gated by
+/// a separate Privacy permission. The calendar surface routes here when
+/// `auth === "denied" | "restricted"` so the user has a one-click path
+/// to flip the permission instead of hunting through System Settings.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn open_macos_calendar_privacy() -> Result<(), String> {
+    // Ventura+ scheme is the AnchorURL form; pre-Ventura falls back to
+    // the older `Privacy_Calendars` query and finally to the Privacy
+    // root if neither resolves.
+    open::that("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
+        .or_else(|_| open::that("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Calendars"))
+        .or_else(|_| open::that("x-apple.systempreferences:com.apple.preference.security?Privacy"))
+        .map_err(|err| err.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn open_macos_calendar_privacy() -> Result<(), String> {
+    Err("Calendar privacy settings are macOS-only.".to_string())
+}
+
 /// Bring the main webview back into view from the menubar tray or a
 /// dock-click after the user closed the window. Hidden windows survive
 /// "close" because our `CloseRequested` handler swallows the close

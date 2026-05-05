@@ -22,6 +22,13 @@ export function openCalendarAccountSettings(): Promise<void> {
   return invoke("open_calendar_account_settings");
 }
 
+/** Open macOS Settings → Privacy & Security → Calendars so the user
+ * can flip the EventKit permission. Used by the Calendar surface's
+ * "Calendar access blocked" screen. */
+export function openMacosCalendarPrivacy(): Promise<void> {
+  return invoke("open_macos_calendar_privacy");
+}
+
 /** Raw keyring access — prefer `createNamespacedSecureStorage` so modules
  * don't collide on key names. */
 export function secureStoreSet(key: string, value: string): Promise<void> {

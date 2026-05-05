@@ -54,6 +54,7 @@ import {
 } from "./projectFormat";
 
 export function ProjectDetailView({
+  archiveConfirming,
   linkDraft,
   links,
   newTodoTitle,
@@ -72,6 +73,7 @@ export function ProjectDetailView({
   project,
   todos,
 }: {
+  archiveConfirming: boolean;
   linkDraft: ProjectLinkDraft;
   links: readonly ProjectLinkRow[];
   newTodoTitle: string;
@@ -181,7 +183,7 @@ export function ProjectDetailView({
             ) : (
               <button type="button" className="projects-detail__archive" onClick={onArchive}>
                 <Archive absoluteStrokeWidth aria-hidden="true" size={14} strokeWidth={1.8} />
-                Archive
+                {archiveConfirming ? "Confirm archive" : "Archive"}
               </button>
             )}
           </WorkspaceInspectorSection>
