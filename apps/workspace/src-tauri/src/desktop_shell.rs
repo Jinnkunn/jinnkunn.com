@@ -238,10 +238,13 @@ pub fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
         tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     };
 
-    let show = MenuItem::with_id(app, "tray-show", "Open Workspace", true, None::<&str>)?;
+    // Boot menu — replaced as soon as the JS shell mounts and pushes a
+    // dynamic payload via `tray_set_menu`. IDs match the dynamic menu
+    // so `on_menu_event` doesn't need to switch on legacy ids.
+    let show = MenuItem::with_id(app, "tray:show-window", "Open Workspace", true, None::<&str>)?;
     let quit = MenuItem::with_id(
         app,
-        "tray-quit",
+        "tray:quit",
         "Quit Jinnkunn Workspace",
         true,
         None::<&str>,
@@ -261,7 +264,7 @@ pub fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     // even though we're in `src/`.
     let icon = tauri::include_image!("icons/tray.png");
 
-    let _tray = TrayIconBuilder::with_id("jinnkunn-workspace-tray")
+    let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("Jinnkunn Workspace")
         .icon(icon)
         // macOS expects a template (single-channel) icon for the menubar.
@@ -273,10 +276,30 @@ pub fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
         // window, right-click opens the menu (standard menubar UX).
         .show_menu_on_left_click(false)
         .menu(&menu)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "tray-show" => show_main_window(app),
-            "tray-quit" => app.exit(0),
-            _ => {}
+        .on_menu_event(|app, event| {
+            use tauri::{Emitter, Manager};
+            let id = event.id.as_ref();
+            match id {
+                // Quit must run in Rust because killing the app tears
+                // down the JS event loop before any forwarded handler
+                // could fire.
+                "tray:quit" => app.exit(0),
+                // Show / hide route through Rust too — the JS side
+                // can't show its own webview window from a hidden
+                // state (no UI thread to dispatch to).
+                "tray:show-window" => show_main_window(app),
+                "tray:hide-window" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+                // Everything else is a JS-owned action (palette, deploy
+                // navigation, retry, toggles). Re-broadcast through the
+                // same `menu://action` channel the menubar uses.
+                _ => {
+                    let _ = app.emit("menu://action", id);
+                }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -298,6 +321,157 @@ pub fn install_tray(_app: &tauri::App) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+/// Tray ID used by `install_tray` and looked up by the dynamic-menu IPC
+/// when the JS side pushes a fresh menu state.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+const TRAY_ID: &str = "jinnkunn-workspace-tray";
+
+/// Item the JS side passes to `tray_set_menu`. A flat list of these
+/// (with `children: Some(...)` for submenus and `id == "-"` for a
+/// separator) is enough to express everything the workspace tray
+/// surfaces today: action rows, a recents submenu, and section
+/// dividers. The `id` is what comes back through the existing
+/// `menu://action` channel when the user picks an item.
+#[derive(Debug, Deserialize)]
+pub struct TrayMenuItem {
+    id: String,
+    label: String,
+    enabled: Option<bool>,
+    children: Option<Vec<TrayMenuItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TrayMenuPayload {
+    items: Vec<TrayMenuItem>,
+    /// Text shown next to the icon in the macOS menubar — used as a
+    /// status badge ("●", "(3)", "deploying…"). `None` clears it.
+    title: Option<String>,
+    /// Hover-tooltip; `None` keeps the previous value.
+    tooltip: Option<String>,
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+    items: &[TrayMenuItem],
+) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
+    let menu = tauri::menu::Menu::new(app).map_err(|e| e.to_string())?;
+    append_tray_items(app, &menu, items, false)?;
+    Ok(menu)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn build_tray_submenu(
+    app: &tauri::AppHandle,
+    id: &str,
+    label: &str,
+    enabled: bool,
+    items: &[TrayMenuItem],
+) -> Result<tauri::menu::Submenu<tauri::Wry>, String> {
+    let sub = tauri::menu::Submenu::with_id(app, id, label, enabled)
+        .map_err(|e| e.to_string())?;
+    append_tray_items(app, &sub, items, true)?;
+    Ok(sub)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn append_tray_items<C: TrayMenuContainer>(
+    app: &tauri::AppHandle,
+    container: &C,
+    items: &[TrayMenuItem],
+    _is_submenu: bool,
+) -> Result<(), String> {
+    use tauri::menu::{MenuItem, PredefinedMenuItem};
+    for item in items {
+        if item.id == "-" || item.label == "-" {
+            let sep = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
+            container.append_item(&sep).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if let Some(children) = &item.children {
+            let sub =
+                build_tray_submenu(app, &item.id, &item.label, item.enabled.unwrap_or(true), children)?;
+            container.append_item(&sub).map_err(|e| e.to_string())?;
+            continue;
+        }
+        let m = MenuItem::with_id(
+            app,
+            &item.id,
+            &item.label,
+            item.enabled.unwrap_or(true),
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())?;
+        container.append_item(&m).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Helper trait so `build_tray_menu` and `build_tray_submenu` can share
+/// the same recursive `append_tray_items` body. `Menu` and `Submenu` in
+/// Tauri 2 both have an inherent `append`, but no shared trait — this
+/// adapter hides that.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+trait TrayMenuContainer {
+    fn append_item(
+        &self,
+        item: &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+    ) -> tauri::Result<()>;
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+impl TrayMenuContainer for tauri::menu::Menu<tauri::Wry> {
+    fn append_item(
+        &self,
+        item: &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+    ) -> tauri::Result<()> {
+        self.append(item)
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+impl TrayMenuContainer for tauri::menu::Submenu<tauri::Wry> {
+    fn append_item(
+        &self,
+        item: &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+    ) -> tauri::Result<()> {
+        self.append(item)
+    }
+}
+
+/// Replace the tray menu, badge title, and tooltip with values driven by
+/// the JS side. The JS shell aggregates state (window visibility,
+/// outbox depth, deploy status, today's events, recents, …) into a
+/// single payload and pushes it whenever any input changes; this
+/// command applies it.
+///
+/// Selection routing is unchanged: the tray's `on_menu_event` (set up
+/// in `install_tray`) emits `menu://action` with the picked item's id,
+/// and `install_menu_event_handler` forwards the same channel's
+/// menubar selections — so the JS side has one event to listen on.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[tauri::command]
+pub fn tray_set_menu(app: tauri::AppHandle, payload: TrayMenuPayload) -> Result<(), String> {
+    let tray = app
+        .tray_by_id(TRAY_ID)
+        .ok_or_else(|| "tray not registered".to_string())?;
+    let menu = build_tray_menu(&app, &payload.items)?;
+    tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    // `set_title` accepts `Option<impl Into<String>>` — `None` clears.
+    tray.set_title(payload.title.as_deref())
+        .map_err(|e| e.to_string())?;
+    if let Some(tip) = payload.tooltip {
+        tray.set_tooltip(Some(tip)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+pub fn tray_set_menu(_payload: serde_json::Value) -> Result<(), String> {
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub fn install_desktop_shell_plugins(
     builder: tauri::Builder<tauri::Wry>,
@@ -307,6 +481,14 @@ pub fn install_desktop_shell_plugins(
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // Autostart — `MacosLauncher::LaunchAgent` writes a LaunchAgent
+        // plist under `~/Library/LaunchAgents` so the OS opens the app
+        // at login. No CLI args are forwarded; the app's normal boot
+        // path runs. The toggle UI lives in the tray menu.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]

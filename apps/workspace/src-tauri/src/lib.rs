@@ -82,6 +82,7 @@ pub fn run() {
             desktop_shell::open_calendar_account_settings,
             desktop_shell::open_external_url,
             desktop_shell::show_context_menu,
+            desktop_shell::tray_set_menu,
             calendar::commands::calendar_authorization_status,
             calendar::commands::calendar_request_access,
             calendar::commands::calendar_list_sources,
