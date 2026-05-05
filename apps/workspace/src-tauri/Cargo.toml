@@ -74,6 +74,12 @@ tauri-plugin-updater = "2"
 # and accent-colored — instead of the webview's blandly cross-platform
 # JS dialog.
 tauri-plugin-dialog = "2"
+# Launch-at-login. The tray menu's "Launch at login" toggle reads /
+# writes the OS-native auto-start entry: a LaunchAgent plist on macOS,
+# a registry key under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+# on Windows, an autostart desktop file on Linux. JS calls the plugin
+# directly (`@tauri-apps/plugin-autostart`); no custom IPC needed.
+tauri-plugin-autostart = "2"
 # window-vibrancy applies the native macOS NSVisualEffectView behind the
 # webview so the window background picks up desktop blur — the translucent
 # "和谐" feel personal-os gets from NSVisualEffectMaterial::WindowBackground.
