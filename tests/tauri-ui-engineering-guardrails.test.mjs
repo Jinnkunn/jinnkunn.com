@@ -163,8 +163,8 @@ test("tauri-ui-engineering: Post and Page editors share one MDX document editor"
   assert.match(editorSlashCommands, /rememberRecentSlashCommand/);
   assert.match(editorSlashCommands, /getMatchingSlashCommands/);
   assert.match(editorSlashCommands, /getMatchingBlockEditorCommands/);
-  assert.match(blocksEditor, /onInsertParagraphAfter/);
-  assert.match(blocksEditor, /onRemoveEmpty/);
+  assert.match(blocksEditor, /createMdxBlock\("paragraph"\)/);
+  assert.match(blocksEditor, /removeEmptyBlock/);
   assert.match(blocksEditor, /blockInputRefs/);
   assert.match(blocksEditor, /application\/x-mdx-block/);
   assert.match(blocksEditor, /BlockInspector, blockHasInspector/);
@@ -434,7 +434,8 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(app, /orderWorkspaceSurfaces/);
   assert.match(app, /onReorderSurface=\{handleReorderSurface\}/);
   assert.match(app, /CalendarBackgroundSync/);
-  assert.match(app, /enabled=\{enabledSurfaceIds\.has\("calendar"\)\}/);
+  assert.match(app, /enabledSurfaceIds\.has\("calendar"\)\s*\?\s*\(/);
+  assert.match(app, /enabled=\{enabledSurfaceIds\.has\("calendar"\) && !calendarSyncPaused\}/);
   assert.match(calendarBackgroundSync, /onCalendarChanged/);
   assert.match(calendarBackgroundSync, /INITIAL_SYNC_DELAY_MS/);
   assert.match(calendarBackgroundSync, /CHANGE_DEBOUNCE_MS/);
@@ -694,9 +695,9 @@ test("tauri-ui-engineering: drag payloads stay Tauri-compatible", async () => {
   assert.match(calendarSources, /event\.dataTransfer\.setData\(\s*CALENDAR_SOURCE_DRAG_TYPE,\s*src\.id,?\s*\)/);
   assert.match(calendarSources, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*src\.id,?\s*\)/);
   assert.match(calendarSources, /draggingSourceId !== null[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
-  assert.match(blocksEditor, /event\.dataTransfer\.setData\(\s*MDX_BLOCK_DRAG_TYPE,\s*block\.id,?\s*\)/);
-  assert.match(blocksEditor, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*block\.id,?\s*\)/);
-  assert.match(blocksEditor, /draggingBlockId !== ""[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
+  assert.match(blocksEditor, /event\.dataTransfer\.setData\(\s*MDX_BLOCK_DRAG_TYPE,\s*blockId,?\s*\)/);
+  assert.match(blocksEditor, /event\.dataTransfer\.setData\(\s*STANDARD_TEXT_DRAG_TYPE,\s*blockId,?\s*\)/);
+  assert.match(blocksEditor, /draggingId !== ""[\s\S]*types\.includes\(STANDARD_TEXT_DRAG_TYPE\)/);
 });
 
 test("tauri-ui-engineering: notes and recent icons use the shared icon system", async () => {
@@ -803,13 +804,15 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /parsePromotePreview/);
   assert.match(releasePanel, /\/api\/site-admin\/promote-to-production/);
   assert.doesNotMatch(releasePanel, /localStorage/);
-  assert.match(releasePanel, /PromoteToProductionButton/);
-  assert.match(releasePanel, /Local release commands/);
+  assert.match(releasePanel, /siteAdminStartReleaseJob/);
+  assert.match(releasePanel, /siteAdminLocalReleaseSource/);
+  assert.match(releasePanel, /site-admin:\/\/release-job/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
-  assert.match(releasePanel, /Promotion Checklist/);
-  assert.match(releasePanel, /Environment comparison/);
+  assert.match(releasePanel, /Release gates/);
+  assert.match(releasePanel, /Release route/);
   assert.match(releasePanel, /Production differs/);
-  assert.match(releasePanel, /Live Cloudflare comparison/);
+  assert.match(releasePanel, /GitHub Fallback/);
+  assert.match(releasePanel, /Release History/);
 });
 
 test("tauri-ui-engineering: staging D1 snapshot workflow is manual-only", async () => {
