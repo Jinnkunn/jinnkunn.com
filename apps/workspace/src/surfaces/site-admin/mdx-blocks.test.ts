@@ -727,4 +727,41 @@ describe("featured-pages block", () => {
     const blocks = parseMdxBlocks(source);
     expect(blocks[0].columns).toBe(2);
   });
+
+  it("recovers a NewsEntry that lacks a blank line before its opener", () => {
+    // Reproduces the broken state we kept hitting in the editor: a `---`
+    // (or any non-blank line) immediately followed by `<NewsEntry>` would
+    // get merged into a single raw paragraph, the entry's body would
+    // become an orphaned top-level paragraph, and the closing tag would
+    // surface as its own raw block. With the JSX-component break in the
+    // paragraph accumulator, the news-entry is recognized as a unit.
+    const source = [
+      "---",
+      '<NewsEntry date="2025-12-18">',
+      "",
+      "I will be serving as a reviewer for **ICML 2026**.",
+      "",
+      "</NewsEntry>",
+      "",
+    ].join("\n");
+    const blocks = parseMdxBlocks(source);
+    expect(blocks.map((b) => b.type)).toEqual(["divider", "news-entry"]);
+    expect(blocks[1].dateIso).toBe("2025-12-18");
+    expect(blocks[1].children?.[0]?.type).toBe("paragraph");
+    expect(blocks[1].children?.[0]?.text).toContain("ICML 2026");
+  });
+
+  it("recognizes a NewsEntry directly after a heading without a blank line", () => {
+    const source = [
+      "# News",
+      '<NewsEntry date="2024-01-01">',
+      "",
+      "Something happened.",
+      "",
+      "</NewsEntry>",
+      "",
+    ].join("\n");
+    const blocks = parseMdxBlocks(source);
+    expect(blocks.map((b) => b.type)).toEqual(["heading", "news-entry"]);
+  });
 });

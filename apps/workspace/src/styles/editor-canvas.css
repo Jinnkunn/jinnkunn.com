@@ -761,9 +761,33 @@
 }
 
 .mdx-document-block[data-drag-over="true"] {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* Show the drop indicator on whichever edge the cursor is closer to so
+ * the user can see exactly where the block will land. Without this,
+ * dragging downward and upward produced different results than the
+ * single top-edge indicator suggested. */
+.mdx-document-block[data-drag-over="true"][data-drop-position="above"] {
   box-shadow:
     inset 0 2px 0 0 var(--color-accent),
     0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.mdx-document-block[data-drag-over="true"][data-drop-position="below"] {
+  box-shadow:
+    inset 0 -2px 0 0 var(--color-accent),
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* When a descendant block already shows a drop indicator (e.g. while
+ * reordering paragraphs inside a news-entry's body), suppress the
+ * outer wrapper's own indicator so the user sees a single, unambiguous
+ * landing line instead of two stacked highlights. */
+.mdx-document-block[data-drag-over="true"]:has(
+    .mdx-document-block[data-drag-over="true"]
+  ) {
+  box-shadow: none;
 }
 
 .mdx-document-block[data-dragging="true"] {
@@ -953,27 +977,47 @@
 .mdx-document-block__gutter {
   position: absolute;
   top: 0;
+  bottom: 0;
   left: calc(-1 * var(--mdx-block-row-gutter));
-  width: calc(var(--mdx-block-row-gutter) - 2px);
+  width: var(--mdx-block-row-gutter);
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
   gap: 1px;
   padding-top: 3px;
+  padding-right: 2px;
   opacity: 0;
-  transform: translateX(4px);
-  pointer-events: none;
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
+  /* Always interactive so moving the cursor leftward toward the handles
+   * doesn't pass through a "dead zone" that drops :hover from the block
+   * and snaps the gutter back to invisible mid-approach. The opacity
+   * transition keeps the visual reveal smooth without a translate that
+   * delays the click hit area. */
+  pointer-events: auto;
+  transition: opacity 90ms ease;
 }
 
 .mdx-document-block:hover .mdx-document-block__gutter,
 .mdx-document-block:focus-within .mdx-document-block__gutter,
 .mdx-document-block[data-controls-open="true"] .mdx-document-block__gutter,
+.mdx-document-block__gutter:hover,
 .mdx-document-block__gutter:has(:focus-visible) {
   opacity: 1;
-  transform: translateX(0);
+}
+
+/* Extend the block's hover hit area leftward to cover the gutter band so
+ * the user's cursor never crosses a no-hover gap on its way to click a
+ * handle. The pseudo is invisible (no background) — its only job is to
+ * keep `.mdx-document-block:hover` valid while the pointer is in the
+ * gutter zone. Sized to match `--mdx-block-row-gutter` so it lines up
+ * exactly with the gutter children above it. */
+.mdx-document-block::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--mdx-block-row-gutter));
+  width: var(--mdx-block-row-gutter);
+  background: transparent;
   pointer-events: auto;
 }
 

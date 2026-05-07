@@ -3,6 +3,7 @@
 // canvas (Notes) don't drag in the document-level chrome (publish flow,
 // frontmatter inspector, draft restore, useSiteAdmin context).
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -11,6 +12,7 @@ import {
   type DragEvent,
   type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 
 import { AssetLibraryPicker, rememberRecentAsset } from "./AssetLibraryPicker";
@@ -64,6 +66,7 @@ import {
 import {
   findBlockInTree,
   patchBlockInTree,
+  reorderSiblings,
 } from "./mdx-block-tree";
 import { isBlockVisuallyEmpty, isTextEditableBlock } from "./mdx-block-utils";
 import type { NormalizedApiResponse } from "./types";
@@ -450,7 +453,16 @@ function EditableBlocksList({
   // prop-drilling through every recursive renderer.
   const { enabledBlockIds } = useWorkspaceEditorRuntime();
   const [draggingBlockId, setDraggingBlockId] = useState("");
-  const [dragOverBlockId, setDragOverBlockId] = useState("");
+  // Drop indicator state — single piece so the visual stays consistent
+  // (we never want to highlight one block while pointing the indicator
+  // line at another). Position is computed from the pointer's vertical
+  // offset against the target's midpoint so dragging up vs. down both
+  // commit the user's visual intent rather than the asymmetric "always
+  // land at target index" splice behavior.
+  const [dragOver, setDragOver] = useState<{
+    id: string;
+    position: "above" | "below";
+  } | null>(null);
   const [uploadingId, setUploadingId] = useState("");
   const [focusedBlockId, setFocusedBlockId] = useState("");
   const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
@@ -467,6 +479,16 @@ function EditableBlocksList({
     new Map<string, HTMLInputElement | HTMLTextAreaElement | HTMLElement>(),
   );
   const focusSeqRef = useRef(0);
+  // Latest `blocks` snapshot in a ref so the action callbacks below
+  // don't have to depend on `blocks`. Without this, every keystroke
+  // re-creates patchBlock / replaceBlock / insertParagraphAfter / …
+  // which in turn re-renders every BlockRow because their useCallback'd
+  // closures rotate. Reading from a ref keeps the parent callbacks
+  // referentially stable so memo(BlockRow) actually skips siblings.
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+  const draggingBlockIdRef = useRef("");
+  draggingBlockIdRef.current = draggingBlockId;
 
   // Drag-reorder is enabled at every depth; HTML5 DnD scopes by parent
   // because each EditableBlocksList instance owns its own draggingBlockId
@@ -506,7 +528,11 @@ function EditableBlocksList({
       const length = (node as HTMLTextAreaElement).value.length;
       (node as HTMLTextAreaElement).setSelectionRange(length, length);
     }
-  }, [blocks, focusRequest]);
+    // Intentionally only depend on `focusRequest`. The previous version
+    // also depended on `blocks` so the effect ran on every keystroke,
+    // even when no focus had been requested — that masked a no-op as a
+    // 100-block-list `getBoundingClientRect` parade on every key.
+  }, [focusRequest]);
 
   const commitBlocks = useCallback(
     (nextBlocks: MdxBlock[]) => {
@@ -520,30 +546,38 @@ function EditableBlocksList({
     [depth, onBlocksChange],
   );
 
+  // All action callbacks below read from `blocksRef.current` instead of
+  // closure-capturing `blocks`. That keeps each useCallback's dep list
+  // limited to genuinely stable refs (commitBlocks, requestBlockFocus,
+  // depth) so the callbacks themselves are stable across renders. Combined
+  // with memo(BlockRow), this stops every sibling from re-rendering when
+  // the user types into a single block.
   const patchBlock = useCallback(
     (id: string, patcher: (block: MdxBlock) => MdxBlock) => {
-      commitBlocks(blocks.map((block) => (block.id === id ? patcher(block) : block)));
+      const current = blocksRef.current;
+      commitBlocks(current.map((block) => (block.id === id ? patcher(block) : block)));
     },
-    [blocks, commitBlocks],
+    [commitBlocks],
   );
 
   const replaceBlock = useCallback(
     (id: string, nextBlock: MdxBlock) => {
-      commitBlocks(blocks.map((block) => (block.id === id ? nextBlock : block)));
+      const current = blocksRef.current;
+      commitBlocks(current.map((block) => (block.id === id ? nextBlock : block)));
       requestBlockFocus(nextBlock.id);
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const insertParagraphAfter = useCallback(
     (index: number) => {
       const block = createMdxBlock("paragraph");
-      const next = blocks.slice();
+      const next = blocksRef.current.slice();
       next.splice(index + 1, 0, block);
       commitBlocks(next);
       requestBlockFocus(block.id);
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const insertBlocksAfter = useCallback(
@@ -551,12 +585,12 @@ function EditableBlocksList({
       const normalized = insertedBlocks.length > 0
         ? insertedBlocks
         : [createMdxBlock("paragraph")];
-      const next = blocks.slice();
+      const next = blocksRef.current.slice();
       next.splice(index + 1, 0, ...normalized);
       commitBlocks(next);
       requestBlockFocus(normalized[0]?.id ?? "");
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const replaceBlockWithBlocks = useCallback(
@@ -564,36 +598,37 @@ function EditableBlocksList({
       const normalized = insertedBlocks.length > 0
         ? insertedBlocks
         : [createMdxBlock("paragraph")];
-      const next = blocks.slice();
+      const next = blocksRef.current.slice();
       next.splice(index, 1, ...normalized);
       commitBlocks(next);
       requestBlockFocus(normalized[0]?.id ?? "");
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const insertSlashTrigger = useCallback(
     (afterIndex: number) => {
       const block: MdxBlock = { ...createMdxBlock("paragraph"), text: "/" };
-      const next = blocks.slice();
+      const next = blocksRef.current.slice();
       next.splice(afterIndex + 1, 0, block);
       commitBlocks(next);
       requestBlockFocus(block.id);
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const duplicateBlockById = useCallback(
     (id: string) => {
-      const idx = blocks.findIndex((block) => block.id === id);
+      const current = blocksRef.current;
+      const idx = current.findIndex((block) => block.id === id);
       if (idx < 0) return;
-      const copy = duplicateMdxBlock(blocks[idx]);
-      const next = blocks.slice();
+      const copy = duplicateMdxBlock(current[idx]);
+      const next = current.slice();
       next.splice(idx + 1, 0, copy);
       commitBlocks(next);
       requestBlockFocus(copy.id);
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const changeBlockType = useCallback(
@@ -603,8 +638,9 @@ function EditableBlocksList({
       level?: 1 | 2 | 3,
       listStyle?: "bulleted" | "numbered",
     ) => {
+      const current = blocksRef.current;
       commitBlocks(
-        blocks.map((block) => {
+        current.map((block) => {
           if (block.id !== id) return block;
           const next = replaceBlockType(block, type);
           if (type === "heading" && level) {
@@ -618,7 +654,7 @@ function EditableBlocksList({
       );
       requestBlockFocus(id);
     },
-    [blocks, commitBlocks, requestBlockFocus],
+    [commitBlocks, requestBlockFocus],
   );
 
   const copyBlockLink = useCallback((id: string) => {
@@ -628,16 +664,17 @@ function EditableBlocksList({
     }
   }, []);
 
+  // `request` / `setError` / `setMessage` are passed as props from a
+  // stable owner (workspace runtime), so it's safe to keep them in the
+  // dep list without churning the callback.
+  const uploadImageIntoBlockRef = useRef(false);
   const uploadImageIntoBlock = useCallback(
     async (blockId: string, file: File | null) => {
-      if (!file || uploadingId) return;
+      if (!file || uploadImageIntoBlockRef.current) return;
+      uploadImageIntoBlockRef.current = true;
       setUploadingId(blockId);
-      // EditableBlocksList only receives `request` as a prop today;
-      // dispatchUpload falls back to the path-based call when uploadAsset
-      // isn't supplied. Wiring uploadAsset all the way through here would
-      // need another prop on this list + each child renderer — fine to
-      // defer until a surface that doesn't ship `request` shows up.
       const result = await uploadImageFile({ file, request });
+      uploadImageIntoBlockRef.current = false;
       setUploadingId("");
       if (!result.ok) {
         setError(result.error);
@@ -652,55 +689,53 @@ function EditableBlocksList({
       }));
       setMessage("success", `Uploaded ${result.filename}.`);
     },
-    [patchBlock, request, setError, setMessage, uploadingId],
+    [patchBlock, request, setError, setMessage],
   );
 
   const moveBlock = useCallback(
     (index: number, direction: -1 | 1) => {
+      const current = blocksRef.current;
       const target = index + direction;
-      if (target < 0 || target >= blocks.length) return;
-      const next = blocks.slice();
+      if (target < 0 || target >= current.length) return;
+      const next = current.slice();
       [next[index], next[target]] = [next[target], next[index]];
       commitBlocks(next);
     },
-    [blocks, commitBlocks],
+    [commitBlocks],
   );
 
   const moveBlockTo = useCallback(
-    (draggedId: string, targetId: string) => {
-      if (!draggedId || draggedId === targetId) return;
-      const from = blocks.findIndex((block) => block.id === draggedId);
-      const to = blocks.findIndex((block) => block.id === targetId);
-      if (from < 0 || to < 0) return;
-      const next = blocks.slice();
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
+    (draggedId: string, targetId: string, position: "above" | "below") => {
+      const current = blocksRef.current;
+      const next = reorderSiblings(current, draggedId, targetId, position);
+      if (next === current) return;
       commitBlocks(next);
     },
-    [blocks, commitBlocks],
+    [commitBlocks],
   );
 
   const removeBlock = useCallback(
     (id: string) => {
-      const next = blocks.filter((block) => block.id !== id);
+      const next = blocksRef.current.filter((block) => block.id !== id);
       if (depth === 0 && next.length === 0) {
         commitBlocks([createMdxBlock("paragraph")]);
         return;
       }
       commitBlocks(next);
     },
-    [blocks, commitBlocks, depth],
+    [commitBlocks, depth],
   );
 
   const removeEmptyBlock = useCallback(
     (id: string, index: number) => {
-      if (depth === 0 && blocks.length <= 1) return;
-      const next = blocks.filter((block) => block.id !== id);
+      const current = blocksRef.current;
+      if (depth === 0 && current.length <= 1) return;
+      const next = current.filter((block) => block.id !== id);
       const focusIndex = Math.max(0, Math.min(index - 1, next.length - 1));
       commitBlocks(next);
       requestBlockFocus(next[focusIndex]?.id ?? "");
     },
-    [blocks, commitBlocks, depth, requestBlockFocus],
+    [commitBlocks, depth, requestBlockFocus],
   );
 
   const clearFocusedBlockIfLeaving = useCallback(
@@ -710,6 +745,93 @@ function EditableBlocksList({
       setFocusedBlockId((current) => (current === blockId ? "" : current));
     },
     [],
+  );
+
+  // Stable drag-handler bundle. The handlers read draggingBlockIdRef so
+  // they don't have to be recreated when draggingBlockId changes; that
+  // way each BlockRow gets the same handler reference across its
+  // lifetime and memo() can short-circuit cleanly.
+  const handleBlockDragStart = useCallback(
+    (blockId: string, event: DragEvent<HTMLButtonElement>) => {
+      setDraggingBlockId(blockId);
+      event.dataTransfer.setData(MDX_BLOCK_DRAG_TYPE, blockId);
+      event.dataTransfer.setData(STANDARD_TEXT_DRAG_TYPE, blockId);
+      event.dataTransfer.effectAllowed = "move";
+      const blockEl =
+        event.currentTarget.closest<HTMLElement>(".mdx-document-block");
+      if (blockEl) {
+        const rect = blockEl.getBoundingClientRect();
+        event.dataTransfer.setDragImage(
+          blockEl,
+          Math.max(0, event.clientX - rect.left),
+          Math.max(0, event.clientY - rect.top),
+        );
+      }
+    },
+    [],
+  );
+
+  const handleBlockDragEnd = useCallback(() => {
+    setDraggingBlockId("");
+    setDragOver(null);
+  }, []);
+
+  const handleBlockDragOver = useCallback(
+    (blockId: string, event: DragEvent<HTMLDivElement>) => {
+      const types = Array.from(event.dataTransfer.types);
+      const draggingId = draggingBlockIdRef.current;
+      const hasBlockDrag =
+        types.includes(MDX_BLOCK_DRAG_TYPE) ||
+        (draggingId !== "" && types.includes(STANDARD_TEXT_DRAG_TYPE));
+      if (!hasBlockDrag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (draggingId === blockId) {
+        setDragOver((current) =>
+          current && current.id === blockId ? null : current,
+        );
+        return;
+      }
+      event.dataTransfer.dropEffect = "move";
+      const rect = event.currentTarget.getBoundingClientRect();
+      const position: "above" | "below" =
+        event.clientY < rect.top + rect.height / 2 ? "above" : "below";
+      setDragOver((current) =>
+        current && current.id === blockId && current.position === position
+          ? current
+          : { id: blockId, position },
+      );
+    },
+    [],
+  );
+
+  const handleBlockDragLeave = useCallback(
+    (blockId: string, event: DragEvent<HTMLDivElement>) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && event.currentTarget.contains(next)) return;
+      setDragOver((current) =>
+        current && current.id === blockId ? null : current,
+      );
+    },
+    [],
+  );
+
+  const handleBlockDrop = useCallback(
+    (blockId: string, event: DragEvent<HTMLDivElement>) => {
+      const draggedId =
+        event.dataTransfer.getData(MDX_BLOCK_DRAG_TYPE) ||
+        draggingBlockIdRef.current ||
+        event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
+      if (!draggedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const position: "above" | "below" =
+        event.clientY < rect.top + rect.height / 2 ? "above" : "below";
+      setDragOver(null);
+      moveBlockTo(draggedId, blockId, position);
+    },
+    [moveBlockTo],
   );
 
   if (blocks.length === 0) {
@@ -732,132 +854,46 @@ function EditableBlocksList({
   return (
     <>
       {blocks.map((block, index) => (
-        <div
-          className="mdx-document-block"
-          data-depth={depth}
-          data-block-id={block.id}
-          data-kind={block.type}
-          data-empty={isBlockVisuallyEmpty(block) ? "true" : undefined}
-          data-color={block.color && block.color !== "default" ? block.color : undefined}
-          data-drag-over={dragOverBlockId === block.id ? "true" : undefined}
-          data-dragging={draggingBlockId === block.id ? "true" : undefined}
-          data-selected={selectedBlockId === block.id ? "true" : undefined}
-          data-controls-open={
-            actionMenu?.blockId === block.id ||
-            draggingBlockId === block.id ||
-            focusedBlockId === block.id
-              ? "true"
-              : undefined
-          }
+        <BlockRow
           key={block.id}
-          onMouseDownCapture={() => onSelectBlock?.(block.id)}
-          onFocusCapture={() => {
-            setFocusedBlockId(block.id);
-            onSelectBlock?.(block.id);
-          }}
-          onBlurCapture={(event) => clearFocusedBlockIfLeaving(block.id, event)}
-          onContextMenu={(event) => {
-            if (readOnly) return;
-            event.preventDefault();
-            event.stopPropagation();
-            setActionMenu({
-              anchor: event.currentTarget,
-              blockId: block.id,
-            });
-          }}
-          onDragOver={
-            enableDrag
-              ? (event) => {
-                  const types = Array.from(event.dataTransfer.types);
-                  const hasBlockDrag =
-                    types.includes(MDX_BLOCK_DRAG_TYPE) ||
-                    (draggingBlockId !== "" &&
-                      types.includes(STANDARD_TEXT_DRAG_TYPE));
-                  if (!hasBlockDrag)
-                    return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                  setDragOverBlockId(block.id);
-                }
-              : undefined
-          }
-          onDrop={
-            enableDrag
-              ? (event) => {
-                  const draggedId =
-                    event.dataTransfer.getData(MDX_BLOCK_DRAG_TYPE) ||
-                    draggingBlockId ||
-                    event.dataTransfer.getData(STANDARD_TEXT_DRAG_TYPE);
-                  if (!draggedId) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setDragOverBlockId("");
-                  moveBlockTo(draggedId, block.id);
-                }
-              : undefined
-          }
-        >
-          {readOnly ? null : (
-            <BlockGutterHandles
-              controlsActive={
-                actionMenu?.blockId === block.id ||
-                draggingBlockId === block.id ||
-                focusedBlockId === block.id
-              }
-              isDragging={draggingBlockId === block.id}
-              onAdd={() => insertSlashTrigger(index)}
-              onDragStart={(event) => {
-                if (!enableDrag) {
-                  event.preventDefault();
-                  return;
-                }
-                setDraggingBlockId(block.id);
-                event.dataTransfer.setData(MDX_BLOCK_DRAG_TYPE, block.id);
-                event.dataTransfer.setData(STANDARD_TEXT_DRAG_TYPE, block.id);
-                event.dataTransfer.effectAllowed = "move";
-              }}
-              onDragEnd={() => {
-                setDraggingBlockId("");
-                setDragOverBlockId("");
-              }}
-              onMenu={(anchor) => setActionMenu({ anchor, blockId: block.id })}
-            />
-          )}
-
-          <EditableBlock
-            block={block}
-            depth={depth}
-            onSelectBlock={onSelectBlock}
-            request={request}
-            selectedBlockId={selectedBlockId}
-            setError={setError}
-            setMessage={setMessage}
-            uploading={uploadingId === block.id}
-            onPatch={(patcher) => patchBlock(block.id, patcher)}
-            onSlashCommand={(value) => {
-              const next = blockFromSlashCommand(value, enabledBlockIds);
-              if (!next) return false;
-              if (depth > 0 && next.type === "toggle") return false;
-              replaceBlock(block.id, next);
-              return true;
-            }}
-            onChooseSlashCommand={(command) => {
-              rememberRecentSlashCommand(command.id);
-              replaceBlock(block.id, command.makeBlock());
-            }}
-            onFocusInput={(node) => registerBlockInput(block.id, node)}
-            onInsertParagraphAfter={() => insertParagraphAfter(index)}
-            onInsertBlocksAfter={(newBlocks) => insertBlocksAfter(index, newBlocks)}
-            onRemoveEmpty={() => removeEmptyBlock(block.id, index)}
-            onReplaceWithBlocks={(newBlocks) => replaceBlockWithBlocks(index, newBlocks)}
-            onUploadImage={(file) => void uploadImageIntoBlock(block.id, file)}
-            onMoveUp={() => moveBlock(index, -1)}
-            onMoveDown={() => moveBlock(index, 1)}
-            onDuplicate={() => duplicateBlockById(block.id)}
-            onTurnInto={(type, level) => changeBlockType(block.id, type, level)}
-            readOnly={readOnly}
-          />
-        </div>
+          block={block}
+          depth={depth}
+          index={index}
+          isSelected={selectedBlockId === block.id}
+          isFocused={focusedBlockId === block.id}
+          isDragging={draggingBlockId === block.id}
+          dragOverPosition={dragOver?.id === block.id ? dragOver.position : null}
+          isActionMenuOpen={actionMenu?.blockId === block.id}
+          isUploading={uploadingId === block.id}
+          enableDrag={enableDrag}
+          readOnly={readOnly}
+          enabledBlockIds={enabledBlockIds}
+          selectedBlockId={selectedBlockId}
+          request={request}
+          setError={setError}
+          setMessage={setMessage}
+          onSelectBlock={onSelectBlock}
+          setFocusedBlockId={setFocusedBlockId}
+          setActionMenu={setActionMenu}
+          clearFocusedBlockIfLeaving={clearFocusedBlockIfLeaving}
+          onBlockDragStart={handleBlockDragStart}
+          onBlockDragEnd={handleBlockDragEnd}
+          onBlockDragOver={handleBlockDragOver}
+          onBlockDragLeave={handleBlockDragLeave}
+          onBlockDrop={handleBlockDrop}
+          patchBlock={patchBlock}
+          replaceBlock={replaceBlock}
+          insertParagraphAfter={insertParagraphAfter}
+          insertBlocksAfter={insertBlocksAfter}
+          insertSlashTrigger={insertSlashTrigger}
+          replaceBlockWithBlocks={replaceBlockWithBlocks}
+          removeEmptyBlock={removeEmptyBlock}
+          duplicateBlockById={duplicateBlockById}
+          changeBlockType={changeBlockType}
+          moveBlock={moveBlock}
+          uploadImageIntoBlock={uploadImageIntoBlock}
+          registerBlockInput={registerBlockInput}
+        />
       ))}
 
       {actionMenu && !readOnly ? (
@@ -905,6 +941,281 @@ function EditableBlocksList({
     </>
   );
 }
+
+// Per-block render boundary. Memoized so unrelated siblings don't
+// re-render when one block updates: typing into block X only invalidates
+// X's `block` reference (commitBlocks does a shallow map preserving
+// other refs) and at most flips one boolean (e.g. selectedBlockId moves
+// from Y to X). All other props are parent-stable. memo() short-circuits
+// every other row, which is the difference between Notion-feel and a
+// list-wide re-render on every keystroke.
+interface BlockRowProps {
+  block: MdxBlock;
+  depth: number;
+  index: number;
+  isSelected: boolean;
+  isFocused: boolean;
+  isDragging: boolean;
+  dragOverPosition: "above" | "below" | null;
+  isActionMenuOpen: boolean;
+  isUploading: boolean;
+  enableDrag: boolean;
+  readOnly: boolean;
+  enabledBlockIds: ReadonlySet<string> | undefined;
+  selectedBlockId?: string;
+  request: RequestFn;
+  setError: (error: string) => void;
+  setMessage: (kind: "error" | "success", text: string) => void;
+  onSelectBlock?: (id: string) => void;
+  setFocusedBlockId: (id: string) => void;
+  setActionMenu: (
+    next: { anchor: HTMLElement; blockId: string } | null,
+  ) => void;
+  clearFocusedBlockIfLeaving: (
+    blockId: string,
+    event: FocusEvent<HTMLDivElement>,
+  ) => void;
+  onBlockDragStart: (blockId: string, event: DragEvent<HTMLButtonElement>) => void;
+  onBlockDragEnd: () => void;
+  onBlockDragOver: (blockId: string, event: DragEvent<HTMLDivElement>) => void;
+  onBlockDragLeave: (blockId: string, event: DragEvent<HTMLDivElement>) => void;
+  onBlockDrop: (blockId: string, event: DragEvent<HTMLDivElement>) => void;
+  patchBlock: (id: string, patcher: (block: MdxBlock) => MdxBlock) => void;
+  replaceBlock: (id: string, nextBlock: MdxBlock) => void;
+  insertParagraphAfter: (index: number) => void;
+  insertBlocksAfter: (index: number, insertedBlocks: MdxBlock[]) => void;
+  insertSlashTrigger: (afterIndex: number) => void;
+  replaceBlockWithBlocks: (index: number, insertedBlocks: MdxBlock[]) => void;
+  removeEmptyBlock: (id: string, index: number) => void;
+  duplicateBlockById: (id: string) => void;
+  changeBlockType: (
+    id: string,
+    type: MdxBlockType,
+    level?: 1 | 2 | 3,
+    listStyle?: "bulleted" | "numbered",
+  ) => void;
+  moveBlock: (index: number, direction: -1 | 1) => void;
+  uploadImageIntoBlock: (blockId: string, file: File | null) => Promise<void>;
+  registerBlockInput: (
+    blockId: string,
+    node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
+  ) => void;
+}
+
+const BlockRow = memo(function BlockRow({
+  block,
+  depth,
+  index,
+  isSelected,
+  isFocused,
+  isDragging,
+  dragOverPosition,
+  isActionMenuOpen,
+  isUploading,
+  enableDrag,
+  readOnly,
+  enabledBlockIds,
+  selectedBlockId,
+  request,
+  setError,
+  setMessage,
+  onSelectBlock,
+  setFocusedBlockId,
+  setActionMenu,
+  clearFocusedBlockIfLeaving,
+  onBlockDragStart,
+  onBlockDragEnd,
+  onBlockDragOver,
+  onBlockDragLeave,
+  onBlockDrop,
+  patchBlock,
+  replaceBlock,
+  insertParagraphAfter,
+  insertBlocksAfter,
+  insertSlashTrigger,
+  replaceBlockWithBlocks,
+  removeEmptyBlock,
+  duplicateBlockById,
+  changeBlockType,
+  moveBlock,
+  uploadImageIntoBlock,
+  registerBlockInput,
+}: BlockRowProps) {
+  const blockId = block.id;
+  const controlsActive = isActionMenuOpen || isDragging || isFocused;
+  // Per-row closures bind blockId/index to the parent's stable handlers.
+  // These are recreated on every BlockRow render — but BlockRow only
+  // renders when one of its own props actually changes, so the churn is
+  // bounded to the single row being edited rather than spread across
+  // every sibling.
+  const onPatch = useCallback(
+    (patcher: (b: MdxBlock) => MdxBlock) => patchBlock(blockId, patcher),
+    [blockId, patchBlock],
+  );
+  const onSlashCommand = useCallback(
+    (value: string) => {
+      const next = blockFromSlashCommand(value, enabledBlockIds);
+      if (!next) return false;
+      if (depth > 0 && next.type === "toggle") return false;
+      replaceBlock(blockId, next);
+      return true;
+    },
+    [blockId, depth, enabledBlockIds, replaceBlock],
+  );
+  const onChooseSlashCommand = useCallback(
+    (command: SlashCommand) => {
+      rememberRecentSlashCommand(command.id);
+      replaceBlock(blockId, command.makeBlock());
+    },
+    [blockId, replaceBlock],
+  );
+  const onFocusInput = useCallback(
+    (node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null) =>
+      registerBlockInput(blockId, node),
+    [blockId, registerBlockInput],
+  );
+  const onInsertParagraphAfterCb = useCallback(
+    () => insertParagraphAfter(index),
+    [index, insertParagraphAfter],
+  );
+  const onInsertBlocksAfterCb = useCallback(
+    (newBlocks: MdxBlock[]) => insertBlocksAfter(index, newBlocks),
+    [index, insertBlocksAfter],
+  );
+  const onRemoveEmpty = useCallback(
+    () => removeEmptyBlock(blockId, index),
+    [blockId, index, removeEmptyBlock],
+  );
+  const onReplaceWithBlocks = useCallback(
+    (newBlocks: MdxBlock[]) => replaceBlockWithBlocks(index, newBlocks),
+    [index, replaceBlockWithBlocks],
+  );
+  const onUploadImage = useCallback(
+    (file: File | null) => void uploadImageIntoBlock(blockId, file),
+    [blockId, uploadImageIntoBlock],
+  );
+  const onMoveUp = useCallback(() => moveBlock(index, -1), [index, moveBlock]);
+  const onMoveDown = useCallback(() => moveBlock(index, 1), [index, moveBlock]);
+  const onDuplicate = useCallback(
+    () => duplicateBlockById(blockId),
+    [blockId, duplicateBlockById],
+  );
+  const onTurnInto = useCallback(
+    (type: MdxBlockType, level?: 1 | 2 | 3) =>
+      changeBlockType(blockId, type, level),
+    [blockId, changeBlockType],
+  );
+  const onAdd = useCallback(
+    () => insertSlashTrigger(index),
+    [index, insertSlashTrigger],
+  );
+  const onGutterDragStart = useCallback(
+    (event: DragEvent<HTMLButtonElement>) => {
+      if (!enableDrag) {
+        event.preventDefault();
+        return;
+      }
+      onBlockDragStart(blockId, event);
+    },
+    [blockId, enableDrag, onBlockDragStart],
+  );
+  const onMenu = useCallback(
+    (anchor: HTMLElement) => setActionMenu({ anchor, blockId }),
+    [blockId, setActionMenu],
+  );
+
+  const handleMouseDownCapture = useCallback(() => {
+    onSelectBlock?.(blockId);
+  }, [blockId, onSelectBlock]);
+  const handleFocusCapture = useCallback(() => {
+    setFocusedBlockId(blockId);
+    onSelectBlock?.(blockId);
+  }, [blockId, onSelectBlock, setFocusedBlockId]);
+  const handleBlurCapture = useCallback(
+    (event: FocusEvent<HTMLDivElement>) =>
+      clearFocusedBlockIfLeaving(blockId, event),
+    [blockId, clearFocusedBlockIfLeaving],
+  );
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (readOnly) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setActionMenu({ anchor: event.currentTarget, blockId });
+    },
+    [blockId, readOnly, setActionMenu],
+  );
+  const handleDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => onBlockDragOver(blockId, event),
+    [blockId, onBlockDragOver],
+  );
+  const handleDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>) => onBlockDragLeave(blockId, event),
+    [blockId, onBlockDragLeave],
+  );
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => onBlockDrop(blockId, event),
+    [blockId, onBlockDrop],
+  );
+
+  return (
+    <div
+      className="mdx-document-block"
+      data-depth={depth}
+      data-block-id={blockId}
+      data-kind={block.type}
+      data-empty={isBlockVisuallyEmpty(block) ? "true" : undefined}
+      data-color={block.color && block.color !== "default" ? block.color : undefined}
+      data-drag-over={dragOverPosition ? "true" : undefined}
+      data-drop-position={dragOverPosition ?? undefined}
+      data-dragging={isDragging ? "true" : undefined}
+      data-selected={isSelected ? "true" : undefined}
+      data-controls-open={controlsActive ? "true" : undefined}
+      onMouseDownCapture={handleMouseDownCapture}
+      onFocusCapture={handleFocusCapture}
+      onBlurCapture={handleBlurCapture}
+      onContextMenu={handleContextMenu}
+      onDragOver={enableDrag ? handleDragOver : undefined}
+      onDragLeave={enableDrag ? handleDragLeave : undefined}
+      onDrop={enableDrag ? handleDrop : undefined}
+    >
+      {readOnly ? null : (
+        <BlockGutterHandles
+          controlsActive={controlsActive}
+          isDragging={isDragging}
+          onAdd={onAdd}
+          onDragStart={onGutterDragStart}
+          onDragEnd={onBlockDragEnd}
+          onMenu={onMenu}
+        />
+      )}
+      <EditableBlock
+        block={block}
+        depth={depth}
+        onSelectBlock={onSelectBlock}
+        request={request}
+        selectedBlockId={selectedBlockId}
+        setError={setError}
+        setMessage={setMessage}
+        uploading={isUploading}
+        onPatch={onPatch}
+        onSlashCommand={onSlashCommand}
+        onChooseSlashCommand={onChooseSlashCommand}
+        onFocusInput={onFocusInput}
+        onInsertParagraphAfter={onInsertParagraphAfterCb}
+        onInsertBlocksAfter={onInsertBlocksAfterCb}
+        onRemoveEmpty={onRemoveEmpty}
+        onReplaceWithBlocks={onReplaceWithBlocks}
+        onUploadImage={onUploadImage}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
+        onDuplicate={onDuplicate}
+        onTurnInto={onTurnInto}
+        readOnly={readOnly}
+      />
+    </div>
+  );
+});
 
 function EditableBlock({
   block,
@@ -963,11 +1274,16 @@ function EditableBlock({
   // RichTextEditableBlock renders the slash menu internally when this list
   // is non-empty. Computed only for paragraph; heading / quote / callout /
   // list intentionally don't trigger the slash matcher even if their text
-  // happens to start with "/".
-  const slashCommands =
-    block.type === "paragraph"
-      ? getMatchingSlashCommands(block.text, enabledBlockIds)
-      : [];
+  // happens to start with "/". useMemo so we don't redo the whitelist
+  // filtering on every keystroke when the block's text actually hasn't
+  // changed (e.g. parent re-rendered for a sibling reason).
+  const slashCommands = useMemo(
+    () =>
+      block.type === "paragraph"
+        ? getMatchingSlashCommands(block.text, enabledBlockIds)
+        : [],
+    [block.type, block.text, enabledBlockIds],
+  );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const setRefs = useCallback(
