@@ -16,6 +16,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
   type Dispatch,
   type KeyboardEvent,
@@ -45,6 +46,7 @@ import {
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
 import { uploadImageFile } from "./assets-upload";
 import type { NormalizedApiResponse } from "./types";
+import { useWorkspaceEditorRuntime } from "../../ui/editor-runtime";
 
 type RequestFn = (
   path: string,
@@ -70,15 +72,20 @@ export interface RichTextEditableBlockProps {
   onFocusInput: (node: HTMLElement | null) => void;
   onChooseSlashCommand: (command: SlashCommand) => void;
   onDuplicate: () => void;
-  onInsertParagraphAfter: () => void;
   onInsertBlocksAfter: (blocks: MdxBlock[]) => void;
   onMoveDown: () => void;
   onMoveUp: () => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
   onReplaceWithBlocks: (blocks: MdxBlock[]) => void;
+  onSplitAtSelection: (before: string, after: string) => void;
+  onMergeBackward: () => void;
+  onMergeForward: () => void;
+  onFocusPrevious: () => void;
+  onFocusNext: () => void;
   onSlashCommand: (value: string) => boolean;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
+  placeholder?: string;
   readOnly?: boolean;
   request: RequestFn;
   setMessage: (kind: "error" | "success", text: string) => void;
@@ -162,6 +169,21 @@ function placeholderFor(block: MdxBlock): string {
   return "Type '/' for commands";
 }
 
+function selectionEdges(editor: Editor) {
+  const { empty, $from, $to } = editor.state.selection;
+  const parent = $from.parent;
+  const sameParent = $from.sameParent($to);
+  return {
+    empty,
+    atEnd: empty && $from.parentOffset >= parent.content.size,
+    atStart: empty && $from.parentOffset === 0,
+    before: parent.textBetween(0, $from.parentOffset, "\n"),
+    after: sameParent
+      ? parent.textBetween($to.parentOffset, parent.content.size, "\n")
+      : "",
+  };
+}
+
 function classNameFor(block: MdxBlock): string {
   if (block.type === "heading") {
     const level = block.level ?? 2;
@@ -180,19 +202,25 @@ export function RichTextEditableBlock({
   onChooseSlashCommand,
   onDuplicate,
   onFocusInput,
-  onInsertParagraphAfter,
   onInsertBlocksAfter,
   onMoveDown,
   onMoveUp,
   onPatch,
   onRemoveEmpty,
   onReplaceWithBlocks,
+  onSplitAtSelection,
+  onMergeBackward,
+  onMergeForward,
+  onFocusPrevious,
+  onFocusNext,
   onSlashCommand,
   onTurnInto,
+  placeholder,
   readOnly = false,
   request,
   setMessage,
 }: RichTextEditableBlockProps) {
+  const { chrome = "default" } = useWorkspaceEditorRuntime();
   const richRef = useRef<RichTextInputHandle>(null);
   // The editor lives in RichTextInput's `useEditor`. We track it as
   // reactive state via the `onEditorReady` callback so the
@@ -438,31 +466,63 @@ export function RichTextEditableBlock({
           }
         }
         event.preventDefault();
-        onInsertParagraphAfter();
+        const edges = selectionEdges(editor);
+        onSplitAtSelection(edges.before, edges.after);
         return;
       }
 
-      if (
-        event.key === "Backspace" &&
-        editor.isEmpty &&
-        editor.state.selection.empty &&
-        editor.state.selection.from === 1
-      ) {
-        event.preventDefault();
-        onRemoveEmpty();
+      if (event.key === "Backspace") {
+        const edges = selectionEdges(editor);
+        if (edges.atStart) {
+          event.preventDefault();
+          if (editor.isEmpty) onRemoveEmpty();
+          else onMergeBackward();
+          return;
+        }
+      }
+
+      if (event.key === "Delete") {
+        const edges = selectionEdges(editor);
+        if (edges.atEnd) {
+          event.preventDefault();
+          onMergeForward();
+          return;
+        }
+      }
+
+      if (event.key === "ArrowUp" && !meta && !event.shiftKey && !event.altKey) {
+        const edges = selectionEdges(editor);
+        if (edges.atStart) {
+          event.preventDefault();
+          onFocusPrevious();
+          return;
+        }
+      }
+
+      if (event.key === "ArrowDown" && !meta && !event.shiftKey && !event.altKey) {
+        const edges = selectionEdges(editor);
+        if (edges.atEnd) {
+          event.preventDefault();
+          onFocusNext();
+          return;
+        }
       }
     },
     [
       block.type,
       onChooseSlashCommand,
       onDuplicate,
-      onInsertParagraphAfter,
+      onFocusNext,
+      onFocusPrevious,
+      onMergeBackward,
+      onMergeForward,
       onReplaceWithBlocks,
       onMoveDown,
       onMoveUp,
       onPatch,
       onRemoveEmpty,
       onSlashCommand,
+      onSplitAtSelection,
       onTurnInto,
       readOnly,
       showSlashMenu,
@@ -584,6 +644,19 @@ export function RichTextEditableBlock({
     }
   }, [editor, mention]);
 
+  const slashAnchor = useMemo(() => {
+    if (!editor || !showSlashMenu) return null;
+    try {
+      const coords = editor.view.coordsAtPos(editor.state.selection.from);
+      return {
+        left: coords.left,
+        top: coords.bottom + 6,
+      } satisfies CSSProperties;
+    } catch {
+      return null;
+    }
+  }, [editor, showSlashMenu]);
+
   const insertMention = useCallback(
     (target: MentionTarget) => {
       if (!editor || !mention) return;
@@ -642,7 +715,13 @@ export function RichTextEditableBlock({
       className={classNameFor(block)}
       ariaLabel={`${block.type} block`}
       readOnly={readOnly}
-      placeholder={isEmpty ? placeholderFor(block) : undefined}
+      placeholder={
+        isEmpty
+          ? block.type === "paragraph" && placeholder
+            ? placeholder
+            : placeholderFor(block)
+          : undefined
+      }
     />
   );
 
@@ -651,13 +730,18 @@ export function RichTextEditableBlock({
       {showSlashMenu && !readOnly ? (
         <BlockEditorCommandMenu
           activeCommandId={slashCommands[slashCursor]?.id}
-          className="mdx-document-slash-menu"
+          className={[
+            "mdx-document-slash-menu",
+            slashAnchor ? "mdx-document-slash-menu--floating" : "",
+            chrome === "notes" ? "mdx-document-slash-menu--notes" : "",
+          ].filter(Boolean).join(" ")}
           commands={slashCommands}
           onActiveCommandChange={(command) => {
             const index = slashCommands.findIndex((item) => item.id === command.id);
             if (index >= 0) setSlashCursor(index);
           }}
           onChoose={onChooseSlashCommand}
+          style={slashAnchor ?? undefined}
         />
       ) : null}
       {((selection && inlineAnchor) || (keyboardLinkMode && keyboardLinkAnchor)) && !readOnly ? (

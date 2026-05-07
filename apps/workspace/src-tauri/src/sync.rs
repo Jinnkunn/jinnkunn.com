@@ -168,9 +168,8 @@ pub async fn sync_pull(
         }
         iterations += 1;
 
-        let url = format!(
-            "{base_url}/api/site-admin/sync/pull?since={current_since}&limit={limit}",
-        );
+        let url =
+            format!("{base_url}/api/site-admin/sync/pull?since={current_since}&limit={limit}",);
         let response = client
             .get(&url)
             .headers(headers.clone())
@@ -216,8 +215,9 @@ pub async fn sync_pull(
                 .unchecked_transaction()
                 .map_err(|err| format!("sync_pull: failed to start tx: {err}"))?;
             for row in payload.rows.iter() {
-                let body = hex::decode(&row.body_hex)
-                    .map_err(|err| format!("sync_pull: invalid bodyHex for {}: {err}", row.rel_path))?;
+                let body = hex::decode(&row.body_hex).map_err(|err| {
+                    format!("sync_pull: invalid bodyHex for {}: {err}", row.rel_path)
+                })?;
                 tx.execute(
                     r#"INSERT INTO content_files
                          (rel_path, body, is_binary, sha, size, updated_at, updated_by)
@@ -350,7 +350,10 @@ pub async fn local_list_files(
     recursive: bool,
 ) -> Result<Vec<LocalFileEntry>, String> {
     let conn = local_db::open(&app)?;
-    let normalized = prefix.trim_start_matches('/').trim_end_matches('/').to_string();
+    let normalized = prefix
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .to_string();
     let like = format!("{normalized}/%");
     let mut stmt = if recursive {
         conn.prepare(

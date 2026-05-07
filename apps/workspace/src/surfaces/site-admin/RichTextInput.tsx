@@ -54,6 +54,10 @@ export interface RichTextInputHandle {
   /** Plain text projection (no markdown chars). Useful for slash-command
    * detection: `getText().startsWith("/")`. */
   getText(): string;
+  /** Move the caret to either edge of the inline editor. The block editor
+   * uses this after split / merge so focus lands where the user's mental
+   * cursor expects, not merely wherever the browser last remembered. */
+  setCaret(position: "start" | "end"): void;
 }
 
 export interface RichTextInputProps {
@@ -202,6 +206,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         },
         getText() {
           return editor?.getText() ?? "";
+        },
+        setCaret(position) {
+          editor?.commands.focus(position);
         },
       }),
       [editor],

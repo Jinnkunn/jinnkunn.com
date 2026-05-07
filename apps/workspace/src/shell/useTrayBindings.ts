@@ -104,7 +104,7 @@ export function useTrayBindings(args: TrayBindingsArgs): TrayBindingsResult {
     return () => document.removeEventListener("visibilitychange", onChange);
   }, []);
 
-  // ── Subscribe to deploy lifecycle events from PromoteToProductionButton. ─
+  // ── Subscribe to deploy lifecycle events from Release Center. ──────
   useEffect(() => {
     const onState = (event: Event) => {
       const detail = (event as CustomEvent<ReleaseState>).detail;
@@ -342,7 +342,7 @@ export function useTrayBindings(args: TrayBindingsArgs): TrayBindingsResult {
 
 /** Convenience helper components elsewhere can call to broadcast a
  * deploy-state change without taking a direct tray dependency. Used by
- * `PromoteToProductionButton`. */
+ * Release Center. */
 export function dispatchReleaseState(state: ReleaseState): void {
   window.dispatchEvent(new CustomEvent(RELEASE_STATE_EVENT, { detail: state }));
 }

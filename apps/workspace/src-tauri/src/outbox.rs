@@ -111,7 +111,13 @@ pub async fn outbox_enqueue(
         r#"INSERT INTO write_outbox
              (base_url, path, method, body_json, enqueued_at)
            VALUES (?, ?, ?, ?, ?)"#,
-        params![base_url, normalized_path, method_upper, body_json, now_unix_ms()],
+        params![
+            base_url,
+            normalized_path,
+            method_upper,
+            body_json,
+            now_unix_ms()
+        ],
     )
     .map_err(|err| format!("outbox_enqueue: insert failed: {err}"))?;
 
@@ -134,11 +140,9 @@ pub async fn outbox_status(app: tauri::AppHandle) -> Result<OutboxStatus, String
         )
         .map_err(|err| format!("outbox_status: failing count failed: {err}"))?;
     let oldest: Option<i64> = conn
-        .query_row(
-            "SELECT MIN(enqueued_at) FROM write_outbox",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT MIN(enqueued_at) FROM write_outbox", [], |row| {
+            row.get(0)
+        })
         .map_err(|err| format!("outbox_status: oldest enqueued_at failed: {err}"))?;
     Ok(OutboxStatus {
         pending,

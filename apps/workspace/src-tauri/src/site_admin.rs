@@ -12,15 +12,22 @@
 //! browser at `/api/site-admin/app-auth/authorize`, and wait for the
 //! Worker to redirect back with `?token=…&login=…&expiresAt=…`.
 
+use rand::Rng;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, COOKIE};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::io::{Read, Write};
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
 use url::Url;
 
 const BROWSER_LOGIN_TIMEOUT_SECONDS: u64 = 180;
@@ -63,6 +70,59 @@ pub struct SiteAdminReleaseCommandResult {
     duration_ms: u64,
     stdout_tail: String,
     stderr_tail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SiteAdminReleaseJobState {
+    job_id: String,
+    script: String,
+    command: String,
+    cwd: String,
+    status: String,
+    started_at_ms: u64,
+    finished_at_ms: Option<u64>,
+    duration_ms: Option<u64>,
+    exit_code: Option<i32>,
+    phase: String,
+    stdout_tail: String,
+    stderr_tail: String,
+    error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SiteAdminReleaseJobEvent {
+    job_id: String,
+    script: String,
+    status: String,
+    stream: String,
+    phase: String,
+    message: String,
+    state: SiteAdminReleaseJobState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SiteAdminReleaseHistoryEntry {
+    source: String,
+    env: String,
+    status: String,
+    recorded_at: String,
+    version_id: String,
+    deployment_id: String,
+    sha: String,
+    branch: String,
+    note: String,
+    rollback_command: String,
+}
+
+struct ReleaseJobHandle {
+    state: Mutex<SiteAdminReleaseJobState>,
+    cancel: AtomicBool,
+}
+
+static RELEASE_JOBS: OnceLock<Mutex<HashMap<String, Arc<ReleaseJobHandle>>>> = OnceLock::new();
+
+fn release_jobs() -> &'static Mutex<HashMap<String, Arc<ReleaseJobHandle>>> {
+    RELEASE_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn normalize_base_url(input: &str) -> String {
@@ -244,11 +304,88 @@ fn allowed_release_script(script: &str) -> Option<&'static str> {
     match script.trim() {
         "release:staging" => Some("release:staging"),
         "release:prod:from-staging" => Some("release:prod:from-staging"),
-        "release:prod:from-staging:dry-run" => {
-            Some("release:prod:from-staging:dry-run")
-        }
+        "release:prod:from-staging:dry-run" => Some("release:prod:from-staging:dry-run"),
         _ => None,
     }
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
+}
+
+fn make_release_job_id() -> String {
+    let nonce: u32 = rand::thread_rng().gen();
+    format!("release-{}-{:08x}", now_millis(), nonce)
+}
+
+fn append_tail(target: &mut String, input: &str, max_chars: usize) {
+    target.push_str(input);
+    let chars: Vec<char> = target.chars().collect();
+    if chars.len() > max_chars {
+        *target = chars[chars.len().saturating_sub(max_chars)..]
+            .iter()
+            .collect();
+    }
+}
+
+fn infer_release_phase(line: &str) -> String {
+    let lower = line.to_lowercase();
+    if lower.contains("rollback") {
+        "rollback".to_string()
+    } else if lower.contains("snapshot") {
+        "snapshot".to_string()
+    } else if lower.contains("verifying")
+        || lower.contains("verify:")
+        || lower.contains("authenticated")
+        || lower.contains("visual")
+    {
+        "verify".to_string()
+    } else if lower.contains("deploying") || lower.contains("deploy:cf") {
+        "deploy".to_string()
+    } else if lower.contains("uploading") || lower.contains("versions upload") {
+        "upload".to_string()
+    } else if lower.contains("build:cf") || lower.contains("running build") {
+        "build".to_string()
+    } else if lower.contains("running public web contracts")
+        || lower.contains("running tests")
+        || lower.contains("running lint")
+        || lower.contains("running script syntax")
+    {
+        "checks".to_string()
+    } else if lower.contains("content snapshot") || lower.contains("dump") {
+        "content".to_string()
+    } else if lower.contains("reading staging")
+        || lower.contains("reading production")
+        || lower.contains("git:")
+    {
+        "preflight".to_string()
+    } else if lower.contains("reusing") {
+        "cache".to_string()
+    } else if lower.contains("done") || lower.contains("\"ok\": true") {
+        "complete".to_string()
+    } else {
+        "running".to_string()
+    }
+}
+
+fn valid_worker_version_id(value: &str) -> bool {
+    let trimmed = value.trim();
+    let len = trimmed.len();
+    (len == 32 || len == 36)
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() || ch == '-')
+}
+
+fn rollback_command(version_id: &str) -> String {
+    format!(
+        "npx wrangler rollback --env production {} --message \"rollback production to {}\" --yes\nVERIFY_CF_EXPECT_PRODUCTION_VERSION={} npm run verify:cf:prod",
+        version_id, version_id, version_id
+    )
 }
 
 fn tail_text(input: &[u8], max_chars: usize) -> String {
@@ -260,6 +397,268 @@ fn tail_text(input: &[u8], max_chars: usize) -> String {
     chars[chars.len().saturating_sub(max_chars)..]
         .iter()
         .collect()
+}
+
+fn emit_release_job_event(
+    app: &AppHandle,
+    job: &Arc<ReleaseJobHandle>,
+    stream: &str,
+    phase: &str,
+    message: &str,
+) {
+    let mut state = job.state.lock().unwrap();
+    if !phase.is_empty() && phase != "running" {
+        state.phase = phase.to_string();
+    }
+    if stream == "stdout" {
+        append_tail(&mut state.stdout_tail, message, 5000);
+    } else if stream == "stderr" {
+        append_tail(&mut state.stderr_tail, message, 5000);
+    }
+    let event = SiteAdminReleaseJobEvent {
+        job_id: state.job_id.clone(),
+        script: state.script.clone(),
+        status: state.status.clone(),
+        stream: stream.to_string(),
+        phase: state.phase.clone(),
+        message: message.to_string(),
+        state: state.clone(),
+    };
+    drop(state);
+    let _ = app.emit("site-admin://release-job", event);
+}
+
+fn set_release_job_terminal_state(
+    app: &AppHandle,
+    job: &Arc<ReleaseJobHandle>,
+    status: &str,
+    exit_code: Option<i32>,
+    error: &str,
+) {
+    let mut state = job.state.lock().unwrap();
+    let finished_at = now_millis();
+    state.status = status.to_string();
+    state.finished_at_ms = Some(finished_at);
+    state.duration_ms = Some(finished_at.saturating_sub(state.started_at_ms));
+    state.exit_code = exit_code;
+    state.phase = if status == "succeeded" {
+        "complete".to_string()
+    } else {
+        status.to_string()
+    };
+    state.error = error.to_string();
+    let event = SiteAdminReleaseJobEvent {
+        job_id: state.job_id.clone(),
+        script: state.script.clone(),
+        status: state.status.clone(),
+        stream: "status".to_string(),
+        phase: state.phase.clone(),
+        message: error.to_string(),
+        state: state.clone(),
+    };
+    drop(state);
+    let _ = app.emit("site-admin://release-job", event);
+}
+
+fn spawn_npm_release_child(script: &str, cwd: &Path) -> Result<Child, String> {
+    Command::new("npm")
+        .arg("run")
+        .arg(script)
+        .current_dir(cwd)
+        .env("NO_COLOR", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .or_else(|err| {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                return Err(err);
+            }
+            Command::new("/bin/zsh")
+                .arg("-lc")
+                .arg(format!("npm run {script}"))
+                .current_dir(cwd)
+                .env("NO_COLOR", "1")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+        })
+        .map_err(|err| format!("Failed to start npm run {script}: {err}"))
+}
+
+fn spawn_rollback_child(version_id: &str, cwd: &Path) -> Result<Child, String> {
+    if !valid_worker_version_id(version_id) {
+        return Err("Invalid Cloudflare Worker version id.".to_string());
+    }
+    let command = format!(
+        "set -a; [ -f .env ] && source .env; set +a; npx wrangler rollback --env production {version_id} --message \"rollback production to {version_id} from workspace\" --yes && VERIFY_CF_EXPECT_PRODUCTION_VERSION={version_id} npm run verify:cf:prod"
+    );
+    Command::new("/bin/zsh")
+        .arg("-lc")
+        .arg(command)
+        .current_dir(cwd)
+        .env("NO_COLOR", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("Failed to start production rollback: {err}"))
+}
+
+fn stream_release_output<R: Read + Send + 'static>(
+    app: AppHandle,
+    job: Arc<ReleaseJobHandle>,
+    stream: &'static str,
+    reader: R,
+) {
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let phase = infer_release_phase(&line);
+                    emit_release_job_event(&app, &job, stream, &phase, &line);
+                }
+                Err(error) => {
+                    emit_release_job_event(
+                        &app,
+                        &job,
+                        "stderr",
+                        "failed",
+                        &format!("Failed to read {stream}: {error}\n"),
+                    );
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn start_release_job(
+    app: AppHandle,
+    script: String,
+    command: String,
+    cwd: PathBuf,
+    spawn: impl FnOnce(&Path) -> Result<Child, String> + Send + 'static,
+) -> SiteAdminReleaseJobState {
+    let job_id = make_release_job_id();
+    let state = SiteAdminReleaseJobState {
+        job_id: job_id.clone(),
+        script: script.clone(),
+        command,
+        cwd: cwd.display().to_string(),
+        status: "running".to_string(),
+        started_at_ms: now_millis(),
+        finished_at_ms: None,
+        duration_ms: None,
+        exit_code: None,
+        phase: "starting".to_string(),
+        stdout_tail: String::new(),
+        stderr_tail: String::new(),
+        error: String::new(),
+    };
+    let job = Arc::new(ReleaseJobHandle {
+        state: Mutex::new(state.clone()),
+        cancel: AtomicBool::new(false),
+    });
+    release_jobs()
+        .lock()
+        .unwrap()
+        .insert(job_id.clone(), Arc::clone(&job));
+
+    let app_for_thread = app.clone();
+    let job_for_thread = Arc::clone(&job);
+    thread::spawn(move || {
+        emit_release_job_event(
+            &app_for_thread,
+            &job_for_thread,
+            "status",
+            "starting",
+            "Release job started.\n",
+        );
+        let mut child = match spawn(&cwd) {
+            Ok(child) => child,
+            Err(error) => {
+                set_release_job_terminal_state(
+                    &app_for_thread,
+                    &job_for_thread,
+                    "failed",
+                    Some(-1),
+                    &error,
+                );
+                return;
+            }
+        };
+
+        if let Some(stdout) = child.stdout.take() {
+            stream_release_output(
+                app_for_thread.clone(),
+                Arc::clone(&job_for_thread),
+                "stdout",
+                stdout,
+            );
+        }
+        if let Some(stderr) = child.stderr.take() {
+            stream_release_output(
+                app_for_thread.clone(),
+                Arc::clone(&job_for_thread),
+                "stderr",
+                stderr,
+            );
+        }
+
+        loop {
+            if job_for_thread.cancel.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = child.wait();
+                set_release_job_terminal_state(
+                    &app_for_thread,
+                    &job_for_thread,
+                    "cancelled",
+                    Some(-1),
+                    "Cancelled by operator.",
+                );
+                return;
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    let code = status.code().unwrap_or(-1);
+                    if status.success() {
+                        set_release_job_terminal_state(
+                            &app_for_thread,
+                            &job_for_thread,
+                            "succeeded",
+                            Some(code),
+                            "",
+                        );
+                    } else {
+                        set_release_job_terminal_state(
+                            &app_for_thread,
+                            &job_for_thread,
+                            "failed",
+                            Some(code),
+                            &format!("Command exited with status {code}."),
+                        );
+                    }
+                    return;
+                }
+                Ok(None) => thread::sleep(Duration::from_millis(250)),
+                Err(error) => {
+                    set_release_job_terminal_state(
+                        &app_for_thread,
+                        &job_for_thread,
+                        "failed",
+                        Some(-1),
+                        &format!("Failed to wait for release process: {error}"),
+                    );
+                    return;
+                }
+            }
+        }
+    });
+
+    state
 }
 
 #[tauri::command]
@@ -321,6 +720,186 @@ pub async fn site_admin_run_release_command(
     })
     .await
     .map_err(|err| format!("Release task failed: {err}"))?
+}
+
+#[tauri::command]
+pub async fn site_admin_start_release_job(
+    app: AppHandle,
+    script: String,
+) -> Result<SiteAdminReleaseJobState, String> {
+    let Some(script) = allowed_release_script(&script) else {
+        return Err("Unsupported release script.".to_string());
+    };
+    let cwd = resolve_release_repo_root()?;
+    Ok(start_release_job(
+        app,
+        script.to_string(),
+        format!("npm run {script}"),
+        cwd,
+        {
+            let script = script.to_string();
+            move |cwd| spawn_npm_release_child(&script, cwd)
+        },
+    ))
+}
+
+#[tauri::command]
+pub async fn site_admin_start_rollback_job(
+    app: AppHandle,
+    version_id: String,
+) -> Result<SiteAdminReleaseJobState, String> {
+    let version_id = version_id.trim().to_string();
+    if !valid_worker_version_id(&version_id) {
+        return Err("Invalid Cloudflare Worker version id.".to_string());
+    }
+    let cwd = resolve_release_repo_root()?;
+    Ok(start_release_job(
+        app,
+        format!("rollback:production:{version_id}"),
+        rollback_command(&version_id),
+        cwd,
+        move |cwd| spawn_rollback_child(&version_id, cwd),
+    ))
+}
+
+#[tauri::command]
+pub async fn site_admin_release_job_status(
+    job_id: String,
+) -> Result<Option<SiteAdminReleaseJobState>, String> {
+    let job = {
+        let jobs = release_jobs().lock().unwrap();
+        jobs.get(job_id.trim()).cloned()
+    };
+    let Some(job) = job else {
+        return Ok(None);
+    };
+    let state = job.state.lock().unwrap().clone();
+    Ok(Some(state))
+}
+
+#[tauri::command]
+pub async fn site_admin_cancel_release_job(
+    job_id: String,
+) -> Result<Option<SiteAdminReleaseJobState>, String> {
+    let job = {
+        let jobs = release_jobs().lock().unwrap();
+        jobs.get(job_id.trim()).cloned()
+    };
+    let Some(job) = job else {
+        return Ok(None);
+    };
+    job.cancel.store(true, Ordering::SeqCst);
+    let state = job.state.lock().unwrap().clone();
+    Ok(Some(state))
+}
+
+fn strip_markdown_code(value: &str) -> String {
+    value.trim().trim_matches('`').trim().to_string()
+}
+
+fn parse_production_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHistoryEntry>) {
+    let path = root.join("docs/runbooks/production-version-history.md");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('|') || !trimmed.contains('`') {
+            continue;
+        }
+        let cols: Vec<String> = trimmed
+            .trim_matches('|')
+            .split('|')
+            .map(|part| part.trim().to_string())
+            .collect();
+        if cols.len() < 6 || cols[0].starts_with("---") || cols[0] == "Snapshot at (UTC)" {
+            continue;
+        }
+        let version_id = strip_markdown_code(&cols[1]);
+        if version_id.is_empty() || version_id == "(none)" {
+            continue;
+        }
+        entries.push(SiteAdminReleaseHistoryEntry {
+            source: "production-version-history".to_string(),
+            env: "production".to_string(),
+            status: "snapshot".to_string(),
+            recorded_at: cols[0].clone(),
+            version_id: version_id.clone(),
+            deployment_id: strip_markdown_code(&cols[2]),
+            sha: strip_markdown_code(&cols[3]),
+            branch: cols[4].clone(),
+            note: cols[5].clone(),
+            rollback_command: rollback_command(&version_id),
+        });
+    }
+}
+
+fn value_string(value: Option<&Value>) -> String {
+    value
+        .and_then(|item| item.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn parse_release_jsonl_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHistoryEntry>) {
+    let path = root.join(".cache/release/release-history.jsonl");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for line in raw.lines().rev() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let env = value_string(value.get("env"));
+        let deployed = value_string(value.get("deployedVersionId"));
+        let failure = value_string(value.get("failure"));
+        let rolled_back = value
+            .get("rolledBack")
+            .and_then(|v| v.get("target"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let status = if !failure.is_empty() {
+            "failed"
+        } else if !rolled_back.is_empty() {
+            "rolled-back"
+        } else {
+            "succeeded"
+        };
+        let rollback = if env == "production" && !deployed.is_empty() {
+            rollback_command(&deployed)
+        } else {
+            String::new()
+        };
+        entries.push(SiteAdminReleaseHistoryEntry {
+            source: "release-history".to_string(),
+            env,
+            status: status.to_string(),
+            recorded_at: value_string(value.get("recordedAt")),
+            version_id: deployed.clone(),
+            deployment_id: value_string(value.get("deploymentId")),
+            sha: value_string(value.get("sha")),
+            branch: value_string(value.get("branch")),
+            note: if failure.is_empty() {
+                String::new()
+            } else {
+                failure
+            },
+            rollback_command: rollback,
+        });
+    }
+}
+
+#[tauri::command]
+pub async fn site_admin_release_history(
+    limit: Option<usize>,
+) -> Result<Vec<SiteAdminReleaseHistoryEntry>, String> {
+    let root = resolve_release_repo_root()?;
+    let mut entries = Vec::new();
+    parse_release_jsonl_history(&root, &mut entries);
+    parse_production_history(&root, &mut entries);
+    let limit = limit.unwrap_or(12);
+    entries.truncate(limit);
+    Ok(entries)
 }
 
 fn write_browser_callback_response(

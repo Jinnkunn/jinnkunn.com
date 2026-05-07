@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import { PromoteToProductionButton } from "./PromoteToProductionButton";
 import { openExternalUrl } from "../../lib/tauri";
+import { notify } from "../../lib/notify";
 import {
-  siteAdminRunReleaseCommand,
-  type SiteAdminReleaseCommandResult,
+  siteAdminCancelReleaseJob,
+  siteAdminReleaseHistory,
+  siteAdminStartReleaseJob,
+  siteAdminStartRollbackJob,
+  type SiteAdminReleaseHistoryEntry,
+  type SiteAdminReleaseJobEvent,
+  type SiteAdminReleaseJobState,
+  type SiteAdminReleaseScript,
 } from "../../modules/site-admin/tauri";
+import { dispatchReleaseState } from "../../shell/useTrayBindings";
 import {
-  candidateLabel,
   branchLabel,
+  candidateLabel,
   LEGACY_RELEASE_PROD_COMMAND,
   RELEASE_PROD_FROM_STAGING_COMMAND,
   RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND,
-  RELEASE_STAGING_SCRIPT,
+  RELEASE_PROD_FROM_STAGING_SCRIPT,
   RELEASE_STAGING_COMMAND,
+  RELEASE_STAGING_SCRIPT,
   releaseWorkflowRecovery,
   shortId,
   shortSha,
@@ -35,6 +44,22 @@ const PREFLIGHT_COMMAND = [
 ].join("\n");
 
 type ReleaseTone = "ok" | "warn" | "blocked" | "muted";
+type ReleaseStage =
+  | "switch-profile"
+  | "needs-staging"
+  | "checking"
+  | "ready"
+  | "current"
+  | "running"
+  | "failed";
+
+type ReleaseLogLine = {
+  id: string;
+  atMs: number;
+  phase: string;
+  stream: string;
+  message: string;
+};
 
 type ReleaseCheck = {
   detail: string;
@@ -85,6 +110,10 @@ type PromotePreview =
       code: string;
       detail: string;
     };
+
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -204,56 +233,55 @@ function releaseChecks(
   const pendingDeploy = source?.pendingDeploy;
   const codeSha = normalizeString(source?.codeSha);
   const contentSha = normalizeString(source?.contentSha);
-  const contentBranch = branchLabel(source);
   const previewReady = preview?.ok === true;
   const productionDifferent = previewReady ? preview.productionDifferent : false;
   return [
     {
       detail: isStaging
-        ? "You are looking at the staging candidate that should be promoted."
-        : "Switch to Staging before preparing a production promotion.",
-      label: "Current profile",
+        ? "Connected to the staging candidate."
+        : "Switch to Staging before deploying or promoting.",
+      label: "Profile",
       tone: isStaging ? "ok" : "blocked",
       value: isStaging ? "Staging" : "Not staging",
     },
     {
       detail:
         previewReady && preview.stagingMatchesMain
-          ? "Staging active deployment matches the release source."
+          ? "Live staging matches the release source."
           : previewReady
-            ? "Staging runtime and active deployment disagree; release staging before promoting."
-            : "Promotion preflight could not read both environments yet.",
-      label: "Release preflight",
+            ? "Staging runtime and active deployment disagree."
+            : "Load staging preflight to compare both environments.",
+      label: "Staging preflight",
       tone: previewReady && preview.stagingMatchesMain ? "ok" : "blocked",
       value: previewReady && preview.stagingMatchesMain ? "Matched" : "Needs staging",
     },
     {
-      detail: source?.deployableVersionReason ||
+      detail:
+        source?.deployableVersionReason ||
         "Latest uploaded Worker version should match current code/content.",
       label: "Worker candidate",
       tone: candidateReady === true ? "ok" : candidateReady === false ? "blocked" : "warn",
       value: candidateLabel(source),
     },
     {
-      detail: pendingDeploy === true
-        ? "Publish staging first, then promote the validated result."
-        : "Staging appears current for this content source.",
+      detail:
+        pendingDeploy === true
+          ? "Deploy staging first, then promote the verified candidate."
+          : "Staging appears current for this source.",
       label: "Staging deploy",
       tone: pendingDeploy === true ? "blocked" : "ok",
       value: pendingDeploy === true ? "Pending" : "Current",
     },
     {
-      detail: codeSha
-        ? "Code SHA reported by the staging Worker candidate."
-        : "Status did not include a code SHA.",
+      detail: codeSha ? "Code SHA reported by staging." : "Status did not include a code SHA.",
       label: "Code SHA",
       tone: codeSha ? "ok" : "warn",
       value: shortSha(codeSha),
     },
     {
       detail: contentSha
-        ? `Content comes from ${contentBranch}.`
-        : "Content SHA is unavailable; confirm source state before promotion.",
+        ? `Content comes from ${branchLabel(source)}.`
+        : "Content SHA is unavailable.",
       label: "Content SHA",
       tone: contentSha ? "ok" : "warn",
       value: contentSha ? shortSha(contentSha) : "-",
@@ -261,27 +289,21 @@ function releaseChecks(
     {
       detail: previewReady
         ? productionDifferent
-          ? "Production differs from the validated staging candidate."
-          : "Production already runs the same active code/content snapshot."
-        : preview?.detail || "Load promotion preflight from Staging.",
+          ? "Production differs from the verified staging candidate."
+          : "Production already runs the same active snapshot."
+        : preview?.detail || "Load staging preflight.",
       label: "Production delta",
       tone: previewReady ? (productionDifferent ? "warn" : "ok") : "muted",
       value: previewReady ? (productionDifferent ? "Differs" : "Current") : "Unknown",
     },
     {
-      // Content delta is a leading indicator: even when code SHAs match
-      // (productionDifferent=false), a staging D1 row that's been edited
-      // since the last production deploy will land on production at the
-      // next promote. Surfacing a count here means the operator clicks
-      // Promote knowing exactly how many files will move, which is the
-      // 2026-04-29 calendar-nav incident's preventable surprise.
       detail: !previewReady
-        ? "Load promotion preflight from Staging."
+        ? "Load staging preflight."
         : preview.contentDelta.error
           ? `Could not compute content delta: ${preview.contentDelta.error}`
           : preview.contentDelta.changedRows === 0
-            ? "Staging D1 has not changed since production was deployed."
-            : `${preview.contentDelta.changedRows} content file${preview.contentDelta.changedRows === 1 ? "" : "s"} edited since production deploy. The next promote will overwrite production's bundled snapshot with these.`,
+            ? "No staging D1 edits since production deploy."
+            : `${preview.contentDelta.changedRows} content file${preview.contentDelta.changedRows === 1 ? "" : "s"} will land on production.`,
       label: "Content delta",
       tone: !previewReady
         ? "muted"
@@ -316,6 +338,126 @@ function formatRelativeTime(ms: number, now = Date.now()): string {
   return `${Math.floor(delta / 86_400_000)}d ago`;
 }
 
+function releaseStageLabel(stage: ReleaseStage): string {
+  if (stage === "switch-profile") return "Switch to Staging";
+  if (stage === "needs-staging") return "Deploy Staging";
+  if (stage === "checking") return "Run Preflight";
+  if (stage === "ready") return "Ready to Promote";
+  if (stage === "current") return "Production Current";
+  if (stage === "running") return "Release Running";
+  return "Needs Attention";
+}
+
+function scriptLabel(script: string): string {
+  if (script === RELEASE_STAGING_SCRIPT) return "Deploying staging";
+  if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "Promoting production";
+  if (script.startsWith("rollback:production")) return "Rolling back production";
+  return script || "Release job";
+}
+
+function actionForState({
+  isStaging,
+  job,
+  preview,
+  productionAlreadyCurrent,
+  ready,
+  readyToPromote,
+  status,
+}: {
+  isStaging: boolean;
+  job: SiteAdminReleaseJobState | null;
+  preview: PromotePreview | null;
+  productionAlreadyCurrent: boolean;
+  ready: boolean;
+  readyToPromote: boolean;
+  status: StatusPayload | null;
+}) {
+  const running = job?.status === "running";
+  if (!isStaging) {
+    return {
+      stage: "switch-profile" as ReleaseStage,
+      label: "Switch to Staging",
+      detail: "Production is inspect-only. Start releases from Staging.",
+      disabled: false,
+      kind: "switch" as const,
+    };
+  }
+  if (running) {
+    return {
+      stage: "running" as ReleaseStage,
+      label: "Release running",
+      detail: `${scriptLabel(job.script)} · ${job.phase}`,
+      disabled: true,
+      kind: "none" as const,
+    };
+  }
+  if (!ready) {
+    return {
+      stage: "failed" as ReleaseStage,
+      label: "Connect to Staging",
+      detail: "Sign in to the staging profile before releasing.",
+      disabled: true,
+      kind: "none" as const,
+    };
+  }
+  if (
+    status?.source?.deployableVersionReady === false ||
+    status?.source?.pendingDeploy === true ||
+    (preview?.ok === true && !preview.stagingMatchesMain)
+  ) {
+    return {
+      stage: "needs-staging" as ReleaseStage,
+      label: "Deploy Staging",
+      detail: "Build and deploy the committed release source to staging.",
+      disabled: false,
+      kind: "staging" as const,
+    };
+  }
+  if (readyToPromote) {
+    return {
+      stage: "ready" as ReleaseStage,
+      label: "Promote Production",
+      detail: "Production will receive the verified staging candidate.",
+      disabled: false,
+      kind: "promote" as const,
+    };
+  }
+  if (productionAlreadyCurrent) {
+    return {
+      stage: "current" as ReleaseStage,
+      label: "Refresh Status",
+      detail: "Production already matches staging.",
+      disabled: false,
+      kind: "refresh" as const,
+    };
+  }
+  return {
+    stage: "checking" as ReleaseStage,
+    label: "Run Preflight",
+    detail: "Refresh staging and production comparison.",
+    disabled: false,
+    kind: "preflight" as const,
+  };
+}
+
+function appendLogLine(
+  current: ReleaseLogLine[],
+  event: SiteAdminReleaseJobEvent,
+): ReleaseLogLine[] {
+  const message = event.message.trimEnd();
+  if (!message) return current;
+  return [
+    ...current,
+    {
+      id: `${event.job_id}:${Date.now()}:${current.length}`,
+      atMs: Date.now(),
+      phase: event.phase,
+      stream: event.stream,
+      message,
+    },
+  ].slice(-180);
+}
+
 export function ReleasePanel() {
   const {
     connection,
@@ -329,11 +471,13 @@ export function ReleasePanel() {
   const [preview, setPreview] = useState<PromotePreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [stagingDeployBusy, setStagingDeployBusy] = useState(false);
-  const [stagingDeployConfirming, setStagingDeployConfirming] = useState(false);
-  const [stagingDeployError, setStagingDeployError] = useState("");
-  const [stagingDeployResult, setStagingDeployResult] =
-    useState<SiteAdminReleaseCommandResult | null>(null);
+  const [job, setJob] = useState<SiteAdminReleaseJobState | null>(null);
+  const [jobLog, setJobLog] = useState<ReleaseLogLine[]>([]);
+  const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
+  const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
+  const [historyError, setHistoryError] = useState("");
+  const [rollbackCandidate, setRollbackCandidate] =
+    useState<SiteAdminReleaseHistoryEntry | null>(null);
 
   const stagingProfile = useMemo(
     () =>
@@ -345,12 +489,17 @@ export function ReleasePanel() {
   const isStaging = environment.kind === "staging";
   const ready = Boolean(connection.baseUrl && connection.authToken);
   const stagingWorkflow = releaseWorkflowRecovery(status?.source);
-  const stagingCanDeploy = ready && isStaging && status?.env?.hasDeployTarget !== false;
-  const stagingDeployTone: ReleaseTone =
-    !isStaging ? "muted" : stagingDeployError ? "blocked" : stagingDeployResult ? "ok" : "warn";
-  const activeDeploymentLabel =
-    environment.kind === "production" ? "Active production" : "Active staging";
+  const productionAlreadyCurrent = preview?.ok === true && !preview.productionDifferent;
+  const readyToPromote =
+    isStaging &&
+    status?.source?.deployableVersionReady === true &&
+    status.source.pendingDeploy !== true &&
+    preview?.ok === true &&
+    preview.stagingMatchesMain &&
+    !productionAlreadyCurrent;
   const checks = releaseChecks(status, isStaging, preview);
+  const blockers = checks.filter((check) => check.tone !== "ok");
+  const blockingChecks = blockers.filter((check) => check.tone === "blocked");
   const releaseHealth = deriveSiteHealth({
     contentDirty: false,
     outbox: null,
@@ -363,14 +512,25 @@ export function ReleasePanel() {
       rowCount: null,
     },
   });
-  const productionAlreadyCurrent = preview?.ok === true && !preview.productionDifferent;
-  const readyToPromote =
-    isStaging &&
-    status?.source?.deployableVersionReady === true &&
-    status.source.pendingDeploy !== true &&
-    preview?.ok === true &&
-    preview.stagingMatchesMain &&
-    !productionAlreadyCurrent;
+  const primaryAction = actionForState({
+    isStaging,
+    job,
+    preview,
+    productionAlreadyCurrent,
+    ready,
+    readyToPromote,
+    status,
+  });
+
+  const loadHistory = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      setHistory(await siteAdminReleaseHistory(12));
+      setHistoryError("");
+    } catch (err) {
+      setHistoryError(String(err));
+    }
+  }, []);
 
   const loadStatus = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -415,17 +575,47 @@ export function ReleasePanel() {
     [isStaging, request, setMessage],
   );
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Initial release status hydration is an async site-admin request; state updates happen after the request resolves. */
+  /* eslint-disable react-hooks/set-state-in-effect -- release status hydrates from remote APIs */
   useEffect(() => {
     void loadStatus({ silent: true });
-  }, [loadStatus]);
+    void loadHistory();
+  }, [loadHistory, loadStatus]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    if (!stagingDeployConfirming) return;
-    const timer = window.setTimeout(() => setStagingDeployConfirming(false), 30000);
-    return () => window.clearTimeout(timer);
-  }, [stagingDeployConfirming]);
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+    let unlisten: UnlistenFn | undefined;
+    void listen<SiteAdminReleaseJobEvent>("site-admin://release-job", (event) => {
+      if (cancelled) return;
+      const payload = event.payload;
+      setJob(payload.state);
+      setJobLog((current) => appendLogLine(current, payload));
+      if (payload.state.status !== "running") {
+        dispatchReleaseState({ kind: "idle" });
+        void loadStatus({ silent: true });
+        void loadHistory();
+        if (payload.state.status === "succeeded") {
+          void notify({
+            title: `${scriptLabel(payload.state.script)} complete`,
+            body: payload.state.error || "Cloudflare release command finished.",
+          });
+        }
+      }
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [loadHistory, loadStatus]);
 
   const copyText = useCallback(
     async (label: string, text: string) => {
@@ -451,116 +641,154 @@ export function ReleasePanel() {
     [setMessage],
   );
 
-  const deployStaging = useCallback(async () => {
-    if (!isStaging) {
-      if (stagingProfile) {
-        switchProfile(stagingProfile.id);
-      } else {
-        setMessage("warn", "Add a staging profile before deploying staging.");
+  const startRelease = useCallback(
+    async (script: SiteAdminReleaseScript) => {
+      if (!isTauriRuntime()) {
+        setMessage("warn", "Local release jobs are available in the Tauri app.");
+        return;
       }
-      return;
-    }
-    if (!ready) {
-      setMessage("warn", "Connect to staging before deploying.");
-      return;
-    }
-    if (status?.env?.hasDeployTarget === false) {
-      setMessage("warn", "Staging deploy target is not configured.");
-      return;
-    }
-    if (!stagingDeployConfirming) {
-      setStagingDeployConfirming(true);
-      setStagingDeployError("");
-      setStagingDeployResult(null);
-      if (!status) await loadStatus({ silent: true });
-      return;
-    }
+      setJobLog([]);
+      setShowPromoteConfirm(false);
+      setRollbackCandidate(null);
+      try {
+        const next = await siteAdminStartReleaseJob(script);
+        setJob(next);
+        dispatchReleaseState({
+          kind: "running",
+          info: script === RELEASE_STAGING_SCRIPT
+            ? "Deploying staging locally…"
+            : "Promoting production locally…",
+        });
+      } catch (err) {
+        setMessage("error", `Release job failed to start: ${String(err)}`);
+      }
+    },
+    [setMessage],
+  );
 
-    setStagingDeployConfirming(false);
-    setStagingDeployBusy(true);
-    setStagingDeployError("");
-    setStagingDeployResult(null);
-    try {
-      const result = await siteAdminRunReleaseCommand(RELEASE_STAGING_SCRIPT);
-      setStagingDeployResult(result);
-      setMessage("success", "Local staging release completed.");
-    } catch (error) {
-      const msg = String(error);
-      setStagingDeployError(msg);
-      setMessage("error", `Local staging release failed: ${msg}`);
-      await loadStatus({ silent: true });
-      setStagingDeployBusy(false);
+  const startRollback = useCallback(async () => {
+    if (!rollbackCandidate?.version_id) return;
+    if (!isTauriRuntime()) {
+      setMessage("warn", "Production rollback is available in the Tauri app.");
       return;
     }
-    setStagingDeployBusy(false);
-    await loadStatus({ silent: true });
+    setJobLog([]);
+    try {
+      const next = await siteAdminStartRollbackJob(rollbackCandidate.version_id);
+      setJob(next);
+      setRollbackCandidate(null);
+      dispatchReleaseState({
+        kind: "running",
+        info: `Rolling production back to ${rollbackCandidate.version_id.slice(0, 8)}…`,
+      });
+    } catch (err) {
+      setMessage("error", `Rollback failed to start: ${String(err)}`);
+    }
+  }, [rollbackCandidate, setMessage]);
+
+  const cancelJob = useCallback(async () => {
+    if (!job?.job_id || job.status !== "running") return;
+    try {
+      await siteAdminCancelReleaseJob(job.job_id);
+      setMessage("warn", "Release cancellation requested.");
+    } catch (err) {
+      setMessage("error", `Cancel release failed: ${String(err)}`);
+    }
+  }, [job, setMessage]);
+
+  const runPrimaryAction = useCallback(() => {
+    if (primaryAction.kind === "switch") {
+      if (stagingProfile) switchProfile(stagingProfile.id);
+      else setMessage("warn", "Add a staging profile before releasing.");
+      return;
+    }
+    if (primaryAction.kind === "staging") {
+      void startRelease(RELEASE_STAGING_SCRIPT);
+      return;
+    }
+    if (primaryAction.kind === "promote") {
+      setShowPromoteConfirm(true);
+      return;
+    }
+    if (primaryAction.kind === "preflight" || primaryAction.kind === "refresh") {
+      void loadStatus();
+    }
   }, [
-    isStaging,
     loadStatus,
-    ready,
+    primaryAction.kind,
     setMessage,
-    stagingDeployConfirming,
     stagingProfile,
-    status,
+    startRelease,
     switchProfile,
   ]);
 
   return (
-    <section className="surface-card release-panel">
-      <header className="release-panel__header">
-        <div>
-          <h1>Release Center</h1>
-          <p>Deploy staging first, then promote the exact verified candidate.</p>
+    <section className="surface-card release-panel release-center">
+      <header className="release-center__hero" data-stage={primaryAction.stage}>
+        <div className="release-center__hero-copy">
+          <span>Release Center</span>
+          <h1>{releaseStageLabel(primaryAction.stage)}</h1>
+          <p>{primaryAction.detail}</p>
         </div>
-        <div className="release-panel__actions">
+        <div className="release-center__hero-actions">
           <span
             className="release-panel__health-pill"
             data-tone={releaseHealth.releaseFlow.statusTone}
             title={releaseHealth.releaseFlow.nextAction}
           >
-            {releaseHealth.releaseFlow.stage === "current"
-              ? "Staging current"
-              : releaseHealth.releaseFlow.nextAction}
+            {job?.status === "running"
+              ? `${scriptLabel(job.script)} · ${job.phase}`
+              : releaseHealth.releaseFlow.stage === "current"
+                ? "Staging current"
+                : releaseHealth.releaseFlow.nextAction}
           </span>
           <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void loadStatus()}
-            disabled={loading}
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() => void copyText("preflight command", PREFLIGHT_COMMAND)}
-          >
-            Copy Preflight
-          </button>
-          <button
-            className="btn btn--secondary"
-            type="button"
-            onClick={() =>
-              void copyText(
-                "production promotion command",
-                productionCommandFor(status, preview),
-              )
+            className={
+              primaryAction.stage === "ready"
+                ? "btn btn--danger"
+                : "btn btn--primary"
             }
+            type="button"
+            disabled={primaryAction.disabled || loading}
+            onClick={runPrimaryAction}
           >
-            Copy Command
+            {loading && primaryAction.kind !== "staging"
+              ? "Checking…"
+              : primaryAction.label}
           </button>
+          {job?.status === "running" ? (
+            <button className="btn btn--secondary" type="button" onClick={() => void cancelJob()}>
+              Cancel
+            </button>
+          ) : (
+            <button
+              className="btn btn--secondary"
+              type="button"
+              onClick={() => void loadStatus()}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+          )}
         </div>
       </header>
 
       {error ? <div className="release-panel__error">{error}</div> : null}
+
+      <ReleaseFlowMap
+        isStaging={isStaging}
+        preview={preview}
+        productionAlreadyCurrent={productionAlreadyCurrent}
+        status={status}
+      />
 
       {!isStaging ? (
         <div className="release-panel__notice" role="status">
           <div>
             <strong>Production promotion starts from Staging</strong>
             <span>
-              Production remains inspect-only in Workspace. Switch to Staging, verify the
-              candidate, then copy the guarded command from this page.
+              Production remains inspect-only. Switch to Staging, deploy the candidate,
+              then promote the verified build.
             </span>
           </div>
           {stagingProfile ? (
@@ -575,252 +803,42 @@ export function ReleasePanel() {
         </div>
       ) : null}
 
-      <div className="release-panel__summary">
-        <div>
-          <span>Staging candidate</span>
-          <strong>{candidateLabel(status?.source)}</strong>
-          <code>{shortId(status?.deployments?.latestUploaded?.versionId)}</code>
-        </div>
-        <div>
-          <span>{activeDeploymentLabel}</span>
-          <strong>{shortId(status?.deployments?.active?.versionId)}</strong>
-          <code>{status?.deployments?.active?.createdOn || "-"}</code>
-        </div>
-        <div>
-          <span>Code</span>
-          <strong>{shortSha(status?.source?.codeSha)}</strong>
-          <code>release source</code>
-        </div>
-        <div>
-          <span>Content</span>
-          <strong>{shortSha(status?.source?.contentSha)}</strong>
-          <code>{branchLabel(status?.source)}</code>
-        </div>
-      </div>
+      <ReleaseBlockers checks={checks} blockingCount={blockingChecks.length} />
 
-      <section className="release-panel__env-grid" aria-label="Environment comparison">
-        <EnvironmentCard
-          current={isStaging}
-          label="Staging"
-          note={
-            preview?.ok
-              ? preview.stagingMatchesMain
-                ? "Live staging deployment matches the release source."
-                : "Live staging runtime and active deployment disagree."
-              : isStaging
-                ? preview?.detail || "Loading live staging deployment."
-                : "Switch to Staging to load live promotion state."
-          }
-          snapshot={preview?.ok ? preview.staging : null}
+      {showPromoteConfirm && preview?.ok ? (
+        <PromoteConfirmPanel
+          preview={preview}
+          productionCommand={productionCommandFor(status, preview)}
+          onCancel={() => setShowPromoteConfirm(false)}
+          onConfirm={() => void startRelease(RELEASE_PROD_FROM_STAGING_SCRIPT)}
         />
-        <EnvironmentCard
-          current={false}
-          label="Production"
-          note={
-            preview?.ok
-              ? preview.production
-                ? "Live production deployment from Cloudflare."
-                : "Production has no active deployment metadata."
-              : "Read from Staging promotion preflight; no profile switch required."
-          }
-          snapshot={preview?.ok ? preview.production : null}
+      ) : null}
+
+      {rollbackCandidate ? (
+        <RollbackConfirmPanel
+          entry={rollbackCandidate}
+          onCancel={() => setRollbackCandidate(null)}
+          onConfirm={() => void startRollback()}
         />
-        <div
-          className="release-panel__comparison"
-          data-tone={
-            preview?.ok
-              ? productionAlreadyCurrent
-                ? "ok"
-                : "warn"
-              : "muted"
-          }
-        >
-          <span>Comparison</span>
-          <strong>
-            {preview?.ok
-              ? productionAlreadyCurrent
-                ? "Production current"
-                : "Production differs"
-              : "Load staging preflight"}
-          </strong>
-          <p>
-            Live Cloudflare comparison. Production remains explicit.
-          </p>
-        </div>
-      </section>
+      ) : null}
 
-      <section className="release-panel__checks" aria-label="Production promotion checklist">
-        <header>
-          <div>
-            <h2>Promotion Checklist</h2>
-            <p>Preflight status before production.</p>
-          </div>
-          <strong data-ready={readyToPromote ? "true" : "false"}>
-            {readyToPromote ? "Ready to promote" : "Not ready yet"}
-          </strong>
-        </header>
-        <div className="release-panel__check-grid">
-          {checks.map((check) => (
-            <div className="release-panel__check" data-tone={check.tone} key={check.label}>
-              <span>{check.label}</span>
-              <strong>{check.value}</strong>
-              <p>{check.detail}</p>
-            </div>
-          ))}
-        </div>
-        {preview?.ok === true &&
-        !preview.contentDelta.error &&
-        preview.contentDelta.files.length > 0 ? (
-          <details
-            className="release-panel__content-delta"
-            aria-label="Files that will land on production"
-          >
-            <summary>
-              <span>What will land on production</span>
-              <strong>
-                {preview.contentDelta.changedRows} file
-                {preview.contentDelta.changedRows === 1 ? "" : "s"}
-              </strong>
-            </summary>
-            <ul>
-              {preview.contentDelta.files.map((file) => (
-                <li key={file.relPath}>
-                  <code>{file.relPath}</code>
-                  <span aria-hidden="true">·</span>
-                  <span>{formatBytes(file.sizeBytes)}</span>
-                  {file.updatedAtMs ? (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <time
-                        dateTime={new Date(file.updatedAtMs).toISOString()}
-                        title={new Date(file.updatedAtMs).toLocaleString()}
-                      >
-                        {formatRelativeTime(file.updatedAtMs)}
-                      </time>
-                    </>
-                  ) : null}
-                  {file.updatedBy ? (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span>by {file.updatedBy}</span>
-                    </>
-                  ) : null}
-                </li>
-              ))}
-              {preview.contentDelta.truncated ? (
-                <li className="release-panel__content-delta-more">
-                  + {preview.contentDelta.changedRows -
-                    preview.contentDelta.files.length}{" "}
-                  more
-                </li>
-              ) : null}
-            </ul>
-          </details>
-        ) : null}
-      </section>
+      <ReleaseJobPanel job={job} lines={jobLog} />
 
-      <section className="release-panel__operations" aria-label="Release actions">
-        <div className="release-panel__operation" data-tone={stagingDeployTone}>
-          <div className="release-panel__operation-copy">
-            <span>Step 1</span>
-            <h2>Deploy Staging</h2>
-            <p>Runs local Cloudflare release.</p>
-            <dl>
-              <div>
-                <dt>Primary</dt>
-                <dd>{stagingWorkflow.label}</dd>
-              </div>
-              <div>
-                <dt>Target</dt>
-                <dd>Staging Worker</dd>
-              </div>
-            </dl>
-          </div>
-          <div className="release-panel__operation-actions">
-            <button
-              className={
-                stagingDeployConfirming ? "btn btn--danger" : "btn btn--primary"
-              }
-              type="button"
-              onClick={() => void deployStaging()}
-              disabled={stagingDeployBusy || (!stagingCanDeploy && isStaging)}
-              title={
-                !isStaging
-                  ? "Switch to Staging to deploy."
-                  : !ready
-                    ? "Connect to staging first."
-                    : status?.env?.hasDeployTarget === false
-                      ? "Staging deploy target is missing."
-                      : stagingDeployConfirming
-                        ? "Click again to run npm run release:staging locally."
-                        : "Run the local Cloudflare staging release."
-              }
-            >
-              {stagingDeployBusy
-                ? "Releasing…"
-                : !isStaging
-                  ? "Switch to Staging"
-                  : stagingDeployConfirming
-                    ? "Confirm Local Deploy"
-                    : "Deploy Staging"}
-            </button>
-            <button
-              className="btn btn--secondary"
-              type="button"
-              onClick={() => void openActions(stagingWorkflow.actionsUrl)}
-            >
-              GitHub Fallback
-            </button>
-            {stagingDeployResult ? (
-              <ActionResultPanel
-                result={stagingDeployResult}
-                fallbackUrl={stagingWorkflow.actionsUrl}
-                onOpenActions={openActions}
-              />
-            ) : stagingDeployError ? (
-              <div className="release-panel__action-error" role="alert">
-                {stagingDeployError}
-              </div>
-            ) : stagingDeployConfirming ? (
-              <div className="release-panel__action-hint" role="status">
-                Runs <code>{RELEASE_STAGING_COMMAND}</code> on this Mac. Production is not touched.
-              </div>
-            ) : null}
-          </div>
-        </div>
+      <ReleaseHistoryPanel
+        entries={history}
+        error={historyError}
+        onCopyRollback={(entry) => void copyText("rollback command", entry.rollback_command)}
+        onRollback={(entry) => setRollbackCandidate(entry)}
+      />
 
-        <div className="release-panel__operation release-panel__promote" data-tone={readyToPromote ? "warn" : "muted"}>
-          <div className="release-panel__operation-copy">
-            <span>Step 2</span>
-            <h2>Promote Production</h2>
-            <p>Enabled after staging preflight passes.</p>
-            <dl>
-              <div>
-                <dt>Preflight</dt>
-                <dd>{preview?.ok ? "Loaded" : "Needs refresh"}</dd>
-              </div>
-              <div>
-                <dt>Production</dt>
-                <dd>{productionAlreadyCurrent ? "Current" : "Explicit confirm"}</dd>
-              </div>
-            </dl>
-          </div>
-          <div className="release-panel__operation-actions">
-            <button
-              className="btn btn--secondary"
-              type="button"
-              onClick={() => void loadStatus()}
-              disabled={loading}
-            >
-              {loading ? "Checking…" : "Run Preflight"}
-            </button>
-            <PromoteToProductionButton />
-          </div>
-        </div>
-      </section>
+      {preview?.ok === true &&
+      !preview.contentDelta.error &&
+      preview.contentDelta.files.length > 0 ? (
+        <ContentDeltaDetails delta={preview.contentDelta} />
+      ) : null}
 
-      <details className="release-panel__commands" aria-label="Release commands">
-        <summary>Local release commands</summary>
+      <details className="release-panel__commands" aria-label="Advanced release commands">
+        <summary>Advanced / fallback</summary>
         <div className="release-panel__commands-grid">
           <div>
             <h2>Staging</h2>
@@ -839,6 +857,34 @@ export function ReleasePanel() {
             <pre>{LEGACY_RELEASE_PROD_COMMAND}</pre>
           </div>
         </div>
+        <div className="release-center__advanced-actions">
+          <button
+            className="btn btn--secondary"
+            type="button"
+            onClick={() => void copyText("preflight command", PREFLIGHT_COMMAND)}
+          >
+            Copy Preflight
+          </button>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            onClick={() =>
+              void copyText(
+                "production promotion command",
+                productionCommandFor(status, preview),
+              )
+            }
+          >
+            Copy Promote Command
+          </button>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            onClick={() => void openActions(stagingWorkflow.actionsUrl)}
+          >
+            GitHub Fallback
+          </button>
+        </div>
       </details>
 
       <footer className="release-panel__footer">
@@ -855,70 +901,369 @@ export function ReleasePanel() {
   );
 }
 
-function ActionResultPanel({
-  fallbackUrl,
-  onOpenActions,
-  result,
+function ReleaseFlowMap({
+  isStaging,
+  preview,
+  productionAlreadyCurrent,
+  status,
 }: {
-  fallbackUrl: string;
-  onOpenActions: (url: string) => Promise<void>;
-  result: SiteAdminReleaseCommandResult;
+  isStaging: boolean;
+  preview: PromotePreview | null;
+  productionAlreadyCurrent: boolean;
+  status: StatusPayload | null;
+}) {
+  const sourceTone: ReleaseTone = status?.source?.deployableVersionReady === false
+    ? "blocked"
+    : status
+      ? "ok"
+      : "muted";
+  const stagingTone: ReleaseTone =
+    preview?.ok && preview.stagingMatchesMain
+      ? "ok"
+      : status?.source?.pendingDeploy === true
+        ? "warn"
+        : "muted";
+  const productionTone: ReleaseTone =
+    preview?.ok
+      ? productionAlreadyCurrent
+        ? "ok"
+        : "warn"
+      : "muted";
+  return (
+    <section className="release-center__route" aria-label="Release route">
+      <ReleaseNode
+        label="Source"
+        title={shortSha(status?.source?.codeSha)}
+        detail={`content ${shortSha(status?.source?.contentSha)} · ${branchLabel(status?.source)}`}
+        tone={sourceTone}
+      />
+      <span className="release-center__route-arrow" aria-hidden="true" />
+      <ReleaseNode
+        current={isStaging}
+        label="Staging"
+        title={preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}
+        detail={
+          preview?.ok
+            ? `code ${shortSha(preview.staging.codeSha)} · content ${shortSha(preview.staging.contentSha)}`
+            : "load preflight"
+        }
+        tone={stagingTone}
+      />
+      <span className="release-center__route-arrow" aria-hidden="true" />
+      <ReleaseNode
+        label="Production"
+        title={
+          preview?.ok
+            ? preview.production
+              ? shortId(preview.production.versionId)
+              : "No deployment"
+            : "Not loaded"
+        }
+        detail={
+          preview?.ok && preview.production
+            ? `code ${shortSha(preview.production.codeSha)} · content ${shortSha(preview.production.contentSha)}`
+            : "read from staging preflight"
+        }
+        tone={productionTone}
+      />
+    </section>
+  );
+}
+
+function ReleaseNode({
+  current,
+  detail,
+  label,
+  title,
+  tone,
+}: {
+  current?: boolean;
+  detail: string;
+  label: string;
+  title: string;
+  tone: ReleaseTone;
 }) {
   return (
-    <div className="release-panel__action-result" role="status">
-      <div>
-        <strong>Completed locally</strong>
-        <span>
-          {result.command} · {Math.round(result.duration_ms / 1000)}s
-        </span>
-      </div>
-      {fallbackUrl ? (
-        <button
-          className="btn btn--secondary"
-          type="button"
-          onClick={() => void onOpenActions(fallbackUrl)}
-        >
-          GitHub Fallback
-        </button>
-      ) : null}
+    <div className="release-center__node" data-current={current ? "true" : undefined} data-tone={tone}>
+      <span>{label}</span>
+      <strong>{title || "-"}</strong>
+      <small>{detail}</small>
     </div>
   );
 }
 
-function EnvironmentCard({
-  current,
-  label,
-  note,
-  snapshot,
+function ReleaseBlockers({
+  blockingCount,
+  checks,
 }: {
-  current: boolean;
-  label: string;
-  note: string;
-  snapshot: EnvironmentSnapshot | null;
+  blockingCount: number;
+  checks: ReleaseCheck[];
 }) {
+  const visible = checks.filter((check) => check.tone !== "ok");
   return (
-    <div className="release-panel__env-card" data-current={current ? "true" : "false"}>
+    <section className="release-center__blockers" aria-label="Release blockers">
       <header>
         <div>
-          <span>{label}</span>
-          <strong>{snapshot ? shortId(snapshot.versionId) : "Not loaded"}</strong>
+          <h2>{blockingCount > 0 ? "Needs attention" : "Release gates"}</h2>
+          <p>
+            {visible.length === 0
+              ? "All visible gates are clear."
+              : "Only gates that need attention are shown here."}
+          </p>
         </div>
+        <strong data-ready={blockingCount === 0 ? "true" : "false"}>
+          {blockingCount === 0 ? "Clear" : `${blockingCount} blocker${blockingCount === 1 ? "" : "s"}`}
+        </strong>
       </header>
+      {visible.length > 0 ? (
+        <div className="release-center__gate-list">
+          {visible.map((check) => (
+            <div className="release-center__gate" data-tone={check.tone} key={check.label}>
+              <span>{check.label}</span>
+              <strong>{check.value}</strong>
+              <p>{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="release-center__gate release-center__gate--clear" data-tone="ok">
+          <span>Ready</span>
+          <strong>No blockers</strong>
+          <p>Use the primary action above for the next release step.</p>
+        </div>
+      )}
+      <details className="release-center__all-gates">
+        <summary>Show all gates</summary>
+        <div className="release-panel__check-grid">
+          {checks.map((check) => (
+            <div className="release-panel__check" data-tone={check.tone} key={check.label}>
+              <span>{check.label}</span>
+              <strong>{check.value}</strong>
+              <p>{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function PromoteConfirmPanel({
+  onCancel,
+  onConfirm,
+  preview,
+  productionCommand,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  preview: Extract<PromotePreview, { ok: true }>;
+  productionCommand: string;
+}) {
+  return (
+    <section className="release-center__confirm" data-tone="warn" aria-label="Confirm production promotion">
+      <div>
+        <span>Production confirmation</span>
+        <h2>Promote this staging build?</h2>
+        <p>
+          Production will move from{" "}
+          <strong>{preview.production ? shortSha(preview.production.codeSha) : "none"}</strong>{" "}
+          to <strong>{shortSha(preview.stagingSha)}</strong>. Rollback target is captured before deploy.
+        </p>
+      </div>
       <dl>
         <div>
-          <dt>Code</dt>
-          <dd>{shortSha(snapshot?.codeSha)}</dd>
+          <dt>Staging version</dt>
+          <dd>{shortId(preview.staging.versionId)}</dd>
         </div>
         <div>
-          <dt>Content</dt>
-          <dd>{shortSha(snapshot?.contentSha)}</dd>
+          <dt>Content edits</dt>
+          <dd>{preview.contentDelta.changedRows}</dd>
         </div>
         <div>
-          <dt>Branch</dt>
-          <dd>{snapshot?.contentBranch || "-"}</dd>
+          <dt>Command</dt>
+          <dd>{productionCommand}</dd>
         </div>
       </dl>
-      <p>{note}</p>
-    </div>
+      <div className="release-center__confirm-actions">
+        <button className="btn btn--secondary" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn btn--danger" type="button" onClick={onConfirm}>
+          Promote this build
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function RollbackConfirmPanel({
+  entry,
+  onCancel,
+  onConfirm,
+}: {
+  entry: SiteAdminReleaseHistoryEntry;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <section className="release-center__confirm" data-tone="blocked" aria-label="Confirm production rollback">
+      <div>
+        <span>Production rollback</span>
+        <h2>Rollback to {shortId(entry.version_id)}?</h2>
+        <p>
+          This runs a local Cloudflare rollback and then verifies production against
+          the selected version.
+        </p>
+      </div>
+      <pre>{entry.rollback_command}</pre>
+      <div className="release-center__confirm-actions">
+        <button className="btn btn--secondary" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn btn--danger" type="button" onClick={onConfirm}>
+          Rollback production
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ReleaseJobPanel({
+  job,
+  lines,
+}: {
+  job: SiteAdminReleaseJobState | null;
+  lines: ReleaseLogLine[];
+}) {
+  if (!job && lines.length === 0) return null;
+  return (
+    <section className="release-center__job" data-status={job?.status || "idle"} aria-label="Release activity">
+      <header>
+        <div>
+          <h2>{job ? scriptLabel(job.script) : "Release activity"}</h2>
+          <p>{job ? `${job.status} · ${job.phase}` : "No release job has run in this session."}</p>
+        </div>
+        {job?.duration_ms ? <strong>{Math.round(job.duration_ms / 1000)}s</strong> : null}
+      </header>
+      <div className="release-center__log" role="log" aria-live="polite">
+        {lines.length > 0 ? (
+          lines.map((line) => (
+            <div className="release-center__log-line" data-stream={line.stream} key={line.id}>
+              <span>{line.phase}</span>
+              <code>{line.message}</code>
+            </div>
+          ))
+        ) : (
+          <p>Waiting for release output…</p>
+        )}
+      </div>
+      {job?.error ? <div className="release-panel__action-error">{job.error}</div> : null}
+    </section>
+  );
+}
+
+function ReleaseHistoryPanel({
+  entries,
+  error,
+  onCopyRollback,
+  onRollback,
+}: {
+  entries: SiteAdminReleaseHistoryEntry[];
+  error: string;
+  onCopyRollback: (entry: SiteAdminReleaseHistoryEntry) => void;
+  onRollback: (entry: SiteAdminReleaseHistoryEntry) => void;
+}) {
+  return (
+    <section className="release-center__history" aria-label="Release history">
+      <header>
+        <div>
+          <h2>Release History</h2>
+          <p>Recent local releases and production snapshots.</p>
+        </div>
+        <span>{entries.length}</span>
+      </header>
+      {error ? <div className="release-panel__action-error">{error}</div> : null}
+      {entries.length > 0 ? (
+        <div className="release-center__history-list">
+          {entries.map((entry, index) => (
+            <div
+              className="release-center__history-row"
+              data-status={entry.status}
+              key={`${entry.source}:${entry.version_id}:${entry.recorded_at}:${index}`}
+            >
+              <div>
+                <span>{entry.env || entry.source}</span>
+                <strong>{entry.version_id ? shortId(entry.version_id) : shortSha(entry.sha)}</strong>
+                <small>
+                  {entry.recorded_at || "-"} · {entry.status}
+                  {entry.note ? ` · ${entry.note}` : ""}
+                </small>
+              </div>
+              <div className="release-center__history-actions">
+                {entry.rollback_command ? (
+                  <button className="btn btn--secondary" type="button" onClick={() => onCopyRollback(entry)}>
+                    Copy Rollback
+                  </button>
+                ) : null}
+                {entry.env === "production" && entry.version_id ? (
+                  <button className="btn btn--danger" type="button" onClick={() => onRollback(entry)}>
+                    Rollback
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="release-center__empty">No local release history yet.</div>
+      )}
+    </section>
+  );
+}
+
+function ContentDeltaDetails({ delta }: { delta: ContentDelta }) {
+  return (
+    <details
+      className="release-panel__content-delta"
+      aria-label="Files that will land on production"
+    >
+      <summary>
+        <span>What will land on production</span>
+        <strong>
+          {delta.changedRows} file{delta.changedRows === 1 ? "" : "s"}
+        </strong>
+      </summary>
+      <ul>
+        {delta.files.map((file) => (
+          <li key={file.relPath}>
+            <code>{file.relPath}</code>
+            <span aria-hidden="true">·</span>
+            <span>{formatBytes(file.sizeBytes)}</span>
+            {file.updatedAtMs ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <time
+                  dateTime={new Date(file.updatedAtMs).toISOString()}
+                  title={new Date(file.updatedAtMs).toLocaleString()}
+                >
+                  {formatRelativeTime(file.updatedAtMs)}
+                </time>
+              </>
+            ) : null}
+            {file.updatedBy ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>by {file.updatedBy}</span>
+              </>
+            ) : null}
+          </li>
+        ))}
+        {delta.truncated ? (
+          <li className="release-panel__content-delta-more">
+            + {delta.changedRows - delta.files.length} more
+          </li>
+        ) : null}
+      </ul>
+    </details>
   );
 }

@@ -6,6 +6,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -80,12 +81,37 @@ export type RequestFn = (
 
 const MDX_BLOCK_DRAG_TYPE = "application/x-mdx-block";
 const STANDARD_TEXT_DRAG_TYPE = "text/plain";
+type BlockFocusPlacement = "start" | "end";
 
 function cssEscape(value: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
     return CSS.escape(value);
   }
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function placeCaretInEditable(
+  node: HTMLElement,
+  placement: BlockFocusPlacement,
+) {
+  if (!node.isContentEditable) return;
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  range.collapse(placement === "start");
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function isMergeableRichTextBlock(block: MdxBlock): boolean {
+  return (
+    block.type === "paragraph" ||
+    block.type === "heading" ||
+    block.type === "quote" ||
+    block.type === "callout" ||
+    block.type === "list"
+  );
 }
 
 // Debounce window for `serializeMdxBlocks → onChange`. The block array
@@ -108,8 +134,7 @@ export interface BlocksEditorProps {
   /** Min height for the canvas (matches MarkdownEditor's prop for swap-compat). */
   minHeight?: number;
   readOnly?: boolean;
-  /** Optional inline placeholder shown when the body is empty. (Future
-   * enhancement — not yet wired into the canvas paint.) */
+  /** Optional inline placeholder shown for an empty paragraph block. */
   placeholder?: string;
 }
 
@@ -123,6 +148,7 @@ export function BlocksEditor({
   value,
   onChange,
   minHeight,
+  placeholder,
   readOnly = false,
 }: BlocksEditorProps) {
   const {
@@ -392,6 +418,7 @@ export function BlocksEditor({
           depth={0}
           onBlocksChange={handleBlocksChange}
           onSelectBlock={setSelectedBlockId}
+          placeholder={placeholder}
           readOnly={readOnly}
           request={request}
           selectedBlockId={selectedBlockId}
@@ -430,6 +457,7 @@ interface EditableBlocksListProps {
   depth: number;
   onBlocksChange: (next: MdxBlock[]) => void;
   onSelectBlock?: (id: string) => void;
+  placeholder?: string;
   readOnly?: boolean;
   request: RequestFn;
   selectedBlockId?: string;
@@ -442,6 +470,7 @@ function EditableBlocksList({
   depth,
   onBlocksChange,
   onSelectBlock,
+  placeholder,
   readOnly = false,
   request,
   selectedBlockId,
@@ -465,7 +494,11 @@ function EditableBlocksList({
   } | null>(null);
   const [uploadingId, setUploadingId] = useState("");
   const [focusedBlockId, setFocusedBlockId] = useState("");
-  const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{
+    id: string;
+    placement: BlockFocusPlacement;
+    seq: number;
+  } | null>(null);
   const [actionMenu, setActionMenu] = useState<{
     anchor: HTMLElement;
     blockId: string;
@@ -481,14 +514,18 @@ function EditableBlocksList({
   const focusSeqRef = useRef(0);
   // Latest `blocks` snapshot in a ref so the action callbacks below
   // don't have to depend on `blocks`. Without this, every keystroke
-  // re-creates patchBlock / replaceBlock / insertParagraphAfter / …
+  // re-creates patchBlock / replaceBlock / insertBlocksAfter / …
   // which in turn re-renders every BlockRow because their useCallback'd
   // closures rotate. Reading from a ref keeps the parent callbacks
   // referentially stable so memo(BlockRow) actually skips siblings.
   const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
+  useLayoutEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
   const draggingBlockIdRef = useRef("");
-  draggingBlockIdRef.current = draggingBlockId;
+  useLayoutEffect(() => {
+    draggingBlockIdRef.current = draggingBlockId;
+  }, [draggingBlockId]);
 
   // Drag-reorder is enabled at every depth; HTML5 DnD scopes by parent
   // because each EditableBlocksList instance owns its own draggingBlockId
@@ -507,11 +544,14 @@ function EditableBlocksList({
     [],
   );
 
-  const requestBlockFocus = useCallback((id: string) => {
-    if (!id) return;
-    focusSeqRef.current += 1;
-    setFocusRequest({ id, seq: focusSeqRef.current });
-  }, []);
+  const requestBlockFocus = useCallback(
+    (id: string, placement: BlockFocusPlacement = "end") => {
+      if (!id) return;
+      focusSeqRef.current += 1;
+      setFocusRequest({ id, placement, seq: focusSeqRef.current });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -519,14 +559,19 @@ function EditableBlocksList({
     if (!node) return;
     node.focus();
     // setSelectionRange is textarea/input only. For contenteditable
-    // (TipTap path) the browser places the caret naturally on focus.
+    // (TipTap path) use a DOM range so split / merge can land the caret
+    // at the expected edge instead of relying on the browser's previous
+    // remembered ProseMirror selection.
     if (
       "value" in node &&
       "setSelectionRange" in node &&
       typeof (node as HTMLTextAreaElement).setSelectionRange === "function"
     ) {
       const length = (node as HTMLTextAreaElement).value.length;
-      (node as HTMLTextAreaElement).setSelectionRange(length, length);
+      const position = focusRequest.placement === "start" ? 0 : length;
+      (node as HTMLTextAreaElement).setSelectionRange(position, position);
+    } else if (node instanceof HTMLElement) {
+      placeCaretInEditable(node, focusRequest.placement);
     }
     // Intentionally only depend on `focusRequest`. The previous version
     // also depended on `blocks` so the effect ran on every keystroke,
@@ -565,17 +610,6 @@ function EditableBlocksList({
       const current = blocksRef.current;
       commitBlocks(current.map((block) => (block.id === id ? nextBlock : block)));
       requestBlockFocus(nextBlock.id);
-    },
-    [commitBlocks, requestBlockFocus],
-  );
-
-  const insertParagraphAfter = useCallback(
-    (index: number) => {
-      const block = createMdxBlock("paragraph");
-      const next = blocksRef.current.slice();
-      next.splice(index + 1, 0, block);
-      commitBlocks(next);
-      requestBlockFocus(block.id);
     },
     [commitBlocks, requestBlockFocus],
   );
@@ -653,6 +687,80 @@ function EditableBlocksList({
         }),
       );
       requestBlockFocus(id);
+    },
+    [commitBlocks, requestBlockFocus],
+  );
+
+  const splitBlockAt = useCallback(
+    (index: number, before: string, after: string) => {
+      const current = blocksRef.current;
+      const block = current[index];
+      if (!block || !isMergeableRichTextBlock(block)) return;
+      const trailing: MdxBlock = { ...createMdxBlock("paragraph"), text: after };
+      const next = current.slice();
+      next.splice(index, 1, { ...block, text: before }, trailing);
+      commitBlocks(next);
+      if (before.length === 0 && after.length > 0) {
+        requestBlockFocus(block.id, "end");
+      } else {
+        requestBlockFocus(trailing.id, "start");
+      }
+    },
+    [commitBlocks, requestBlockFocus],
+  );
+
+  const focusAdjacentBlock = useCallback(
+    (index: number, direction: -1 | 1) => {
+      const next = blocksRef.current[index + direction];
+      if (!next) return;
+      requestBlockFocus(next.id, direction < 0 ? "end" : "start");
+    },
+    [requestBlockFocus],
+  );
+
+  const mergeBlockBackward = useCallback(
+    (index: number) => {
+      const current = blocksRef.current;
+      if (index <= 0) return;
+      const block = current[index];
+      const previous = current[index - 1];
+      if (!block || !previous) return;
+      const next = current.slice();
+      if (isMergeableRichTextBlock(previous) && isMergeableRichTextBlock(block)) {
+        next.splice(index - 1, 2, {
+          ...previous,
+          text: `${previous.text ?? ""}${block.text ?? ""}`,
+        });
+        commitBlocks(next);
+        requestBlockFocus(previous.id, "end");
+        return;
+      }
+      next.splice(index, 1);
+      commitBlocks(next);
+      requestBlockFocus(previous.id, "end");
+    },
+    [commitBlocks, requestBlockFocus],
+  );
+
+  const mergeBlockForward = useCallback(
+    (index: number) => {
+      const current = blocksRef.current;
+      const block = current[index];
+      const nextBlock = current[index + 1];
+      if (!block || !nextBlock) return;
+      const next = current.slice();
+      if (isMergeableRichTextBlock(block) && isMergeableRichTextBlock(nextBlock)) {
+        next.splice(index, 2, {
+          ...block,
+          text: `${block.text ?? ""}${nextBlock.text ?? ""}`,
+        });
+        commitBlocks(next);
+        requestBlockFocus(block.id, "end");
+        return;
+      }
+      next.splice(index + 1, 1);
+      commitBlocks(next);
+      requestBlockFocus(block.id, "end");
     },
     [commitBlocks, requestBlockFocus],
   );
@@ -858,6 +966,7 @@ function EditableBlocksList({
           key={block.id}
           block={block}
           depth={depth}
+          placeholder={placeholder}
           index={index}
           isSelected={selectedBlockId === block.id}
           isFocused={focusedBlockId === block.id}
@@ -883,10 +992,13 @@ function EditableBlocksList({
           onBlockDrop={handleBlockDrop}
           patchBlock={patchBlock}
           replaceBlock={replaceBlock}
-          insertParagraphAfter={insertParagraphAfter}
           insertBlocksAfter={insertBlocksAfter}
           insertSlashTrigger={insertSlashTrigger}
           replaceBlockWithBlocks={replaceBlockWithBlocks}
+          splitBlockAt={splitBlockAt}
+          mergeBlockBackward={mergeBlockBackward}
+          mergeBlockForward={mergeBlockForward}
+          focusAdjacentBlock={focusAdjacentBlock}
           removeEmptyBlock={removeEmptyBlock}
           duplicateBlockById={duplicateBlockById}
           changeBlockType={changeBlockType}
@@ -952,6 +1064,7 @@ function EditableBlocksList({
 interface BlockRowProps {
   block: MdxBlock;
   depth: number;
+  placeholder?: string;
   index: number;
   isSelected: boolean;
   isFocused: boolean;
@@ -982,10 +1095,13 @@ interface BlockRowProps {
   onBlockDrop: (blockId: string, event: DragEvent<HTMLDivElement>) => void;
   patchBlock: (id: string, patcher: (block: MdxBlock) => MdxBlock) => void;
   replaceBlock: (id: string, nextBlock: MdxBlock) => void;
-  insertParagraphAfter: (index: number) => void;
   insertBlocksAfter: (index: number, insertedBlocks: MdxBlock[]) => void;
   insertSlashTrigger: (afterIndex: number) => void;
   replaceBlockWithBlocks: (index: number, insertedBlocks: MdxBlock[]) => void;
+  splitBlockAt: (index: number, before: string, after: string) => void;
+  mergeBlockBackward: (index: number) => void;
+  mergeBlockForward: (index: number) => void;
+  focusAdjacentBlock: (index: number, direction: -1 | 1) => void;
   removeEmptyBlock: (id: string, index: number) => void;
   duplicateBlockById: (id: string) => void;
   changeBlockType: (
@@ -1005,6 +1121,7 @@ interface BlockRowProps {
 const BlockRow = memo(function BlockRow({
   block,
   depth,
+  placeholder,
   index,
   isSelected,
   isFocused,
@@ -1030,10 +1147,13 @@ const BlockRow = memo(function BlockRow({
   onBlockDrop,
   patchBlock,
   replaceBlock,
-  insertParagraphAfter,
   insertBlocksAfter,
   insertSlashTrigger,
   replaceBlockWithBlocks,
+  splitBlockAt,
+  mergeBlockBackward,
+  mergeBlockForward,
+  focusAdjacentBlock,
   removeEmptyBlock,
   duplicateBlockById,
   changeBlockType,
@@ -1074,10 +1194,6 @@ const BlockRow = memo(function BlockRow({
       registerBlockInput(blockId, node),
     [blockId, registerBlockInput],
   );
-  const onInsertParagraphAfterCb = useCallback(
-    () => insertParagraphAfter(index),
-    [index, insertParagraphAfter],
-  );
   const onInsertBlocksAfterCb = useCallback(
     (newBlocks: MdxBlock[]) => insertBlocksAfter(index, newBlocks),
     [index, insertBlocksAfter],
@@ -1089,6 +1205,26 @@ const BlockRow = memo(function BlockRow({
   const onReplaceWithBlocks = useCallback(
     (newBlocks: MdxBlock[]) => replaceBlockWithBlocks(index, newBlocks),
     [index, replaceBlockWithBlocks],
+  );
+  const onSplitAtSelection = useCallback(
+    (before: string, after: string) => splitBlockAt(index, before, after),
+    [index, splitBlockAt],
+  );
+  const onMergeBackward = useCallback(
+    () => mergeBlockBackward(index),
+    [index, mergeBlockBackward],
+  );
+  const onMergeForward = useCallback(
+    () => mergeBlockForward(index),
+    [index, mergeBlockForward],
+  );
+  const onFocusPrevious = useCallback(
+    () => focusAdjacentBlock(index, -1),
+    [focusAdjacentBlock, index],
+  );
+  const onFocusNext = useCallback(
+    () => focusAdjacentBlock(index, 1),
+    [focusAdjacentBlock, index],
   );
   const onUploadImage = useCallback(
     (file: File | null) => void uploadImageIntoBlock(blockId, file),
@@ -1192,6 +1328,7 @@ const BlockRow = memo(function BlockRow({
       <EditableBlock
         block={block}
         depth={depth}
+        placeholder={placeholder}
         onSelectBlock={onSelectBlock}
         request={request}
         selectedBlockId={selectedBlockId}
@@ -1202,10 +1339,14 @@ const BlockRow = memo(function BlockRow({
         onSlashCommand={onSlashCommand}
         onChooseSlashCommand={onChooseSlashCommand}
         onFocusInput={onFocusInput}
-        onInsertParagraphAfter={onInsertParagraphAfterCb}
         onInsertBlocksAfter={onInsertBlocksAfterCb}
         onRemoveEmpty={onRemoveEmpty}
         onReplaceWithBlocks={onReplaceWithBlocks}
+        onSplitAtSelection={onSplitAtSelection}
+        onMergeBackward={onMergeBackward}
+        onMergeForward={onMergeForward}
+        onFocusPrevious={onFocusPrevious}
+        onFocusNext={onFocusNext}
         onUploadImage={onUploadImage}
         onMoveUp={onMoveUp}
         onMoveDown={onMoveDown}
@@ -1220,16 +1361,21 @@ const BlockRow = memo(function BlockRow({
 function EditableBlock({
   block,
   depth,
+  placeholder,
   onChooseSlashCommand,
   onDuplicate,
   onFocusInput,
-  onInsertParagraphAfter,
   onInsertBlocksAfter,
   onMoveDown,
   onMoveUp,
   onPatch,
   onRemoveEmpty,
   onReplaceWithBlocks,
+  onSplitAtSelection,
+  onMergeBackward,
+  onMergeForward,
+  onFocusPrevious,
+  onFocusNext,
   onSlashCommand,
   onSelectBlock,
   onTurnInto,
@@ -1243,18 +1389,23 @@ function EditableBlock({
 }: {
   block: MdxBlock;
   depth: number;
+  placeholder?: string;
   onChooseSlashCommand: (command: SlashCommand) => void;
   onDuplicate: () => void;
   onFocusInput: (
     node: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null,
   ) => void;
-  onInsertParagraphAfter: () => void;
   onInsertBlocksAfter: (blocks: MdxBlock[]) => void;
   onMoveDown: () => void;
   onMoveUp: () => void;
   onPatch: (patcher: (block: MdxBlock) => MdxBlock) => void;
   onRemoveEmpty: () => void;
   onReplaceWithBlocks: (blocks: MdxBlock[]) => void;
+  onSplitAtSelection: (before: string, after: string) => void;
+  onMergeBackward: () => void;
+  onMergeForward: () => void;
+  onFocusPrevious: () => void;
+  onFocusNext: () => void;
   onSlashCommand: (value: string) => boolean;
   onSelectBlock?: (id: string) => void;
   onTurnInto: (type: MdxBlockType, level?: 1 | 2 | 3) => void;
@@ -1314,7 +1465,6 @@ function EditableBlock({
         onChooseSlashCommand={onChooseSlashCommand}
         onDuplicate={onDuplicate}
         onFocusInput={onFocusInput as (node: HTMLElement | null) => void}
-        onInsertParagraphAfter={onInsertParagraphAfter}
         onInsertBlocksAfter={onInsertBlocksAfter}
         onMoveDown={onMoveDown}
         onMoveUp={onMoveUp}
@@ -1323,8 +1473,14 @@ function EditableBlock({
         setMessage={setMessage}
         onRemoveEmpty={onRemoveEmpty}
         onReplaceWithBlocks={onReplaceWithBlocks}
+        onSplitAtSelection={onSplitAtSelection}
+        onMergeBackward={onMergeBackward}
+        onMergeForward={onMergeForward}
+        onFocusPrevious={onFocusPrevious}
+        onFocusNext={onFocusNext}
         onSlashCommand={onSlashCommand}
         onTurnInto={onTurnInto}
+        placeholder={placeholder}
         request={request}
       />
     );
@@ -1710,7 +1866,8 @@ function CodeOrRawTextarea({
       [onPatch],
     ),
   );
-  const placeholder = block.type === "code" ? "Code" : block.type === "raw" ? "Raw MDX" : "";
+  const textPlaceholder =
+    block.type === "code" ? "Code" : block.type === "raw" ? "Raw MDX" : "";
   return (
     <div className="mdx-document-text-block-shell">
       {block.type === "raw" ? (
@@ -1725,7 +1882,7 @@ function CodeOrRawTextarea({
         ref={setRefs}
         rows={block.type === "code" || block.type === "raw" ? 6 : Math.max(3, block.text.split("\n").length + 1)}
         value={block.text}
-        placeholder={placeholder}
+        placeholder={textPlaceholder}
         readOnly={readOnly}
         onChange={ime.onChange}
         onCompositionStart={ime.onCompositionStart}

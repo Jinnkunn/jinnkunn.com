@@ -265,7 +265,13 @@ pub fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     // Boot menu — replaced as soon as the JS shell mounts and pushes a
     // dynamic payload via `tray_set_menu`. IDs match the dynamic menu
     // so `on_menu_event` doesn't need to switch on legacy ids.
-    let show = MenuItem::with_id(app, "tray:show-window", "Open Workspace", true, None::<&str>)?;
+    let show = MenuItem::with_id(
+        app,
+        "tray:show-window",
+        "Open Workspace",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(
         app,
         "tray:quit",
@@ -392,8 +398,7 @@ fn build_tray_submenu(
     enabled: bool,
     items: &[TrayMenuItem],
 ) -> Result<tauri::menu::Submenu<tauri::Wry>, String> {
-    let sub = tauri::menu::Submenu::with_id(app, id, label, enabled)
-        .map_err(|e| e.to_string())?;
+    let sub = tauri::menu::Submenu::with_id(app, id, label, enabled).map_err(|e| e.to_string())?;
     append_tray_items(app, &sub, items, true)?;
     Ok(sub)
 }
@@ -413,8 +418,13 @@ fn append_tray_items<C: TrayMenuContainer>(
             continue;
         }
         if let Some(children) = &item.children {
-            let sub =
-                build_tray_submenu(app, &item.id, &item.label, item.enabled.unwrap_or(true), children)?;
+            let sub = build_tray_submenu(
+                app,
+                &item.id,
+                &item.label,
+                item.enabled.unwrap_or(true),
+                children,
+            )?;
             container.append_item(&sub).map_err(|e| e.to_string())?;
             continue;
         }
@@ -437,28 +447,19 @@ fn append_tray_items<C: TrayMenuContainer>(
 /// adapter hides that.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 trait TrayMenuContainer {
-    fn append_item(
-        &self,
-        item: &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-    ) -> tauri::Result<()>;
+    fn append_item(&self, item: &dyn tauri::menu::IsMenuItem<tauri::Wry>) -> tauri::Result<()>;
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 impl TrayMenuContainer for tauri::menu::Menu<tauri::Wry> {
-    fn append_item(
-        &self,
-        item: &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-    ) -> tauri::Result<()> {
+    fn append_item(&self, item: &dyn tauri::menu::IsMenuItem<tauri::Wry>) -> tauri::Result<()> {
         self.append(item)
     }
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 impl TrayMenuContainer for tauri::menu::Submenu<tauri::Wry> {
-    fn append_item(
-        &self,
-        item: &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-    ) -> tauri::Result<()> {
+    fn append_item(&self, item: &dyn tauri::menu::IsMenuItem<tauri::Wry>) -> tauri::Result<()> {
         self.append(item)
     }
 }
