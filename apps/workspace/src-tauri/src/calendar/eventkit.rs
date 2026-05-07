@@ -15,10 +15,12 @@ use objc2::AnyThread;
 use objc2_core_graphics::CGColor;
 use objc2_event_kit::{
     EKAuthorizationStatus, EKCalendar, EKEntityType, EKEvent, EKEventStore,
-    EKEventStoreChangedNotification, EKRecurrenceEnd, EKRecurrenceFrequency,
-    EKRecurrenceRule, EKSourceType, EKSpan,
+    EKEventStoreChangedNotification, EKRecurrenceEnd, EKRecurrenceFrequency, EKRecurrenceRule,
+    EKSourceType, EKSpan,
 };
-use objc2_foundation::{NSArray, NSDate, NSError, NSNotification, NSNotificationCenter, NSString, NSURL};
+use objc2_foundation::{
+    NSArray, NSDate, NSError, NSNotification, NSNotificationCenter, NSString, NSURL,
+};
 use tokio::sync::oneshot;
 
 use crate::calendar::types::{
@@ -145,9 +147,9 @@ fn cg_color_to_hex(color: &CGColor) -> String {
     // CGFloats — the docs guarantee components is an n-element array.
     let comps = unsafe { std::slice::from_raw_parts(ptr, n) };
     let (r, g, b) = match n {
-        4 => (comps[0], comps[1], comps[2]),     // RGBA
-        3 => (comps[0], comps[1], comps[2]),     // RGB
-        2 => (comps[0], comps[0], comps[0]),     // gray + alpha
+        4 => (comps[0], comps[1], comps[2]), // RGBA
+        3 => (comps[0], comps[1], comps[2]), // RGB
+        2 => (comps[0], comps[0], comps[0]), // gray + alpha
         _ => return "#000000".to_string(),
     };
     let to_byte = |v: f64| -> u8 {
@@ -229,8 +231,7 @@ fn parse_iso(input: &str) -> Result<DateTime<Utc>, String> {
 }
 
 fn datetime_to_nsdate(dt: DateTime<Utc>) -> Retained<NSDate> {
-    let secs = dt.timestamp() as f64
-        + (dt.timestamp_subsec_nanos() as f64) / 1_000_000_000.0;
+    let secs = dt.timestamp() as f64 + (dt.timestamp_subsec_nanos() as f64) / 1_000_000_000.0;
     NSDate::dateWithTimeIntervalSince1970(secs)
 }
 
@@ -240,8 +241,8 @@ fn nsdate_to_iso(date: &NSDate) -> String {
     // events; fall back to "now" so we never panic mid-iteration.
     let whole = secs.trunc() as i64;
     let nanos = ((secs.fract().abs()) * 1_000_000_000.0) as u32;
-    let dt = DateTime::<Utc>::from_timestamp(whole, nanos.min(999_999_999))
-        .unwrap_or_else(Utc::now);
+    let dt =
+        DateTime::<Utc>::from_timestamp(whole, nanos.min(999_999_999)).unwrap_or_else(Utc::now);
     dt.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
@@ -310,8 +311,7 @@ pub fn fetch_events(request: &FetchEventsRequest) -> Result<Vec<CalendarEvent>, 
         let title = unsafe { ev.title() }.to_string();
         let notes = unsafe { ev.notes() }.map(|s| s.to_string());
         let location = unsafe { ev.location() }.map(|s| s.to_string());
-        let url = unsafe { ev.URL() }
-            .and_then(|u| u.absoluteString().map(|s| s.to_string()));
+        let url = unsafe { ev.URL() }.and_then(|u| u.absoluteString().map(|s| s.to_string()));
         // Bind the Retained<NSDate> first so `&` produces a stable
         // place expression (compiler can't always coerce
         // `&unsafe { ... }` of a temporary down to `&NSDate`).
@@ -370,7 +370,10 @@ pub struct EventAttendeeBundle {
 /// it as a case-insensitive map key.
 fn participant_email(participant: &objc2_event_kit::EKParticipant) -> Option<String> {
     let url = unsafe { participant.URL() };
-    let raw = url.absoluteString().map(|s| s.to_string()).unwrap_or_default();
+    let raw = url
+        .absoluteString()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
     let prefix = "mailto:";
     let address = if let Some(stripped) = raw
         .strip_prefix(prefix)
@@ -443,8 +446,7 @@ pub fn fetch_events_with_attendees(
         if attendees_array.len() == 0 {
             continue;
         }
-        let mut attendees: Vec<EventAttendee> =
-            Vec::with_capacity(attendees_array.len());
+        let mut attendees: Vec<EventAttendee> = Vec::with_capacity(attendees_array.len());
         for participant in attendees_array.iter() {
             let is_current_user = unsafe { participant.isCurrentUser() };
             let email = participant_email(&participant);
@@ -507,12 +509,14 @@ pub fn create_event(request: &CreateEventRequest) -> Result<CalendarEvent, Strin
     // another feature flag; iterating calendarsForEntityType is
     // O(N) but N is tiny (<20 calendars on a typical machine).
     let calendars = unsafe { store.calendarsForEntityType(EKEntityType::Event) };
-    let target = calendars.iter().find(|c| {
-        unsafe { c.calendarIdentifier() }.to_string() == request.calendar_id
-    });
+    let target = calendars
+        .iter()
+        .find(|c| unsafe { c.calendarIdentifier() }.to_string() == request.calendar_id);
     let target_calendar = match target {
         Some(cal) => cal,
-        None => return Err("MISSING_CALENDAR: calendar_id did not match any EKCalendar".to_string()),
+        None => {
+            return Err("MISSING_CALENDAR: calendar_id did not match any EKCalendar".to_string())
+        }
     };
     if !unsafe { target_calendar.allowsContentModifications() } {
         return Err(
@@ -566,9 +570,7 @@ pub fn create_event(request: &CreateEventRequest) -> Result<CalendarEvent, Strin
             RecurrenceFrequency::Biweekly => (EKRecurrenceFrequency::Weekly, 2),
             RecurrenceFrequency::Monthly => (EKRecurrenceFrequency::Monthly, 1),
         };
-        let end = unsafe {
-            EKRecurrenceEnd::recurrenceEndWithOccurrenceCount(count as usize)
-        };
+        let end = unsafe { EKRecurrenceEnd::recurrenceEndWithOccurrenceCount(count as usize) };
         // SAFETY: alloc + init dance — initRecurrenceWithFrequency takes
         // a frequency variant, an interval >= 1, and an optional end.
         // All three preconditions are satisfied here.
@@ -606,15 +608,15 @@ pub fn create_event(request: &CreateEventRequest) -> Result<CalendarEvent, Strin
     let event_identifier = unsafe { event.eventIdentifier() }
         .map(|s| s.to_string())
         .unwrap_or_default();
-    let external_identifier = unsafe { event.calendarItemExternalIdentifier() }.map(|s| s.to_string());
+    let external_identifier =
+        unsafe { event.calendarItemExternalIdentifier() }.map(|s| s.to_string());
     let calendar_id = unsafe { event.calendar() }
         .map(|c| unsafe { c.calendarIdentifier() }.to_string())
         .unwrap_or_default();
     let title = unsafe { event.title() }.to_string();
     let notes = unsafe { event.notes() }.map(|s| s.to_string());
     let location = unsafe { event.location() }.map(|s| s.to_string());
-    let url = unsafe { event.URL() }
-        .and_then(|u| u.absoluteString().map(|s| s.to_string()));
+    let url = unsafe { event.URL() }.and_then(|u| u.absoluteString().map(|s| s.to_string()));
     let start_ns = unsafe { event.startDate() };
     let end_ns = unsafe { event.endDate() };
     let starts_at = nsdate_to_iso(&start_ns);
@@ -671,12 +673,7 @@ where
     // - The block is `Fn` and `Send`, satisfying the documented
     //   "block must be sendable" requirement.
     let observer = unsafe {
-        center.addObserverForName_object_queue_usingBlock(
-            Some(name),
-            None,
-            None,
-            &block,
-        )
+        center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &block)
     };
 
     // App-lifetime retention: NSNotificationCenter holds a *weak*

@@ -37,11 +37,11 @@ Current staging release candidate:
   - force pushes and branch deletion: disabled
   - Vercel status contexts are intentionally not required.
 - Production promotion requires explicit approval and one of:
-  - one-click in the workspace: **Promote to Production** button on the
-    Site Admin Release Center (only visible when connected to staging).
-    It reads `/api/site-admin/promote-to-production` for preflight, then
-    runs `npm run release:prod:from-staging` locally from the repo
-    checkout.
+  - one-click in the workspace: the Site Admin **Release Center** primary
+    action. It reads `/api/site-admin/promote-to-production` for preflight,
+    then runs the matching npm release command locally from the repo checkout
+    with live output, phase status, release history, and rollback actions in
+    the same panel.
   - one-shot promote-from-staging (CLI):
     `npm run release:prod:from-staging`
   - the older guarded release: `npm run release:prod`
@@ -96,18 +96,27 @@ snapshot of committed HEAD under `.cache/release/snapshots/`. Dirty
 1. Open the Tauri workspace, connect to the **staging** profile.
 2. Confirm the editor's saved content is what you want in production
    (e.g. via the Tauri editor acceptance checklist below).
-3. Click **Promote to Production** in Release Center. The panel shows
-   local release-source SHA, the staging Worker's deployed code SHA,
-   and the current production version. The button refuses to run unless
-   staging matches that release source.
-4. Click again to confirm. The app runs
-   `npm run release:prod:from-staging` locally from the repo checkout
-   and keeps GitHub Actions as an explicit fallback.
+3. Open **Site Admin → Release**. The Release Center shows the route
+   `Local source → Staging → Production`, the local release-source SHA,
+   the staging Worker's deployed code SHA, and the current production version.
+4. Use the primary action:
+   - **Publish Staging** runs `npm run release:staging`.
+   - **Promote Production** opens a confirmation panel, then runs
+     `npm run release:prod:from-staging`.
+5. Keep the panel open while it runs. The activity stream shows the current
+   phase, stdout/stderr tail, success/failure state, and a cancel action.
+6. After release, review **Recent Releases**. Production entries expose copyable
+   rollback commands and a one-click local rollback action for known Worker
+   versions.
+
+GitHub Dispatch is intentionally labeled as a fallback in the app. Routine
+staging and production publishing should use the local Cloudflare path so normal
+content/calendar releases do not consume GitHub Actions minutes.
 
 If the button is greyed out:
-- "Promote (staging stale)" — staging hasn't been re-released since
+- "Staging stale" — staging hasn't been re-released since
   the current release-source commit. Run `npm run release:staging` (or click
-  Publish on this surface) and retry.
+  **Publish Staging** on this surface) and retry.
 - "No changes vs prod" — production is already on the same code/content
   snapshot as staging.
 

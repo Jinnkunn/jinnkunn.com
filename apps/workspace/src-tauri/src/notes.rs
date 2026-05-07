@@ -780,8 +780,7 @@ pub async fn notes_save_asset(
     let dir = assets_dir(&app)?;
     let target = dir.join(&filename);
     if !target.exists() {
-        std::fs::write(&target, &bytes)
-            .map_err(|err| format!("failed to write asset: {err}"))?;
+        std::fs::write(&target, &bytes).map_err(|err| format!("failed to write asset: {err}"))?;
     }
     Ok(NoteAssetResult {
         url: format!("note-asset://localhost/{filename}"),

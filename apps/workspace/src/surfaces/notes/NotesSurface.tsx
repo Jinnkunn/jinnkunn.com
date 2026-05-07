@@ -1172,6 +1172,7 @@ export function NotesSurface() {
   const editorRuntime = useMemo<WorkspaceEditorRuntime>(
     () => ({
       assetsEnabled: true,
+      chrome: "notes",
       // No remote asset library to browse — the picker pulls in
       // `useSiteAdmin` and would crash without a SiteAdminProvider
       // ancestor. Paste/drop uploads still work through uploadAsset.
@@ -1299,8 +1300,10 @@ export function NotesSurface() {
                 className="notes-save-state"
                 data-state={saveState}
                 role={saveState === "error" ? "alert" : "status"}
+                aria-label={`Note save status: ${saveLabel}`}
               >
-                {saveLabel}
+                <span className="notes-save-state__dot" aria-hidden="true" />
+                <span className="notes-save-state__label">{saveLabel}</span>
               </span>
             ) : null}
             <WorkspaceCommandButton
@@ -1436,7 +1439,7 @@ export function NotesSurface() {
                 value={body}
                 onChange={setBody}
                 minHeight={520}
-                placeholder="Type / for blocks"
+                placeholder="Type '/' for commands"
               />
             </WorkspaceEditorRuntimeProvider>
           </article>

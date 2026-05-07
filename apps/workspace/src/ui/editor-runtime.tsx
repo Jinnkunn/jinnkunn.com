@@ -31,6 +31,10 @@ export type WorkspaceAssetUploader = (
 
 export interface WorkspaceEditorRuntime {
   assetsEnabled?: boolean;
+  /** Surface-specific editing chrome. The shared block editor is used by
+   * both Site Admin's MDX authoring flow and local Notes; Notes opts into a
+   * quieter, cursor-first chrome that hides CMS-style affordance weight. */
+  chrome?: "default" | "notes";
   /** When false, BlocksEditor skips the AssetLibraryPicker render. Used
    * by surfaces (Notes) that have no remote-asset library — they accept
    * paste/drop uploads but should not pull in `useSiteAdmin`. */

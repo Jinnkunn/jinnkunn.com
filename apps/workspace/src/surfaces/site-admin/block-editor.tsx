@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 type BlockEditorCommandIcon = string | LucideIcon;
@@ -95,6 +95,7 @@ export function BlockEditorCommandMenu<TCommand extends BlockEditorCommand>({
   empty,
   onActiveCommandChange,
   onChoose,
+  style,
 }: {
   activeCommandId?: string;
   ariaLabel?: string;
@@ -103,10 +104,11 @@ export function BlockEditorCommandMenu<TCommand extends BlockEditorCommand>({
   empty?: ReactNode;
   onActiveCommandChange?: (command: TCommand) => void;
   onChoose: (command: TCommand) => void;
+  style?: CSSProperties;
 }) {
   if (commands.length === 0) {
     return (
-      <div className={className} role="menu" aria-label={ariaLabel}>
+      <div className={className} role="menu" aria-label={ariaLabel} style={style}>
         {empty}
       </div>
     );
@@ -121,7 +123,7 @@ export function BlockEditorCommandMenu<TCommand extends BlockEditorCommand>({
   }
   const useGroups = Array.from(grouped.keys()).some((g) => g !== "");
   return (
-    <div className={className} role="menu" aria-label={ariaLabel}>
+    <div className={className} role="menu" aria-label={ariaLabel} style={style}>
       {useGroups
         ? Array.from(grouped.entries()).map(([group, items]) => (
             <div className="block-editor-command__group" key={group || "_other"}>

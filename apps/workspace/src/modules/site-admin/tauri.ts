@@ -49,10 +49,85 @@ export interface SiteAdminReleaseCommandResult {
   stderr_tail: string;
 }
 
+export type SiteAdminReleaseJobStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface SiteAdminReleaseJobState {
+  job_id: string;
+  script: string;
+  command: string;
+  cwd: string;
+  status: SiteAdminReleaseJobStatus;
+  started_at_ms: number;
+  finished_at_ms: number | null;
+  duration_ms: number | null;
+  exit_code: number | null;
+  phase: string;
+  stdout_tail: string;
+  stderr_tail: string;
+  error: string;
+}
+
+export interface SiteAdminReleaseJobEvent {
+  job_id: string;
+  script: string;
+  status: SiteAdminReleaseJobStatus;
+  stream: "stdout" | "stderr" | "status";
+  phase: string;
+  message: string;
+  state: SiteAdminReleaseJobState;
+}
+
+export interface SiteAdminReleaseHistoryEntry {
+  source: string;
+  env: string;
+  status: string;
+  recorded_at: string;
+  version_id: string;
+  deployment_id: string;
+  sha: string;
+  branch: string;
+  note: string;
+  rollback_command: string;
+}
+
 export function siteAdminRunReleaseCommand(
   script: SiteAdminReleaseScript,
 ): Promise<SiteAdminReleaseCommandResult> {
   return invoke("site_admin_run_release_command", { script });
+}
+
+export function siteAdminStartReleaseJob(
+  script: SiteAdminReleaseScript,
+): Promise<SiteAdminReleaseJobState> {
+  return invoke("site_admin_start_release_job", { script });
+}
+
+export function siteAdminStartRollbackJob(
+  versionId: string,
+): Promise<SiteAdminReleaseJobState> {
+  return invoke("site_admin_start_rollback_job", { versionId });
+}
+
+export function siteAdminReleaseJobStatus(
+  jobId: string,
+): Promise<SiteAdminReleaseJobState | null> {
+  return invoke("site_admin_release_job_status", { jobId });
+}
+
+export function siteAdminCancelReleaseJob(
+  jobId: string,
+): Promise<SiteAdminReleaseJobState | null> {
+  return invoke("site_admin_cancel_release_job", { jobId });
+}
+
+export function siteAdminReleaseHistory(
+  limit = 12,
+): Promise<SiteAdminReleaseHistoryEntry[]> {
+  return invoke("site_admin_release_history", { limit });
 }
 
 export interface SyncPullParams {

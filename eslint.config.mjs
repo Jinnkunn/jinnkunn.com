@@ -23,6 +23,8 @@ const eslintConfig = defineConfig([
     "apps/workspace/src-tauri/target/**",
     // Local Playwright CLI cache.
     ".playwright-cli/**",
+    // Local release/build snapshots are generated artifacts, not source.
+    ".cache/**",
   ]),
 ]);
 

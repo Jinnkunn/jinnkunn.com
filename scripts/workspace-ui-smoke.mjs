@@ -192,18 +192,38 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "PromoteToProductionButton",
-    "Release panel promotion action",
+    "siteAdminStartReleaseJob",
+    "Release panel local release job action",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Local release commands",
-    "Release panel local release commands",
+    "site-admin://release-job",
+    "Release panel live release event stream",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Environment comparison",
-    "Release panel staging/production comparison",
+    "GitHub Fallback",
+    "Release panel GitHub fallback action",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Release History",
+    "Release panel release history",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "siteAdminStartRollbackJob",
+    "Release panel rollback action",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "site_admin_start_release_job",
+    "Tauri release job command",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "site-admin://release-job",
+    "Tauri release job event",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
