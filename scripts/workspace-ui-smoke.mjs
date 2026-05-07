@@ -197,6 +197,11 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "siteAdminLocalReleaseSource",
+    "Release panel local source guard",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
     "site-admin://release-job",
     "Release panel live release event stream",
   );
@@ -224,6 +229,11 @@ function main() {
     read("apps/workspace/src-tauri/src/site_admin.rs"),
     "site-admin://release-job",
     "Tauri release job event",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "site_admin_local_release_source",
+    "Tauri local release source command",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),

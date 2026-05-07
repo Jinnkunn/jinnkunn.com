@@ -231,7 +231,27 @@ async function main() {
     if (verdict.code === "STAGING_METADATA_UNREADABLE") {
       fail(verdict.detail);
     } else if (args.dryRun) {
+      const stagingCodeSha = effectiveCodeSha(staging.meta);
       console.log(`[release-from-staging] (dry-run) ${verdict.code}:\n${verdict.detail}`);
+      console.log(
+        JSON.stringify(
+          {
+            ok: false,
+            dryRun: true,
+            code: verdict.code,
+            detail: verdict.detail,
+            git,
+            staging: {
+              workerName: stagingWorker,
+              versionId: staging.versionId,
+              codeSha: stagingCodeSha,
+            },
+          },
+          null,
+          2,
+        ),
+      );
+      return;
     } else {
       fail(verdict.detail);
     }

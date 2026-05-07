@@ -5,9 +5,11 @@ import { openExternalUrl } from "../../lib/tauri";
 import { notify } from "../../lib/notify";
 import {
   siteAdminCancelReleaseJob,
+  siteAdminLocalReleaseSource,
   siteAdminReleaseHistory,
   siteAdminStartReleaseJob,
   siteAdminStartRollbackJob,
+  type SiteAdminLocalReleaseSource,
   type SiteAdminReleaseHistoryEntry,
   type SiteAdminReleaseJobEvent,
   type SiteAdminReleaseJobState,
@@ -227,6 +229,7 @@ function releaseChecks(
   status: StatusPayload | null,
   isStaging: boolean,
   preview: PromotePreview | null,
+  localSource: SiteAdminLocalReleaseSource | null,
 ): ReleaseCheck[] {
   const source = status?.source;
   const candidateReady = source?.deployableVersionReady;
@@ -235,7 +238,24 @@ function releaseChecks(
   const contentSha = normalizeString(source?.contentSha);
   const previewReady = preview?.ok === true;
   const productionDifferent = previewReady ? preview.productionDifferent : false;
+  const localSha = normalizeString(localSource?.sha);
+  const stagingCodeSha = normalizeString(previewReady ? preview.staging.codeSha : codeSha);
+  const localMismatch = Boolean(localSha && stagingCodeSha && localSha !== stagingCodeSha);
   return [
+    ...(localSource
+      ? [
+          {
+            detail: localSource.dirty
+              ? `${localSource.dirty_file_count} local file${localSource.dirty_file_count === 1 ? "" : "s"} must be committed before production promotion.`
+              : localMismatch
+                ? `Staging is ${shortSha(stagingCodeSha)}, but local release source is ${shortSha(localSha)}. Deploy staging first.`
+                : "Local release source matches staging.",
+            label: "Local source",
+            tone: localSource.dirty || localMismatch ? "blocked" : "ok",
+            value: localSource.dirty ? "Dirty" : shortSha(localSha),
+          } satisfies ReleaseCheck,
+        ]
+      : []),
     {
       detail: isStaging
         ? "Connected to the staging candidate."
@@ -358,6 +378,8 @@ function scriptLabel(script: string): string {
 function actionForState({
   isStaging,
   job,
+  localDirty,
+  localStagingMismatch,
   preview,
   productionAlreadyCurrent,
   ready,
@@ -366,6 +388,8 @@ function actionForState({
 }: {
   isStaging: boolean;
   job: SiteAdminReleaseJobState | null;
+  localDirty: boolean;
+  localStagingMismatch: boolean;
   preview: PromotePreview | null;
   productionAlreadyCurrent: boolean;
   ready: boolean;
@@ -400,7 +424,17 @@ function actionForState({
       kind: "none" as const,
     };
   }
+  if (localDirty) {
+    return {
+      stage: "failed" as ReleaseStage,
+      label: "Commit Changes",
+      detail: "Production promotion requires a clean local release source.",
+      disabled: true,
+      kind: "none" as const,
+    };
+  }
   if (
+    localStagingMismatch ||
     status?.source?.deployableVersionReady === false ||
     status?.source?.pendingDeploy === true ||
     (preview?.ok === true && !preview.stagingMatchesMain)
@@ -408,7 +442,9 @@ function actionForState({
     return {
       stage: "needs-staging" as ReleaseStage,
       label: "Deploy Staging",
-      detail: "Build and deploy the committed release source to staging.",
+      detail: localStagingMismatch
+        ? "Staging is behind the local release source. Deploy staging first."
+        : "Build and deploy the committed release source to staging.",
       disabled: false,
       kind: "staging" as const,
     };
@@ -476,6 +512,7 @@ export function ReleasePanel() {
   const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
+  const [localSource, setLocalSource] = useState<SiteAdminLocalReleaseSource | null>(null);
   const [rollbackCandidate, setRollbackCandidate] =
     useState<SiteAdminReleaseHistoryEntry | null>(null);
 
@@ -490,14 +527,29 @@ export function ReleasePanel() {
   const ready = Boolean(connection.baseUrl && connection.authToken);
   const stagingWorkflow = releaseWorkflowRecovery(status?.source);
   const productionAlreadyCurrent = preview?.ok === true && !preview.productionDifferent;
+  const localSha = normalizeString(localSource?.sha);
+  const stagingCodeSha = normalizeString(
+    preview?.ok === true ? preview.staging.codeSha : status?.source?.codeSha,
+  );
+  const localDirty = Boolean(localSource?.dirty);
+  const localStagingMismatch = Boolean(
+    isStaging &&
+      localSource &&
+      !localDirty &&
+      localSha &&
+      stagingCodeSha &&
+      localSha !== stagingCodeSha,
+  );
   const readyToPromote =
     isStaging &&
+    !localDirty &&
+    !localStagingMismatch &&
     status?.source?.deployableVersionReady === true &&
     status.source.pendingDeploy !== true &&
     preview?.ok === true &&
     preview.stagingMatchesMain &&
     !productionAlreadyCurrent;
-  const checks = releaseChecks(status, isStaging, preview);
+  const checks = releaseChecks(status, isStaging, preview, localSource);
   const blockers = checks.filter((check) => check.tone !== "ok");
   const blockingChecks = blockers.filter((check) => check.tone === "blocked");
   const releaseHealth = deriveSiteHealth({
@@ -515,6 +567,8 @@ export function ReleasePanel() {
   const primaryAction = actionForState({
     isStaging,
     job,
+    localDirty,
+    localStagingMismatch,
     preview,
     productionAlreadyCurrent,
     ready,
@@ -529,6 +583,15 @@ export function ReleasePanel() {
       setHistoryError("");
     } catch (err) {
       setHistoryError(String(err));
+    }
+  }, []);
+
+  const loadLocalSource = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      setLocalSource(await siteAdminLocalReleaseSource());
+    } catch {
+      setLocalSource(null);
     }
   }, []);
 
@@ -579,7 +642,8 @@ export function ReleasePanel() {
   useEffect(() => {
     void loadStatus({ silent: true });
     void loadHistory();
-  }, [loadHistory, loadStatus]);
+    void loadLocalSource();
+  }, [loadHistory, loadLocalSource, loadStatus]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -595,6 +659,7 @@ export function ReleasePanel() {
         dispatchReleaseState({ kind: "idle" });
         void loadStatus({ silent: true });
         void loadHistory();
+        void loadLocalSource();
         if (payload.state.status === "succeeded") {
           void notify({
             title: `${scriptLabel(payload.state.script)} complete`,
@@ -615,7 +680,7 @@ export function ReleasePanel() {
       cancelled = true;
       unlisten?.();
     };
-  }, [loadHistory, loadStatus]);
+  }, [loadHistory, loadLocalSource, loadStatus]);
 
   const copyText = useCallback(
     async (label: string, text: string) => {
@@ -777,6 +842,9 @@ export function ReleasePanel() {
 
       <ReleaseFlowMap
         isStaging={isStaging}
+        localDirty={localDirty}
+        localSource={localSource}
+        localStagingMismatch={localStagingMismatch}
         preview={preview}
         productionAlreadyCurrent={productionAlreadyCurrent}
         status={status}
@@ -903,22 +971,42 @@ export function ReleasePanel() {
 
 function ReleaseFlowMap({
   isStaging,
+  localDirty,
+  localSource,
+  localStagingMismatch,
   preview,
   productionAlreadyCurrent,
   status,
 }: {
   isStaging: boolean;
+  localDirty: boolean;
+  localSource: SiteAdminLocalReleaseSource | null;
+  localStagingMismatch: boolean;
   preview: PromotePreview | null;
   productionAlreadyCurrent: boolean;
   status: StatusPayload | null;
 }) {
-  const sourceTone: ReleaseTone = status?.source?.deployableVersionReady === false
+  const sourceTone: ReleaseTone = localDirty || localStagingMismatch
     ? "blocked"
-    : status
-      ? "ok"
-      : "muted";
+    : status?.source?.deployableVersionReady === false
+      ? "blocked"
+      : status
+        ? "ok"
+        : "muted";
+  const sourceTitle = localSource
+    ? localSource.dirty
+      ? "Dirty"
+      : shortSha(localSource.sha)
+    : shortSha(status?.source?.codeSha);
+  const sourceDetail = localSource
+    ? localSource.dirty
+      ? `${localSource.dirty_file_count} local file${localSource.dirty_file_count === 1 ? "" : "s"} changed`
+      : `${localSource.branch} · staging ${shortSha(preview?.ok ? preview.staging.codeSha : status?.source?.codeSha)}`
+    : `content ${shortSha(status?.source?.contentSha)} · ${branchLabel(status?.source)}`;
   const stagingTone: ReleaseTone =
-    preview?.ok && preview.stagingMatchesMain
+    localStagingMismatch
+      ? "blocked"
+      : preview?.ok && preview.stagingMatchesMain
       ? "ok"
       : status?.source?.pendingDeploy === true
         ? "warn"
@@ -933,8 +1021,8 @@ function ReleaseFlowMap({
     <section className="release-center__route" aria-label="Release route">
       <ReleaseNode
         label="Source"
-        title={shortSha(status?.source?.codeSha)}
-        detail={`content ${shortSha(status?.source?.contentSha)} · ${branchLabel(status?.source)}`}
+        title={sourceTitle}
+        detail={sourceDetail}
         tone={sourceTone}
       />
       <span className="release-center__route-arrow" aria-hidden="true" />
