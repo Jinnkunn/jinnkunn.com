@@ -1034,6 +1034,17 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
 
     const paragraphLines: string[] = [];
     while (index < lines.length && (lines[index] ?? "").trim()) {
+      const probe = (lines[index] ?? "").trim();
+      // Block-level JSX components (e.g. `<NewsEntry>`, `</NewsEntry>`,
+      // `<Columns>`) should always start their own block. Without this
+      // break, a missing blank line between e.g. `---` and `<NewsEntry…>`
+      // merges them into a single raw paragraph, the news-entry's body
+      // ends up orphaned at the top level, and the closing tag becomes
+      // its own raw block — exactly the broken state we kept hitting in
+      // the editor.
+      if (paragraphLines.length > 0 && JSX_COMPONENT_TAG_RE.test(probe)) {
+        break;
+      }
       paragraphLines.push(lines[index] ?? "");
       index += 1;
     }
