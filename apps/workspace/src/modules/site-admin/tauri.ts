@@ -94,6 +94,14 @@ export interface SiteAdminReleaseHistoryEntry {
   rollback_command: string;
 }
 
+export interface SiteAdminLocalReleaseSource {
+  sha: string;
+  branch: string;
+  dirty: boolean;
+  dirty_file_count: number;
+  dirty_files: string[];
+}
+
 export function siteAdminRunReleaseCommand(
   script: SiteAdminReleaseScript,
 ): Promise<SiteAdminReleaseCommandResult> {
@@ -128,6 +136,10 @@ export function siteAdminReleaseHistory(
   limit = 12,
 ): Promise<SiteAdminReleaseHistoryEntry[]> {
   return invoke("site_admin_release_history", { limit });
+}
+
+export function siteAdminLocalReleaseSource(): Promise<SiteAdminLocalReleaseSource> {
+  return invoke("site_admin_local_release_source");
 }
 
 export interface SyncPullParams {

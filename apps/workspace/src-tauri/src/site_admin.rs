@@ -114,6 +114,15 @@ pub struct SiteAdminReleaseHistoryEntry {
     rollback_command: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SiteAdminLocalReleaseSource {
+    sha: String,
+    branch: String,
+    dirty: bool,
+    dirty_file_count: usize,
+    dirty_files: Vec<String>,
+}
+
 struct ReleaseJobHandle {
     state: Mutex<SiteAdminReleaseJobState>,
     cancel: AtomicBool,
@@ -307,6 +316,55 @@ fn allowed_release_script(script: &str) -> Option<&'static str> {
         "release:prod:from-staging:dry-run" => Some("release:prod:from-staging:dry-run"),
         _ => None,
     }
+}
+
+fn git_text(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|err| format!("Failed to run git {}: {err}", args.join(" ")))?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(format!(
+        "git {} failed{}",
+        args.join(" "),
+        if stderr.is_empty() {
+            String::new()
+        } else {
+            format!(": {stderr}")
+        }
+    ))
+}
+
+fn parse_porcelain_path(line: &str) -> String {
+    let path = line.get(3..).unwrap_or("").trim();
+    path.split(" -> ").last().unwrap_or(path).trim().to_string()
+}
+
+fn read_local_release_source(cwd: &Path) -> Result<SiteAdminLocalReleaseSource, String> {
+    let sha = git_text(cwd, &["rev-parse", "HEAD"])?;
+    let branch_raw = git_text(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let status = git_text(cwd, &["status", "--porcelain"])?;
+    let dirty_files = status
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(parse_porcelain_path)
+        .filter(|path| !path.is_empty())
+        .collect::<Vec<_>>();
+    Ok(SiteAdminLocalReleaseSource {
+        sha,
+        branch: if branch_raw == "HEAD" {
+            "detached".to_string()
+        } else {
+            branch_raw
+        },
+        dirty: !dirty_files.is_empty(),
+        dirty_file_count: dirty_files.len(),
+        dirty_files,
+    })
 }
 
 fn now_millis() -> u64 {
@@ -900,6 +958,14 @@ pub async fn site_admin_release_history(
     let limit = limit.unwrap_or(12);
     entries.truncate(limit);
     Ok(entries)
+}
+
+#[tauri::command]
+pub async fn site_admin_local_release_source() -> Result<SiteAdminLocalReleaseSource, String> {
+    let root = resolve_release_repo_root()?;
+    tauri::async_runtime::spawn_blocking(move || read_local_release_source(&root))
+        .await
+        .map_err(|err| format!("Local release source task failed: {err}"))?
 }
 
 fn write_browser_callback_response(

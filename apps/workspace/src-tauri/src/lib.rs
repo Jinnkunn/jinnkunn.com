@@ -77,6 +77,7 @@ pub fn run() {
             site_admin::site_admin_release_job_status,
             site_admin::site_admin_cancel_release_job,
             site_admin::site_admin_release_history,
+            site_admin::site_admin_local_release_source,
             secrets::secure_store_set,
             secrets::secure_store_get,
             secrets::secure_store_delete,
