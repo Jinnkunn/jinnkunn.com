@@ -1075,6 +1075,124 @@
   align-items: stretch;
 }
 
+.release-center__content-status {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 62%),
+    var(--color-bg-surface-alt);
+}
+
+.release-center__content-status > header,
+.release-center__content-suggestion,
+.release-center__content-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-center__content-status h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-subhead);
+  font-weight: 750;
+}
+
+.release-center__content-status p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+.release-center__content-status header > strong {
+  flex: none;
+  color: var(--release-muted);
+  font-size: var(--font-size-small);
+  font-weight: 750;
+}
+
+.release-center__content-status header > strong[data-tone="ok"] {
+  color: var(--release-ok);
+}
+
+.release-center__content-status header > strong[data-tone="warn"] {
+  color: var(--release-warn);
+}
+
+.release-center__content-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.release-center__content-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.release-center__content-cell > span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.release-center__content-cell > strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.release-center__content-cell > small {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.release-center__content-suggestion {
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--release-warn) 28%, var(--color-border-subtle));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--release-warn) 7%, var(--color-bg-surface));
+}
+
+.release-center__content-suggestion > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.release-center__content-suggestion strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  font-weight: 760;
+}
+
+.release-center__content-suggestion span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.35;
+}
+
+.release-center__content-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .release-center__route-arrow {
   align-self: center;
   height: 2px;
@@ -1995,6 +2113,7 @@
   .release-panel__operations,
   .release-panel__env-grid,
   .release-center__route,
+  .release-center__content-grid,
   .release-center__gate-list,
   .release-center__confirm dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2017,17 +2136,21 @@
   .release-panel__operations,
   .release-panel__env-grid,
   .release-center__route,
+  .release-center__content-grid,
   .release-center__gate-list,
   .release-center__confirm dl {
     grid-template-columns: 1fr;
   }
 
   .release-center__hero,
+  .release-center__content-status > header,
+  .release-center__content-suggestion,
   .release-center__history-row {
     grid-template-columns: 1fr;
   }
 
   .release-center__hero-actions,
+  .release-center__content-actions,
   .release-center__history-actions,
   .release-center__confirm-actions,
   .release-center__advanced-actions {
@@ -2036,11 +2159,18 @@
   }
 
   .release-center__hero-actions > .btn,
+  .release-center__content-actions > .btn,
   .release-center__history-actions > .btn,
   .release-center__confirm-actions > .btn,
   .release-center__advanced-actions > .btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .release-center__content-status > header,
+  .release-center__content-suggestion {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .release-center__log-line {

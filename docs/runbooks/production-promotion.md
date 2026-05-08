@@ -89,6 +89,47 @@ If unrelated local files are dirty, staging release builds from a clean
 snapshot of committed HEAD under `.cache/release/snapshots/`. Dirty
 `content/` still blocks by default because the D1 dump would overwrite it.
 
+## Content-only fast publish
+
+For article/page/news text edits that do not change React code, CSS, images,
+or other `/_next/static/*` assets, use the content-only path:
+
+```bash
+npm run publish:content:staging
+npm run publish:content:prod
+```
+
+The Tauri Release Center exposes the staging command as **Publish Content**.
+This path:
+
+- dumps staging D1 to `content/*` for staging publishes;
+- auto-commits content-only drift on `main`;
+- rebuilds the Next HTML shells with the currently deployed build id;
+- verifies every referenced `/_next/static/*` asset already exists on the
+  target environment;
+- uploads only changed generated `/__static/*.html` and policy JSON rows into
+  `static_shell_overlays` in the target D1;
+- stores the previous overlay rows as a D1 rollback snapshot before any
+  overlay change; and
+- verifies public routes return `x-static-overlay: 1`.
+
+If the asset check fails, do not force it. That means the edit changed code,
+CSS, or another static asset. Run the normal `release:staging` /
+`release:prod:from-staging` path instead.
+
+Useful recovery commands:
+
+```bash
+npm run publish:content:staging:rollback
+npm run publish:content:staging:clear
+npm run publish:content:prod:rollback
+npm run publish:content:prod:clear
+```
+
+Full Worker releases (`release:staging` / `release:prod:from-staging`) clear
+the target content overlay after deploying the code bundle. That keeps an old
+overlay from shadowing newly deployed HTML or referencing a stale build id.
+
 ## Routine Release (recommended)
 
 ### Workspace one-click (preferred)
@@ -100,9 +141,15 @@ snapshot of committed HEAD under `.cache/release/snapshots/`. Dirty
    `Local source → Staging → Production`, the local release-source SHA,
    the staging Worker's deployed code SHA, and the current production version.
 4. Use the primary action:
-   - **Publish Staging** runs `npm run release:staging`.
+   - **Publish Content** runs `npm run publish:content:staging` for
+     content-only edits.
+   - **Deploy Staging** runs `npm run release:staging` for code/static asset
+     changes.
    - **Promote Production** opens a confirmation panel, then runs
      `npm run release:prod:from-staging`.
+   - The Code vs Content panel shows whether a save is waiting for
+     **Publish Content**, the latest overlay snapshot, and staging overlay
+     rollback/clear actions.
 5. Keep the panel open while it runs. The activity stream shows the current
    phase, stdout/stderr tail, success/failure state, and a cancel action.
 6. After release, review **Recent Releases**. Production entries expose copyable

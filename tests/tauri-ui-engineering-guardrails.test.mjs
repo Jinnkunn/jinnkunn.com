@@ -774,6 +774,12 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releaseFlow, /Local Cloudflare release/);
   assert.match(releaseFlow, /GitHub Actions only as a fallback/);
   assert.match(releaseFlow, /npm run release:staging/);
+  assert.match(releaseFlow, /publish:content:staging/);
+  assert.match(releaseFlow, /publish:content:staging:rollback/);
+  assert.match(releasePanel, /ContentOverlayStatusPanel/);
+  assert.match(releasePanel, /Code vs Content/);
+  assert.match(releasePanel, /Rollback Content/);
+  assert.match(releasePanel, /clearContentPublishSuggestion/);
   assert.match(publishButton, /Recheck/);
   assert.match(publishButton, /parseDeployResponseSummary/);
   assert.match(publishButton, /GitHub Actions fallback queued for staging/);
@@ -813,6 +819,8 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Production differs/);
   assert.match(releasePanel, /GitHub Fallback/);
   assert.match(releasePanel, /Release History/);
+  assert.match(releasePanel, /Publish Content/);
+  assert.match(releasePanel, /PUBLISH_CONTENT_STAGING_COMMAND/);
 });
 
 test("tauri-ui-engineering: staging D1 snapshot workflow is manual-only", async () => {

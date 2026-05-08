@@ -333,6 +333,27 @@ function autoCommitContentDrift({ git, env: targetEnv }) {
   }
 }
 
+function clearContentOverlayAfterCodeDeploy(env) {
+  console.log(
+    `[release-cloudflare] clearing ${env} content overlay after full code deploy`,
+  );
+  const output = run(
+    "node",
+    [
+      "scripts/publish-content.mjs",
+      `--env=${env}`,
+      "--clear",
+      "--skip-verify",
+    ],
+    {
+      capture: true,
+      label: `publish-content clear ${env}`,
+      cwd: ROOT,
+    },
+  );
+  return parseDeployJson(output) || null;
+}
+
 async function fetchProductionVersionForRollback({ git }) {
   // The previous behavior required the operator to set
   // RELEASE_EXPECT_PRODUCTION_VERSION (release-from-staging.mjs does
@@ -701,6 +722,7 @@ async function main() {
     cwd: releaseRoot,
   });
   const deployment = parseDeployJson(deployOutput);
+  const overlayClear = clearContentOverlayAfterCodeDeploy(args.env);
 
   const verifies = [];
   // Auto-rollback target for production. The release:prod:from-staging
@@ -843,6 +865,7 @@ async function main() {
     contentAutoCommit,
     rolledBack,
     rollbackTarget: args.env === "production" ? rollbackTarget : null,
+    overlayClear,
   };
   // Audit log — replaces the GitHub Deployment row that the local path
   // bypasses. JSONL keeps it auditable + grep-able without creating git
@@ -859,6 +882,7 @@ async function main() {
     contentAutoCommit: contentAutoCommit && contentAutoCommit.committed
       ? { newSha: contentAutoCommit.newSha, pushed: contentAutoCommit.pushed }
       : null,
+    overlayClear,
     checksCached,
   });
   reportAndExit(finalReport);

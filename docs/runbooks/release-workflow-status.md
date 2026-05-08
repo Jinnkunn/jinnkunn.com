@@ -1,11 +1,15 @@
 # Release workflow status (last audit: 2026-05-02)
 
 The Tauri-driven local release path is now the primary way both staging
-and production releases are issued. GitHub Actions remain wired only for
-manual fallback and for tasks that genuinely need a sandbox runner
-(e.g. signed `.dmg` builds). This file records the
-current status of every release-adjacent workflow so we can spot
-stragglers without grepping through `.github/workflows/`.
+and production releases are issued. Content-only web edits can use
+`npm run publish:content:staging` / `npm run publish:content:prod`, which
+updates D1 static-shell overlays without a Worker deploy. That path is
+incremental, captures rollback snapshots, and is surfaced in the Tauri
+Release Center as **Publish Content**. Full Worker releases clear stale
+content overlays after deploy. GitHub Actions remain wired only for manual
+fallback and for tasks that genuinely need a sandbox runner (e.g. signed
+`.dmg` builds). This file records the current status of every release-adjacent
+workflow so we can spot stragglers without grepping through `.github/workflows/`.
 
 ## Active
 

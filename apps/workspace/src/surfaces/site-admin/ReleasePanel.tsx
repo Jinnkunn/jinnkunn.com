@@ -20,6 +20,18 @@ import {
   branchLabel,
   candidateLabel,
   LEGACY_RELEASE_PROD_COMMAND,
+  PUBLISH_CONTENT_PROD_COMMAND,
+  PUBLISH_CONTENT_PROD_CLEAR_COMMAND,
+  PUBLISH_CONTENT_PROD_CLEAR_SCRIPT,
+  PUBLISH_CONTENT_PROD_SCRIPT,
+  PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND,
+  PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT,
+  PUBLISH_CONTENT_STAGING_CLEAR_COMMAND,
+  PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT,
+  PUBLISH_CONTENT_STAGING_COMMAND,
+  PUBLISH_CONTENT_STAGING_ROLLBACK_COMMAND,
+  PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT,
+  PUBLISH_CONTENT_STAGING_SCRIPT,
   RELEASE_PROD_FROM_STAGING_COMMAND,
   RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND,
   RELEASE_PROD_FROM_STAGING_SCRIPT,
@@ -31,6 +43,12 @@ import {
   normalizeStatusPayload,
 } from "./release-flow-model";
 import { deriveSiteHealth } from "./site-health-model";
+import {
+  clearContentPublishSuggestion,
+  listenForContentPublishSuggestion,
+  readContentPublishSuggestion,
+  type ContentPublishSuggestion,
+} from "./publish-suggestion";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { getSiteAdminEnvironment, normalizeString } from "./utils";
@@ -369,6 +387,12 @@ function releaseStageLabel(stage: ReleaseStage): string {
 }
 
 function scriptLabel(script: string): string {
+  if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing content";
+  if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing production content";
+  if (script === PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT) return "Rolling back staging content";
+  if (script === PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT) return "Rolling back production content";
+  if (script === PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT) return "Clearing staging content overlay";
+  if (script === PUBLISH_CONTENT_PROD_CLEAR_SCRIPT) return "Clearing production content overlay";
   if (script === RELEASE_STAGING_SCRIPT) return "Deploying staging";
   if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "Promoting production";
   if (script.startsWith("rollback:production")) return "Rolling back production";
@@ -556,6 +580,8 @@ export function ReleasePanel() {
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
   const [localSource, setLocalSource] = useState<SiteAdminLocalReleaseSource | null>(null);
+  const [contentSuggestion, setContentSuggestion] =
+    useState<ContentPublishSuggestion | null>(() => readContentPublishSuggestion());
   const [rollbackCandidate, setRollbackCandidate] =
     useState<SiteAdminReleaseHistoryEntry | null>(null);
 
@@ -694,6 +720,11 @@ export function ReleasePanel() {
   }, [loadHistory, loadLocalSource, loadStatus]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  useEffect(
+    () => listenForContentPublishSuggestion(setContentSuggestion),
+    [],
+  );
+
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let cancelled = false;
@@ -709,6 +740,12 @@ export function ReleasePanel() {
         void loadHistory();
         void loadLocalSource();
         if (payload.state.status === "succeeded") {
+          if (
+            payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT ||
+            payload.state.script === PUBLISH_CONTENT_PROD_SCRIPT
+          ) {
+            clearContentPublishSuggestion();
+          }
           void notify({
             title: `${scriptLabel(payload.state.script)} complete`,
             body: payload.state.error || "Cloudflare release command finished.",
@@ -768,9 +805,12 @@ export function ReleasePanel() {
         setJob(next);
         dispatchReleaseState({
           kind: "running",
-          info: script === RELEASE_STAGING_SCRIPT
-            ? "Deploying staging locally…"
-            : "Promoting production locally…",
+          info:
+            script === RELEASE_STAGING_SCRIPT
+              ? "Deploying staging locally…"
+              : script.startsWith("publish:content")
+                ? `${scriptLabel(script)}…`
+                : "Promoting production locally…",
         });
       } catch (err) {
         setMessage("error", `Release job failed to start: ${String(err)}`);
@@ -854,6 +894,15 @@ export function ReleasePanel() {
               : heroPill.label}
           </span>
           <button
+            className="btn btn--secondary"
+            type="button"
+            disabled={!isStaging || job?.status === "running" || loading}
+            title="Fast path for article/page text changes. It rebuilds HTML shells and uploads D1 overlays without deploying a Worker."
+            onClick={() => void startRelease(PUBLISH_CONTENT_STAGING_SCRIPT)}
+          >
+            Publish Content
+          </button>
+          <button
             className={
               primaryAction.stage === "ready"
                 ? "btn btn--danger"
@@ -893,6 +942,19 @@ export function ReleasePanel() {
         localStagingMismatch={localStagingMismatch}
         preview={preview}
         productionAlreadyCurrent={productionAlreadyCurrent}
+        status={status}
+      />
+
+      <ContentOverlayStatusPanel
+        contentSuggestion={contentSuggestion}
+        history={history}
+        isStaging={isStaging}
+        jobRunning={job?.status === "running"}
+        localSource={localSource}
+        onClearStaging={() => void startRelease(PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT)}
+        onPublishStaging={() => void startRelease(PUBLISH_CONTENT_STAGING_SCRIPT)}
+        onRollbackStaging={() => void startRelease(PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT)}
+        preview={preview}
         status={status}
       />
 
@@ -955,7 +1017,19 @@ export function ReleasePanel() {
         <summary>Advanced / fallback</summary>
         <div className="release-panel__commands-grid">
           <div>
-            <h2>Staging</h2>
+            <h2>Staging Content</h2>
+            <pre>{PUBLISH_CONTENT_STAGING_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Staging Content Rollback</h2>
+            <pre>{PUBLISH_CONTENT_STAGING_ROLLBACK_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Staging Overlay Clear</h2>
+            <pre>{PUBLISH_CONTENT_STAGING_CLEAR_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Staging Code</h2>
             <pre>{RELEASE_STAGING_COMMAND}</pre>
           </div>
           <div>
@@ -965,6 +1039,18 @@ export function ReleasePanel() {
           <div>
             <h2>Production Promotion</h2>
             <pre>{productionCommandFor(status, preview)}</pre>
+          </div>
+          <div>
+            <h2>Production Content</h2>
+            <pre>{PUBLISH_CONTENT_PROD_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Production Content Rollback</h2>
+            <pre>{PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Production Overlay Clear</h2>
+            <pre>{PUBLISH_CONTENT_PROD_CLEAR_COMMAND}</pre>
           </div>
           <div>
             <h2>Legacy Guarded Fallback</h2>
@@ -997,6 +1083,22 @@ export function ReleasePanel() {
             onClick={() => void openActions(stagingWorkflow.actionsUrl)}
           >
             GitHub Fallback
+          </button>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            disabled={job?.status === "running"}
+            onClick={() => void startRelease(PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT)}
+          >
+            Rollback Staging Content
+          </button>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            disabled={job?.status === "running"}
+            onClick={() => void startRelease(PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT)}
+          >
+            Clear Staging Overlay
           </button>
         </div>
       </details>
@@ -1100,6 +1202,148 @@ function ReleaseFlowMap({
         }
         tone={productionTone}
       />
+    </section>
+  );
+}
+
+function latestContentOverlayEntry(
+  entries: SiteAdminReleaseHistoryEntry[],
+  env: "staging" | "production",
+): SiteAdminReleaseHistoryEntry | null {
+  return entries.find(
+    (entry) =>
+      entry.env === env &&
+      (entry.overlay_snapshot_sha ||
+        entry.overlay_backup_snapshot_id ||
+        entry.overlay_rollback_snapshot_id ||
+        entry.note.includes("content overlay")),
+  ) ?? null;
+}
+
+function ContentOverlayStatusPanel({
+  contentSuggestion,
+  history,
+  isStaging,
+  jobRunning,
+  localSource,
+  onClearStaging,
+  onPublishStaging,
+  onRollbackStaging,
+  preview,
+  status,
+}: {
+  contentSuggestion: ContentPublishSuggestion | null;
+  history: SiteAdminReleaseHistoryEntry[];
+  isStaging: boolean;
+  jobRunning: boolean;
+  localSource: SiteAdminLocalReleaseSource | null;
+  onClearStaging: () => void;
+  onPublishStaging: () => void;
+  onRollbackStaging: () => void;
+  preview: PromotePreview | null;
+  status: StatusPayload | null;
+}) {
+  const stagingContent = latestContentOverlayEntry(history, "staging");
+  const productionContent = latestContentOverlayEntry(history, "production");
+  const stagingSnapshot =
+    stagingContent?.overlay_snapshot_sha ||
+    stagingContent?.overlay_rollback_snapshot_id ||
+    stagingContent?.sha ||
+    "";
+  const productionSnapshot =
+    productionContent?.overlay_snapshot_sha ||
+    productionContent?.overlay_rollback_snapshot_id ||
+    productionContent?.sha ||
+    "";
+  const canRollback = Boolean(stagingContent?.overlay_backup_snapshot_id);
+  return (
+    <section className="release-center__content-status" aria-label="Code and content publish status">
+      <header>
+        <div>
+          <h2>Code vs Content</h2>
+          <p>
+            Code deploy changes the Worker. Publish Content only refreshes static
+            HTML overlay shells.
+          </p>
+        </div>
+        {contentSuggestion ? (
+          <strong data-tone="warn">
+            Saved {formatRelativeTime(contentSuggestion.atMs)}
+          </strong>
+        ) : (
+          <strong data-tone="ok">No pending save</strong>
+        )}
+      </header>
+      <div className="release-center__content-grid">
+        <div className="release-center__content-cell">
+          <span>Local code</span>
+          <strong>{localSource?.dirty ? "Dirty" : shortSha(localSource?.sha)}</strong>
+          <small>{localSource?.branch || "local release source"}</small>
+        </div>
+        <div className="release-center__content-cell">
+          <span>Staging code</span>
+          <strong>
+            {preview?.ok ? shortSha(preview.staging.codeSha) : shortSha(status?.source?.codeSha)}
+          </strong>
+          <small>{preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}</small>
+        </div>
+        <div className="release-center__content-cell">
+          <span>Staging content overlay</span>
+          <strong>{shortSha(stagingSnapshot)}</strong>
+          <small>{stagingContent?.recorded_at || "not published in this app"}</small>
+        </div>
+        <div className="release-center__content-cell">
+          <span>Production content overlay</span>
+          <strong>{shortSha(productionSnapshot)}</strong>
+          <small>{productionContent?.recorded_at || "not published in this app"}</small>
+        </div>
+      </div>
+      {contentSuggestion ? (
+        <div className="release-center__content-suggestion">
+          <div>
+            <strong>Content changed locally</strong>
+            <span>
+              Use Publish Content for article/page edits. Use Deploy Staging only
+              when code, CSS, or static assets changed.
+            </span>
+          </div>
+          <button
+            className="btn btn--primary"
+            type="button"
+            disabled={!isStaging || jobRunning}
+            onClick={onPublishStaging}
+          >
+            Publish Content
+          </button>
+        </div>
+      ) : null}
+      <div className="release-center__content-actions">
+        <button
+          className="btn btn--secondary"
+          type="button"
+          disabled={!isStaging || jobRunning}
+          onClick={onPublishStaging}
+        >
+          Publish Content
+        </button>
+        <button
+          className="btn btn--secondary"
+          type="button"
+          disabled={!isStaging || jobRunning || !canRollback}
+          title={canRollback ? "Restore the previous staging content overlay snapshot." : "No rollback snapshot has been captured yet."}
+          onClick={onRollbackStaging}
+        >
+          Rollback Content
+        </button>
+        <button
+          className="btn btn--secondary"
+          type="button"
+          disabled={!isStaging || jobRunning}
+          onClick={onClearStaging}
+        >
+          Clear Overlay
+        </button>
+      </div>
     </section>
   );
 }
