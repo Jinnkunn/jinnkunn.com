@@ -7,6 +7,8 @@ export const RELEASE_FROM_DISPATCH_ACTIONS_URL =
 export const RELEASE_STAGING_SCRIPT = "release:staging";
 export const PUBLISH_CONTENT_STAGING_SCRIPT = "publish:content:staging";
 export const PUBLISH_CONTENT_PROD_SCRIPT = "publish:content:prod";
+export const PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT =
+  "publish:content:prod:from-staging";
 export const PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT =
   "publish:content:staging:rollback";
 export const PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT = "publish:content:staging:clear";
@@ -19,6 +21,8 @@ export const RELEASE_STAGING_COMMAND = `npm run ${RELEASE_STAGING_SCRIPT}`;
 export const PUBLISH_CONTENT_STAGING_COMMAND =
   `npm run ${PUBLISH_CONTENT_STAGING_SCRIPT}`;
 export const PUBLISH_CONTENT_PROD_COMMAND = `npm run ${PUBLISH_CONTENT_PROD_SCRIPT}`;
+export const PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND =
+  `npm run ${PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT}`;
 export const PUBLISH_CONTENT_STAGING_ROLLBACK_COMMAND =
   `npm run ${PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT}`;
 export const PUBLISH_CONTENT_STAGING_CLEAR_COMMAND =
@@ -92,6 +96,44 @@ export interface DeployResponseSummary {
   workflowRunsListUrl: string;
 }
 
+export type ReleaseActionKind =
+  | "publish-content-staging"
+  | "deploy-staging-code"
+  | "promote-production-code"
+  | "publish-content-production-from-staging"
+  | "noop"
+  | "blocked";
+
+export interface ReleasePlan {
+  detail: string;
+  disabled: boolean;
+  kind: ReleaseActionKind;
+  label: string;
+  reason: string;
+  script:
+    | typeof PUBLISH_CONTENT_STAGING_SCRIPT
+    | typeof PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
+    | typeof RELEASE_STAGING_SCRIPT
+    | typeof RELEASE_PROD_FROM_STAGING_SCRIPT
+    | "";
+  tone: "ok" | "warn" | "blocked" | "muted";
+}
+
+export interface ReleasePlanInput {
+  contentChanged: boolean;
+  isStaging: boolean;
+  jobRunning: boolean;
+  localDirty: boolean;
+  localStagingMismatch: boolean;
+  productionAlreadyCurrent: boolean;
+  productionCodeMatchesStaging: boolean;
+  productionOverlaySnapshot: string;
+  ready: boolean;
+  readyToPromote: boolean;
+  stagingOverlaySnapshot: string;
+  status: StatusPayload | null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -104,6 +146,137 @@ function asStatusPayload(value: unknown): StatusPayload | null {
 
 export function normalizeStatusPayload(value: unknown): StatusPayload | null {
   return asStatusPayload(value);
+}
+
+export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
+  if (!input.isStaging) {
+    return {
+      detail: "Production is inspect-only. Switch to Staging to release.",
+      disabled: true,
+      kind: "blocked",
+      label: "Blocked",
+      reason: "Open the Staging profile first.",
+      script: "",
+      tone: "blocked",
+    };
+  }
+  if (input.jobRunning) {
+    return {
+      detail: "A release command is already running.",
+      disabled: true,
+      kind: "blocked",
+      label: "Running",
+      reason: "Wait for the current release job to finish.",
+      script: "",
+      tone: "warn",
+    };
+  }
+  if (!input.ready) {
+    return {
+      detail: "Sign in to the staging profile before releasing.",
+      disabled: true,
+      kind: "blocked",
+      label: "Connect",
+      reason: "Staging connection is not ready.",
+      script: "",
+      tone: "blocked",
+    };
+  }
+  if (input.localDirty) {
+    return {
+      detail: "Commit or stash local changes before running release jobs.",
+      disabled: true,
+      kind: "blocked",
+      label: "Commit changes",
+      reason: "Local release source is dirty.",
+      script: "",
+      tone: "blocked",
+    };
+  }
+
+  const source = input.status?.source;
+  const stagingBehind =
+    input.localStagingMismatch ||
+    source?.deployableVersionReady === false ||
+    source?.pendingDeploy === true;
+  if (stagingBehind) {
+    return {
+      detail: "Staging code is behind local HEAD. Deploy staging before content or production.",
+      disabled: false,
+      kind: "deploy-staging-code",
+      label: "Deploy Staging",
+      reason: "Staging code behind local HEAD.",
+      script: RELEASE_STAGING_SCRIPT,
+      tone: "warn",
+    };
+  }
+  if (input.contentChanged) {
+    return {
+      detail: "Saved website content changed. Publish the staging static overlay only.",
+      disabled: false,
+      kind: "publish-content-staging",
+      label: "Publish Staging Content",
+      reason: "Content changed, publish staging overlay.",
+      script: PUBLISH_CONTENT_STAGING_SCRIPT,
+      tone: "warn",
+    };
+  }
+  if (input.readyToPromote) {
+    return {
+      detail: "Production code differs from the verified staging candidate.",
+      disabled: false,
+      kind: "promote-production-code",
+      label: "Promote Production",
+      reason: "Production code behind staging.",
+      script: RELEASE_PROD_FROM_STAGING_SCRIPT,
+      tone: "warn",
+    };
+  }
+  if (
+    input.stagingOverlaySnapshot &&
+    input.stagingOverlaySnapshot !== input.productionOverlaySnapshot
+  ) {
+    if (!input.productionCodeMatchesStaging) {
+      return {
+        detail: "Production must run the same Worker code before copying the staging overlay.",
+        disabled: false,
+        kind: "promote-production-code",
+        label: "Promote Production",
+        reason: "Production code must match staging before content copy.",
+        script: RELEASE_PROD_FROM_STAGING_SCRIPT,
+        tone: "warn",
+      };
+    }
+    return {
+      detail: "Staging content is verified. Copy the exact same overlay to production.",
+      disabled: false,
+      kind: "publish-content-production-from-staging",
+      label: "Publish Same Content to Production",
+      reason: "Staging overlay verified; production content is behind.",
+      script: PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT,
+      tone: "warn",
+    };
+  }
+  if (input.productionAlreadyCurrent) {
+    return {
+      detail: "Production code and content overlays match staging.",
+      disabled: false,
+      kind: "noop",
+      label: "Current",
+      reason: "No release work is needed.",
+      script: "",
+      tone: "ok",
+    };
+  }
+  return {
+    detail: "Refresh the release status before choosing the next step.",
+    disabled: false,
+    kind: "noop",
+    label: "Refresh Status",
+    reason: "Release state needs a fresh check.",
+    script: "",
+    tone: "muted",
+  };
 }
 
 export function shortSha(value?: string | null): string {
@@ -179,7 +352,7 @@ export function releaseWorkflowRecovery(
     openLabel: "Open GitHub fallback",
     script: RELEASE_STAGING_SCRIPT,
     waitText:
-      "Use Publish Content for article/page-only edits; use Deploy Staging (`npm run release:staging`) when code or static assets changed. Use GitHub Actions only as a fallback.",
+      "Use Smart Release for routine publishing. It picks content overlay, Deploy Staging (`npm run release:staging`), production promotion, or no-op. Use GitHub Actions only as a fallback.",
   };
 }
 
