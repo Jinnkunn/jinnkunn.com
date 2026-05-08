@@ -1,11 +1,51 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-08T20:13:27.482Z",
+  "generatedAt": "2026-05-08T20:57:34.077Z",
   "range": {
-    "startsAt": "2026-05-08T03:00:00.000Z",
+    "startsAt": "2026-05-03T03:00:00.000Z",
     "endsAt": "2027-05-08T03:00:00.000Z"
   },
   "events": [
+    {
+      "id": "83D04A1C-43C7-4487-9CC1-0A34AB1B6AF6",
+      "calendarId": "9CE3DD5E-5A45-4430-8F84-3F70CA1B53AD",
+      "calendarTitle": "Calendar",
+      "colorHex": "#FF8D28",
+      "title": "NeurIPS2026 Abstract Due",
+      "startsAt": "2026-05-05T12:00:00.000Z",
+      "endsAt": "2026-05-05T13:00:00.000Z",
+      "isAllDay": false,
+      "visibility": "full",
+      "description": null,
+      "location": null,
+      "url": null
+    },
+    {
+      "id": "46ACBB01-E52F-419A-9426-1EBA124D2292",
+      "colorHex": "#9B9A97",
+      "title": "Busy",
+      "startsAt": "2026-05-05T17:00:00.000Z",
+      "endsAt": "2026-05-05T18:00:00.000Z",
+      "isAllDay": false,
+      "visibility": "busy",
+      "description": null,
+      "location": null,
+      "url": null
+    },
+    {
+      "id": "A38712A8-7BAE-4CE8-8DB8-01175B0B3396",
+      "calendarId": "9CE3DD5E-5A45-4430-8F84-3F70CA1B53AD",
+      "calendarTitle": "Calendar",
+      "colorHex": "#FF8D28",
+      "title": "NeurIPS2026 Abstract Due",
+      "startsAt": "2026-05-07T11:59:00.000Z",
+      "endsAt": "2026-05-07T12:00:00.000Z",
+      "isAllDay": false,
+      "visibility": "full",
+      "description": null,
+      "location": null,
+      "url": null
+    },
     {
       "id": "E72F124E-58DF-481B-B478-C44A36C48267/RID=799941600",
       "colorHex": "#9B9A97",
