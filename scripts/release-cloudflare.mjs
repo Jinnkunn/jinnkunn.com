@@ -284,9 +284,8 @@ function hashReleaseContent(root) {
 }
 
 function autoCommitContentDrift({ git, env: targetEnv }) {
-  // Only safe when the user is on main with no unrelated dirty files.
-  // The release just rewrote `content/*` from D1; anything else dirty
-  // is the operator's in-progress work and we don't touch it.
+  // Only safe on main: the release rewrites `content/*` from D1 and we
+  // stage only those files, leaving unrelated in-progress work alone.
   if (targetEnv !== "staging") return { committed: false, reason: "not-staging" };
   if (git.branch !== "main") {
     return { committed: false, reason: `not on main (branch=${git.branch})` };
@@ -297,13 +296,6 @@ function autoCommitContentDrift({ git, env: targetEnv }) {
     .split(/\r?\n/)
     .filter(Boolean)
     .map(parsePorcelainPath);
-  const offContent = dirtyFiles.filter((file) => !file.startsWith("content/"));
-  if (offContent.length > 0) {
-    return {
-      committed: false,
-      reason: `non-content dirty files present: ${offContent.slice(0, 5).join(", ")}${offContent.length > 5 ? ` (+${offContent.length - 5} more)` : ""}`,
-    };
-  }
   const contentDirty = dirtyFiles.filter((file) => file.startsWith("content/"));
   if (contentDirty.length === 0) return { committed: false, reason: "no content drift" };
   try {
@@ -439,6 +431,42 @@ async function main() {
         "Commit / stash these first, or pass ALLOW_DIRTY_CONTENT=1 to proceed (the dump will clobber them).",
       );
       process.exit(1);
+    }
+  }
+
+  let contentDriftFromGit = null;
+  let contentAutoCommit = null;
+
+  if (args.env === "staging" && !args.skipBuild && !args.dryRun) {
+    console.log(
+      "[release-cloudflare] syncing content/ from staging D1 before choosing release source",
+    );
+    run(
+      "node",
+      [
+        "scripts/dump-content-from-db.mjs",
+        "--remote",
+        "--env=staging",
+        "--quiet",
+      ],
+      { label: "dump staging D1 to root content/", cwd: ROOT },
+    );
+    const syncGit = readGitState();
+    const dirtyContent = syncGit.dirtyFiles.filter((file) => file.startsWith("content/"));
+    if (dirtyContent.length > 0) {
+      contentDriftFromGit = dirtyContent;
+      if (args.autoCommitContent) {
+        contentAutoCommit = autoCommitContentDrift({ git: syncGit, env: args.env });
+        if (contentAutoCommit.committed) {
+          console.log(
+            `[release-cloudflare] auto-committed D1 content before build → ${contentAutoCommit.newSha.slice(0, 12)}${contentAutoCommit.pushed ? " (pushed)" : ` (push failed: ${contentAutoCommit.pushError})`}`,
+          );
+        } else {
+          console.log(
+            `[release-cloudflare] skipped prebuild auto-commit (${contentAutoCommit.reason})`,
+          );
+        }
+      }
     }
   }
 
@@ -761,8 +789,6 @@ async function main() {
   // edits that aren't yet reflected in git. We commit + push automatically
   // so the operator never has to remember; opt out with
   // --no-auto-commit-content (e.g. when working from a feature branch).
-  let contentDriftFromGit = null;
-  let contentAutoCommit = null;
   if (args.env === "staging" && !args.skipBuild) {
     try {
       const status = gitValue(["status", "--porcelain", "--", "content"]);
