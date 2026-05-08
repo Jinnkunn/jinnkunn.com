@@ -470,7 +470,7 @@ async function main() {
     }
   }
 
-  const git = readGitState();
+  let git = readGitState();
   const stagingDirtyGuard =
     args.env === "staging" ? evaluateStagingDirtyGuard(git) : null;
   const productionGuard = args.env === "production" ? evaluateProductionGuard(git) : null;
@@ -612,6 +612,48 @@ async function main() {
           });
         }
       }
+    }
+  }
+
+  // Build steps can update release-owned generated content (for example
+  // content/generated/classic-css-assets.json). Commit that before upload
+  // so the Worker version metadata points at the same SHA the operator sees
+  // locally after the release.
+  if (args.env === "staging" && !args.skipBuild) {
+    try {
+      const status = gitValue(["status", "--porcelain", "--", "content"]);
+      if (status) {
+        const files = status
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map(parsePorcelainPath);
+        contentDriftFromGit = files;
+        if (args.autoCommitContent) {
+          contentAutoCommit = autoCommitContentDrift({ git, env: args.env });
+          if (contentAutoCommit.committed) {
+            git = readGitState();
+            console.log(
+              `[release-cloudflare] auto-committed generated content before upload → ${contentAutoCommit.newSha.slice(0, 12)}${contentAutoCommit.pushed ? " (pushed)" : ` (push failed: ${contentAutoCommit.pushError})`}`,
+            );
+          } else {
+            console.log(
+              `[release-cloudflare] skipped generated-content auto-commit (${contentAutoCommit.reason}); commit manually:`,
+            );
+            console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
+            console.log(`  git commit -m "chore(content): sync from D1 staging"`);
+            console.log(`  git push`);
+          }
+        } else {
+          console.log(
+            `[release-cloudflare] content/ now differs from git after build (${files.length} file${files.length === 1 ? "" : "s"}). Commit to keep main synced:`,
+          );
+          console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
+          console.log(`  git commit -m "chore(content): sync from D1 staging"`);
+          console.log(`  git push`);
+        }
+      }
+    } catch {
+      // git status outside a working tree, etc. — just skip the hint.
     }
   }
 
@@ -784,50 +826,9 @@ async function main() {
     );
   }
 
-  // The db-prebuild path rewrites content/* on disk to match D1. A
-  // successful release that left content/ dirty means the workspace has
-  // edits that aren't yet reflected in git. We commit + push automatically
-  // so the operator never has to remember; opt out with
-  // --no-auto-commit-content (e.g. when working from a feature branch).
-  if (args.env === "staging" && !args.skipBuild) {
-    try {
-      const status = gitValue(["status", "--porcelain", "--", "content"]);
-      if (status) {
-        const files = status
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .map((line) => line.slice(3).trim());
-        contentDriftFromGit = files;
-        if (args.autoCommitContent) {
-          contentAutoCommit = autoCommitContentDrift({ git, env: args.env });
-          if (contentAutoCommit.committed) {
-            console.log(
-              `[release-cloudflare] auto-committed ${contentAutoCommit.files.length} content file${contentAutoCommit.files.length === 1 ? "" : "s"} → ${contentAutoCommit.newSha.slice(0, 12)}${contentAutoCommit.pushed ? " (pushed)" : ` (push failed: ${contentAutoCommit.pushError})`}`,
-            );
-          } else {
-            console.log(
-              `[release-cloudflare] skipped auto-commit (${contentAutoCommit.reason}); commit manually:`,
-            );
-            console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
-            console.log(`  git commit -m "chore(content): sync from D1 staging"`);
-            console.log(`  git push`);
-          }
-        } else {
-          console.log(
-            `[release-cloudflare] content/ now differs from git (D1 dump pulled ${files.length} file${files.length === 1 ? "" : "s"} ahead). Commit to keep main synced:`,
-          );
-          console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
-          console.log(`  git commit -m "chore(content): sync from D1 staging"`);
-          console.log(`  git push`);
-        }
-      }
-    } catch {
-      // git status outside a working tree, etc. — just skip the hint.
-    }
-  }
-
   const finalReport = {
     ...baseReport,
+    source: git,
     releaseRoot,
     checksRun,
     checksCached,
