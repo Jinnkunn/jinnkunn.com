@@ -26,7 +26,7 @@
   margin: 22px 2px;
   padding: 0;
   border: 0;
-  background: rgba(55, 53, 47, 0.16);
+  background: var(--ds-border-subtle);
   background: linear-gradient(
     90deg,
     transparent,
