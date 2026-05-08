@@ -961,7 +961,7 @@ async function main() {
   let git = readGitState();
   assertContentOnlyClean(git);
   let contentAutoCommit = null;
-  if (git.dirty && args.autoCommitContent) {
+  if (git.dirty && args.autoCommitContent && !args.dryRun) {
     contentAutoCommit = autoCommitContent(git);
     git = readGitState();
   }
