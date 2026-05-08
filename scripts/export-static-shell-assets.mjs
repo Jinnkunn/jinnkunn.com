@@ -86,7 +86,6 @@ function buildProtectedPolicy() {
   const routesMap = readJsonFile("content/generated/routes.json", {});
   const routesManifest = readJsonFile("content/generated/routes-manifest.json", []);
   return {
-    generatedAt: new Date().toISOString(),
     rules,
     routesMap: routesMap && typeof routesMap === "object" && !Array.isArray(routesMap)
       ? routesMap
@@ -118,7 +117,6 @@ function main() {
 
   const uniqRoutes = [...new Set(routes)].sort((a, b) => a.localeCompare(b));
   const payload = {
-    generatedAt: new Date().toISOString(),
     count: uniqRoutes.length,
     routes: uniqRoutes,
   };
