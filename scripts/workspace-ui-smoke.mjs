@@ -191,6 +191,16 @@ function main() {
     "Release panel content-only staging command",
   );
   assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Smart Release",
+    "Release panel smart release primary action",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND",
+    "Release panel production content from staging command",
+  );
+  assertIncludes(
     read("apps/workspace/src-tauri/src/site_admin.rs"),
     "publish:content:staging",
     "Tauri release job content-only whitelist",
@@ -199,6 +209,11 @@ function main() {
     read("apps/workspace/src-tauri/src/site_admin.rs"),
     "publish:content:staging:rollback",
     "Tauri release job content rollback whitelist",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "publish:content:prod:from-staging",
+    "Tauri release job production content copy whitelist",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
@@ -232,7 +247,7 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "GitHub Fallback",
+    "GitHub Dispatch Fallback",
     "Release panel GitHub fallback action",
   );
   assertIncludes(

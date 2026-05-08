@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { encode } from "next-auth/jwt";
 
 import { loadProjectEnv } from "./load-project-env.mjs";
+import { readActiveDeployment } from "./_lib/cloudflare-api.mjs";
+import { effectiveCodeSha } from "./_lib/deploy-metadata.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -35,6 +37,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     autoCommitContent: !argv.includes("--no-auto-commit-content"),
     rollback: argv.includes("--rollback"),
     clear: argv.includes("--clear"),
+    fromStaging: argv.includes("--from-staging"),
     listSnapshots: argv.includes("--list-snapshots"),
     snapshotId:
       argv.find((arg) => arg.startsWith("--snapshot="))?.slice("--snapshot=".length) ||
@@ -118,6 +121,22 @@ function databaseIdForEnv(env) {
   const match = /^\s*database_id\s*=\s*"([^"]+)"/m.exec(block);
   if (!match) throw new Error(`Missing database_id for env.${env}.d1_databases`);
   return match[1];
+}
+
+function workerNameForEnv(env) {
+  const explicit = env === "staging"
+    ? readEnv("CLOUDFLARE_WORKER_NAME_STAGING")
+    : readEnv("CLOUDFLARE_WORKER_NAME_PRODUCTION");
+  if (explicit) return explicit;
+  const raw = fs.readFileSync(WRANGLER_TOML, "utf8");
+  const marker = `[env.${env}]`;
+  const start = raw.indexOf(marker);
+  if (start < 0) return env === "staging" ? "jinnkunn-site-staging" : "jinnkunn-site";
+  const rest = raw.slice(start + marker.length);
+  const nextBlock = rest.search(/\n\[/);
+  const block = nextBlock >= 0 ? rest.slice(0, nextBlock) : rest;
+  const match = /^\s*name\s*=\s*"([^"]+)"/m.exec(block);
+  return match?.[1] || (env === "staging" ? "jinnkunn-site-staging" : "jinnkunn-site");
 }
 
 async function cfD1Query({ env, sql, params = [] }) {
@@ -263,6 +282,108 @@ function assertContentOnlyClean(git) {
       "Commit/stash these files or use the full Code Release path:",
       ...nonContent.slice(0, 12).map((file) => `  - ${file}`),
       nonContent.length > 12 ? `  (+${nonContent.length - 12} more)` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+function hashContentInput(root = ROOT) {
+  const contentRoot = path.join(root, "content");
+  if (!fs.existsSync(contentRoot)) return "";
+  const files = [];
+  function walk(absDir, relDir = "") {
+    for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+      if (entry.name === ".DS_Store") continue;
+      const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+      if (rel === "local" || rel.startsWith("local/")) continue;
+      const abs = path.join(absDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs, rel);
+      } else if (entry.isFile()) {
+        files.push({ abs, rel: `content/${rel}` });
+      }
+    }
+  }
+  walk(contentRoot);
+  files.sort((a, b) => a.rel.localeCompare(b.rel));
+  const hash = crypto.createHash("sha1");
+  for (const file of files) {
+    hash.update(file.rel);
+    hash.update("\0");
+    hash.update(fs.readFileSync(file.abs));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function contentOnlyDiffFrom(baseSha, headSha) {
+  if (!baseSha || !headSha || baseSha === headSha) return { ok: true, files: [] };
+  let output = "";
+  try {
+    output = run("git", ["diff", "--name-only", `${baseSha}..${headSha}`], {
+      capture: true,
+      label: `git diff --name-only ${baseSha}..${headSha}`,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      files: [],
+      error: error?.message || String(error),
+    };
+  }
+  const files = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return {
+    ok: files.every((file) => file.startsWith("content/")),
+    files,
+  };
+}
+
+async function readTargetWorkerDeployment(env) {
+  const cfAccount = accountId();
+  const token = apiToken();
+  const workerName = workerNameForEnv(env);
+  const active = await readActiveDeployment({
+    accountId: cfAccount,
+    apiToken: token,
+    workerName,
+  });
+  const workerCodeSha = effectiveCodeSha(active?.meta);
+  if (!active || !workerCodeSha) {
+    throw new Error(
+      `Could not read active ${env} Worker code metadata for ${workerName}. Use the full Deploy Staging / Promote Production path first.`,
+    );
+  }
+  return {
+    workerName,
+    versionId: String(active.versionId || ""),
+    deploymentId: String(active.deploymentId || ""),
+    workerCodeSha,
+    meta: active.meta,
+  };
+}
+
+async function assertTargetWorkerAcceptsContentOnly({ env, git }) {
+  const deployment = await readTargetWorkerDeployment(env);
+  if (deployment.workerCodeSha === git.sha) return deployment;
+  const diff = contentOnlyDiffFrom(deployment.workerCodeSha, git.sha);
+  if (diff.ok) {
+    logPhase(
+      `${env} Worker code ${deployment.workerCodeSha.slice(0, 12)} is compatible; local HEAD differs only in content/`,
+    );
+    return deployment;
+  }
+  const sample = diff.files.length > 0
+    ? diff.files.slice(0, 12).map((file) => `  - ${file}`).join("\n")
+    : diff.error || "Could not compare Worker code with local HEAD.";
+  throw new Error(
+    [
+      `${env} Worker code is ${deployment.workerCodeSha}, but local HEAD is ${git.sha}.`,
+      "Content publish is blocked because code/static files changed since the active Worker.",
+      env === "staging"
+        ? "Run `npm run release:staging` first, then retry content publish."
+        : "Run `npm run release:prod:from-staging` first, then retry production content publish.",
+      sample,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -455,6 +576,41 @@ async function assertReferencedAssetsExist({ env, files }) {
   return { checked: refs.size };
 }
 
+async function assertReferencedAssetsExistForRows({ env, rows }) {
+  const origin = normalizeOrigin(env);
+  const cookie = await stagingCookieIfNeeded(env);
+  const refs = new Set();
+  for (const row of rows) {
+    if (!String(row.asset_path || "").endsWith(".html")) continue;
+    for (const ref of extractNextStaticRefs(row.body)) refs.add(ref);
+  }
+  const missing = [];
+  logPhase(`checking ${refs.size} copied _next/static asset${refs.size === 1 ? "" : "s"}`);
+  for (const ref of refs) {
+    const response = await fetch(`${origin}${ref}`, {
+      method: "GET",
+      redirect: "manual",
+      cache: "no-store",
+      headers: cookie ? { cookie } : {},
+    });
+    await response.arrayBuffer().catch(() => null);
+    if (response.status !== 200) missing.push({ ref, status: response.status });
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      [
+        "Production cannot serve the staging content overlay because required static assets are missing.",
+        "Promote the matching staging Worker to production first, then retry.",
+        ...missing.slice(0, 12).map((item) => `  - ${item.ref} (${item.status})`),
+        missing.length > 12 ? `  (+${missing.length - 12} more)` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+  return { checked: refs.size };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -572,6 +728,22 @@ async function readOverlayRows(env) {
   }
 }
 
+async function readOverlayStatus(env) {
+  try {
+    const result = await cfD1Query({
+      env,
+      sql: "SELECT body FROM static_shell_overlays WHERE asset_path = ? LIMIT 1",
+      params: ["/__static/content-overlay-status.json"],
+    });
+    const body = String(d1Rows(result)[0]?.body || "");
+    if (!body) return null;
+    return JSON.parse(body);
+  } catch (error) {
+    if (isMissingOverlayTableError(error)) return null;
+    return null;
+  }
+}
+
 async function insertRows({ env, table, columns, rows, chunkSize = 8 }) {
   if (rows.length === 0) return 0;
   let inserted = 0;
@@ -616,6 +788,7 @@ function buildShellOverlayRows({ files, git, updatedAt }) {
 }
 
 function buildStatusOverlayRow({
+  contentInputSha,
   deletedShellCount,
   env,
   git,
@@ -623,34 +796,48 @@ function buildStatusOverlayRow({
   shellChangedCount,
   shellFileCount,
   snapshotSha,
+  targetBuildId,
   updatedAt,
+  workerCodeSha,
 }) {
+  const body = `${JSON.stringify(
+    {
+      ok: true,
+      env,
+      sourceSha: git.sha,
+      sourceBranch: git.branch,
+      workerCodeSha,
+      targetBuildId,
+      contentInputSha,
+      snapshotSha,
+      fileCount: shellFileCount,
+      changedFiles: shellChangedCount,
+      deletedFiles: deletedShellCount,
+      publishedAt,
+    },
+    null,
+    2,
+  )}\n`;
   return {
     asset_path: "/__static/content-overlay-status.json",
-    body: `${JSON.stringify(
-      {
-        ok: true,
-        env,
-        sourceSha: git.sha,
-        sourceBranch: git.branch,
-        snapshotSha,
-        fileCount: shellFileCount,
-        changedFiles: shellChangedCount,
-        deletedFiles: deletedShellCount,
-        publishedAt,
-      },
-      null,
-      2,
-    )}\n`,
+    body,
     content_type: "application/json; charset=utf-8",
-    content_sha: snapshotSha,
+    content_sha: sha1(body),
     source_sha: git.sha,
     source_branch: git.branch,
     updated_at: updatedAt,
   };
 }
 
-async function prepareOverlayDiff({ env, files, git, snapshotSha }) {
+async function prepareOverlayDiff({
+  contentInputSha,
+  env,
+  files,
+  git,
+  snapshotSha,
+  targetBuildId,
+  workerCodeSha,
+}) {
   const updatedAt = Date.now();
   const existing = await readOverlayMeta(env);
   const shellRows = buildShellOverlayRows({ files, git, updatedAt });
@@ -665,6 +852,7 @@ async function prepareOverlayDiff({ env, files, git, snapshotSha }) {
     .filter((assetPath) => assetPath !== "/__static/content-overlay-status.json")
     .filter((assetPath) => !shellPaths.has(assetPath));
   const statusRow = buildStatusOverlayRow({
+    contentInputSha,
     deletedShellCount: deleted.length,
     env,
     git,
@@ -672,7 +860,9 @@ async function prepareOverlayDiff({ env, files, git, snapshotSha }) {
     shellChangedCount: shellChanged.length,
     shellFileCount: shellRows.length,
     snapshotSha,
+    targetBuildId,
     updatedAt,
+    workerCodeSha,
   });
   const statusCurrent = existing.get(statusRow.asset_path);
   const statusChanged = !statusCurrent ||
@@ -873,6 +1063,129 @@ async function listOverlaySnapshots(env) {
   return d1Rows(result);
 }
 
+function rewriteStatusRowForProduction({ row, git, productionWorker }) {
+  const updatedAt = Date.now();
+  let status = {};
+  try {
+    status = JSON.parse(row.body || "{}");
+  } catch {
+    status = {};
+  }
+  const body = `${JSON.stringify(
+    {
+      ...status,
+      ok: true,
+      env: "production",
+      copiedFromEnv: "staging",
+      copiedFromSnapshotSha: status.snapshotSha || "",
+      copiedFromPublishedAt: status.publishedAt || "",
+      sourceSha: status.sourceSha || git.sha,
+      sourceBranch: status.sourceBranch || git.branch,
+      workerCodeSha: productionWorker.workerCodeSha,
+      productionWorkerVersionId: productionWorker.versionId,
+      publishedAt: new Date(updatedAt).toISOString(),
+    },
+    null,
+    2,
+  )}\n`;
+  return {
+    ...row,
+    body,
+    content_type: "application/json; charset=utf-8",
+    content_sha: sha1(body),
+    source_sha: status.sourceSha || git.sha,
+    source_branch: status.sourceBranch || git.branch,
+    updated_at: updatedAt,
+  };
+}
+
+async function copyStagingOverlayToProduction({ git, dryRun, skipVerify }) {
+  await ensureOverlayTable("staging");
+  await ensureOverlayTable("production");
+  const stagingRows = await readOverlayRows("staging");
+  if (stagingRows.length === 0) {
+    throw new Error("No staging content overlay exists. Publish content to staging first.");
+  }
+  const stagingStatus = await readOverlayStatus("staging");
+  if (!stagingStatus?.ok) {
+    throw new Error("Staging content overlay status is missing or unhealthy.");
+  }
+  const requiredCodeSha = String(stagingStatus.workerCodeSha || "").trim();
+  if (!requiredCodeSha) {
+    throw new Error(
+      "Staging overlay was published by an older script without workerCodeSha. Republish staging content first.",
+    );
+  }
+  const productionWorker = await readTargetWorkerDeployment("production");
+  if (productionWorker.workerCodeSha !== requiredCodeSha) {
+    throw new Error(
+      [
+        "Production Worker code does not match the verified staging content overlay.",
+        `  production: ${productionWorker.workerCodeSha}`,
+        `  staging overlay expects: ${requiredCodeSha}`,
+        "",
+        "Run `npm run release:prod:from-staging` first, then publish the same content overlay to production.",
+      ].join("\n"),
+    );
+  }
+
+  const copiedRows = stagingRows.map((row) =>
+    row.asset_path === "/__static/content-overlay-status.json"
+      ? rewriteStatusRowForProduction({ row, git, productionWorker })
+      : {
+          ...row,
+          source_sha: stagingStatus.sourceSha || row.source_sha || git.sha,
+          source_branch: stagingStatus.sourceBranch || row.source_branch || git.branch,
+          updated_at: Date.now(),
+        },
+  );
+  const assets = skipVerify
+    ? { checked: 0 }
+    : await assertReferencedAssetsExistForRows({
+        env: "production",
+        rows: copiedRows,
+      });
+  if (dryRun) {
+    return {
+      assets,
+      backupSnapshot: null,
+      copied: copiedRows.length,
+      productionWorker,
+      stagingStatus,
+    };
+  }
+  const backupSnapshot = await snapshotCurrentOverlay({
+    env: "production",
+    git,
+    note: "before content overlay copy from staging",
+  });
+  await cfD1Query({ env: "production", sql: "DELETE FROM static_shell_overlays" });
+  await insertRows({
+    env: "production",
+    table: "static_shell_overlays",
+    columns: [
+      "asset_path",
+      "body",
+      "content_type",
+      "content_sha",
+      "source_sha",
+      "source_branch",
+      "updated_at",
+    ],
+    rows: copiedRows,
+    chunkSize: 5,
+  });
+  const serving = skipVerify ? null : await verifyOverlayServing("production");
+  return {
+    assets,
+    backupSnapshot,
+    copied: copiedRows.length,
+    productionWorker,
+    serving,
+    stagingStatus,
+  };
+}
+
 async function main() {
   const args = parseArgs();
   loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
@@ -956,6 +1269,58 @@ async function main() {
     return;
   }
 
+  if (args.fromStaging) {
+    if (args.env !== "production") {
+      throw new Error("--from-staging only supports --env=production.");
+    }
+    const git = readGitState();
+    assertContentOnlyClean(git);
+    const copied = await copyStagingOverlayToProduction({
+      git,
+      dryRun: args.dryRun,
+      skipVerify: args.skipVerify,
+    });
+    if (!args.dryRun) {
+      appendReleaseHistory({
+        env: "production",
+        sha: copied.stagingStatus?.sourceSha || git.sha,
+        branch: copied.stagingStatus?.sourceBranch || git.branch,
+        overlaySnapshotSha: copied.stagingStatus?.snapshotSha || "",
+        overlayBackupSnapshotId: copied.backupSnapshot?.id || "",
+        note: `content overlay copied from staging (${copied.copied} files)`,
+      });
+    }
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          env: "production",
+          dryRun: args.dryRun,
+          operation: "copy-from-staging",
+          source: git,
+          stagingOverlay: {
+            sourceSha: copied.stagingStatus?.sourceSha || "",
+            workerCodeSha: copied.stagingStatus?.workerCodeSha || "",
+            contentInputSha: copied.stagingStatus?.contentInputSha || "",
+            targetBuildId: copied.stagingStatus?.targetBuildId || "",
+            snapshotSha: copied.stagingStatus?.snapshotSha || "",
+          },
+          productionWorker: {
+            codeSha: copied.productionWorker.workerCodeSha,
+            versionId: copied.productionWorker.versionId,
+          },
+          copied: copied.copied,
+          referencedAssetsChecked: copied.assets.checked,
+          backupSnapshotId: copied.backupSnapshot?.id || "",
+          serving: copied.serving || null,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   if (args.env === "staging") syncStagingD1ToContent();
 
   let git = readGitState();
@@ -967,17 +1332,58 @@ async function main() {
   }
   assertContentOnlyClean(git);
 
+  const contentInputSha = hashContentInput();
+  const targetWorker = await assertTargetWorkerAcceptsContentOnly({ env: args.env, git });
   const liveBuildId = args.skipBuild ? "" : await fetchLiveBuildId(args.env);
+  const currentStatus = await readOverlayStatus(args.env);
+  if (
+    currentStatus?.ok === true &&
+    currentStatus.contentInputSha === contentInputSha &&
+    currentStatus.workerCodeSha === targetWorker.workerCodeSha &&
+    currentStatus.targetBuildId === liveBuildId
+  ) {
+    logPhase("content overlay is already current; skipping build and upload");
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          env: args.env,
+          dryRun: args.dryRun,
+          operation: "noop",
+          skippedBuild: true,
+          source: git,
+          contentAutoCommit,
+          contentInputSha,
+          liveBuildId,
+          workerCodeSha: targetWorker.workerCodeSha,
+          snapshotSha: currentStatus.snapshotSha || "",
+          files: Number(currentStatus.fileCount || 0),
+          referencedAssetsChecked: 0,
+          uploaded: 0,
+          deleted: 0,
+          unchanged: Number(currentStatus.fileCount || 0),
+          backupSnapshotId: "",
+          serving: null,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   if (!args.skipBuild) buildStaticShells({ nextBuildId: liveBuildId });
   const files = walkStaticOverlayFiles();
   if (files.length === 0) throw new Error("No static shell files found to publish.");
 
   const snapshotSha = overlaySnapshot(files);
   const diff = await prepareOverlayDiff({
+    contentInputSha,
     env: args.env,
     files,
     git,
     snapshotSha,
+    targetBuildId: liveBuildId,
+    workerCodeSha: targetWorker.workerCodeSha,
   });
   const changedFiles = files.filter((file) => diff.changedAssetPaths.has(file.assetPath));
   const assets = args.skipVerify
@@ -1016,6 +1422,8 @@ async function main() {
         dryRun: args.dryRun,
         source: git,
         contentAutoCommit,
+        contentInputSha,
+        workerCodeSha: targetWorker.workerCodeSha,
         liveBuildId,
         snapshotSha,
         files: files.length,

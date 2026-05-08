@@ -77,6 +77,11 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
     fs.readFile(path.join(process.cwd(), "wrangler.toml"), "utf8"),
   ]);
   assert.match(script, /fetchLiveBuildId/);
+  assert.match(script, /hashContentInput/);
+  assert.match(script, /contentInputSha/);
+  assert.match(script, /workerCodeSha/);
+  assert.match(script, /skipping build and upload/);
+  assert.match(script, /copyStagingOverlayToProduction/);
   assert.match(script, /NEXT_BUILD_ID/);
   assert.match(script, /assertReferencedAssetsExist/);
   assert.match(script, /static_shell_overlays/);
@@ -84,10 +89,22 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(script, /prepareOverlayDiff/);
   assert.match(script, /restoreOverlaySnapshot/);
   assert.match(script, /verifyOverlayServing/);
+  assert.match(script, /--from-staging/);
   assert.match(worker, /x-static-overlay/);
   assert.match(worker, /fetchStaticOverlay/);
   assert.match(worker, /STATIC_SHELL_OVERLAY/);
   assert.match(wrangler, /STATIC_SHELL_OVERLAY = "1"/);
+});
+
+test("smart release CLI and package scripts expose content production copy", async () => {
+  const [releaseSite, packageJson] = await Promise.all([
+    fs.readFile(path.join(process.cwd(), "scripts/release-site.mjs"), "utf8"),
+    fs.readFile(path.join(process.cwd(), "package.json"), "utf8"),
+  ]);
+  assert.match(releaseSite, /publish-content-production-from-staging/);
+  assert.match(releaseSite, /publish:content:prod:from-staging/);
+  assert.match(packageJson, /"release:site"/);
+  assert.match(packageJson, /"publish:content:prod:from-staging"/);
 });
 
 test("full Cloudflare release clears stale content overlays after code deploy", async () => {

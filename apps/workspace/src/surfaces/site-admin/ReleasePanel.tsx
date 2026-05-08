@@ -19,10 +19,13 @@ import { dispatchReleaseState } from "../../shell/useTrayBindings";
 import {
   branchLabel,
   candidateLabel,
+  deriveReleasePlan,
   LEGACY_RELEASE_PROD_COMMAND,
   PUBLISH_CONTENT_PROD_COMMAND,
   PUBLISH_CONTENT_PROD_CLEAR_COMMAND,
   PUBLISH_CONTENT_PROD_CLEAR_SCRIPT,
+  PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND,
+  PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT,
   PUBLISH_CONTENT_PROD_SCRIPT,
   PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND,
   PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT,
@@ -42,7 +45,6 @@ import {
   shortSha,
   normalizeStatusPayload,
 } from "./release-flow-model";
-import { deriveSiteHealth } from "./site-health-model";
 import {
   clearContentPublishSuggestion,
   listenForContentPublishSuggestion,
@@ -376,19 +378,10 @@ function formatRelativeTime(ms: number, now = Date.now()): string {
   return `${Math.floor(delta / 86_400_000)}d ago`;
 }
 
-function releaseStageLabel(stage: ReleaseStage): string {
-  if (stage === "switch-profile") return "Switch to Staging";
-  if (stage === "needs-staging") return "Deploy Staging";
-  if (stage === "checking") return "Run Preflight";
-  if (stage === "ready") return "Ready to Promote";
-  if (stage === "current") return "Production Current";
-  if (stage === "running") return "Release Running";
-  return "Needs Attention";
-}
-
 function scriptLabel(script: string): string {
   if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing content";
   if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing production content";
+  if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) return "Publishing production content from staging";
   if (script === PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT) return "Rolling back staging content";
   if (script === PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT) return "Rolling back production content";
   if (script === PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT) return "Clearing staging content overlay";
@@ -500,49 +493,6 @@ function actionForState({
   };
 }
 
-function releaseHeroPill(
-  stage: ReleaseStage,
-  fallbackLabel: string,
-  fallbackTone: ReleaseTone,
-): { label: string; tone: ReleaseTone; title: string } {
-  if (stage === "needs-staging") {
-    return {
-      label: "Staging behind",
-      tone: "warn",
-      title: "Deploy staging so the live candidate matches the local release source.",
-    };
-  }
-  if (stage === "ready") {
-    return {
-      label: "Ready to promote",
-      tone: "warn",
-      title: "The verified staging candidate can be promoted to production.",
-    };
-  }
-  if (stage === "current") {
-    return {
-      label: "Production current",
-      tone: "ok",
-      title: "Production already matches the staging candidate.",
-    };
-  }
-  if (stage === "checking") {
-    return {
-      label: "Preflight needed",
-      tone: "muted",
-      title: "Refresh staging and production comparison.",
-    };
-  }
-  if (stage === "failed") {
-    return {
-      label: "Needs attention",
-      tone: "blocked",
-      title: "Resolve the release blocker before continuing.",
-    };
-  }
-  return { label: fallbackLabel, tone: fallbackTone, title: fallbackLabel };
-}
-
 function appendLogLine(
   current: ReleaseLogLine[],
   event: SiteAdminReleaseJobEvent,
@@ -577,6 +527,7 @@ export function ReleasePanel() {
   const [job, setJob] = useState<SiteAdminReleaseJobState | null>(null);
   const [jobLog, setJobLog] = useState<ReleaseLogLine[]>([]);
   const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
+  const [showProductionContentConfirm, setShowProductionContentConfirm] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
   const [localSource, setLocalSource] = useState<SiteAdminLocalReleaseSource | null>(null);
@@ -621,18 +572,6 @@ export function ReleasePanel() {
   const checks = releaseChecks(status, isStaging, preview, localSource);
   const blockers = checks.filter((check) => check.tone !== "ok");
   const blockingChecks = blockers.filter((check) => check.tone === "blocked");
-  const releaseHealth = deriveSiteHealth({
-    contentDirty: false,
-    outbox: null,
-    productionReadOnly: environment.kind === "production",
-    status,
-    sync: {
-      busy: loading,
-      error: error || null,
-      lastSyncAtMs: null,
-      rowCount: null,
-    },
-  });
   const primaryAction = actionForState({
     isStaging,
     job,
@@ -644,11 +583,29 @@ export function ReleasePanel() {
     readyToPromote,
     status,
   });
-  const heroPill = releaseHeroPill(
-    primaryAction.stage,
-    releaseHealth.releaseFlow.nextAction,
-    releaseHealth.releaseFlow.statusTone,
+  const stagingContent = latestContentOverlayEntry(history, "staging");
+  const productionContent = latestContentOverlayEntry(history, "production");
+  const stagingOverlaySnapshot = overlaySnapshotFromEntry(stagingContent);
+  const productionOverlaySnapshot = overlaySnapshotFromEntry(productionContent);
+  const productionCodeMatchesStaging = Boolean(
+    preview?.ok === true &&
+      preview.production &&
+      normalizeString(preview.production.codeSha) === normalizeString(preview.staging.codeSha),
   );
+  const smartPlan = deriveReleasePlan({
+    contentChanged: Boolean(contentSuggestion),
+    isStaging,
+    jobRunning: job?.status === "running",
+    localDirty,
+    localStagingMismatch,
+    productionAlreadyCurrent,
+    productionCodeMatchesStaging,
+    productionOverlaySnapshot,
+    ready,
+    readyToPromote,
+    stagingOverlaySnapshot,
+    status,
+  });
 
   const loadHistory = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -736,15 +693,24 @@ export function ReleasePanel() {
       setJobLog((current) => appendLogLine(current, payload));
       if (payload.state.status !== "running") {
         dispatchReleaseState({ kind: "idle" });
+        const shouldOfferProductionContent =
+          payload.state.status === "succeeded" &&
+          payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT;
         void loadStatus({ silent: true });
-        void loadHistory();
+        void loadHistory().then(() => {
+          if (shouldOfferProductionContent) setShowProductionContentConfirm(true);
+        });
         void loadLocalSource();
         if (payload.state.status === "succeeded") {
           if (
             payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT ||
-            payload.state.script === PUBLISH_CONTENT_PROD_SCRIPT
+            payload.state.script === PUBLISH_CONTENT_PROD_SCRIPT ||
+            payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
           ) {
             clearContentPublishSuggestion();
+          }
+          if (payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {
+            setShowProductionContentConfirm(false);
           }
           void notify({
             title: `${scriptLabel(payload.state.script)} complete`,
@@ -799,6 +765,7 @@ export function ReleasePanel() {
       }
       setJobLog([]);
       setShowPromoteConfirm(false);
+      setShowProductionContentConfirm(false);
       setRollbackCandidate(null);
       try {
         const next = await siteAdminStartReleaseJob(script);
@@ -849,30 +816,34 @@ export function ReleasePanel() {
     }
   }, [job, setMessage]);
 
-  const runPrimaryAction = useCallback(() => {
-    if (primaryAction.kind === "switch") {
-      if (stagingProfile) switchProfile(stagingProfile.id);
-      else setMessage("warn", "Add a staging profile before releasing.");
-      return;
-    }
-    if (primaryAction.kind === "staging") {
+  const runSmartRelease = useCallback(() => {
+    if (smartPlan.kind === "deploy-staging-code") {
       void startRelease(RELEASE_STAGING_SCRIPT);
       return;
     }
-    if (primaryAction.kind === "promote") {
+    if (smartPlan.kind === "publish-content-staging") {
+      void startRelease(PUBLISH_CONTENT_STAGING_SCRIPT);
+      return;
+    }
+    if (smartPlan.kind === "promote-production-code") {
       setShowPromoteConfirm(true);
       return;
     }
-    if (primaryAction.kind === "preflight" || primaryAction.kind === "refresh") {
-      void loadStatus();
+    if (smartPlan.kind === "publish-content-production-from-staging") {
+      setShowProductionContentConfirm(true);
+      return;
     }
+    if (smartPlan.kind === "noop") {
+      void loadStatus();
+      return;
+    }
+    setMessage("warn", smartPlan.detail);
   }, [
     loadStatus,
-    primaryAction.kind,
     setMessage,
-    stagingProfile,
+    smartPlan.detail,
+    smartPlan.kind,
     startRelease,
-    switchProfile,
   ]);
 
   return (
@@ -880,41 +851,33 @@ export function ReleasePanel() {
       <header className="release-center__hero" data-stage={primaryAction.stage}>
         <div className="release-center__hero-copy">
           <span>Release Center</span>
-          <h1>{releaseStageLabel(primaryAction.stage)}</h1>
-          <p>{primaryAction.detail}</p>
+          <h1>Smart Release</h1>
+          <p>{smartPlan.reason} {smartPlan.detail}</p>
         </div>
         <div className="release-center__hero-actions">
           <span
             className="release-panel__health-pill"
-            data-tone={job?.status === "running" ? "warn" : heroPill.tone}
-            title={job?.status === "running" ? scriptLabel(job.script) : heroPill.title}
+            data-tone={job?.status === "running" ? "warn" : smartPlan.tone}
+            title={job?.status === "running" ? scriptLabel(job.script) : smartPlan.detail}
           >
             {job?.status === "running"
               ? `${scriptLabel(job.script)} · ${job.phase}`
-              : heroPill.label}
+              : smartPlan.label}
           </span>
           <button
-            className="btn btn--secondary"
-            type="button"
-            disabled={!isStaging || job?.status === "running" || loading}
-            title="Fast path for article/page text changes. It rebuilds HTML shells and uploads D1 overlays without deploying a Worker."
-            onClick={() => void startRelease(PUBLISH_CONTENT_STAGING_SCRIPT)}
-          >
-            Publish Content
-          </button>
-          <button
             className={
-              primaryAction.stage === "ready"
+              smartPlan.kind === "promote-production-code"
                 ? "btn btn--danger"
                 : "btn btn--primary"
             }
             type="button"
-            disabled={primaryAction.disabled || loading}
-            onClick={runPrimaryAction}
+            disabled={smartPlan.disabled || loading}
+            onClick={runSmartRelease}
+            title={smartPlan.detail}
           >
-            {loading && primaryAction.kind !== "staging"
+            {loading
               ? "Checking…"
-              : primaryAction.label}
+              : "Smart Release"}
           </button>
           {job?.status === "running" ? (
             <button className="btn btn--secondary" type="button" onClick={() => void cancelJob()}>
@@ -948,12 +911,7 @@ export function ReleasePanel() {
       <ContentOverlayStatusPanel
         contentSuggestion={contentSuggestion}
         history={history}
-        isStaging={isStaging}
-        jobRunning={job?.status === "running"}
         localSource={localSource}
-        onClearStaging={() => void startRelease(PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT)}
-        onPublishStaging={() => void startRelease(PUBLISH_CONTENT_STAGING_SCRIPT)}
-        onRollbackStaging={() => void startRelease(PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT)}
         preview={preview}
         status={status}
       />
@@ -990,6 +948,15 @@ export function ReleasePanel() {
         />
       ) : null}
 
+      {showProductionContentConfirm ? (
+        <ProductionContentConfirmPanel
+          productionSnapshot={productionOverlaySnapshot}
+          stagingSnapshot={stagingOverlaySnapshot}
+          onCancel={() => setShowProductionContentConfirm(false)}
+          onConfirm={() => void startRelease(PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT)}
+        />
+      ) : null}
+
       {rollbackCandidate ? (
         <RollbackConfirmPanel
           entry={rollbackCandidate}
@@ -1013,8 +980,8 @@ export function ReleasePanel() {
         <ContentDeltaDetails delta={preview.contentDelta} />
       ) : null}
 
-      <details className="release-panel__commands" aria-label="Advanced release commands">
-        <summary>Advanced / fallback</summary>
+      <details className="release-panel__commands" aria-label="Recovery and advanced release commands">
+        <summary>Recovery / Advanced</summary>
         <div className="release-panel__commands-grid">
           <div>
             <h2>Staging Content</h2>
@@ -1041,8 +1008,12 @@ export function ReleasePanel() {
             <pre>{productionCommandFor(status, preview)}</pre>
           </div>
           <div>
-            <h2>Production Content</h2>
+            <h2>Production Content Direct</h2>
             <pre>{PUBLISH_CONTENT_PROD_COMMAND}</pre>
+          </div>
+          <div>
+            <h2>Production Content From Staging</h2>
+            <pre>{PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND}</pre>
           </div>
           <div>
             <h2>Production Content Rollback</h2>
@@ -1082,7 +1053,7 @@ export function ReleasePanel() {
             type="button"
             onClick={() => void openActions(stagingWorkflow.actionsUrl)}
           >
-            GitHub Fallback
+            GitHub Dispatch Fallback
           </button>
           <button
             className="btn btn--secondary"
@@ -1220,51 +1191,38 @@ function latestContentOverlayEntry(
   ) ?? null;
 }
 
+function overlaySnapshotFromEntry(entry: SiteAdminReleaseHistoryEntry | null): string {
+  return normalizeString(
+    entry?.overlay_snapshot_sha ||
+      entry?.overlay_rollback_snapshot_id ||
+      entry?.sha ||
+      "",
+  );
+}
+
 function ContentOverlayStatusPanel({
   contentSuggestion,
   history,
-  isStaging,
-  jobRunning,
   localSource,
-  onClearStaging,
-  onPublishStaging,
-  onRollbackStaging,
   preview,
   status,
 }: {
   contentSuggestion: ContentPublishSuggestion | null;
   history: SiteAdminReleaseHistoryEntry[];
-  isStaging: boolean;
-  jobRunning: boolean;
   localSource: SiteAdminLocalReleaseSource | null;
-  onClearStaging: () => void;
-  onPublishStaging: () => void;
-  onRollbackStaging: () => void;
   preview: PromotePreview | null;
   status: StatusPayload | null;
 }) {
   const stagingContent = latestContentOverlayEntry(history, "staging");
   const productionContent = latestContentOverlayEntry(history, "production");
-  const stagingSnapshot =
-    stagingContent?.overlay_snapshot_sha ||
-    stagingContent?.overlay_rollback_snapshot_id ||
-    stagingContent?.sha ||
-    "";
-  const productionSnapshot =
-    productionContent?.overlay_snapshot_sha ||
-    productionContent?.overlay_rollback_snapshot_id ||
-    productionContent?.sha ||
-    "";
-  const canRollback = Boolean(stagingContent?.overlay_backup_snapshot_id);
+  const stagingSnapshot = overlaySnapshotFromEntry(stagingContent);
+  const productionSnapshot = overlaySnapshotFromEntry(productionContent);
   return (
     <section className="release-center__content-status" aria-label="Code and content publish status">
       <header>
         <div>
           <h2>Code vs Content</h2>
-          <p>
-            Code deploy changes the Worker. Publish Content only refreshes static
-            HTML overlay shells.
-          </p>
+          <p>Current code versions and static overlay snapshots for each environment.</p>
         </div>
         {contentSuggestion ? (
           <strong data-tone="warn">
@@ -1276,73 +1234,34 @@ function ContentOverlayStatusPanel({
       </header>
       <div className="release-center__content-grid">
         <div className="release-center__content-cell">
-          <span>Local code</span>
+          <span>Local Code</span>
           <strong>{localSource?.dirty ? "Dirty" : shortSha(localSource?.sha)}</strong>
           <small>{localSource?.branch || "local release source"}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Staging code</span>
+          <span>Staging Code</span>
           <strong>
             {preview?.ok ? shortSha(preview.staging.codeSha) : shortSha(status?.source?.codeSha)}
           </strong>
           <small>{preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Staging content overlay</span>
+          <span>Production Code</span>
+          <strong>
+            {preview?.ok && preview.production ? shortSha(preview.production.codeSha) : "-"}
+          </strong>
+          <small>{preview?.ok && preview.production ? shortId(preview.production.versionId) : "load preflight"}</small>
+        </div>
+        <div className="release-center__content-cell">
+          <span>Staging Overlay</span>
           <strong>{shortSha(stagingSnapshot)}</strong>
           <small>{stagingContent?.recorded_at || "not published in this app"}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Production content overlay</span>
+          <span>Production Overlay</span>
           <strong>{shortSha(productionSnapshot)}</strong>
           <small>{productionContent?.recorded_at || "not published in this app"}</small>
         </div>
-      </div>
-      {contentSuggestion ? (
-        <div className="release-center__content-suggestion">
-          <div>
-            <strong>Content changed locally</strong>
-            <span>
-              Use Publish Content for article/page edits. Use Deploy Staging only
-              when code, CSS, or static assets changed.
-            </span>
-          </div>
-          <button
-            className="btn btn--primary"
-            type="button"
-            disabled={!isStaging || jobRunning}
-            onClick={onPublishStaging}
-          >
-            Publish Content
-          </button>
-        </div>
-      ) : null}
-      <div className="release-center__content-actions">
-        <button
-          className="btn btn--secondary"
-          type="button"
-          disabled={!isStaging || jobRunning}
-          onClick={onPublishStaging}
-        >
-          Publish Content
-        </button>
-        <button
-          className="btn btn--secondary"
-          type="button"
-          disabled={!isStaging || jobRunning || !canRollback}
-          title={canRollback ? "Restore the previous staging content overlay snapshot." : "No rollback snapshot has been captured yet."}
-          onClick={onRollbackStaging}
-        >
-          Rollback Content
-        </button>
-        <button
-          className="btn btn--secondary"
-          type="button"
-          disabled={!isStaging || jobRunning}
-          onClick={onClearStaging}
-        >
-          Clear Overlay
-        </button>
       </div>
     </section>
   );
@@ -1468,6 +1387,55 @@ function PromoteConfirmPanel({
         </button>
         <button className="btn btn--danger" type="button" onClick={onConfirm}>
           Promote this build
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ProductionContentConfirmPanel({
+  onCancel,
+  onConfirm,
+  productionSnapshot,
+  stagingSnapshot,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  productionSnapshot: string;
+  stagingSnapshot: string;
+}) {
+  return (
+    <section className="release-center__confirm" data-tone="warn" aria-label="Confirm production content publish">
+      <div>
+        <span>Production content confirmation</span>
+        <h2>Publish the same staging content?</h2>
+        <p>
+          Production will copy the verified staging overlay{" "}
+          <strong>{shortSha(stagingSnapshot)}</strong>
+          {productionSnapshot ? (
+            <>
+              {" "}over <strong>{shortSha(productionSnapshot)}</strong>
+            </>
+          ) : null}
+          . No Worker build is run.
+        </p>
+      </div>
+      <dl>
+        <div>
+          <dt>Command</dt>
+          <dd>{PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND}</dd>
+        </div>
+        <div>
+          <dt>Safety check</dt>
+          <dd>Production Worker must match staging code</dd>
+        </div>
+      </dl>
+      <div className="release-center__confirm-actions">
+        <button className="btn btn--secondary" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn btn--danger" type="button" onClick={onConfirm}>
+          Publish Same Content to Production
         </button>
       </div>
     </section>

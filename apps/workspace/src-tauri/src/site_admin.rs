@@ -322,6 +322,7 @@ fn allowed_release_script(script: &str) -> Option<&'static str> {
         "publish:content:staging:rollback" => Some("publish:content:staging:rollback"),
         "publish:content:staging:clear" => Some("publish:content:staging:clear"),
         "publish:content:prod" => Some("publish:content:prod"),
+        "publish:content:prod:from-staging" => Some("publish:content:prod:from-staging"),
         "publish:content:prod:rollback" => Some("publish:content:prod:rollback"),
         "publish:content:prod:clear" => Some("publish:content:prod:clear"),
         _ => None,

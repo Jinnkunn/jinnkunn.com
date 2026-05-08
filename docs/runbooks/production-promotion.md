@@ -2,28 +2,10 @@
 
 ## Scope
 
-Use this runbook when promoting the current `main` release candidate to the
-Cloudflare production Worker.
-
-Current protected production baseline:
-
-- Worker version: `34ae93d5-e251-4277-9e49-42f535558677`
-- Do not replace it until the release owner explicitly approves production
-  promotion.
-
-Current staging release candidate:
-
-- Source SHA: `d42b8dcaa4c1087f8a2f3692cd1ee9941bac6cda`
-- PRs:
-  - `#5` (`codex/home-editor-canvas-layout`)
-  - `#6` (`codex/release-acceptance-guardrails`)
-  - `#7` (`codex/decommission-vercel-integration`)
-- Staging Worker version: `de852536-e0e5-41a5-9a99-4dd402299485`
-- Staging deployment: `c70ee213-43a2-4313-b33e-68694bdf6c51`
-- Scope: Tauri Home shared MDX document editor, persistent page-tree order,
-  unified Post/Page MDX editor, MDX block hardening, staging/public-site
-  guardrail checks, production acceptance guardrails, and Vercel deployment
-  decommission cleanup.
+Use this runbook when publishing website content or promoting the current
+`main` release candidate to the Cloudflare production Worker. Do not rely on
+static baseline/version ids in this document; always read live status from the
+Release Center or the dry-run commands below.
 
 ## Guardrails
 
@@ -37,11 +19,10 @@ Current staging release candidate:
   - force pushes and branch deletion: disabled
   - Vercel status contexts are intentionally not required.
 - Production promotion requires explicit approval and one of:
-  - one-click in the workspace: the Site Admin **Release Center** primary
-    action. It reads `/api/site-admin/promote-to-production` for preflight,
-    then runs the matching npm release command locally from the repo checkout
-    with live output, phase status, release history, and rollback actions in
-    the same panel.
+  - one-click in the workspace: the Site Admin **Release Center** **Smart
+    Release** action. It decides between staging content, staging code,
+    production code, production content copy, and no-op.
+  - Smart CLI entry: `npm run release:site`
   - one-shot promote-from-staging (CLI):
     `npm run release:prod:from-staging`
   - the older guarded release: `npm run release:prod`
@@ -96,14 +77,20 @@ or other `/_next/static/*` assets, use the content-only path:
 
 ```bash
 npm run publish:content:staging
-npm run publish:content:prod
+npm run publish:content:prod:from-staging
 ```
 
-The Tauri Release Center exposes the staging command as **Publish Content**.
+The Tauri Release Center exposes this as **Smart Release**. Content uses a
+two-step production path: publish the staging overlay first, verify staging,
+then copy the exact same verified overlay to production.
+
 This path:
 
 - dumps staging D1 to `content/*` for staging publishes;
 - auto-commits content-only drift on `main`;
+- computes `contentInputSha` before building;
+- skips the Next build entirely when `contentInputSha`, active Worker code SHA,
+  and live build id already match the current overlay status;
 - rebuilds the Next HTML shells with the currently deployed build id;
 - verifies every referenced `/_next/static/*` asset already exists on the
   target environment;
@@ -111,7 +98,8 @@ This path:
   `static_shell_overlays` in the target D1;
 - stores the previous overlay rows as a D1 rollback snapshot before any
   overlay change; and
-- verifies public routes return `x-static-overlay: 1`.
+- verifies public routes return `x-static-overlay: 1`; and
+- for production, copies the verified staging overlay instead of rebuilding.
 
 If the asset check fails, do not force it. That means the edit changed code,
 CSS, or another static asset. Run the normal `release:staging` /
@@ -132,24 +120,23 @@ overlay from shadowing newly deployed HTML or referencing a stale build id.
 
 ## Routine Release (recommended)
 
-### Workspace one-click (preferred)
+### Workspace Smart Release (preferred)
 
 1. Open the Tauri workspace, connect to the **staging** profile.
 2. Confirm the editor's saved content is what you want in production
    (e.g. via the Tauri editor acceptance checklist below).
-3. Open **Site Admin → Release**. The Release Center shows the route
-   `Local source → Staging → Production`, the local release-source SHA,
-   the staging Worker's deployed code SHA, and the current production version.
-4. Use the primary action:
-   - **Publish Content** runs `npm run publish:content:staging` for
-     content-only edits.
-   - **Deploy Staging** runs `npm run release:staging` for code/static asset
-     changes.
-   - **Promote Production** opens a confirmation panel, then runs
-     `npm run release:prod:from-staging`.
-   - The Code vs Content panel shows whether a save is waiting for
-     **Publish Content**, the latest overlay snapshot, and staging overlay
-     rollback/clear actions.
+3. Open **Site Admin → Release**. The top area should only require **Smart
+   Release** and **Refresh** for normal work.
+4. Click **Smart Release**:
+   - content edits run `npm run publish:content:staging`;
+   - code/static asset changes run `npm run release:staging`;
+   - production code changes open the promote confirmation, then run
+     `npm run release:prod:from-staging`;
+   - verified staging content opens **Publish Same Content to Production**,
+     then runs `npm run publish:content:prod:from-staging`;
+   - no-op refreshes status and does not build.
+   - The Code vs Content panel shows Local Code, Staging Code, Production Code,
+     Staging Overlay, and Production Overlay.
 5. Keep the panel open while it runs. The activity stream shows the current
    phase, stdout/stderr tail, success/failure state, and a cancel action.
 6. After release, review **Recent Releases**. Production entries expose copyable
@@ -167,15 +154,31 @@ If the button is greyed out:
 - "No changes vs prod" — production is already on the same code/content
   snapshot as staging.
 
-### CLI fallback
+### CLI smart path
 
 ```bash
 git switch main
 git pull --ff-only
 git status --short
-npm run release:staging              # if staging is behind the release source
-npm run release:prod:from-staging:dry-run  # preview the plan
-npm run release:prod:from-staging          # do it
+npm run release:site:dry-run
+npm run release:site
+```
+
+For the second production content step:
+
+```bash
+npm run release:site -- --production-content
+```
+
+### CLI recovery fallback
+
+```bash
+git switch main
+git pull --ff-only
+git status --short
+npm run release:staging
+npm run release:prod:from-staging:dry-run
+npm run release:prod:from-staging
 ```
 
 `release:prod:from-staging` will refuse to promote if:
@@ -200,7 +203,7 @@ git switch main
 git pull --ff-only
 git status --short
 npm run release:prod:dry-run
-VERIFY_CF_EXPECT_PRODUCTION_VERSION=34ae93d5-e251-4277-9e49-42f535558677 npm run verify:cf:prod
+npm run verify:cf:prod
 npm run verify:staging:authenticated
 npm run check:staging-visual
 ```
@@ -210,8 +213,8 @@ Expected:
 - `git status --short` prints nothing.
 - `release:prod:dry-run` reports the checks/build/deploy/verify chain it
   would run and refuses real production deployment without confirmation vars.
-- `verify:cf:prod` confirms production is still on
-  `34ae93d5-e251-4277-9e49-42f535558677`.
+- `verify:cf:prod` confirms production is reachable and reports the live
+  Worker version.
 - `verify:staging:authenticated` confirms authenticated staging public routes
   are `200`, use `x-static-shell: 1`, `/api/site-admin/status` has
   `pendingDeploy=false`, Site Admin read APIs return valid payloads for
@@ -265,25 +268,19 @@ Use this as the PR/release body before asking for production approval:
 
 - Source SHA: `<git rev-parse HEAD>`
 - Source branch: `main`
-- Previous production version: `34ae93d5-e251-4277-9e49-42f535558677`
-- Staging version: `de852536-e0e5-41a5-9a99-4dd402299485`
+- Previous production version: `<from Release Center or verify:cf:prod>`
+- Staging version: `<from Release Center or release:prod:from-staging:dry-run>`
 
 ## Changes
 
-- Tauri Home editor now uses the shared MDX document editor.
-- Page tree ordering is persisted in `content/page-tree.json`.
-- Post and Page editors share one MDX block editor with Source/Preview escape
-  hatches.
-- MDX block parsing preserves current posts/pages and unsupported raw MDX.
-- Staging QA now validates public static shell routes, preview CSS assets, and
-  Site Admin read API payloads.
-- Vercel deployment code and GitHub workflow dependencies have been removed;
-  Cloudflare is the only deployment target in this repository.
+- `<high-level user-facing change>`
+- `<release-risk or migration note>`
+- `<validation focus>`
 
 ## Validation
 
 - `npm run release:prod:dry-run`
-- `VERIFY_CF_EXPECT_PRODUCTION_VERSION=34ae93d5-e251-4277-9e49-42f535558677 npm run verify:cf:prod`
+- `npm run verify:cf:prod`
 - `npm run verify:staging:authenticated`
 - `npm run check:staging-visual`
 - `npm run verify:cf:staging`
