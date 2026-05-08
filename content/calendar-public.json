@@ -1,25 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-07T21:09:26.646Z",
+  "generatedAt": "2026-05-08T19:01:44.920Z",
   "range": {
-    "startsAt": "2026-05-07T03:00:00.000Z",
-    "endsAt": "2027-05-07T03:00:00.000Z"
+    "startsAt": "2026-05-08T03:00:00.000Z",
+    "endsAt": "2027-05-08T03:00:00.000Z"
   },
   "events": [
-    {
-      "id": "A38712A8-7BAE-4CE8-8DB8-01175B0B3396",
-      "calendarId": "9CE3DD5E-5A45-4430-8F84-3F70CA1B53AD",
-      "calendarTitle": "Calendar",
-      "colorHex": "#FF8D28",
-      "title": "NeurIPS2026 Abstract Due",
-      "startsAt": "2026-05-07T11:59:00.000Z",
-      "endsAt": "2026-05-07T12:00:00.000Z",
-      "isAllDay": false,
-      "visibility": "full",
-      "description": null,
-      "location": null,
-      "url": null
-    },
     {
       "id": "E72F124E-58DF-481B-B478-C44A36C48267/RID=799941600",
       "colorHex": "#9B9A97",
@@ -57,6 +43,18 @@
       "url": null
     },
     {
+      "id": "F8A3FA51-1675-4B4F-9F96-6F5C6833A89D",
+      "colorHex": "#9B9A97",
+      "title": "Busy",
+      "startsAt": "2026-05-12T18:00:00.000Z",
+      "endsAt": "2026-05-12T18:30:00.000Z",
+      "isAllDay": false,
+      "visibility": "busy",
+      "description": null,
+      "location": null,
+      "url": null
+    },
+    {
       "id": "3C87B05C-B3F7-49C7-96E8-09905291B45F",
       "colorHex": "#9B9A97",
       "title": "Busy",
@@ -81,11 +79,11 @@
       "url": null
     },
     {
-      "id": "E72F124E-58DF-481B-B478-C44A36C48267",
+      "id": "9323B5C0-AF3E-44F1-B95C-661689D9A434+E72F124E-58DF-481B-B478-C44A36C48267",
       "colorHex": "#9B9A97",
       "title": "Busy",
       "startsAt": "2026-05-22T14:00:00.000Z",
-      "endsAt": "2026-05-22T14:30:00.000Z",
+      "endsAt": "2026-05-22T15:00:00.000Z",
       "isAllDay": false,
       "visibility": "busy",
       "description": null,
@@ -688,6 +686,18 @@
       "title": "Busy",
       "startsAt": "2027-04-30T14:00:00.000Z",
       "endsAt": "2027-04-30T14:30:00.000Z",
+      "isAllDay": false,
+      "visibility": "busy",
+      "description": null,
+      "location": null,
+      "url": null
+    },
+    {
+      "id": "E72F124E-58DF-481B-B478-C44A36C48267",
+      "colorHex": "#9B9A97",
+      "title": "Busy",
+      "startsAt": "2027-05-07T14:00:00.000Z",
+      "endsAt": "2027-05-07T14:30:00.000Z",
       "isAllDay": false,
       "visibility": "busy",
       "description": null,
