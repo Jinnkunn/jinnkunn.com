@@ -476,6 +476,49 @@ function actionForState({
   };
 }
 
+function releaseHeroPill(
+  stage: ReleaseStage,
+  fallbackLabel: string,
+  fallbackTone: ReleaseTone,
+): { label: string; tone: ReleaseTone; title: string } {
+  if (stage === "needs-staging") {
+    return {
+      label: "Staging behind",
+      tone: "warn",
+      title: "Deploy staging so the live candidate matches the local release source.",
+    };
+  }
+  if (stage === "ready") {
+    return {
+      label: "Ready to promote",
+      tone: "warn",
+      title: "The verified staging candidate can be promoted to production.",
+    };
+  }
+  if (stage === "current") {
+    return {
+      label: "Production current",
+      tone: "ok",
+      title: "Production already matches the staging candidate.",
+    };
+  }
+  if (stage === "checking") {
+    return {
+      label: "Preflight needed",
+      tone: "muted",
+      title: "Refresh staging and production comparison.",
+    };
+  }
+  if (stage === "failed") {
+    return {
+      label: "Needs attention",
+      tone: "blocked",
+      title: "Resolve the release blocker before continuing.",
+    };
+  }
+  return { label: fallbackLabel, tone: fallbackTone, title: fallbackLabel };
+}
+
 function appendLogLine(
   current: ReleaseLogLine[],
   event: SiteAdminReleaseJobEvent,
@@ -575,6 +618,11 @@ export function ReleasePanel() {
     readyToPromote,
     status,
   });
+  const heroPill = releaseHeroPill(
+    primaryAction.stage,
+    releaseHealth.releaseFlow.nextAction,
+    releaseHealth.releaseFlow.statusTone,
+  );
 
   const loadHistory = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -798,14 +846,12 @@ export function ReleasePanel() {
         <div className="release-center__hero-actions">
           <span
             className="release-panel__health-pill"
-            data-tone={releaseHealth.releaseFlow.statusTone}
-            title={releaseHealth.releaseFlow.nextAction}
+            data-tone={job?.status === "running" ? "warn" : heroPill.tone}
+            title={job?.status === "running" ? scriptLabel(job.script) : heroPill.title}
           >
             {job?.status === "running"
               ? `${scriptLabel(job.script)} · ${job.phase}`
-              : releaseHealth.releaseFlow.stage === "current"
-                ? "Staging current"
-                : releaseHealth.releaseFlow.nextAction}
+              : heroPill.label}
           </span>
           <button
             className={

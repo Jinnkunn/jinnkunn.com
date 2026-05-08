@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { parseNewsEntries } from "@/lib/components/parse";
+import { parseNewsFeedItems, type NewsComponentFeedItem } from "@/lib/components/parse";
 import { compilePostMdx } from "@/lib/posts/compile";
 import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
 
@@ -29,7 +29,27 @@ async function loadEntries() {
   } catch {
     return [];
   }
-  return parseNewsEntries(raw);
+  return parseNewsFeedItems(raw);
+}
+
+function capFeedItems(
+  items: NewsComponentFeedItem[],
+  limit: number | undefined,
+): NewsComponentFeedItem[] {
+  if (!limit) return items;
+  const visible: NewsComponentFeedItem[] = [];
+  let entryCount = 0;
+  for (const item of items) {
+    if (item.type === "entry") {
+      if (entryCount >= limit) break;
+      visible.push(item);
+      entryCount += 1;
+      continue;
+    }
+    if (entryCount > 0 && entryCount < limit) visible.push(item);
+  }
+  while (visible.at(-1)?.type === "divider") visible.pop();
+  return visible;
 }
 
 /** Server component for `<NewsBlock />` in MDX. Reads the canonical
@@ -40,11 +60,15 @@ async function loadEntries() {
  * inline-entries layout produced (`news-entry__body` + `notion-heading`
  * markup the existing CSS already styles). */
 export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement> {
-  const entries = await loadEntries();
+  const items = await loadEntries();
   const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
-  const visible = cap ? entries.slice(0, cap) : entries;
+  const visible = capFeedItems(items, cap);
+  const entries = visible.filter(
+    (item): item is Extract<NewsComponentFeedItem, { type: "entry" }> =>
+      item.type === "entry",
+  );
 
-  if (visible.length === 0) {
+  if (entries.length === 0) {
     return (
       <p className="notion-text notion-text__content notion-semantic-string">
         No news yet.
@@ -53,21 +77,29 @@ export async function NewsBlock({ limit }: NewsBlockProps): Promise<ReactElement
   }
 
   const rendered = await Promise.all(
-    visible.map(async (entry) => ({
-      ...entry,
-      Content: (await compilePostMdx(entry.body)).Content,
+    entries.map(async (item) => ({
+      ...item.entry,
+      Content: (await compilePostMdx(item.entry.body)).Content,
     })),
   );
+  let renderedIndex = 0;
 
   return (
     <div className="news-block">
-      {rendered.map((entry) => (
-        <Fragment key={entry.dateIso + entry.body.slice(0, 40)}>
-          <NewsEntry date={entry.dateIso}>
-            <entry.Content components={postMdxComponents} />
-          </NewsEntry>
-        </Fragment>
-      ))}
+      {visible.map((item, index) => {
+        if (item.type === "divider") {
+          return <hr aria-hidden="true" className="news-block__divider" key={item.id} />;
+        }
+        const entry = rendered[renderedIndex++];
+        if (!entry) return null;
+        return (
+          <Fragment key={`${entry.dateIso}-${index}`}>
+            <NewsEntry date={entry.dateIso}>
+              <entry.Content components={postMdxComponents} />
+            </NewsEntry>
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

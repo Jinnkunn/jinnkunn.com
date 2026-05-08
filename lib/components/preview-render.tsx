@@ -12,10 +12,11 @@ import { compilePostMdx } from "@/lib/posts/compile";
 import type { SiteComponentName } from "@/lib/site-admin/component-registry";
 
 import {
-  parseNewsEntries,
+  parseNewsFeedItems,
   parsePublicationsEntries,
   parseTeachingEntries,
   parseWorksEntries,
+  type NewsComponentFeedItem,
   type WorksComponentEntry,
 } from "./parse";
 
@@ -25,6 +26,30 @@ function capEntries<T>(entries: T[], limit?: number): T[] {
       ? Math.trunc(limit)
       : undefined;
   return cap ? entries.slice(0, cap) : entries;
+}
+
+function capNewsFeedItems(
+  items: NewsComponentFeedItem[],
+  limit?: number,
+): NewsComponentFeedItem[] {
+  const cap =
+    typeof limit === "number" && Number.isFinite(limit) && limit > 0
+      ? Math.trunc(limit)
+      : undefined;
+  if (!cap) return items;
+  const visible: NewsComponentFeedItem[] = [];
+  let entryCount = 0;
+  for (const item of items) {
+    if (item.type === "entry") {
+      if (entryCount >= cap) break;
+      visible.push(item);
+      entryCount += 1;
+      continue;
+    }
+    if (entryCount > 0 && entryCount < cap) visible.push(item);
+  }
+  while (visible.at(-1)?.type === "divider") visible.pop();
+  return visible;
 }
 
 async function renderMdxChildren(source: string): Promise<ReactNode> {
@@ -45,21 +70,33 @@ async function renderNewsPreview(
   source: string,
   limit?: number,
 ): Promise<ReactElement> {
-  const entries = capEntries(parseNewsEntries(source), limit);
+  const items = capNewsFeedItems(parseNewsFeedItems(source), limit);
+  const entries = items.filter(
+    (item): item is Extract<NewsComponentFeedItem, { type: "entry" }> =>
+      item.type === "entry",
+  );
   if (entries.length === 0) return <EmptyPreview>No news yet.</EmptyPreview>;
   const rendered = await Promise.all(
-    entries.map(async (entry) => ({
-      ...entry,
-      children: await renderMdxChildren(entry.body),
+    entries.map(async (item) => ({
+      ...item.entry,
+      children: await renderMdxChildren(item.entry.body),
     })),
   );
+  let renderedIndex = 0;
   return (
     <div className="news-block">
-      {rendered.map((entry, index) => (
-        <Fragment key={`${entry.dateIso}-${index}`}>
-          <NewsEntry date={entry.dateIso}>{entry.children}</NewsEntry>
-        </Fragment>
-      ))}
+      {items.map((item, index) => {
+        if (item.type === "divider") {
+          return <hr aria-hidden="true" className="news-block__divider" key={item.id} />;
+        }
+        const entry = rendered[renderedIndex++];
+        if (!entry) return null;
+        return (
+          <Fragment key={`${entry.dateIso}-${index}`}>
+            <NewsEntry date={entry.dateIso}>{entry.children}</NewsEntry>
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

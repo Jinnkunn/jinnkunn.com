@@ -15,6 +15,10 @@ export type NewsComponentEntry = {
   body: string;
 };
 
+export type NewsComponentFeedItem =
+  | { type: "entry"; entry: NewsComponentEntry }
+  | { type: "divider"; id: string };
+
 export type TeachingComponentEntry = {
   term: string;
   period: string;
@@ -72,17 +76,39 @@ function unescapeJsonAttr(raw: string): string {
 }
 
 export function parseNewsEntries(source: string): NewsComponentEntry[] {
-  const body = stripMdxFrontmatter(source);
-  const entries: NewsComponentEntry[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = NEWS_ENTRY_RE.exec(body)) !== null) {
-    const attrs = parseJsxAttrs(match[1] ?? "");
-    const dateIso = attrs.date ?? "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) continue;
-    entries.push({ dateIso, body: match[2] ?? "" });
-  }
+  const entries = parseNewsFeedItems(source)
+    .filter((item): item is Extract<NewsComponentFeedItem, { type: "entry" }> => item.type === "entry")
+    .map((item) => item.entry);
   entries.sort((a, b) => b.dateIso.localeCompare(a.dateIso));
   return entries;
+}
+
+function parseNewsDividers(segment: string, prefix: string): NewsComponentFeedItem[] {
+  return String(segment || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line, index) => ({ line: line.trim(), index }))
+    .filter(({ line }) => line === "---" || line === "***" || /^<hr\s*\/?>$/i.test(line))
+    .map(({ index }) => ({ type: "divider" as const, id: `${prefix}-${index}` }));
+}
+
+export function parseNewsFeedItems(source: string): NewsComponentFeedItem[] {
+  const body = stripMdxFrontmatter(source);
+  const items: NewsComponentFeedItem[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = NEWS_ENTRY_RE.exec(body)) !== null) {
+    items.push(...parseNewsDividers(body.slice(cursor, match.index), `before-${match.index}`));
+    const attrs = parseJsxAttrs(match[1] ?? "");
+    const dateIso = attrs.date ?? "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+      const entry = { dateIso, body: match[2] ?? "" };
+      items.push({ type: "entry", entry });
+    }
+    cursor = NEWS_ENTRY_RE.lastIndex;
+  }
+  items.push(...parseNewsDividers(body.slice(cursor), "after"));
+  return items;
 }
 
 export function parseTeachingEntries(source: string): TeachingComponentEntry[] {

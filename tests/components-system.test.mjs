@@ -10,6 +10,7 @@ import {
 } from "../lib/components/usage.ts";
 import {
   parseNewsEntries,
+  parseNewsFeedItems,
   parsePublicationsEntries,
   parseTeachingEntries,
   parseWorksEntries,
@@ -56,6 +57,31 @@ Older
   );
   assert.equal(works[0].category, "passed");
   assert.equal(works[0].body, "Body");
+});
+
+test("components-system: news feed parser preserves entry dividers", () => {
+  const items = parseNewsFeedItems(`
+---
+title: "News"
+---
+
+<NewsEntry date="2026-01-02">
+Newer
+</NewsEntry>
+
+---
+
+<NewsEntry date="2025-12-31">
+Older
+</NewsEntry>
+`);
+
+  assert.deepEqual(
+    items.map((item) => item.type),
+    ["entry", "divider", "entry"],
+  );
+  assert.equal(items[0].entry.dateIso, "2026-01-02");
+  assert.equal(items[2].entry.dateIso, "2025-12-31");
 });
 
 test("components-system: usage graph maps embed tags to routes", () => {
