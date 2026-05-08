@@ -111,6 +111,9 @@ pub struct SiteAdminReleaseHistoryEntry {
     sha: String,
     branch: String,
     note: String,
+    overlay_snapshot_sha: String,
+    overlay_backup_snapshot_id: String,
+    overlay_rollback_snapshot_id: String,
     rollback_command: String,
 }
 
@@ -273,6 +276,7 @@ fn package_json_looks_like_repo_root(path: &Path) -> bool {
     };
     raw.contains("\"name\": \"jinnkunn.com\"")
         && raw.contains("\"release:staging\"")
+        && raw.contains("\"publish:content:staging\"")
         && path.join("scripts/release-cloudflare.mjs").exists()
 }
 
@@ -314,6 +318,12 @@ fn allowed_release_script(script: &str) -> Option<&'static str> {
         "release:staging" => Some("release:staging"),
         "release:prod:from-staging" => Some("release:prod:from-staging"),
         "release:prod:from-staging:dry-run" => Some("release:prod:from-staging:dry-run"),
+        "publish:content:staging" => Some("publish:content:staging"),
+        "publish:content:staging:rollback" => Some("publish:content:staging:rollback"),
+        "publish:content:staging:clear" => Some("publish:content:staging:clear"),
+        "publish:content:prod" => Some("publish:content:prod"),
+        "publish:content:prod:rollback" => Some("publish:content:prod:rollback"),
+        "publish:content:prod:clear" => Some("publish:content:prod:clear"),
         _ => None,
     }
 }
@@ -402,6 +412,8 @@ fn infer_release_phase(line: &str) -> String {
         || lower.contains("visual")
     {
         "verify".to_string()
+    } else if lower.contains("overlay") || lower.contains("publish-content") {
+        "content".to_string()
     } else if lower.contains("deploying") || lower.contains("deploy:cf") {
         "deploy".to_string()
     } else if lower.contains("uploading") || lower.contains("versions upload") {
@@ -887,6 +899,9 @@ fn parse_production_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHisto
             sha: strip_markdown_code(&cols[3]),
             branch: cols[4].clone(),
             note: cols[5].clone(),
+            overlay_snapshot_sha: String::new(),
+            overlay_backup_snapshot_id: String::new(),
+            overlay_rollback_snapshot_id: String::new(),
             rollback_command: rollback_command(&version_id),
         });
     }
@@ -928,6 +943,7 @@ fn parse_release_jsonl_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHi
         } else {
             String::new()
         };
+        let note = value_string(value.get("note"));
         entries.push(SiteAdminReleaseHistoryEntry {
             source: "release-history".to_string(),
             env,
@@ -938,10 +954,13 @@ fn parse_release_jsonl_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHi
             sha: value_string(value.get("sha")),
             branch: value_string(value.get("branch")),
             note: if failure.is_empty() {
-                String::new()
+                note
             } else {
                 failure
             },
+            overlay_snapshot_sha: value_string(value.get("overlaySnapshotSha")),
+            overlay_backup_snapshot_id: value_string(value.get("overlayBackupSnapshotId")),
+            overlay_rollback_snapshot_id: value_string(value.get("overlayRollbackSnapshotId")),
             rollback_command: rollback,
         });
     }

@@ -12,6 +12,13 @@ const withBundleAnalyzer = bundleAnalyzer({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  ...(process.env.NEXT_BUILD_ID
+    ? {
+        async generateBuildId() {
+          return process.env.NEXT_BUILD_ID;
+        },
+      }
+    : {}),
   // Avoid Next.js incorrectly inferring the repo root due to other lockfiles on the machine.
   outputFileTracingRoot: path.resolve("."),
   // Don't advertise the runtime framework via a response header.

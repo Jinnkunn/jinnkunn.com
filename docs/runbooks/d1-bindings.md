@@ -4,10 +4,10 @@
 
 - **Staging D1 is the source of truth** for every operator-edited file
   (nav, page bodies, blog posts, link audit, etc.).
-- **Production D1 exists but is unused.** Both staging *and* production
-  builds dump from staging D1 (`scripts/release-cloudflare.mjs` for the
-  local path, `.github/workflows/release-from-dispatch.yml` for fallback);
-  production D1 receives no writes through any operator path.
+- **Production D1 is not the editing source.** Both staging *and* production
+  full builds dump from staging D1 (`scripts/release-cloudflare.mjs` for the
+  local path, `.github/workflows/release-from-dispatch.yml` for fallback).
+  Production D1 is only used by the content-only static-shell overlay table.
 - **We don't delete production D1** — leaving it bound costs $0 and
   removing the binding would break wrangler config without any benefit.
   Just don't trust its contents for anything.
@@ -18,8 +18,9 @@ Cloudflare Workers bind a D1 per `[env.<name>]` block in `wrangler.toml`.
 Production worker has its own binding (`SITE_ADMIN_DB`) pointing at a
 *production* D1 instance. Originally each instance was meant to be
 edited independently; in practice the operator only ever connects the
-workspace app to the staging worker, so production D1 has been an
-unused side-channel since launch.
+workspace app to the staging worker. Production D1 therefore remains a
+non-authoritative content source, but it can store static-shell overlay rows
+for content-only publishes.
 
 The `2026-04-29` Calendar nav incident exposed the gap:
 
@@ -73,6 +74,31 @@ we'll need to either keep production D1 in sync (add a copy step to the
 promote workflow), or change the binding to share the staging instance.
 Until then: leave it.
 
+## Content-only overlay table
+
+`scripts/publish-content.mjs` writes generated public HTML shells into
+`static_shell_overlays`:
+
+- staging: `npm run publish:content:staging`
+- production: `npm run publish:content:prod`
+
+The Worker checks that table before bundled `ASSETS` when
+`STATIC_SHELL_OVERLAY=1`. This lets article/page/news text changes update
+without deploying a new Worker version. The script refuses to publish when
+new HTML references `/_next/static/*` assets that are not already live, which
+keeps content-only publishing from accidentally shipping code/CSS changes.
+
+`publish-content.mjs` now publishes incrementally:
+
+- it compares generated shell hashes against existing overlay rows;
+- uploads only changed rows and deletes stale rows;
+- stores the previous overlay in `static_shell_overlay_snapshots` and
+  `static_shell_overlay_versions`; and
+- supports rollback/clear without rebuilding the Worker.
+
+Full Worker releases clear the target overlay after deploy so D1 overlay HTML
+does not shadow the freshly deployed bundle.
+
 ## Operator commands
 
 | Goal | Command |
@@ -80,6 +106,11 @@ Until then: leave it.
 | Show what's edited in staging D1 vs. git | `npm run db:diff:staging` |
 | Same, machine-readable | `npm run db:diff:staging:json` |
 | Force a fresh git snapshot of staging D1 | dispatch `Snapshot staging D1 to git` workflow |
+| Publish content-only staging HTML without Worker deploy | `npm run publish:content:staging` |
+| Publish content-only production HTML without Worker deploy | `npm run publish:content:prod` |
+| Roll back staging content overlay | `npm run publish:content:staging:rollback` |
+| Clear staging content overlay | `npm run publish:content:staging:clear` |
+| List staging content overlay snapshots | `npm run publish:content:staging:snapshots` |
 | Show last 10 production deploys | `npm run snapshot:prod:list` |
 | Inspect production D1 directly (rare) | `npx wrangler d1 execute SITE_ADMIN_DB --env=production --remote --command "..."` |
 

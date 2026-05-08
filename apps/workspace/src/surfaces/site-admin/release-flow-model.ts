@@ -5,10 +5,28 @@ export const RELEASE_FROM_DISPATCH_ACTIONS_URL =
   "https://github.com/Jinnkunn/jinnkunn.com/actions/workflows/release-from-dispatch.yml";
 
 export const RELEASE_STAGING_SCRIPT = "release:staging";
+export const PUBLISH_CONTENT_STAGING_SCRIPT = "publish:content:staging";
+export const PUBLISH_CONTENT_PROD_SCRIPT = "publish:content:prod";
+export const PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT =
+  "publish:content:staging:rollback";
+export const PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT = "publish:content:staging:clear";
+export const PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT = "publish:content:prod:rollback";
+export const PUBLISH_CONTENT_PROD_CLEAR_SCRIPT = "publish:content:prod:clear";
 export const RELEASE_PROD_FROM_STAGING_SCRIPT = "release:prod:from-staging";
 export const RELEASE_PROD_FROM_STAGING_DRY_RUN_SCRIPT =
   "release:prod:from-staging:dry-run";
 export const RELEASE_STAGING_COMMAND = `npm run ${RELEASE_STAGING_SCRIPT}`;
+export const PUBLISH_CONTENT_STAGING_COMMAND =
+  `npm run ${PUBLISH_CONTENT_STAGING_SCRIPT}`;
+export const PUBLISH_CONTENT_PROD_COMMAND = `npm run ${PUBLISH_CONTENT_PROD_SCRIPT}`;
+export const PUBLISH_CONTENT_STAGING_ROLLBACK_COMMAND =
+  `npm run ${PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT}`;
+export const PUBLISH_CONTENT_STAGING_CLEAR_COMMAND =
+  `npm run ${PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT}`;
+export const PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND =
+  `npm run ${PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT}`;
+export const PUBLISH_CONTENT_PROD_CLEAR_COMMAND =
+  `npm run ${PUBLISH_CONTENT_PROD_CLEAR_SCRIPT}`;
 export const RELEASE_PROD_FROM_STAGING_COMMAND =
   `npm run ${RELEASE_PROD_FROM_STAGING_SCRIPT}`;
 export const RELEASE_PROD_FROM_STAGING_DRY_RUN_COMMAND =
@@ -154,14 +172,14 @@ export function releaseWorkflowRecovery(
     actionsUrl: RELEASE_FROM_DISPATCH_ACTIONS_URL,
     command: RELEASE_STAGING_COMMAND,
     copyLabel: "Copy local release command",
-    detail: `Staging needs a local Cloudflare release for ${target}.`,
+    detail: `Staging needs a local publish for ${target}.`,
     fallbackLabel: "GitHub dispatch fallback",
     kind: "local-cloudflare",
     label: "Local Cloudflare release",
     openLabel: "Open GitHub fallback",
     script: RELEASE_STAGING_SCRIPT,
     waitText:
-      "Run npm run release:staging on this Mac, then recheck. Use GitHub Actions only as a fallback.",
+      "Use Publish Content for article/page-only edits; use Deploy Staging (`npm run release:staging`) when code or static assets changed. Use GitHub Actions only as a fallback.",
   };
 }
 

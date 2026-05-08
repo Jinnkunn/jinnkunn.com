@@ -11,7 +11,8 @@ import {
 import { createNamespacedSecureStorage } from "../../lib/secureStorage";
 import { outboxEnqueue, siteAdminBrowserLogin } from "../../modules/site-admin/tauri";
 import { emitWorkspaceEvent } from "../../shell/workspaceEvents";
-import { maybeSyncAfterWrite } from "./sync-on-write";
+import { markContentPublishSuggested } from "./publish-suggestion";
+import { maybeSyncAfterWrite, targetsD1Write } from "./sync-on-write";
 import type { EditorDiagnostic } from "./editor-diagnostics";
 import {
   cfAccessIdStoreKeyForBase,
@@ -810,6 +811,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
           !path.endsWith("/deploy") &&
           typeof window !== "undefined"
         ) {
+          if (targetsD1Write(path)) {
+            markContentPublishSuggested({ method, path });
+          }
           window.dispatchEvent(new CustomEvent("site-admin:source-mutated", {
             detail: { method, path },
           }));
@@ -853,6 +857,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
         !path.endsWith("/deploy") &&
         typeof window !== "undefined"
       ) {
+        if (targetsD1Write(path)) {
+          markContentPublishSuggested({ method, path });
+        }
         window.dispatchEvent(new CustomEvent("site-admin:source-mutated", {
           detail: { method, path },
         }));

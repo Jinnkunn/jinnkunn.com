@@ -187,6 +187,31 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "PUBLISH_CONTENT_STAGING_COMMAND",
+    "Release panel content-only staging command",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "publish:content:staging",
+    "Tauri release job content-only whitelist",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "publish:content:staging:rollback",
+    "Tauri release job content rollback whitelist",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Code vs Content",
+    "Release panel code/content overlay status",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/publish-suggestion.ts"),
+    "site-admin:content-publish-needed",
+    "Content save suggested publish marker",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
     "LEGACY_RELEASE_PROD_COMMAND",
     "Release panel legacy fallback command",
   );

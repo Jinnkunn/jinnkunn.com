@@ -64,10 +64,91 @@ function cloneStaticRequest(original, targetUrl) {
 }
 
 let staticProtectionPolicyPromise = null;
+let staticProtectionPolicyLoadedAt = 0;
+let staticOverlayManifest = null;
+let staticOverlayManifestLoadedAt = 0;
+const STATIC_OVERLAY_MANIFEST_TTL_MS = 5_000;
+
+function staticOverlayEnabled(env) {
+  return String(env?.STATIC_SHELL_OVERLAY || "") === "1";
+}
+
+function staticOverlayDb(env) {
+  const db = env?.SITE_ADMIN_DB;
+  return db && typeof db.prepare === "function" ? db : null;
+}
+
+async function loadStaticOverlayManifest(env) {
+  if (!staticOverlayEnabled(env)) return null;
+  const db = staticOverlayDb(env);
+  if (!db) return null;
+  const now = Date.now();
+  if (
+    staticOverlayManifest &&
+    now - staticOverlayManifestLoadedAt < STATIC_OVERLAY_MANIFEST_TTL_MS
+  ) {
+    return staticOverlayManifest;
+  }
+  try {
+    const result = await db
+      .prepare("SELECT asset_path FROM static_shell_overlays")
+      .all();
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    staticOverlayManifest = new Set(
+      rows
+        .map((row) => String(row?.asset_path || ""))
+        .filter((assetPath) => assetPath.startsWith("/__static/")),
+    );
+    staticOverlayManifestLoadedAt = now;
+    return staticOverlayManifest;
+  } catch {
+    staticOverlayManifest = new Set();
+    staticOverlayManifestLoadedAt = now;
+    return staticOverlayManifest;
+  }
+}
+
+async function fetchStaticOverlay(env, assetPath) {
+  const manifest = await loadStaticOverlayManifest(env);
+  if (!manifest || !manifest.has(assetPath)) return null;
+  const db = staticOverlayDb(env);
+  if (!db) return null;
+  try {
+    const row = await db
+      .prepare(
+        `SELECT body, content_type, content_sha, updated_at
+           FROM static_shell_overlays
+          WHERE asset_path = ?
+          LIMIT 1`,
+      )
+      .bind(assetPath)
+      .first();
+    if (!row || typeof row.body !== "string") return null;
+    return row;
+  } catch {
+    return null;
+  }
+}
 
 async function loadStaticProtectionPolicy(request, env) {
-  if (!staticProtectionPolicyPromise) {
+  const now = Date.now();
+  if (
+    !staticProtectionPolicyPromise ||
+    now - staticProtectionPolicyLoadedAt >= STATIC_OVERLAY_MANIFEST_TTL_MS
+  ) {
+    staticProtectionPolicyLoadedAt = now;
     staticProtectionPolicyPromise = (async () => {
+      const overlay = await fetchStaticOverlay(
+        env,
+        "/__static/protected-routes-policy.json",
+      );
+      if (overlay?.body) {
+        try {
+          return JSON.parse(overlay.body);
+        } catch {
+          // Fall through to bundled ASSETS.
+        }
+      }
       const policyUrl = new URL(request.url);
       policyUrl.pathname = "/__static/protected-routes-policy.json";
       policyUrl.search = "";
@@ -117,6 +198,24 @@ async function tryServeStaticShell(request, env) {
 
   const assetPaths = staticAssetPathForRoute(pathname);
   for (const assetPath of assetPaths) {
+    const overlay = await fetchStaticOverlay(env, assetPath);
+    if (overlay?.body) {
+      const headers = new Headers();
+      headers.set(
+        "content-type",
+        String(overlay.content_type || "text/html; charset=utf-8"),
+      );
+      headers.set("cache-control", "public, max-age=0, must-revalidate");
+      headers.set("etag", `"${String(overlay.content_sha || "")}"`);
+      headers.set("x-static-shell", "1");
+      headers.set("x-static-shell-path", assetPath);
+      headers.set("x-static-overlay", "1");
+      return new Response(request.method === "HEAD" ? null : overlay.body, {
+        status: 200,
+        headers,
+      });
+    }
+
     const res = await fetchStaticAssetWithRedirects(request, env, assetPath);
     if (!res || !res.ok) continue;
 

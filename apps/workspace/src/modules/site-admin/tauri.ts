@@ -38,7 +38,13 @@ export function siteAdminBrowserLogin(
 export type SiteAdminReleaseScript =
   | "release:staging"
   | "release:prod:from-staging"
-  | "release:prod:from-staging:dry-run";
+  | "release:prod:from-staging:dry-run"
+  | "publish:content:staging"
+  | "publish:content:staging:rollback"
+  | "publish:content:staging:clear"
+  | "publish:content:prod"
+  | "publish:content:prod:rollback"
+  | "publish:content:prod:clear";
 
 export interface SiteAdminReleaseCommandResult {
   command: string;
@@ -91,6 +97,9 @@ export interface SiteAdminReleaseHistoryEntry {
   sha: string;
   branch: string;
   note: string;
+  overlay_snapshot_sha: string;
+  overlay_backup_snapshot_id: string;
+  overlay_rollback_snapshot_id: string;
   rollback_command: string;
 }
 

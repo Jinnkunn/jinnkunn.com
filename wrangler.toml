@@ -60,6 +60,7 @@ NEXTAUTH_URL = "https://staging.jinkunchen.com"
 # Cloudflare Access edge gate — the whole staging site sits behind
 # NextAuth instead.
 STAGING_GATE = "1"
+STATIC_SHELL_OVERLAY = "1"
 
 # Auth mode: legacy keeps the GitHub-OAuth-via-NextAuth + HMAC app-token
 # paths active and skips the Cloudflare Access JWT verification entirely.
@@ -121,6 +122,7 @@ NEXTAUTH_URL = "https://jinkunchen.com"
 # Auth mode: legacy (see staging section above for rationale). CF Access
 # config retained dormant for future re-enable.
 SITE_ADMIN_AUTH_MODE = "legacy"
+STATIC_SHELL_OVERLAY = "1"
 
 CF_ACCESS_TEAM_DOMAIN = "jinnkunn.cloudflareaccess.com"
 CF_ACCESS_AUD = "7ea9df639c8025187658f2020e826a5db0dccd56366f209f7b5f02860802d383"

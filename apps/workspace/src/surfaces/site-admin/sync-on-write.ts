@@ -42,7 +42,7 @@ const D1_WRITE_PATH_PREFIXES = [
   "/api/site-admin/versions", // restore-from-history also writes a new row
 ] as const;
 
-function targetsD1Write(path: string): boolean {
+export function targetsD1Write(path: string): boolean {
   return D1_WRITE_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
