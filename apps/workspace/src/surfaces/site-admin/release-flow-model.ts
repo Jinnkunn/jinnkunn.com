@@ -104,6 +104,8 @@ export type ReleaseActionKind =
   | "noop"
   | "blocked";
 
+export type ReleaseTarget = "staging" | "production";
+
 export interface ReleasePlan {
   detail: string;
   disabled: boolean;
@@ -132,6 +134,7 @@ export interface ReleasePlanInput {
   readyToPromote: boolean;
   stagingOverlaySnapshot: string;
   status: StatusPayload | null;
+  target: ReleaseTarget;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -212,13 +215,35 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
   }
   if (input.contentChanged) {
     return {
-      detail: "Saved website content changed. Publish the staging static overlay only.",
+      detail:
+        input.target === "production"
+          ? "Saved website content changed. Publish staging first, then copy the verified overlay to production."
+          : "Saved website content changed. Publish the staging static overlay only.",
       disabled: false,
       kind: "publish-content-staging",
       label: "Publish Staging Content",
-      reason: "Content changed, publish staging overlay.",
+      reason:
+        input.target === "production"
+          ? "Content changed; staging is the first step."
+          : "Content changed, publish staging overlay.",
       script: PUBLISH_CONTENT_STAGING_SCRIPT,
       tone: "warn",
+    };
+  }
+  const stagingOverlayDiffers =
+    Boolean(input.stagingOverlaySnapshot) &&
+    input.stagingOverlaySnapshot !== input.productionOverlaySnapshot;
+  if (input.target === "staging") {
+    return {
+      detail: stagingOverlayDiffers || !input.productionAlreadyCurrent
+        ? "Staging is current. Switch the target to Staging to Production when you want production to match."
+        : "Staging is current.",
+      disabled: false,
+      kind: "noop",
+      label: "Staging Current",
+      reason: "No staging release work is needed.",
+      script: "",
+      tone: "ok",
     };
   }
   if (input.readyToPromote) {
@@ -232,10 +257,7 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
       tone: "warn",
     };
   }
-  if (
-    input.stagingOverlaySnapshot &&
-    input.stagingOverlaySnapshot !== input.productionOverlaySnapshot
-  ) {
+  if (stagingOverlayDiffers) {
     if (!input.productionCodeMatchesStaging) {
       return {
         detail: "Production must run the same Worker code before copying the staging overlay.",

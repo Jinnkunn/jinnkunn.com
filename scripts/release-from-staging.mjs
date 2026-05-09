@@ -167,10 +167,11 @@ function evaluatePreconditions({ git }) {
   if (git.branch !== "main") {
     reasons.push(`current branch is ${git.branch}, not main`);
   }
-  if (git.dirty) {
+  const dirtyFiles = git.dirty ? readDirtyFiles() : [];
+  if (git.dirty && !isOnlyProductionHistoryDirty(dirtyFiles)) {
     reasons.push("working tree is dirty; commit or stash before promoting");
   }
-  return { ok: reasons.length === 0, reasons };
+  return { ok: reasons.length === 0, reasons, dirtyFiles };
 }
 
 function fail(message) {
@@ -212,6 +213,11 @@ async function main() {
     } else {
       fail(`Preconditions failed:\n  - ${pre.reasons.join("\n  - ")}`);
     }
+  }
+  if (isOnlyProductionHistoryDirty(pre.dirtyFiles)) {
+    console.log(
+      `[release-from-staging] allowing existing production history audit log changes: ${PRODUCTION_HISTORY_PATH}`,
+    );
   }
 
   console.log(`[release-from-staging] reading staging worker ${stagingWorker}…`);

@@ -40,6 +40,8 @@ import {
   RELEASE_PROD_FROM_STAGING_SCRIPT,
   RELEASE_STAGING_COMMAND,
   RELEASE_STAGING_SCRIPT,
+  type ReleasePlan,
+  type ReleaseTarget,
   releaseWorkflowRecovery,
   shortId,
   shortSha,
@@ -56,6 +58,7 @@ import type { StatusPayload } from "./types";
 import { getSiteAdminEnvironment, normalizeString } from "./utils";
 
 const PRODUCTION_RUNBOOK_PATH = "docs/runbooks/production-promotion.md";
+const PRODUCTION_HISTORY_FILE = "docs/runbooks/production-version-history.md";
 const PREFLIGHT_COMMAND = [
   "git switch main",
   "git pull --ff-only",
@@ -89,6 +92,12 @@ type ReleaseCheck = {
   tone: ReleaseTone;
   value: string;
 };
+
+function isOnlyProductionHistoryDirty(files: string[] | undefined): boolean {
+  return Boolean(
+    files?.length && files.every((file) => file === PRODUCTION_HISTORY_FILE),
+  );
+}
 
 interface EnvironmentSnapshot {
   workerName: string;
@@ -260,19 +269,23 @@ function releaseChecks(
   const productionDifferent = previewReady ? preview.productionDifferent : false;
   const localSha = normalizeString(localSource?.sha);
   const stagingCodeSha = normalizeString(previewReady ? preview.staging.codeSha : codeSha);
+  const productionHistoryOnlyDirty = isOnlyProductionHistoryDirty(localSource?.dirty_files);
+  const localDirty = Boolean(localSource?.dirty && !productionHistoryOnlyDirty);
   const localMismatch = Boolean(localSha && stagingCodeSha && localSha !== stagingCodeSha);
   return [
     ...(localSource
       ? [
           {
-            detail: localSource.dirty
+            detail: localDirty
               ? `${localSource.dirty_file_count} local file${localSource.dirty_file_count === 1 ? "" : "s"} must be committed before production promotion.`
               : localMismatch
                 ? `Staging is ${shortSha(stagingCodeSha)}, but local release source is ${shortSha(localSha)}. Deploy staging first.`
+                : productionHistoryOnlyDirty
+                  ? "Only the production version history audit log changed; release jobs can continue."
                 : "Local release source matches staging.",
             label: "Local source",
-            tone: localSource.dirty || localMismatch ? "blocked" : "ok",
-            value: localSource.dirty ? "Dirty" : shortSha(localSha),
+            tone: localDirty || localMismatch ? "blocked" : productionHistoryOnlyDirty ? "warn" : "ok",
+            value: localDirty ? "Dirty" : localMismatch ? "Mismatch" : productionHistoryOnlyDirty ? "History log" : shortSha(localSha),
           } satisfies ReleaseCheck,
         ]
       : []),
@@ -526,6 +539,8 @@ export function ReleasePanel() {
   const [error, setError] = useState("");
   const [job, setJob] = useState<SiteAdminReleaseJobState | null>(null);
   const [jobLog, setJobLog] = useState<ReleaseLogLine[]>([]);
+  const [releaseTarget, setReleaseTarget] = useState<ReleaseTarget>("production");
+  const [pendingProductionContinuation, setPendingProductionContinuation] = useState(false);
   const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
   const [showProductionContentConfirm, setShowProductionContentConfirm] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
@@ -551,7 +566,8 @@ export function ReleasePanel() {
   const stagingCodeSha = normalizeString(
     preview?.ok === true ? preview.staging.codeSha : status?.source?.codeSha,
   );
-  const localDirty = Boolean(localSource?.dirty);
+  const productionHistoryOnlyDirty = isOnlyProductionHistoryDirty(localSource?.dirty_files);
+  const localDirty = Boolean(localSource?.dirty && !productionHistoryOnlyDirty);
   const localStagingMismatch = Boolean(
     isStaging &&
       localSource &&
@@ -605,6 +621,7 @@ export function ReleasePanel() {
     readyToPromote,
     stagingOverlaySnapshot,
     status,
+    target: releaseTarget,
   });
 
   const loadHistory = useCallback(async () => {
@@ -693,9 +710,16 @@ export function ReleasePanel() {
       setJobLog((current) => appendLogLine(current, payload));
       if (payload.state.status !== "running") {
         dispatchReleaseState({ kind: "idle" });
+        const shouldContinueToProduction =
+          releaseTarget === "production" &&
+          payload.state.status === "succeeded" &&
+          (payload.state.script === RELEASE_STAGING_SCRIPT ||
+            payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT);
         const shouldOfferProductionContent =
           payload.state.status === "succeeded" &&
+          releaseTarget === "production" &&
           payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT;
+        if (shouldContinueToProduction) setPendingProductionContinuation(true);
         void loadStatus({ silent: true });
         void loadHistory().then(() => {
           if (shouldOfferProductionContent) setShowProductionContentConfirm(true);
@@ -703,11 +727,13 @@ export function ReleasePanel() {
         void loadLocalSource();
         if (payload.state.status === "succeeded") {
           if (
+            payload.state.script === RELEASE_STAGING_SCRIPT ||
             payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT ||
             payload.state.script === PUBLISH_CONTENT_PROD_SCRIPT ||
             payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
           ) {
             clearContentPublishSuggestion();
+            setContentSuggestion(null);
           }
           if (payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {
             setShowProductionContentConfirm(false);
@@ -731,7 +757,26 @@ export function ReleasePanel() {
       cancelled = true;
       unlisten?.();
     };
-  }, [loadHistory, loadLocalSource, loadStatus]);
+  }, [loadHistory, loadLocalSource, loadStatus, releaseTarget]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- completion state opens the next explicit confirmation after refreshed status resolves */
+  useEffect(() => {
+    if (!pendingProductionContinuation || job?.status === "running") return;
+    if (smartPlan.kind === "promote-production-code") {
+      setShowPromoteConfirm(true);
+      setPendingProductionContinuation(false);
+      return;
+    }
+    if (smartPlan.kind === "publish-content-production-from-staging") {
+      setShowProductionContentConfirm(true);
+      setPendingProductionContinuation(false);
+      return;
+    }
+    if (smartPlan.kind === "noop" || smartPlan.kind === "blocked") {
+      setPendingProductionContinuation(false);
+    }
+  }, [job?.status, pendingProductionContinuation, smartPlan.kind]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const copyText = useCallback(
     async (label: string, text: string) => {
@@ -766,6 +811,7 @@ export function ReleasePanel() {
       setJobLog([]);
       setShowPromoteConfirm(false);
       setShowProductionContentConfirm(false);
+      setPendingProductionContinuation(false);
       setRollbackCandidate(null);
       try {
         const next = await siteAdminStartReleaseJob(script);
@@ -853,6 +899,11 @@ export function ReleasePanel() {
           <span>Release Center</span>
           <h1>Smart Release</h1>
           <p>{smartPlan.reason} {smartPlan.detail}</p>
+          <ReleaseTargetControl
+            disabled={job?.status === "running"}
+            value={releaseTarget}
+            onChange={setReleaseTarget}
+          />
         </div>
         <div className="release-center__hero-actions">
           <span
@@ -897,6 +948,17 @@ export function ReleasePanel() {
       </header>
 
       {error ? <div className="release-panel__error">{error}</div> : null}
+
+      <ReleaseEnvironmentNotice
+        contentChanged={Boolean(contentSuggestion)}
+        pendingProductionContinuation={pendingProductionContinuation}
+        plan={smartPlan}
+        preview={preview}
+        productionCodeMatchesStaging={productionCodeMatchesStaging}
+        productionSnapshot={productionOverlaySnapshot}
+        releaseTarget={releaseTarget}
+        stagingSnapshot={stagingOverlaySnapshot}
+      />
 
       <ReleaseFlowMap
         isStaging={isStaging}
@@ -1086,6 +1148,108 @@ export function ReleasePanel() {
       </footer>
     </section>
   );
+}
+
+function ReleaseTargetControl({
+  disabled,
+  onChange,
+  value,
+}: {
+  disabled: boolean;
+  onChange: (target: ReleaseTarget) => void;
+  value: ReleaseTarget;
+}) {
+  return (
+    <div className="release-center__target" aria-label="Release target">
+      <button
+        aria-pressed={value === "staging"}
+        disabled={disabled}
+        type="button"
+        onClick={() => onChange("staging")}
+      >
+        Staging only
+      </button>
+      <button
+        aria-pressed={value === "production"}
+        disabled={disabled}
+        type="button"
+        onClick={() => onChange("production")}
+      >
+        Staging to Production
+      </button>
+    </div>
+  );
+}
+
+function ReleaseEnvironmentNotice({
+  contentChanged,
+  pendingProductionContinuation,
+  plan,
+  preview,
+  productionCodeMatchesStaging,
+  productionSnapshot,
+  releaseTarget,
+  stagingSnapshot,
+}: {
+  contentChanged: boolean;
+  pendingProductionContinuation: boolean;
+  plan: ReleasePlan;
+  preview: PromotePreview | null;
+  productionCodeMatchesStaging: boolean;
+  productionSnapshot: string;
+  releaseTarget: ReleaseTarget;
+  stagingSnapshot: string;
+}) {
+  const overlayDiffers = Boolean(stagingSnapshot) && stagingSnapshot !== productionSnapshot;
+  if (pendingProductionContinuation) {
+    return (
+      <section className="release-center__notice" data-tone="warn" aria-label="Production continuation">
+        <strong>Production is next</strong>
+        <span>
+          The staging step finished. Confirm the production step so production uses the same
+          candidate instead of staying behind staging.
+        </span>
+      </section>
+    );
+  }
+  if (releaseTarget === "staging" && preview?.ok === true && preview.productionDifferent) {
+    return (
+      <section className="release-center__notice" data-tone="muted" aria-label="Staging-only release target">
+        <strong>Staging only selected</strong>
+        <span>
+          Staging can be current while production still differs. Switch to Staging to Production
+          when public pages should match.
+        </span>
+      </section>
+    );
+  }
+  if (releaseTarget === "production" && contentChanged) {
+    return (
+      <section className="release-center__notice" data-tone="warn" aria-label="Content release route">
+        <strong>Content release is two step</strong>
+        <span>
+          Smart Release publishes the staging overlay first, then asks before copying that same
+          verified content to production.
+        </span>
+      </section>
+    );
+  }
+  if (releaseTarget === "production" && preview?.ok === true && preview.productionDifferent) {
+    const stagingCode = shortSha(preview.staging.codeSha);
+    const productionCode = preview.production ? shortSha(preview.production.codeSha) : "none";
+    const detail = !productionCodeMatchesStaging
+      ? `Staging is ${stagingCode}; production is ${productionCode}. Public pages can differ until production is promoted.`
+      : overlayDiffers
+        ? `Worker code matches, but production content overlay is behind staging. Copy the verified staging overlay next.`
+        : "Production still differs from staging. Refresh if a release just finished.";
+    return (
+      <section className="release-center__notice" data-tone="warn" aria-label="Production behind staging">
+        <strong>Production behind staging</strong>
+        <span>{detail} Next: {plan.label}.</span>
+      </section>
+    );
+  }
+  return null;
 }
 
 function ReleaseFlowMap({

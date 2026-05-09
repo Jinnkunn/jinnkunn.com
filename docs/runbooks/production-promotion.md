@@ -126,7 +126,9 @@ overlay from shadowing newly deployed HTML or referencing a stale build id.
 2. Confirm the editor's saved content is what you want in production
    (e.g. via the Tauri editor acceptance checklist below).
 3. Open **Site Admin → Release**. The top area should only require **Smart
-   Release** and **Refresh** for normal work.
+   Release**, the release target, and **Refresh** for normal work. Use
+   **Staging to Production** when public pages should match; use **Staging only**
+   for preview-only checks.
 4. Click **Smart Release**:
    - content edits run `npm run publish:content:staging`;
    - code/static asset changes run `npm run release:staging`;
@@ -137,6 +139,8 @@ overlay from shadowing newly deployed HTML or referencing a stale build id.
    - no-op refreshes status and does not build.
    - The Code vs Content panel shows Local Code, Staging Code, Production Code,
      Staging Overlay, and Production Overlay.
+   - If production is behind staging, the panel explains the mismatch and names
+     the next Smart Release step.
 5. Keep the panel open while it runs. The activity stream shows the current
    phase, stdout/stderr tail, success/failure state, and a cancel action.
 6. After release, review **Recent Releases**. Production entries expose copyable
@@ -146,6 +150,10 @@ overlay from shadowing newly deployed HTML or referencing a stale build id.
 GitHub Dispatch is intentionally labeled as a fallback in the app. Routine
 staging and production publishing should use the local Cloudflare path so normal
 content/calendar releases do not consume GitHub Actions minutes.
+
+`docs/runbooks/production-version-history.md` is an audit log written by
+production promotion. If that is the only dirty file, the local production
+promotion path treats it as safe to continue.
 
 If the button is greyed out:
 - "Staging stale" — staging hasn't been re-released since

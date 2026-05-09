@@ -15,6 +15,7 @@ test("release plan model: exposes smart release action kinds and scripts", async
   assert.match(source, /"publish-content-production-from-staging"/);
   assert.match(source, /"noop"/);
   assert.match(source, /"blocked"/);
+  assert.match(source, /export type ReleaseTarget = "staging" \| "production"/);
   assert.match(source, /PUBLISH_CONTENT_STAGING_SCRIPT/);
   assert.match(source, /PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT/);
   assert.match(source, /RELEASE_STAGING_SCRIPT/);
@@ -32,7 +33,8 @@ test("release plan model: prioritizes blockers, staging code, content, productio
   assert.match(source, /const stagingBehind =/);
   assert.match(source, /if \(stagingBehind\)/);
   assert.match(source, /if \(input\.contentChanged\)/);
+  assert.match(source, /if \(input\.target === "staging"\)/);
   assert.match(source, /if \(input\.readyToPromote\)/);
-  assert.match(source, /input\.stagingOverlaySnapshot !== input\.productionOverlaySnapshot/);
+  assert.match(source, /const stagingOverlayDiffers =/);
   assert.match(source, /if \(input\.productionAlreadyCurrent\)/);
 });

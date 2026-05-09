@@ -10,6 +10,8 @@ release.
 
 | Snapshot at (UTC) | Version ID | Deployment ID | Code SHA | Branch | Note |
 | --- | --- | --- | --- | --- | --- |
+| 2026-05-08 21:36:20 | `9a9a11c9-cff3-4a0c-9205-e4c23960a544` | `572afe3e-1066-425e-b4ef-254c69e74d4a` | `b85ace3f4ba9` | main | Promoted b85ace3f4ba9 from staging |
+| 2026-05-08 21:35:20 | `c84b7b38-ba8e-4953-a0c8-f3021da17b75` | `ef922fcb-4aa3-4c67-9e08-8781f59226a4` | `70b43b96168f` | main | Pre-promotion baseline before b85ace3f4ba9 |
 | 2026-05-07 23:02:01 | `c84b7b38-ba8e-4953-a0c8-f3021da17b75` | `ef922fcb-4aa3-4c67-9e08-8781f59226a4` | `70b43b96168f` | main | Promoted 70b43b96168f from staging |
 | 2026-05-07 23:01:01 | `42d19310-c696-4b31-8539-71984d2c2b65` | `2902e16b-4a39-4eb0-aa18-7024680513c2` | `550caa850aa7` | main | Pre-promotion baseline before 70b43b96168f |
 | 2026-05-03 18:31:29 | `42d19310-c696-4b31-8539-71984d2c2b65` | `2902e16b-4a39-4eb0-aa18-7024680513c2` | `550caa850aa7` | main | Promoted 550caa850aa7 from staging |
