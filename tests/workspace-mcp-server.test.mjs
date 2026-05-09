@@ -21,11 +21,25 @@ function call(server, name, args = {}) {
 async function withServer(fn) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-mcp-"));
   const dbPath = path.join(dir, "workspace.db");
+  const previousSettingsPath = process.env.WORKSPACE_MCP_SETTINGS_PATH;
+  const previousAuditPath = process.env.WORKSPACE_MCP_AUDIT_PATH;
+  process.env.WORKSPACE_MCP_SETTINGS_PATH = path.join(dir, "mcp-settings.json");
+  process.env.WORKSPACE_MCP_AUDIT_PATH = path.join(dir, "mcp-audit.jsonl");
   const server = createWorkspaceMcpServer({ dbPath });
   try {
     await fn(server, dbPath);
   } finally {
     server.close();
+    if (previousSettingsPath === undefined) {
+      delete process.env.WORKSPACE_MCP_SETTINGS_PATH;
+    } else {
+      process.env.WORKSPACE_MCP_SETTINGS_PATH = previousSettingsPath;
+    }
+    if (previousAuditPath === undefined) {
+      delete process.env.WORKSPACE_MCP_AUDIT_PATH;
+    } else {
+      process.env.WORKSPACE_MCP_AUDIT_PATH = previousAuditPath;
+    }
     await fs.rm(dir, { recursive: true, force: true });
   }
 }
@@ -48,6 +62,32 @@ test("workspace MCP: lists tools and exposes context resource", async () => {
     const context = JSON.parse(resource.result.contents[0].text);
     assert.equal(context.app, "Jinnkunn Workspace");
     assert.equal(context.counts.notes, 0);
+  });
+});
+
+test("workspace MCP: shared settings can disable writes", async () => {
+  await withServer(async (server) => {
+    await fs.writeFile(
+      process.env.WORKSPACE_MCP_SETTINGS_PATH,
+      JSON.stringify({
+        enabled: true,
+        writeMode: "read-only",
+        allowNotesWrite: true,
+        allowTodosWrite: true,
+        allowProjectsWrite: true,
+        allowCalendarWrite: false,
+      }),
+    );
+    const response = server.handle({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "notes.create_page", arguments: { title: "Blocked" } },
+    });
+    assert.match(response.error.message, /read-only/i);
+
+    const context = call(server, "workspace.get_context", { includeRecent: false });
+    assert.equal(context.writeMode, "read-only");
   });
 });
 

@@ -23,6 +23,13 @@ By default the server opens the same local database as the Tauri app:
 ~/Library/Application Support/com.jinnkunn.workspace/workspace.db
 ```
 
+It also reads settings and writes audit entries in the same app data folder:
+
+```text
+~/Library/Application Support/com.jinnkunn.workspace/mcp-settings.json
+~/Library/Application Support/com.jinnkunn.workspace/mcp-audit.jsonl
+```
+
 Override it for testing or sandboxed clients:
 
 ```bash
@@ -52,8 +59,24 @@ Use stdio transport and point the command at this repo:
   state but cannot deploy staging or promote production.
 - Local write tools support `dryRun: true` and return the row that would be
   created or changed.
-- Set `WORKSPACE_MCP_READONLY=1` to block all write tools.
-- Write tools append local audit entries to `.cache/workspace-mcp/audit.jsonl`.
+- Workspace Settings → AI Access writes `mcp-settings.json`, which the MCP
+  server reads at tool-call time.
+- Set `WORKSPACE_MCP_READONLY=1` to force read-only mode regardless of the
+  saved Workspace setting.
+- Write tools append local audit entries to `mcp-audit.jsonl`.
+
+Default permissions:
+
+```json
+{
+  "enabled": true,
+  "writeMode": "local-write",
+  "allowNotesWrite": true,
+  "allowTodosWrite": true,
+  "allowProjectsWrite": true,
+  "allowCalendarWrite": false
+}
+```
 
 ## Tools
 

@@ -311,6 +311,21 @@ function main() {
     "Workspace MCP keeps Site Admin release read-only",
   );
   assertIncludes(
+    read("scripts/workspace-mcp-server.mjs"),
+    "resolveWorkspaceMcpSettingsPath",
+    "Workspace MCP reads shared app settings",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/SettingsWindow.tsx"),
+    "AI Access",
+    "Workspace settings exposes MCP controls",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/mcp.rs"),
+    "workspace_mcp_status",
+    "Tauri exposes Workspace MCP status",
+  );
+  assertIncludes(
     read("package.json"),
     "\"workspace:mcp\"",
     "Root package exposes Workspace MCP server",

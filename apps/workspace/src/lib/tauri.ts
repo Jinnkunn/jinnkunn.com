@@ -42,3 +42,56 @@ export function secureStoreGet(key: string): Promise<string | null> {
 export function secureStoreDelete(key: string): Promise<void> {
   return invoke("secure_store_delete", { key });
 }
+
+export type WorkspaceMcpWriteMode = "read-only" | "local-write";
+
+export interface WorkspaceMcpSettings {
+  enabled: boolean;
+  writeMode: WorkspaceMcpWriteMode;
+  allowNotesWrite: boolean;
+  allowTodosWrite: boolean;
+  allowProjectsWrite: boolean;
+  allowCalendarWrite: boolean;
+}
+
+export interface WorkspaceMcpStatus {
+  ready: boolean;
+  dbPath: string;
+  settingsPath: string;
+  auditPath: string;
+  serverCommand: string;
+  serverArgs: string[];
+  settings: WorkspaceMcpSettings;
+  toolCount: number;
+  writableToolCount: number;
+  recentAuditCount: number;
+}
+
+export interface WorkspaceMcpAuditEntry {
+  at: string | null;
+  tool: string | null;
+  id: string | null;
+  title: string | null;
+  summary: string;
+  raw: unknown;
+}
+
+export function workspaceMcpStatus(): Promise<WorkspaceMcpStatus> {
+  return invoke("workspace_mcp_status");
+}
+
+export function workspaceMcpSettingsGet(): Promise<WorkspaceMcpSettings> {
+  return invoke("workspace_mcp_settings_get");
+}
+
+export function workspaceMcpSettingsUpdate(
+  settings: WorkspaceMcpSettings,
+): Promise<WorkspaceMcpSettings> {
+  return invoke("workspace_mcp_settings_update", { settings });
+}
+
+export function workspaceMcpAuditRecent(
+  limit = 12,
+): Promise<WorkspaceMcpAuditEntry[]> {
+  return invoke("workspace_mcp_audit_recent", { limit });
+}
