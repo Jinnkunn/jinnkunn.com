@@ -7,6 +7,8 @@ use tauri::Manager;
 const SETTINGS_FILENAME: &str = "mcp-settings.json";
 const AUDIT_FILENAME: &str = "mcp-audit.jsonl";
 const CONFIRMATIONS_FILENAME: &str = "mcp-confirmations.json";
+const CONTENT_SUGGESTION_FILENAME: &str = "site-admin-content-publish-suggestion.json";
+const FALLBACK_MCP_TOOL_COUNT: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -65,6 +67,7 @@ pub struct WorkspaceMcpStatus {
     pub settings_path: String,
     pub audit_path: String,
     pub confirmations_path: String,
+    pub content_publish_suggestion_path: String,
     pub server_command: String,
     pub server_args: Vec<String>,
     pub settings: WorkspaceMcpSettings,
@@ -72,6 +75,7 @@ pub struct WorkspaceMcpStatus {
     pub writable_tool_count: usize,
     pub recent_audit_count: usize,
     pub pending_confirmation_count: usize,
+    pub content_publish_suggestion: Option<WorkspaceMcpContentPublishSuggestion>,
 }
 
 #[derive(Debug, Serialize)]
@@ -100,6 +104,15 @@ pub struct WorkspaceMcpConfirmation {
     pub args: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceMcpContentPublishSuggestion {
+    pub at_ms: u64,
+    pub method: String,
+    pub path: String,
+    pub source: Option<String>,
+}
+
 fn app_data_file(app: &tauri::AppHandle, filename: &str) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -120,6 +133,10 @@ fn audit_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 fn confirmations_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app_data_file(app, CONFIRMATIONS_FILENAME)
+}
+
+fn content_publish_suggestion_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app_data_file(app, CONTENT_SUGGESTION_FILENAME)
 }
 
 fn read_settings_from_path(path: &PathBuf) -> Result<WorkspaceMcpSettings, String> {
@@ -259,12 +276,79 @@ fn write_confirmations_to_path(
     })
 }
 
+fn workspace_mcp_script_path() -> Option<PathBuf> {
+    let explicit = std::env::var("WORKSPACE_MCP_SERVER_PATH").ok();
+    if let Some(path) = explicit {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    let cwd = std::env::current_dir().ok()?;
+    let candidate = cwd.join("scripts").join("workspace-mcp-server.mjs");
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn workspace_mcp_tool_count() -> usize {
+    let Some(path) = workspace_mcp_script_path() else {
+        return FALLBACK_MCP_TOOL_COUNT;
+    };
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return FALLBACK_MCP_TOOL_COUNT;
+    };
+    let Some(start) = raw.find("const toolSchemas = [") else {
+        return FALLBACK_MCP_TOOL_COUNT;
+    };
+    let tail = &raw[start..];
+    let Some(end) = tail.find("];\n\nexport function workspaceMcpToolCount") else {
+        return FALLBACK_MCP_TOOL_COUNT;
+    };
+    let section = &tail[..end];
+    let count = section
+        .lines()
+        .filter(|line| line.trim_start().starts_with("name: \""))
+        .count();
+    if count > 0 {
+        count
+    } else {
+        FALLBACK_MCP_TOOL_COUNT
+    }
+}
+
+fn read_content_publish_suggestion_from_path(
+    path: &PathBuf,
+) -> Result<Option<WorkspaceMcpContentPublishSuggestion>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(path).map_err(|err| {
+        format!(
+            "failed to read MCP content publish suggestion {}: {err}",
+            path.display()
+        )
+    })?;
+    let parsed = serde_json::from_str::<WorkspaceMcpContentPublishSuggestion>(&raw).map_err(
+        |err| {
+            format!(
+                "failed to parse MCP content publish suggestion {}: {err}",
+                path.display()
+            )
+        },
+    )?;
+    Ok(Some(parsed))
+}
+
 #[tauri::command]
 pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus, String> {
     let db_path = local_db::db_path(&app)?;
     let settings_path = settings_path(&app)?;
     let audit_path = audit_path(&app)?;
     let confirmations_path = confirmations_path(&app)?;
+    let content_publish_suggestion_path = content_publish_suggestion_path(&app)?;
     let settings = read_settings_from_path(&settings_path)?;
     let recent_audit_count = read_recent_audit(&app, 80)?.len();
     let pending_confirmation_count = read_confirmations_from_path(&confirmations_path)?
@@ -292,13 +376,17 @@ pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus,
         settings_path: settings_path.display().to_string(),
         audit_path: audit_path.display().to_string(),
         confirmations_path: confirmations_path.display().to_string(),
+        content_publish_suggestion_path: content_publish_suggestion_path.display().to_string(),
         server_command: "npm".to_string(),
         server_args: vec!["run".to_string(), "workspace:mcp".to_string()],
         settings,
-        tool_count: 16,
+        tool_count: workspace_mcp_tool_count(),
         writable_tool_count,
         recent_audit_count,
         pending_confirmation_count,
+        content_publish_suggestion: read_content_publish_suggestion_from_path(
+            &content_publish_suggestion_path,
+        )?,
     })
 }
 
@@ -365,4 +453,26 @@ pub fn workspace_mcp_confirmation_decide(
     let updated = confirmations[index].clone();
     write_confirmations_to_path(&path, &confirmations)?;
     Ok(updated)
+}
+
+#[tauri::command]
+pub fn workspace_mcp_content_publish_suggestion_get(
+    app: tauri::AppHandle,
+) -> Result<Option<WorkspaceMcpContentPublishSuggestion>, String> {
+    read_content_publish_suggestion_from_path(&content_publish_suggestion_path(&app)?)
+}
+
+#[tauri::command]
+pub fn workspace_mcp_content_publish_suggestion_clear(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let path = content_publish_suggestion_path(&app)?;
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "failed to clear MCP content publish suggestion {}: {err}",
+            path.display()
+        )),
+    }
 }

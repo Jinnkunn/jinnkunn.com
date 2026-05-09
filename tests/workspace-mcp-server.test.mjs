@@ -4,7 +4,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createWorkspaceMcpServer } from "../scripts/workspace-mcp-server.mjs";
+import {
+  createWorkspaceMcpServer,
+  decideWorkspaceMcpConfirmation,
+  listWorkspaceMcpConfirmations,
+  workspaceMcpToolCount,
+} from "../scripts/workspace-mcp-server.mjs";
 
 function call(server, name, args = {}) {
   const response = server.handle({
@@ -25,6 +30,7 @@ async function withServer(fn) {
   const previousAuditPath = process.env.WORKSPACE_MCP_AUDIT_PATH;
   const previousConfirmationsPath = process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH;
   const previousContentRoot = process.env.WORKSPACE_MCP_CONTENT_ROOT;
+  const previousSuggestionPath = process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH;
   const settingsPath = path.join(dir, "mcp-settings.json");
   const confirmationsPath = path.join(dir, "mcp-confirmations.json");
   const contentRoot = path.join(dir, "content");
@@ -32,6 +38,10 @@ async function withServer(fn) {
   process.env.WORKSPACE_MCP_AUDIT_PATH = path.join(dir, "mcp-audit.jsonl");
   process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH = confirmationsPath;
   process.env.WORKSPACE_MCP_CONTENT_ROOT = contentRoot;
+  process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH = path.join(
+    dir,
+    "site-admin-content-publish-suggestion.json",
+  );
   const server = createWorkspaceMcpServer({ dbPath });
   try {
     await fs.writeFile(
@@ -70,6 +80,11 @@ async function withServer(fn) {
     } else {
       process.env.WORKSPACE_MCP_CONTENT_ROOT = previousContentRoot;
     }
+    if (previousSuggestionPath === undefined) {
+      delete process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH;
+    } else {
+      process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH = previousSuggestionPath;
+    }
     await fs.rm(dir, { recursive: true, force: true });
   }
 }
@@ -77,7 +92,8 @@ async function withServer(fn) {
 test("workspace MCP: lists tools and exposes context resource", async () => {
   await withServer(async (server) => {
     const tools = server.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
-    assert.equal(tools.result.tools.length, 16);
+    assert.equal(tools.result.tools.length, workspaceMcpToolCount());
+    assert.equal(tools.result.tools.length, 20);
     assert.deepEqual(
       tools.result.tools.map((tool) => tool.name).slice(0, 4),
       ["workspace.get_context", "workspace.search", "notes.get_page", "notes.create_page"],
@@ -147,11 +163,9 @@ test("workspace MCP: write confirmations gate mutations until approved", async (
     assert.equal(pending.status, "pending");
     assert.equal(call(server, "workspace.get_context", { includeRecent: false }).counts.notes, 0);
 
-    const raw = JSON.parse(await fs.readFile(process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH, "utf8"));
-    assert.equal(raw.length, 1);
-    raw[0].status = "approved";
-    raw[0].decidedAt = new Date().toISOString();
-    await fs.writeFile(process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH, JSON.stringify(raw, null, 2));
+    assert.equal(listWorkspaceMcpConfirmations("pending").length, 1);
+    const approved = decideWorkspaceMcpConfirmation(pending.confirmationId, "approve");
+    assert.equal(approved.status, "approved");
 
     const created = call(server, "notes.create_page", {
       title: "Needs Approval",
@@ -227,6 +241,7 @@ test("workspace MCP: creates site-admin pages in local content", async () => {
       title: "Yiling",
       description: "A hometown page.",
       bodyMdx: "Yichang, Yiling, and the Three Gorges Dam.",
+      position: "start",
     }).page;
     assert.equal(page.slug, "yilin");
     assert.equal(page.href, "/yilin");
@@ -242,5 +257,72 @@ test("workspace MCP: creates site-admin pages in local content", async () => {
       await fs.readFile(path.join(process.env.WORKSPACE_MCP_CONTENT_ROOT, "page-tree.json"), "utf8"),
     );
     assert.deepEqual(tree.slugs, ["yilin"]);
+
+    const suggestion = JSON.parse(
+      await fs.readFile(process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH, "utf8"),
+    );
+    assert.equal(suggestion.source, "mcp");
+    assert.equal(suggestion.path, "/api/site-admin/pages");
+  });
+});
+
+test("workspace MCP: lists, gets, updates, reorders, and deletes site-admin pages", async () => {
+  await withServer(async (server) => {
+    call(server, "siteAdmin.create_page", {
+      slug: "home",
+      title: "Home",
+      bodyMdx: "Root page",
+    });
+    call(server, "siteAdmin.create_page", {
+      slug: "child",
+      parentSlug: "home",
+      title: "Child",
+      bodyMdx: "Child body",
+    });
+
+    const listed = call(server, "siteAdmin.list_pages");
+    assert.deepEqual(listed.pages.map((page) => page.slug), ["home", "home/child"]);
+
+    const child = call(server, "siteAdmin.get_page", { slug: "home/child" }).page;
+    assert.equal(child.title, "Child");
+    assert.match(child.source, /Child body/);
+
+    const updated = call(server, "siteAdmin.update_page", {
+      slug: "home/child",
+      title: "Updated Child",
+      bodyMdx: "Updated body",
+      position: "start",
+    }).page;
+    assert.equal(updated.title, "Updated Child");
+    assert.notEqual(updated.sourceSha, child.sourceSha);
+    assert.match(
+      await fs.readFile(
+        path.join(process.env.WORKSPACE_MCP_CONTENT_ROOT, "pages", "home", "child.mdx"),
+        "utf8",
+      ),
+      /Updated body/,
+    );
+
+    const deleteDryRun = call(server, "siteAdmin.delete_page", {
+      slug: "home/child",
+      dryRun: true,
+    });
+    assert.equal(deleteDryRun.dryRun, true);
+    assert.match(deleteDryRun.wouldChange.diffPreview, /home\/child.mdx/);
+
+    const blocked = server.handle({
+      jsonrpc: "2.0",
+      id: 9,
+      method: "tools/call",
+      params: { name: "siteAdmin.delete_page", arguments: { slug: "home" } },
+    });
+    assert.match(blocked.error.message, /PAGE_HAS_CHILDREN/);
+
+    const deleted = call(server, "siteAdmin.delete_page", {
+      slug: "home",
+      cascade: true,
+    });
+    assert.deepEqual(deleted.deleted, ["home", "home/child"]);
+    assert.equal(call(server, "siteAdmin.list_pages").count, 0);
   });
 });

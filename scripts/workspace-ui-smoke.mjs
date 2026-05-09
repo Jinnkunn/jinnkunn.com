@@ -312,6 +312,16 @@ function main() {
   );
   assertIncludes(
     read("scripts/workspace-mcp-server.mjs"),
+    "siteAdmin.update_page",
+    "Workspace MCP exposes guarded Site Admin page updates",
+  );
+  assertIncludes(
+    read("scripts/workspace-mcp-server.mjs"),
+    "siteAdmin.delete_page",
+    "Workspace MCP exposes guarded Site Admin page deletion",
+  );
+  assertIncludes(
+    read("scripts/workspace-mcp-server.mjs"),
     "resolveWorkspaceMcpSettingsPath",
     "Workspace MCP reads shared app settings",
   );
@@ -346,6 +356,16 @@ function main() {
     "Tauri can approve or reject MCP confirmations",
   );
   assertIncludes(
+    read("apps/workspace/src-tauri/src/mcp.rs"),
+    "workspace_mcp_tool_count",
+    "Tauri computes MCP tool count from the server schema",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "workspaceMcpContentPublishSuggestionGet",
+    "Release Center reads MCP content publish suggestions",
+  );
+  assertIncludes(
     read("apps/workspace/src-tauri/src/secrets.rs"),
     "WORKSPACE_SECRET_BACKEND",
     "Workspace credential backend can be overridden",
@@ -364,6 +384,11 @@ function main() {
     read("package.json"),
     "\"workspace:mcp\"",
     "Root package exposes Workspace MCP server",
+  );
+  assertIncludes(
+    read("package.json"),
+    "\"workspace:mcp:confirmations\"",
+    "Root package exposes headless MCP confirmation listing",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),

@@ -91,6 +91,19 @@ function previewSnippet(value: unknown): string {
   return "";
 }
 
+function previewDetail(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  const detail =
+    typeof record.diffPreview === "string"
+      ? record.diffPreview
+      : typeof record.sourcePreview === "string"
+        ? record.sourcePreview
+        : "";
+  if (!detail.trim()) return "";
+  return detail.length > 1_800 ? `${detail.slice(0, 1_800).trimEnd()}\n...` : detail;
+}
+
 function ToggleSwitch({
   checked,
   disabled,
@@ -226,11 +239,15 @@ function McpConfirmationsSection({
         <div className="settings-ai-confirmations__list">
           {confirmations.map((entry) => {
             const snippet = previewSnippet(entry.preview);
+            const detail = previewDetail(entry.preview);
             return (
               <div className="settings-ai-confirmation-row" key={entry.id}>
                 <span className="settings-ai-confirmation-row__body">
                   <strong>{entry.summary}</strong>
                   <small>{snippet ? `${entry.tool} · ${snippet}` : entry.tool}</small>
+                  {detail ? (
+                    <pre className="settings-ai-confirmation-row__preview">{detail}</pre>
+                  ) : null}
                 </span>
                 <span className="settings-ai-confirmation-row__actions">
                   <button
