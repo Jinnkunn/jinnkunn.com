@@ -39,6 +39,8 @@ export type SiteAdminReleaseScript =
   | "release:staging"
   | "release:prod:from-staging"
   | "release:prod:from-staging:dry-run"
+  | "release:status:json"
+  | "release:status:staging:json"
   | "publish:content:staging"
   | "publish:content:staging:rollback"
   | "publish:content:staging:clear"

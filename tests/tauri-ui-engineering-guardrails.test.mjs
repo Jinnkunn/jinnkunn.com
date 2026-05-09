@@ -785,11 +785,14 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Smart Release/);
   assert.match(releasePanel, /ReleaseTargetControl/);
   assert.match(releasePanel, /ReleaseEnvironmentNotice/);
+  assert.match(releasePanel, /ReleaseStepper/);
+  assert.match(releasePanel, /RouteParityPanel/);
   assert.match(releasePanel, /Production behind staging/);
   assert.match(releasePanel, /ProductionContentConfirmPanel/);
   assert.match(releasePanel, /Recovery \/ Advanced/);
   assert.match(releasePanel, /clearContentPublishSuggestion/);
   assert.match(releasePanel, /setContentSuggestion\(null\)/);
+  assert.match(releasePanel, /release:status:json/);
   assert.match(publishButton, /Recheck/);
   assert.match(publishButton, /parseDeployResponseSummary/);
   assert.match(publishButton, /GitHub Actions fallback queued for staging/);

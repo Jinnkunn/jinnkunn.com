@@ -207,6 +207,16 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "RouteParityPanel",
+    "Release panel route parity check",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "ReleaseStepper",
+    "Release panel stepper flow",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
     "PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND",
     "Release panel production content from staging command",
   );
@@ -224,6 +234,11 @@ function main() {
     read("apps/workspace/src-tauri/src/site_admin.rs"),
     "publish:content:prod:from-staging",
     "Tauri release job production content copy whitelist",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "release:status:json",
+    "Tauri release live status whitelist",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),

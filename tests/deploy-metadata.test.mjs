@@ -97,13 +97,19 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
 });
 
 test("smart release CLI and package scripts expose content production copy", async () => {
-  const [releaseSite, packageJson] = await Promise.all([
+  const [releaseSite, releaseStatus, liveStatus, packageJson] = await Promise.all([
     fs.readFile(path.join(process.cwd(), "scripts/release-site.mjs"), "utf8"),
+    fs.readFile(path.join(process.cwd(), "scripts/release-status.mjs"), "utf8"),
+    fs.readFile(path.join(process.cwd(), "scripts/_lib/release-live-status.mjs"), "utf8"),
     fs.readFile(path.join(process.cwd(), "package.json"), "utf8"),
   ]);
-  assert.match(releaseSite, /publish-content-production-from-staging/);
-  assert.match(releaseSite, /publish:content:prod:from-staging/);
+  assert.match(releaseSite, /buildLiveReleaseStatus/);
+  assert.match(releaseStatus, /Route Parity|routeParity|DEFAULT_RELEASE_ROUTES/);
+  assert.match(liveStatus, /deriveLiveReleasePlan/);
+  assert.match(liveStatus, /publish-content-production-from-staging/);
+  assert.match(liveStatus, /publish:content:prod:from-staging/);
   assert.match(packageJson, /"release:site"/);
+  assert.match(packageJson, /"release:status"/);
   assert.match(packageJson, /"publish:content:prod:from-staging"/);
 });
 
