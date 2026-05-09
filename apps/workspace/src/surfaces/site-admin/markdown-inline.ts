@@ -166,6 +166,14 @@ export function inlineMarkdownToHtml(input: string): string {
   return `<p>${text}</p>`;
 }
 
+/** Convert one markdown line per paragraph. List blocks use this so each
+ * item is a separate editable paragraph and can receive its own visual
+ * marker in the canvas. */
+export function inlineMarkdownLinesToParagraphHtml(input: string): string {
+  if (!input) return "<p></p>";
+  return input.split("\n").map((line) => inlineMarkdownToHtml(line)).join("");
+}
+
 /** Walk a TipTap doc and emit inline markdown matching the input the
  * inlineMarkdownToHtml parser would re-accept. Only the FIRST top-level
  * paragraph is used — TipTap auto-creates a single paragraph for our

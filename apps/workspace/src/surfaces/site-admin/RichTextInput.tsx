@@ -34,6 +34,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 
 import {
   INLINE_MARKDOWN_PARSE_OPTIONS,
+  inlineMarkdownLinesToParagraphHtml,
   inlineMarkdownToHtml,
   tiptapDocToMarkdown,
 } from "./markdown-inline";
@@ -85,6 +86,9 @@ export interface RichTextInputProps {
    * empty. The component sets the data-attr; the parent's CSS owns the look
    * (see InlineRichText placeholder rule in index.css). */
   placeholder?: string;
+  /** `hardBreaks` keeps `\n` inside one paragraph. `paragraphs` turns each
+   * line into its own paragraph, which list blocks need for per-item markers. */
+  lineMode?: "hardBreaks" | "paragraphs";
 }
 
 export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>(
@@ -101,6 +105,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       ariaLabel,
       readOnly = false,
       placeholder,
+      lineMode = "hardBreaks",
     },
     ref,
   ) {
@@ -114,10 +119,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       () => createRichTextExtensions({ placeholder }),
       [placeholder],
     );
+    const toEditorHtml = useMemo(
+      () => (lineMode === "paragraphs" ? inlineMarkdownLinesToParagraphHtml : inlineMarkdownToHtml),
+      [lineMode],
+    );
 
     const editor = useEditor({
       extensions,
-      content: inlineMarkdownToHtml(value),
+      content: toEditorHtml(value),
       editable: !readOnly,
       parseOptions: INLINE_MARKDOWN_PARSE_OPTIONS,
       // Each EditorContent renders inside a contenteditable. We hand ProseMirror
@@ -170,11 +179,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       // trigger an infinite loop. (TipTap v2 signature:
       // setContent(content, emitUpdate?, parseOptions?))
       editor.commands.setContent(
-        inlineMarkdownToHtml(value),
+        toEditorHtml(value),
         false,
         INLINE_MARKDOWN_PARSE_OPTIONS,
       );
-    }, [editor, value]);
+    }, [editor, toEditorHtml, value]);
 
     useEffect(() => {
       editor?.setEditable(!readOnly);

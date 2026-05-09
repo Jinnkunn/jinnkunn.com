@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { workspaceMcpContentPublishSuggestionGet } from "../../lib/tauri";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import { WorkspaceSurfaceFrame } from "../../ui/primitives";
 import type { SurfaceNavItem } from "../types";
@@ -429,6 +430,7 @@ function SiteAdminContent() {
   const [pageOrderSlugs, setPageOrderSlugs] = useState<string[]>([]);
   const [pageTreeFileSha, setPageTreeFileSha] = useState("");
   const [pageTreeConflict, setPageTreeConflict] = useState(false);
+  const lastMcpContentSuggestionAtRef = useRef(0);
 
   // Derived tree applies the current grouping setting to the cached
   // post rows. Cheap enough to recompute on every grouping change; no
@@ -670,6 +672,31 @@ function SiteAdminContent() {
       homeChildren.length > 0 ? homeChildren : null,
     );
   }, [homeChildren, setNavItemChildren]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    const refreshFromMcpSuggestion = () => {
+      void workspaceMcpContentPublishSuggestionGet()
+        .then((suggestion) => {
+          if (cancelled || !suggestion || suggestion.source !== "mcp") return;
+          if (!suggestion.path.startsWith("/api/site-admin/pages")) return;
+          const atMs = Number(suggestion.atMs || 0);
+          if (!Number.isFinite(atMs) || atMs <= lastMcpContentSuggestionAtRef.current) return;
+          lastMcpContentSuggestionAtRef.current = atMs;
+          bumpContentRevision();
+        })
+        .catch(() => {
+          // Browser dev and fresh installs may not expose the Tauri command yet.
+        });
+    };
+    refreshFromMcpSuggestion();
+    const interval = window.setInterval(refreshFromMcpSuggestion, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [bumpContentRevision, ready]);
 
   useEffect(() => {
     setReorderNavItemHandler(async (itemId, direction) => {

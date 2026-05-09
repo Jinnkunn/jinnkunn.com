@@ -27,6 +27,12 @@ pub struct WorkspaceMcpSettings {
     pub allow_projects_write: bool,
     #[serde(default = "default_true")]
     pub allow_site_admin_write: bool,
+    #[serde(default)]
+    pub site_admin_write_target: WorkspaceMcpSiteAdminWriteTarget,
+    #[serde(default = "default_site_admin_base_url")]
+    pub site_admin_base_url: String,
+    #[serde(default = "default_true")]
+    pub site_admin_fallback_to_local: bool,
     pub allow_calendar_write: bool,
 }
 
@@ -38,8 +44,26 @@ pub enum WorkspaceMcpWriteMode {
     LocalWrite,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum WorkspaceMcpSiteAdminWriteTarget {
+    #[serde(rename = "api")]
+    Api,
+    #[serde(rename = "local")]
+    Local,
+}
+
+impl Default for WorkspaceMcpSiteAdminWriteTarget {
+    fn default() -> Self {
+        Self::Api
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_site_admin_base_url() -> String {
+    "https://staging.jinkunchen.com".to_string()
 }
 
 impl Default for WorkspaceMcpSettings {
@@ -52,6 +76,9 @@ impl Default for WorkspaceMcpSettings {
             allow_todos_write: true,
             allow_projects_write: true,
             allow_site_admin_write: true,
+            site_admin_write_target: WorkspaceMcpSiteAdminWriteTarget::Api,
+            site_admin_base_url: default_site_admin_base_url(),
+            site_admin_fallback_to_local: true,
             // Calendar changes are externally visible on the calendar surface,
             // so keep them opt-in until the operator explicitly enables them.
             allow_calendar_write: false,

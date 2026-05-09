@@ -217,7 +217,7 @@ pub async fn site_admin_http_request(
         &url,
     );
 
-    if method == "POST" || method == "PUT" || method == "PATCH" {
+    if method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
         req = req.json(&request.body.unwrap_or_else(|| json!({})));
     }
 

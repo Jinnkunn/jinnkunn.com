@@ -35,6 +35,9 @@ const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
   allowTodosWrite: true,
   allowProjectsWrite: true,
   allowSiteAdminWrite: true,
+  siteAdminWriteTarget: "api",
+  siteAdminBaseUrl: "https://staging.jinkunchen.com",
+  siteAdminFallbackToLocal: true,
   allowCalendarWrite: false,
 };
 
@@ -219,6 +222,38 @@ function McpCapabilityRow({
       </span>
       <ToggleSwitch checked={checked} disabled={disabled} label={title} onChange={onChange} />
     </div>
+  );
+}
+
+function McpSelectRow({
+  title,
+  detail,
+  value,
+  disabled,
+  options,
+  onChange,
+}: {
+  title: string;
+  detail: string;
+  value: string;
+  disabled?: boolean;
+  options: readonly { label: string; value: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="settings-ai-capability-row settings-ai-select-row" data-disabled={disabled ? "true" : undefined}>
+      <span>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </span>
+      <select value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -420,10 +455,36 @@ function McpSettingsPanel({
         />
         <McpCapabilityRow
           title="Site Admin writes"
-          detail="Create local website pages without deploying"
+          detail={settings.siteAdminWriteTarget === "api"
+            ? "Create pages in staging Site Admin, then publish content"
+            : "Write local content files for recovery workflows"}
           checked={settings.allowSiteAdminWrite}
           disabled={!writable}
           onChange={(allowSiteAdminWrite) => onUpdateSettings({ allowSiteAdminWrite })}
+        />
+        <McpSelectRow
+          title="Site Admin target"
+          detail={settings.siteAdminWriteTarget === "api"
+            ? `Default: ${settings.siteAdminBaseUrl}`
+            : "Local content/pages fallback"}
+          value={settings.siteAdminWriteTarget}
+          disabled={!writable || !settings.allowSiteAdminWrite}
+          options={[
+            { label: "Staging API", value: "api" },
+            { label: "Local files", value: "local" },
+          ]}
+          onChange={(siteAdminWriteTarget) =>
+            onUpdateSettings({
+              siteAdminWriteTarget: siteAdminWriteTarget === "local" ? "local" : "api",
+            })
+          }
+        />
+        <McpCapabilityRow
+          title="Local fallback"
+          detail="Use local content files if Site Admin API credentials are unavailable"
+          checked={settings.siteAdminFallbackToLocal}
+          disabled={!writable || !settings.allowSiteAdminWrite || settings.siteAdminWriteTarget !== "api"}
+          onChange={(siteAdminFallbackToLocal) => onUpdateSettings({ siteAdminFallbackToLocal })}
         />
         <McpCapabilityRow
           title="Calendar writes"

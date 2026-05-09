@@ -266,6 +266,21 @@ test("workspace MCP: creates site-admin pages in local content", async () => {
   });
 });
 
+test("workspace MCP: explicit Site Admin API target requires credentials", async () => {
+  await withServer(async (server) => {
+    const response = server.handle({
+      jsonrpc: "2.0",
+      id: 17,
+      method: "tools/call",
+      params: {
+        name: "siteAdmin.list_pages",
+        arguments: { backend: "api" },
+      },
+    });
+    assert.match(response.error.message, /MISSING_SITE_ADMIN_CREDENTIALS/);
+  });
+});
+
 test("workspace MCP: lists, gets, updates, reorders, and deletes site-admin pages", async () => {
   await withServer(async (server) => {
     call(server, "siteAdmin.create_page", {
