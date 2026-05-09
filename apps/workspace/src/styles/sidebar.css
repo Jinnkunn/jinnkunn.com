@@ -177,10 +177,12 @@
 }
 
 .sidebar-context-pane {
-  --sidebar-tree-disclosure-width: 17px;
+  --sidebar-tree-depth-step: 9px;
+  --sidebar-tree-depth-max: 36px;
+  --sidebar-tree-disclosure-width: 16px;
   --sidebar-tree-control-height: 24px;
   --sidebar-tree-icon-size: 18px;
-  --sidebar-tree-item-gap: 8px;
+  --sidebar-tree-item-gap: 6px;
   --sidebar-tree-row-radius: 6px;
   display: flex;
   flex: 1;
@@ -441,7 +443,7 @@
 .sidebar-tree__item {
   gap: var(--sidebar-tree-item-gap);
   min-height: 25px;
-  padding: 2px 6px 2px 3px;
+  padding: 2px 6px 2px 2px;
   border-radius: var(--sidebar-tree-row-radius);
   font-size: var(--font-size-small);
   flex: 1;
@@ -470,7 +472,9 @@
 /* Wrapper around an expandable nav item: keeps the row clickable while
  * giving the disclosure chevron its own hit target. The CSS variable
  * `--sidebar-depth` (set inline by the renderer) drives Notion-style
- * indent for nested children via workspace shell layout tokens. */
+ * indent for nested children. The shell tree keeps its own compact
+ * depth token instead of the global workspace split-view token; otherwise
+ * a responsive layout tweak can make page trees jump too far to the right. */
 .sidebar-tree__item-row {
   position: relative;
   display: flex;
@@ -478,8 +482,8 @@
   gap: 1px;
   min-height: 26px;
   padding-inline-start: min(
-    calc(var(--sidebar-depth, 0) * var(--workspace-sidebar-depth-step)),
-    var(--workspace-sidebar-depth-max)
+    calc(var(--sidebar-depth, 0) * var(--sidebar-tree-depth-step)),
+    var(--sidebar-tree-depth-max)
   );
   padding-inline-end: 2px;
   border-radius: var(--sidebar-tree-row-radius);
