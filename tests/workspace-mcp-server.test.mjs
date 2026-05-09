@@ -93,7 +93,7 @@ test("workspace MCP: lists tools and exposes context resource", async () => {
   await withServer(async (server) => {
     const tools = server.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     assert.equal(tools.result.tools.length, workspaceMcpToolCount());
-    assert.equal(tools.result.tools.length, 20);
+    assert.equal(tools.result.tools.length, 26);
     assert.deepEqual(
       tools.result.tools.map((tool) => tool.name).slice(0, 4),
       ["workspace.get_context", "workspace.search", "notes.get_page", "notes.create_page"],
@@ -231,6 +231,108 @@ test("workspace MCP: creates projects, todos, and project links", async () => {
       label: "Reference",
     });
     assert.equal(link.project.links[0].label, "Reference");
+  });
+});
+
+test("workspace MCP: manages local calendars and events", async () => {
+  await withServer(async (server) => {
+    await fs.writeFile(
+      process.env.WORKSPACE_MCP_SETTINGS_PATH,
+      JSON.stringify({
+        enabled: true,
+        writeMode: "local-write",
+        requireConfirmationForWrites: false,
+        allowNotesWrite: true,
+        allowTodosWrite: true,
+        allowProjectsWrite: true,
+        allowSiteAdminWrite: true,
+        allowCalendarWrite: true,
+      }),
+    );
+
+    const dryRun = call(server, "calendar.create_calendar", {
+      title: "MCP Calendar",
+      colorHex: "#ff8800",
+      dryRun: true,
+    });
+    assert.equal(dryRun.dryRun, true);
+    assert.equal(call(server, "workspace.get_context", { includeRecent: false }).counts.localCalendars, 0);
+
+    const calendar = call(server, "calendar.create_calendar", {
+      title: "MCP Calendar",
+      colorHex: "#ff8800",
+    }).calendar;
+    assert.equal(calendar.title, "MCP Calendar");
+    assert.equal(calendar.colorHex, "#FF8800");
+
+    const calendars = call(server, "calendar.list_calendars");
+    assert.equal(calendars.source.id, "workspace-local");
+    assert.equal(calendars.calendars[0].id, calendar.id);
+
+    const event = call(server, "calendar.create_event", {
+      calendarId: calendar.id,
+      title: "Design MCP Calendar",
+      startsAt: "2026-05-10T09:00:00-03:00",
+      endsAt: "2026-05-10T09:30:00-03:00",
+      notes: "Initial notes",
+      location: "Desk",
+    }).event;
+    assert.equal(event.calendarId, calendar.id);
+    assert.equal(event.title, "Design MCP Calendar");
+    assert.equal(event.isRecurring, false);
+
+    const events = call(server, "calendar.list_events", {
+      start: "2026-05-10T00:00:00-03:00",
+      end: "2026-05-11T00:00:00-03:00",
+    }).events;
+    assert.equal(events[0].eventIdentifier, event.eventIdentifier);
+
+    const updatedEvent = call(server, "calendar.update_event", {
+      id: event.eventIdentifier,
+      title: "Ship MCP Calendar",
+      start: "2026-05-10T10:00:00-03:00",
+      end: "2026-05-10T10:45:00-03:00",
+      notes: null,
+      url: "https://example.com/calendar",
+    }).event;
+    assert.equal(updatedEvent.title, "Ship MCP Calendar");
+    assert.equal(updatedEvent.notes, null);
+    assert.match(updatedEvent.startsAt, /^2026-05-10T13:00:00/);
+
+    const search = call(server, "workspace.search", {
+      query: "Ship MCP Calendar",
+      types: ["event"],
+    });
+    assert.equal(search.results[0].id, event.eventIdentifier);
+
+    const updatedCalendar = call(server, "calendar.update_calendar", {
+      id: calendar.id,
+      title: "AI Calendar",
+      colorHex: "#112233",
+    }).calendar;
+    assert.equal(updatedCalendar.title, "AI Calendar");
+    assert.equal(updatedCalendar.colorHex, "#112233");
+
+    const deletedEvent = call(server, "calendar.delete_event", { id: event.eventIdentifier });
+    assert.equal(deletedEvent.deleted, true);
+    assert.equal(call(server, "calendar.list_events", {
+      start: "2026-05-10T00:00:00-03:00",
+      end: "2026-05-11T00:00:00-03:00",
+    }).events.length, 0);
+
+    const secondEvent = call(server, "calendar.create_event", {
+      calendarId: calendar.id,
+      title: "Cascade Delete",
+      start: "2026-05-10T11:00:00-03:00",
+      end: "2026-05-10T11:30:00-03:00",
+    }).event;
+    assert.equal(secondEvent.calendarId, calendar.id);
+
+    const deletedCalendar = call(server, "calendar.delete_calendar", { id: calendar.id });
+    assert.equal(deletedCalendar.deleted, true);
+    assert.equal(deletedCalendar.archivedEventCount, 1);
+    assert.equal(call(server, "calendar.list_calendars").calendars.length, 0);
+    assert.equal(call(server, "workspace.get_context", { includeRecent: false }).counts.localEvents, 0);
   });
 });
 

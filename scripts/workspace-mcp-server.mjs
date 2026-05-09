@@ -454,8 +454,18 @@ function summarizeConfirmation(tool, preview = {}) {
       return `Create project: ${p.title || "Untitled Project"}`;
     case "projects.add_link":
       return `Link ${p.targetType || "item"} to project`;
+    case "calendar.create_calendar":
+      return `Create calendar: ${p.title || "Untitled"}`;
+    case "calendar.update_calendar":
+      return `Update calendar: ${p.id || "unknown"}`;
+    case "calendar.delete_calendar":
+      return `Delete calendar: ${p.title || p.id || "unknown"}`;
     case "calendar.create_event":
       return `Create calendar event: ${p.title || "Untitled"}`;
+    case "calendar.update_event":
+      return `Update calendar event: ${p.title || p.id || "unknown"}`;
+    case "calendar.delete_event":
+      return `Delete calendar event: ${p.title || p.id || "unknown"}`;
     case "siteAdmin.update_page":
       return `Update site page: /${p.slug || "unknown"}`;
     case "siteAdmin.delete_page":
@@ -546,6 +556,41 @@ function prepareWrite(tool, capability, args, preview) {
   return consumeApprovedConfirmation(tool, args);
 }
 
+const LOCAL_CALENDAR_SOURCE_ID = "workspace-local";
+const DEFAULT_CALENDAR_COLOR = "#0A84FF";
+
+function normalizeLocalId(value, label = "id") {
+  const id = cleanText(value, 96);
+  if (!id) throw new Error(`${label} is required.`);
+  return id;
+}
+
+function normalizeCalendarTitle(value) {
+  return cleanText(value || "Untitled", 220) || "Untitled";
+}
+
+function normalizeCalendarColor(value) {
+  const raw = cleanText(value, 32);
+  if (!/^#[0-9a-fA-F]{6}$/.test(raw)) return DEFAULT_CALENDAR_COLOR;
+  return `#${raw.slice(1).toUpperCase()}`;
+}
+
+function localCalendarRow(row) {
+  if (!row) return null;
+  const camel = rowToCamel(row);
+  return {
+    id: camel.id,
+    sourceId: LOCAL_CALENDAR_SOURCE_ID,
+    title: camel.title,
+    colorHex: camel.colorHex,
+    allowsModifications: true,
+    sortOrder: camel.sortOrder,
+    archivedAt: camel.archivedAt,
+    createdAt: camel.createdAt,
+    updatedAt: camel.updatedAt,
+  };
+}
+
 function noteRow(db, id) {
   const row = db.prepare(`
     SELECT id, parent_id, title, body_mdx, icon, sort_order, archived_at, created_at, updated_at
@@ -584,13 +629,24 @@ function projectRow(db, id) {
 }
 
 function localEventRow(row) {
+  if (!row) return null;
   const camel = rowToCamel(row);
   return {
-    ...camel,
+    id: camel.id,
     eventIdentifier: camel.id,
+    externalIdentifier: null,
+    calendarId: camel.calendarId,
+    title: camel.title,
+    notes: camel.notes,
+    location: camel.location,
+    url: camel.url,
     startsAt: msToIso(camel.startsAtMs),
     endsAt: msToIso(camel.endsAtMs),
     isAllDay: Boolean(camel.isAllDay),
+    isRecurring: false,
+    archivedAt: camel.archivedAt,
+    createdAt: camel.createdAt,
+    updatedAt: camel.updatedAt,
   };
 }
 
@@ -929,9 +985,116 @@ function contactRow(db, id) {
   };
 }
 
+function getLocalCalendar(db, id) {
+  return localCalendarRow(db.prepare(`
+    SELECT id, title, color_hex, sort_order, archived_at, created_at, updated_at
+      FROM local_calendars
+     WHERE id = ? AND archived_at IS NULL
+  `).get(id));
+}
+
+function listLocalCalendars(db, args = {}) {
+  const includeArchived = asBool(args.includeArchived, false);
+  const rows = db.prepare(`
+    SELECT c.id, c.title, c.color_hex, c.sort_order, c.archived_at, c.created_at, c.updated_at,
+           (SELECT COUNT(*) FROM local_calendar_events e
+             WHERE e.calendar_id = c.id AND e.archived_at IS NULL) AS event_count
+      FROM local_calendars c
+     WHERE ${includeArchived ? "1 = 1" : "c.archived_at IS NULL"}
+     ORDER BY c.archived_at IS NOT NULL, c.sort_order, c.created_at
+  `).all();
+  return {
+    source: {
+      id: LOCAL_CALENDAR_SOURCE_ID,
+      title: "Workspace",
+      type: "local",
+      readOnly: false,
+    },
+    calendars: rows.map((row) => ({
+      ...localCalendarRow(row),
+      eventCount: Number(row.event_count || 0),
+    })),
+  };
+}
+
+function createLocalCalendar(db, args = {}) {
+  const id = randId("lcal");
+  const now = nowMs();
+  const preview = {
+    id,
+    sourceId: LOCAL_CALENDAR_SOURCE_ID,
+    title: normalizeCalendarTitle(args.title),
+    colorHex: normalizeCalendarColor(args.colorHex || args.color),
+    sortOrder: maxSortOrder(db, "local_calendars") + 1,
+  };
+  const confirmation = prepareWrite("calendar.create_calendar", "allowCalendarWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    INSERT INTO local_calendars
+      (id, title, color_hex, sort_order, archived_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?)
+  `).run(preview.id, preview.title, preview.colorHex, preview.sortOrder, now, now);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "calendar.create_calendar", id, title: preview.title });
+  return { calendar: getLocalCalendar(db, id) };
+}
+
+function updateLocalCalendar(db, args = {}) {
+  const id = normalizeLocalId(args.id, "calendar id");
+  const existing = getLocalCalendar(db, id);
+  if (!existing) throw new Error("MISSING_CALENDAR: calendar id did not match an active local calendar.");
+  const preview = {
+    id,
+    title: Object.hasOwn(args, "title")
+      ? normalizeCalendarTitle(args.title)
+      : existing.title,
+    colorHex: Object.hasOwn(args, "colorHex") || Object.hasOwn(args, "color")
+      ? normalizeCalendarColor(args.colorHex || args.color)
+      : existing.colorHex,
+  };
+  const confirmation = prepareWrite("calendar.update_calendar", "allowCalendarWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    UPDATE local_calendars
+       SET title = ?, color_hex = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(preview.title, preview.colorHex, nowMs(), id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "calendar.update_calendar", id, title: preview.title });
+  return { calendar: getLocalCalendar(db, id) };
+}
+
+function deleteLocalCalendar(db, args = {}) {
+  const id = normalizeLocalId(args.id, "calendar id");
+  const existing = getLocalCalendar(db, id);
+  if (!existing) throw new Error("MISSING_CALENDAR: calendar id did not match an active local calendar.");
+  const eventCount = getCount(
+    db,
+    "SELECT COUNT(*) AS count FROM local_calendar_events WHERE calendar_id = ? AND archived_at IS NULL",
+    [id],
+  );
+  const preview = { id, title: existing.title, archivedEventCount: eventCount };
+  const confirmation = prepareWrite("calendar.delete_calendar", "allowCalendarWrite", args, preview);
+  if (confirmation) return confirmation;
+  const now = nowMs();
+  db.prepare(`
+    UPDATE local_calendars
+       SET archived_at = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(now, now, id);
+  db.prepare(`
+    UPDATE local_calendar_events
+       SET archived_at = ?, updated_at = ?
+     WHERE calendar_id = ? AND archived_at IS NULL
+  `).run(now, now, id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "calendar.delete_calendar", id, title: existing.title, archivedEventCount: eventCount });
+  return { deleted: true, id, archivedEventCount: eventCount };
+}
+
 function listCalendarEvents(db, args = {}) {
-  const start = isoToMs(args.start, "start");
-  const end = isoToMs(args.end, "end");
+  const start = isoToMs(args.startsAt ?? args.start, "start");
+  const end = isoToMs(args.endsAt ?? args.end, "end");
   if (end <= start) throw new Error("end must be after start.");
   const calendarIds = Array.isArray(args.calendarIds) ? args.calendarIds.map((id) => cleanText(id, 96)).filter(Boolean) : [];
   let sql = `
@@ -958,8 +1121,8 @@ function createCalendarEvent(db, args = {}) {
     throw new Error("MISSING_CALENDAR: calendarId did not match an active local calendar.");
   }
   const title = cleanText(args.title || "Untitled", 220) || "Untitled";
-  const startsAtMs = isoToMs(args.start, "start");
-  const endsAtMs = isoToMs(args.end, "end");
+  const startsAtMs = isoToMs(args.startsAt ?? args.start, "start");
+  const endsAtMs = isoToMs(args.endsAt ?? args.end, "end");
   if (endsAtMs <= startsAtMs) throw new Error("end must be after start.");
   const id = randId("levt");
   const now = nowMs();
@@ -997,6 +1160,96 @@ function createCalendarEvent(db, args = {}) {
   markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "calendar.create_event", id, title, calendarId });
   return { event: localEventRow(db.prepare("SELECT * FROM local_calendar_events WHERE id = ?").get(id)) };
+}
+
+function getLocalCalendarEvent(db, id) {
+  return db.prepare(`
+    SELECT id, calendar_id, title, notes, location, url, starts_at_ms, ends_at_ms,
+           is_all_day, archived_at, created_at, updated_at
+      FROM local_calendar_events
+     WHERE id = ? AND archived_at IS NULL
+  `).get(id);
+}
+
+function updateCalendarEvent(db, args = {}) {
+  const id = normalizeLocalId(args.id, "event id");
+  const existingRow = getLocalCalendarEvent(db, id);
+  if (!existingRow) throw new Error("MISSING_EVENT: event id did not match an active local event.");
+  const existing = rowToCamel(existingRow);
+  const calendarId = Object.hasOwn(args, "calendarId")
+    ? normalizeLocalId(args.calendarId, "calendar id")
+    : existing.calendarId;
+  if (calendarId !== existing.calendarId && !existsById(db, "local_calendars", calendarId)) {
+    throw new Error("MISSING_CALENDAR: target calendarId did not match an active local calendar.");
+  }
+  const startsAtMs = Object.hasOwn(args, "startsAt") || Object.hasOwn(args, "start")
+    ? isoToMs(args.startsAt ?? args.start, "start")
+    : existing.startsAtMs;
+  const endsAtMs = Object.hasOwn(args, "endsAt") || Object.hasOwn(args, "end")
+    ? isoToMs(args.endsAt ?? args.end, "end")
+    : existing.endsAtMs;
+  if (endsAtMs <= startsAtMs) throw new Error("end must be after start.");
+  const preview = {
+    id,
+    calendarId,
+    title: Object.hasOwn(args, "title")
+      ? normalizeCalendarTitle(args.title)
+      : existing.title,
+    startsAt: msToIso(startsAtMs),
+    endsAt: msToIso(endsAtMs),
+    isAllDay: Object.hasOwn(args, "isAllDay")
+      ? asBool(args.isAllDay, false)
+      : Boolean(existing.isAllDay),
+    notes: Object.hasOwn(args, "notes")
+      ? nullableText(args.notes, 10_000)
+      : existing.notes,
+    location: Object.hasOwn(args, "location")
+      ? nullableText(args.location, 500)
+      : existing.location,
+    url: Object.hasOwn(args, "url")
+      ? nullableText(args.url, 2_000)
+      : existing.url,
+  };
+  const confirmation = prepareWrite("calendar.update_event", "allowCalendarWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    UPDATE local_calendar_events
+       SET calendar_id = ?, title = ?, notes = ?, location = ?, url = ?,
+           starts_at_ms = ?, ends_at_ms = ?, is_all_day = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(
+    preview.calendarId,
+    preview.title,
+    preview.notes,
+    preview.location,
+    preview.url,
+    startsAtMs,
+    endsAtMs,
+    preview.isAllDay ? 1 : 0,
+    nowMs(),
+    id,
+  );
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "calendar.update_event", id, title: preview.title, calendarId: preview.calendarId });
+  return { event: localEventRow(getLocalCalendarEvent(db, id)) };
+}
+
+function deleteCalendarEvent(db, args = {}) {
+  const id = normalizeLocalId(args.id, "event id");
+  const existingRow = getLocalCalendarEvent(db, id);
+  if (!existingRow) throw new Error("MISSING_EVENT: event id did not match an active local event.");
+  const existing = localEventRow(existingRow);
+  const preview = { id, title: existing.title, calendarId: existing.calendarId };
+  const confirmation = prepareWrite("calendar.delete_event", "allowCalendarWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    UPDATE local_calendar_events
+       SET archived_at = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(nowMs(), nowMs(), id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "calendar.delete_event", id, title: existing.title, calendarId: existing.calendarId });
+  return { deleted: true, id };
 }
 
 const PAGE_SLUG_SEGMENT_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
@@ -2102,14 +2355,66 @@ const toolSchemas = [
     inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
   },
   {
-    name: "calendar.list_events",
-    description: "List local Workspace calendar events. macOS EventKit calendars are intentionally not exposed in MCP v1.",
+    name: "calendar.list_calendars",
+    description: "List local Workspace calendars. macOS EventKit calendars are not exposed through MCP yet.",
     inputSchema: {
       type: "object",
-      required: ["start", "end"],
+      properties: {
+        includeArchived: { type: "boolean" },
+      },
+    },
+  },
+  {
+    name: "calendar.create_calendar",
+    description: "Create a local Workspace calendar.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        colorHex: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "calendar.update_calendar",
+    description: "Rename or recolor a local Workspace calendar.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        colorHex: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "calendar.delete_calendar",
+    description: "Archive a local Workspace calendar and its active events.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "calendar.list_events",
+    description: "List local Workspace calendar events. macOS EventKit calendars are not exposed through MCP yet.",
+    inputSchema: {
+      type: "object",
       properties: {
         start: { type: ["string", "number"] },
         end: { type: ["string", "number"] },
+        startsAt: { type: ["string", "number"] },
+        endsAt: { type: ["string", "number"] },
         calendarIds: { type: "array", items: { type: "string" } },
       },
     },
@@ -2119,16 +2424,54 @@ const toolSchemas = [
     description: "Create a local Workspace calendar event. Use dryRun first when asking for user confirmation.",
     inputSchema: {
       type: "object",
-      required: ["calendarId", "title", "start", "end"],
+      required: ["calendarId", "title"],
       properties: {
         calendarId: { type: "string" },
         title: { type: "string" },
         start: { type: ["string", "number"] },
         end: { type: ["string", "number"] },
+        startsAt: { type: ["string", "number"] },
+        endsAt: { type: ["string", "number"] },
         isAllDay: { type: "boolean" },
         notes: { type: "string" },
         location: { type: "string" },
         url: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "calendar.update_event",
+    description: "Patch a local Workspace calendar event.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        calendarId: { type: "string" },
+        title: { type: "string" },
+        start: { type: ["string", "number"] },
+        end: { type: ["string", "number"] },
+        startsAt: { type: ["string", "number"] },
+        endsAt: { type: ["string", "number"] },
+        isAllDay: { type: "boolean" },
+        notes: { type: ["string", "null"] },
+        location: { type: ["string", "null"] },
+        url: { type: ["string", "null"] },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "calendar.delete_event",
+    description: "Archive a local Workspace calendar event.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
         dryRun: { type: "boolean" },
         confirmationId: { type: "string" },
       },
@@ -2270,10 +2613,22 @@ function callTool(db, name, args = {}) {
       return addProjectLink(db, args);
     case "contacts.get":
       return { contact: contactRow(db, cleanText(args.id, 96)) };
+    case "calendar.list_calendars":
+      return listLocalCalendars(db, args);
+    case "calendar.create_calendar":
+      return createLocalCalendar(db, args);
+    case "calendar.update_calendar":
+      return updateLocalCalendar(db, args);
+    case "calendar.delete_calendar":
+      return deleteLocalCalendar(db, args);
     case "calendar.list_events":
       return listCalendarEvents(db, args);
     case "calendar.create_event":
       return createCalendarEvent(db, args);
+    case "calendar.update_event":
+      return updateCalendarEvent(db, args);
+    case "calendar.delete_event":
+      return deleteCalendarEvent(db, args);
     case "siteAdmin.release_status":
       return siteAdminReleaseStatus();
     case "siteAdmin.list_pages":
