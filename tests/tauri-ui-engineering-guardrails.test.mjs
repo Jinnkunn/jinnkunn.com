@@ -788,7 +788,16 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /ReleaseStepper/);
   assert.match(releasePanel, /RouteParityPanel/);
   assert.match(releasePanel, /Production behind staging/);
-  assert.match(releasePanel, /ProductionContentConfirmPanel/);
+  assert.match(
+    releasePanel,
+    /smartPlan\.kind === "promote-production-code"[\s\S]*startRelease\(RELEASE_PROD_FROM_STAGING_SCRIPT\)/,
+  );
+  assert.match(
+    releasePanel,
+    /smartPlan\.kind === "publish-content-production-from-staging"[\s\S]*startRelease\(PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT\)/,
+  );
+  assert.match(releasePanel, /smartReleaseIsProductionAction/);
+  assert.doesNotMatch(releasePanel, /ProductionContentConfirmPanel/);
   assert.match(releasePanel, /Recovery \/ Advanced/);
   assert.match(releasePanel, /clearContentPublishSuggestion/);
   assert.match(releasePanel, /setContentSuggestion\(null\)/);
@@ -832,7 +841,7 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Production differs/);
   assert.match(releasePanel, /GitHub Dispatch Fallback/);
   assert.match(releasePanel, /Release History/);
-  assert.match(releasePanel, /Publish Same Content to Production/);
+  assert.match(releaseFlow, /Publish Same Content to Production/);
   assert.match(releasePanel, /PUBLISH_CONTENT_STAGING_COMMAND/);
   assert.match(releasePanel, /PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND/);
 });
