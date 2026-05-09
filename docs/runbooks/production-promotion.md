@@ -22,6 +22,9 @@ Release Center or the dry-run commands below.
   - one-click in the workspace: the Site Admin **Release Center** **Smart
     Release** action. It decides between staging content, staging code,
     production code, production content copy, and no-op.
+  - live status check: `npm run release:status`, which reads Cloudflare
+    Worker versions, D1 overlay snapshots, and route parity from the live
+    environments.
   - Smart CLI entry: `npm run release:site`
   - one-shot promote-from-staging (CLI):
     `npm run release:prod:from-staging`
@@ -151,9 +154,11 @@ GitHub Dispatch is intentionally labeled as a fallback in the app. Routine
 staging and production publishing should use the local Cloudflare path so normal
 content/calendar releases do not consume GitHub Actions minutes.
 
-`docs/runbooks/production-version-history.md` is an audit log written by
-production promotion. If that is the only dirty file, the local production
-promotion path treats it as safe to continue.
+Routine production promotion writes audit entries to
+`.cache/release/release-history.jsonl`, not tracked markdown, so a successful
+release does not dirty the git worktree. `docs/runbooks/production-version-history.md`
+is now a manual/exported rollback report; if it is the only dirty file, the
+local production promotion path still treats it as safe to continue.
 
 If the button is greyed out:
 - "Staging stale" — staging hasn't been re-released since
@@ -172,11 +177,17 @@ npm run release:site:dry-run
 npm run release:site
 ```
 
-For the second production content step:
+For live status or the second production content step:
 
 ```bash
+npm run release:status
 npm run release:site -- --production-content
 ```
+
+`release:status` reports the same next action that Smart Release uses, plus
+route parity for `/`, `/news`, `/blog`, and `/calendar`. If staging requires a
+browser login and the local synthetic session is not accepted, those route rows
+are reported as `gated skipped` rather than treated as production drift.
 
 ### CLI recovery fallback
 

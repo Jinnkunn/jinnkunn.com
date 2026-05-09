@@ -318,6 +318,8 @@ fn allowed_release_script(script: &str) -> Option<&'static str> {
         "release:staging" => Some("release:staging"),
         "release:prod:from-staging" => Some("release:prod:from-staging"),
         "release:prod:from-staging:dry-run" => Some("release:prod:from-staging:dry-run"),
+        "release:status:json" => Some("release:status:json"),
+        "release:status:staging:json" => Some("release:status:staging:json"),
         "publish:content:staging" => Some("publish:content:staging"),
         "publish:content:staging:rollback" => Some("publish:content:staging:rollback"),
         "publish:content:staging:clear" => Some("publish:content:staging:clear"),
@@ -766,8 +768,8 @@ pub async fn site_admin_run_release_command(
             cwd: cwd.display().to_string(),
             status,
             duration_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-            stdout_tail: tail_text(&output.stdout, 5000),
-            stderr_tail: tail_text(&output.stderr, 5000),
+            stdout_tail: tail_text(&output.stdout, 120_000),
+            stderr_tail: tail_text(&output.stderr, 20_000),
         };
         if output.status.success() {
             Ok(result)
@@ -932,10 +934,13 @@ fn parse_release_jsonl_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHi
             .and_then(|v| v.get("target"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
+        let explicit_status = value_string(value.get("status"));
         let status = if !failure.is_empty() {
             "failed"
         } else if !rolled_back.is_empty() {
             "rolled-back"
+        } else if !explicit_status.is_empty() {
+            explicit_status.as_str()
         } else {
             "succeeded"
         };
@@ -949,7 +954,14 @@ fn parse_release_jsonl_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHi
             source: "release-history".to_string(),
             env,
             status: status.to_string(),
-            recorded_at: value_string(value.get("recordedAt")),
+            recorded_at: {
+                let recorded_at = value_string(value.get("recordedAt"));
+                if recorded_at.is_empty() {
+                    value_string(value.get("snapshotAt"))
+                } else {
+                    recorded_at
+                }
+            },
             version_id: deployed.clone(),
             deployment_id: value_string(value.get("deploymentId")),
             sha: value_string(value.get("sha")),

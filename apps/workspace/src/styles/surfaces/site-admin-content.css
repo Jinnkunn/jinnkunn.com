@@ -1113,6 +1113,86 @@
   align-items: stretch;
 }
 
+.release-center__stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.release-center__step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+}
+
+.release-center__step > span {
+  display: inline-grid;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: 800;
+}
+
+.release-center__step div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.release-center__step strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-small);
+  font-weight: 760;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-center__step small {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-center__step[data-state="active"] {
+  border-color: color-mix(in srgb, var(--release-warn) 34%, var(--color-border-subtle));
+}
+
+.release-center__step[data-state="active"] > span {
+  background: color-mix(in srgb, var(--release-warn) 16%, transparent);
+  color: var(--release-warn);
+}
+
+.release-center__step[data-state="ok"] > span {
+  background: color-mix(in srgb, var(--release-ok) 13%, transparent);
+  color: var(--release-ok);
+}
+
+.release-center__step[data-state="muted"] {
+  opacity: 0.78;
+}
+
+.release-center__step[data-state="blocked"] {
+  border-color: color-mix(in srgb, var(--release-blocked) 34%, var(--color-border-subtle));
+}
+
+.release-center__step[data-state="blocked"] > span {
+  background: color-mix(in srgb, var(--release-blocked) 13%, transparent);
+  color: var(--release-blocked);
+}
+
 .release-center__notice {
   display: flex;
   align-items: center;
@@ -1158,6 +1238,97 @@
   background:
     linear-gradient(180deg, var(--surface-highlight-soft), transparent 62%),
     var(--color-bg-surface-alt);
+}
+
+.release-center__route-parity {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-surface-alt);
+}
+
+.release-center__route-parity header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-center__route-parity h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-subhead);
+  font-weight: 750;
+}
+
+.release-center__route-parity p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+.release-center__route-parity header > strong {
+  color: var(--release-warn);
+  font-size: var(--font-size-small);
+  font-weight: 760;
+}
+
+.release-center__route-parity header > strong[data-tone="ok"] {
+  color: var(--release-ok);
+}
+
+.release-center__route-parity-list {
+  display: grid;
+  gap: 6px;
+}
+
+.release-center__route-parity-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--release-blocked) 26%, var(--color-border-subtle));
+  border-radius: 9px;
+  background: var(--color-bg-surface);
+}
+
+.release-center__route-parity-row[data-ok="true"] {
+  border-color: color-mix(in srgb, var(--release-ok) 22%, var(--color-border-subtle));
+}
+
+.release-center__route-parity-row[data-skipped="true"] {
+  border-color: var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
+}
+
+.release-center__route-parity-row strong,
+.release-center__route-parity-row span,
+.release-center__route-parity-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-center__route-parity-row strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-small);
+  font-weight: 760;
+}
+
+.release-center__route-parity-row span,
+.release-center__route-parity-row small {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.release-center__route-parity-error {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--release-warn) 8%, var(--color-bg-surface));
 }
 
 .release-center__content-status > header,
@@ -1615,6 +1786,28 @@
 
 .release-center__advanced-actions {
   padding: 0 12px 12px;
+}
+
+.release-center__danger-zone {
+  margin: 0 12px 12px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--release-blocked) 28%, var(--color-border-subtle));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--release-blocked) 5%, transparent);
+}
+
+.release-center__danger-zone summary {
+  cursor: pointer;
+  color: var(--release-blocked);
+  font-size: var(--font-size-small);
+  font-weight: 760;
+}
+
+.release-center__danger-zone p {
+  margin: 6px 0 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
 }
 
 .release-panel__header {
@@ -2186,10 +2379,12 @@
   .release-panel__commands-grid,
   .release-panel__operations,
   .release-panel__env-grid,
+  .release-center__stepper,
   .release-center__route,
   .release-center__content-grid,
   .release-center__gate-list,
-  .release-center__confirm dl {
+  .release-center__confirm dl,
+  .release-center__route-parity-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2209,15 +2404,18 @@
   .release-panel__commands-grid,
   .release-panel__operations,
   .release-panel__env-grid,
+  .release-center__stepper,
   .release-center__route,
   .release-center__content-grid,
   .release-center__gate-list,
-  .release-center__confirm dl {
+  .release-center__confirm dl,
+  .release-center__route-parity-row {
     grid-template-columns: 1fr;
   }
 
   .release-center__hero,
   .release-center__notice,
+  .release-center__route-parity header,
   .release-center__content-status > header,
   .release-center__content-suggestion,
   .release-center__history-row {

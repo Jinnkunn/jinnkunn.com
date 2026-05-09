@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-// Read the currently-active production Cloudflare Worker and append a
-// row to docs/runbooks/production-version-history.md so a future
-// rollback can grab the previous-known-good version ID without poking
-// at the Cloudflare UI mid-incident.
+// Read the currently-active production Cloudflare Worker and record a
+// rollback-friendly snapshot. Standalone runs still update the markdown
+// runbook; automated release runs write JSONL under .cache so routine
+// production promotion does not dirty the git worktree.
 //
 // Standalone usage:
 //   npm run snapshot:prod
@@ -31,6 +31,12 @@ const HISTORY_FILE = path.join(
   "runbooks",
   "production-version-history.md",
 );
+const RELEASE_HISTORY_FILE = path.join(
+  ROOT,
+  ".cache",
+  "release",
+  "release-history.jsonl",
+);
 
 function parseArgs(argv = process.argv.slice(2)) {
   let note = "";
@@ -45,6 +51,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   }
   return {
     auto: argv.includes("--auto"),
+    markdown: argv.includes("--markdown"),
     // Read-only mode: pull deployment history straight from the
     // Cloudflare API instead of writing to the local markdown file.
     // Useful when the local history file lags (it's per-machine, so a
@@ -271,6 +278,15 @@ function appendHistoryRow(file, row) {
   fs.writeFileSync(file, updated, "utf8");
 }
 
+function appendReleaseHistory(entry) {
+  fs.mkdirSync(path.dirname(RELEASE_HISTORY_FILE), { recursive: true });
+  fs.appendFileSync(
+    RELEASE_HISTORY_FILE,
+    `${JSON.stringify({ ...entry, recordedAt: new Date().toISOString() })}\n`,
+    "utf8",
+  );
+}
+
 function gitShortSha(sha) {
   const trimmed = String(sha || "").trim();
   return /^[a-f0-9]{7,40}$/i.test(trimmed) ? trimmed.slice(0, 12) : "";
@@ -370,7 +386,22 @@ async function main() {
 
   const snapshotAt = isoNow();
   const row = formatRow({ snapshotAt, snapshot, note: args.note });
-  appendHistoryRow(HISTORY_FILE, row);
+  const writeMarkdown = !args.auto || args.markdown;
+  if (writeMarkdown) {
+    appendHistoryRow(HISTORY_FILE, row);
+  } else {
+    appendReleaseHistory({
+      source: "snapshot-prod-version",
+      env: "production",
+      status: "snapshot",
+      sha: snapshot.meta.codeSha || snapshot.meta.sourceSha || "",
+      branch: snapshot.meta.codeBranch || snapshot.meta.sourceBranch || "",
+      deployedVersionId: snapshot.versionId,
+      deploymentId: snapshot.deploymentId,
+      note: args.note || "production version snapshot",
+      snapshotAt,
+    });
+  }
 
   const result = {
     ok: true,
@@ -380,7 +411,8 @@ async function main() {
     deploymentId: snapshot.deploymentId,
     codeSha: snapshot.meta.codeSha || snapshot.meta.sourceSha || "",
     codeBranch: snapshot.meta.codeBranch || snapshot.meta.sourceBranch || "",
-    historyFile: path.relative(ROOT, HISTORY_FILE),
+    historyFile: path.relative(ROOT, writeMarkdown ? HISTORY_FILE : RELEASE_HISTORY_FILE),
+    markdown: writeMarkdown,
   };
 
   if (args.auto) {

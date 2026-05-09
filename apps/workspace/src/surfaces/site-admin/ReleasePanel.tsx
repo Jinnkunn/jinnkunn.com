@@ -7,6 +7,7 @@ import {
   siteAdminCancelReleaseJob,
   siteAdminLocalReleaseSource,
   siteAdminReleaseHistory,
+  siteAdminRunReleaseCommand,
   siteAdminStartReleaseJob,
   siteAdminStartRollbackJob,
   type SiteAdminLocalReleaseSource,
@@ -40,6 +41,7 @@ import {
   RELEASE_PROD_FROM_STAGING_SCRIPT,
   RELEASE_STAGING_COMMAND,
   RELEASE_STAGING_SCRIPT,
+  type ReleaseActionKind,
   type ReleasePlan,
   type ReleaseTarget,
   releaseWorkflowRecovery,
@@ -93,10 +95,102 @@ type ReleaseCheck = {
   value: string;
 };
 
+interface LiveReleaseRoute {
+  ok: boolean;
+  path: string;
+  reason?: string;
+  skipped?: boolean;
+  staging: {
+    status: number;
+    location?: string;
+    staticShell: string;
+    staticOverlay: string;
+    hash: string;
+  };
+  production: {
+    status: number;
+    location?: string;
+    staticShell: string;
+    staticOverlay: string;
+    hash: string;
+  };
+}
+
+interface LiveReleaseStatus {
+  checkedAt: string;
+  plan?: {
+    kind: ReleaseActionKind;
+    label: string;
+    reason: string;
+    script: ReleasePlan["script"];
+  };
+  routeParity?: {
+    ok: boolean;
+    checkedCount?: number;
+    mismatchCount: number;
+    skippedCount?: number;
+    error?: string;
+    routes: LiveReleaseRoute[];
+  } | null;
+  overlays?: {
+    staging?: { status?: { snapshotSha?: string; fileCount?: number; exists?: boolean } };
+    production?: { status?: { snapshotSha?: string; fileCount?: number; exists?: boolean } };
+  };
+}
+
 function isOnlyProductionHistoryDirty(files: string[] | undefined): boolean {
   return Boolean(
     files?.length && files.every((file) => file === PRODUCTION_HISTORY_FILE),
   );
+}
+
+function parseJsonObjectFromTail(raw: string): unknown {
+  const text = String(raw || "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end < start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+function parseLiveReleaseStatus(raw: string): LiveReleaseStatus | null {
+  const parsed = parseJsonObjectFromTail(raw);
+  if (!parsed || typeof parsed !== "object") return null;
+  return parsed as LiveReleaseStatus;
+}
+
+function releasePlanFromLiveStatus(
+  liveStatus: LiveReleaseStatus | null,
+): ReleasePlan | null {
+  const plan = liveStatus?.plan;
+  if (!plan) return null;
+  const validKinds: ReleaseActionKind[] = [
+    "publish-content-staging",
+    "deploy-staging-code",
+    "promote-production-code",
+    "publish-content-production-from-staging",
+    "noop",
+    "blocked",
+  ];
+  if (!validKinds.includes(plan.kind)) return null;
+  const tone: ReleasePlan["tone"] =
+    plan.kind === "noop"
+      ? "ok"
+      : plan.kind === "blocked"
+        ? "blocked"
+        : "warn";
+  return {
+    detail: plan.reason,
+    disabled: plan.kind === "blocked",
+    kind: plan.kind,
+    label: plan.label,
+    reason: plan.reason,
+    script: plan.script || "",
+    tone,
+  };
 }
 
 interface EnvironmentSnapshot {
@@ -545,6 +639,8 @@ export function ReleasePanel() {
   const [showProductionContentConfirm, setShowProductionContentConfirm] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
+  const [liveStatus, setLiveStatus] = useState<LiveReleaseStatus | null>(null);
+  const [liveStatusError, setLiveStatusError] = useState("");
   const [localSource, setLocalSource] = useState<SiteAdminLocalReleaseSource | null>(null);
   const [contentSuggestion, setContentSuggestion] =
     useState<ContentPublishSuggestion | null>(() => readContentPublishSuggestion());
@@ -601,14 +697,18 @@ export function ReleasePanel() {
   });
   const stagingContent = latestContentOverlayEntry(history, "staging");
   const productionContent = latestContentOverlayEntry(history, "production");
-  const stagingOverlaySnapshot = overlaySnapshotFromEntry(stagingContent);
-  const productionOverlaySnapshot = overlaySnapshotFromEntry(productionContent);
+  const stagingOverlaySnapshot =
+    normalizeString(liveStatus?.overlays?.staging?.status?.snapshotSha) ||
+    overlaySnapshotFromEntry(stagingContent);
+  const productionOverlaySnapshot =
+    normalizeString(liveStatus?.overlays?.production?.status?.snapshotSha) ||
+    overlaySnapshotFromEntry(productionContent);
   const productionCodeMatchesStaging = Boolean(
     preview?.ok === true &&
       preview.production &&
       normalizeString(preview.production.codeSha) === normalizeString(preview.staging.codeSha),
   );
-  const smartPlan = deriveReleasePlan({
+  const fallbackSmartPlan = deriveReleasePlan({
     contentChanged: Boolean(contentSuggestion),
     isStaging,
     jobRunning: job?.status === "running",
@@ -623,6 +723,10 @@ export function ReleasePanel() {
     status,
     target: releaseTarget,
   });
+  const liveSmartPlan = ready && job?.status !== "running" && !contentSuggestion
+    ? releasePlanFromLiveStatus(liveStatus)
+    : null;
+  const smartPlan = liveSmartPlan || fallbackSmartPlan;
 
   const loadHistory = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -642,6 +746,26 @@ export function ReleasePanel() {
       setLocalSource(null);
     }
   }, []);
+
+  const loadLiveStatus = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      const script =
+        releaseTarget === "staging"
+          ? "release:status:staging:json"
+          : "release:status:json";
+      const result = await siteAdminRunReleaseCommand(script);
+      const parsed = parseLiveReleaseStatus(result.stdout_tail);
+      if (!parsed) {
+        setLiveStatusError("Live release status returned invalid JSON.");
+        return;
+      }
+      setLiveStatus(parsed);
+      setLiveStatusError("");
+    } catch (err) {
+      setLiveStatusError(String(err));
+    }
+  }, [releaseTarget]);
 
   const loadStatus = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -691,7 +815,8 @@ export function ReleasePanel() {
     void loadStatus({ silent: true });
     void loadHistory();
     void loadLocalSource();
-  }, [loadHistory, loadLocalSource, loadStatus]);
+    void loadLiveStatus();
+  }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(
@@ -725,6 +850,7 @@ export function ReleasePanel() {
           if (shouldOfferProductionContent) setShowProductionContentConfirm(true);
         });
         void loadLocalSource();
+        void loadLiveStatus();
         if (payload.state.status === "succeeded") {
           if (
             payload.state.script === RELEASE_STAGING_SCRIPT ||
@@ -757,7 +883,7 @@ export function ReleasePanel() {
       cancelled = true;
       unlisten?.();
     };
-  }, [loadHistory, loadLocalSource, loadStatus, releaseTarget]);
+  }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus, releaseTarget]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- completion state opens the next explicit confirmation after refreshed status resolves */
   useEffect(() => {
@@ -881,11 +1007,15 @@ export function ReleasePanel() {
     }
     if (smartPlan.kind === "noop") {
       void loadStatus();
+      void loadHistory();
+      void loadLiveStatus();
       return;
     }
     setMessage("warn", smartPlan.detail);
   }, [
     loadStatus,
+    loadHistory,
+    loadLiveStatus,
     setMessage,
     smartPlan.detail,
     smartPlan.kind,
@@ -938,7 +1068,11 @@ export function ReleasePanel() {
             <button
               className="btn btn--secondary"
               type="button"
-              onClick={() => void loadStatus()}
+              onClick={() => {
+                void loadStatus();
+                void loadHistory();
+                void loadLiveStatus();
+              }}
               disabled={loading}
             >
               Refresh
@@ -960,6 +1094,14 @@ export function ReleasePanel() {
         stagingSnapshot={stagingOverlaySnapshot}
       />
 
+      <ReleaseStepper
+        liveStatus={liveStatus}
+        plan={smartPlan}
+        preview={preview}
+        productionCodeMatchesStaging={productionCodeMatchesStaging}
+        routeParity={liveStatus?.routeParity || null}
+      />
+
       <ReleaseFlowMap
         isStaging={isStaging}
         localDirty={localDirty}
@@ -973,9 +1115,16 @@ export function ReleasePanel() {
       <ContentOverlayStatusPanel
         contentSuggestion={contentSuggestion}
         history={history}
+        liveStatus={liveStatus}
+        liveStatusError={liveStatusError}
         localSource={localSource}
         preview={preview}
         status={status}
+      />
+
+      <RouteParityPanel
+        error={liveStatusError}
+        routeParity={liveStatus?.routeParity || null}
       />
 
       {!isStaging ? (
@@ -1070,10 +1219,6 @@ export function ReleasePanel() {
             <pre>{productionCommandFor(status, preview)}</pre>
           </div>
           <div>
-            <h2>Production Content Direct</h2>
-            <pre>{PUBLISH_CONTENT_PROD_COMMAND}</pre>
-          </div>
-          <div>
             <h2>Production Content From Staging</h2>
             <pre>{PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND}</pre>
           </div>
@@ -1085,11 +1230,24 @@ export function ReleasePanel() {
             <h2>Production Overlay Clear</h2>
             <pre>{PUBLISH_CONTENT_PROD_CLEAR_COMMAND}</pre>
           </div>
-          <div>
-            <h2>Legacy Guarded Fallback</h2>
-            <pre>{LEGACY_RELEASE_PROD_COMMAND}</pre>
-          </div>
         </div>
+        <details className="release-center__danger-zone">
+          <summary>Dangerous recovery commands</summary>
+          <p>
+            These bypass the normal staging-first Smart Release path. Use only
+            when recovering a broken release.
+          </p>
+          <div className="release-panel__commands-grid">
+            <div>
+              <h2>Production Content Direct</h2>
+              <pre>{PUBLISH_CONTENT_PROD_COMMAND}</pre>
+            </div>
+            <div>
+              <h2>Legacy Guarded Fallback</h2>
+              <pre>{LEGACY_RELEASE_PROD_COMMAND}</pre>
+            </div>
+          </div>
+        </details>
         <div className="release-center__advanced-actions">
           <button
             className="btn btn--secondary"
@@ -1178,6 +1336,99 @@ function ReleaseTargetControl({
         Staging to Production
       </button>
     </div>
+  );
+}
+
+function ReleaseStepper({
+  liveStatus,
+  plan,
+  preview,
+  productionCodeMatchesStaging,
+  routeParity,
+}: {
+  liveStatus: LiveReleaseStatus | null;
+  plan: ReleasePlan;
+  preview: PromotePreview | null;
+  productionCodeMatchesStaging: boolean;
+  routeParity: LiveReleaseStatus["routeParity"] | null;
+}) {
+  const steps = [
+    {
+      key: "source",
+      label: "Source",
+      state: plan.kind === "blocked" && plan.label === "Commit changes" ? "blocked" : "ok",
+      detail: liveStatus?.checkedAt ? `Checked ${formatRelativeTime(Date.parse(liveStatus.checkedAt))}` : "Local source",
+    },
+    {
+      key: "staging",
+      label: "Staging",
+      state:
+        plan.kind === "deploy-staging-code" || plan.kind === "publish-content-staging"
+          ? "active"
+          : "ok",
+      detail:
+        plan.kind === "deploy-staging-code"
+          ? "Deploy code"
+          : plan.kind === "publish-content-staging"
+            ? "Publish content"
+            : "Current",
+    },
+    {
+      key: "verify",
+      label: "Verify",
+      state: preview?.ok === true ? "ok" : "muted",
+      detail: preview?.ok === true ? "Preflight loaded" : "Waiting",
+    },
+    {
+      key: "production",
+      label: "Production",
+      state:
+        plan.kind === "promote-production-code" ||
+        plan.kind === "publish-content-production-from-staging"
+          ? "active"
+          : productionCodeMatchesStaging
+            ? "ok"
+            : "muted",
+      detail:
+        plan.kind === "promote-production-code"
+          ? "Promote code"
+          : plan.kind === "publish-content-production-from-staging"
+            ? "Copy content"
+            : productionCodeMatchesStaging
+              ? "Code matched"
+              : "Pending",
+    },
+    {
+      key: "routes",
+      label: "Routes",
+      state: routeParity
+        ? routeParity.ok
+          ? routeParity.skippedCount
+            ? "muted"
+            : "ok"
+          : "blocked"
+        : "muted",
+      detail: routeParity
+        ? routeParity.skippedCount
+          ? `${routeParity.skippedCount} gated`
+          : routeParity.ok
+            ? "Matched"
+          : `${routeParity.mismatchCount} mismatch${routeParity.mismatchCount === 1 ? "" : "es"}`
+        : "Not checked",
+    },
+  ];
+  return (
+    <section className="release-center__stepper" aria-label="Release steps">
+      {steps.map((step, index) => (
+        <div className="release-center__step" data-state={step.state} key={step.key}>
+          <span>{index + 1}</span>
+          <div>
+            <strong>{step.label}</strong>
+            <small>{step.detail}</small>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -1367,20 +1618,28 @@ function overlaySnapshotFromEntry(entry: SiteAdminReleaseHistoryEntry | null): s
 function ContentOverlayStatusPanel({
   contentSuggestion,
   history,
+  liveStatus,
+  liveStatusError,
   localSource,
   preview,
   status,
 }: {
   contentSuggestion: ContentPublishSuggestion | null;
   history: SiteAdminReleaseHistoryEntry[];
+  liveStatus: LiveReleaseStatus | null;
+  liveStatusError: string;
   localSource: SiteAdminLocalReleaseSource | null;
   preview: PromotePreview | null;
   status: StatusPayload | null;
 }) {
   const stagingContent = latestContentOverlayEntry(history, "staging");
   const productionContent = latestContentOverlayEntry(history, "production");
-  const stagingSnapshot = overlaySnapshotFromEntry(stagingContent);
-  const productionSnapshot = overlaySnapshotFromEntry(productionContent);
+  const stagingSnapshot =
+    normalizeString(liveStatus?.overlays?.staging?.status?.snapshotSha) ||
+    overlaySnapshotFromEntry(stagingContent);
+  const productionSnapshot =
+    normalizeString(liveStatus?.overlays?.production?.status?.snapshotSha) ||
+    overlaySnapshotFromEntry(productionContent);
   return (
     <section className="release-center__content-status" aria-label="Code and content publish status">
       <header>
@@ -1392,6 +1651,10 @@ function ContentOverlayStatusPanel({
           <strong data-tone="warn">
             Saved {formatRelativeTime(contentSuggestion.atMs)}
           </strong>
+        ) : liveStatusError ? (
+          <strong data-tone="warn">Live status unavailable</strong>
+        ) : liveStatus ? (
+          <strong data-tone="ok">Live status</strong>
         ) : (
           <strong data-tone="ok">No pending save</strong>
         )}
@@ -1427,6 +1690,59 @@ function ContentOverlayStatusPanel({
           <small>{productionContent?.recorded_at || "not published in this app"}</small>
         </div>
       </div>
+    </section>
+  );
+}
+
+function RouteParityPanel({
+  error,
+  routeParity,
+}: {
+  error: string;
+  routeParity: LiveReleaseStatus["routeParity"] | null;
+}) {
+  if (!routeParity && !error) return null;
+  return (
+    <section className="release-center__route-parity" aria-label="Route parity">
+      <header>
+        <div>
+          <h2>Route Parity</h2>
+          <p>Live staging and production route hashes, including static shell headers.</p>
+        </div>
+        <strong data-tone={routeParity?.ok ? "ok" : "warn"}>
+          {routeParity?.skippedCount
+            ? `${routeParity.skippedCount} gated`
+            : routeParity?.ok
+              ? "Matched"
+              : error
+                ? "Unavailable"
+                : `${routeParity?.mismatchCount || 0} mismatch`}
+        </strong>
+      </header>
+      {error ? <p className="release-center__route-parity-error">{error}</p> : null}
+      {routeParity?.routes?.length ? (
+        <div className="release-center__route-parity-list">
+          {routeParity.routes.map((route) => (
+            <div
+              className="release-center__route-parity-row"
+              data-ok={route.ok ? "true" : "false"}
+              data-skipped={route.skipped ? "true" : undefined}
+              key={route.path}
+            >
+              <strong>{route.path}</strong>
+              <span>
+                stg {route.staging.status} shell {route.staging.staticShell || "-"}
+              </span>
+              <span>prod {route.production.status} shell {route.production.staticShell || "-"}</span>
+              <small>
+                {route.skipped
+                  ? route.reason || "Gated staging route"
+                  : `${route.staging.hash.slice(0, 7)} / ${route.production.hash.slice(0, 7)}`}
+              </small>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
