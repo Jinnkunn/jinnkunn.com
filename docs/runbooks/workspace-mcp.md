@@ -65,10 +65,12 @@ Use stdio transport and point the command at this repo:
 ## Safety Model
 
 - The server listens only on stdio. It does not expose an HTTP port.
-- Site Admin write access is limited to local content authoring.
-  `siteAdmin.create_page`, `siteAdmin.update_page`, and
-  `siteAdmin.delete_page` can change MDX pages under `content/pages` and update
-  `content/page-tree.json`; they cannot deploy staging or promote production.
+- Site Admin write access defaults to the staging Site Admin API
+  (`https://staging.jinkunchen.com`). When the app has a saved staging Site
+  Admin token in the local credential store, `siteAdmin.create_page`,
+  `siteAdmin.update_page`, and `siteAdmin.delete_page` write to staging D1 so
+  the page appears in Site Admin immediately. Local `content/pages` writes are
+  kept as fallback/recovery.
 - Site Admin content writes create
   `site-admin-content-publish-suggestion.json`; Release Center reads it and
   suggests the next content publish step.
@@ -96,9 +98,22 @@ Default permissions:
   "allowTodosWrite": true,
   "allowProjectsWrite": true,
   "allowSiteAdminWrite": true,
+  "siteAdminWriteTarget": "api",
+  "siteAdminBaseUrl": "https://staging.jinkunchen.com",
+  "siteAdminFallbackToLocal": true,
   "allowCalendarWrite": false
 }
 ```
+
+Site Admin API credentials are resolved in this order:
+
+1. `WORKSPACE_MCP_SITE_ADMIN_AUTH_TOKEN`
+2. The app's local credential DB entry for the configured Site Admin base URL
+3. Local content fallback, when `siteAdminFallbackToLocal` is enabled
+
+Use `WORKSPACE_MCP_SITE_ADMIN_BACKEND=local` or set AI Access → Site Admin
+target to `Local files` for recovery workflows that intentionally edit the
+repository content tree.
 
 ## Tools
 
@@ -131,9 +146,9 @@ Default permissions:
 
 ## Current Scope
 
-MCP v1 directly uses the local SQLite schema for Workspace data and the local
-`content/` tree for Site Admin page authoring. It is intentionally limited to
-low-risk local-first operations plus content changes that still require a
-separate release step. macOS EventKit calendar accounts and production release
-actions should stay behind explicit Tauri UI confirmation until a later version
-adds a first-class permission prompt.
+MCP v1 directly uses the local SQLite schema for Workspace data. Site Admin
+page authoring writes through the staging Site Admin API when credentials are
+available, falling back to the local `content/` tree only for recovery/offline
+workflows. macOS EventKit calendar accounts and production release actions
+should stay behind explicit Tauri UI confirmation until a later version adds a
+first-class permission prompt.

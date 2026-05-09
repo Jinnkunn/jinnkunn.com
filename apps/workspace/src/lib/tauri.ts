@@ -49,6 +49,7 @@ export function secureStoreBackend(): Promise<"keychain" | "local-db"> {
 }
 
 export type WorkspaceMcpWriteMode = "read-only" | "local-write";
+export type WorkspaceMcpSiteAdminWriteTarget = "api" | "local";
 
 export interface WorkspaceMcpSettings {
   enabled: boolean;
@@ -58,6 +59,9 @@ export interface WorkspaceMcpSettings {
   allowTodosWrite: boolean;
   allowProjectsWrite: boolean;
   allowSiteAdminWrite: boolean;
+  siteAdminWriteTarget: WorkspaceMcpSiteAdminWriteTarget;
+  siteAdminBaseUrl: string;
+  siteAdminFallbackToLocal: boolean;
   allowCalendarWrite: boolean;
 }
 

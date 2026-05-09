@@ -2184,9 +2184,17 @@ a[data-link-style="icon"].notion-link.link:hover {
  * (which also lives on `p::before` of the first empty paragraph) from
  * fighting with the marker. */
 .mdx-document-text-block--list-bulleted.ProseMirror p:not(.is-editor-empty)::before {
-  content: "•  ";
+  content: "•";
+  display: inline-block;
+  width: 1.35em;
   color: var(--color-text-muted);
   font-weight: 500;
+  text-indent: 0;
+}
+
+.mdx-document-text-block--list-bulleted.ProseMirror p:not(.is-editor-empty) {
+  padding-left: 1.35em;
+  text-indent: -1.35em;
 }
 
 .mdx-document-text-block--list-numbered.ProseMirror {
@@ -2195,9 +2203,18 @@ a[data-link-style="icon"].notion-link.link:hover {
 
 .mdx-document-text-block--list-numbered.ProseMirror p:not(.is-editor-empty)::before {
   counter-increment: list-item;
-  content: counter(list-item) ".  ";
+  content: counter(list-item) ".";
+  display: inline-block;
+  width: 1.85em;
   color: var(--color-text-muted);
   font-weight: 500;
+  text-align: right;
+  text-indent: 0;
+}
+
+.mdx-document-text-block--list-numbered.ProseMirror p:not(.is-editor-empty) {
+  padding-left: 2.15em;
+  text-indent: -2.15em;
 }
 
 /* Toggle block — collapsible details with nested children. */
@@ -2652,4 +2669,3 @@ a[data-link-style="icon"].notion-link.link:hover {
 .settings-surface__body {
   display: contents;
 }
-

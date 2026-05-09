@@ -715,6 +715,7 @@ export function RichTextEditableBlock({
       className={classNameFor(block)}
       ariaLabel={`${block.type} block`}
       readOnly={readOnly}
+      lineMode={block.type === "list" ? "paragraphs" : "hardBreaks"}
       placeholder={
         isEmpty
           ? block.type === "paragraph" && placeholder

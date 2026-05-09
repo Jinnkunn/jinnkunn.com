@@ -241,6 +241,14 @@ function ensureWorkspaceSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_local_calendar_events_window
       ON local_calendar_events (archived_at, starts_at_ms, ends_at_ms);
+
+    CREATE TABLE IF NOT EXISTS secure_values (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_secure_values_updated_at
+      ON secure_values (updated_at DESC);
   `);
 }
 
@@ -280,12 +288,18 @@ const DEFAULT_MCP_SETTINGS = Object.freeze({
   allowTodosWrite: true,
   allowProjectsWrite: true,
   allowSiteAdminWrite: true,
+  siteAdminWriteTarget: "api",
+  siteAdminBaseUrl: "https://staging.jinkunchen.com",
+  siteAdminFallbackToLocal: true,
   allowCalendarWrite: false,
 });
 
 function normalizeMcpSettings(raw = {}) {
   const input = asObject(raw);
   const writeMode = input.writeMode === "read-only" ? "read-only" : "local-write";
+  const siteAdminWriteTarget = input.siteAdminWriteTarget === "local" ? "local" : "api";
+  const siteAdminBaseUrl =
+    cleanText(input.siteAdminBaseUrl, 500) || DEFAULT_MCP_SETTINGS.siteAdminBaseUrl;
   return {
     enabled: input.enabled !== false,
     writeMode,
@@ -294,6 +308,9 @@ function normalizeMcpSettings(raw = {}) {
     allowTodosWrite: input.allowTodosWrite !== false,
     allowProjectsWrite: input.allowProjectsWrite !== false,
     allowSiteAdminWrite: input.allowSiteAdminWrite !== false,
+    siteAdminWriteTarget,
+    siteAdminBaseUrl,
+    siteAdminFallbackToLocal: input.siteAdminFallbackToLocal !== false,
     allowCalendarWrite: input.allowCalendarWrite === true,
   };
 }
@@ -359,6 +376,9 @@ function writeArgsForHash(args = {}) {
   const clean = { ...asObject(args) };
   delete clean.confirmationId;
   delete clean.dryRun;
+  delete clean.authToken;
+  delete clean.cfAccessClientId;
+  delete clean.cfAccessClientSecret;
   return clean;
 }
 
@@ -1315,7 +1335,243 @@ function writeContentPublishSuggestion(method, p) {
   return payload;
 }
 
-function siteAdminPageList(args = {}) {
+const SITE_ADMIN_STAGING_BASE_URL = "https://staging.jinkunchen.com";
+
+function normalizeBaseUrl(value) {
+  return cleanText(value, 500).replace(/\/+$/, "");
+}
+
+function siteAdminCredentialKey(kind, baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl).toLowerCase() || "default";
+  return `site-admin:${kind}::${normalized}`;
+}
+
+function readSecureValue(db, key) {
+  try {
+    const row = db.prepare("SELECT value FROM secure_values WHERE key = ?").get(key);
+    return cleanText(row?.value, 20_000);
+  } catch {
+    return "";
+  }
+}
+
+function resolveSiteAdminApiConfig(db, args = {}) {
+  const settings = readMcpSettings();
+  const explicitTarget = args.backend || args.target || process.env.WORKSPACE_MCP_SITE_ADMIN_BACKEND || "";
+  const baseUrl = normalizeBaseUrl(
+    args.baseUrl ||
+      process.env.WORKSPACE_MCP_SITE_ADMIN_BASE_URL ||
+      settings.siteAdminBaseUrl ||
+      SITE_ADMIN_STAGING_BASE_URL,
+  );
+  const authToken = cleanText(args.authToken || process.env.WORKSPACE_MCP_SITE_ADMIN_AUTH_TOKEN, 20_000)
+    || readSecureValue(db, siteAdminCredentialKey("token", baseUrl));
+  const cfAccessClientId = cleanText(
+    args.cfAccessClientId || process.env.WORKSPACE_MCP_SITE_ADMIN_CF_ACCESS_CLIENT_ID,
+    2_000,
+  ) || readSecureValue(db, siteAdminCredentialKey("cf-access-id", baseUrl));
+  const cfAccessClientSecret = cleanText(
+    args.cfAccessClientSecret || process.env.WORKSPACE_MCP_SITE_ADMIN_CF_ACCESS_CLIENT_SECRET,
+    20_000,
+  ) || readSecureValue(db, siteAdminCredentialKey("cf-access-secret", baseUrl));
+  return {
+    baseUrl,
+    authToken,
+    cfAccessClientId,
+    cfAccessClientSecret,
+    hasCredentials: Boolean(authToken || (cfAccessClientId && cfAccessClientSecret)),
+    target: explicitTarget === "local"
+      ? "local"
+      : explicitTarget === "api"
+        ? "api"
+        : settings.siteAdminWriteTarget,
+    fallbackToLocal: explicitTarget ? false : settings.siteAdminFallbackToLocal !== false,
+  };
+}
+
+function selectSiteAdminPageBackend(db, args = {}) {
+  const api = resolveSiteAdminApiConfig(db, args);
+  if (api.target === "local") return { kind: "local", api };
+  if (api.hasCredentials) return { kind: "api", api };
+  if (api.fallbackToLocal) {
+    return {
+      kind: "local",
+      api,
+      fallbackReason: `Site Admin API credentials were not found for ${api.baseUrl}.`,
+    };
+  }
+  throw new Error(
+    `MISSING_SITE_ADMIN_CREDENTIALS: sign in to Site Admin for ${api.baseUrl}, ` +
+      "set WORKSPACE_MCP_SITE_ADMIN_AUTH_TOKEN, or switch MCP Site Admin target to local.",
+  );
+}
+
+function siteAdminApiRequestSync(api, method, requestPath, body = null) {
+  const payload = {
+    url: `${api.baseUrl}${requestPath.startsWith("/") ? requestPath : `/${requestPath}`}`,
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...(api.authToken ? { authorization: `Bearer ${api.authToken}` } : {}),
+      ...(api.cfAccessClientId && api.cfAccessClientSecret
+        ? {
+            "cf-access-client-id": api.cfAccessClientId,
+            "cf-access-client-secret": api.cfAccessClientSecret,
+          }
+        : {}),
+    },
+    body,
+  };
+  const script = `
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const init = { method: input.method, headers: input.headers };
+    if (input.body !== null && input.body !== undefined) {
+      init.body = JSON.stringify(input.body);
+    }
+    const response = await fetch(input.url, init);
+    const text = await response.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch {}
+    process.stdout.write(JSON.stringify({
+      ok: response.ok,
+      status: response.status,
+      body,
+      text: body === null ? text.slice(0, 1000) : "",
+    }));
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+    timeout: 30_000,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`SITE_ADMIN_API_FAILED: ${result.stderr || `node exited ${result.status}`}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout || "{}");
+  } catch {
+    throw new Error(`SITE_ADMIN_API_BAD_RESPONSE: ${result.stdout || result.stderr}`);
+  }
+  const bodyRecord = asObject(parsed.body);
+  const envelopeOk = bodyRecord.ok === true || (parsed.ok && bodyRecord.ok !== false);
+  if (!parsed.ok || bodyRecord.ok === false || !envelopeOk) {
+    const code = cleanText(bodyRecord.code, 120) || `HTTP_${parsed.status || 0}`;
+    const error = cleanText(bodyRecord.error, 1_000) || cleanText(parsed.text, 1_000) || "Site Admin API request failed.";
+    throw new Error(`${code}: ${error}`);
+  }
+  return {
+    status: parsed.status,
+    data: bodyRecord.ok === true ? bodyRecord.data : bodyRecord,
+    raw: parsed.body,
+  };
+}
+
+function remotePageFromApi(row, index = -1) {
+  const r = asObject(row);
+  const slug = cleanText(r.slug, 260);
+  return {
+    slug,
+    href: cleanText(r.href, 300) || `/${slug}`,
+    title: cleanText(r.title, 300) || slug,
+    description: cleanText(r.description, 1_000),
+    draft: r.draft === true,
+    relPath: sitePageRelPath(slug),
+    sourceSha: cleanText(r.version || r.sourceSha, 120),
+    version: cleanText(r.version || r.sourceSha, 120),
+    navIndex: index,
+    backend: "api",
+  };
+}
+
+function siteAdminApiPageTree(api) {
+  const response = siteAdminApiRequestSync(api, "GET", "/api/site-admin/pages/tree");
+  const data = asObject(response.data);
+  const slugs = Array.isArray(data.slugs)
+    ? data.slugs.map((item) => cleanText(item, 260)).filter(Boolean)
+    : [];
+  const sourceVersion = asObject(data.sourceVersion);
+  return {
+    slugs,
+    fileSha: cleanText(sourceVersion.fileSha, 120),
+  };
+}
+
+function siteAdminApiSavePageTree(api, slugs, expectedFileSha = "") {
+  return siteAdminApiRequestSync(api, "POST", "/api/site-admin/pages/tree", {
+    slugs,
+    ...(expectedFileSha ? { expectedFileSha } : {}),
+  });
+}
+
+function orderedRemotePageRows(rows, treeSlugs) {
+  const bySlug = new Map(rows.map((row) => [row.slug, row]));
+  const ordered = [];
+  const seen = new Set();
+  for (const slug of treeSlugs) {
+    const row = bySlug.get(slug);
+    if (!row) continue;
+    ordered.push(row);
+    seen.add(slug);
+  }
+  for (const row of rows) {
+    if (!seen.has(row.slug)) ordered.push(row);
+  }
+  return ordered;
+}
+
+function siteAdminApiPageList(db, args = {}) {
+  const { api } = selectSiteAdminPageBackend(db, { ...args, backend: "api" });
+  const response = siteAdminApiRequestSync(api, "GET", "/api/site-admin/pages?drafts=1");
+  const rows = Array.isArray(asObject(response.data).pages)
+    ? asObject(response.data).pages.map((row) => remotePageFromApi(row))
+    : [];
+  let tree = { slugs: [], fileSha: "" };
+  try {
+    tree = siteAdminApiPageTree(api);
+  } catch {
+    tree = { slugs: [], fileSha: "" };
+  }
+  const limit = limitValue(args.limit, 100, 500);
+  const pages = orderedRemotePageRows(rows, tree.slugs)
+    .slice(0, limit)
+    .map((row, index) => ({ ...row, navIndex: tree.slugs.indexOf(row.slug), listIndex: index }));
+  return {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    count: pages.length,
+    pages,
+  };
+}
+
+function siteAdminApiPageGet(db, args = {}) {
+  const slug = normalizePageSlug(args.slug);
+  const { api } = selectSiteAdminPageBackend(db, { ...args, backend: "api" });
+  const response = siteAdminApiRequestSync(api, "GET", `/api/site-admin/pages/${slug}`);
+  const data = asObject(response.data);
+  let tree = { slugs: [], fileSha: "" };
+  try {
+    tree = siteAdminApiPageTree(api);
+  } catch {
+    tree = { slugs: [], fileSha: "" };
+  }
+  const page = {
+    ...remotePageFromApi(data, tree.slugs.indexOf(slug)),
+    source: asString(data.source),
+    inNavigation: tree.slugs.includes(slug),
+    navIndex: tree.slugs.indexOf(slug),
+    baseUrl: api.baseUrl,
+  };
+  return { backend: "api", baseUrl: api.baseUrl, page };
+}
+
+function siteAdminPageList(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") return siteAdminApiPageList(db, args);
   const contentRoot = resolveSiteContentRoot();
   const orderedSlugs = orderedSitePageSlugs(contentRoot);
   const limit = limitValue(args.limit, 100, 500);
@@ -1330,35 +1586,52 @@ function siteAdminPageList(args = {}) {
       relPath: detail.relPath,
       sourceSha: detail.sourceSha,
       navIndex: index,
+      backend: "local",
     } : null;
   }).filter(Boolean);
-  return { count: pages.length, pages };
+  return {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
+    count: pages.length,
+    pages,
+  };
 }
 
-function siteAdminPageGet(args = {}) {
+function siteAdminPageGet(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") return siteAdminApiPageGet(db, args);
   const slug = normalizePageSlug(args.slug);
   const contentRoot = resolveSiteContentRoot();
   const page = readSitePage(contentRoot, slug);
   if (!page) return { page: null };
   const tree = readPageTree(contentRoot).slugs;
   return {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
     page: {
       ...page,
+      backend: "local",
       inNavigation: tree.includes(slug),
       navIndex: tree.indexOf(slug),
     },
   };
 }
 
-function createSiteAdminPage(args = {}) {
+function createSiteAdminPage(db, args = {}) {
   const slug = resolveCreatePageSlug(args);
   const source = createPageSource(args, slug);
   ensurePageSourceValid(source);
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") {
+    return createSiteAdminPageViaApi(backend.api, args, slug, source);
+  }
   const contentRoot = resolveSiteContentRoot();
   const relPath = sitePageRelPath(slug);
   const fullPath = siteContentFilePath(contentRoot, relPath);
   const addToNavigation = args.addToNavigation !== false;
   const preview = {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
     slug,
     href: `/${slug}`,
     title: extractPageTitle(source, slug),
@@ -1385,11 +1658,68 @@ function createSiteAdminPage(args = {}) {
   const sha = sha1Hex(source);
   writeContentPublishSuggestion("POST", "/api/site-admin/pages");
   writeAudit({ tool: "siteAdmin.create_page", slug, title: preview.title, relPath });
-  return { page: { ...preview, sourceSha: sha, treeUpdated } };
+  return { backend: "local", fallbackReason: backend.fallbackReason || "", page: { ...preview, sourceSha: sha, treeUpdated } };
 }
 
-function updateSiteAdminPage(args = {}) {
+function createSiteAdminPageViaApi(api, args, slug, source) {
+  const addToNavigation = args.addToNavigation !== false;
+  const preview = {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    slug,
+    href: `/${slug}`,
+    title: extractPageTitle(source, slug),
+    relPath: sitePageRelPath(slug),
+    addToNavigation,
+    sourcePreview: textPreview(source),
+  };
+  const confirmation = prepareWrite("siteAdmin.create_page", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  const created = siteAdminApiRequestSync(api, "POST", "/api/site-admin/pages", {
+    slug,
+    source,
+  });
+  let treeUpdated = false;
+  let treeError = "";
+  if (addToNavigation) {
+    try {
+      const tree = siteAdminApiPageTree(api);
+      const nextSlugs = applyPageTreeInsert(tree.slugs, slug, args);
+      if (!sameStringList(tree.slugs, nextSlugs)) {
+        siteAdminApiSavePageTree(api, nextSlugs, tree.fileSha);
+        treeUpdated = true;
+      }
+    } catch (error) {
+      treeError = error?.message || String(error);
+    }
+  }
+  markConfirmationConsumed(args.confirmationId);
+  const data = asObject(created.data);
+  writeContentPublishSuggestion("POST", "/api/site-admin/pages");
+  writeAudit({ tool: "siteAdmin.create_page", backend: "api", baseUrl: api.baseUrl, slug, title: preview.title });
+  return {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    page: {
+      ...preview,
+      sourceSha: cleanText(data.version, 120) || sha1Hex(source),
+      version: cleanText(data.version, 120) || sha1Hex(source),
+      treeUpdated,
+      treeError,
+    },
+  };
+}
+
+function sameStringList(a, b) {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
+}
+
+function updateSiteAdminPage(db, args = {}) {
   const slug = normalizePageSlug(args.slug);
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") {
+    return updateSiteAdminPageViaApi(backend.api, args, slug);
+  }
   const contentRoot = resolveSiteContentRoot();
   const existing = readSitePage(contentRoot, slug);
   if (!existing) throw new Error(`PAGE_NOT_FOUND: content/${sitePageRelPath(slug)} was not found.`);
@@ -1409,6 +1739,8 @@ function updateSiteAdminPage(args = {}) {
     return applyPageTreeInsert(current, slug, args);
   })();
   const preview = {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
     slug,
     href: `/${slug}`,
     title: extractPageTitle(source, slug),
@@ -1430,11 +1762,82 @@ function updateSiteAdminPage(args = {}) {
   markConfirmationConsumed(args.confirmationId);
   writeContentPublishSuggestion("PUT", `/api/site-admin/pages/${slug}`);
   writeAudit({ tool: "siteAdmin.update_page", slug, title: preview.title, relPath: existing.relPath });
-  return { page: { ...readSitePage(contentRoot, slug), treeUpdated } };
+  return { backend: "local", fallbackReason: backend.fallbackReason || "", page: { ...readSitePage(contentRoot, slug), backend: "local", treeUpdated } };
 }
 
-function deleteSiteAdminPage(args = {}) {
+function updateSiteAdminPageViaApi(api, args, slug) {
+  const existingResponse = siteAdminApiRequestSync(api, "GET", `/api/site-admin/pages/${slug}`);
+  const existingData = asObject(existingResponse.data);
+  const existingSource = asString(existingData.source);
+  const existingVersion = cleanText(existingData.version, 120);
+  if (!existingVersion) {
+    throw new Error(`PAGE_VERSION_MISSING: /${slug} did not return a version.`);
+  }
+  const expectedSha = cleanText(args.expectedSha || args.sourceSha, 120);
+  if (expectedSha && expectedSha !== existingVersion) {
+    throw new Error(`SOURCE_CONFLICT: expected ${expectedSha}, current ${existingVersion}.`);
+  }
+  const source = createPageSource(args, slug, existingSource);
+  ensurePageSourceValid(source);
+  const addToNavigation = args.addToNavigation;
+  let treeBefore = { slugs: [], fileSha: "" };
+  let nextTree = null;
+  if (addToNavigation !== undefined || args.beforeSlug || args.afterSlug || args.position) {
+    treeBefore = siteAdminApiPageTree(api);
+    const current = treeBefore.slugs.filter((item) => item !== slug);
+    nextTree = addToNavigation === false ? current : applyPageTreeInsert(current, slug, args);
+  }
+  const preview = {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    slug,
+    href: `/${slug}`,
+    title: extractPageTitle(source, slug),
+    relPath: sitePageRelPath(slug),
+    previousSha: existingVersion,
+    nextSha: sha1Hex(source),
+    treeWillUpdate: Boolean(nextTree),
+    diffPreview: diffPreview(existingSource, source),
+  };
+  const confirmation = prepareWrite("siteAdmin.update_page", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  const updated = siteAdminApiRequestSync(api, "PATCH", `/api/site-admin/pages/${slug}`, {
+    source,
+    version: existingVersion,
+  });
+  let treeUpdated = false;
+  let treeError = "";
+  if (nextTree && !sameStringList(treeBefore.slugs, nextTree)) {
+    try {
+      siteAdminApiSavePageTree(api, nextTree, treeBefore.fileSha);
+      treeUpdated = true;
+    } catch (error) {
+      treeError = error?.message || String(error);
+    }
+  }
+  markConfirmationConsumed(args.confirmationId);
+  const data = asObject(updated.data);
+  writeContentPublishSuggestion("PATCH", `/api/site-admin/pages/${slug}`);
+  writeAudit({ tool: "siteAdmin.update_page", backend: "api", baseUrl: api.baseUrl, slug, title: preview.title });
+  return {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    page: {
+      ...remotePageFromApi({ ...existingData, ...data, source }, nextTree ? nextTree.indexOf(slug) : -1),
+      source,
+      treeUpdated,
+      treeError,
+      baseUrl: api.baseUrl,
+    },
+  };
+}
+
+function deleteSiteAdminPage(db, args = {}) {
   const slug = normalizePageSlug(args.slug);
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") {
+    return deleteSiteAdminPageViaApi(backend.api, args, slug);
+  }
   const contentRoot = resolveSiteContentRoot();
   const existingSlugs = listSitePageSlugs(contentRoot);
   const targets = existingSlugs.filter((item) => item === slug || item.startsWith(`${slug}/`));
@@ -1448,6 +1851,8 @@ function deleteSiteAdminPage(args = {}) {
     throw new Error(`SOURCE_CONFLICT: expected ${expectedSha}, current ${details[0]?.sourceSha}.`);
   }
   const preview = {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
     slug,
     deletedSlugs: targets,
     relPath: sitePageRelPath(slug),
@@ -1463,7 +1868,67 @@ function deleteSiteAdminPage(args = {}) {
   markConfirmationConsumed(args.confirmationId);
   writeContentPublishSuggestion("DELETE", `/api/site-admin/pages/${slug}`);
   writeAudit({ tool: "siteAdmin.delete_page", slug, deletedCount: targets.length });
-  return { deleted: targets };
+  return { backend: "local", fallbackReason: backend.fallbackReason || "", deleted: targets };
+}
+
+function deleteSiteAdminPageViaApi(api, args, slug) {
+  const listResponse = siteAdminApiRequestSync(api, "GET", "/api/site-admin/pages?drafts=1");
+  const rows = Array.isArray(asObject(listResponse.data).pages)
+    ? asObject(listResponse.data).pages.map((row) => remotePageFromApi(row))
+    : [];
+  const targets = rows
+    .map((row) => row.slug)
+    .filter((item) => item === slug || item.startsWith(`${slug}/`));
+  if (!targets.length) throw new Error(`PAGE_NOT_FOUND: /${slug} was not found.`);
+  if (targets.length > 1 && !asBool(args.cascade, false)) {
+    throw new Error("PAGE_HAS_CHILDREN: pass cascade=true to delete child pages too.");
+  }
+  const details = targets.map((target) => {
+    const response = siteAdminApiRequestSync(api, "GET", `/api/site-admin/pages/${target}`);
+    const data = asObject(response.data);
+    return {
+      slug: target,
+      version: cleanText(data.version, 120),
+      source: asString(data.source),
+      relPath: sitePageRelPath(target),
+    };
+  });
+  const expectedSha = cleanText(args.expectedSha || args.sourceSha, 120);
+  if (expectedSha && details[0]?.version !== expectedSha) {
+    throw new Error(`SOURCE_CONFLICT: expected ${expectedSha}, current ${details[0]?.version}.`);
+  }
+  const preview = {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    slug,
+    deletedSlugs: targets,
+    relPath: sitePageRelPath(slug),
+    diffPreview: details.map((page) => `--- ${page.relPath}\n${textPreview(page.source, 800)}`).join("\n\n"),
+  };
+  const confirmation = prepareWrite("siteAdmin.delete_page", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  for (const page of details.slice().sort((a, b) => b.slug.length - a.slug.length)) {
+    if (!page.version) throw new Error(`PAGE_VERSION_MISSING: /${page.slug} did not return a version.`);
+    siteAdminApiRequestSync(api, "DELETE", `/api/site-admin/pages/${page.slug}`, {
+      version: page.version,
+    });
+  }
+  let treeUpdated = false;
+  let treeError = "";
+  try {
+    const tree = siteAdminApiPageTree(api);
+    const nextTree = tree.slugs.filter((item) => !targets.includes(item));
+    if (!sameStringList(tree.slugs, nextTree)) {
+      siteAdminApiSavePageTree(api, nextTree, tree.fileSha);
+      treeUpdated = true;
+    }
+  } catch (error) {
+    treeError = error?.message || String(error);
+  }
+  markConfirmationConsumed(args.confirmationId);
+  writeContentPublishSuggestion("DELETE", `/api/site-admin/pages/${slug}`);
+  writeAudit({ tool: "siteAdmin.delete_page", backend: "api", baseUrl: api.baseUrl, slug, deletedCount: targets.length });
+  return { backend: "api", baseUrl: api.baseUrl, deleted: targets, treeUpdated, treeError };
 }
 
 function siteAdminReleaseStatus() {
@@ -1676,33 +2141,39 @@ const toolSchemas = [
   },
   {
     name: "siteAdmin.list_pages",
-    description: "List local public website MDX pages in navigation order.",
+    description: "List public website pages in Site Admin navigation order. Defaults to staging Site Admin API when credentials are available, with local content fallback.",
     inputSchema: {
       type: "object",
       properties: {
         limit: { type: "number" },
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
       },
     },
   },
   {
     name: "siteAdmin.get_page",
-    description: "Read one local public website MDX page by slug.",
+    description: "Read one public website page by slug. Defaults to staging Site Admin API when credentials are available, with local content fallback.",
     inputSchema: {
       type: "object",
       required: ["slug"],
       properties: {
         slug: { type: "string" },
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
       },
     },
   },
   {
     name: "siteAdmin.create_page",
-    description: "Create a local public website MDX page under content/pages. This never deploys by itself.",
+    description: "Create a public website page. Defaults to staging Site Admin API so the page appears in Site Admin immediately; local content is fallback/recovery. This never deploys by itself.",
     inputSchema: {
       type: "object",
       required: ["slug"],
       properties: {
         slug: { type: "string" },
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
         title: { type: "string" },
         description: { type: "string" },
         updated: { type: "string" },
@@ -1722,12 +2193,14 @@ const toolSchemas = [
   },
   {
     name: "siteAdmin.update_page",
-    description: "Update an existing local public website MDX page and optionally reorder navigation.",
+    description: "Update an existing public website page and optionally reorder navigation. Defaults to staging Site Admin API so Site Admin sees the change immediately.",
     inputSchema: {
       type: "object",
       required: ["slug"],
       properties: {
         slug: { type: "string" },
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
         title: { type: "string" },
         description: { type: "string" },
         updated: { type: "string" },
@@ -1748,12 +2221,14 @@ const toolSchemas = [
   },
   {
     name: "siteAdmin.delete_page",
-    description: "Delete a local public website MDX page and remove it from navigation.",
+    description: "Delete a public website page and remove it from navigation. Defaults to staging Site Admin API; local content is fallback/recovery.",
     inputSchema: {
       type: "object",
       required: ["slug"],
       properties: {
         slug: { type: "string" },
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
         cascade: { type: "boolean" },
         expectedSha: { type: "string" },
         sourceSha: { type: "string" },
@@ -1802,15 +2277,15 @@ function callTool(db, name, args = {}) {
     case "siteAdmin.release_status":
       return siteAdminReleaseStatus();
     case "siteAdmin.list_pages":
-      return siteAdminPageList(args);
+      return siteAdminPageList(db, args);
     case "siteAdmin.get_page":
-      return siteAdminPageGet(args);
+      return siteAdminPageGet(db, args);
     case "siteAdmin.create_page":
-      return createSiteAdminPage(args);
+      return createSiteAdminPage(db, args);
     case "siteAdmin.update_page":
-      return updateSiteAdminPage(args);
+      return updateSiteAdminPage(db, args);
     case "siteAdmin.delete_page":
-      return deleteSiteAdminPage(args);
+      return deleteSiteAdminPage(db, args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

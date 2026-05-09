@@ -3,6 +3,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import {
   INLINE_MARKDOWN_PARSE_OPTIONS,
+  inlineMarkdownLinesToParagraphHtml,
   inlineMarkdownToHtml,
   normalizeInlineBoundaryWhitespace,
   tiptapDocToMarkdown,
@@ -143,6 +144,17 @@ describe("inlineMarkdownToHtml", () => {
 
   it("returns an empty paragraph for empty input", () => {
     expect(inlineMarkdownToHtml("")).toBe("<p></p>");
+  });
+});
+
+describe("inlineMarkdownLinesToParagraphHtml", () => {
+  it("renders each markdown line as its own paragraph for list item markers", () => {
+    expect(inlineMarkdownLinesToParagraphHtml("**Province:** Hubei\n**City:** Yichang"))
+      .toBe("<p><strong>Province:</strong> Hubei</p><p><strong>City:</strong> Yichang</p>");
+  });
+
+  it("keeps an empty list block editable", () => {
+    expect(inlineMarkdownLinesToParagraphHtml("")).toBe("<p></p>");
   });
 });
 

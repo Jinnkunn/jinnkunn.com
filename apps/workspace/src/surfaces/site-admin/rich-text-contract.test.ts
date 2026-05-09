@@ -5,6 +5,7 @@ import { Editor } from "@tiptap/core";
 
 import {
   INLINE_MARKDOWN_PARSE_OPTIONS,
+  inlineMarkdownLinesToParagraphHtml,
   inlineMarkdownToHtml,
   tiptapDocToMarkdown,
 } from "./markdown-inline";
@@ -15,6 +16,19 @@ function roundTripThroughTipTap(markdown: string): string {
   const editor = new Editor({
     extensions: createRichTextExtensions(),
     content: inlineMarkdownToHtml(markdown),
+    parseOptions: INLINE_MARKDOWN_PARSE_OPTIONS,
+  });
+  try {
+    return tiptapDocToMarkdown(editor.getJSON());
+  } finally {
+    editor.destroy();
+  }
+}
+
+function roundTripListLinesThroughTipTap(markdown: string): string {
+  const editor = new Editor({
+    extensions: createRichTextExtensions(),
+    content: inlineMarkdownLinesToParagraphHtml(markdown),
     parseOptions: INLINE_MARKDOWN_PARSE_OPTIONS,
   });
   try {
@@ -97,5 +111,10 @@ describe("rich text core contract", () => {
     expect(roundTripThroughMdx(tiptapMarkdown).trimEnd()).toBe(
       '<span data-color="gray">focuses on</span> **Explainable AI** and <span data-link-style="icon">[blog](/blog)</span>',
     );
+  });
+
+  it("round-trips list rows as separate editable paragraphs", () => {
+    const markdown = "**Province:** Hubei Province\n**City:** Yichang";
+    expect(roundTripListLinesThroughTipTap(markdown)).toBe(markdown);
   });
 });
