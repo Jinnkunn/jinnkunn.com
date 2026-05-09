@@ -1,6 +1,37 @@
-import { useEffect } from "react";
-import { Settings } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  Bot,
+  CheckCircle2,
+  Database,
+  FileClock,
+  RefreshCcw,
+  Settings,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import type { WorkspaceModuleDefinition } from "../modules/types";
+import {
+  workspaceMcpAuditRecent,
+  workspaceMcpSettingsUpdate,
+  workspaceMcpStatus,
+} from "../lib/tauri";
+import type {
+  WorkspaceMcpAuditEntry,
+  WorkspaceMcpSettings,
+  WorkspaceMcpStatus,
+} from "../lib/tauri";
+
+type SettingsSection = "modules" | "ai";
+
+const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
+  enabled: true,
+  writeMode: "local-write",
+  allowNotesWrite: true,
+  allowTodosWrite: true,
+  allowProjectsWrite: true,
+  allowCalendarWrite: false,
+};
 
 function SettingsIconLarge() {
   return (
@@ -11,6 +42,311 @@ function SettingsIconLarge() {
       size={28}
       strokeWidth={1.6}
     />
+  );
+}
+
+function AiIconLarge() {
+  return (
+    <Bot
+      absoluteStrokeWidth
+      aria-hidden="true"
+      focusable="false"
+      size={28}
+      strokeWidth={1.6}
+    />
+  );
+}
+
+function formatAuditTime(value: string | null): string {
+  if (!value) return "unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function pathLeaf(value: string): string {
+  const parts = value.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? value;
+}
+
+function ToggleSwitch({
+  checked,
+  disabled,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="settings-module-toggle"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      data-on={checked ? "true" : undefined}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span aria-hidden="true" />
+    </button>
+  );
+}
+
+function ModulesSettingsPanel({
+  enabledModuleIds,
+  modules,
+  onSetModuleEnabled,
+}: {
+  enabledModuleIds: readonly string[];
+  modules: readonly WorkspaceModuleDefinition[];
+  onSetModuleEnabled: (moduleId: string, enabled: boolean) => void;
+}) {
+  return (
+    <div className="settings-window__section">
+      <div className="settings-window__section-head">
+        <SettingsIconLarge />
+        <div>
+          <h1 id="settings-window-title">Modules</h1>
+          <p>{enabledModuleIds.length} enabled</p>
+        </div>
+      </div>
+      <div className="settings-modules-list">
+        {modules.map((module) => {
+          const enabled = enabledModuleIds.includes(module.id);
+          return (
+            <div className="settings-module-row" key={module.id}>
+              <span className="settings-module-row__icon" aria-hidden="true">
+                {module.surface.icon}
+              </span>
+              <span className="settings-module-row__body">
+                <strong>{module.surface.title}</strong>
+                {module.surface.description ? (
+                  <small>{module.surface.description}</small>
+                ) : null}
+              </span>
+              <ToggleSwitch
+                checked={enabled}
+                label={`${enabled ? "Disable" : "Enable"} ${module.surface.title}`}
+                onChange={(next) => onSetModuleEnabled(module.id, next)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function McpPathCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="settings-ai-path-card" title={value}>
+      <span className="settings-ai-path-card__icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span>
+        <strong>{label}</strong>
+        <code>{pathLeaf(value)}</code>
+      </span>
+    </div>
+  );
+}
+
+function McpCapabilityRow({
+  title,
+  detail,
+  checked,
+  disabled,
+  onChange,
+}: {
+  title: string;
+  detail: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="settings-ai-capability-row" data-disabled={disabled ? "true" : undefined}>
+      <span>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </span>
+      <ToggleSwitch checked={checked} disabled={disabled} label={title} onChange={onChange} />
+    </div>
+  );
+}
+
+function McpSettingsPanel({
+  auditEntries,
+  error,
+  loading,
+  onRefresh,
+  onUpdateSettings,
+  status,
+}: {
+  auditEntries: readonly WorkspaceMcpAuditEntry[];
+  error: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+  onUpdateSettings: (patch: Partial<WorkspaceMcpSettings>) => void;
+  status: WorkspaceMcpStatus | null;
+}) {
+  const settings = status?.settings ?? DEFAULT_MCP_SETTINGS;
+  const command = status
+    ? [status.serverCommand, ...status.serverArgs].join(" ")
+    : "npm run workspace:mcp";
+  const writable = settings.enabled && settings.writeMode === "local-write";
+
+  return (
+    <div className="settings-window__section settings-ai">
+      <div className="settings-window__section-head">
+        <AiIconLarge />
+        <div>
+          <h1 id="settings-window-title">AI Access</h1>
+          <p>{status ? `${status.toolCount} tools · ${status.writableToolCount} write groups` : "MCP control center"}</p>
+        </div>
+      </div>
+
+      <div className="settings-ai-status-grid">
+        <div className="settings-ai-status-card">
+          <span className="settings-ai-status-card__icon" aria-hidden="true">
+            <CheckCircle2 absoluteStrokeWidth size={18} strokeWidth={1.7} />
+          </span>
+          <span>
+            <strong>{settings.enabled ? "Ready" : "Disabled"}</strong>
+            <small>{settings.enabled ? "Client starts MCP on demand" : "Tool calls are blocked"}</small>
+          </span>
+        </div>
+        <div className="settings-ai-status-card">
+          <span className="settings-ai-status-card__icon" aria-hidden="true">
+            <ShieldCheck absoluteStrokeWidth size={18} strokeWidth={1.7} />
+          </span>
+          <span>
+            <strong>{settings.writeMode === "read-only" ? "Read only" : "Local write"}</strong>
+            <small>Deploy actions stay hidden</small>
+          </span>
+        </div>
+      </div>
+
+      <div className="settings-ai-command">
+        <span>
+          <strong>Server command</strong>
+          <code>{command}</code>
+        </span>
+        <button type="button" className="btn btn--ghost" onClick={onRefresh} disabled={loading}>
+          <RefreshCcw absoluteStrokeWidth size={14} strokeWidth={1.8} />
+          Refresh
+        </button>
+      </div>
+
+      {error ? <div className="workspace-status-banner workspace-status-banner--error">{error}</div> : null}
+
+      {status ? (
+        <div className="settings-ai-path-grid">
+          <McpPathCard
+            icon={<Database absoluteStrokeWidth size={16} strokeWidth={1.8} />}
+            label="Database"
+            value={status.dbPath}
+          />
+          <McpPathCard
+            icon={<Settings absoluteStrokeWidth size={16} strokeWidth={1.8} />}
+            label="Settings"
+            value={status.settingsPath}
+          />
+          <McpPathCard
+            icon={<FileClock absoluteStrokeWidth size={16} strokeWidth={1.8} />}
+            label="Audit"
+            value={status.auditPath}
+          />
+        </div>
+      ) : null}
+
+      <div className="settings-ai-permissions">
+        <McpCapabilityRow
+          title="MCP enabled"
+          detail="Allow local AI clients to use Workspace tools"
+          checked={settings.enabled}
+          onChange={(enabled) => onUpdateSettings({ enabled })}
+        />
+        <McpCapabilityRow
+          title="Read-only mode"
+          detail="AI can search and inspect, but cannot change data"
+          checked={settings.writeMode === "read-only"}
+          onChange={(readOnly) =>
+            onUpdateSettings({ writeMode: readOnly ? "read-only" : "local-write" })
+          }
+        />
+        <McpCapabilityRow
+          title="Notes writes"
+          detail="Create pages and append blocks"
+          checked={settings.allowNotesWrite}
+          disabled={!writable}
+          onChange={(allowNotesWrite) => onUpdateSettings({ allowNotesWrite })}
+        />
+        <McpCapabilityRow
+          title="Todos writes"
+          detail="Create, update, and complete local tasks"
+          checked={settings.allowTodosWrite}
+          disabled={!writable}
+          onChange={(allowTodosWrite) => onUpdateSettings({ allowTodosWrite })}
+        />
+        <McpCapabilityRow
+          title="Projects writes"
+          detail="Create projects and add project links"
+          checked={settings.allowProjectsWrite}
+          disabled={!writable}
+          onChange={(allowProjectsWrite) => onUpdateSettings({ allowProjectsWrite })}
+        />
+        <McpCapabilityRow
+          title="Calendar writes"
+          detail="Create local Workspace calendar events"
+          checked={settings.allowCalendarWrite}
+          disabled={!writable}
+          onChange={(allowCalendarWrite) => onUpdateSettings({ allowCalendarWrite })}
+        />
+      </div>
+
+      <section className="settings-ai-audit" aria-label="Recent AI activity">
+        <header>
+          <strong>Recent AI activity</strong>
+          <small>{status?.recentAuditCount ?? auditEntries.length}</small>
+        </header>
+        {auditEntries.length ? (
+          <div className="settings-ai-audit__list">
+            {auditEntries.map((entry, index) => (
+              <div className="settings-ai-audit__row" key={`${entry.at ?? "audit"}-${index}`}>
+                <span>
+                  <strong>{entry.summary}</strong>
+                  <small>{entry.tool ?? "workspace.mcp"}</small>
+                </span>
+                <time>{formatAuditTime(entry.at)}</time>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="settings-window__empty settings-window__empty--compact">
+            <strong>No AI activity yet</strong>
+            <span>Write tools will appear here after an MCP client uses them.</span>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -27,6 +363,52 @@ export function SettingsWindow({
   onClose: () => void;
   onSetModuleEnabled: (moduleId: string, enabled: boolean) => void;
 }) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>("modules");
+  const [mcpStatus, setMcpStatus] = useState<WorkspaceMcpStatus | null>(null);
+  const [mcpAuditEntries, setMcpAuditEntries] = useState<WorkspaceMcpAuditEntry[]>([]);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+
+  const refreshMcp = useCallback(async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      const [nextStatus, nextAudit] = await Promise.all([
+        workspaceMcpStatus(),
+        workspaceMcpAuditRecent(12),
+      ]);
+      setMcpStatus(nextStatus);
+      setMcpAuditEntries(nextAudit);
+    } catch (error) {
+      setMcpError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMcpLoading(false);
+    }
+  }, []);
+
+  const updateMcpSettings = useCallback(
+    async (patch: Partial<WorkspaceMcpSettings>) => {
+      const next = { ...(mcpStatus?.settings ?? DEFAULT_MCP_SETTINGS), ...patch };
+      setMcpError(null);
+      try {
+        const saved = await workspaceMcpSettingsUpdate(next);
+        setMcpStatus((current) => (current ? { ...current, settings: saved } : current));
+        await refreshMcp();
+      } catch (error) {
+        setMcpError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [mcpStatus?.settings, refreshMcp],
+  );
+
+  const navItems = useMemo(
+    () => [
+      { id: "modules" as const, label: "Modules", icon: <Settings absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
+      { id: "ai" as const, label: "AI Access", icon: <Bot absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
+    ],
+    [],
+  );
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -37,6 +419,11 @@ export function SettingsWindow({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, open]);
+
+  useEffect(() => {
+    if (!open || activeSection !== "ai") return;
+    void refreshMcp();
+  }, [activeSection, open, refreshMcp]);
 
   if (!open) return null;
   return (
@@ -55,13 +442,18 @@ export function SettingsWindow({
       >
         <aside className="settings-window__sidebar">
           <div className="settings-window__sidebar-title">Settings</div>
-          <button
-            type="button"
-            className="settings-window__nav-item"
-            aria-current="page"
-          >
-            Modules
-          </button>
+          {navItems.map((item) => (
+            <button
+              type="button"
+              className="settings-window__nav-item"
+              aria-current={activeSection === item.id ? "page" : undefined}
+              key={item.id}
+              onClick={() => setActiveSection(item.id)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
         </aside>
         <main className="settings-window__main">
           <button
@@ -71,46 +463,24 @@ export function SettingsWindow({
             aria-label="Close settings"
             title="Close"
           >
-            x
+            <X absoluteStrokeWidth size={15} strokeWidth={1.9} />
           </button>
-          <div className="settings-window__section">
-            <div className="settings-window__section-head">
-              <SettingsIconLarge />
-              <div>
-                <h1 id="settings-window-title">Modules</h1>
-                <p>{enabledModuleIds.length} enabled</p>
-              </div>
-            </div>
-            <div className="settings-modules-list">
-              {modules.map((module) => {
-                const enabled = enabledModuleIds.includes(module.id);
-                return (
-                  <div className="settings-module-row" key={module.id}>
-                    <span className="settings-module-row__icon" aria-hidden="true">
-                      {module.surface.icon}
-                    </span>
-                    <span className="settings-module-row__body">
-                      <strong>{module.surface.title}</strong>
-                      {module.surface.description ? (
-                        <small>{module.surface.description}</small>
-                      ) : null}
-                    </span>
-                    <button
-                      type="button"
-                      className="settings-module-toggle"
-                      role="switch"
-                      aria-checked={enabled}
-                      aria-label={`${enabled ? "Disable" : "Enable"} ${module.surface.title}`}
-                      data-on={enabled ? "true" : undefined}
-                      onClick={() => onSetModuleEnabled(module.id, !enabled)}
-                    >
-                      <span aria-hidden="true" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {activeSection === "modules" ? (
+            <ModulesSettingsPanel
+              enabledModuleIds={enabledModuleIds}
+              modules={modules}
+              onSetModuleEnabled={onSetModuleEnabled}
+            />
+          ) : (
+            <McpSettingsPanel
+              auditEntries={mcpAuditEntries}
+              error={mcpError}
+              loading={mcpLoading}
+              onRefresh={() => void refreshMcp()}
+              onUpdateSettings={(patch) => void updateMcpSettings(patch)}
+              status={mcpStatus}
+            />
+          )}
         </main>
       </section>
     </div>

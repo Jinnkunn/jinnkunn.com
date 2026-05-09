@@ -15,6 +15,7 @@ mod contacts;
 mod desktop_shell;
 mod local_calendar;
 mod local_db;
+mod mcp;
 mod notes;
 mod outbox;
 mod projects;
@@ -81,6 +82,10 @@ pub fn run() {
             secrets::secure_store_set,
             secrets::secure_store_get,
             secrets::secure_store_delete,
+            mcp::workspace_mcp_status,
+            mcp::workspace_mcp_settings_get,
+            mcp::workspace_mcp_settings_update,
+            mcp::workspace_mcp_audit_recent,
             calendar::publish_rules::calendar_publish_rules_load,
             calendar::publish_rules::calendar_publish_rules_save,
             #[cfg(debug_assertions)]

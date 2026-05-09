@@ -73,18 +73,36 @@ function msToIso(value) {
 function defaultWorkspaceDbPath() {
   const explicit = process.env.WORKSPACE_DB_PATH || process.env.JINNKUNN_WORKSPACE_DB_PATH;
   if (explicit) return path.resolve(explicit);
+  return defaultAppDataPath("workspace.db");
+}
+
+function defaultAppDataDir() {
   const home = os.homedir();
   if (process.platform === "darwin") {
-    return path.join(home, "Library", "Application Support", DEFAULT_APP_ID, "workspace.db");
+    return path.join(home, "Library", "Application Support", DEFAULT_APP_ID);
   }
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || home, DEFAULT_APP_ID, "workspace.db");
+    return path.join(process.env.APPDATA || home, DEFAULT_APP_ID);
   }
-  return path.join(process.env.XDG_DATA_HOME || path.join(home, ".local", "share"), DEFAULT_APP_ID, "workspace.db");
+  return path.join(process.env.XDG_DATA_HOME || path.join(home, ".local", "share"), DEFAULT_APP_ID);
+}
+
+function defaultAppDataPath(filename) {
+  return path.join(defaultAppDataDir(), filename);
 }
 
 export function resolveWorkspaceDbPath() {
   return defaultWorkspaceDbPath();
+}
+
+export function resolveWorkspaceMcpSettingsPath() {
+  const explicit = process.env.WORKSPACE_MCP_SETTINGS_PATH;
+  return explicit ? path.resolve(explicit) : defaultAppDataPath("mcp-settings.json");
+}
+
+export function resolveWorkspaceMcpAuditPath() {
+  const explicit = process.env.WORKSPACE_MCP_AUDIT_PATH;
+  return explicit ? path.resolve(explicit) : defaultAppDataPath("mcp-audit.jsonl");
 }
 
 function openWorkspaceDb(dbPath = resolveWorkspaceDbPath()) {
@@ -242,10 +260,44 @@ function likePattern(query) {
   return `%${String(query || "").replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
 }
 
+const DEFAULT_MCP_SETTINGS = Object.freeze({
+  enabled: true,
+  writeMode: "local-write",
+  allowNotesWrite: true,
+  allowTodosWrite: true,
+  allowProjectsWrite: true,
+  allowCalendarWrite: false,
+});
+
+function normalizeMcpSettings(raw = {}) {
+  const input = asObject(raw);
+  const writeMode = input.writeMode === "read-only" ? "read-only" : "local-write";
+  return {
+    enabled: input.enabled !== false,
+    writeMode,
+    allowNotesWrite: input.allowNotesWrite !== false,
+    allowTodosWrite: input.allowTodosWrite !== false,
+    allowProjectsWrite: input.allowProjectsWrite !== false,
+    allowCalendarWrite: input.allowCalendarWrite === true,
+  };
+}
+
+function readMcpSettings() {
+  const file = resolveWorkspaceMcpSettingsPath();
+  try {
+    if (!fs.existsSync(file)) return { ...DEFAULT_MCP_SETTINGS };
+    return normalizeMcpSettings(JSON.parse(fs.readFileSync(file, "utf8")));
+  } catch {
+    return { ...DEFAULT_MCP_SETTINGS, writeMode: "read-only" };
+  }
+}
+
+function effectiveWriteMode(settings = readMcpSettings()) {
+  return process.env.WORKSPACE_MCP_READONLY === "1" ? "read-only" : settings.writeMode;
+}
+
 function auditPath() {
-  const explicit = process.env.WORKSPACE_MCP_AUDIT_PATH;
-  if (explicit) return path.resolve(explicit);
-  return path.join(ROOT, ".cache", "workspace-mcp", "audit.jsonl");
+  return resolveWorkspaceMcpAuditPath();
 }
 
 function writeAudit(entry) {
@@ -254,9 +306,20 @@ function writeAudit(entry) {
   fs.appendFileSync(file, `${JSON.stringify({ ...entry, at: new Date().toISOString() })}\n`, "utf8");
 }
 
-function assertWritesAllowed() {
-  if (process.env.WORKSPACE_MCP_READONLY === "1") {
+function assertServerEnabled(settings = readMcpSettings()) {
+  if (!settings.enabled) {
+    throw new Error("Workspace MCP is disabled in Workspace Settings.");
+  }
+}
+
+function assertWritesAllowed(capability) {
+  const settings = readMcpSettings();
+  assertServerEnabled(settings);
+  if (effectiveWriteMode(settings) === "read-only") {
     throw new Error("Workspace MCP is running in read-only mode.");
+  }
+  if (capability && settings[capability] === false) {
+    throw new Error(`Workspace MCP capability is disabled: ${capability}.`);
   }
 }
 
@@ -315,6 +378,7 @@ function localEventRow(row) {
 function getWorkspaceContext(db, args = {}) {
   const limit = limitValue(args.recentLimit, 8, 25);
   const includeRecent = args.includeRecent !== false;
+  const settings = readMcpSettings();
   const counts = {
     notes: getCount(db, "SELECT COUNT(*) AS count FROM notes WHERE archived_at IS NULL"),
     archivedNotes: getCount(db, "SELECT COUNT(*) AS count FROM notes WHERE archived_at IS NOT NULL"),
@@ -339,9 +403,18 @@ function getWorkspaceContext(db, args = {}) {
   return {
     app: "Jinnkunn Workspace",
     dbPath: resolveWorkspaceDbPath(),
+    mcp: {
+      enabled: settings.enabled,
+      settingsPath: resolveWorkspaceMcpSettingsPath(),
+      auditPath: resolveWorkspaceMcpAuditPath(),
+      allowNotesWrite: settings.allowNotesWrite,
+      allowTodosWrite: settings.allowTodosWrite,
+      allowProjectsWrite: settings.allowProjectsWrite,
+      allowCalendarWrite: settings.allowCalendarWrite,
+    },
     counts,
     recent,
-    writeMode: process.env.WORKSPACE_MCP_READONLY === "1" ? "read-only" : "local-write",
+    writeMode: effectiveWriteMode(settings),
   };
 }
 
@@ -424,7 +497,7 @@ function createNote(db, args = {}) {
   ) + 1;
   const preview = { id, parentId, title, bodyMdx, icon, sortOrder };
   if (args.dryRun) return dryRunResult("notes.create_page", preview);
-  assertWritesAllowed();
+  assertWritesAllowed("allowNotesWrite");
   db.prepare(`
     INSERT INTO notes (id, parent_id, title, body_mdx, icon, sort_order, archived_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
@@ -446,7 +519,7 @@ function appendBlocks(db, args = {}) {
   const nextBody = [note.bodyMdx, blockText].filter((part) => String(part || "").trim()).join("\n\n");
   const preview = { pageId, previousLength: note.bodyMdx.length, appendedLength: blockText.length, nextLength: nextBody.length };
   if (args.dryRun) return dryRunResult("notes.append_blocks", preview);
-  assertWritesAllowed();
+  assertWritesAllowed("allowNotesWrite");
   const updatedAt = nowMs();
   db.prepare("UPDATE notes SET body_mdx = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL")
     .run(nextBody, updatedAt, pageId);
@@ -473,7 +546,7 @@ function createTodo(db, args = {}) {
   const sortOrder = maxSortOrder(db, "todos") + 1;
   const preview = { id, title, notes, projectId, dueAt, scheduledStartAt, scheduledEndAt, estimatedMinutes, sortOrder };
   if (args.dryRun) return dryRunResult("todos.create", preview);
-  assertWritesAllowed();
+  assertWritesAllowed("allowTodosWrite");
   db.prepare(`
     INSERT INTO todos
       (id, title, notes, project_id, due_at, scheduled_start_at, scheduled_end_at, estimated_minutes,
@@ -504,7 +577,7 @@ function updateTodo(db, args = {}) {
     throw new Error("MISSING_PROJECT: projectId did not match an active project.");
   }
   if (args.dryRun) return dryRunResult("todos.update", { id, patch, next });
-  assertWritesAllowed();
+  assertWritesAllowed("allowTodosWrite");
   const updatedAt = nowMs();
   db.prepare(`
     UPDATE todos
@@ -543,7 +616,7 @@ function createProject(db, args = {}) {
   const sortOrder = maxSortOrder(db, "projects") + 1;
   const preview = { id, title, description, status, color, icon, dueAt, sortOrder };
   if (args.dryRun) return dryRunResult("projects.create", preview);
-  assertWritesAllowed();
+  assertWritesAllowed("allowProjectsWrite");
   db.prepare(`
     INSERT INTO projects
       (id, title, description, status, color, icon, due_at, pinned_at, sort_order, archived_at, created_at, updated_at)
@@ -594,7 +667,7 @@ function addProjectLink(db, args = {}) {
   const now = nowMs();
   const preview = { id, projectId, targetType, targetId, label, url };
   if (args.dryRun) return dryRunResult("projects.add_link", preview);
-  assertWritesAllowed();
+  assertWritesAllowed("allowProjectsWrite");
   db.prepare(`
     INSERT INTO project_links (id, project_id, target_type, target_id, label, url, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -668,7 +741,7 @@ function createCalendarEvent(db, args = {}) {
     url: nullableText(args.url, 2_000),
   };
   if (args.dryRun) return dryRunResult("calendar.create_event", preview);
-  assertWritesAllowed();
+  assertWritesAllowed("allowCalendarWrite");
   db.prepare(`
     INSERT INTO local_calendar_events
       (id, calendar_id, title, notes, location, url, starts_at_ms, ends_at_ms,
@@ -895,6 +968,7 @@ const toolSchemas = [
 ];
 
 function callTool(db, name, args = {}) {
+  assertServerEnabled();
   switch (name) {
     case "workspace.get_context":
       return getWorkspaceContext(db, args);
