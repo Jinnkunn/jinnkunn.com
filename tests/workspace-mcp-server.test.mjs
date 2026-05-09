@@ -23,10 +23,26 @@ async function withServer(fn) {
   const dbPath = path.join(dir, "workspace.db");
   const previousSettingsPath = process.env.WORKSPACE_MCP_SETTINGS_PATH;
   const previousAuditPath = process.env.WORKSPACE_MCP_AUDIT_PATH;
+  const previousConfirmationsPath = process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH;
+  const settingsPath = path.join(dir, "mcp-settings.json");
+  const confirmationsPath = path.join(dir, "mcp-confirmations.json");
   process.env.WORKSPACE_MCP_SETTINGS_PATH = path.join(dir, "mcp-settings.json");
   process.env.WORKSPACE_MCP_AUDIT_PATH = path.join(dir, "mcp-audit.jsonl");
+  process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH = confirmationsPath;
   const server = createWorkspaceMcpServer({ dbPath });
   try {
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({
+        enabled: true,
+        writeMode: "local-write",
+        requireConfirmationForWrites: false,
+        allowNotesWrite: true,
+        allowTodosWrite: true,
+        allowProjectsWrite: true,
+        allowCalendarWrite: false,
+      }),
+    );
     await fn(server, dbPath);
   } finally {
     server.close();
@@ -39,6 +55,11 @@ async function withServer(fn) {
       delete process.env.WORKSPACE_MCP_AUDIT_PATH;
     } else {
       process.env.WORKSPACE_MCP_AUDIT_PATH = previousAuditPath;
+    }
+    if (previousConfirmationsPath === undefined) {
+      delete process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH;
+    } else {
+      process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH = previousConfirmationsPath;
     }
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -72,6 +93,7 @@ test("workspace MCP: shared settings can disable writes", async () => {
       JSON.stringify({
         enabled: true,
         writeMode: "read-only",
+        requireConfirmationForWrites: false,
         allowNotesWrite: true,
         allowTodosWrite: true,
         allowProjectsWrite: true,
@@ -88,6 +110,48 @@ test("workspace MCP: shared settings can disable writes", async () => {
 
     const context = call(server, "workspace.get_context", { includeRecent: false });
     assert.equal(context.writeMode, "read-only");
+  });
+});
+
+test("workspace MCP: write confirmations gate mutations until approved", async () => {
+  await withServer(async (server) => {
+    await fs.writeFile(
+      process.env.WORKSPACE_MCP_SETTINGS_PATH,
+      JSON.stringify({
+        enabled: true,
+        writeMode: "local-write",
+        requireConfirmationForWrites: true,
+        allowNotesWrite: true,
+        allowTodosWrite: true,
+        allowProjectsWrite: true,
+        allowCalendarWrite: false,
+      }),
+    );
+
+    const pending = call(server, "notes.create_page", {
+      title: "Needs Approval",
+      bodyMdx: "queued",
+    });
+    assert.equal(pending.confirmationRequired, true);
+    assert.equal(pending.status, "pending");
+    assert.equal(call(server, "workspace.get_context", { includeRecent: false }).counts.notes, 0);
+
+    const raw = JSON.parse(await fs.readFile(process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH, "utf8"));
+    assert.equal(raw.length, 1);
+    raw[0].status = "approved";
+    raw[0].decidedAt = new Date().toISOString();
+    await fs.writeFile(process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH, JSON.stringify(raw, null, 2));
+
+    const created = call(server, "notes.create_page", {
+      title: "Needs Approval",
+      bodyMdx: "queued",
+      confirmationId: pending.confirmationId,
+    });
+    assert.equal(created.note.title, "Needs Approval");
+
+    const consumed = JSON.parse(await fs.readFile(process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH, "utf8"));
+    assert.equal(consumed[0].status, "consumed");
+    assert.equal(call(server, "workspace.get_context", { includeRecent: false }).counts.notes, 1);
   });
 });
 

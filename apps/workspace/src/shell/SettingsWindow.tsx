@@ -13,11 +13,14 @@ import {
 import type { WorkspaceModuleDefinition } from "../modules/types";
 import {
   workspaceMcpAuditRecent,
+  workspaceMcpConfirmationDecide,
+  workspaceMcpConfirmationsList,
   workspaceMcpSettingsUpdate,
   workspaceMcpStatus,
 } from "../lib/tauri";
 import type {
   WorkspaceMcpAuditEntry,
+  WorkspaceMcpConfirmation,
   WorkspaceMcpSettings,
   WorkspaceMcpStatus,
 } from "../lib/tauri";
@@ -27,6 +30,7 @@ type SettingsSection = "modules" | "ai";
 const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
   enabled: true,
   writeMode: "local-write",
+  requireConfirmationForWrites: true,
   allowNotesWrite: true,
   allowTodosWrite: true,
   allowProjectsWrite: true,
@@ -72,6 +76,18 @@ function formatAuditTime(value: string | null): string {
 function pathLeaf(value: string): string {
   const parts = value.split(/[\\/]/).filter(Boolean);
   return parts.at(-1) ?? value;
+}
+
+function previewSnippet(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  const title = typeof record.title === "string" ? record.title : "";
+  if (title) return title;
+  const id = typeof record.id === "string" ? record.id : "";
+  if (id) return id;
+  const pageId = typeof record.pageId === "string" ? record.pageId : "";
+  if (pageId) return pageId;
+  return "";
 }
 
 function ToggleSwitch({
@@ -192,17 +208,74 @@ function McpCapabilityRow({
   );
 }
 
+function McpConfirmationsSection({
+  confirmations,
+  onDecide,
+}: {
+  confirmations: readonly WorkspaceMcpConfirmation[];
+  onDecide: (id: string, decision: "approve" | "reject") => void;
+}) {
+  return (
+    <section className="settings-ai-confirmations" aria-label="Pending AI confirmations">
+      <header>
+        <strong>Pending confirmations</strong>
+        <small>{confirmations.length}</small>
+      </header>
+      {confirmations.length ? (
+        <div className="settings-ai-confirmations__list">
+          {confirmations.map((entry) => {
+            const snippet = previewSnippet(entry.preview);
+            return (
+              <div className="settings-ai-confirmation-row" key={entry.id}>
+                <span className="settings-ai-confirmation-row__body">
+                  <strong>{entry.summary}</strong>
+                  <small>{snippet ? `${entry.tool} · ${snippet}` : entry.tool}</small>
+                </span>
+                <span className="settings-ai-confirmation-row__actions">
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => onDecide(entry.id, "approve")}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => onDecide(entry.id, "reject")}
+                  >
+                    Reject
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="settings-window__empty settings-window__empty--compact">
+          <strong>No pending confirmations</strong>
+          <span>AI write requests that need approval will appear here.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function McpSettingsPanel({
   auditEntries,
+  confirmations,
   error,
   loading,
+  onDecideConfirmation,
   onRefresh,
   onUpdateSettings,
   status,
 }: {
   auditEntries: readonly WorkspaceMcpAuditEntry[];
+  confirmations: readonly WorkspaceMcpConfirmation[];
   error: string | null;
   loading: boolean;
+  onDecideConfirmation: (id: string, decision: "approve" | "reject") => void;
   onRefresh: () => void;
   onUpdateSettings: (patch: Partial<WorkspaceMcpSettings>) => void;
   status: WorkspaceMcpStatus | null;
@@ -219,7 +292,7 @@ function McpSettingsPanel({
         <AiIconLarge />
         <div>
           <h1 id="settings-window-title">AI Access</h1>
-          <p>{status ? `${status.toolCount} tools · ${status.writableToolCount} write groups` : "MCP control center"}</p>
+          <p>{status ? `${status.toolCount} tools · ${status.pendingConfirmationCount} pending` : "MCP control center"}</p>
         </div>
       </div>
 
@@ -274,6 +347,11 @@ function McpSettingsPanel({
             label="Audit"
             value={status.auditPath}
           />
+          <McpPathCard
+            icon={<ShieldCheck absoluteStrokeWidth size={16} strokeWidth={1.8} />}
+            label="Confirm"
+            value={status.confirmationsPath}
+          />
         </div>
       ) : null}
 
@@ -290,6 +368,15 @@ function McpSettingsPanel({
           checked={settings.writeMode === "read-only"}
           onChange={(readOnly) =>
             onUpdateSettings({ writeMode: readOnly ? "read-only" : "local-write" })
+          }
+        />
+        <McpCapabilityRow
+          title="Confirm writes"
+          detail="AI write tools wait for approval in this panel"
+          checked={settings.requireConfirmationForWrites}
+          disabled={!writable}
+          onChange={(requireConfirmationForWrites) =>
+            onUpdateSettings({ requireConfirmationForWrites })
           }
         />
         <McpCapabilityRow
@@ -321,6 +408,11 @@ function McpSettingsPanel({
           onChange={(allowCalendarWrite) => onUpdateSettings({ allowCalendarWrite })}
         />
       </div>
+
+      <McpConfirmationsSection
+        confirmations={confirmations}
+        onDecide={onDecideConfirmation}
+      />
 
       <section className="settings-ai-audit" aria-label="Recent AI activity">
         <header>
@@ -366,6 +458,7 @@ export function SettingsWindow({
   const [activeSection, setActiveSection] = useState<SettingsSection>("modules");
   const [mcpStatus, setMcpStatus] = useState<WorkspaceMcpStatus | null>(null);
   const [mcpAuditEntries, setMcpAuditEntries] = useState<WorkspaceMcpAuditEntry[]>([]);
+  const [mcpConfirmations, setMcpConfirmations] = useState<WorkspaceMcpConfirmation[]>([]);
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpError, setMcpError] = useState<string | null>(null);
 
@@ -373,12 +466,14 @@ export function SettingsWindow({
     setMcpLoading(true);
     setMcpError(null);
     try {
-      const [nextStatus, nextAudit] = await Promise.all([
+      const [nextStatus, nextAudit, nextConfirmations] = await Promise.all([
         workspaceMcpStatus(),
         workspaceMcpAuditRecent(12),
+        workspaceMcpConfirmationsList("pending"),
       ]);
       setMcpStatus(nextStatus);
       setMcpAuditEntries(nextAudit);
+      setMcpConfirmations(nextConfirmations);
     } catch (error) {
       setMcpError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -399,6 +494,19 @@ export function SettingsWindow({
       }
     },
     [mcpStatus?.settings, refreshMcp],
+  );
+
+  const decideMcpConfirmation = useCallback(
+    async (id: string, decision: "approve" | "reject") => {
+      setMcpError(null);
+      try {
+        await workspaceMcpConfirmationDecide(id, decision);
+        await refreshMcp();
+      } catch (error) {
+        setMcpError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [refreshMcp],
   );
 
   const navItems = useMemo(
@@ -474,8 +582,10 @@ export function SettingsWindow({
           ) : (
             <McpSettingsPanel
               auditEntries={mcpAuditEntries}
+              confirmations={mcpConfirmations}
               error={mcpError}
               loading={mcpLoading}
+              onDecideConfirmation={(id, decision) => void decideMcpConfirmation(id, decision)}
               onRefresh={() => void refreshMcp()}
               onUpdateSettings={(patch) => void updateMcpSettings(patch)}
               status={mcpStatus}

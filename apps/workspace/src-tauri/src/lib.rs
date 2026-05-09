@@ -87,6 +87,8 @@ pub fn run() {
             mcp::workspace_mcp_settings_get,
             mcp::workspace_mcp_settings_update,
             mcp::workspace_mcp_audit_recent,
+            mcp::workspace_mcp_confirmations_list,
+            mcp::workspace_mcp_confirmation_decide,
             calendar::publish_rules::calendar_publish_rules_load,
             calendar::publish_rules::calendar_publish_rules_save,
             #[cfg(debug_assertions)]

@@ -105,6 +105,11 @@ export function resolveWorkspaceMcpAuditPath() {
   return explicit ? path.resolve(explicit) : defaultAppDataPath("mcp-audit.jsonl");
 }
 
+export function resolveWorkspaceMcpConfirmationsPath() {
+  const explicit = process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH;
+  return explicit ? path.resolve(explicit) : defaultAppDataPath("mcp-confirmations.json");
+}
+
 function openWorkspaceDb(dbPath = resolveWorkspaceDbPath()) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -263,6 +268,7 @@ function likePattern(query) {
 const DEFAULT_MCP_SETTINGS = Object.freeze({
   enabled: true,
   writeMode: "local-write",
+  requireConfirmationForWrites: true,
   allowNotesWrite: true,
   allowTodosWrite: true,
   allowProjectsWrite: true,
@@ -275,6 +281,7 @@ function normalizeMcpSettings(raw = {}) {
   return {
     enabled: input.enabled !== false,
     writeMode,
+    requireConfirmationForWrites: input.requireConfirmationForWrites !== false,
     allowNotesWrite: input.allowNotesWrite !== false,
     allowTodosWrite: input.allowTodosWrite !== false,
     allowProjectsWrite: input.allowProjectsWrite !== false,
@@ -325,6 +332,150 @@ function assertWritesAllowed(capability) {
 
 function dryRunResult(tool, preview) {
   return { dryRun: true, tool, wouldChange: preview };
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function writeArgsForHash(args = {}) {
+  const clean = { ...asObject(args) };
+  delete clean.confirmationId;
+  delete clean.dryRun;
+  return clean;
+}
+
+function confirmationHash(tool, args = {}) {
+  return crypto
+    .createHash("sha256")
+    .update(stableJson({ tool, args: writeArgsForHash(args) }))
+    .digest("hex");
+}
+
+function readConfirmations() {
+  const file = resolveWorkspaceMcpConfirmationsPath();
+  try {
+    if (!fs.existsSync(file)) return [];
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === "object") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeConfirmations(entries) {
+  const file = resolveWorkspaceMcpConfirmationsPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(entries.slice(-120), null, 2)}\n`, "utf8");
+  fs.renameSync(tmp, file);
+}
+
+function summarizeConfirmation(tool, preview = {}) {
+  const p = asObject(preview);
+  switch (tool) {
+    case "notes.create_page":
+      return `Create note: ${p.title || "Untitled"}`;
+    case "notes.append_blocks":
+      return `Append ${p.appendedLength || 0} chars to note`;
+    case "todos.create":
+      return `Create todo: ${p.title || "Untitled"}`;
+    case "todos.update":
+      return `Update todo: ${p.id || "unknown"}`;
+    case "todos.complete":
+      return `Complete todo: ${p.id || "unknown"}`;
+    case "projects.create":
+      return `Create project: ${p.title || "Untitled Project"}`;
+    case "projects.add_link":
+      return `Link ${p.targetType || "item"} to project`;
+    case "calendar.create_event":
+      return `Create calendar event: ${p.title || "Untitled"}`;
+    default:
+      return tool;
+  }
+}
+
+function pendingConfirmationResult(tool, entry) {
+  return {
+    confirmationRequired: true,
+    status: entry.status,
+    tool,
+    confirmationId: entry.id,
+    summary: entry.summary,
+    message: "Approve this request in Workspace Settings > AI Access, then retry the same tool call with confirmationId.",
+    wouldChange: entry.preview,
+  };
+}
+
+function createOrReusePendingConfirmation(tool, args, preview) {
+  const hash = confirmationHash(tool, args);
+  const entries = readConfirmations();
+  const existing = entries
+    .slice()
+    .reverse()
+    .find((entry) => entry.status === "pending" && entry.tool === tool && entry.argsHash === hash);
+  if (existing) return pendingConfirmationResult(tool, existing);
+  const entry = {
+    id: randId("mcpconf"),
+    status: "pending",
+    tool,
+    summary: summarizeConfirmation(tool, preview),
+    args: writeArgsForHash(args),
+    argsHash: hash,
+    preview,
+    requestedAt: new Date().toISOString(),
+    decidedAt: null,
+    consumedAt: null,
+  };
+  entries.push(entry);
+  writeConfirmations(entries);
+  return pendingConfirmationResult(tool, entry);
+}
+
+function consumeApprovedConfirmation(tool, args = {}) {
+  const confirmationId = cleanText(args.confirmationId, 96);
+  const entries = readConfirmations();
+  const index = entries.findIndex((entry) => entry.id === confirmationId);
+  if (index < 0) throw new Error("CONFIRMATION_REQUIRED: approve this write in Workspace Settings > AI Access first.");
+  const entry = entries[index];
+  if (entry.tool !== tool) throw new Error("CONFIRMATION_MISMATCH: confirmation was created for a different tool.");
+  if (entry.argsHash !== confirmationHash(tool, args)) {
+    throw new Error("CONFIRMATION_MISMATCH: tool arguments changed after approval.");
+  }
+  if (entry.status === "rejected") {
+    throw new Error("CONFIRMATION_REJECTED: this write was rejected in Workspace Settings.");
+  }
+  if (entry.status !== "approved") {
+    return pendingConfirmationResult(tool, entry);
+  }
+  return null;
+}
+
+function markConfirmationConsumed(confirmationId) {
+  const id = cleanText(confirmationId, 96);
+  if (!id) return;
+  const entries = readConfirmations();
+  const index = entries.findIndex((entry) => entry.id === id);
+  if (index < 0 || entries[index].status !== "approved") return;
+  entries[index] = {
+    ...entries[index],
+    status: "consumed",
+    consumedAt: new Date().toISOString(),
+  };
+  writeConfirmations(entries);
+}
+
+function prepareWrite(tool, capability, args, preview) {
+  if (args.dryRun) return dryRunResult(tool, preview);
+  assertWritesAllowed(capability);
+  const settings = readMcpSettings();
+  if (!settings.requireConfirmationForWrites) return null;
+  if (!args.confirmationId) return createOrReusePendingConfirmation(tool, args, preview);
+  return consumeApprovedConfirmation(tool, args);
 }
 
 function noteRow(db, id) {
@@ -407,6 +558,9 @@ function getWorkspaceContext(db, args = {}) {
       enabled: settings.enabled,
       settingsPath: resolveWorkspaceMcpSettingsPath(),
       auditPath: resolveWorkspaceMcpAuditPath(),
+      confirmationsPath: resolveWorkspaceMcpConfirmationsPath(),
+      pendingConfirmations: readConfirmations().filter((entry) => entry.status === "pending").length,
+      requireConfirmationForWrites: settings.requireConfirmationForWrites,
       allowNotesWrite: settings.allowNotesWrite,
       allowTodosWrite: settings.allowTodosWrite,
       allowProjectsWrite: settings.allowProjectsWrite,
@@ -496,13 +650,14 @@ function createNote(db, args = {}) {
     parentId ? [parentId] : [],
   ) + 1;
   const preview = { id, parentId, title, bodyMdx, icon, sortOrder };
-  if (args.dryRun) return dryRunResult("notes.create_page", preview);
-  assertWritesAllowed("allowNotesWrite");
+  const confirmation = prepareWrite("notes.create_page", "allowNotesWrite", args, preview);
+  if (confirmation) return confirmation;
   db.prepare(`
     INSERT INTO notes (id, parent_id, title, body_mdx, icon, sort_order, archived_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
   `).run(id, parentId, title, bodyMdx, icon, sortOrder, now, now);
   const note = noteRow(db, id);
+  markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "notes.create_page", id, title });
   return { note };
 }
@@ -518,11 +673,12 @@ function appendBlocks(db, args = {}) {
   if (!blockText) throw new Error("blocks or bodyMdx is required.");
   const nextBody = [note.bodyMdx, blockText].filter((part) => String(part || "").trim()).join("\n\n");
   const preview = { pageId, previousLength: note.bodyMdx.length, appendedLength: blockText.length, nextLength: nextBody.length };
-  if (args.dryRun) return dryRunResult("notes.append_blocks", preview);
-  assertWritesAllowed("allowNotesWrite");
+  const confirmation = prepareWrite("notes.append_blocks", "allowNotesWrite", args, preview);
+  if (confirmation) return confirmation;
   const updatedAt = nowMs();
   db.prepare("UPDATE notes SET body_mdx = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL")
     .run(nextBody, updatedAt, pageId);
+  markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "notes.append_blocks", id: pageId, appendedLength: blockText.length });
   return { note: noteRow(db, pageId) };
 }
@@ -545,19 +701,20 @@ function createTodo(db, args = {}) {
   const now = nowMs();
   const sortOrder = maxSortOrder(db, "todos") + 1;
   const preview = { id, title, notes, projectId, dueAt, scheduledStartAt, scheduledEndAt, estimatedMinutes, sortOrder };
-  if (args.dryRun) return dryRunResult("todos.create", preview);
-  assertWritesAllowed("allowTodosWrite");
+  const confirmation = prepareWrite("todos.create", "allowTodosWrite", args, preview);
+  if (confirmation) return confirmation;
   db.prepare(`
     INSERT INTO todos
       (id, title, notes, project_id, due_at, scheduled_start_at, scheduled_end_at, estimated_minutes,
        sort_order, completed_at, archived_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
   `).run(id, title, notes, projectId, dueAt, scheduledStartAt, scheduledEndAt, estimatedMinutes, sortOrder, now, now);
+  markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "todos.create", id, title });
   return { todo: todoRow(db, id) };
 }
 
-function updateTodo(db, args = {}) {
+function updateTodo(db, args = {}, tool = "todos.update") {
   const id = cleanText(args.id, 96);
   const patch = asObject(args.patch);
   if (!id) throw new Error("id is required.");
@@ -576,8 +733,8 @@ function updateTodo(db, args = {}) {
   if (next.projectId && !existsById(db, "projects", next.projectId)) {
     throw new Error("MISSING_PROJECT: projectId did not match an active project.");
   }
-  if (args.dryRun) return dryRunResult("todos.update", { id, patch, next });
-  assertWritesAllowed("allowTodosWrite");
+  const confirmation = prepareWrite(tool, "allowTodosWrite", args, { id, patch, next });
+  if (confirmation) return confirmation;
   const updatedAt = nowMs();
   db.prepare(`
     UPDATE todos
@@ -596,12 +753,18 @@ function updateTodo(db, args = {}) {
     updatedAt,
     id,
   );
-  writeAudit({ tool: "todos.update", id, patch });
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool, id, patch });
   return { todo: todoRow(db, id) };
 }
 
 function completeTodo(db, args = {}) {
-  return updateTodo(db, { id: args.id, patch: { completed: true }, dryRun: args.dryRun });
+  return updateTodo(db, {
+    id: args.id,
+    patch: { completed: true },
+    dryRun: args.dryRun,
+    confirmationId: args.confirmationId,
+  }, "todos.complete");
 }
 
 function createProject(db, args = {}) {
@@ -615,13 +778,14 @@ function createProject(db, args = {}) {
   const now = nowMs();
   const sortOrder = maxSortOrder(db, "projects") + 1;
   const preview = { id, title, description, status, color, icon, dueAt, sortOrder };
-  if (args.dryRun) return dryRunResult("projects.create", preview);
-  assertWritesAllowed("allowProjectsWrite");
+  const confirmation = prepareWrite("projects.create", "allowProjectsWrite", args, preview);
+  if (confirmation) return confirmation;
   db.prepare(`
     INSERT INTO projects
       (id, title, description, status, color, icon, due_at, pinned_at, sort_order, archived_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)
   `).run(id, title, description, status, color, icon, dueAt, sortOrder, now, now);
+  markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "projects.create", id, title });
   return { project: projectRow(db, id) };
 }
@@ -666,14 +830,15 @@ function addProjectLink(db, args = {}) {
   const id = randId("plink");
   const now = nowMs();
   const preview = { id, projectId, targetType, targetId, label, url };
-  if (args.dryRun) return dryRunResult("projects.add_link", preview);
-  assertWritesAllowed("allowProjectsWrite");
+  const confirmation = prepareWrite("projects.add_link", "allowProjectsWrite", args, preview);
+  if (confirmation) return confirmation;
   db.prepare(`
     INSERT INTO project_links (id, project_id, target_type, target_id, label, url, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(project_id, target_type, target_id)
     DO UPDATE SET label = excluded.label, url = excluded.url
   `).run(id, projectId, targetType, targetId, label, url, now);
+  markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "projects.add_link", projectId, targetType, targetId });
   return { project: getProject(db, { id: projectId }) };
 }
@@ -740,8 +905,8 @@ function createCalendarEvent(db, args = {}) {
     location: nullableText(args.location, 500),
     url: nullableText(args.url, 2_000),
   };
-  if (args.dryRun) return dryRunResult("calendar.create_event", preview);
-  assertWritesAllowed("allowCalendarWrite");
+  const confirmation = prepareWrite("calendar.create_event", "allowCalendarWrite", args, preview);
+  if (confirmation) return confirmation;
   db.prepare(`
     INSERT INTO local_calendar_events
       (id, calendar_id, title, notes, location, url, starts_at_ms, ends_at_ms,
@@ -760,6 +925,7 @@ function createCalendarEvent(db, args = {}) {
     now,
     now,
   );
+  markConfirmationConsumed(args.confirmationId);
   writeAudit({ tool: "calendar.create_event", id, title, calendarId });
   return { event: localEventRow(db.prepare("SELECT * FROM local_calendar_events WHERE id = ?").get(id)) };
 }
@@ -832,6 +998,7 @@ const toolSchemas = [
         bodyMdx: { type: "string" },
         icon: { type: "string" },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
@@ -846,6 +1013,7 @@ const toolSchemas = [
         bodyMdx: { type: "string" },
         blocks: { type: "array", items: { type: "string" } },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
@@ -864,6 +1032,7 @@ const toolSchemas = [
         scheduledEndAt: { type: "number" },
         estimatedMinutes: { type: "number" },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
@@ -877,13 +1046,14 @@ const toolSchemas = [
         id: { type: "string" },
         patch: { type: "object" },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
   {
     name: "todos.complete",
     description: "Mark a local todo complete.",
-    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" } } },
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" }, confirmationId: { type: "string" } } },
   },
   {
     name: "projects.get",
@@ -904,6 +1074,7 @@ const toolSchemas = [
         icon: { type: "string" },
         dueAt: { type: "number" },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
@@ -920,6 +1091,7 @@ const toolSchemas = [
         label: { type: "string" },
         url: { type: "string" },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
@@ -957,6 +1129,7 @@ const toolSchemas = [
         location: { type: "string" },
         url: { type: "string" },
         dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
       },
     },
   },
