@@ -655,8 +655,6 @@ export function ReleasePanel() {
   const [jobLog, setJobLog] = useState<ReleaseLogLine[]>([]);
   const [releaseTarget, setReleaseTarget] = useState<ReleaseTarget>("production");
   const [pendingProductionContinuation, setPendingProductionContinuation] = useState(false);
-  const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
-  const [showProductionContentConfirm, setShowProductionContentConfirm] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
   const [liveStatus, setLiveStatus] = useState<LiveReleaseStatus | null>(null);
@@ -882,15 +880,9 @@ export function ReleasePanel() {
           payload.state.status === "succeeded" &&
           (payload.state.script === RELEASE_STAGING_SCRIPT ||
             payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT);
-        const shouldOfferProductionContent =
-          payload.state.status === "succeeded" &&
-          releaseTarget === "production" &&
-          payload.state.script === PUBLISH_CONTENT_STAGING_SCRIPT;
         if (shouldContinueToProduction) setPendingProductionContinuation(true);
         void loadStatus({ silent: true });
-        void loadHistory().then(() => {
-          if (shouldOfferProductionContent) setShowProductionContentConfirm(true);
-        });
+        void loadHistory();
         void loadLocalSource();
         void loadLiveStatus();
         if (payload.state.status === "succeeded") {
@@ -902,9 +894,6 @@ export function ReleasePanel() {
           ) {
             clearContentPublishSuggestionEverywhere();
             setContentSuggestion(null);
-          }
-          if (payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {
-            setShowProductionContentConfirm(false);
           }
           void notify({
             title: `${scriptLabel(payload.state.script)} complete`,
@@ -927,19 +916,9 @@ export function ReleasePanel() {
     };
   }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus, releaseTarget]);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- completion state opens the next explicit confirmation after refreshed status resolves */
+  /* eslint-disable react-hooks/set-state-in-effect -- completion state clears once the next top-level action is no longer needed */
   useEffect(() => {
     if (!pendingProductionContinuation || job?.status === "running") return;
-    if (smartPlan.kind === "promote-production-code") {
-      setShowPromoteConfirm(true);
-      setPendingProductionContinuation(false);
-      return;
-    }
-    if (smartPlan.kind === "publish-content-production-from-staging") {
-      setShowProductionContentConfirm(true);
-      setPendingProductionContinuation(false);
-      return;
-    }
     if (smartPlan.kind === "noop" || smartPlan.kind === "blocked") {
       setPendingProductionContinuation(false);
     }
@@ -977,8 +956,6 @@ export function ReleasePanel() {
         return;
       }
       setJobLog([]);
-      setShowPromoteConfirm(false);
-      setShowProductionContentConfirm(false);
       setPendingProductionContinuation(false);
       setRollbackCandidate(null);
       try {
@@ -1040,11 +1017,11 @@ export function ReleasePanel() {
       return;
     }
     if (smartPlan.kind === "promote-production-code") {
-      setShowPromoteConfirm(true);
+      void startRelease(RELEASE_PROD_FROM_STAGING_SCRIPT);
       return;
     }
     if (smartPlan.kind === "publish-content-production-from-staging") {
-      setShowProductionContentConfirm(true);
+      void startRelease(PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT);
       return;
     }
     if (smartPlan.kind === "noop") {
@@ -1063,6 +1040,16 @@ export function ReleasePanel() {
     smartPlan.kind,
     startRelease,
   ]);
+
+  const smartReleaseIsProductionAction =
+    smartPlan.kind === "promote-production-code" ||
+    smartPlan.kind === "publish-content-production-from-staging";
+  const smartReleaseButtonLabel =
+    smartPlan.kind === "noop"
+      ? "Refresh Status"
+      : smartPlan.kind === "blocked"
+        ? "Smart Release"
+        : smartPlan.label;
 
   return (
     <section className="surface-card release-panel release-center">
@@ -1089,7 +1076,7 @@ export function ReleasePanel() {
           </span>
           <button
             className={
-              smartPlan.kind === "promote-production-code"
+              smartReleaseIsProductionAction
                 ? "btn btn--danger"
                 : "btn btn--primary"
             }
@@ -1100,7 +1087,7 @@ export function ReleasePanel() {
           >
             {loading
               ? "Checking…"
-              : "Smart Release"}
+              : smartReleaseButtonLabel}
           </button>
           {job?.status === "running" ? (
             <button className="btn btn--secondary" type="button" onClick={() => void cancelJob()}>
@@ -1191,24 +1178,6 @@ export function ReleasePanel() {
       ) : null}
 
       <ReleaseBlockers checks={checks} blockingCount={blockingChecks.length} />
-
-      {showPromoteConfirm && preview?.ok ? (
-        <PromoteConfirmPanel
-          preview={preview}
-          productionCommand={productionCommandFor(status, preview)}
-          onCancel={() => setShowPromoteConfirm(false)}
-          onConfirm={() => void startRelease(RELEASE_PROD_FROM_STAGING_SCRIPT)}
-        />
-      ) : null}
-
-      {showProductionContentConfirm ? (
-        <ProductionContentConfirmPanel
-          productionSnapshot={productionOverlaySnapshot}
-          stagingSnapshot={stagingOverlaySnapshot}
-          onCancel={() => setShowProductionContentConfirm(false)}
-          onConfirm={() => void startRelease(PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT)}
-        />
-      ) : null}
 
       {rollbackCandidate ? (
         <RollbackConfirmPanel
@@ -1499,8 +1468,8 @@ function ReleaseEnvironmentNotice({
       <section className="release-center__notice" data-tone="warn" aria-label="Production continuation">
         <strong>Production is next</strong>
         <span>
-          The staging step finished. Confirm the production step so production uses the same
-          candidate instead of staying behind staging.
+          The staging step finished. Use the top Smart Release action to move production to
+          the same verified candidate.
         </span>
       </section>
     );
@@ -1521,8 +1490,8 @@ function ReleaseEnvironmentNotice({
       <section className="release-center__notice" data-tone="warn" aria-label="Content release route">
         <strong>Content release is two step</strong>
         <span>
-          Smart Release publishes the staging overlay first, then asks before copying that same
-          verified content to production.
+          Smart Release publishes the staging overlay first. When staging is verified, the same
+          top action copies that content to production.
         </span>
       </section>
     );
@@ -1863,103 +1832,6 @@ function ReleaseBlockers({
           ))}
         </div>
       </details>
-    </section>
-  );
-}
-
-function PromoteConfirmPanel({
-  onCancel,
-  onConfirm,
-  preview,
-  productionCommand,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-  preview: Extract<PromotePreview, { ok: true }>;
-  productionCommand: string;
-}) {
-  return (
-    <section className="release-center__confirm" data-tone="warn" aria-label="Confirm production promotion">
-      <div>
-        <span>Production confirmation</span>
-        <h2>Promote this staging build?</h2>
-        <p>
-          Production will move from{" "}
-          <strong>{preview.production ? shortSha(preview.production.codeSha) : "none"}</strong>{" "}
-          to <strong>{shortSha(preview.stagingSha)}</strong>. Rollback target is captured before deploy.
-        </p>
-      </div>
-      <dl>
-        <div>
-          <dt>Staging version</dt>
-          <dd>{shortId(preview.staging.versionId)}</dd>
-        </div>
-        <div>
-          <dt>Content edits</dt>
-          <dd>{preview.contentDelta.changedRows}</dd>
-        </div>
-        <div>
-          <dt>Command</dt>
-          <dd>{productionCommand}</dd>
-        </div>
-      </dl>
-      <div className="release-center__confirm-actions">
-        <button className="btn btn--secondary" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn--danger" type="button" onClick={onConfirm}>
-          Promote this build
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function ProductionContentConfirmPanel({
-  onCancel,
-  onConfirm,
-  productionSnapshot,
-  stagingSnapshot,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-  productionSnapshot: string;
-  stagingSnapshot: string;
-}) {
-  return (
-    <section className="release-center__confirm" data-tone="warn" aria-label="Confirm production content publish">
-      <div>
-        <span>Production content confirmation</span>
-        <h2>Publish the same staging content?</h2>
-        <p>
-          Production will copy the verified staging overlay{" "}
-          <strong>{shortSha(stagingSnapshot)}</strong>
-          {productionSnapshot ? (
-            <>
-              {" "}over <strong>{shortSha(productionSnapshot)}</strong>
-            </>
-          ) : null}
-          . No Worker build is run.
-        </p>
-      </div>
-      <dl>
-        <div>
-          <dt>Command</dt>
-          <dd>{PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND}</dd>
-        </div>
-        <div>
-          <dt>Safety check</dt>
-          <dd>Production Worker must match staging code</dd>
-        </div>
-      </dl>
-      <div className="release-center__confirm-actions">
-        <button className="btn btn--secondary" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn--danger" type="button" onClick={onConfirm}>
-          Publish Same Content to Production
-        </button>
-      </div>
     </section>
   );
 }
