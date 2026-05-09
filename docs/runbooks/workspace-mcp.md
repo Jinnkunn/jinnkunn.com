@@ -28,6 +28,7 @@ It also reads settings and writes audit entries in the same app data folder:
 ```text
 ~/Library/Application Support/com.jinnkunn.workspace/mcp-settings.json
 ~/Library/Application Support/com.jinnkunn.workspace/mcp-audit.jsonl
+~/Library/Application Support/com.jinnkunn.workspace/mcp-confirmations.json
 ```
 
 Override it for testing or sandboxed clients:
@@ -61,6 +62,9 @@ Use stdio transport and point the command at this repo:
   created or changed.
 - Workspace Settings → AI Access writes `mcp-settings.json`, which the MCP
   server reads at tool-call time.
+- By default, write tools create a pending confirmation in
+  `mcp-confirmations.json`. Approve it in Workspace Settings → AI Access, then
+  retry the same MCP tool call with the returned `confirmationId`.
 - Set `WORKSPACE_MCP_READONLY=1` to force read-only mode regardless of the
   saved Workspace setting.
 - Write tools append local audit entries to `mcp-audit.jsonl`.
@@ -71,6 +75,7 @@ Default permissions:
 {
   "enabled": true,
   "writeMode": "local-write",
+  "requireConfirmationForWrites": true,
   "allowNotesWrite": true,
   "allowTodosWrite": true,
   "allowProjectsWrite": true,

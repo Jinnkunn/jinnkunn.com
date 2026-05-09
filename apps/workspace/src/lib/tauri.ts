@@ -53,6 +53,7 @@ export type WorkspaceMcpWriteMode = "read-only" | "local-write";
 export interface WorkspaceMcpSettings {
   enabled: boolean;
   writeMode: WorkspaceMcpWriteMode;
+  requireConfirmationForWrites: boolean;
   allowNotesWrite: boolean;
   allowTodosWrite: boolean;
   allowProjectsWrite: boolean;
@@ -64,12 +65,14 @@ export interface WorkspaceMcpStatus {
   dbPath: string;
   settingsPath: string;
   auditPath: string;
+  confirmationsPath: string;
   serverCommand: string;
   serverArgs: string[];
   settings: WorkspaceMcpSettings;
   toolCount: number;
   writableToolCount: number;
   recentAuditCount: number;
+  pendingConfirmationCount: number;
 }
 
 export interface WorkspaceMcpAuditEntry {
@@ -79,6 +82,18 @@ export interface WorkspaceMcpAuditEntry {
   title: string | null;
   summary: string;
   raw: unknown;
+}
+
+export interface WorkspaceMcpConfirmation {
+  id: string;
+  status: string;
+  tool: string;
+  summary: string;
+  requestedAt: string | null;
+  decidedAt: string | null;
+  consumedAt: string | null;
+  preview: unknown;
+  args: unknown;
 }
 
 export function workspaceMcpStatus(): Promise<WorkspaceMcpStatus> {
@@ -99,4 +114,17 @@ export function workspaceMcpAuditRecent(
   limit = 12,
 ): Promise<WorkspaceMcpAuditEntry[]> {
   return invoke("workspace_mcp_audit_recent", { limit });
+}
+
+export function workspaceMcpConfirmationsList(
+  status = "pending",
+): Promise<WorkspaceMcpConfirmation[]> {
+  return invoke("workspace_mcp_confirmations_list", { status });
+}
+
+export function workspaceMcpConfirmationDecide(
+  id: string,
+  decision: "approve" | "reject",
+): Promise<WorkspaceMcpConfirmation> {
+  return invoke("workspace_mcp_confirmation_decide", { id, decision });
 }

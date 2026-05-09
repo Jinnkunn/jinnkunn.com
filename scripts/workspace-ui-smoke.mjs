@@ -316,14 +316,29 @@ function main() {
     "Workspace MCP reads shared app settings",
   );
   assertIncludes(
+    read("scripts/workspace-mcp-server.mjs"),
+    "resolveWorkspaceMcpConfirmationsPath",
+    "Workspace MCP writes confirmation queue",
+  );
+  assertIncludes(
     read("apps/workspace/src/shell/SettingsWindow.tsx"),
     "AI Access",
     "Workspace settings exposes MCP controls",
   );
   assertIncludes(
+    read("apps/workspace/src/shell/SettingsWindow.tsx"),
+    "Pending confirmations",
+    "Workspace settings exposes MCP confirmation queue",
+  );
+  assertIncludes(
     read("apps/workspace/src-tauri/src/mcp.rs"),
     "workspace_mcp_status",
     "Tauri exposes Workspace MCP status",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/mcp.rs"),
+    "workspace_mcp_confirmation_decide",
+    "Tauri can approve or reject MCP confirmations",
   );
   assertIncludes(
     read("apps/workspace/src-tauri/src/secrets.rs"),
