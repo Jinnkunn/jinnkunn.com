@@ -74,7 +74,9 @@
     "check:home-style": "node scripts/home-style-contract.mjs",
     "check:ui": "node scripts/check-ui.mjs",
     "workspace:tauri:dev": "cd apps/workspace && npm run tauri:dev",
-    "workspace:tauri:build": "cd apps/workspace && npm run tauri:build"
+    "workspace:tauri:build": "cd apps/workspace && npm run tauri:build",
+    "workspace:mcp": "node --no-warnings scripts/workspace-mcp-server.mjs",
+    "workspace:mcp:self-test": "node --no-warnings scripts/workspace-mcp-server.mjs --self-test"
   },
   "dependencies": {
     "@mdx-js/mdx": "^3.1.1",
