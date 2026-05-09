@@ -2,14 +2,14 @@ import { secureStoreDelete, secureStoreGet, secureStoreSet } from "./tauri";
 
 // Shared secure-storage layer with per-tool namespacing. Each feature
 // module gets its own namespace so keys can't collide — e.g. site-admin's
-// "auth-token" lives at `site-admin:auth-token` in the keyring, calendar's
-// at `calendar:auth-token`.
+// "auth-token" lives at `site-admin:auth-token`, calendar's at
+// `calendar:auth-token`.
 //
-// The Rust side (secure_store_* commands in src-tauri/src/main.rs) writes
-// each key to the system keychain under the
-// "com.jinnkunn.workspace.site-admin" keyring service — the service name
-// is already namespaced to this app, so within-app namespacing just needs
-// a key prefix.
+// The Rust side (secure_store_* commands) chooses the backend:
+// production uses the system keychain, debug builds use workspace.db so
+// development/testing does not get interrupted by macOS Keychain prompts.
+// Within-app namespacing still matters because the credential backend is
+// shared by all first-party modules.
 
 export interface NamespacedSecureStorage {
   namespace: string;

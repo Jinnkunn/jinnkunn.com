@@ -81,9 +81,9 @@ SITE_ADMIN_SERVICE_TOKENS=tauri-workspace.service.jinkunchen.com
 1. Ensure staging app works end-to-end with `SITE_ADMIN_AUTH_MODE=cf-access`.
 2. Copy-proof: create a CF Access service token for the Tauri desktop app
    (Zero Trust → Access → Service Auth → Service Tokens → **Create Service
-   Token**). Store the `Client ID` + `Client Secret` in the macOS Keychain
-   via the workspace app's connection card (pending Tauri-side change —
-   see Phase 3).
+   Token**). Store the `Client ID` + `Client Secret` via the workspace app's
+   connection card. Production uses macOS Keychain; debug builds default to
+   the local `workspace.db` credential backend.
 3. Flip prod to `SITE_ADMIN_AUTH_MODE=cf-access` after one full business
    week with no auth failures on the CF path in staging.
 4. Delete: `/api/auth/[...nextauth]/route.ts`, `site-admin/login/*`, the
@@ -98,7 +98,8 @@ HMAC bearer token. After Phase 2 that token infrastructure becomes dead
 code. Replacement:
 
 - Connection card: user pastes `CF-Access-Client-Id` + `CF-Access-Client-Secret`
-  (one-time, from CF dashboard), we store both in Keychain.
+  (one-time, from CF dashboard), we store both through the workspace
+  credential bridge.
 - Each HTTP request from Tauri attaches both headers. CF Access validates
   at the edge, converts to a signed JWT, our Worker verifies the JWT.
 - Fallback to browser-based user login when no service token is
