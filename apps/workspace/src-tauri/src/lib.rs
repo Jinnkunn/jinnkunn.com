@@ -7,7 +7,7 @@
 //!
 //! Shell concerns split out for readability:
 //! - `site_admin` — HTTP proxy + browser-based OAuth login
-//! - `secrets`    — OS keychain wrappers
+//! - `secrets`    — credential storage bridge
 //! - `desktop_shell` — tray, menubar, hotkey, traffic-lights, vibrancy
 
 mod calendar;
@@ -82,6 +82,7 @@ pub fn run() {
             secrets::secure_store_set,
             secrets::secure_store_get,
             secrets::secure_store_delete,
+            secrets::secure_store_backend,
             mcp::workspace_mcp_status,
             mcp::workspace_mcp_settings_get,
             mcp::workspace_mcp_settings_update,

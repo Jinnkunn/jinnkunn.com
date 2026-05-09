@@ -457,7 +457,7 @@ export function SiteAdminConnectionPill() {
                   value={cfSecret}
                   onChange={(e) => setCfSecret(e.target.value)}
                   type={showSecret ? "text" : "password"}
-                  placeholder="(paste once; stored in keychain)"
+                  placeholder="(paste once; stored by Workspace)"
                   spellCheck={false}
                   autoComplete="off"
                 />

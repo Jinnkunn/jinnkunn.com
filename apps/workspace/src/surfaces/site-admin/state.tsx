@@ -81,9 +81,8 @@ function persistPostsGrouping(mode: PostsGrouping): void {
   }
 }
 
-// Per-tool secure storage namespace. Each feature module gets its own
-// prefix in the system keychain so e.g. a future calendar tool can't
-// read site-admin's tokens.
+// Per-tool credential namespace. Each feature module gets its own prefix
+// so e.g. a future calendar tool can't read site-admin's tokens.
 const secureStorage = createNamespacedSecureStorage("site-admin");
 
 interface ConnectionMeta {
@@ -582,9 +581,9 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
   );
 
   // On first mount (and whenever baseUrl changes) try to read previously
-  // stored credentials from the keyring: the legacy bearer app token AND
-  // the Cloudflare Access service-token pair. Silent on miss because the
-  // user may be about to sign in fresh.
+  // stored credentials: the legacy bearer app token AND the Cloudflare
+  // Access service-token pair. Silent on miss because the user may be
+  // about to sign in fresh.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {

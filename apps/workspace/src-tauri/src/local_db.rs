@@ -72,6 +72,18 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
             value INTEGER NOT NULL
         );
 
+        -- Development secret backend. Production defaults to the OS
+        -- keychain, but debug builds store Site Admin credentials here
+        -- so repeated dev/test launches do not trigger macOS Keychain
+        -- prompts. Values are intentionally local-only and never synced.
+        CREATE TABLE IF NOT EXISTS secure_values (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_secure_values_updated_at
+            ON secure_values (updated_at DESC);
+
         -- Per-calendar-event public publishing rules. This stores only
         -- disclosure policy and public overrides, never raw EventKit
         -- notes/location/details by default.

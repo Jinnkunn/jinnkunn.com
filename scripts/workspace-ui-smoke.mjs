@@ -326,6 +326,21 @@ function main() {
     "Tauri exposes Workspace MCP status",
   );
   assertIncludes(
+    read("apps/workspace/src-tauri/src/secrets.rs"),
+    "WORKSPACE_SECRET_BACKEND",
+    "Workspace credential backend can be overridden",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/secrets.rs"),
+    "cfg!(debug_assertions) => SecretBackend::LocalDb",
+    "Workspace debug builds avoid Keychain prompts",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/local_db.rs"),
+    "secure_values",
+    "Workspace local DB has development credential table",
+  );
+  assertIncludes(
     read("package.json"),
     "\"workspace:mcp\"",
     "Root package exposes Workspace MCP server",

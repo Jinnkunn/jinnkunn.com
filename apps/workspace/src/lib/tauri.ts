@@ -29,8 +29,9 @@ export function openMacosCalendarPrivacy(): Promise<void> {
   return invoke("open_macos_calendar_privacy");
 }
 
-/** Raw keyring access — prefer `createNamespacedSecureStorage` so modules
- * don't collide on key names. */
+/** Raw credential storage access — prefer `createNamespacedSecureStorage`
+ * so modules don't collide on key names. Tauri uses Keychain in production
+ * and local workspace.db storage in debug builds. */
 export function secureStoreSet(key: string, value: string): Promise<void> {
   return invoke("secure_store_set", { key, value });
 }
@@ -41,6 +42,10 @@ export function secureStoreGet(key: string): Promise<string | null> {
 
 export function secureStoreDelete(key: string): Promise<void> {
   return invoke("secure_store_delete", { key });
+}
+
+export function secureStoreBackend(): Promise<"keychain" | "local-db"> {
+  return invoke("secure_store_backend");
 }
 
 export type WorkspaceMcpWriteMode = "read-only" | "local-write";
