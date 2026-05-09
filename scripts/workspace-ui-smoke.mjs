@@ -197,6 +197,16 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Staging to Production",
+    "Release panel explicit production target",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "Production behind staging",
+    "Release panel explains production drift",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
     "PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND",
     "Release panel production content from staging command",
   );
