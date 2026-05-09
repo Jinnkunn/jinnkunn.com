@@ -1225,6 +1225,11 @@ function main() {
   ]) {
     assertIncludes(workspaceCss, token, "workspace shell layout tokens");
   }
+  assertIncludes(
+    workspaceCss,
+    "--sidebar-tree-depth-step: 9px",
+    "Sidebar nested nav keeps compact tree indentation",
+  );
 
   const mdxBlocks = read("apps/workspace/src/surfaces/site-admin/mdx-blocks.ts");
   assertIncludes(mdxBlocks, 'type === "raw"', "mdx-blocks");
