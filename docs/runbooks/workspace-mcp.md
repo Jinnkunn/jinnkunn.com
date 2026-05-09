@@ -2,8 +2,8 @@
 
 The Workspace MCP server is a local-only automation layer for the Tauri
 workspace. It exposes structured tools over stdio so an AI client can operate
-Notes, Todos, Projects, Contacts, and the local Workspace calendar without
-clicking through the UI.
+Notes, Todos, Projects, Contacts, Site Admin content, and the local Workspace
+calendar without clicking through the UI.
 
 ## Run
 
@@ -56,8 +56,11 @@ Use stdio transport and point the command at this repo:
 ## Safety Model
 
 - The server listens only on stdio. It does not expose an HTTP port.
-- Site Admin is read-only in v1. `siteAdmin.release_status` reports release
-  state but cannot deploy staging or promote production.
+- Site Admin write access is limited to local content authoring.
+  `siteAdmin.create_page` can create MDX pages under `content/pages` and update
+  `content/page-tree.json`; it cannot deploy staging or promote production.
+- `siteAdmin.release_status` reports release state but cannot deploy staging or
+  promote production.
 - Local write tools support `dryRun: true` and return the row that would be
   created or changed.
 - Workspace Settings → AI Access writes `mcp-settings.json`, which the MCP
@@ -79,6 +82,7 @@ Default permissions:
   "allowNotesWrite": true,
   "allowTodosWrite": true,
   "allowProjectsWrite": true,
+  "allowSiteAdminWrite": true,
   "allowCalendarWrite": false
 }
 ```
@@ -100,6 +104,7 @@ Default permissions:
 - `calendar.list_events`
 - `calendar.create_event`
 - `siteAdmin.release_status`
+- `siteAdmin.create_page`
 
 ## Resources
 
@@ -109,8 +114,9 @@ Default permissions:
 
 ## Current Scope
 
-MCP v1 directly uses the local SQLite schema. It is intentionally limited to
-low-risk local-first operations plus read-only release status. macOS EventKit
-calendar accounts and production release actions should stay behind explicit
-Tauri UI confirmation until a later version adds a first-class permission
-prompt.
+MCP v1 directly uses the local SQLite schema for Workspace data and the local
+`content/` tree for Site Admin page authoring. It is intentionally limited to
+low-risk local-first operations plus content changes that still require a
+separate release step. macOS EventKit calendar accounts and production release
+actions should stay behind explicit Tauri UI confirmation until a later version
+adds a first-class permission prompt.

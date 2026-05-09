@@ -34,6 +34,7 @@ const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
   allowNotesWrite: true,
   allowTodosWrite: true,
   allowProjectsWrite: true,
+  allowSiteAdminWrite: true,
   allowCalendarWrite: false,
 };
 
@@ -399,6 +400,13 @@ function McpSettingsPanel({
           checked={settings.allowProjectsWrite}
           disabled={!writable}
           onChange={(allowProjectsWrite) => onUpdateSettings({ allowProjectsWrite })}
+        />
+        <McpCapabilityRow
+          title="Site Admin writes"
+          detail="Create local website pages without deploying"
+          checked={settings.allowSiteAdminWrite}
+          disabled={!writable}
+          onChange={(allowSiteAdminWrite) => onUpdateSettings({ allowSiteAdminWrite })}
         />
         <McpCapabilityRow
           title="Calendar writes"

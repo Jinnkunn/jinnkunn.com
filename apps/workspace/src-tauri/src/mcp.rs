@@ -12,12 +12,19 @@ const CONFIRMATIONS_FILENAME: &str = "mcp-confirmations.json";
 #[serde(default)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceMcpSettings {
+    #[serde(default = "default_true")]
     pub enabled: bool,
     pub write_mode: WorkspaceMcpWriteMode,
+    #[serde(default = "default_true")]
     pub require_confirmation_for_writes: bool,
+    #[serde(default = "default_true")]
     pub allow_notes_write: bool,
+    #[serde(default = "default_true")]
     pub allow_todos_write: bool,
+    #[serde(default = "default_true")]
     pub allow_projects_write: bool,
+    #[serde(default = "default_true")]
+    pub allow_site_admin_write: bool,
     pub allow_calendar_write: bool,
 }
 
@@ -29,6 +36,10 @@ pub enum WorkspaceMcpWriteMode {
     LocalWrite,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for WorkspaceMcpSettings {
     fn default() -> Self {
         Self {
@@ -38,6 +49,7 @@ impl Default for WorkspaceMcpSettings {
             allow_notes_write: true,
             allow_todos_write: true,
             allow_projects_write: true,
+            allow_site_admin_write: true,
             // Calendar changes are externally visible on the calendar surface,
             // so keep them opt-in until the operator explicitly enables them.
             allow_calendar_write: false,
@@ -265,6 +277,7 @@ pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus,
                 settings.allow_notes_write,
                 settings.allow_todos_write,
                 settings.allow_projects_write,
+                settings.allow_site_admin_write,
                 settings.allow_calendar_write,
             ]
             .into_iter()
@@ -282,7 +295,7 @@ pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus,
         server_command: "npm".to_string(),
         server_args: vec!["run".to_string(), "workspace:mcp".to_string()],
         settings,
-        tool_count: 15,
+        tool_count: 16,
         writable_tool_count,
         recent_audit_count,
         pending_confirmation_count,
