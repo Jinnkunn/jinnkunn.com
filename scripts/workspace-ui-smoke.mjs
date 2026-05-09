@@ -301,6 +301,21 @@ function main() {
     "Tauri local release source command",
   );
   assertIncludes(
+    read("scripts/workspace-mcp-server.mjs"),
+    "workspace.get_context",
+    "Workspace MCP exposes context tool",
+  );
+  assertIncludes(
+    read("scripts/workspace-mcp-server.mjs"),
+    "siteAdmin.release_status",
+    "Workspace MCP keeps Site Admin release read-only",
+  );
+  assertIncludes(
+    read("package.json"),
+    "\"workspace:mcp\"",
+    "Root package exposes Workspace MCP server",
+  );
+  assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/SiteAdminTopBar.tsx"),
     "topbarSaveAction",
     "Site Admin topbar save action",
