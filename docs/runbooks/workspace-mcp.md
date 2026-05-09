@@ -29,12 +29,21 @@ It also reads settings and writes audit entries in the same app data folder:
 ~/Library/Application Support/com.jinnkunn.workspace/mcp-settings.json
 ~/Library/Application Support/com.jinnkunn.workspace/mcp-audit.jsonl
 ~/Library/Application Support/com.jinnkunn.workspace/mcp-confirmations.json
+~/Library/Application Support/com.jinnkunn.workspace/site-admin-content-publish-suggestion.json
 ```
 
 Override it for testing or sandboxed clients:
 
 ```bash
 WORKSPACE_DB_PATH=/tmp/workspace.db npm run workspace:mcp
+```
+
+Headless confirmation helpers:
+
+```bash
+npm run workspace:mcp:confirmations
+npm run workspace:mcp:approve -- <confirmation-id>
+npm run workspace:mcp:reject -- <confirmation-id>
 ```
 
 ## Client Config
@@ -57,8 +66,12 @@ Use stdio transport and point the command at this repo:
 
 - The server listens only on stdio. It does not expose an HTTP port.
 - Site Admin write access is limited to local content authoring.
-  `siteAdmin.create_page` can create MDX pages under `content/pages` and update
-  `content/page-tree.json`; it cannot deploy staging or promote production.
+  `siteAdmin.create_page`, `siteAdmin.update_page`, and
+  `siteAdmin.delete_page` can change MDX pages under `content/pages` and update
+  `content/page-tree.json`; they cannot deploy staging or promote production.
+- Site Admin content writes create
+  `site-admin-content-publish-suggestion.json`; Release Center reads it and
+  suggests the next content publish step.
 - `siteAdmin.release_status` reports release state but cannot deploy staging or
   promote production.
 - Local write tools support `dryRun: true` and return the row that would be
@@ -104,7 +117,11 @@ Default permissions:
 - `calendar.list_events`
 - `calendar.create_event`
 - `siteAdmin.release_status`
+- `siteAdmin.list_pages`
+- `siteAdmin.get_page`
 - `siteAdmin.create_page`
+- `siteAdmin.update_page`
+- `siteAdmin.delete_page`
 
 ## Resources
 

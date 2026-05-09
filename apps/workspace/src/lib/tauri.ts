@@ -67,6 +67,7 @@ export interface WorkspaceMcpStatus {
   settingsPath: string;
   auditPath: string;
   confirmationsPath: string;
+  contentPublishSuggestionPath: string;
   serverCommand: string;
   serverArgs: string[];
   settings: WorkspaceMcpSettings;
@@ -74,6 +75,7 @@ export interface WorkspaceMcpStatus {
   writableToolCount: number;
   recentAuditCount: number;
   pendingConfirmationCount: number;
+  contentPublishSuggestion: WorkspaceMcpContentPublishSuggestion | null;
 }
 
 export interface WorkspaceMcpAuditEntry {
@@ -95,6 +97,13 @@ export interface WorkspaceMcpConfirmation {
   consumedAt: string | null;
   preview: unknown;
   args: unknown;
+}
+
+export interface WorkspaceMcpContentPublishSuggestion {
+  atMs: number;
+  method: string;
+  path: string;
+  source?: string | null;
 }
 
 export function workspaceMcpStatus(): Promise<WorkspaceMcpStatus> {
@@ -128,4 +137,12 @@ export function workspaceMcpConfirmationDecide(
   decision: "approve" | "reject",
 ): Promise<WorkspaceMcpConfirmation> {
   return invoke("workspace_mcp_confirmation_decide", { id, decision });
+}
+
+export function workspaceMcpContentPublishSuggestionGet(): Promise<WorkspaceMcpContentPublishSuggestion | null> {
+  return invoke("workspace_mcp_content_publish_suggestion_get");
+}
+
+export function workspaceMcpContentPublishSuggestionClear(): Promise<void> {
+  return invoke("workspace_mcp_content_publish_suggestion_clear");
 }

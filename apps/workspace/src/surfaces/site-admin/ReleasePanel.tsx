@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import { openExternalUrl } from "../../lib/tauri";
+import {
+  openExternalUrl,
+  workspaceMcpContentPublishSuggestionClear,
+  workspaceMcpContentPublishSuggestionGet,
+} from "../../lib/tauri";
 import { notify } from "../../lib/notify";
 import {
   siteAdminCancelReleaseJob,
@@ -238,6 +242,22 @@ type PromotePreview =
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function pickNewerContentSuggestion(
+  current: ContentPublishSuggestion | null,
+  next: ContentPublishSuggestion | null,
+): ContentPublishSuggestion | null {
+  if (!next) return current;
+  if (!current || next.atMs >= current.atMs) return next;
+  return current;
+}
+
+function clearContentPublishSuggestionEverywhere(): void {
+  clearContentPublishSuggestion();
+  if (isTauriRuntime()) {
+    void workspaceMcpContentPublishSuggestionClear();
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -827,6 +847,28 @@ export function ReleasePanel() {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let cancelled = false;
+    const refreshMcpContentSuggestion = () => {
+      void workspaceMcpContentPublishSuggestionGet()
+        .then((suggestion) => {
+          if (!cancelled) {
+            setContentSuggestion((current) =>
+              pickNewerContentSuggestion(current, suggestion),
+            );
+          }
+        })
+        .catch(() => undefined);
+    };
+    refreshMcpContentSuggestion();
+    const interval = window.setInterval(refreshMcpContentSuggestion, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
     let unlisten: UnlistenFn | undefined;
     void listen<SiteAdminReleaseJobEvent>("site-admin://release-job", (event) => {
       if (cancelled) return;
@@ -858,7 +900,7 @@ export function ReleasePanel() {
             payload.state.script === PUBLISH_CONTENT_PROD_SCRIPT ||
             payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
           ) {
-            clearContentPublishSuggestion();
+            clearContentPublishSuggestionEverywhere();
             setContentSuggestion(null);
           }
           if (payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {

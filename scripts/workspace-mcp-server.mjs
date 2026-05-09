@@ -110,6 +110,13 @@ export function resolveWorkspaceMcpConfirmationsPath() {
   return explicit ? path.resolve(explicit) : defaultAppDataPath("mcp-confirmations.json");
 }
 
+export function resolveWorkspaceMcpContentSuggestionPath() {
+  const explicit = process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH;
+  return explicit
+    ? path.resolve(explicit)
+    : defaultAppDataPath("site-admin-content-publish-suggestion.json");
+}
+
 function openWorkspaceDb(dbPath = resolveWorkspaceDbPath()) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -344,6 +351,10 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+function sha1Hex(input) {
+  return crypto.createHash("sha1").update(String(input), "utf8").digest("hex");
+}
+
 function writeArgsForHash(args = {}) {
   const clean = { ...asObject(args) };
   delete clean.confirmationId;
@@ -377,6 +388,35 @@ function writeConfirmations(entries) {
   fs.renameSync(tmp, file);
 }
 
+export function listWorkspaceMcpConfirmations(status = "pending") {
+  const wanted = cleanText(status, 40) || "pending";
+  return readConfirmations().filter((entry) => wanted === "all" || entry.status === wanted);
+}
+
+export function decideWorkspaceMcpConfirmation(id, decision) {
+  const nextStatus = decision === "approve" || decision === "approved"
+    ? "approved"
+    : decision === "reject" || decision === "rejected"
+      ? "rejected"
+      : "";
+  if (!nextStatus) throw new Error("decision must be approve or reject.");
+  const confirmationId = cleanText(id, 96);
+  if (!confirmationId) throw new Error("confirmation id is required.");
+  const entries = readConfirmations();
+  const index = entries.findIndex((entry) => entry.id === confirmationId);
+  if (index < 0) throw new Error(`confirmation was not found: ${confirmationId}`);
+  if (entries[index].status !== "pending") {
+    throw new Error(`confirmation is already ${entries[index].status}.`);
+  }
+  entries[index] = {
+    ...entries[index],
+    status: nextStatus,
+    decidedAt: new Date().toISOString(),
+  };
+  writeConfirmations(entries);
+  return entries[index];
+}
+
 function summarizeConfirmation(tool, preview = {}) {
   const p = asObject(preview);
   switch (tool) {
@@ -396,6 +436,10 @@ function summarizeConfirmation(tool, preview = {}) {
       return `Link ${p.targetType || "item"} to project`;
     case "calendar.create_event":
       return `Create calendar event: ${p.title || "Untitled"}`;
+    case "siteAdmin.update_page":
+      return `Update site page: /${p.slug || "unknown"}`;
+    case "siteAdmin.delete_page":
+      return `Delete site page: /${p.slug || "unknown"}`;
     case "siteAdmin.create_page":
       return `Create site page: /${p.slug || "untitled"}`;
     default:
@@ -936,6 +980,7 @@ function createCalendarEvent(db, args = {}) {
 }
 
 const PAGE_SLUG_SEGMENT_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+const PAGE_TREE_FILENAME = "page-tree.json";
 
 function resolveSiteContentRoot() {
   const explicit = process.env.WORKSPACE_MCP_CONTENT_ROOT;
@@ -958,32 +1003,89 @@ function normalizePageSlug(slug) {
   return cleaned;
 }
 
+function pageSlugParent(slug) {
+  const idx = slug.lastIndexOf("/");
+  return idx > 0 ? slug.slice(0, idx) : null;
+}
+
+function normalizeOptionalPageSlug(value) {
+  const text = cleanText(value, 260);
+  return text ? normalizePageSlug(text) : null;
+}
+
+function resolveCreatePageSlug(args = {}) {
+  const slug = normalizePageSlug(args.slug);
+  const parentSlug = normalizeOptionalPageSlug(args.parentSlug);
+  if (parentSlug && !slug.includes("/")) return `${parentSlug}/${slug}`;
+  return slug;
+}
+
 function mdxFrontmatterString(value) {
   return JSON.stringify(cleanText(value, 600));
 }
 
-function createPageSource(args, slug) {
-  const explicitSource = asString(args.source);
-  if (explicitSource.trim()) return explicitSource.endsWith("\n") ? explicitSource : `${explicitSource}\n`;
-  const title = cleanText(args.title, 200) || slug.split("/").pop() || "Untitled";
-  const description = cleanText(args.description, 300);
-  const draft = asBool(args.draft, false);
-  const body = cleanText(args.bodyMdx, 80_000);
+function parsePageSource(source = "") {
+  const text = asString(source);
+  const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  const data = {};
+  let body = text;
+  if (match) {
+    body = text.slice(match[0].length);
+    for (const line of match[1].split("\n")) {
+      const idx = line.indexOf(":");
+      if (idx <= 0) continue;
+      const key = line.slice(0, idx).trim();
+      let value = line.slice(idx + 1).trim();
+      if (
+        (value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (key) data[key] = value;
+    }
+  }
+  return {
+    body,
+    title: cleanText(data.title, 200),
+    description: cleanText(data.description, 300),
+    updated: cleanText(data.updated, 40),
+    draft: data.draft === "true",
+  };
+}
+
+function composePageSource({ title, description, updated, draft, body }) {
   const frontmatter = [
     "---",
     `title: ${mdxFrontmatterString(title)}`,
     description ? `description: ${mdxFrontmatterString(description)}` : null,
+    updated ? `updated: ${updated}` : null,
     `draft: ${draft ? "true" : "false"}`,
     "---",
   ].filter(Boolean).join("\n");
   return `${frontmatter}\n\n${body ? `${body}\n` : ""}`;
 }
 
+function createPageSource(args, slug, existingSource = "") {
+  const explicitSource = asString(args.source);
+  if (explicitSource.trim()) return explicitSource.endsWith("\n") ? explicitSource : `${explicitSource}\n`;
+  const existing = parsePageSource(existingSource);
+  const title = args.title === undefined
+    ? existing.title || slug.split("/").pop() || "Untitled"
+    : cleanText(args.title, 200) || "Untitled";
+  const description = args.description === undefined
+    ? existing.description
+    : cleanText(args.description, 300);
+  const updated = args.updated === undefined
+    ? existing.updated
+    : cleanText(args.updated, 40);
+  const draft = args.draft === undefined ? existing.draft : asBool(args.draft, false);
+  const body = args.bodyMdx === undefined ? existing.body.trimEnd() : cleanText(args.bodyMdx, 80_000);
+  return composePageSource({ title, description, updated, draft, body });
+}
+
 function extractPageTitle(source, slug) {
-  const match = source.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!match) return slug;
-  const title = match[1].match(/^title:\s*(.+?)\s*$/m);
-  return title ? title[1].trim().replace(/^['"]|['"]$/g, "") : slug;
+  return parsePageSource(source).title || slug;
 }
 
 function ensurePageSourceValid(source) {
@@ -991,6 +1093,19 @@ function ensurePageSourceValid(source) {
   if (!match || !/^title:\s*.+$/m.test(match[1])) {
     throw new Error("site page source must include frontmatter with title.");
   }
+}
+
+function siteContentFilePath(contentRoot, relPath) {
+  const full = path.resolve(contentRoot, ...relPath.split("/"));
+  const root = path.resolve(contentRoot);
+  if (full !== root && !full.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`content path escaped root: ${relPath}`);
+  }
+  return full;
+}
+
+function sitePageRelPath(slug) {
+  return path.posix.join("pages", `${slug}.mdx`);
 }
 
 function readJsonFile(file, fallback) {
@@ -1008,14 +1123,240 @@ function writeTextFileAtomic(file, content) {
   fs.renameSync(tmp, file);
 }
 
-function createSiteAdminPage(args = {}) {
+function readPageTree(contentRoot) {
+  const file = path.join(contentRoot, PAGE_TREE_FILENAME);
+  const parsed = readJsonFile(file, { schemaVersion: 1, slugs: [] });
+  const seen = new Set();
+  const slugs = [];
+  const raw = Array.isArray(parsed.slugs) ? parsed.slugs : [];
+  for (const item of raw) {
+    try {
+      const slug = normalizePageSlug(item);
+      if (!seen.has(slug)) {
+        seen.add(slug);
+        slugs.push(slug);
+      }
+    } catch {
+      // Drop malformed legacy entries instead of breaking the entire MCP surface.
+    }
+  }
+  return { schemaVersion: 1, slugs };
+}
+
+function writePageTree(contentRoot, slugs) {
+  const seen = new Set();
+  const normalized = [];
+  for (const item of slugs) {
+    const slug = normalizePageSlug(item);
+    if (!seen.has(slug)) {
+      seen.add(slug);
+      normalized.push(slug);
+    }
+  }
+  writeTextFileAtomic(
+    path.join(contentRoot, PAGE_TREE_FILENAME),
+    `${JSON.stringify({ schemaVersion: 1, slugs: normalized }, null, 2)}\n`,
+  );
+  return normalized;
+}
+
+function listSitePageSlugs(contentRoot) {
+  const pagesRoot = path.join(contentRoot, "pages");
+  const out = [];
+  function walk(dir, prefix = "") {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === "ENOENT") return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full, rel);
+        continue;
+      }
+      if (!entry.isFile() || !/\.mdx?$/.test(entry.name)) continue;
+      const slug = rel.replace(/\.mdx?$/, "");
+      try {
+        out.push(normalizePageSlug(slug));
+      } catch {
+        // Ignore files that the public route layer would reject anyway.
+      }
+    }
+  }
+  walk(pagesRoot);
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+function readSitePage(contentRoot, slug) {
+  const relPath = sitePageRelPath(slug);
+  const filePath = siteContentFilePath(contentRoot, relPath);
+  try {
+    const source = fs.readFileSync(filePath, "utf8");
+    const parsed = parsePageSource(source);
+    return {
+      slug,
+      href: `/${slug}`,
+      title: parsed.title || slug,
+      description: parsed.description || "",
+      updated: parsed.updated || "",
+      draft: parsed.draft,
+      relPath,
+      filePath,
+      source,
+      sourceSha: sha1Hex(source),
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function orderedSitePageSlugs(contentRoot) {
+  const existing = listSitePageSlugs(contentRoot);
+  const existingSet = new Set(existing);
+  const tree = readPageTree(contentRoot).slugs.filter((slug) => existingSet.has(slug));
+  const treeSet = new Set(tree);
+  return [...tree, ...existing.filter((slug) => !treeSet.has(slug))];
+}
+
+function applyPageTreeInsert(slugs, slug, args = {}) {
+  const next = slugs.filter((item) => item !== slug);
+  const beforeSlug = normalizeOptionalPageSlug(args.beforeSlug);
+  if (beforeSlug) {
+    const idx = next.indexOf(beforeSlug);
+    if (idx >= 0) {
+      next.splice(idx, 0, slug);
+      return next;
+    }
+  }
+  const afterSlug = normalizeOptionalPageSlug(args.afterSlug);
+  if (afterSlug) {
+    const idx = next.indexOf(afterSlug);
+    if (idx >= 0) {
+      next.splice(idx + 1, 0, slug);
+      return next;
+    }
+  }
+  const parentSlug = normalizeOptionalPageSlug(args.parentSlug);
+  const parent = parentSlug || pageSlugParent(slug);
+  const siblingIndexes = next
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => pageSlugParent(item) === parent)
+    .map(({ index }) => index);
+  const position = args.position === "start" ? "start" : "end";
+  if (siblingIndexes.length) {
+    const index = position === "start"
+      ? siblingIndexes[0]
+      : siblingIndexes[siblingIndexes.length - 1] + 1;
+    next.splice(index, 0, slug);
+    return next;
+  }
+  if (parent) {
+    const parentIndex = next.indexOf(parent);
+    if (parentIndex >= 0) {
+      next.splice(parentIndex + 1, 0, slug);
+      return next;
+    }
+  }
+  if (position === "start") next.unshift(slug);
+  else next.push(slug);
+  return next;
+}
+
+function textPreview(source, max = 1_600) {
+  const text = asString(source).trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trimEnd()}\n...`;
+}
+
+function diffPreview(before, after) {
+  if (before === after) return "No source changes.";
+  const beforeLines = asString(before).split("\n");
+  const afterLines = asString(after).split("\n");
+  let prefix = 0;
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) {
+    prefix += 1;
+  }
+  let suffix = 0;
+  while (
+    suffix + prefix < beforeLines.length &&
+    suffix + prefix < afterLines.length &&
+    beforeLines[beforeLines.length - suffix - 1] === afterLines[afterLines.length - suffix - 1]
+  ) {
+    suffix += 1;
+  }
+  const removed = beforeLines.slice(prefix, beforeLines.length - suffix).slice(0, 12);
+  const added = afterLines.slice(prefix, afterLines.length - suffix).slice(0, 12);
+  return textPreview([
+    `@@ line ${prefix + 1} @@`,
+    ...removed.map((line) => `- ${line}`),
+    ...added.map((line) => `+ ${line}`),
+  ].join("\n"), 1_800);
+}
+
+function writeContentPublishSuggestion(method, p) {
+  const file = resolveWorkspaceMcpContentSuggestionPath();
+  const payload = {
+    atMs: Date.now(),
+    method,
+    path: p,
+    source: "mcp",
+  };
+  writeTextFileAtomic(file, `${JSON.stringify(payload, null, 2)}\n`);
+  return payload;
+}
+
+function siteAdminPageList(args = {}) {
+  const contentRoot = resolveSiteContentRoot();
+  const orderedSlugs = orderedSitePageSlugs(contentRoot);
+  const limit = limitValue(args.limit, 100, 500);
+  const pages = orderedSlugs.slice(0, limit).map((slug, index) => {
+    const detail = readSitePage(contentRoot, slug);
+    return detail ? {
+      slug: detail.slug,
+      href: detail.href,
+      title: detail.title,
+      description: detail.description,
+      draft: detail.draft,
+      relPath: detail.relPath,
+      sourceSha: detail.sourceSha,
+      navIndex: index,
+    } : null;
+  }).filter(Boolean);
+  return { count: pages.length, pages };
+}
+
+function siteAdminPageGet(args = {}) {
   const slug = normalizePageSlug(args.slug);
+  const contentRoot = resolveSiteContentRoot();
+  const page = readSitePage(contentRoot, slug);
+  if (!page) return { page: null };
+  const tree = readPageTree(contentRoot).slugs;
+  return {
+    page: {
+      ...page,
+      inNavigation: tree.includes(slug),
+      navIndex: tree.indexOf(slug),
+    },
+  };
+}
+
+function createSiteAdminPage(args = {}) {
+  const slug = resolveCreatePageSlug(args);
   const source = createPageSource(args, slug);
   ensurePageSourceValid(source);
   const contentRoot = resolveSiteContentRoot();
-  const relPath = path.posix.join("pages", `${slug}.mdx`);
-  const fullPath = path.join(contentRoot, ...relPath.split("/"));
-  const treePath = path.join(contentRoot, "page-tree.json");
+  const relPath = sitePageRelPath(slug);
+  const fullPath = siteContentFilePath(contentRoot, relPath);
   const addToNavigation = args.addToNavigation !== false;
   const preview = {
     slug,
@@ -1024,6 +1365,7 @@ function createSiteAdminPage(args = {}) {
     relPath,
     filePath: fullPath,
     addToNavigation,
+    sourcePreview: textPreview(source),
   };
   const confirmation = prepareWrite("siteAdmin.create_page", "allowSiteAdminWrite", args, preview);
   if (confirmation) return confirmation;
@@ -1033,18 +1375,95 @@ function createSiteAdminPage(args = {}) {
   writeTextFileAtomic(fullPath, source);
   let treeUpdated = false;
   if (addToNavigation) {
-    const tree = readJsonFile(treePath, { schemaVersion: 1, slugs: [] });
-    const slugs = Array.isArray(tree.slugs) ? tree.slugs.filter((item) => typeof item === "string") : [];
+    const slugs = readPageTree(contentRoot).slugs;
     if (!slugs.includes(slug)) {
-      slugs.push(slug);
-      writeTextFileAtomic(treePath, `${JSON.stringify({ schemaVersion: 1, slugs }, null, 2)}\n`);
+      writePageTree(contentRoot, applyPageTreeInsert(slugs, slug, args));
       treeUpdated = true;
     }
   }
   markConfirmationConsumed(args.confirmationId);
-  const sha = crypto.createHash("sha1").update(source, "utf8").digest("hex");
+  const sha = sha1Hex(source);
+  writeContentPublishSuggestion("POST", "/api/site-admin/pages");
   writeAudit({ tool: "siteAdmin.create_page", slug, title: preview.title, relPath });
   return { page: { ...preview, sourceSha: sha, treeUpdated } };
+}
+
+function updateSiteAdminPage(args = {}) {
+  const slug = normalizePageSlug(args.slug);
+  const contentRoot = resolveSiteContentRoot();
+  const existing = readSitePage(contentRoot, slug);
+  if (!existing) throw new Error(`PAGE_NOT_FOUND: content/${sitePageRelPath(slug)} was not found.`);
+  const expectedSha = cleanText(args.expectedSha || args.sourceSha, 80);
+  if (expectedSha && expectedSha !== existing.sourceSha) {
+    throw new Error(`SOURCE_CONFLICT: expected ${expectedSha}, current ${existing.sourceSha}.`);
+  }
+  const source = createPageSource(args, slug, existing.source);
+  ensurePageSourceValid(source);
+  const addToNavigation = args.addToNavigation;
+  const nextTree = (() => {
+    if (addToNavigation === undefined && !args.beforeSlug && !args.afterSlug && !args.position) {
+      return null;
+    }
+    const current = readPageTree(contentRoot).slugs.filter((item) => item !== slug);
+    if (addToNavigation === false) return current;
+    return applyPageTreeInsert(current, slug, args);
+  })();
+  const preview = {
+    slug,
+    href: `/${slug}`,
+    title: extractPageTitle(source, slug),
+    relPath: existing.relPath,
+    filePath: existing.filePath,
+    previousSha: existing.sourceSha,
+    nextSha: sha1Hex(source),
+    treeWillUpdate: Boolean(nextTree),
+    diffPreview: diffPreview(existing.source, source),
+  };
+  const confirmation = prepareWrite("siteAdmin.update_page", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  writeTextFileAtomic(existing.filePath, source);
+  let treeUpdated = false;
+  if (nextTree) {
+    writePageTree(contentRoot, nextTree);
+    treeUpdated = true;
+  }
+  markConfirmationConsumed(args.confirmationId);
+  writeContentPublishSuggestion("PUT", `/api/site-admin/pages/${slug}`);
+  writeAudit({ tool: "siteAdmin.update_page", slug, title: preview.title, relPath: existing.relPath });
+  return { page: { ...readSitePage(contentRoot, slug), treeUpdated } };
+}
+
+function deleteSiteAdminPage(args = {}) {
+  const slug = normalizePageSlug(args.slug);
+  const contentRoot = resolveSiteContentRoot();
+  const existingSlugs = listSitePageSlugs(contentRoot);
+  const targets = existingSlugs.filter((item) => item === slug || item.startsWith(`${slug}/`));
+  if (!targets.length) throw new Error(`PAGE_NOT_FOUND: content/${sitePageRelPath(slug)} was not found.`);
+  if (targets.length > 1 && !asBool(args.cascade, false)) {
+    throw new Error("PAGE_HAS_CHILDREN: pass cascade=true to delete child pages too.");
+  }
+  const details = targets.map((target) => readSitePage(contentRoot, target)).filter(Boolean);
+  const expectedSha = cleanText(args.expectedSha || args.sourceSha, 80);
+  if (expectedSha && details[0]?.sourceSha !== expectedSha) {
+    throw new Error(`SOURCE_CONFLICT: expected ${expectedSha}, current ${details[0]?.sourceSha}.`);
+  }
+  const preview = {
+    slug,
+    deletedSlugs: targets,
+    relPath: sitePageRelPath(slug),
+    diffPreview: details.map((page) => `--- ${page.relPath}\n${textPreview(page.source, 800)}`).join("\n\n"),
+  };
+  const confirmation = prepareWrite("siteAdmin.delete_page", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  for (const page of details) {
+    fs.rmSync(page.filePath, { force: true });
+  }
+  const nextTree = readPageTree(contentRoot).slugs.filter((item) => !targets.includes(item));
+  writePageTree(contentRoot, nextTree);
+  markConfirmationConsumed(args.confirmationId);
+  writeContentPublishSuggestion("DELETE", `/api/site-admin/pages/${slug}`);
+  writeAudit({ tool: "siteAdmin.delete_page", slug, deletedCount: targets.length });
+  return { deleted: targets };
 }
 
 function siteAdminReleaseStatus() {
@@ -1256,6 +1675,27 @@ const toolSchemas = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "siteAdmin.list_pages",
+    description: "List local public website MDX pages in navigation order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.get_page",
+    description: "Read one local public website MDX page by slug.",
+    inputSchema: {
+      type: "object",
+      required: ["slug"],
+      properties: {
+        slug: { type: "string" },
+      },
+    },
+  },
+  {
     name: "siteAdmin.create_page",
     description: "Create a local public website MDX page under content/pages. This never deploys by itself.",
     inputSchema: {
@@ -1265,16 +1705,68 @@ const toolSchemas = [
         slug: { type: "string" },
         title: { type: "string" },
         description: { type: "string" },
+        updated: { type: "string" },
         bodyMdx: { type: "string" },
         source: { type: "string" },
         draft: { type: "boolean" },
         addToNavigation: { type: "boolean" },
+        parentSlug: { type: "string" },
+        beforeSlug: { type: "string" },
+        afterSlug: { type: "string" },
+        position: { enum: ["start", "end"] },
+        expectedSha: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.update_page",
+    description: "Update an existing local public website MDX page and optionally reorder navigation.",
+    inputSchema: {
+      type: "object",
+      required: ["slug"],
+      properties: {
+        slug: { type: "string" },
+        title: { type: "string" },
+        description: { type: "string" },
+        updated: { type: "string" },
+        bodyMdx: { type: "string" },
+        source: { type: "string" },
+        draft: { type: "boolean" },
+        addToNavigation: { type: "boolean" },
+        parentSlug: { type: "string" },
+        beforeSlug: { type: "string" },
+        afterSlug: { type: "string" },
+        position: { enum: ["start", "end"] },
+        expectedSha: { type: "string" },
+        sourceSha: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.delete_page",
+    description: "Delete a local public website MDX page and remove it from navigation.",
+    inputSchema: {
+      type: "object",
+      required: ["slug"],
+      properties: {
+        slug: { type: "string" },
+        cascade: { type: "boolean" },
+        expectedSha: { type: "string" },
+        sourceSha: { type: "string" },
         dryRun: { type: "boolean" },
         confirmationId: { type: "string" },
       },
     },
   },
 ];
+
+export function workspaceMcpToolCount() {
+  return toolSchemas.length;
+}
 
 function callTool(db, name, args = {}) {
   assertServerEnabled();
@@ -1309,8 +1801,16 @@ function callTool(db, name, args = {}) {
       return createCalendarEvent(db, args);
     case "siteAdmin.release_status":
       return siteAdminReleaseStatus();
+    case "siteAdmin.list_pages":
+      return siteAdminPageList(args);
+    case "siteAdmin.get_page":
+      return siteAdminPageGet(args);
     case "siteAdmin.create_page":
       return createSiteAdminPage(args);
+    case "siteAdmin.update_page":
+      return updateSiteAdminPage(args);
+    case "siteAdmin.delete_page":
+      return deleteSiteAdminPage(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1443,8 +1943,39 @@ function runSelfTest() {
   console.log(JSON.stringify({ ok: true, dbPath, toolCount: result.result.tools.length, context: context.result }, null, 2));
 }
 
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return "";
+  return process.argv[index + 1] || "";
+}
+
+function runConfirmationsCli(status = "pending") {
+  console.log(JSON.stringify({
+    ok: true,
+    confirmationsPath: resolveWorkspaceMcpConfirmationsPath(),
+    confirmations: listWorkspaceMcpConfirmations(status),
+  }, null, 2));
+}
+
+function runConfirmationDecisionCli(decision, id) {
+  const confirmation = decideWorkspaceMcpConfirmation(id, decision);
+  console.log(JSON.stringify({
+    ok: true,
+    confirmationsPath: resolveWorkspaceMcpConfirmationsPath(),
+    confirmation,
+  }, null, 2));
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-  if (process.argv.includes("--self-test")) {
+  if (process.argv.includes("--tool-count")) {
+    console.log(String(workspaceMcpToolCount()));
+  } else if (process.argv.includes("--confirmations")) {
+    runConfirmationsCli(argValue("--status") || "pending");
+  } else if (process.argv.includes("--approve")) {
+    runConfirmationDecisionCli("approve", argValue("--approve"));
+  } else if (process.argv.includes("--reject")) {
+    runConfirmationDecisionCli("reject", argValue("--reject"));
+  } else if (process.argv.includes("--self-test")) {
     runSelfTest();
   } else {
     runStdioServer().catch((error) => {

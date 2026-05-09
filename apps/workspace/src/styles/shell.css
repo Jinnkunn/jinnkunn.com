@@ -1132,6 +1132,20 @@ body[data-window-focused="true"] .sidebar-surface {
   padding: 0 9px;
 }
 
+.settings-ai-confirmation-row__preview {
+  max-height: 138px;
+  margin: 7px 0 0;
+  padding: 8px;
+  overflow: auto;
+  color: var(--color-text-secondary);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-bg-popover) 58%, transparent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .settings-ai-audit__row time {
   flex: 0 0 auto;
 }
