@@ -1,35 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-08T21:18:50.396Z",
+  "generatedAt": "2026-05-09T03:10:45.810Z",
   "range": {
-    "startsAt": "2026-05-08T03:00:00.000Z",
-    "endsAt": "2027-05-08T03:00:00.000Z"
+    "startsAt": "2026-05-09T03:00:00.000Z",
+    "endsAt": "2027-05-09T03:00:00.000Z"
   },
   "events": [
-    {
-      "id": "E72F124E-58DF-481B-B478-C44A36C48267/RID=799941600",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-08T14:00:00.000Z",
-      "endsAt": "2026-05-08T14:30:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
-    {
-      "id": "D238B7CD-3F94-4C85-BECE-09E38FDAD8E3",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-08T16:00:00.000Z",
-      "endsAt": "2026-05-08T17:00:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
     {
       "id": "4BC94409-A125-4F80-888F-4E0D55E06AA8",
       "colorHex": "#9B9A97",
