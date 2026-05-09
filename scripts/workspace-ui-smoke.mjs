@@ -307,8 +307,8 @@ function main() {
   );
   assertIncludes(
     read("scripts/workspace-mcp-server.mjs"),
-    "siteAdmin.release_status",
-    "Workspace MCP keeps Site Admin release read-only",
+    "siteAdmin.create_page",
+    "Workspace MCP exposes guarded Site Admin page creation",
   );
   assertIncludes(
     read("scripts/workspace-mcp-server.mjs"),
@@ -329,6 +329,11 @@ function main() {
     read("apps/workspace/src/shell/SettingsWindow.tsx"),
     "Pending confirmations",
     "Workspace settings exposes MCP confirmation queue",
+  );
+  assertIncludes(
+    read("apps/workspace/src/shell/SettingsWindow.tsx"),
+    "Site Admin writes",
+    "Workspace settings exposes Site Admin MCP write control",
   );
   assertIncludes(
     read("apps/workspace/src-tauri/src/mcp.rs"),

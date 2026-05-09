@@ -57,6 +57,7 @@ export interface WorkspaceMcpSettings {
   allowNotesWrite: boolean;
   allowTodosWrite: boolean;
   allowProjectsWrite: boolean;
+  allowSiteAdminWrite: boolean;
   allowCalendarWrite: boolean;
 }
 

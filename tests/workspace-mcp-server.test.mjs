@@ -24,11 +24,14 @@ async function withServer(fn) {
   const previousSettingsPath = process.env.WORKSPACE_MCP_SETTINGS_PATH;
   const previousAuditPath = process.env.WORKSPACE_MCP_AUDIT_PATH;
   const previousConfirmationsPath = process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH;
+  const previousContentRoot = process.env.WORKSPACE_MCP_CONTENT_ROOT;
   const settingsPath = path.join(dir, "mcp-settings.json");
   const confirmationsPath = path.join(dir, "mcp-confirmations.json");
+  const contentRoot = path.join(dir, "content");
   process.env.WORKSPACE_MCP_SETTINGS_PATH = path.join(dir, "mcp-settings.json");
   process.env.WORKSPACE_MCP_AUDIT_PATH = path.join(dir, "mcp-audit.jsonl");
   process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH = confirmationsPath;
+  process.env.WORKSPACE_MCP_CONTENT_ROOT = contentRoot;
   const server = createWorkspaceMcpServer({ dbPath });
   try {
     await fs.writeFile(
@@ -40,6 +43,7 @@ async function withServer(fn) {
         allowNotesWrite: true,
         allowTodosWrite: true,
         allowProjectsWrite: true,
+        allowSiteAdminWrite: true,
         allowCalendarWrite: false,
       }),
     );
@@ -61,6 +65,11 @@ async function withServer(fn) {
     } else {
       process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH = previousConfirmationsPath;
     }
+    if (previousContentRoot === undefined) {
+      delete process.env.WORKSPACE_MCP_CONTENT_ROOT;
+    } else {
+      process.env.WORKSPACE_MCP_CONTENT_ROOT = previousContentRoot;
+    }
     await fs.rm(dir, { recursive: true, force: true });
   }
 }
@@ -68,7 +77,7 @@ async function withServer(fn) {
 test("workspace MCP: lists tools and exposes context resource", async () => {
   await withServer(async (server) => {
     const tools = server.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
-    assert.equal(tools.result.tools.length, 15);
+    assert.equal(tools.result.tools.length, 16);
     assert.deepEqual(
       tools.result.tools.map((tool) => tool.name).slice(0, 4),
       ["workspace.get_context", "workspace.search", "notes.get_page", "notes.create_page"],
@@ -97,6 +106,7 @@ test("workspace MCP: shared settings can disable writes", async () => {
         allowNotesWrite: true,
         allowTodosWrite: true,
         allowProjectsWrite: true,
+        allowSiteAdminWrite: true,
         allowCalendarWrite: false,
       }),
     );
@@ -124,6 +134,7 @@ test("workspace MCP: write confirmations gate mutations until approved", async (
         allowNotesWrite: true,
         allowTodosWrite: true,
         allowProjectsWrite: true,
+        allowSiteAdminWrite: true,
         allowCalendarWrite: false,
       }),
     );
@@ -206,5 +217,30 @@ test("workspace MCP: creates projects, todos, and project links", async () => {
       label: "Reference",
     });
     assert.equal(link.project.links[0].label, "Reference");
+  });
+});
+
+test("workspace MCP: creates site-admin pages in local content", async () => {
+  await withServer(async (server) => {
+    const page = call(server, "siteAdmin.create_page", {
+      slug: "yilin",
+      title: "Yiling",
+      description: "A hometown page.",
+      bodyMdx: "Yichang, Yiling, and the Three Gorges Dam.",
+    }).page;
+    assert.equal(page.slug, "yilin");
+    assert.equal(page.href, "/yilin");
+
+    const source = await fs.readFile(
+      path.join(process.env.WORKSPACE_MCP_CONTENT_ROOT, "pages", "yilin.mdx"),
+      "utf8",
+    );
+    assert.match(source, /title: "Yiling"/);
+    assert.match(source, /Three Gorges Dam/);
+
+    const tree = JSON.parse(
+      await fs.readFile(path.join(process.env.WORKSPACE_MCP_CONTENT_ROOT, "page-tree.json"), "utf8"),
+    );
+    assert.deepEqual(tree.slugs, ["yilin"]);
   });
 });

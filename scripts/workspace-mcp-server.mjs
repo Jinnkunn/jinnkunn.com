@@ -272,6 +272,7 @@ const DEFAULT_MCP_SETTINGS = Object.freeze({
   allowNotesWrite: true,
   allowTodosWrite: true,
   allowProjectsWrite: true,
+  allowSiteAdminWrite: true,
   allowCalendarWrite: false,
 });
 
@@ -285,6 +286,7 @@ function normalizeMcpSettings(raw = {}) {
     allowNotesWrite: input.allowNotesWrite !== false,
     allowTodosWrite: input.allowTodosWrite !== false,
     allowProjectsWrite: input.allowProjectsWrite !== false,
+    allowSiteAdminWrite: input.allowSiteAdminWrite !== false,
     allowCalendarWrite: input.allowCalendarWrite === true,
   };
 }
@@ -394,6 +396,8 @@ function summarizeConfirmation(tool, preview = {}) {
       return `Link ${p.targetType || "item"} to project`;
     case "calendar.create_event":
       return `Create calendar event: ${p.title || "Untitled"}`;
+    case "siteAdmin.create_page":
+      return `Create site page: /${p.slug || "untitled"}`;
     default:
       return tool;
   }
@@ -564,6 +568,7 @@ function getWorkspaceContext(db, args = {}) {
       allowNotesWrite: settings.allowNotesWrite,
       allowTodosWrite: settings.allowTodosWrite,
       allowProjectsWrite: settings.allowProjectsWrite,
+      allowSiteAdminWrite: settings.allowSiteAdminWrite,
       allowCalendarWrite: settings.allowCalendarWrite,
     },
     counts,
@@ -930,6 +935,118 @@ function createCalendarEvent(db, args = {}) {
   return { event: localEventRow(db.prepare("SELECT * FROM local_calendar_events WHERE id = ?").get(id)) };
 }
 
+const PAGE_SLUG_SEGMENT_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+
+function resolveSiteContentRoot() {
+  const explicit = process.env.WORKSPACE_MCP_CONTENT_ROOT;
+  return explicit ? path.resolve(explicit) : path.join(ROOT, "content");
+}
+
+function normalizePageSlug(slug) {
+  const cleaned = cleanText(slug, 260).replace(/^\/+|\/+$/g, "");
+  const parts = cleaned.split("/");
+  if (
+    !cleaned ||
+    cleaned.includes("//") ||
+    parts.length > 4 ||
+    !parts.every((part) => PAGE_SLUG_SEGMENT_RE.test(part))
+  ) {
+    throw new Error(
+      "invalid page slug: use lowercase letters, digits, and dashes; max 4 slash-separated levels.",
+    );
+  }
+  return cleaned;
+}
+
+function mdxFrontmatterString(value) {
+  return JSON.stringify(cleanText(value, 600));
+}
+
+function createPageSource(args, slug) {
+  const explicitSource = asString(args.source);
+  if (explicitSource.trim()) return explicitSource.endsWith("\n") ? explicitSource : `${explicitSource}\n`;
+  const title = cleanText(args.title, 200) || slug.split("/").pop() || "Untitled";
+  const description = cleanText(args.description, 300);
+  const draft = asBool(args.draft, false);
+  const body = cleanText(args.bodyMdx, 80_000);
+  const frontmatter = [
+    "---",
+    `title: ${mdxFrontmatterString(title)}`,
+    description ? `description: ${mdxFrontmatterString(description)}` : null,
+    `draft: ${draft ? "true" : "false"}`,
+    "---",
+  ].filter(Boolean).join("\n");
+  return `${frontmatter}\n\n${body ? `${body}\n` : ""}`;
+}
+
+function extractPageTitle(source, slug) {
+  const match = source.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match) return slug;
+  const title = match[1].match(/^title:\s*(.+?)\s*$/m);
+  return title ? title[1].trim().replace(/^['"]|['"]$/g, "") : slug;
+}
+
+function ensurePageSourceValid(source) {
+  const match = source.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match || !/^title:\s*.+$/m.test(match[1])) {
+    throw new Error("site page source must include frontmatter with title.");
+  }
+}
+
+function readJsonFile(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeTextFileAtomic(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, content, "utf8");
+  fs.renameSync(tmp, file);
+}
+
+function createSiteAdminPage(args = {}) {
+  const slug = normalizePageSlug(args.slug);
+  const source = createPageSource(args, slug);
+  ensurePageSourceValid(source);
+  const contentRoot = resolveSiteContentRoot();
+  const relPath = path.posix.join("pages", `${slug}.mdx`);
+  const fullPath = path.join(contentRoot, ...relPath.split("/"));
+  const treePath = path.join(contentRoot, "page-tree.json");
+  const addToNavigation = args.addToNavigation !== false;
+  const preview = {
+    slug,
+    href: `/${slug}`,
+    title: extractPageTitle(source, slug),
+    relPath,
+    filePath: fullPath,
+    addToNavigation,
+  };
+  const confirmation = prepareWrite("siteAdmin.create_page", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  if (fs.existsSync(fullPath)) {
+    throw new Error(`PAGE_EXISTS: content/${relPath} already exists.`);
+  }
+  writeTextFileAtomic(fullPath, source);
+  let treeUpdated = false;
+  if (addToNavigation) {
+    const tree = readJsonFile(treePath, { schemaVersion: 1, slugs: [] });
+    const slugs = Array.isArray(tree.slugs) ? tree.slugs.filter((item) => typeof item === "string") : [];
+    if (!slugs.includes(slug)) {
+      slugs.push(slug);
+      writeTextFileAtomic(treePath, `${JSON.stringify({ schemaVersion: 1, slugs }, null, 2)}\n`);
+      treeUpdated = true;
+    }
+  }
+  markConfirmationConsumed(args.confirmationId);
+  const sha = crypto.createHash("sha1").update(source, "utf8").digest("hex");
+  writeAudit({ tool: "siteAdmin.create_page", slug, title: preview.title, relPath });
+  return { page: { ...preview, sourceSha: sha, treeUpdated } };
+}
+
 function siteAdminReleaseStatus() {
   const result = spawnSync("npm", ["run", "release:status", "--", "--skip-routes"], {
     cwd: ROOT,
@@ -1138,6 +1255,25 @@ const toolSchemas = [
     description: "Read release status. This tool never deploys or promotes production.",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "siteAdmin.create_page",
+    description: "Create a local public website MDX page under content/pages. This never deploys by itself.",
+    inputSchema: {
+      type: "object",
+      required: ["slug"],
+      properties: {
+        slug: { type: "string" },
+        title: { type: "string" },
+        description: { type: "string" },
+        bodyMdx: { type: "string" },
+        source: { type: "string" },
+        draft: { type: "boolean" },
+        addToNavigation: { type: "boolean" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
 ];
 
 function callTool(db, name, args = {}) {
@@ -1173,6 +1309,8 @@ function callTool(db, name, args = {}) {
       return createCalendarEvent(db, args);
     case "siteAdmin.release_status":
       return siteAdminReleaseStatus();
+    case "siteAdmin.create_page":
+      return createSiteAdminPage(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
