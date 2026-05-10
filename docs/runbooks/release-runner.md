@@ -54,6 +54,16 @@ When the Mac mini poller is healthy, the top panel shows the latest agent,
 last heartbeat, queued job count, and running job count. A stale or missing
 heartbeat means the LaunchAgent should be checked before queueing a release.
 
+Remote jobs support cancel and retry from Release Center:
+
+- queued jobs are canceled before any runner picks them up;
+- running jobs are marked canceled immediately, and the runner polls that
+  state while the command is active so it can terminate the local process;
+- failed or canceled jobs can be retried, which creates a new queued job with
+  the same action and a `retryOf` pointer in the request payload; and
+- jobs that stay `running` without log or heartbeat updates for 45 minutes are
+  marked `failed/stale` automatically when the queue is read or claimed.
+
 One-shot drain:
 
 ```bash
@@ -67,6 +77,15 @@ Long-running poller:
 cd /Users/jinnkunn/Services/jinnkunn-release-runner/repo
 npm run release:agent
 ```
+
+Before executing a claimed job, the agent runs:
+
+```bash
+git pull --ff-only origin main
+```
+
+This keeps the Mac mini release source aligned with GitHub `main`. Use
+`npm run release:agent -- --no-sync` only for local dry-run debugging.
 
 ## Mac mini LaunchAgent
 
@@ -92,7 +111,7 @@ launchctl bootout gui/501/com.jinnkunn.release-runner
 tail -f ~/Services/jinnkunn-release-runner/logs/release-agent.out.log
 ```
 
-Keep the runner repo on `main`:
+Manually inspect or repair the runner repo if sync fails:
 
 ```bash
 cd ~/Services/jinnkunn-release-runner/repo

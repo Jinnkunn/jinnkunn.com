@@ -1501,10 +1501,26 @@ export function ReleasePanel() {
   const cancelJob = useCallback(async () => {
     if (!job?.job_id || job.status !== "running") return;
     if (activeRemoteJobId) {
-      setMessage(
-        "warn",
-        "Remote release jobs cannot be cancelled from the UI yet. Stop the Mac mini runner if you need to interrupt it.",
-      );
+      try {
+        const response = await request(
+          `/api/site-admin/release-jobs/${activeRemoteJobId}/cancel`,
+          "POST",
+        );
+        if (!response.ok) {
+          throw new Error(`${response.code}: ${response.error}`);
+        }
+        const parsed = parseRemoteReleaseJobPayload(response.data);
+        if (parsed) {
+          setJob(remoteReleaseJobToLocalState(parsed.job));
+          setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
+        }
+        setActiveRemoteJobId(null);
+        dispatchReleaseState({ kind: "idle" });
+        void loadRemoteRunnerStatus();
+        setMessage("warn", "Remote release cancellation requested.");
+      } catch (err) {
+        setMessage("error", `Cancel remote release failed: ${String(err)}`);
+      }
       return;
     }
     try {
@@ -1513,7 +1529,33 @@ export function ReleasePanel() {
     } catch (err) {
       setMessage("error", `Cancel release failed: ${String(err)}`);
     }
-  }, [activeRemoteJobId, job, setMessage]);
+  }, [activeRemoteJobId, job, loadRemoteRunnerStatus, request, setMessage]);
+
+  const retryRemoteJob = useCallback(
+    async (jobId: string) => {
+      if (!jobId || jobId.startsWith("remote-pending-")) return;
+      try {
+        const response = await request(`/api/site-admin/release-jobs/${jobId}/retry`, "POST");
+        if (!response.ok) {
+          throw new Error(`${response.code}: ${response.error}`);
+        }
+        const parsed = parseRemoteReleaseJobPayload(response.data);
+        if (!parsed) throw new Error("Remote release retry returned an invalid payload.");
+        setActiveRemoteJobId(parsed.job.id);
+        setJob(remoteReleaseJobToLocalState(parsed.job));
+        setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
+        void loadRemoteRunnerStatus();
+        dispatchReleaseState({
+          kind: "running",
+          info: `${scriptLabel(parsed.job.script)} retry queued for Mac mini runner…`,
+        });
+        setMessage("success", `${scriptLabel(parsed.job.script)} retry queued.`);
+      } catch (err) {
+        setMessage("error", `Retry remote release failed: ${String(err)}`);
+      }
+    },
+    [loadRemoteRunnerStatus, request, setMessage],
+  );
 
   const runSmartRelease = useCallback(() => {
     if (smartPlan.kind === "deploy-staging-code") {
@@ -1709,7 +1751,16 @@ export function ReleasePanel() {
         />
       ) : null}
 
-      <ReleaseJobPanel job={job} lines={jobLog} />
+      <ReleaseJobPanel
+        job={job}
+        lines={jobLog}
+        onRetry={
+          job?.cwd === "remote release runner" &&
+          (job.status === "failed" || job.status === "cancelled")
+            ? () => void retryRemoteJob(job.job_id)
+            : undefined
+        }
+      />
 
       <ReleaseHistoryPanel
         entries={history}
@@ -2513,9 +2564,11 @@ function RollbackConfirmPanel({
 function ReleaseJobPanel({
   job,
   lines,
+  onRetry,
 }: {
   job: SiteAdminReleaseJobState | null;
   lines: ReleaseLogLine[];
+  onRetry?: () => void;
 }) {
   const logRef = useRef<HTMLDivElement | null>(null);
 
@@ -2533,7 +2586,14 @@ function ReleaseJobPanel({
           <h2>{job ? scriptLabel(job.script) : "Release activity"}</h2>
           <p>{job ? `${job.status} · ${job.phase}` : "No release job has run in this session."}</p>
         </div>
-        {job?.duration_ms ? <strong>{Math.round(job.duration_ms / 1000)}s</strong> : null}
+        <div className="release-center__job-actions">
+          {job?.duration_ms ? <strong>{Math.round(job.duration_ms / 1000)}s</strong> : null}
+          {onRetry ? (
+            <button className="btn btn--secondary" type="button" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
+        </div>
       </header>
       <div ref={logRef} className="release-center__log" role="log" aria-live="polite">
         {lines.length > 0 ? (

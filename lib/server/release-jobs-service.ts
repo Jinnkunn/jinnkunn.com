@@ -74,6 +74,7 @@ export type ReleaseJobServiceResult<T> =
   | { ok: false; status: number; code: string; error: string };
 
 const MAX_EVENT_MESSAGE_LENGTH = 8000;
+export const RELEASE_JOB_STALE_AFTER_MS = 45 * 60 * 1000;
 
 const RELEASE_JOB_COMMANDS: Record<ReleaseJobAction, ReleaseJobCommand> = {
   status: {
@@ -390,6 +391,7 @@ export async function listReleaseJobs(input: {
   const executor = getExecutor(input.executor);
   if (!executor.ok) return executor;
   await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
   const limit = Math.max(1, Math.min(100, Math.trunc(Number(input.limit || 20))));
   const result = await executor.data.execute({
     sql: `SELECT * FROM release_jobs ORDER BY updated_at DESC LIMIT ?`,
@@ -407,6 +409,7 @@ export async function getReleaseJob(input: {
   const executor = getExecutor(input.executor);
   if (!executor.ok) return executor;
   await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
   const jobResult = await executor.data.execute({
     sql: `SELECT * FROM release_jobs WHERE id = ? LIMIT 1`,
     args: [id],
@@ -429,6 +432,7 @@ export async function listReleaseJobEvents(input: {
   const executor = getExecutor(input.executor);
   if (!executor.ok) return executor;
   await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
   const afterSeq = Math.max(0, Math.trunc(Number(input.afterSeq || 0)));
   const limit = Math.max(1, Math.min(500, Math.trunc(Number(input.limit || 200))));
   const result = await executor.data.execute({
@@ -502,6 +506,7 @@ export async function getReleaseRunnerStatus(input: {
   const executor = getExecutor(input.executor);
   if (!executor.ok) return executor;
   await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
   const limit = Math.max(1, Math.min(20, Math.trunc(Number(input.limit || 8))));
   const agents = await executor.data.execute({
     sql: `SELECT * FROM release_agents ORDER BY last_seen_at DESC LIMIT ?`,
@@ -526,6 +531,70 @@ export async function getReleaseRunnerStatus(input: {
   });
 }
 
+export async function markStaleReleaseJobs(input: {
+  executor?: DbExecutor;
+  now?: number;
+  staleAfterMs?: number;
+} = {}): Promise<ReleaseJobServiceResult<{ staleCount: number }>> {
+  const executor = getExecutor(input.executor);
+  if (!executor.ok) return executor;
+  await ensureReleaseJobTables(executor.data);
+  const now = Number.isFinite(input.now) ? Math.trunc(Number(input.now)) : Date.now();
+  const staleAfterMs = Math.max(
+    60_000,
+    Math.trunc(Number(input.staleAfterMs || RELEASE_JOB_STALE_AFTER_MS)),
+  );
+  const cutoff = now - staleAfterMs;
+  const stale = await executor.data.execute({
+    sql: `SELECT id, agent_id, updated_at
+            FROM release_jobs
+           WHERE status = 'running' AND updated_at > 0 AND updated_at <= ?`,
+    args: [cutoff],
+  });
+  let staleCount = 0;
+  for (const row of stale.rows) {
+    const id = String(row.id || "");
+    if (!id) continue;
+    const update = await executor.data.execute({
+      sql: `UPDATE release_jobs
+               SET status = 'failed',
+                   phase = 'stale',
+                   error = ?,
+                   finished_at = ?,
+                   updated_at = ?
+             WHERE id = ? AND status = 'running' AND updated_at <= ?`,
+      args: [
+        `Release job became stale after ${Math.round(staleAfterMs / 60_000)} minutes without runner updates.`,
+        now,
+        now,
+        id,
+        cutoff,
+      ],
+    });
+    if (update.rowsAffected <= 0) continue;
+    staleCount += 1;
+    await appendReleaseJobEvent({
+      id,
+      phase: "stale",
+      stream: "stderr",
+      message: "Release job became stale and was marked failed.",
+      executor: executor.data,
+    });
+    const agentId = normalizeAgentId(row.agent_id);
+    if (agentId) {
+      await executor.data.execute({
+        sql: `UPDATE release_agents
+                 SET status = 'idle',
+                     current_job_id = NULL,
+                     updated_at = ?
+               WHERE agent_id = ? AND current_job_id = ?`,
+        args: [now, agentId, id],
+      });
+    }
+  }
+  return serviceOk({ staleCount });
+}
+
 export async function claimReleaseJob(input: {
   agentId: string;
   capabilities?: unknown[];
@@ -536,6 +605,7 @@ export async function claimReleaseJob(input: {
   const executor = getExecutor(input.executor);
   if (!executor.ok) return executor;
   await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
 
   const capabilities = Array.isArray(input.capabilities)
     ? input.capabilities
@@ -599,6 +669,87 @@ export async function claimReleaseJob(input: {
   });
 }
 
+export async function cancelReleaseJob(input: {
+  id: string;
+  actor?: string;
+  executor?: DbExecutor;
+}): Promise<ReleaseJobServiceResult<{ job: ReleaseJobRow; events: ReleaseJobEventRow[] }>> {
+  const id = String(input.id || "").trim();
+  if (!id) return serviceError("Missing release job id.");
+  const executor = getExecutor(input.executor);
+  if (!executor.ok) return executor;
+  await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
+
+  const current = await getReleaseJob({ id, executor: executor.data });
+  if (!current.ok) return current;
+  if (!["queued", "running"].includes(current.data.job.status)) {
+    return serviceOk(current.data);
+  }
+
+  const now = Date.now();
+  const actor = String(input.actor || "unknown").trim().slice(0, 160) || "unknown";
+  const update = await executor.data.execute({
+    sql: `UPDATE release_jobs
+             SET status = 'canceled',
+                 phase = 'canceled',
+                 error = ?,
+                 finished_at = ?,
+                 updated_at = ?
+           WHERE id = ? AND status IN ('queued', 'running')`,
+    args: [`Canceled by ${actor}.`, now, now, id],
+  });
+  if (update.rowsAffected <= 0) {
+    const refreshed = await getReleaseJob({ id, executor: executor.data });
+    return refreshed.ok ? serviceOk(refreshed.data) : refreshed;
+  }
+  await appendReleaseJobEvent({
+    id,
+    phase: "canceled",
+    stream: "status",
+    message: `Canceled by ${actor}.`,
+    executor: executor.data,
+  });
+  const cancelled = await getReleaseJob({ id, executor: executor.data });
+  return cancelled.ok ? serviceOk(cancelled.data) : cancelled;
+}
+
+export async function retryReleaseJob(input: {
+  id: string;
+  actor?: string;
+  executor?: DbExecutor;
+}): Promise<ReleaseJobServiceResult<ReleaseJobRow>> {
+  const id = String(input.id || "").trim();
+  if (!id) return serviceError("Missing release job id.");
+  const executor = getExecutor(input.executor);
+  if (!executor.ok) return executor;
+  await ensureReleaseJobTables(executor.data);
+  await markStaleReleaseJobs({ executor: executor.data });
+  const original = await getReleaseJob({ id, executor: executor.data });
+  if (!original.ok) return original;
+  if (!["failed", "canceled"].includes(original.data.job.status)) {
+    return serviceError("Only failed or canceled release jobs can be retried.");
+  }
+  const retry = await createReleaseJob({
+    action: original.data.job.action,
+    actor: input.actor || original.data.job.actor || "unknown",
+    request: {
+      ...original.data.job.request,
+      retryOf: original.data.job.id,
+    },
+    executor: executor.data,
+  });
+  if (!retry.ok) return retry;
+  await appendReleaseJobEvent({
+    id: retry.data.id,
+    phase: "queued",
+    stream: "status",
+    message: `Retry of ${original.data.job.id}.`,
+    executor: executor.data,
+  });
+  return retry;
+}
+
 export async function appendReleaseJobEvent(input: {
   id: string;
   phase?: unknown;
@@ -660,7 +811,7 @@ export async function completeReleaseJob(input: {
   const now = Date.now();
   const phase = status === "succeeded" ? "complete" : status;
   const error = status === "succeeded" ? "" : normalizeMessage(input.error);
-  await executor.data.execute({
+  const update = await executor.data.execute({
     sql: `UPDATE release_jobs
              SET status = ?,
                  phase = ?,
@@ -668,7 +819,7 @@ export async function completeReleaseJob(input: {
                  result_json = ?,
                  finished_at = ?,
                  updated_at = ?
-           WHERE id = ?`,
+           WHERE id = ? AND status = 'running'`,
     args: [
       status,
       phase,
@@ -679,6 +830,10 @@ export async function completeReleaseJob(input: {
       id,
     ],
   });
+  if (update.rowsAffected <= 0) {
+    const current = await getReleaseJob({ id, executor: executor.data });
+    return current.ok ? serviceOk(current.data.job) : current;
+  }
   await appendReleaseJobEvent({
     id,
     phase,

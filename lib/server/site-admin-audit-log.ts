@@ -28,6 +28,8 @@ type SiteAdminAuditAction =
   | "assets.delete"
   | "versions.restore"
   | "release.job.create"
+  | "release.job.cancel"
+  | "release.job.retry"
   | "publications.save"
   | "news.save"
   | "teaching.save"

@@ -1800,6 +1800,20 @@
   font-weight: 750;
 }
 
+.release-center__job-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+
+.release-center__job-actions > strong {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-weight: 750;
+}
+
 .release-center__log {
   display: grid;
   gap: 2px;
