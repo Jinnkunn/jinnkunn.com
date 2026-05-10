@@ -788,6 +788,8 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /ReleaseStepper/);
   assert.match(releasePanel, /RouteParityPanel/);
   assert.match(releasePanel, /Production behind staging/);
+  assert.match(releasePanel, /Run status check/);
+  assert.match(releasePanel, /Recent Remote Jobs/);
   assert.match(
     releasePanel,
     /smartPlan\.kind === "promote-production-code"[\s\S]*startRelease\(RELEASE_PROD_FROM_STAGING_SCRIPT\)/,

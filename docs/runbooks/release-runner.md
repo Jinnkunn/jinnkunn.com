@@ -53,6 +53,9 @@ Release Center also reads the runner heartbeat from `/api/site-admin/release-job
 When the Mac mini poller is healthy, the top panel shows the latest agent,
 last heartbeat, queued job count, and running job count. A stale or missing
 heartbeat means the LaunchAgent should be checked before queueing a release.
+The panel also keeps the latest remote jobs visible and exposes a read-only
+**Run status check** action, so mobile or web clients can verify the Mac mini
+path without starting a deploy.
 
 Remote jobs support cancel and retry from Release Center:
 

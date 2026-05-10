@@ -1219,6 +1219,131 @@
   white-space: nowrap;
 }
 
+.release-center__runner-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.release-center__remote-jobs {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 70%),
+    color-mix(in srgb, var(--color-bg-surface-alt) 88%, transparent);
+}
+
+.release-center__remote-jobs > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-center__remote-jobs h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-subhead);
+  font-weight: 750;
+}
+
+.release-center__remote-jobs p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+.release-center__remote-jobs header > strong {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.release-center__remote-job-list {
+  display: grid;
+  gap: 6px;
+}
+
+.release-center__remote-job-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg-surface) 78%, transparent);
+}
+
+.release-center__remote-job-row[data-active="true"] {
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-surface));
+}
+
+.release-center__remote-job-row[data-tone="ok"] {
+  border-left-color: var(--release-ok);
+}
+
+.release-center__remote-job-row[data-tone="warn"] {
+  border-left-color: var(--release-warn);
+}
+
+.release-center__remote-job-row[data-tone="blocked"] {
+  border-left-color: var(--release-blocked);
+}
+
+.release-center__remote-job-row[data-tone="muted"] {
+  border-left-color: var(--color-border-default);
+}
+
+.release-center__remote-job-row > button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.release-center__remote-job-row > button span {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  font-weight: 750;
+}
+
+.release-center__remote-job-row > button strong {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+
+.release-center__remote-job-row > button small,
+.release-center__remote-job-actions span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.35;
+}
+
+.release-center__remote-job-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .release-center__route {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr);
@@ -2546,7 +2671,8 @@
   .release-center__content-status > header,
   .release-center__content-suggestion,
   .release-center__history-row,
-  .release-center__runner-status {
+  .release-center__runner-status,
+  .release-center__remote-job-row {
     grid-template-columns: 1fr;
   }
 
@@ -2554,7 +2680,9 @@
   .release-center__content-actions,
   .release-center__history-actions,
   .release-center__confirm-actions,
-  .release-center__advanced-actions {
+  .release-center__advanced-actions,
+  .release-center__runner-actions,
+  .release-center__remote-job-actions {
     align-items: stretch;
     justify-content: stretch;
   }
@@ -2563,7 +2691,9 @@
   .release-center__content-actions > .btn,
   .release-center__history-actions > .btn,
   .release-center__confirm-actions > .btn,
-  .release-center__advanced-actions > .btn {
+  .release-center__advanced-actions > .btn,
+  .release-center__runner-actions > .btn,
+  .release-center__remote-job-actions > .btn {
     width: 100%;
     justify-content: center;
   }
