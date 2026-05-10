@@ -43,6 +43,7 @@ export async function PostView({
       <div className="notion-page__properties">
         <div className="notion-page__property">
           <div className="notion-property notion-property__date notion-semantic-string">
+            <span className="notion-property__date-icon" aria-hidden="true" />
             <span className="date">{entry.dateText}</span>
           </div>
         </div>
