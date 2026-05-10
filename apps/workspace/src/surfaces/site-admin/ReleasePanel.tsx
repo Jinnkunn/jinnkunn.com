@@ -92,6 +92,50 @@ type ReleaseLogLine = {
   message: string;
 };
 
+type ReleaseExecutionMode = "local" | "remote";
+
+type RemoteReleaseJobStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "canceled";
+
+type RemoteReleaseJobAction =
+  | "publish-content-staging"
+  | "deploy-staging-code"
+  | "promote-production-code"
+  | "publish-content-production-from-staging";
+
+interface RemoteReleaseJobRow {
+  id: string;
+  action: string;
+  script: string;
+  target: string;
+  status: RemoteReleaseJobStatus;
+  actor: string;
+  agentId: string;
+  phase: string;
+  request: Record<string, unknown>;
+  result: Record<string, unknown>;
+  error: string;
+  createdAt: number;
+  updatedAt: number;
+  claimedAt: number | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+}
+
+interface RemoteReleaseJobEventRow {
+  id: string;
+  jobId: string;
+  seq: number;
+  at: number;
+  phase: string;
+  stream: "stdout" | "stderr" | "status";
+  message: string;
+}
+
 type ReleaseCheck = {
   detail: string;
   label: string;
@@ -292,6 +336,21 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function asNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+
+function asNullableNumber(value: unknown): number | null {
+  const n = asNumber(value);
+  return n > 0 ? n : null;
+}
+
+function asFiniteNumberOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
 function parseSnapshot(raw: unknown): EnvironmentSnapshot | null {
@@ -543,6 +602,139 @@ function scriptLabel(script: string): string {
   return script || "Release job";
 }
 
+function remoteActionForScript(
+  script: SiteAdminReleaseScript,
+): RemoteReleaseJobAction | null {
+  if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "publish-content-staging";
+  if (script === RELEASE_STAGING_SCRIPT) return "deploy-staging-code";
+  if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "promote-production-code";
+  if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {
+    return "publish-content-production-from-staging";
+  }
+  return null;
+}
+
+function parseRemoteReleaseJob(raw: unknown): RemoteReleaseJobRow | null {
+  const rec = asRecord(raw);
+  const id = asString(rec.id);
+  if (!id) return null;
+  const status = asString(rec.status);
+  const normalizedStatus: RemoteReleaseJobStatus =
+    status === "queued" ||
+    status === "running" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "canceled"
+      ? status
+      : "queued";
+  return {
+    id,
+    action: asString(rec.action),
+    actor: asString(rec.actor),
+    agentId: asString(rec.agentId),
+    createdAt: asNumber(rec.createdAt),
+    claimedAt: asNullableNumber(rec.claimedAt),
+    error: asString(rec.error),
+    finishedAt: asNullableNumber(rec.finishedAt),
+    phase: asString(rec.phase) || normalizedStatus,
+    request: asRecord(rec.request),
+    result: asRecord(rec.result),
+    script: asString(rec.script),
+    startedAt: asNullableNumber(rec.startedAt),
+    status: normalizedStatus,
+    target: asString(rec.target),
+    updatedAt: asNumber(rec.updatedAt),
+  };
+}
+
+function parseRemoteReleaseJobEvent(raw: unknown): RemoteReleaseJobEventRow | null {
+  const rec = asRecord(raw);
+  const id = asString(rec.id);
+  const jobId = asString(rec.jobId);
+  if (!id || !jobId) return null;
+  const stream = asString(rec.stream);
+  return {
+    id,
+    at: asNumber(rec.at),
+    jobId,
+    message: asString(rec.message),
+    phase: asString(rec.phase) || "running",
+    seq: asNumber(rec.seq),
+    stream: stream === "stdout" || stream === "stderr" ? stream : "status",
+  };
+}
+
+function parseRemoteReleaseJobPayload(
+  raw: unknown,
+): { job: RemoteReleaseJobRow; events: RemoteReleaseJobEventRow[] } | null {
+  const rec = asRecord(raw);
+  const job = parseRemoteReleaseJob(rec.job);
+  if (!job) return null;
+  const events = Array.isArray(rec.events)
+    ? rec.events
+        .map(parseRemoteReleaseJobEvent)
+        .filter((event): event is RemoteReleaseJobEventRow => event !== null)
+    : [];
+  return { job, events };
+}
+
+function localStatusFromRemote(
+  status: RemoteReleaseJobStatus,
+): SiteAdminReleaseJobState["status"] {
+  if (status === "succeeded") return "succeeded";
+  if (status === "failed") return "failed";
+  if (status === "canceled") return "cancelled";
+  return "running";
+}
+
+function remoteReleaseJobToLocalState(
+  job: RemoteReleaseJobRow,
+): SiteAdminReleaseJobState {
+  const startedAt = job.startedAt || job.claimedAt || job.createdAt || Date.now();
+  const finishedAt = job.finishedAt;
+  const durationMs = finishedAt ? Math.max(0, finishedAt - startedAt) : null;
+  const exitCode = asFiniteNumberOrNull(job.result.exitCode);
+  return {
+    command: `Mac mini runner · npm run ${job.script || job.action}`,
+    cwd: "remote release runner",
+    duration_ms: durationMs,
+    error: job.error,
+    exit_code: exitCode,
+    finished_at_ms: finishedAt,
+    job_id: job.id,
+    phase: job.status === "queued" ? "queued for Mac mini runner" : job.phase,
+    script: job.script || job.action,
+    started_at_ms: startedAt,
+    status: localStatusFromRemote(job.status),
+    stderr_tail: job.error,
+    stdout_tail: asString(job.result.stdoutTail),
+  };
+}
+
+function remoteEventsToLogLines(
+  job: RemoteReleaseJobRow,
+  events: RemoteReleaseJobEventRow[],
+): ReleaseLogLine[] {
+  if (events.length === 0) {
+    return [
+      {
+        id: `${job.id}:queued`,
+        atMs: job.createdAt || Date.now(),
+        message: "Queued for Mac mini runner.",
+        phase: "queued",
+        stream: "status",
+      },
+    ];
+  }
+  return events.slice(-180).map((event) => ({
+    id: event.id,
+    atMs: event.at,
+    message: event.message,
+    phase: event.phase,
+    stream: event.stream,
+  }));
+}
+
 function actionForState({
   isStaging,
   job,
@@ -678,6 +870,9 @@ export function ReleasePanel() {
   const [job, setJob] = useState<SiteAdminReleaseJobState | null>(null);
   const [jobLog, setJobLog] = useState<ReleaseLogLine[]>([]);
   const [releaseTarget, setReleaseTarget] = useState<ReleaseTarget>("production");
+  const [releaseExecutionMode, setReleaseExecutionMode] =
+    useState<ReleaseExecutionMode>(() => (isTauriRuntime() ? "local" : "remote"));
+  const [activeRemoteJobId, setActiveRemoteJobId] = useState<string | null>(null);
   const [pendingProductionContinuation, setPendingProductionContinuation] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
@@ -697,6 +892,7 @@ export function ReleasePanel() {
     [profiles],
   );
   const isStaging = environment.kind === "staging";
+  const canRunLocalRelease = isTauriRuntime();
   const ready = Boolean(connection.baseUrl && connection.authToken);
   const stagingWorkflow = releaseWorkflowRecovery(status?.source);
   const productionAlreadyCurrent = preview?.ok === true && !preview.productionDifferent;
@@ -785,7 +981,34 @@ export function ReleasePanel() {
     !contentSuggestion || canContinueAfterStagingContent
       ? livePlan
       : null;
-  const smartPlan = liveSmartPlan || fallbackSmartPlan;
+  const continuationPlan: ReleasePlan | null =
+    pendingProductionContinuation &&
+    releaseTarget === "production" &&
+    isStaging &&
+    ready &&
+    !localDirty &&
+    job?.status !== "running"
+      ? productionCodeMatchesStaging
+        ? {
+            detail: "The staging step finished. Copy the verified staging content overlay to production.",
+            disabled: false,
+            kind: "publish-content-production-from-staging",
+            label: "Publish Same Content to Production",
+            reason: "Staging content is verified; production is next.",
+            script: PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT,
+            tone: "warn",
+          }
+        : {
+            detail: "The staging step finished. Promote the verified staging Worker before copying content.",
+            disabled: false,
+            kind: "promote-production-code",
+            label: "Promote Production",
+            reason: "Staging is verified; production is next.",
+            script: RELEASE_PROD_FROM_STAGING_SCRIPT,
+            tone: "warn",
+          }
+      : null;
+  const smartPlan = continuationPlan || liveSmartPlan || fallbackSmartPlan;
 
   const loadHistory = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -867,6 +1090,28 @@ export function ReleasePanel() {
       if (!options.silent) setMessage("success", "Release status loaded.");
     },
     [isStaging, request, setMessage],
+  );
+
+  const loadRemoteReleaseJob = useCallback(
+    async (jobId: string): Promise<RemoteReleaseJobRow | null> => {
+      const response = await request(`/api/site-admin/release-jobs/${jobId}`, "GET");
+      if (!response.ok) {
+        setMessage(
+          "error",
+          `Remote release job refresh failed: ${response.code}: ${response.error}`,
+        );
+        return null;
+      }
+      const parsed = parseRemoteReleaseJobPayload(response.data);
+      if (!parsed) {
+        setMessage("error", "Remote release job returned an invalid payload.");
+        return null;
+      }
+      setJob(remoteReleaseJobToLocalState(parsed.job));
+      setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
+      return parsed.job;
+    },
+    [request, setMessage],
   );
 
   /* eslint-disable react-hooks/set-state-in-effect -- release status hydrates from remote APIs */
@@ -958,6 +1203,68 @@ export function ReleasePanel() {
     };
   }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus, releaseTarget]);
 
+  useEffect(() => {
+    if (!activeRemoteJobId) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const refreshRemoteJob = async () => {
+      const remoteJob = await loadRemoteReleaseJob(activeRemoteJobId);
+      if (cancelled || !remoteJob) return;
+      if (
+        remoteJob.status === "succeeded" ||
+        remoteJob.status === "failed" ||
+        remoteJob.status === "canceled"
+      ) {
+        setActiveRemoteJobId(null);
+        dispatchReleaseState({ kind: "idle" });
+        const shouldContinueToProduction =
+          releaseTarget === "production" &&
+          remoteJob.status === "succeeded" &&
+          (remoteJob.script === RELEASE_STAGING_SCRIPT ||
+            remoteJob.script === PUBLISH_CONTENT_STAGING_SCRIPT);
+        if (shouldContinueToProduction) setPendingProductionContinuation(true);
+        void loadStatus({ silent: true });
+        void loadHistory();
+        void loadLocalSource();
+        void loadLiveStatus();
+        if (remoteJob.status === "succeeded") {
+          if (
+            (remoteJob.script === PUBLISH_CONTENT_STAGING_SCRIPT &&
+              releaseTarget === "staging") ||
+            remoteJob.script === PUBLISH_CONTENT_PROD_SCRIPT ||
+            remoteJob.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT ||
+            remoteJob.script === RELEASE_PROD_FROM_STAGING_SCRIPT
+          ) {
+            void clearContentPublishSuggestionEverywhere().finally(() => {
+              setContentSuggestion(null);
+            });
+          }
+          void notify({
+            title: `${scriptLabel(remoteJob.script)} complete`,
+            body: "Mac mini release runner finished.",
+          });
+        }
+        return;
+      }
+      timer = window.setTimeout(refreshRemoteJob, 2_500);
+    };
+
+    void refreshRemoteJob();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [
+    activeRemoteJobId,
+    loadHistory,
+    loadLiveStatus,
+    loadLocalSource,
+    loadRemoteReleaseJob,
+    loadStatus,
+    releaseTarget,
+  ]);
+
   /* eslint-disable react-hooks/set-state-in-effect -- completion state clears once the next top-level action is no longer needed */
   useEffect(() => {
     if (!pendingProductionContinuation || job?.status === "running") return;
@@ -991,10 +1298,81 @@ export function ReleasePanel() {
     [setMessage],
   );
 
+  const startRemoteRelease = useCallback(
+    async (script: SiteAdminReleaseScript) => {
+      const action = remoteActionForScript(script);
+      if (!action) {
+        setMessage(
+          "warn",
+          `${scriptLabel(script)} is only available on a local desktop runner for now.`,
+        );
+        return;
+      }
+      setJobLog([]);
+      setPendingProductionContinuation(false);
+      setRollbackCandidate(null);
+      const queuedAt = Date.now();
+      setJob({
+        command: `Mac mini runner · npm run ${script}`,
+        cwd: "remote release runner",
+        duration_ms: null,
+        error: "",
+        exit_code: null,
+        finished_at_ms: null,
+        job_id: `remote-pending-${queuedAt}`,
+        phase: "queueing",
+        script,
+        started_at_ms: queuedAt,
+        status: "running",
+        stderr_tail: "",
+        stdout_tail: "",
+      });
+      try {
+        const response = await request("/api/site-admin/release-jobs", "POST", {
+          action,
+          request: {
+            releaseTarget,
+            source: "release-center",
+          },
+        });
+        if (!response.ok) {
+          throw new Error(`${response.code}: ${response.error}`);
+        }
+        const parsed = parseRemoteReleaseJobPayload(response.data);
+        if (!parsed) throw new Error("Remote release job returned an invalid payload.");
+        setActiveRemoteJobId(parsed.job.id);
+        setJob(remoteReleaseJobToLocalState(parsed.job));
+        setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
+        dispatchReleaseState({
+          kind: "running",
+          info: `${scriptLabel(script)} queued for Mac mini runner…`,
+        });
+        setMessage("success", `${scriptLabel(script)} queued for Mac mini runner.`);
+      } catch (err) {
+        const message = String(err);
+        setActiveRemoteJobId(null);
+        setJob((current) =>
+          current
+            ? {
+                ...current,
+                error: message,
+                exit_code: 1,
+                finished_at_ms: Date.now(),
+                phase: "failed",
+                status: "failed",
+              }
+            : current,
+        );
+        setMessage("error", `Remote release job failed to start: ${message}`);
+      }
+    },
+    [releaseTarget, request, setMessage],
+  );
+
   const startRelease = useCallback(
     async (script: SiteAdminReleaseScript) => {
-      if (!isTauriRuntime()) {
-        setMessage("warn", "Local release jobs are available in the Tauri app.");
+      if (releaseExecutionMode === "remote" || !isTauriRuntime()) {
+        await startRemoteRelease(script);
         return;
       }
       setJobLog([]);
@@ -1016,7 +1394,7 @@ export function ReleasePanel() {
         setMessage("error", `Release job failed to start: ${String(err)}`);
       }
     },
-    [setMessage],
+    [releaseExecutionMode, setMessage, startRemoteRelease],
   );
 
   const startRollback = useCallback(async () => {
@@ -1041,13 +1419,20 @@ export function ReleasePanel() {
 
   const cancelJob = useCallback(async () => {
     if (!job?.job_id || job.status !== "running") return;
+    if (activeRemoteJobId) {
+      setMessage(
+        "warn",
+        "Remote release jobs cannot be cancelled from the UI yet. Stop the Mac mini runner if you need to interrupt it.",
+      );
+      return;
+    }
     try {
       await siteAdminCancelReleaseJob(job.job_id);
       setMessage("warn", "Release cancellation requested.");
     } catch (err) {
       setMessage("error", `Cancel release failed: ${String(err)}`);
     }
-  }, [job, setMessage]);
+  }, [activeRemoteJobId, job, setMessage]);
 
   const runSmartRelease = useCallback(() => {
     if (smartPlan.kind === "deploy-staging-code") {
@@ -1100,11 +1485,19 @@ export function ReleasePanel() {
           <span>Release Center</span>
           <h1>Smart Release</h1>
           <p>{smartPlan.reason} {smartPlan.detail}</p>
-          <ReleaseTargetControl
-            disabled={job?.status === "running"}
-            value={releaseTarget}
-            onChange={setReleaseTarget}
-          />
+          <div className="release-center__controls">
+            <ReleaseTargetControl
+              disabled={job?.status === "running"}
+              value={releaseTarget}
+              onChange={setReleaseTarget}
+            />
+            <ReleaseRunnerControl
+              canRunLocal={canRunLocalRelease}
+              disabled={job?.status === "running"}
+              value={releaseExecutionMode}
+              onChange={setReleaseExecutionMode}
+            />
+          </div>
         </div>
         <div className="release-center__hero-actions">
           <span
@@ -1387,6 +1780,48 @@ function ReleaseTargetControl({
         onClick={() => onChange("production")}
       >
         Staging to Production
+      </button>
+    </div>
+  );
+}
+
+function ReleaseRunnerControl({
+  canRunLocal,
+  disabled,
+  onChange,
+  value,
+}: {
+  canRunLocal: boolean;
+  disabled: boolean;
+  onChange: (mode: ReleaseExecutionMode) => void;
+  value: ReleaseExecutionMode;
+}) {
+  if (!canRunLocal) {
+    return (
+      <div className="release-center__target" aria-label="Release runner">
+        <button aria-pressed="true" disabled type="button">
+          Mac mini runner
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="release-center__target" aria-label="Release runner">
+      <button
+        aria-pressed={value === "local"}
+        disabled={disabled}
+        type="button"
+        onClick={() => onChange("local")}
+      >
+        This Mac
+      </button>
+      <button
+        aria-pressed={value === "remote"}
+        disabled={disabled}
+        type="button"
+        onClick={() => onChange("remote")}
+      >
+        Mac mini runner
       </button>
     </div>
   );

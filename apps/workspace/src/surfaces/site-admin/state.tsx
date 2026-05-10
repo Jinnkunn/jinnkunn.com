@@ -933,7 +933,10 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
           response.code === "TAURI_INVOKE_ERROR";
         const isMutating = isMutatingHttpMethod(method);
         const isAuthFlow = path.startsWith("/api/site-admin/app-auth/");
-        const isDeploy = path.endsWith("/deploy") || path.includes("/promote-to-production");
+        const isDeploy =
+          path.endsWith("/deploy") ||
+          path.includes("/promote-to-production") ||
+          path.includes("/release-jobs");
         if (
           looksOffline &&
           isMutating &&

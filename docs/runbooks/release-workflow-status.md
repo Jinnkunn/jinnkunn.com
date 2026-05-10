@@ -11,6 +11,10 @@ fallback and for tasks that genuinely need a sandbox runner (e.g. signed
 `.dmg` builds). This file records the current status of every release-adjacent
 workflow so we can spot stragglers without grepping through `.github/workflows/`.
 
+The next release path is a Cloudflare-hosted job queue with a Mac mini
+outbound agent. See `docs/runbooks/release-runner.md`. This keeps mobile and
+Tauri clients on HTTPS while avoiding inbound exposure of the Mac mini.
+
 ## Active
 
 | Workflow | Trigger | Owner | Notes |
