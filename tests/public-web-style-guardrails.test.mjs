@@ -649,6 +649,17 @@ test("public-web-style-guardrails: MDX heading links inherit heading color", asy
   assertIncludes(postsCss, "text-decoration-color: currentColor;", "MDX heading link CSS");
 });
 
+test("public-web-style-guardrails: native MDX blockquotes use Notion quote styling", async () => {
+  const components = await read("components/posts-mdx/components.tsx");
+  const notionCss = await read("public/styles/notion.css");
+
+  assertIncludes(components, "function MdxBlockquote", "MDX blockquote component");
+  assertIncludes(components, 'blockquote: MdxBlockquote', "MDX blockquote component");
+  assertIncludes(components, '"notion-quote"', "MDX blockquote class");
+  assertIncludes(notionCss, ".notion-quote", "Notion quote CSS");
+  assertIncludes(notionCss, "border-inline-start: var(--quote-border);", "Notion quote border");
+});
+
 test("public-web-style-guardrails: MDX long links cannot widen mobile pages", async () => {
   const postsCss = await read("app/(classic)/posts-mdx.css");
 

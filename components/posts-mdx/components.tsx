@@ -134,11 +134,28 @@ function MdxPre({ children, className, ...props }: HTMLAttributes<HTMLPreElement
   );
 }
 
+function MdxBlockquote({
+  children,
+  className,
+  ...props
+}: HTMLAttributes<HTMLQuoteElement>) {
+  const hasNotionQuote = className?.split(/\s+/).includes("notion-quote");
+  return (
+    <blockquote
+      className={hasNotionQuote ? className : joinClassNames("notion-quote", className)}
+      {...props}
+    >
+      {children}
+    </blockquote>
+  );
+}
+
 // Components exposed to MDX. Most native HTML elements render as plain HTML
 // and inherit the existing Notion/classic CSS. Code blocks are wrapped with the
 // legacy Notion code shell so copy/highlight behavior remains available.
 export const postMdxComponents: MDXComponents = {
   a: MdxLink,
+  blockquote: MdxBlockquote,
   pre: MdxPre,
   span: MdxSpan,
   Bookmark,
