@@ -494,10 +494,10 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
     "transform: none;",
     "Inline icon links should not vertically center against a multi-line link box",
   );
-  assertIncludes(
+  assertExcludes(
     publicInlineCss,
     "white-space: nowrap;",
-    "Inline icon links should wrap as one icon+label unit",
+    "Inline icon links should not force long labels to overflow the content column",
   );
   assertExcludes(
     publicInlineCss,
