@@ -62,6 +62,37 @@ cd /Users/jinnkunn/Services/jinnkunn-release-runner/repo
 npm run release:agent
 ```
 
+## Mac mini LaunchAgent
+
+The Mac mini now runs the poller through this LaunchAgent:
+
+```text
+~/Library/LaunchAgents/com.jinnkunn.release-runner.plist
+```
+
+It keeps the runner outbound-only and writes logs here:
+
+```text
+~/Services/jinnkunn-release-runner/logs/release-agent.out.log
+~/Services/jinnkunn-release-runner/logs/release-agent.err.log
+```
+
+Useful operations:
+
+```bash
+launchctl print gui/501/com.jinnkunn.release-runner
+launchctl kickstart -k gui/501/com.jinnkunn.release-runner
+launchctl bootout gui/501/com.jinnkunn.release-runner
+tail -f ~/Services/jinnkunn-release-runner/logs/release-agent.out.log
+```
+
+Keep the runner repo on `main`:
+
+```bash
+cd ~/Services/jinnkunn-release-runner/repo
+git pull --ff-only origin main
+```
+
 Dry-run execution for validating the queue without deploying:
 
 ```bash
