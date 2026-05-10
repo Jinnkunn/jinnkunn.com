@@ -680,14 +680,25 @@ test("public-web-style-guardrails: native MDX blockquotes use Notion quote styli
   assertIncludes(notionCss, "border-inline-start: var(--quote-border);", "Notion quote border");
 });
 
-test("public-web-style-guardrails: blog post date property renders a Notion-style icon", async () => {
+test("public-web-style-guardrails: blog post metadata renders as a distinct Notion-style strip", async () => {
   const postView = await read("components/posts-mdx/post-view.tsx");
+  const postsCss = await read("app/(classic)/posts-mdx.css");
   const notionBlocksCss = await read("app/(classic)/notion-blocks.css");
 
   assertIncludes(
     postView,
+    'className="notion-page__properties mdx-post__meta"',
+    "Blog post metadata strip markup",
+  );
+  assertIncludes(
+    postView,
     'className="notion-property__date-icon"',
     "Blog post date property icon markup",
+  );
+  assertIncludes(
+    postView,
+    'className="mdx-post__reading-icon"',
+    "Blog post reading-time icon markup",
   );
   assertIncludes(
     notionBlocksCss,
@@ -703,6 +714,13 @@ test("public-web-style-guardrails: blog post date property renders a Notion-styl
     notionBlocksCss,
     "mask: var(--notion-property-date-icon) center / 15px 15px no-repeat;",
     "Blog post date property icon CSS",
+  );
+  assertIncludes(postsCss, ".page__blog-post .mdx-post__meta", "Blog post metadata strip CSS");
+  assertIncludes(postsCss, "--mdx-post-reading-icon:", "Blog post reading-time icon CSS");
+  assertIncludes(
+    postsCss,
+    "mask: var(--mdx-post-reading-icon) center / 15px 15px no-repeat;",
+    "Blog post reading-time icon CSS",
   );
 });
 
