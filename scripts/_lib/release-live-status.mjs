@@ -282,6 +282,35 @@ function sha1(value) {
   return crypto.createHash("sha1").update(value).digest("hex");
 }
 
+function hashContentInput(root) {
+  const contentRoot = path.join(root, "content");
+  if (!fs.existsSync(contentRoot)) return "";
+  const files = [];
+  function walk(absDir, relDir = "") {
+    for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+      if (entry.name === ".DS_Store") continue;
+      const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+      if (rel === "local" || rel.startsWith("local/")) continue;
+      const abs = path.join(absDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs, rel);
+      } else if (entry.isFile()) {
+        files.push({ abs, rel: `content/${rel}` });
+      }
+    }
+  }
+  walk(contentRoot);
+  files.sort((a, b) => a.rel.localeCompare(b.rel));
+  const hash = crypto.createHash("sha1");
+  for (const file of files) {
+    hash.update(file.rel);
+    hash.update("\0");
+    hash.update(fs.readFileSync(file.abs));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 function extractMainHtml(html) {
   const match = /<main\b[^>]*>[\s\S]*?<\/main>/i.exec(String(html || ""));
   return match?.[0] || String(html || "");
@@ -366,6 +395,11 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
   const stagingOverlay = status.overlays.staging.status;
   const productionOverlay = status.overlays.production.status;
   const nonBlockingDirty = git.productionHistoryOnlyDirty;
+  const stagingOverlayCoversLocalContent =
+    status.stagingDiffFromLocal.ok &&
+    Boolean(stagingOverlay?.contentInputSha) &&
+    stagingOverlay.contentInputSha === status.contentInputSha &&
+    stagingOverlay.workerCodeSha === staging.codeSha;
 
   if (git.branch !== "main") {
     return {
@@ -393,7 +427,7 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
     };
   }
   if (staging.codeSha !== git.sha) {
-    if (status.stagingDiffFromLocal.ok) {
+    if (status.stagingDiffFromLocal.ok && !stagingOverlayCoversLocalContent) {
       return {
         kind: "publish-content-staging",
         label: "Publish Staging Content",
@@ -401,15 +435,17 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
         reason: "Local HEAD differs from staging only in content files.",
       };
     }
-    return {
-      kind: "deploy-staging-code",
-      label: "Deploy Staging",
-      script: "release:staging",
-      reason: "Staging code is behind local HEAD.",
-      changedFiles: status.stagingDiffFromLocal.files,
-    };
+    if (!status.stagingDiffFromLocal.ok) {
+      return {
+        kind: "deploy-staging-code",
+        label: "Deploy Staging",
+        script: "release:staging",
+        reason: "Staging code is behind local HEAD.",
+        changedFiles: status.stagingDiffFromLocal.files,
+      };
+    }
   }
-  if (contentChanged) {
+  if (contentChanged && !stagingOverlayCoversLocalContent) {
     return {
       kind: "publish-content-staging",
       label: "Publish Staging Content",
@@ -484,6 +520,7 @@ export async function buildLiveReleaseStatus({
     readOverlayStatus({ root, env: "staging" }),
     readOverlayStatus({ root, env: "production" }),
   ]);
+  const contentInputSha = hashContentInput(root);
   const stagingDiffFromLocal = contentOnlyDiffFrom({
     root,
     baseSha: staging.codeSha,
@@ -508,6 +545,7 @@ export async function buildLiveReleaseStatus({
     checkedAt: new Date().toISOString(),
     git,
     deployments: { staging, production },
+    contentInputSha,
     overlays: {
       staging: { status: stagingOverlay },
       production: { status: productionOverlay },

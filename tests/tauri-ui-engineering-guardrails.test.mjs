@@ -835,6 +835,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /siteAdminStartReleaseJob/);
   assert.match(releasePanel, /siteAdminLocalReleaseSource/);
   assert.match(releasePanel, /site-admin:\/\/release-job/);
+  assert.match(releasePanel, /useRef<HTMLDivElement \| null>/);
+  assert.match(releasePanel, /log\.scrollTop = log\.scrollHeight/);
+  assert.match(releasePanel, /contentSuggestionSatisfiedByStagingOverlay/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
   assert.match(releasePanel, /Release gates/);
   assert.match(releasePanel, /Release route/);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import {
@@ -137,8 +137,22 @@ interface LiveReleaseStatus {
     routes: LiveReleaseRoute[];
   } | null;
   overlays?: {
-    staging?: { status?: { snapshotSha?: string; fileCount?: number; exists?: boolean } };
-    production?: { status?: { snapshotSha?: string; fileCount?: number; exists?: boolean } };
+    staging?: {
+      status?: {
+        snapshotSha?: string;
+        fileCount?: number;
+        exists?: boolean;
+        publishedAt?: string;
+      };
+    };
+    production?: {
+      status?: {
+        snapshotSha?: string;
+        fileCount?: number;
+        exists?: boolean;
+        publishedAt?: string;
+      };
+    };
   };
 }
 
@@ -253,11 +267,21 @@ function pickNewerContentSuggestion(
   return current;
 }
 
-function clearContentPublishSuggestionEverywhere(): void {
+function mergeContentSuggestions(
+  ...suggestions: Array<ContentPublishSuggestion | null>
+): ContentPublishSuggestion | null {
+  return suggestions.reduce<ContentPublishSuggestion | null>(
+    (current, next) => pickNewerContentSuggestion(current, next),
+    null,
+  );
+}
+
+async function clearContentPublishSuggestionEverywhere(): Promise<void> {
   clearContentPublishSuggestion();
   if (isTauriRuntime()) {
-    void workspaceMcpContentPublishSuggestionClear();
+    await workspaceMcpContentPublishSuggestionClear().catch(() => undefined);
   }
+  clearContentPublishSuggestion();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -741,9 +765,26 @@ export function ReleasePanel() {
     status,
     target: releaseTarget,
   });
-  const liveSmartPlan = ready && job?.status !== "running" && !contentSuggestion
-    ? releasePlanFromLiveStatus(liveStatus)
-    : null;
+  const livePlan =
+    ready && job?.status !== "running"
+      ? releasePlanFromLiveStatus(liveStatus)
+      : null;
+  const stagingOverlayPublishedAtMs = Date.parse(
+    liveStatus?.overlays?.staging?.status?.publishedAt || "",
+  );
+  const contentSuggestionSatisfiedByStagingOverlay = Boolean(
+    contentSuggestion &&
+      stagingOverlayPublishedAtMs &&
+      stagingOverlayPublishedAtMs >= contentSuggestion.atMs,
+  );
+  const canContinueAfterStagingContent =
+    (pendingProductionContinuation || contentSuggestionSatisfiedByStagingOverlay) &&
+    (livePlan?.kind === "publish-content-production-from-staging" ||
+      livePlan?.kind === "promote-production-code");
+  const liveSmartPlan =
+    !contentSuggestion || canContinueAfterStagingContent
+      ? livePlan
+      : null;
   const smartPlan = liveSmartPlan || fallbackSmartPlan;
 
   const loadHistory = useCallback(async () => {
@@ -849,8 +890,8 @@ export function ReleasePanel() {
       void workspaceMcpContentPublishSuggestionGet()
         .then((suggestion) => {
           if (!cancelled) {
-            setContentSuggestion((current) =>
-              pickNewerContentSuggestion(current, suggestion),
+            setContentSuggestion(
+              mergeContentSuggestions(readContentPublishSuggestion(), suggestion),
             );
           }
         })
@@ -892,8 +933,9 @@ export function ReleasePanel() {
             payload.state.script === PUBLISH_CONTENT_PROD_SCRIPT ||
             payload.state.script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
           ) {
-            clearContentPublishSuggestionEverywhere();
-            setContentSuggestion(null);
+            void clearContentPublishSuggestionEverywhere().finally(() => {
+              setContentSuggestion(null);
+            });
           }
           void notify({
             title: `${scriptLabel(payload.state.script)} complete`,
@@ -1875,6 +1917,14 @@ function ReleaseJobPanel({
   job: SiteAdminReleaseJobState | null;
   lines: ReleaseLogLine[];
 }) {
+  const logRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const log = logRef.current;
+    if (!log) return;
+    log.scrollTop = log.scrollHeight;
+  }, [job?.phase, job?.status, lines.length]);
+
   if (!job && lines.length === 0) return null;
   return (
     <section className="release-center__job" data-status={job?.status || "idle"} aria-label="Release activity">
@@ -1885,7 +1935,7 @@ function ReleaseJobPanel({
         </div>
         {job?.duration_ms ? <strong>{Math.round(job.duration_ms / 1000)}s</strong> : null}
       </header>
-      <div className="release-center__log" role="log" aria-live="polite">
+      <div ref={logRef} className="release-center__log" role="log" aria-live="polite">
         {lines.length > 0 ? (
           lines.map((line) => (
             <div className="release-center__log-line" data-stream={line.stream} key={line.id}>
