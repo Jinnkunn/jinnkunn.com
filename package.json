@@ -41,6 +41,7 @@
     "release:prod:from-staging:dry-run": "node scripts/release-from-staging.mjs --dry-run",
     "release:site": "node scripts/release-site.mjs",
     "release:site:dry-run": "node scripts/release-site.mjs --dry-run",
+    "release:agent": "node scripts/release-agent.mjs",
     "release:status": "node scripts/release-status.mjs",
     "release:status:json": "node scripts/release-status.mjs --json --compact",
     "release:status:staging:json": "node scripts/release-status.mjs --json --compact --target=staging",
