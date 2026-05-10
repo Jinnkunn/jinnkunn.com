@@ -40,16 +40,17 @@ export async function PostView({
         </div>
       }
     >
-      <div className="notion-page__properties">
-        <div className="notion-page__property">
+      <div className="notion-page__properties mdx-post__meta" aria-label="Post metadata">
+        <div className="notion-page__property mdx-post__meta-item">
           <div className="notion-property notion-property__date notion-semantic-string">
             <span className="notion-property__date-icon" aria-hidden="true" />
             <span className="date">{entry.dateText}</span>
           </div>
         </div>
         {entry.readingMinutes > 0 && (
-          <div className="notion-page__property">
+          <div className="notion-page__property mdx-post__meta-item">
             <div className="notion-property notion-semantic-string">
+              <span className="mdx-post__reading-icon" aria-hidden="true" />
               <span className="mdx-post__reading">{entry.readingMinutes} min read</span>
             </div>
           </div>
