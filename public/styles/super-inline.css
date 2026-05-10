@@ -42,8 +42,9 @@ a[data-link-style="icon"].notion-link.link:before {
   content: "";
   position: absolute;
   left: 0;
-  top: 50%;
-  transform: translateY(-52%);
+  top: 0.08em;
+  top: calc((1lh - var(--link-icon-size)) / 2);
+  transform: none;
   height: var(--link-icon-size);
   width: var(--link-icon-size);
   background-size: 20px 20px;
@@ -58,6 +59,7 @@ span[data-link-style="icon"] > a.notion-link.link,
 a[data-link-style="icon"].notion-link.link {
   --link-icon-size: 24px;
   --link-icon-space: 25px;
+  white-space: nowrap;
 }
 
 span[data-link-style="icon"] > a.notion-link.link:before,

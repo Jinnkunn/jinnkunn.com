@@ -484,6 +484,26 @@ test("public-web-style-guardrails: classic icon links are explicit variants of N
     "Icon-prefixed links: only the icon slot differs",
     "Inline icon link contract",
   );
+  assertIncludes(
+    publicInlineCss,
+    "top: calc((1lh - var(--link-icon-size)) / 2);",
+    "Inline icon links should align to the first line when text wraps",
+  );
+  assertIncludes(
+    publicInlineCss,
+    "transform: none;",
+    "Inline icon links should not vertically center against a multi-line link box",
+  );
+  assertIncludes(
+    publicInlineCss,
+    "white-space: nowrap;",
+    "Inline icon links should wrap as one icon+label unit",
+  );
+  assertExcludes(
+    publicInlineCss,
+    "transform: translateY(-52%);",
+    "Inline icon links should not drift when text wraps",
+  );
   assertIncludes(publicInlineCss, "data-link-icon", "Custom inline icon link contract");
   assertIncludes(publicInlineCss, "--link-icon-image", "Custom inline icon link contract");
   assertIncludes(blogIndexView, 'data-link-style="icon"', "Blog RSS link");
