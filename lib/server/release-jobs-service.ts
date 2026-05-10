@@ -58,6 +58,17 @@ export type ReleaseJobEventRow = {
   message: string;
 };
 
+export type ReleaseAgentStatus = "idle" | "running";
+
+export type ReleaseAgentRow = {
+  agentId: string;
+  status: ReleaseAgentStatus;
+  currentJobId: string;
+  capabilities: ReleaseJobAction[];
+  lastSeenAt: number;
+  updatedAt: number;
+};
+
 export type ReleaseJobServiceResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; code: string; error: string };
@@ -106,6 +117,7 @@ const RELEASE_JOB_COMMANDS: Record<ReleaseJobAction, ReleaseJobCommand> = {
 const ACTIONS = new Set(Object.keys(RELEASE_JOB_COMMANDS));
 const STATUSES = new Set(["queued", "running", "succeeded", "failed", "canceled"]);
 const STREAMS = new Set(["stdout", "stderr", "status"]);
+const AGENT_STATUSES = new Set(["idle", "running"]);
 
 function isD1Like(value: unknown): value is D1DatabaseLike {
   return (
@@ -162,6 +174,11 @@ function normalizeStatus(value: unknown): ReleaseJobStatus | null {
 function normalizeStream(value: unknown): ReleaseJobEventRow["stream"] {
   const stream = typeof value === "string" ? value.trim() : "";
   return STREAMS.has(stream) ? (stream as ReleaseJobEventRow["stream"]) : "status";
+}
+
+function normalizeAgentStatus(value: unknown): ReleaseAgentStatus {
+  const status = typeof value === "string" ? value.trim() : "";
+  return AGENT_STATUSES.has(status) ? (status as ReleaseAgentStatus) : "idle";
 }
 
 function normalizePhase(value: unknown): string {
@@ -234,6 +251,29 @@ function rowToReleaseJobEvent(row: Record<string, unknown>): ReleaseJobEventRow 
   };
 }
 
+function rowToReleaseAgent(row: Record<string, unknown>): ReleaseAgentRow {
+  const capabilitiesJson = String(row.capabilities_json || "");
+  let capabilities: ReleaseJobAction[] = [];
+  try {
+    const parsed = JSON.parse(capabilitiesJson);
+    capabilities = Array.isArray(parsed)
+      ? parsed
+          .map(normalizeReleaseJobAction)
+          .filter((item): item is ReleaseJobAction => Boolean(item))
+      : [];
+  } catch {
+    capabilities = [];
+  }
+  return {
+    agentId: String(row.agent_id || ""),
+    status: normalizeAgentStatus(row.status),
+    currentJobId: String(row.current_job_id || ""),
+    capabilities,
+    lastSeenAt: numberOrZero(row.last_seen_at),
+    updatedAt: numberOrZero(row.updated_at),
+  };
+}
+
 function getExecutor(executor?: DbExecutor): ReleaseJobServiceResult<DbExecutor> {
   const resolved = executor ?? tryGetD1Executor();
   if (!resolved) {
@@ -290,6 +330,20 @@ export async function ensureReleaseJobTables(executor: DbExecutor): Promise<void
   await executor.execute({
     sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_release_job_events_job_seq
       ON release_job_events (job_id, seq)`,
+  });
+  await executor.execute({
+    sql: `CREATE TABLE IF NOT EXISTS release_agents (
+      agent_id          TEXT PRIMARY KEY,
+      status            TEXT NOT NULL,
+      current_job_id    TEXT,
+      capabilities_json TEXT,
+      last_seen_at      INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL
+    )`,
+  });
+  await executor.execute({
+    sql: `CREATE INDEX IF NOT EXISTS idx_release_agents_seen
+      ON release_agents (last_seen_at DESC)`,
   });
 }
 
@@ -387,6 +441,91 @@ export async function listReleaseJobEvents(input: {
   return serviceOk({ events: result.rows.map(rowToReleaseJobEvent) });
 }
 
+export async function heartbeatReleaseAgent(input: {
+  agentId: string;
+  status?: unknown;
+  currentJobId?: unknown;
+  capabilities?: unknown[];
+  executor?: DbExecutor;
+}): Promise<ReleaseJobServiceResult<ReleaseAgentRow>> {
+  const agentId = normalizeAgentId(input.agentId);
+  if (!agentId) return serviceError("Missing agent id.");
+  const executor = getExecutor(input.executor);
+  if (!executor.ok) return executor;
+  await ensureReleaseJobTables(executor.data);
+
+  const status = normalizeAgentStatus(input.status);
+  const currentJobId =
+    typeof input.currentJobId === "string" ? input.currentJobId.trim().slice(0, 160) : "";
+  const capabilities = Array.isArray(input.capabilities)
+    ? input.capabilities
+        .map(normalizeReleaseJobAction)
+        .filter((item): item is ReleaseJobAction => Boolean(item))
+    : listReleaseJobActions().map((item) => item.action);
+  const now = Date.now();
+  await executor.data.execute({
+    sql: `INSERT INTO release_agents (
+      agent_id, status, current_job_id, capabilities_json, last_seen_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET
+      status = excluded.status,
+      current_job_id = excluded.current_job_id,
+      capabilities_json = excluded.capabilities_json,
+      last_seen_at = excluded.last_seen_at,
+      updated_at = excluded.updated_at`,
+    args: [
+      agentId,
+      status,
+      currentJobId || null,
+      JSON.stringify(capabilities),
+      now,
+      now,
+    ],
+  });
+  const result = await executor.data.execute({
+    sql: `SELECT * FROM release_agents WHERE agent_id = ? LIMIT 1`,
+    args: [agentId],
+  });
+  return serviceOk(rowToReleaseAgent(result.rows[0] ?? { agent_id: agentId }));
+}
+
+export async function getReleaseRunnerStatus(input: {
+  executor?: DbExecutor;
+  limit?: number;
+} = {}): Promise<
+  ReleaseJobServiceResult<{
+    agents: ReleaseAgentRow[];
+    queuedCount: number;
+    runningCount: number;
+  }>
+> {
+  const executor = getExecutor(input.executor);
+  if (!executor.ok) return executor;
+  await ensureReleaseJobTables(executor.data);
+  const limit = Math.max(1, Math.min(20, Math.trunc(Number(input.limit || 8))));
+  const agents = await executor.data.execute({
+    sql: `SELECT * FROM release_agents ORDER BY last_seen_at DESC LIMIT ?`,
+    args: [limit],
+  });
+  const counts = await executor.data.execute({
+    sql: `SELECT status, COUNT(*) AS count
+            FROM release_jobs
+           WHERE status IN ('queued', 'running')
+           GROUP BY status`,
+  });
+  let queuedCount = 0;
+  let runningCount = 0;
+  for (const row of counts.rows) {
+    if (row.status === "queued") queuedCount = numberOrZero(row.count);
+    if (row.status === "running") runningCount = numberOrZero(row.count);
+  }
+  return serviceOk({
+    agents: agents.rows.map(rowToReleaseAgent),
+    queuedCount,
+    runningCount,
+  });
+}
+
 export async function claimReleaseJob(input: {
   agentId: string;
   capabilities?: unknown[];
@@ -403,6 +542,12 @@ export async function claimReleaseJob(input: {
         .map(normalizeReleaseJobAction)
         .filter((item): item is ReleaseJobAction => Boolean(item))
     : listReleaseJobActions().map((item) => item.action);
+  await heartbeatReleaseAgent({
+    agentId,
+    capabilities,
+    status: "idle",
+    executor: executor.data,
+  });
   if (capabilities.length === 0) return serviceOk({ job: null });
 
   const placeholders = capabilities.map(() => "?").join(", ");
@@ -430,6 +575,14 @@ export async function claimReleaseJob(input: {
     args: [agentId, now, now, now, id],
   });
   if (update.rowsAffected <= 0) return serviceOk({ job: null });
+
+  await heartbeatReleaseAgent({
+    agentId,
+    capabilities,
+    currentJobId: id,
+    status: "running",
+    executor: executor.data,
+  });
 
   await appendReleaseJobEvent({
     id,
@@ -488,6 +641,7 @@ export async function appendReleaseJobEvent(input: {
 
 export async function completeReleaseJob(input: {
   id: string;
+  agentId?: string;
   status: unknown;
   error?: unknown;
   result?: Record<string, unknown>;
@@ -534,6 +688,14 @@ export async function completeReleaseJob(input: {
   });
   const job = await getReleaseJob({ id, executor: executor.data });
   if (!job.ok) return job;
+  const agentId = normalizeAgentId(input.agentId);
+  if (agentId) {
+    await heartbeatReleaseAgent({
+      agentId,
+      currentJobId: "",
+      status: "idle",
+      executor: executor.data,
+    });
+  }
   return serviceOk(job.data.job);
 }
-

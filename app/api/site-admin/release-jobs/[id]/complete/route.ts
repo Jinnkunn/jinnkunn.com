@@ -18,6 +18,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       ? (body.result as Record<string, unknown>)
       : {};
   const out = await completeReleaseJob({
+    agentId: auth.agentId,
     id,
     status: body.status,
     error: body.error,
@@ -26,4 +27,3 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
   return apiPayloadOk({ job: out.data });
 }
-

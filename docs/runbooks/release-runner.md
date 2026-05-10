@@ -12,6 +12,7 @@ Tauri / mobile / web admin
   -> Cloudflare D1 queue
 Mac mini release agent
   -> /api/site-admin/release-jobs/claim
+  -> release_agents heartbeat in D1
   -> npm release scripts in ~/Services/jinnkunn-release-runner/repo
   -> /api/site-admin/release-jobs/:id/events
   -> /api/site-admin/release-jobs/:id/complete
@@ -47,6 +48,11 @@ In Release Center, set the runner control to **Mac mini runner**. The Smart
 Release button will create a queued job and stream the runner logs back through
 the Site Admin API. Non-Tauri clients, including a future mobile admin app,
 always use this remote runner path.
+
+Release Center also reads the runner heartbeat from `/api/site-admin/release-jobs`.
+When the Mac mini poller is healthy, the top panel shows the latest agent,
+last heartbeat, queued job count, and running job count. A stale or missing
+heartbeat means the LaunchAgent should be checked before queueing a release.
 
 One-shot drain:
 

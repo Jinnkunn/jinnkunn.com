@@ -9,6 +9,8 @@ import {
   completeReleaseJob,
   createReleaseJob,
   ensureReleaseJobTables,
+  getReleaseRunnerStatus,
+  heartbeatReleaseAgent,
   listReleaseJobActions,
   listReleaseJobs,
   releaseJobCommand,
@@ -121,3 +123,68 @@ test("release jobs: unsupported actions are rejected and capabilities filter cla
   assert.equal(skipped.data.job, null);
 });
 
+test("release jobs: tracks runner heartbeat and queue summary", async () => {
+  const executor = await makeExecutor();
+  const heartbeat = await heartbeatReleaseAgent({
+    agentId: "mac-mini",
+    capabilities: ["publish-content-staging", "deploy-staging-code"],
+    status: "idle",
+    executor,
+  });
+  assert.equal(heartbeat.ok, true);
+  if (!heartbeat.ok) throw new Error(heartbeat.error);
+  assert.equal(heartbeat.data.agentId, "mac-mini");
+  assert.equal(heartbeat.data.status, "idle");
+  assert.deepEqual(heartbeat.data.capabilities, [
+    "publish-content-staging",
+    "deploy-staging-code",
+  ]);
+
+  const created = await createReleaseJob({
+    action: "publish-content-staging",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error(created.error);
+
+  const queuedSummary = await getReleaseRunnerStatus({ executor });
+  assert.equal(queuedSummary.ok, true);
+  if (!queuedSummary.ok) throw new Error(queuedSummary.error);
+  assert.equal(queuedSummary.data.queuedCount, 1);
+  assert.equal(queuedSummary.data.runningCount, 0);
+  assert.equal(queuedSummary.data.agents[0].status, "idle");
+
+  const claimed = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["publish-content-staging"],
+    executor,
+  });
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) throw new Error(claimed.error);
+  assert.equal(claimed.data.job?.id, created.data.id);
+
+  const runningSummary = await getReleaseRunnerStatus({ executor });
+  assert.equal(runningSummary.ok, true);
+  if (!runningSummary.ok) throw new Error(runningSummary.error);
+  assert.equal(runningSummary.data.queuedCount, 0);
+  assert.equal(runningSummary.data.runningCount, 1);
+  assert.equal(runningSummary.data.agents[0].status, "running");
+  assert.equal(runningSummary.data.agents[0].currentJobId, created.data.id);
+
+  const completed = await completeReleaseJob({
+    agentId: "mac-mini",
+    id: created.data.id,
+    status: "succeeded",
+    executor,
+  });
+  assert.equal(completed.ok, true);
+  if (!completed.ok) throw new Error(completed.error);
+
+  const completedSummary = await getReleaseRunnerStatus({ executor });
+  assert.equal(completedSummary.ok, true);
+  if (!completedSummary.ok) throw new Error(completedSummary.error);
+  assert.equal(completedSummary.data.runningCount, 0);
+  assert.equal(completedSummary.data.agents[0].status, "idle");
+  assert.equal(completedSummary.data.agents[0].currentJobId, "");
+});
