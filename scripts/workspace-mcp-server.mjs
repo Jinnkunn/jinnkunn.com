@@ -466,6 +466,8 @@ function summarizeConfirmation(tool, preview = {}) {
       return `Update calendar event: ${p.title || p.id || "unknown"}`;
     case "calendar.delete_event":
       return `Delete calendar event: ${p.title || p.id || "unknown"}`;
+    case "siteAdmin.update_home":
+      return `Update site home: ${p.title || "Home"}`;
     case "siteAdmin.update_page":
       return `Update site page: /${p.slug || "unknown"}`;
     case "siteAdmin.delete_page":
@@ -1253,7 +1255,9 @@ function deleteCalendarEvent(db, args = {}) {
 }
 
 const PAGE_SLUG_SEGMENT_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+const HOME_FILENAME = "home.json";
 const PAGE_TREE_FILENAME = "page-tree.json";
+const HOME_SCHEMA_VERSION = 4;
 
 function resolveSiteContentRoot() {
   const explicit = process.env.WORKSPACE_MCP_CONTENT_ROOT;
@@ -1381,6 +1385,21 @@ function sitePageRelPath(slug) {
   return path.posix.join("pages", `${slug}.mdx`);
 }
 
+function siteHomeRelPath() {
+  return HOME_FILENAME;
+}
+
+function normalizeHomeData(raw = {}) {
+  const input = asObject(raw);
+  const bodyMdx = typeof input.bodyMdx === "string" ? input.bodyMdx : undefined;
+  const title = cleanText(input.title, 200) || "Hi there!";
+  return {
+    schemaVersion: HOME_SCHEMA_VERSION,
+    title,
+    ...(bodyMdx && bodyMdx.trim() ? { bodyMdx } : {}),
+  };
+}
+
 function readJsonFile(file, fallback) {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -1431,6 +1450,30 @@ function writePageTree(contentRoot, slugs) {
     `${JSON.stringify({ schemaVersion: 1, slugs: normalized }, null, 2)}\n`,
   );
   return normalized;
+}
+
+function readSiteHome(contentRoot) {
+  const relPath = siteHomeRelPath();
+  const filePath = siteContentFilePath(contentRoot, relPath);
+  try {
+    const source = fs.readFileSync(filePath, "utf8");
+    return {
+      data: normalizeHomeData(JSON.parse(source)),
+      relPath,
+      filePath,
+      source,
+      sourceVersion: { fileSha: sha1Hex(source) },
+    };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return {
+      data: normalizeHomeData({}),
+      relPath,
+      filePath,
+      source: "",
+      sourceVersion: { fileSha: "" },
+    };
+  }
 }
 
 function listSitePageSlugs(contentRoot) {
@@ -1761,6 +1804,17 @@ function siteAdminApiSavePageTree(api, slugs, expectedFileSha = "") {
   });
 }
 
+function normalizeRemoteHomePayload(responseData) {
+  const data = asObject(responseData);
+  const sourceVersion = asObject(data.sourceVersion);
+  return {
+    data: normalizeHomeData(data.data),
+    sourceVersion: {
+      fileSha: cleanText(sourceVersion.fileSha, 120),
+    },
+  };
+}
+
 function orderedRemotePageRows(rows, treeSlugs) {
   const bySlug = new Map(rows.map((row) => [row.slug, row]));
   const ordered = [];
@@ -1867,6 +1921,99 @@ function siteAdminPageGet(db, args = {}) {
       inNavigation: tree.includes(slug),
       navIndex: tree.indexOf(slug),
     },
+  };
+}
+
+function siteAdminHomeGet(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") {
+    const response = siteAdminApiRequestSync(backend.api, "GET", "/api/site-admin/home");
+    const home = normalizeRemoteHomePayload(response.data);
+    return {
+      backend: "api",
+      baseUrl: backend.api.baseUrl,
+      ...home,
+    };
+  }
+  const home = readSiteHome(resolveSiteContentRoot());
+  return {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
+    data: home.data,
+    sourceVersion: home.sourceVersion,
+    relPath: home.relPath,
+    source: home.source,
+  };
+}
+
+function buildHomeDataPatch(existingData, args = {}) {
+  const explicitData = asObject(args.data);
+  if (Object.keys(explicitData).length) {
+    return normalizeHomeData({ ...existingData, ...explicitData });
+  }
+  const next = { ...existingData };
+  if (Object.hasOwn(args, "title")) next.title = args.title;
+  if (Object.hasOwn(args, "bodyMdx")) next.bodyMdx = args.bodyMdx;
+  return normalizeHomeData(next);
+}
+
+function updateSiteAdminHome(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  const existing = siteAdminHomeGet(db, { ...args, backend: backend.kind });
+  const data = buildHomeDataPatch(existing.data, args);
+  const expectedFileSha = cleanText(
+    args.expectedFileSha || args.sourceSha || existing.sourceVersion?.fileSha,
+    120,
+  );
+  const preview = {
+    backend: backend.kind,
+    baseUrl: backend.kind === "api" ? backend.api.baseUrl : "",
+    title: data.title,
+    relPath: siteHomeRelPath(),
+    expectedFileSha,
+    beforeSha: existing.sourceVersion?.fileSha || "",
+    bodyPreview: textPreview(data.bodyMdx || "", 900),
+  };
+  const confirmation = prepareWrite("siteAdmin.update_home", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+
+  if (backend.kind === "api") {
+    const response = siteAdminApiRequestSync(backend.api, "POST", "/api/site-admin/home", {
+      data,
+      ...(expectedFileSha ? { expectedFileSha } : {}),
+    });
+    const sourceVersion = asObject(response.data.sourceVersion);
+    markConfirmationConsumed(args.confirmationId);
+    writeContentPublishSuggestion("POST", "/api/site-admin/home");
+    writeAudit({ tool: "siteAdmin.update_home", backend: "api", baseUrl: backend.api.baseUrl, title: data.title });
+    return {
+      backend: "api",
+      baseUrl: backend.api.baseUrl,
+      data,
+      sourceVersion: {
+        fileSha: cleanText(sourceVersion.fileSha, 120),
+      },
+    };
+  }
+
+  const contentRoot = resolveSiteContentRoot();
+  const relPath = siteHomeRelPath();
+  const filePath = siteContentFilePath(contentRoot, relPath);
+  const current = readSiteHome(contentRoot);
+  if (expectedFileSha && current.sourceVersion.fileSha !== expectedFileSha) {
+    throw new Error(`SOURCE_CONFLICT: expected ${expectedFileSha}, current ${current.sourceVersion.fileSha}.`);
+  }
+  const source = `${JSON.stringify(data, null, 2)}\n`;
+  writeTextFileAtomic(filePath, source);
+  markConfirmationConsumed(args.confirmationId);
+  writeContentPublishSuggestion("POST", "/api/site-admin/home");
+  writeAudit({ tool: "siteAdmin.update_home", backend: "local", title: data.title });
+  return {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
+    data,
+    sourceVersion: { fileSha: sha1Hex(source) },
+    relPath,
   };
 }
 
@@ -2483,6 +2630,35 @@ const toolSchemas = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "siteAdmin.get_home",
+    description: "Read the public website home page document. Defaults to staging Site Admin API when credentials are available, with local content fallback.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.update_home",
+    description: "Update the public website home page document. Defaults to staging Site Admin API so Site Admin sees the change immediately.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
+        title: { type: "string" },
+        bodyMdx: { type: "string" },
+        data: { type: "object" },
+        expectedFileSha: { type: "string" },
+        sourceSha: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
     name: "siteAdmin.list_pages",
     description: "List public website pages in Site Admin navigation order. Defaults to staging Site Admin API when credentials are available, with local content fallback.",
     inputSchema: {
@@ -2631,6 +2807,10 @@ function callTool(db, name, args = {}) {
       return deleteCalendarEvent(db, args);
     case "siteAdmin.release_status":
       return siteAdminReleaseStatus();
+    case "siteAdmin.get_home":
+      return siteAdminHomeGet(db, args);
+    case "siteAdmin.update_home":
+      return updateSiteAdminHome(db, args);
     case "siteAdmin.list_pages":
       return siteAdminPageList(db, args);
     case "siteAdmin.get_page":

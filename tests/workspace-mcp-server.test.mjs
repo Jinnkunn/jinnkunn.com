@@ -93,7 +93,7 @@ test("workspace MCP: lists tools and exposes context resource", async () => {
   await withServer(async (server) => {
     const tools = server.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     assert.equal(tools.result.tools.length, workspaceMcpToolCount());
-    assert.equal(tools.result.tools.length, 26);
+    assert.equal(tools.result.tools.length, 28);
     assert.deepEqual(
       tools.result.tools.map((tool) => tool.name).slice(0, 4),
       ["workspace.get_context", "workspace.search", "notes.get_page", "notes.create_page"],
@@ -333,6 +333,43 @@ test("workspace MCP: manages local calendars and events", async () => {
     assert.equal(deletedCalendar.archivedEventCount, 1);
     assert.equal(call(server, "calendar.list_calendars").calendars.length, 0);
     assert.equal(call(server, "workspace.get_context", { includeRecent: false }).counts.localEvents, 0);
+  });
+});
+
+test("workspace MCP: gets and updates Site Admin home content", async () => {
+  await withServer(async (server) => {
+    const initial = call(server, "siteAdmin.get_home", { backend: "local" });
+    assert.equal(initial.backend, "local");
+    assert.equal(initial.data.title, "Hi there!");
+    assert.equal(initial.sourceVersion.fileSha, "");
+
+    const dryRun = call(server, "siteAdmin.update_home", {
+      backend: "local",
+      title: "Home",
+      bodyMdx: "Draft home body.",
+      dryRun: true,
+    });
+    assert.equal(dryRun.dryRun, true);
+
+    const updated = call(server, "siteAdmin.update_home", {
+      backend: "local",
+      title: "Home",
+      bodyMdx: "Updated home body.",
+    });
+    assert.equal(updated.data.title, "Home");
+    assert.equal(updated.data.bodyMdx, "Updated home body.");
+    assert.ok(updated.sourceVersion.fileSha);
+
+    const source = JSON.parse(
+      await fs.readFile(path.join(process.env.WORKSPACE_MCP_CONTENT_ROOT, "home.json"), "utf8"),
+    );
+    assert.equal(source.bodyMdx, "Updated home body.");
+
+    const suggestion = JSON.parse(
+      await fs.readFile(process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH, "utf8"),
+    );
+    assert.equal(suggestion.source, "mcp");
+    assert.equal(suggestion.path, "/api/site-admin/home");
   });
 });
 
