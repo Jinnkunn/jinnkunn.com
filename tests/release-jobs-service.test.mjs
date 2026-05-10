@@ -5,6 +5,7 @@ import { createClient } from "@libsql/client";
 
 import {
   appendReleaseJobEvent,
+  cancelReleaseJob,
   claimReleaseJob,
   completeReleaseJob,
   createReleaseJob,
@@ -13,7 +14,9 @@ import {
   heartbeatReleaseAgent,
   listReleaseJobActions,
   listReleaseJobs,
+  markStaleReleaseJobs,
   releaseJobCommand,
+  retryReleaseJob,
 } from "../lib/server/release-jobs-service.ts";
 
 async function makeExecutor() {
@@ -187,4 +190,127 @@ test("release jobs: tracks runner heartbeat and queue summary", async () => {
   assert.equal(completedSummary.data.runningCount, 0);
   assert.equal(completedSummary.data.agents[0].status, "idle");
   assert.equal(completedSummary.data.agents[0].currentJobId, "");
+});
+
+test("release jobs: cancel prevents late completion from overwriting status", async () => {
+  const executor = await makeExecutor();
+  const created = await createReleaseJob({
+    action: "deploy-staging-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error(created.error);
+  const claimed = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["deploy-staging-code"],
+    executor,
+  });
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) throw new Error(claimed.error);
+
+  const canceled = await cancelReleaseJob({
+    id: created.data.id,
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(canceled.ok, true);
+  if (!canceled.ok) throw new Error(canceled.error);
+  assert.equal(canceled.data.job.status, "canceled");
+
+  const lateComplete = await completeReleaseJob({
+    agentId: "mac-mini",
+    id: created.data.id,
+    status: "succeeded",
+    result: { exitCode: 0 },
+    executor,
+  });
+  assert.equal(lateComplete.ok, true);
+  if (!lateComplete.ok) throw new Error(lateComplete.error);
+  assert.equal(lateComplete.data.status, "canceled");
+  assert.equal(lateComplete.data.result.exitCode, undefined);
+});
+
+test("release jobs: retry clones failed or canceled jobs only", async () => {
+  const executor = await makeExecutor();
+  const created = await createReleaseJob({
+    action: "publish-content-staging",
+    actor: "jinkun",
+    request: { source: "test" },
+    executor,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error(created.error);
+  const runningRetry = await retryReleaseJob({
+    id: created.data.id,
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(runningRetry.ok, false);
+
+  const canceled = await cancelReleaseJob({
+    id: created.data.id,
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(canceled.ok, true);
+  if (!canceled.ok) throw new Error(canceled.error);
+
+  const retry = await retryReleaseJob({
+    id: created.data.id,
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(retry.ok, true);
+  if (!retry.ok) throw new Error(retry.error);
+  assert.notEqual(retry.data.id, created.data.id);
+  assert.equal(retry.data.status, "queued");
+  assert.equal(retry.data.action, "publish-content-staging");
+  assert.equal(retry.data.request.retryOf, created.data.id);
+  assert.equal(retry.data.request.source, "test");
+});
+
+test("release jobs: stale running jobs fail and free runner state", async () => {
+  const executor = await makeExecutor();
+  const created = await createReleaseJob({
+    action: "publish-content-staging",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error(created.error);
+  const claimed = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["publish-content-staging"],
+    executor,
+  });
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) throw new Error(claimed.error);
+  const now = Date.now();
+  await executor.execute({
+    sql: "UPDATE release_jobs SET updated_at = ? WHERE id = ?",
+    args: [now - 120_000, created.data.id],
+  });
+
+  const stale = await markStaleReleaseJobs({
+    executor,
+    now,
+    staleAfterMs: 60_000,
+  });
+  assert.equal(stale.ok, true);
+  if (!stale.ok) throw new Error(stale.error);
+  assert.equal(stale.data.staleCount, 1);
+
+  const listed = await listReleaseJobs({ executor });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) throw new Error(listed.error);
+  assert.equal(listed.data.jobs[0].status, "failed");
+  assert.equal(listed.data.jobs[0].phase, "stale");
+
+  const summary = await getReleaseRunnerStatus({ executor });
+  assert.equal(summary.ok, true);
+  if (!summary.ok) throw new Error(summary.error);
+  assert.equal(summary.data.runningCount, 0);
+  assert.equal(summary.data.agents[0].status, "idle");
+  assert.equal(summary.data.agents[0].currentJobId, "");
 });
