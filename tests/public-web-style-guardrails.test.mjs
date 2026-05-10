@@ -680,6 +680,32 @@ test("public-web-style-guardrails: native MDX blockquotes use Notion quote styli
   assertIncludes(notionCss, "border-inline-start: var(--quote-border);", "Notion quote border");
 });
 
+test("public-web-style-guardrails: blog post date property renders a Notion-style icon", async () => {
+  const postView = await read("components/posts-mdx/post-view.tsx");
+  const notionBlocksCss = await read("app/(classic)/notion-blocks.css");
+
+  assertIncludes(
+    postView,
+    'className="notion-property__date-icon"',
+    "Blog post date property icon markup",
+  );
+  assertIncludes(
+    notionBlocksCss,
+    "--notion-property-date-icon:",
+    "Blog post date property icon CSS",
+  );
+  assertIncludes(
+    notionBlocksCss,
+    ".notion-property__date-icon",
+    "Blog post date property icon CSS",
+  );
+  assertIncludes(
+    notionBlocksCss,
+    "mask: var(--notion-property-date-icon) center / 15px 15px no-repeat;",
+    "Blog post date property icon CSS",
+  );
+});
+
 test("public-web-style-guardrails: MDX long links cannot widen mobile pages", async () => {
   const postsCss = await read("app/(classic)/posts-mdx.css");
 
