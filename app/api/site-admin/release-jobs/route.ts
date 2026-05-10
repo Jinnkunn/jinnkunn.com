@@ -9,6 +9,7 @@ import {
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import {
   createReleaseJob,
+  getReleaseRunnerStatus,
   listReleaseJobs,
   listReleaseJobActions,
 } from "@/lib/server/release-jobs-service";
@@ -38,8 +39,16 @@ export async function GET(req: NextRequest) {
       const limit = Number(url.searchParams.get("limit") || "20");
       const out = await listReleaseJobs({ limit });
       if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
+      const runners = await getReleaseRunnerStatus();
+      if (!runners.ok) {
+        return apiError(runners.error, {
+          status: runners.status,
+          code: runners.code,
+        });
+      }
       return apiPayloadOk({
         jobs: out.data.jobs,
+        runners: runners.data,
         actions: listReleaseJobActions(),
       });
     },
@@ -75,4 +84,3 @@ export async function POST(req: NextRequest) {
     { requireAllowlist: true, requireAuthSecret: true, rateLimit: RATE_LIMIT },
   );
 }
-

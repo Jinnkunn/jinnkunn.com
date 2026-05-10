@@ -136,6 +136,22 @@ interface RemoteReleaseJobEventRow {
   message: string;
 }
 
+interface RemoteReleaseAgentRow {
+  agentId: string;
+  status: "idle" | "running";
+  currentJobId: string;
+  capabilities: string[];
+  lastSeenAt: number;
+  updatedAt: number;
+}
+
+interface RemoteReleaseRunnerStatus {
+  agents: RemoteReleaseAgentRow[];
+  observedAt: number;
+  queuedCount: number;
+  runningCount: number;
+}
+
 type ReleaseCheck = {
   detail: string;
   label: string;
@@ -678,6 +694,39 @@ function parseRemoteReleaseJobPayload(
   return { job, events };
 }
 
+function parseRemoteReleaseAgent(raw: unknown): RemoteReleaseAgentRow | null {
+  const rec = asRecord(raw);
+  const agentId = asString(rec.agentId);
+  if (!agentId) return null;
+  const status = asString(rec.status);
+  const capabilities = Array.isArray(rec.capabilities)
+    ? rec.capabilities.map(asString).filter(Boolean)
+    : [];
+  return {
+    agentId,
+    capabilities,
+    currentJobId: asString(rec.currentJobId),
+    lastSeenAt: asNumber(rec.lastSeenAt),
+    status: status === "running" ? "running" : "idle",
+    updatedAt: asNumber(rec.updatedAt),
+  };
+}
+
+function parseRemoteReleaseRunnerStatus(raw: unknown): RemoteReleaseRunnerStatus | null {
+  const rec = asRecord(raw);
+  const agents = Array.isArray(rec.agents)
+    ? rec.agents
+        .map(parseRemoteReleaseAgent)
+        .filter((agent): agent is RemoteReleaseAgentRow => agent !== null)
+    : [];
+  return {
+    agents,
+    observedAt: Date.now(),
+    queuedCount: asNumber(rec.queuedCount),
+    runningCount: asNumber(rec.runningCount),
+  };
+}
+
 function localStatusFromRemote(
   status: RemoteReleaseJobStatus,
 ): SiteAdminReleaseJobState["status"] {
@@ -873,6 +922,7 @@ export function ReleasePanel() {
   const [releaseExecutionMode, setReleaseExecutionMode] =
     useState<ReleaseExecutionMode>(() => (isTauriRuntime() ? "local" : "remote"));
   const [activeRemoteJobId, setActiveRemoteJobId] = useState<string | null>(null);
+  const [runnerStatus, setRunnerStatus] = useState<RemoteReleaseRunnerStatus | null>(null);
   const [pendingProductionContinuation, setPendingProductionContinuation] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
@@ -1114,12 +1164,44 @@ export function ReleasePanel() {
     [request, setMessage],
   );
 
+  const loadRemoteRunnerStatus = useCallback(async () => {
+    if (!ready) {
+      setRunnerStatus(null);
+      return;
+    }
+    const response = await request("/api/site-admin/release-jobs?limit=8", "GET");
+    if (!response.ok) {
+      setRunnerStatus(null);
+      return;
+    }
+    const parsed = parseRemoteReleaseRunnerStatus(asRecord(response.data).runners);
+    setRunnerStatus(parsed);
+  }, [ready, request]);
+
   useEffect(() => {
     void loadStatus({ silent: true });
     void loadHistory();
     void loadLocalSource();
     void loadLiveStatus();
-  }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus]);
+    void loadRemoteRunnerStatus();
+  }, [loadHistory, loadLiveStatus, loadLocalSource, loadRemoteRunnerStatus, loadStatus]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    const intervalMs = releaseExecutionMode === "remote" ? 5_000 : 15_000;
+    const refresh = () => {
+      void loadRemoteRunnerStatus().catch(() => {
+        if (!cancelled) setRunnerStatus(null);
+      });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, intervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [loadRemoteRunnerStatus, ready, releaseExecutionMode]);
 
   useEffect(
     () => listenForContentPublishSuggestion(setContentSuggestion),
@@ -1226,6 +1308,7 @@ export function ReleasePanel() {
         void loadHistory();
         void loadLocalSource();
         void loadLiveStatus();
+        void loadRemoteRunnerStatus();
         if (remoteJob.status === "succeeded") {
           if (
             (remoteJob.script === PUBLISH_CONTENT_STAGING_SCRIPT &&
@@ -1258,6 +1341,7 @@ export function ReleasePanel() {
     loadHistory,
     loadLiveStatus,
     loadLocalSource,
+    loadRemoteRunnerStatus,
     loadRemoteReleaseJob,
     loadStatus,
     releaseTarget,
@@ -1339,6 +1423,7 @@ export function ReleasePanel() {
         setActiveRemoteJobId(parsed.job.id);
         setJob(remoteReleaseJobToLocalState(parsed.job));
         setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
+        void loadRemoteRunnerStatus();
         dispatchReleaseState({
           kind: "running",
           info: `${scriptLabel(script)} queued for Mac mini runner…`,
@@ -1362,7 +1447,7 @@ export function ReleasePanel() {
         setMessage("error", `Remote release job failed to start: ${message}`);
       }
     },
-    [releaseTarget, request, setMessage],
+    [loadRemoteRunnerStatus, releaseTarget, request, setMessage],
   );
 
   const startRelease = useCallback(
@@ -1542,6 +1627,12 @@ export function ReleasePanel() {
       </header>
 
       {error ? <div className="release-panel__error">{error}</div> : null}
+
+      <ReleaseRunnerStatusCard
+        executionMode={releaseExecutionMode}
+        onRefresh={() => void loadRemoteRunnerStatus()}
+        status={runnerStatus}
+      />
 
       <ReleaseEnvironmentNotice
         contentChanged={Boolean(contentSuggestion)}
@@ -1820,6 +1911,84 @@ function ReleaseRunnerControl({
         Mac mini runner
       </button>
     </div>
+  );
+}
+
+function ReleaseRunnerStatusCard({
+  executionMode,
+  onRefresh,
+  status,
+}: {
+  executionMode: ReleaseExecutionMode;
+  onRefresh: () => void;
+  status: RemoteReleaseRunnerStatus | null;
+}) {
+  const agent = status?.agents[0] ?? null;
+  const ageMs =
+    agent?.lastSeenAt && status
+      ? status.observedAt - agent.lastSeenAt
+      : Number.POSITIVE_INFINITY;
+  const online = Boolean(agent && ageMs < 30_000);
+  const stale = Boolean(agent && !online);
+  const tone: ReleaseTone = online
+    ? agent?.status === "running"
+      ? "warn"
+      : "ok"
+    : stale
+      ? "blocked"
+      : "muted";
+  const title = online
+    ? agent?.status === "running"
+      ? "Mac mini runner working"
+      : "Mac mini runner online"
+    : stale
+      ? "Mac mini runner stale"
+      : "Mac mini runner not seen";
+  const detail = online
+    ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}.`
+    : stale
+      ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}; check the LaunchAgent if jobs do not start.`
+      : "No heartbeat has reached Site Admin yet.";
+  return (
+    <section
+      className="release-center__runner-status"
+      data-tone={tone}
+      aria-label="Remote release runner status"
+    >
+      <div className="release-center__runner-main">
+        <span className="release-center__runner-dot" aria-hidden="true" />
+        <div>
+          <strong>{title}</strong>
+          <small>
+            {executionMode === "remote" ? "Remote runner selected. " : "Remote runner standby. "}
+            {detail}
+          </small>
+        </div>
+      </div>
+      <dl className="release-center__runner-facts">
+        <div>
+          <dt>Queue</dt>
+          <dd>{status ? `${status.queuedCount} queued` : "Unknown"}</dd>
+        </div>
+        <div>
+          <dt>Running</dt>
+          <dd>{status ? status.runningCount : "Unknown"}</dd>
+        </div>
+        <div>
+          <dt>Agent</dt>
+          <dd>{agent ? shortId(agent.agentId) : "None"}</dd>
+        </div>
+        {agent?.currentJobId ? (
+          <div>
+            <dt>Job</dt>
+            <dd>{shortId(agent.currentJobId)}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <button className="btn btn--secondary" type="button" onClick={onRefresh}>
+        Refresh runner
+      </button>
+    </section>
   );
 }
 
