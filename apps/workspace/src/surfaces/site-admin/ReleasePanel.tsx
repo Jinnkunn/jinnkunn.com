@@ -102,6 +102,7 @@ type RemoteReleaseJobStatus =
   | "canceled";
 
 type RemoteReleaseJobAction =
+  | "status"
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
@@ -605,6 +606,8 @@ function formatRelativeTime(ms: number, now = Date.now()): string {
 }
 
 function scriptLabel(script: string): string {
+  if (script === "release:status:json" || script === "release:status:staging:json") return "Checking release status";
+  if (script === "release:site") return "Smart Release";
   if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing content";
   if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing production content";
   if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) return "Publishing production content from staging";
@@ -621,6 +624,7 @@ function scriptLabel(script: string): string {
 function remoteActionForScript(
   script: SiteAdminReleaseScript,
 ): RemoteReleaseJobAction | null {
+  if (script === "release:status:json" || script === "release:status:staging:json") return "status";
   if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "publish-content-staging";
   if (script === RELEASE_STAGING_SCRIPT) return "deploy-staging-code";
   if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "promote-production-code";
@@ -923,6 +927,7 @@ export function ReleasePanel() {
     useState<ReleaseExecutionMode>(() => (isTauriRuntime() ? "local" : "remote"));
   const [activeRemoteJobId, setActiveRemoteJobId] = useState<string | null>(null);
   const [runnerStatus, setRunnerStatus] = useState<RemoteReleaseRunnerStatus | null>(null);
+  const [remoteJobs, setRemoteJobs] = useState<RemoteReleaseJobRow[]>([]);
   const [pendingProductionContinuation, setPendingProductionContinuation] = useState(false);
   const [history, setHistory] = useState<SiteAdminReleaseHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
@@ -1167,15 +1172,24 @@ export function ReleasePanel() {
   const loadRemoteRunnerStatus = useCallback(async () => {
     if (!ready) {
       setRunnerStatus(null);
+      setRemoteJobs([]);
       return;
     }
     const response = await request("/api/site-admin/release-jobs?limit=8", "GET");
     if (!response.ok) {
       setRunnerStatus(null);
+      setRemoteJobs([]);
       return;
     }
-    const parsed = parseRemoteReleaseRunnerStatus(asRecord(response.data).runners);
+    const data = asRecord(response.data);
+    const parsed = parseRemoteReleaseRunnerStatus(data.runners);
+    const jobs = Array.isArray(data.jobs)
+      ? data.jobs
+          .map(parseRemoteReleaseJob)
+          .filter((item): item is RemoteReleaseJobRow => item !== null)
+      : [];
     setRunnerStatus(parsed);
+    setRemoteJobs(jobs.slice(0, 5));
   }, [ready, request]);
 
   useEffect(() => {
@@ -1450,6 +1464,23 @@ export function ReleasePanel() {
     [loadRemoteRunnerStatus, releaseTarget, request, setMessage],
   );
 
+  const startRemoteStatusCheck = useCallback(async () => {
+    await startRemoteRelease("release:status:json");
+  }, [startRemoteRelease]);
+
+  const openRemoteJob = useCallback(
+    async (jobId: string) => {
+      const remoteJob = await loadRemoteReleaseJob(jobId);
+      if (!remoteJob) return;
+      if (remoteJob.status === "queued" || remoteJob.status === "running") {
+        setActiveRemoteJobId(remoteJob.id);
+      } else {
+        setActiveRemoteJobId(null);
+      }
+    },
+    [loadRemoteReleaseJob],
+  );
+
   const startRelease = useCallback(
     async (script: SiteAdminReleaseScript) => {
       if (releaseExecutionMode === "remote" || !isTauriRuntime()) {
@@ -1673,7 +1704,16 @@ export function ReleasePanel() {
       <ReleaseRunnerStatusCard
         executionMode={releaseExecutionMode}
         onRefresh={() => void loadRemoteRunnerStatus()}
+        onRunStatusCheck={() => void startRemoteStatusCheck()}
+        statusCheckDisabled={!ready || job?.status === "running"}
         status={runnerStatus}
+      />
+
+      <ReleaseRemoteJobsCard
+        activeJobId={activeRemoteJobId || (job?.cwd === "remote release runner" ? job.job_id : null)}
+        jobs={remoteJobs}
+        onOpen={(jobId) => void openRemoteJob(jobId)}
+        onRetry={(jobId) => void retryRemoteJob(jobId)}
       />
 
       <ReleaseEnvironmentNotice
@@ -1968,10 +2008,14 @@ function ReleaseRunnerControl({
 function ReleaseRunnerStatusCard({
   executionMode,
   onRefresh,
+  onRunStatusCheck,
+  statusCheckDisabled,
   status,
 }: {
   executionMode: ReleaseExecutionMode;
   onRefresh: () => void;
+  onRunStatusCheck: () => void;
+  statusCheckDisabled: boolean;
   status: RemoteReleaseRunnerStatus | null;
 }) {
   const agent = status?.agents[0] ?? null;
@@ -2036,9 +2080,92 @@ function ReleaseRunnerStatusCard({
           </div>
         ) : null}
       </dl>
-      <button className="btn btn--secondary" type="button" onClick={onRefresh}>
-        Refresh runner
-      </button>
+      <div className="release-center__runner-actions">
+        <button
+          className="btn btn--secondary"
+          type="button"
+          disabled={statusCheckDisabled}
+          onClick={onRunStatusCheck}
+        >
+          Run status check
+        </button>
+        <button className="btn btn--secondary" type="button" onClick={onRefresh}>
+          Refresh runner
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function remoteJobStatusTone(status: RemoteReleaseJobStatus): ReleaseTone {
+  if (status === "succeeded") return "ok";
+  if (status === "failed" || status === "canceled") return "blocked";
+  if (status === "running" || status === "queued") return "warn";
+  return "muted";
+}
+
+function remoteJobStatusLabel(job: RemoteReleaseJobRow): string {
+  if (job.status === "queued") return "Queued";
+  if (job.status === "running") return job.phase ? `Running · ${job.phase}` : "Running";
+  if (job.status === "succeeded") return "Succeeded";
+  if (job.status === "failed") return "Failed";
+  return "Canceled";
+}
+
+function ReleaseRemoteJobsCard({
+  activeJobId,
+  jobs,
+  onOpen,
+  onRetry,
+}: {
+  activeJobId: string | null;
+  jobs: RemoteReleaseJobRow[];
+  onOpen: (jobId: string) => void;
+  onRetry: (jobId: string) => void;
+}) {
+  return (
+    <section className="release-center__remote-jobs" aria-label="Recent remote release jobs">
+      <header>
+        <div>
+          <h2>Recent Remote Jobs</h2>
+          <p>Latest Mac mini runner activity. Open a row to inspect its logs.</p>
+        </div>
+        <strong>{jobs.length ? `${jobs.length} shown` : "No jobs"}</strong>
+      </header>
+      {jobs.length > 0 ? (
+        <div className="release-center__remote-job-list">
+          {jobs.map((item) => {
+            const active = activeJobId === item.id;
+            const canRetry = item.status === "failed" || item.status === "canceled";
+            return (
+              <div
+                className="release-center__remote-job-row"
+                data-active={active ? "true" : "false"}
+                data-tone={remoteJobStatusTone(item.status)}
+                key={item.id}
+              >
+                <button type="button" onClick={() => onOpen(item.id)}>
+                  <span>{scriptLabel(item.script)}</span>
+                  <strong>{remoteJobStatusLabel(item)}</strong>
+                  <small>
+                    {shortId(item.id)} · {item.target || "site"} · updated {formatRelativeTime(item.updatedAt)}
+                  </small>
+                </button>
+                <div className="release-center__remote-job-actions">
+                  {item.agentId ? <span>{shortId(item.agentId)}</span> : null}
+                  {canRetry ? (
+                    <button className="btn btn--secondary" type="button" onClick={() => onRetry(item.id)}>
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="release-center__empty">No remote release jobs have been recorded yet.</p>
+      )}
     </section>
   );
 }
