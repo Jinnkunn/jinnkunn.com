@@ -1114,14 +1114,12 @@ export function ReleasePanel() {
     [request, setMessage],
   );
 
-  /* eslint-disable react-hooks/set-state-in-effect -- release status hydrates from remote APIs */
   useEffect(() => {
     void loadStatus({ silent: true });
     void loadHistory();
     void loadLocalSource();
     void loadLiveStatus();
   }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(
     () => listenForContentPublishSuggestion(setContentSuggestion),
@@ -1265,14 +1263,12 @@ export function ReleasePanel() {
     releaseTarget,
   ]);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- completion state clears once the next top-level action is no longer needed */
   useEffect(() => {
     if (!pendingProductionContinuation || job?.status === "running") return;
     if (smartPlan.kind === "noop" || smartPlan.kind === "blocked") {
       setPendingProductionContinuation(false);
     }
   }, [job?.status, pendingProductionContinuation, smartPlan.kind]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const copyText = useCallback(
     async (label: string, text: string) => {
