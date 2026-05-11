@@ -265,6 +265,16 @@ interface ReleaseAutoCommitSummary {
   source: "report" | "log";
 }
 
+interface ReleaseBuildCacheSummary {
+  attempted: boolean;
+  expectedContentSha: string;
+  hit: boolean;
+  reason: string;
+  restored: string[];
+  source: "report" | "log";
+  storedContentSha: string;
+}
+
 type PromotePreview =
   | {
       ok: true;
@@ -380,6 +390,61 @@ function parseReleaseAutoCommitFromText(
     pushError: match[3] || "",
     source: "log",
   };
+}
+
+function parseReleaseBuildCacheObject(raw: unknown): ReleaseBuildCacheSummary | null {
+  const rec = asRecord(raw);
+  const cache = asRecord(rec.buildCache);
+  if (Object.keys(cache).length === 0) return null;
+  const restored = Array.isArray(cache.restored)
+    ? cache.restored.map(asString).filter(Boolean)
+    : [];
+  return {
+    attempted: Boolean(cache.attempted),
+    expectedContentSha: asString(cache.expectedContentSha),
+    hit: Boolean(cache.hit),
+    reason: asString(cache.reason),
+    restored,
+    source: "report",
+    storedContentSha: asString(cache.storedContentSha),
+  };
+}
+
+function parseReleaseBuildCacheFromText(
+  raw: string,
+): ReleaseBuildCacheSummary | null {
+  const parsed = parseJsonObjectFromTail(raw);
+  const fromReport = parseReleaseBuildCacheObject(parsed);
+  if (fromReport) return fromReport;
+  const hit = raw.match(
+    /reusing build:cf cache .*?restored:\s*([^)]+)\)/i,
+  );
+  if (hit?.[1]) {
+    return {
+      attempted: true,
+      expectedContentSha: "",
+      hit: true,
+      reason: "matched code and content",
+      restored: hit[1].split(",").map((value) => value.trim()).filter(Boolean),
+      source: "log",
+      storedContentSha: "",
+    };
+  }
+  const stored = raw.match(
+    /stored build:cf cache .*?content=([a-f0-9]{7,40})\s*\(([^)]+)\)/i,
+  );
+  if (stored?.[1]) {
+    return {
+      attempted: false,
+      expectedContentSha: "",
+      hit: false,
+      reason: `stored ${stored[2] || "build artifacts"}`,
+      restored: [],
+      source: "log",
+      storedContentSha: stored[1],
+    };
+  }
+  return null;
 }
 
 function parseSnapshot(raw: unknown): EnvironmentSnapshot | null {
@@ -1096,6 +1161,15 @@ export function ReleasePanel() {
       ),
     [job?.stdout_tail, jobLog],
   );
+  const buildCacheSummary = useMemo(
+    () =>
+      parseReleaseBuildCacheFromText(
+        [job?.stdout_tail ?? "", ...jobLog.map((line) => line.message)]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    [job?.stdout_tail, jobLog],
+  );
 
   const loadHistory = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -1297,6 +1371,7 @@ export function ReleasePanel() {
         void loadHistory();
         void loadLocalSource();
         void loadLiveStatus();
+        void loadRemoteRunnerStatus();
         if (payload.state.status === "succeeded") {
           if (
             payload.state.script === RELEASE_STAGING_SCRIPT ||
@@ -1327,7 +1402,14 @@ export function ReleasePanel() {
       cancelled = true;
       unlisten?.();
     };
-  }, [loadHistory, loadLiveStatus, loadLocalSource, loadStatus, releaseTarget]);
+  }, [
+    loadHistory,
+    loadLiveStatus,
+    loadLocalSource,
+    loadRemoteRunnerStatus,
+    loadStatus,
+    releaseTarget,
+  ]);
 
   useEffect(() => {
     if (!activeRemoteJobId) return;
@@ -1744,11 +1826,13 @@ export function ReleasePanel() {
       </header>
 
       {error ? <div className="release-panel__error">{error}</div> : null}
+      <ReleaseBuildCacheNotice summary={buildCacheSummary} />
       <ReleaseAutoCommitNotice summary={autoCommitSummary} />
 
       <ReleaseRunnerStatusCard
         executionMode={releaseExecutionMode}
         formatRelativeTime={formatRelativeTime}
+        jobs={remoteJobs}
         onRefresh={() => void loadRemoteRunnerStatus()}
         onRunStatusCheck={() => void startRemoteStatusCheck()}
         shortId={shortId}
@@ -1792,6 +1876,8 @@ export function ReleasePanel() {
         localStagingMismatch={localStagingMismatch}
         preview={preview}
         productionAlreadyCurrent={productionAlreadyCurrent}
+        productionOverlaySnapshot={productionOverlaySnapshot}
+        stagingOverlaySnapshot={stagingOverlaySnapshot}
         status={status}
       />
 
@@ -2192,6 +2278,59 @@ function ReleaseAutoCommitNotice({
   );
 }
 
+function ReleaseBuildCacheNotice({
+  summary,
+}: {
+  summary: ReleaseBuildCacheSummary | null;
+}) {
+  if (!summary) return null;
+  if (summary.hit) {
+    const restored = summary.restored.length
+      ? summary.restored.join(" + ")
+      : "build artifacts";
+    return (
+      <section
+        className="release-center__notice release-center__build-cache"
+        data-tone="ok"
+        aria-label="Build cache reused"
+      >
+        <strong>Staging build reused</strong>
+        <span>
+          Production restored {restored}; code and content matched
+          {summary.expectedContentSha ? ` (${shortSha(summary.expectedContentSha)})` : ""}.
+        </span>
+      </section>
+    );
+  }
+  if (summary.storedContentSha || summary.reason.startsWith("stored ")) {
+    return (
+      <section
+        className="release-center__notice release-center__build-cache"
+        data-tone="ok"
+        aria-label="Build cache stored"
+      >
+        <strong>Build cache ready</strong>
+        <span>
+          Staging stored reusable artifacts for content {shortSha(summary.storedContentSha)}.
+        </span>
+      </section>
+    );
+  }
+  if (summary.attempted) {
+    return (
+      <section
+        className="release-center__notice release-center__build-cache"
+        data-tone="warn"
+        aria-label="Build cache missed"
+      >
+        <strong>Build cache missed</strong>
+        <span>{summary.reason || "Production rebuilt because no matching staging artifact was available."}</span>
+      </section>
+    );
+  }
+  return null;
+}
+
 function ReleaseEnvironmentNotice({
   contentChanged,
   pendingProductionContinuation,
@@ -2270,6 +2409,8 @@ function ReleaseFlowMap({
   localStagingMismatch,
   preview,
   productionAlreadyCurrent,
+  productionOverlaySnapshot,
+  stagingOverlaySnapshot,
   status,
 }: {
   isStaging: boolean;
@@ -2278,6 +2419,8 @@ function ReleaseFlowMap({
   localStagingMismatch: boolean;
   preview: PromotePreview | null;
   productionAlreadyCurrent: boolean;
+  productionOverlaySnapshot: string;
+  stagingOverlaySnapshot: string;
   status: StatusPayload | null;
 }) {
   const sourceTone: ReleaseTone = localDirty || localStagingMismatch
@@ -2287,16 +2430,23 @@ function ReleaseFlowMap({
       : status
         ? "ok"
         : "muted";
+  const localCodeSha = localSource?.sha || status?.source?.codeSha || "";
+  const localContentSha = status?.source?.contentSha || "";
+  const stagingCode = preview?.ok ? preview.staging.codeSha : status?.source?.codeSha || "";
+  const stagingContentSha = preview?.ok ? preview.staging.contentSha : status?.source?.contentSha || "";
+  const productionCode = preview?.ok && preview.production ? preview.production.codeSha : "";
+  const productionContentSha =
+    preview?.ok && preview.production ? preview.production.contentSha : "";
   const sourceTitle = localSource
     ? localSource.dirty
-      ? "Dirty"
+      ? "Local changes"
       : shortSha(localSource.sha)
     : shortSha(status?.source?.codeSha);
   const sourceDetail = localSource
     ? localSource.dirty
       ? `${localSource.dirty_file_count} local file${localSource.dirty_file_count === 1 ? "" : "s"} changed`
-      : `${localSource.branch} · staging ${shortSha(preview?.ok ? preview.staging.codeSha : status?.source?.codeSha)}`
-    : `content ${shortSha(status?.source?.contentSha)} · ${branchLabel(status?.source)}`;
+      : `${localSource.branch} · HEAD ready`
+    : `branch ${branchLabel(status?.source)}`;
   const stagingTone: ReleaseTone =
     localStagingMismatch
       ? "blocked"
@@ -2313,41 +2463,65 @@ function ReleaseFlowMap({
       : "muted";
   return (
     <section className="release-center__route" aria-label="Release route">
-      <ReleaseNode
-        label="Source"
-        title={sourceTitle}
-        detail={sourceDetail}
-        tone={sourceTone}
-      />
-      <span className="release-center__route-arrow" aria-hidden="true" />
-      <ReleaseNode
-        current={isStaging}
-        label="Staging"
-        title={preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}
-        detail={
-          preview?.ok
-            ? `code ${shortSha(preview.staging.codeSha)} · content ${shortSha(preview.staging.contentSha)}`
-            : "load preflight"
-        }
-        tone={stagingTone}
-      />
-      <span className="release-center__route-arrow" aria-hidden="true" />
-      <ReleaseNode
-        label="Production"
-        title={
-          preview?.ok
-            ? preview.production
-              ? shortId(preview.production.versionId)
-              : "No deployment"
-            : "Not loaded"
-        }
-        detail={
-          preview?.ok && preview.production
-            ? `code ${shortSha(preview.production.codeSha)} · content ${shortSha(preview.production.contentSha)}`
-            : "read from staging preflight"
-        }
-        tone={productionTone}
-      />
+      <header>
+        <div>
+          <h2>Release Flow</h2>
+          <p>Local HEAD, staging Worker, and production Worker compared by code, content, and overlay.</p>
+        </div>
+        <strong data-tone={productionAlreadyCurrent ? "ok" : productionTone}>
+          {productionAlreadyCurrent ? "Current" : "Review"}
+        </strong>
+      </header>
+      <div className="release-center__route-path">
+        <ReleaseNode
+          label="Local HEAD"
+          title={sourceTitle}
+          detail={sourceDetail}
+          tone={sourceTone}
+          metrics={[
+            ["Code", shortSha(localCodeSha)],
+            ["Content", shortSha(localContentSha)],
+            ["State", localDirty ? "Dirty" : localStagingMismatch ? "Mismatch" : "Clean"],
+          ]}
+        />
+        <span className="release-center__route-arrow" aria-hidden="true" />
+        <ReleaseNode
+          current={isStaging}
+          label="Staging Worker"
+          title={preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}
+          detail={preview?.ok ? "Active candidate" : "Load preflight"}
+          tone={stagingTone}
+          metrics={[
+            ["Code", shortSha(stagingCode)],
+            ["Content", shortSha(stagingContentSha)],
+            ["Overlay", stagingOverlaySnapshot ? shortSha(stagingOverlaySnapshot) : "None"],
+          ]}
+        />
+        <span className="release-center__route-arrow" aria-hidden="true" />
+        <ReleaseNode
+          label="Production Worker"
+          title={
+            preview?.ok
+              ? preview.production
+                ? shortId(preview.production.versionId)
+                : "No deployment"
+              : "Not loaded"
+          }
+          detail={
+            productionAlreadyCurrent
+              ? "Matches staging"
+              : preview?.ok
+                ? "Behind staging"
+                : "Read from preflight"
+          }
+          tone={productionTone}
+          metrics={[
+            ["Code", shortSha(productionCode)],
+            ["Content", shortSha(productionContentSha)],
+            ["Overlay", productionOverlaySnapshot ? shortSha(productionOverlaySnapshot) : "None"],
+          ]}
+        />
+      </div>
     </section>
   );
 }
@@ -2511,12 +2685,14 @@ function ReleaseNode({
   current,
   detail,
   label,
+  metrics,
   title,
   tone,
 }: {
   current?: boolean;
   detail: string;
   label: string;
+  metrics?: Array<[string, string]>;
   title: string;
   tone: ReleaseTone;
 }) {
@@ -2525,6 +2701,16 @@ function ReleaseNode({
       <span>{label}</span>
       <strong>{title || "-"}</strong>
       <small>{detail}</small>
+      {metrics?.length ? (
+        <dl>
+          {metrics.map(([name, value]) => (
+            <div key={name}>
+              <dt>{name}</dt>
+              <dd>{value || "-"}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }
@@ -2627,14 +2813,25 @@ function ReleaseJobPanel({
   onRetry?: () => void;
 }) {
   const logRef = useRef<HTMLDivElement | null>(null);
+  const [logPreference, setLogPreference] = useState<{
+    jobId: string;
+    open: boolean;
+  } | null>(null);
+  const defaultLogsOpen = job?.status !== "succeeded";
+  const logsOpen =
+    logPreference && logPreference.jobId === job?.job_id
+      ? logPreference.open
+      : defaultLogsOpen;
 
   useEffect(() => {
+    if (!logsOpen) return;
     const log = logRef.current;
     if (!log) return;
     log.scrollTop = log.scrollHeight;
-  }, [job?.phase, job?.status, lines.length]);
+  }, [job?.phase, job?.status, lines.length, logsOpen]);
 
   if (!job && lines.length === 0) return null;
+  const finished = job?.status && job.status !== "running";
   return (
     <section className="release-center__job" data-status={job?.status || "idle"} aria-label="Release activity">
       <header>
@@ -2644,6 +2841,20 @@ function ReleaseJobPanel({
         </div>
         <div className="release-center__job-actions">
           {job?.duration_ms ? <strong>{Math.round(job.duration_ms / 1000)}s</strong> : null}
+          {finished ? (
+            <button
+              className="btn btn--secondary"
+              type="button"
+              onClick={() =>
+                setLogPreference({
+                  jobId: job?.job_id ?? "session",
+                  open: !logsOpen,
+                })
+              }
+            >
+              {logsOpen ? "Hide logs" : "Show logs"}
+            </button>
+          ) : null}
           {onRetry ? (
             <button className="btn btn--secondary" type="button" onClick={onRetry}>
               Retry
@@ -2651,18 +2862,24 @@ function ReleaseJobPanel({
           ) : null}
         </div>
       </header>
-      <div ref={logRef} className="release-center__log" role="log" aria-live="polite">
-        {lines.length > 0 ? (
-          lines.map((line) => (
-            <div className="release-center__log-line" data-stream={line.stream} key={line.id}>
-              <span>{line.phase}</span>
-              <code>{line.message}</code>
-            </div>
-          ))
-        ) : (
-          <p>Waiting for release output…</p>
-        )}
-      </div>
+      {logsOpen ? (
+        <div ref={logRef} className="release-center__log" role="log" aria-live="polite">
+          {lines.length > 0 ? (
+            lines.map((line) => (
+              <div className="release-center__log-line" data-stream={line.stream} key={line.id}>
+                <span>{line.phase}</span>
+                <code>{line.message}</code>
+              </div>
+            ))
+          ) : (
+            <p>Waiting for release output…</p>
+          )}
+        </div>
+      ) : (
+        <div className="release-center__log-summary">
+          Logs hidden after successful release. Use Show logs if you need the build output.
+        </div>
+      )}
       {job?.error ? <div className="release-panel__action-error">{job.error}</div> : null}
     </section>
   );

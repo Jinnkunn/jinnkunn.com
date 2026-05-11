@@ -67,6 +67,7 @@ interface ReleaseRunnerFormatters {
 export function ReleaseRunnerStatusCard({
   executionMode,
   formatRelativeTime,
+  jobs,
   onRefresh,
   onRunStatusCheck,
   shortId,
@@ -75,6 +76,7 @@ export function ReleaseRunnerStatusCard({
 }: {
   executionMode: ReleaseExecutionMode;
   formatRelativeTime: ReleaseRunnerFormatters["formatRelativeTime"];
+  jobs: RemoteReleaseJobRow[];
   onRefresh: () => void;
   onRunStatusCheck: () => void;
   shortId: ReleaseRunnerFormatters["shortId"];
@@ -82,6 +84,11 @@ export function ReleaseRunnerStatusCard({
   status: RemoteReleaseRunnerStatus | null;
 }) {
   const agent = status?.agents[0] ?? null;
+  const latestJob = jobs[0] ?? null;
+  const activeJob =
+    jobs.find((job) => job.status === "running") ??
+    jobs.find((job) => job.status === "queued") ??
+    null;
   const ageMs =
     agent?.lastSeenAt && status
       ? status.observedAt - agent.lastSeenAt
@@ -105,8 +112,26 @@ export function ReleaseRunnerStatusCard({
   const detail = online
     ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}.`
     : stale
-      ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}; check the LaunchAgent if jobs do not start.`
-      : "No heartbeat has reached Site Admin yet.";
+      ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}; check the tunnel, Access policy, or LaunchAgent if jobs do not start.`
+      : "No heartbeat has reached Site Admin yet. Check Cloudflare Tunnel, Access service token, and the runner bearer token.";
+  const wakeTone: ReleaseTone =
+    online
+      ? "ok"
+      : status?.queuedCount
+        ? "blocked"
+        : stale
+          ? "warn"
+          : "muted";
+  const wakeLabel =
+    online
+      ? activeJob
+        ? "Claiming"
+        : "Ready"
+      : status?.queuedCount
+        ? "Pending"
+        : stale
+          ? "Stale"
+          : "Waiting";
   return (
     <section
       className="release-center__runner-status"
@@ -125,34 +150,40 @@ export function ReleaseRunnerStatusCard({
       </div>
       <dl className="release-center__runner-facts">
         <div>
+          <dt>Heartbeat</dt>
+          <dd>{agent ? formatRelativeTime(agent.lastSeenAt) : "None"}</dd>
+        </div>
+        <div>
           <dt>Queue</dt>
-          <dd>{status ? `${status.queuedCount} queued` : "Unknown"}</dd>
+          <dd>{status ? `${status.queuedCount} / ${status.runningCount}` : "Unknown"}</dd>
         </div>
         <div>
-          <dt>Running</dt>
-          <dd>{status ? status.runningCount : "Unknown"}</dd>
+          <dt>Current</dt>
+          <dd>{activeJob ? shortId(activeJob.id) : agent?.currentJobId ? shortId(agent.currentJobId) : "Idle"}</dd>
         </div>
         <div>
-          <dt>Agent</dt>
-          <dd>{agent ? shortId(agent.agentId) : "None"}</dd>
+          <dt>Last job</dt>
+          <dd>{latestJob ? `${remoteJobStatusLabel(latestJob)} · ${formatRelativeTime(latestJob.updatedAt)}` : "None"}</dd>
         </div>
-        {agent?.currentJobId ? (
-          <div>
-            <dt>Job</dt>
-            <dd>{shortId(agent.currentJobId)}</dd>
-          </div>
-        ) : null}
       </dl>
       <dl className="release-center__runner-guards" aria-label="Runner guardrails">
-        <div>
+        <div data-tone={wakeTone}>
           <dt>Wake</dt>
-          <dd>Access</dd>
+          <dd>{wakeLabel}</dd>
         </div>
-        <div>
+        <div data-tone={online || stale ? "ok" : "muted"}>
+          <dt>Tunnel</dt>
+          <dd>{online || stale ? "Seen" : "No signal"}</dd>
+        </div>
+        <div data-tone="ok">
+          <dt>Access</dt>
+          <dd>Service token</dd>
+        </div>
+        <div data-tone="ok">
           <dt>Auth</dt>
-          <dd>Bearer</dd>
+          <dd>Bearer token</dd>
         </div>
-        <div>
+        <div data-tone="muted">
           <dt>Fallback</dt>
           <dd>60s poll</dd>
         </div>
