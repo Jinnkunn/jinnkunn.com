@@ -15,9 +15,12 @@ import {
 import { DataSettingsPanel, defaultWorkspaceBackupFilename } from "./DataSettingsPanel";
 import type { WorkspaceModuleDefinition } from "../modules/types";
 import {
+  workspaceBackupAuto,
   workspaceBackupCreate,
   workspaceBackupInfo,
+  workspaceBackupPreview,
   workspaceBackupRestore,
+  workspaceBackupsList,
   workspaceMcpAuditRecent,
   workspaceMcpConfirmationDecide,
   workspaceMcpConfirmationsList,
@@ -28,6 +31,8 @@ import type {
   WorkspaceBackupInfo,
   WorkspaceBackupCreateResult,
   WorkspaceBackupRestoreResult,
+  WorkspaceBackupListEntry,
+  WorkspaceBackupPreview,
   WorkspaceMcpAuditEntry,
   WorkspaceMcpConfirmation,
   WorkspaceMcpSettings,
@@ -615,6 +620,8 @@ export function SettingsWindow({
   const [dataMessage, setDataMessage] = useState<string | null>(null);
   const [lastBackup, setLastBackup] = useState<WorkspaceBackupCreateResult | null>(null);
   const [lastRestore, setLastRestore] = useState<WorkspaceBackupRestoreResult | null>(null);
+  const [backupEntries, setBackupEntries] = useState<WorkspaceBackupListEntry[]>([]);
+  const [backupPreview, setBackupPreview] = useState<WorkspaceBackupPreview | null>(null);
 
   const refreshMcp = useCallback(async () => {
     setMcpLoading(true);
@@ -668,6 +675,7 @@ export function SettingsWindow({
     setDataError(null);
     try {
       setDataInfo(await workspaceBackupInfo());
+      setBackupEntries(await workspaceBackupsList());
     } catch (error) {
       setDataError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -688,6 +696,7 @@ export function SettingsWindow({
     try {
       const result = await workspaceBackupCreate(destinationPath);
       setLastBackup(result);
+      setBackupPreview(null);
       setDataMessage(`Backup created: ${pathLeaf(result.path)}`);
       await refreshDataInfo();
     } catch (error) {
@@ -697,22 +706,49 @@ export function SettingsWindow({
     }
   }, [refreshDataInfo]);
 
-  const restoreBackup = useCallback(async () => {
+  const createAutoBackup = useCallback(async () => {
     setDataError(null);
     setDataMessage(null);
-    const selectedPath = await openDialog({
-      filters: [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }],
-      multiple: false,
-      title: "Restore Workspace Backup",
-    });
-    if (!selectedPath || Array.isArray(selectedPath)) return;
-    const confirmed = await confirmDialog(
-      "Restore this backup? The current database will be copied to a rollback backup first. Restart Workspace after restore.",
-      { kind: "warning", title: "Restore Workspace Backup" },
-    );
-    if (!confirmed) return;
     setDataLoading(true);
     try {
+      const result = await workspaceBackupAuto(10);
+      if (result.backup) setLastBackup(result.backup);
+      setDataMessage(
+        result.created
+          ? `Automatic backup created: ${pathLeaf(result.backup?.path ?? "")}`
+          : result.skippedReason ?? "Automatic backup skipped.",
+      );
+      await refreshDataInfo();
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDataLoading(false);
+    }
+  }, [refreshDataInfo]);
+
+  const restoreBackupFromPath = useCallback(async (selectedPath: string) => {
+    setDataError(null);
+    setDataMessage(null);
+    setDataLoading(true);
+    try {
+      const preview = await workspaceBackupPreview(selectedPath);
+      setBackupPreview(preview);
+      setDataLoading(false);
+      const changedTables = preview.tables.filter(
+        (table) => table.currentCount !== table.backupCount,
+      );
+      const summary = changedTables.length
+        ? changedTables
+            .slice(0, 6)
+            .map((table) => `${table.name}: ${table.currentCount} → ${table.backupCount}`)
+            .join("\n")
+        : "Row counts match for tracked tables.";
+      const confirmed = await confirmDialog(
+        `Restore ${pathLeaf(preview.sourcePath)}?\n\n${summary}\n\nThe current database will be copied to a rollback backup first. Restart Workspace after restore.`,
+        { kind: "warning", title: "Restore Workspace Backup" },
+      );
+      if (!confirmed) return;
+      setDataLoading(true);
       const result = await workspaceBackupRestore(selectedPath);
       setLastRestore(result);
       setDataMessage("Backup restored. Restart Workspace to reload every surface.");
@@ -723,6 +759,16 @@ export function SettingsWindow({
       setDataLoading(false);
     }
   }, [refreshDataInfo]);
+
+  const restoreBackup = useCallback(async () => {
+    const selectedPath = await openDialog({
+      filters: [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }],
+      multiple: false,
+      title: "Restore Workspace Backup",
+    });
+    if (!selectedPath || Array.isArray(selectedPath)) return;
+    await restoreBackupFromPath(selectedPath);
+  }, [restoreBackupFromPath]);
 
   const navItems = useMemo(
     () => [
@@ -808,9 +854,13 @@ export function SettingsWindow({
               lastRestore={lastRestore}
               loading={dataLoading}
               message={dataMessage}
+              preview={backupPreview}
+              recentBackups={backupEntries}
+              onCreateAutoBackup={() => void createAutoBackup()}
               onCreateBackup={() => void createBackup()}
               onRefresh={() => void refreshDataInfo()}
               onRestoreBackup={() => void restoreBackup()}
+              onRestoreBackupFromPath={(path) => void restoreBackupFromPath(path)}
             />
           ) : (
             <McpSettingsPanel

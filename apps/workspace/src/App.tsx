@@ -40,6 +40,7 @@ import { useDeferredPersist } from "./shell/useDeferredPersist";
 import { useNativeMenu } from "./shell/useNativeMenu";
 import { useTrayBindings } from "./shell/useTrayBindings";
 import { useWindowFocus } from "./shell/useWindowFocus";
+import { workspaceBackupAuto } from "./lib/tauri";
 import { runUpdateCheckSafely } from "./lib/updater";
 import {
   ALL_WORKSPACE_SURFACES,
@@ -734,6 +735,10 @@ export function App() {
       });
     }, 10_000);
     return () => window.clearTimeout(handle);
+  }, []);
+
+  useEffect(() => {
+    void workspaceBackupAuto(10).catch(() => undefined);
   }, []);
 
   const toggleFavorite = useCallback(

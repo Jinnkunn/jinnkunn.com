@@ -69,6 +69,34 @@ export interface WorkspaceBackupRestoreResult {
   restartRequired: boolean;
 }
 
+export interface WorkspaceBackupListEntry {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  modifiedAtMs: number | null;
+  automatic: boolean;
+}
+
+export interface WorkspaceBackupAutoResult {
+  created: boolean;
+  skippedReason: string | null;
+  backup: WorkspaceBackupCreateResult | null;
+  deleted: string[];
+}
+
+export interface WorkspaceBackupPreviewTable {
+  name: string;
+  currentCount: number;
+  backupCount: number;
+}
+
+export interface WorkspaceBackupPreview {
+  sourcePath: string;
+  sizeBytes: number;
+  modifiedAtMs: number | null;
+  tables: WorkspaceBackupPreviewTable[];
+}
+
 export function workspaceBackupInfo(): Promise<WorkspaceBackupInfo> {
   return invoke("workspace_backup_info");
 }
@@ -83,6 +111,22 @@ export function workspaceBackupRestore(
   sourcePath: string,
 ): Promise<WorkspaceBackupRestoreResult> {
   return invoke("workspace_backup_restore", { sourcePath });
+}
+
+export function workspaceBackupsList(): Promise<WorkspaceBackupListEntry[]> {
+  return invoke("workspace_backups_list");
+}
+
+export function workspaceBackupAuto(
+  retentionCount = 10,
+): Promise<WorkspaceBackupAutoResult> {
+  return invoke("workspace_backup_auto", { retentionCount });
+}
+
+export function workspaceBackupPreview(
+  sourcePath: string,
+): Promise<WorkspaceBackupPreview> {
+  return invoke("workspace_backup_preview", { sourcePath });
 }
 
 export type WorkspaceMcpWriteMode = "read-only" | "local-write";

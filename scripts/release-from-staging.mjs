@@ -23,9 +23,9 @@
 //      docs/runbooks/production-version-history.md.
 //   7. Invoke `release:prod --skip-checks` with all confirmation env
 //      vars pre-populated. We pass `--skip-checks` because staging
-//      already proved the same code SHA passes lint/tests/etc.; the
-//      production build still runs so it can bundle the latest staging
-//      D1 content into the production Worker.
+//      already proved the same code SHA passes lint/tests/etc. When the
+//      staging build cache has the same content SHA, production reuses
+//      that artifact instead of rebuilding.
 //   8. After success, snapshot the new production version too — gives
 //      a continuous history without an extra command.
 //
@@ -294,6 +294,10 @@ async function main() {
             snapshotPreviousProduction: Boolean(productionVersionId),
             releaseProd: {
               skipChecks: true,
+              reuseStagingBuild: staging.meta?.contentSha
+                ? "if staging cache exists for the same code+content"
+                : "best-effort; staging content metadata is missing",
+              expectedContentSha: staging.meta?.contentSha || "",
               expectProductionVersion: productionVersionId || "(none)",
             },
             snapshotNewProduction: true,
@@ -363,6 +367,8 @@ async function main() {
   const productionReleaseEnv = {
     CONFIRM_PRODUCTION_DEPLOY: "1",
     CONFIRM_PRODUCTION_SHA: git.sha,
+    RELEASE_REUSE_STAGING_BUILD: "1",
+    RELEASE_EXPECT_CONTENT_SHA: staging.meta?.contentSha || "",
     ...(productionVersionId
       ? { RELEASE_EXPECT_PRODUCTION_VERSION: productionVersionId }
       : {}),

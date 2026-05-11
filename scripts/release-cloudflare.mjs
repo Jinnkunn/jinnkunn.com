@@ -23,9 +23,9 @@ const CHECKS_CACHE_BUCKET = "checks";
 const CHECKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STAGING_VERIFY_BUCKET = "staging-verified";
 const STAGING_VERIFY_TTL_MS = 30 * 60 * 1000;
-// Build cache is intentionally opt-in: D1 content can change without a
-// code commit, so SHA-only build reuse would ship stale public pages.
-// Set ALLOW_D1_BUILD_CACHE=1 only when you know staging D1 did not change.
+// Staging writes a code+content-bound build artifact after a verified
+// build. Production promotion may reuse it only when the caller provides
+// the exact content SHA from the active staging deployment.
 const BUILD_CACHE_BUCKET = "build";
 const BUILD_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const BUILD_CACHE_PATHS = [".open-next", ".next"];
@@ -224,6 +224,12 @@ function restoreBuildArtifacts({ repoRoot, artifactRoot, sha }) {
     if (result.status === 0) restored.push(rel);
   }
   return restored;
+}
+
+function buildCacheContentMatches(marker, expectedContentSha) {
+  const expected = String(expectedContentSha || "").trim().toLowerCase();
+  if (!expected) return true;
+  return String(marker?.contentSnapshotSha || "").trim().toLowerCase() === expected;
 }
 
 function prepareCleanReleaseSnapshot({ repoRoot, sha }) {
@@ -587,15 +593,21 @@ async function main() {
   }
 
   let uploadedVersionId = null;
+  let buildCache = {
+    attempted: false,
+    hit: false,
+    restored: [],
+    reason: "",
+    expectedContentSha: readEnv("RELEASE_EXPECT_CONTENT_SHA"),
+    storedContentSha: "",
+  };
 
   if (!args.skipBuild) {
-    // Same-SHA build reuse: if a previous release on this HEAD already
-    // produced .open-next/.next, restore those instead of rebuilding.
-    // This is opt-in because db mode dumps content/* from D1 at build
-    // time, and D1 content can change while the code SHA stays fixed.
     let restored = [];
-    const allowBuildCache = readEnv("ALLOW_D1_BUILD_CACHE") === "1";
-    const buildCache = args.noCache || !allowBuildCache
+    const allowBuildCacheRead =
+      readEnv("RELEASE_REUSE_STAGING_BUILD") === "1" ||
+      readEnv("ALLOW_D1_BUILD_CACHE") === "1";
+    const cached = args.noCache || !allowBuildCacheRead
       ? null
       : readMarker({
           repoRoot: ROOT,
@@ -603,36 +615,39 @@ async function main() {
           sha: git.sha,
           maxAgeMs: BUILD_CACHE_TTL_MS,
         });
-    if (buildCache) {
+    buildCache = {
+      ...buildCache,
+      attempted: allowBuildCacheRead && !args.noCache,
+      reason: args.noCache
+        ? "disabled by --no-cache"
+        : allowBuildCacheRead
+          ? ""
+          : "not requested",
+      storedContentSha: String(cached?.contentSnapshotSha || ""),
+    };
+    const cachedContentMatches =
+      cached && buildCacheContentMatches(cached, buildCache.expectedContentSha);
+    if (cachedContentMatches) {
       restored = restoreBuildArtifacts({
         repoRoot: ROOT,
         artifactRoot: releaseRoot,
         sha: git.sha,
       });
+    } else if (cached) {
+      buildCache.reason = `content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha || "unspecified"}`;
     }
     if (restored.length > 0) {
-      const ageMin = Math.round((Date.now() - buildCache._writtenAtMs) / 60000);
+      const ageMin = Math.round((Date.now() - cached._writtenAtMs) / 60000);
+      buildCache = { ...buildCache, hit: true, restored, reason: "matched code and content" };
       console.log(
         `[release-cloudflare] reusing build:cf cache for ${git.sha.slice(0, 12)} (${ageMin}m old, restored: ${restored.join(", ")}). Pass --no-cache to rebuild.`,
       );
     } else {
+      if (cachedContentMatches && !buildCache.reason) {
+        buildCache.reason = "cache marker matched but build artifacts were missing";
+      }
       console.log("[release-cloudflare] running build:cf");
       run("npm", ["run", "build:cf"], { label: "build:cf", cwd: releaseRoot });
-      if (allowBuildCache) {
-        const captured = packBuildArtifacts({
-          repoRoot: ROOT,
-          artifactRoot: releaseRoot,
-          sha: git.sha,
-        });
-        if (captured.length > 0) {
-          writeMarker({
-            repoRoot: ROOT,
-            bucket: BUILD_CACHE_BUCKET,
-            sha: git.sha,
-            payload: { paths: captured, branch: git.branch },
-          });
-        }
-      }
     }
   }
 
@@ -682,6 +697,35 @@ async function main() {
   console.log(
     `[release-cloudflare] content snapshot ${contentSnapshotSha.slice(0, 12)}`,
   );
+
+  if (!args.skipBuild && (args.env === "staging" || readEnv("ALLOW_D1_BUILD_CACHE") === "1")) {
+    const captured = packBuildArtifacts({
+      repoRoot: ROOT,
+      artifactRoot: releaseRoot,
+      sha: git.sha,
+    });
+    if (captured.length > 0) {
+      writeMarker({
+        repoRoot: ROOT,
+        bucket: BUILD_CACHE_BUCKET,
+        sha: git.sha,
+        payload: {
+          paths: captured,
+          branch: git.branch,
+          contentSnapshotSha,
+          env: args.env,
+        },
+      });
+      buildCache = {
+        ...buildCache,
+        storedContentSha: contentSnapshotSha,
+        reason: buildCache.hit ? buildCache.reason : `stored ${captured.join(", ")}`,
+      };
+      console.log(
+        `[release-cloudflare] stored build:cf cache for ${git.sha.slice(0, 12)} content=${contentSnapshotSha.slice(0, 12)} (${captured.join(", ")})`,
+      );
+    }
+  }
 
   if (!args.skipUpload) {
     console.log(`[release-cloudflare] uploading ${args.env} Worker version`);
@@ -855,6 +899,7 @@ async function main() {
     checksRun,
     checksCached,
     buildRun: !args.skipBuild,
+    buildCache,
     contentSnapshotSha,
     uploadedVersionId,
     deployedVersionId: deployment?.versionId || null,
