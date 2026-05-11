@@ -17,8 +17,8 @@ export async function POST(req: NextRequest) {
   const out = await claimReleaseJob({
     agentId,
     capabilities: Array.isArray(body.capabilities) ? body.capabilities : undefined,
+    preferredJobId: body.preferredJobId,
   });
   if (!out.ok) return apiError(out.error, { status: out.status, code: out.code });
   return apiPayloadOk(out.data);
 }
-

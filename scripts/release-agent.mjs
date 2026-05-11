@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
 import { hostname } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "./load-project-env.mjs";
 
 const ROOT = process.cwd();
 
-const COMMANDS = {
+export const COMMANDS = {
   status: {
     args: ["run", "release:status:json", "--", "--skip-routes"],
     label: "Release status",
@@ -44,11 +46,17 @@ function parseArgs(argv = process.argv.slice(2)) {
     const index = argv.indexOf(name);
     return index >= 0 ? argv[index + 1] : "";
   };
+  const serve =
+    argv.includes("--serve") ||
+    Boolean(process.env.RELEASE_AGENT_HTTP_PORT || process.env.RELEASE_AGENT_WAKE_TOKEN);
+  const pollDefault = serve ? 60_000 : 5_000;
   return {
     once: argv.includes("--once"),
     dryRun: argv.includes("--dry-run"),
     noSync: argv.includes("--no-sync"),
-    pollMs: Math.max(1000, Number(valueAfter("--poll-ms") || process.env.RELEASE_AGENT_POLL_MS || 5000)),
+    serve: serve && !argv.includes("--once"),
+    httpPort: Math.max(1, Number(valueAfter("--http-port") || process.env.RELEASE_AGENT_HTTP_PORT || 0)),
+    pollMs: Math.max(1000, Number(valueAfter("--poll-ms") || process.env.RELEASE_AGENT_POLL_MS || pollDefault)),
     repo: path.resolve(valueAfter("--repo") || process.env.RELEASE_AGENT_REPO || ROOT),
   };
 }
@@ -71,6 +79,60 @@ function normalizeBaseUrl(value) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function jsonResponse(res, status, body) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(body));
+}
+
+function readJsonBody(req, maxBytes = 4096) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > maxBytes) {
+        reject(new Error("Request body is too large."));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      if (!raw.trim()) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error("Request body must be valid JSON."));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function readBearerToken(value) {
+  const raw = String(value || "").trim();
+  const [scheme, ...rest] = raw.split(/\s+/);
+  return scheme?.toLowerCase() === "bearer" ? rest.join(" ").trim() : "";
+}
+
+export function isWakeAuthorized(authorization, expectedToken) {
+  const expected = String(expectedToken || "").trim();
+  if (!expected) return false;
+  return readBearerToken(authorization) === expected;
+}
+
+export function normalizeWakePayload(payload) {
+  const body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const jobId = String(body.jobId || "").trim().slice(0, 160);
+  const action = String(body.action || "").trim();
+  if (!jobId) return { ok: false, status: 400, error: "jobId is required." };
+  if (!Object.hasOwn(COMMANDS, action)) {
+    return { ok: false, status: 400, error: "Unsupported release action." };
+  }
+  return { ok: true, jobId, action };
 }
 
 function tailPush(lines, line, max = 120) {
@@ -147,11 +209,13 @@ async function safePostEvent(baseUrl, token, agentId, jobId, event) {
   }
 }
 
-async function claim(baseUrl, token, agentId) {
-  const payload = await postJson(baseUrl, "/api/site-admin/release-jobs/claim", token, agentId, {
+async function claim(baseUrl, token, agentId, preferredJobId = "") {
+  const body = {
     agentId,
     capabilities: Object.keys(COMMANDS),
-  });
+  };
+  if (preferredJobId) body.preferredJobId = preferredJobId;
+  const payload = await postJson(baseUrl, "/api/site-admin/release-jobs/claim", token, agentId, body);
   const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
   const job = data.job && typeof data.job === "object" ? data.job : null;
   return job;
@@ -315,6 +379,126 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
   }
 }
 
+function createRunnerController({ baseUrl, token, agentId, repo, dryRun, noSync }) {
+  let currentJobId = "";
+  let currentAction = "";
+
+  const runClaimedJob = (job) => {
+    currentJobId = String(job.id || "");
+    currentAction = String(job.action || "");
+    return runJob({
+      baseUrl,
+      token,
+      agentId,
+      repo,
+      dryRun,
+      noSync,
+      job,
+    }).finally(() => {
+      currentJobId = "";
+      currentAction = "";
+    });
+  };
+
+  const startPreferredJob = async ({ action, jobId }) => {
+    if (currentJobId) {
+      return {
+        error: `Runner is busy with ${currentJobId}.`,
+        ok: false,
+        status: 409,
+      };
+    }
+    const job = await claim(baseUrl, token, agentId, jobId);
+    if (!job) {
+      return {
+        error: "Queued release job was not found or is not claimable by this runner.",
+        ok: false,
+        status: 404,
+      };
+    }
+    if (String(job.action || "") !== action) {
+      return {
+        error: "Claimed release job action does not match the wake request.",
+        ok: false,
+        status: 409,
+      };
+    }
+    void runClaimedJob(job).catch((error) => {
+      console.error(`[release-agent] wake job failed: ${error?.stack || error}`);
+    });
+    return { jobId: String(job.id || ""), ok: true, status: 202 };
+  };
+
+  const drainNextJob = async () => {
+    if (currentJobId) return false;
+    const job = await claim(baseUrl, token, agentId);
+    if (!job) return false;
+    console.log(`[release-agent] claimed ${job.id} action=${job.action}`);
+    await runClaimedJob(job);
+    return true;
+  };
+
+  const snapshot = () => ({
+    agentId,
+    busy: Boolean(currentJobId),
+    currentAction,
+    currentJobId,
+    ok: true,
+  });
+
+  return { drainNextJob, snapshot, startPreferredJob };
+}
+
+function startWakeServer({ controller, port, wakeToken }) {
+  if (!port) {
+    console.log("[release-agent] wake server disabled: RELEASE_AGENT_HTTP_PORT is not set");
+    return null;
+  }
+  if (!wakeToken) {
+    console.log("[release-agent] wake server disabled: RELEASE_AGENT_WAKE_TOKEN is not set");
+    return null;
+  }
+
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    if (req.method === "GET" && url.pathname === "/health") {
+      jsonResponse(res, 200, controller.snapshot());
+      return;
+    }
+    if (req.method !== "POST" || url.pathname !== "/wake") {
+      jsonResponse(res, 404, { error: "Not found", ok: false });
+      return;
+    }
+    if (!isWakeAuthorized(req.headers.authorization, wakeToken)) {
+      jsonResponse(res, 401, { error: "Unauthorized", ok: false });
+      return;
+    }
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      jsonResponse(res, 400, { error: error?.message || String(error), ok: false });
+      return;
+    }
+    const normalized = normalizeWakePayload(payload);
+    if (!normalized.ok) {
+      jsonResponse(res, normalized.status, { error: normalized.error, ok: false });
+      return;
+    }
+    try {
+      const result = await controller.startPreferredJob(normalized);
+      jsonResponse(res, result.status, result);
+    } catch (error) {
+      jsonResponse(res, 502, { error: error?.message || String(error), ok: false });
+    }
+  });
+
+  server.listen(port, "127.0.0.1", () => {
+    console.log(`[release-agent] wake server listening on 127.0.0.1:${port}`);
+  });
+  return server;
+}
+
 async function main() {
   loadProjectEnv({ cwd: ROOT, override: false, files: [".env.local", ".env"] });
   const args = parseArgs();
@@ -323,30 +507,36 @@ async function main() {
   );
   const token = requiredEnv("SITE_ADMIN_RELEASE_AGENT_TOKEN");
   const agentId = readEnv("RELEASE_AGENT_ID") || `${hostname()}:${process.pid}`;
-  console.log(`[release-agent] base=${baseUrl} repo=${args.repo} agent=${agentId}`);
+  const controller = createRunnerController({
+    baseUrl,
+    token,
+    agentId,
+    repo: args.repo,
+    dryRun: args.dryRun,
+    noSync: args.noSync,
+  });
+  console.log(`[release-agent] base=${baseUrl} repo=${args.repo} agent=${agentId} pollMs=${args.pollMs}`);
+  if (args.serve) {
+    startWakeServer({
+      controller,
+      port: args.httpPort,
+      wakeToken: readEnv("RELEASE_AGENT_WAKE_TOKEN"),
+    });
+  }
 
   do {
-    const job = await claim(baseUrl, token, agentId);
-    if (job) {
-      console.log(`[release-agent] claimed ${job.id} action=${job.action}`);
-      await runJob({
-        baseUrl,
-        token,
-        agentId,
-        repo: args.repo,
-        dryRun: args.dryRun,
-        noSync: args.noSync,
-        job,
-      });
-    } else if (args.once) {
+    const drained = await controller.drainNextJob();
+    if (!drained && args.once) {
       console.log("[release-agent] no queued job");
-    } else {
+    } else if (!drained) {
       await delay(args.pollMs);
     }
   } while (!args.once);
 }
 
-main().catch((error) => {
-  console.error(error?.stack || String(error));
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((error) => {
+    console.error(error?.stack || String(error));
+    process.exit(1);
+  });
+}

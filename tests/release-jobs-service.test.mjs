@@ -126,6 +126,53 @@ test("release jobs: unsupported actions are rejected and capabilities filter cla
   assert.equal(skipped.data.job, null);
 });
 
+test("release jobs: preferred claim targets one queued job and still checks capabilities", async () => {
+  const executor = await makeExecutor();
+  const statusJob = await createReleaseJob({
+    action: "status",
+    actor: "jinkun",
+    executor,
+  });
+  const deployJob = await createReleaseJob({
+    action: "deploy-staging-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(statusJob.ok, true);
+  assert.equal(deployJob.ok, true);
+  if (!statusJob.ok || !deployJob.ok) throw new Error("setup failed");
+
+  const notCapable = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["status"],
+    preferredJobId: deployJob.data.id,
+    executor,
+  });
+  assert.equal(notCapable.ok, true);
+  if (!notCapable.ok) throw new Error(notCapable.error);
+  assert.equal(notCapable.data.job, null);
+
+  const preferred = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["deploy-staging-code"],
+    preferredJobId: deployJob.data.id,
+    executor,
+  });
+  assert.equal(preferred.ok, true);
+  if (!preferred.ok) throw new Error(preferred.error);
+  assert.equal(preferred.data.job?.id, deployJob.data.id);
+  assert.equal(preferred.data.job?.action, "deploy-staging-code");
+
+  const fallback = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["status", "deploy-staging-code"],
+    executor,
+  });
+  assert.equal(fallback.ok, true);
+  if (!fallback.ok) throw new Error(fallback.error);
+  assert.equal(fallback.data.job?.id, statusJob.data.id);
+});
+
 test("release jobs: tracks runner heartbeat and queue summary", async () => {
   const executor = await makeExecutor();
   const heartbeat = await heartbeatReleaseAgent({

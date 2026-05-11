@@ -2,7 +2,9 @@
 
 The remote release path is intentionally **not SSH as product behavior**.
 Clients create HTTPS release jobs on the Cloudflare-hosted Site Admin API,
-and the Mac mini release agent polls outbound for work.
+and the Mac mini release agent is woken through a narrow runner endpoint. A
+low-frequency outbound poll remains as the fallback when the wake path is
+unavailable.
 
 ## Shape
 
@@ -10,17 +12,19 @@ and the Mac mini release agent polls outbound for work.
 Tauri / mobile / web admin
   -> /api/site-admin/release-jobs
   -> Cloudflare D1 queue
-Mac mini release agent
-  -> /api/site-admin/release-jobs/claim
+Cloudflare Site Admin API
+  -> POST https://release-runner.jinkunchen.com/wake
+Mac mini release agent (Cloudflare Tunnel + Access)
+  -> /api/site-admin/release-jobs/claim preferredJobId=<job>
   -> release_agents heartbeat in D1
   -> npm release scripts in ~/Services/jinnkunn-release-runner/repo
   -> /api/site-admin/release-jobs/:id/events
   -> /api/site-admin/release-jobs/:id/complete
 ```
 
-The Mac mini does not need an inbound port or a public tunnel for this path.
-It only needs outbound HTTPS to the Site Admin origin and the usual Cloudflare
-release credentials in its repo `.env`.
+The Mac mini should be exposed through Cloudflare Tunnel, not a router port. The
+runner endpoint only wakes a queued D1 job; it never accepts arbitrary shell
+commands.
 
 ## Environment
 
@@ -28,6 +32,10 @@ On the deployed Site Admin runtime:
 
 ```bash
 SITE_ADMIN_RELEASE_AGENT_TOKEN=...
+RELEASE_RUNNER_WAKE_URL=https://release-runner.jinkunchen.com
+RELEASE_RUNNER_WAKE_TOKEN=...
+RELEASE_RUNNER_CF_ACCESS_CLIENT_ID=...
+RELEASE_RUNNER_CF_ACCESS_CLIENT_SECRET=...
 ```
 
 On the Mac mini agent environment:
@@ -36,6 +44,9 @@ On the Mac mini agent environment:
 RELEASE_AGENT_BASE_URL=https://staging.jinkunchen.com
 SITE_ADMIN_RELEASE_AGENT_TOKEN=...
 RELEASE_AGENT_REPO=/Users/jinnkunn/Services/jinnkunn-release-runner/repo
+RELEASE_AGENT_HTTP_PORT=8789
+RELEASE_AGENT_WAKE_TOKEN=...
+RELEASE_AGENT_POLL_MS=60000
 ```
 
 The token is separate from Cloudflare deploy credentials. It only authorizes
@@ -44,10 +55,11 @@ Mac mini.
 
 ## Run
 
-In Release Center, set the runner control to **Mac mini runner**. The Smart
-Release button will create a queued job and stream the runner logs back through
-the Site Admin API. Non-Tauri clients, including a future mobile admin app,
-always use this remote runner path.
+Release Center defaults to **Mac mini runner**. The Smart Release button creates
+a queued job, Site Admin wakes the Mac mini runner, and logs stream back through
+the Site Admin API. Non-Tauri clients, including a future mobile admin app, use
+the same remote runner path. The local desktop runner remains available from
+Recovery / Advanced for emergency recovery only.
 
 Release Center also reads the runner heartbeat from `/api/site-admin/release-jobs`.
 When the Mac mini poller is healthy, the top panel shows the latest agent,
@@ -74,11 +86,11 @@ cd /Users/jinnkunn/Services/jinnkunn-release-runner/repo
 npm run release:agent -- --once
 ```
 
-Long-running poller:
+Long-running wake server with fallback poller:
 
 ```bash
 cd /Users/jinnkunn/Services/jinnkunn-release-runner/repo
-npm run release:agent
+RELEASE_AGENT_HTTP_PORT=8789 RELEASE_AGENT_POLL_MS=60000 npm run release:agent
 ```
 
 Before executing a claimed job, the agent runs:
@@ -127,6 +139,16 @@ Dry-run execution for validating the queue without deploying:
 npm run release:agent -- --once --dry-run
 ```
 
+Wake endpoint smoke tests on the Mac mini:
+
+```bash
+curl -sS http://127.0.0.1:8789/health
+curl -sS -X POST http://127.0.0.1:8789/wake \
+  -H "Authorization: Bearer $RELEASE_AGENT_WAKE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":"<queued-job-id>","action":"status"}'
+```
+
 ## Job Actions
 
 The agent only runs explicit allowlisted actions:
@@ -140,7 +162,7 @@ The agent only runs explicit allowlisted actions:
 
 ## Public Exposure
 
-Do not expose the Mac mini agent directly. If a future mobile app needs access
-from outside the LAN, it should talk to the Cloudflare Site Admin API. If a
-public hostname is needed for the control plane, put Cloudflare Access in front
-of it; do not publish the Mac mini runner itself.
+Expose the Mac mini agent only through Cloudflare Tunnel and Cloudflare Access.
+Clients still talk to the Cloudflare Site Admin API; only Site Admin uses a
+service token to call the runner wake endpoint. Keep the runner's own bearer
+token check enabled even behind Cloudflare Access.

@@ -1909,6 +1909,39 @@
   flex-wrap: wrap;
 }
 
+.release-center__advanced-runner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg-surface) 78%, transparent);
+}
+
+.release-center__advanced-runner > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.release-center__advanced-runner h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-small);
+  font-weight: 750;
+}
+
+.release-center__advanced-runner p {
+  max-width: 580px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
 .release-center__job[data-status="failed"],
 .release-center__job[data-status="cancelled"] {
   border-color: color-mix(in srgb, var(--release-blocked) 28%, var(--color-border-subtle));
@@ -2672,8 +2705,10 @@
   .release-center__content-suggestion,
   .release-center__history-row,
   .release-center__runner-status,
-  .release-center__remote-job-row {
+  .release-center__remote-job-row,
+  .release-center__advanced-runner {
     grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .release-center__hero-actions,

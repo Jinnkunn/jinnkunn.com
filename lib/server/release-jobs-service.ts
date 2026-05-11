@@ -598,6 +598,7 @@ export async function markStaleReleaseJobs(input: {
 export async function claimReleaseJob(input: {
   agentId: string;
   capabilities?: unknown[];
+  preferredJobId?: unknown;
   executor?: DbExecutor;
 }): Promise<ReleaseJobServiceResult<{ job: ReleaseJobRow | null; command?: ReleaseJobCommand }>> {
   const agentId = normalizeAgentId(input.agentId);
@@ -620,14 +621,25 @@ export async function claimReleaseJob(input: {
   });
   if (capabilities.length === 0) return serviceOk({ job: null });
 
+  const preferredJobId =
+    typeof input.preferredJobId === "string"
+      ? input.preferredJobId.trim().slice(0, 160)
+      : "";
   const placeholders = capabilities.map(() => "?").join(", ");
-  const queued = await executor.data.execute({
-    sql: `SELECT * FROM release_jobs
-           WHERE status = 'queued' AND action IN (${placeholders})
-           ORDER BY created_at ASC
-           LIMIT 1`,
-    args: capabilities,
-  });
+  const queued = preferredJobId
+    ? await executor.data.execute({
+        sql: `SELECT * FROM release_jobs
+               WHERE id = ? AND status = 'queued' AND action IN (${placeholders})
+               LIMIT 1`,
+        args: [preferredJobId, ...capabilities],
+      })
+    : await executor.data.execute({
+        sql: `SELECT * FROM release_jobs
+               WHERE status = 'queued' AND action IN (${placeholders})
+               ORDER BY created_at ASC
+               LIMIT 1`,
+        args: capabilities,
+      });
   const row = queued.rows[0];
   if (!row) return serviceOk({ job: null });
 
