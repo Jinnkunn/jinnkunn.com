@@ -754,6 +754,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   );
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
   const releasePanel = await read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx");
+  const releaseRunnerCards = await read(
+    "apps/workspace/src/surfaces/site-admin/release-runner-cards.tsx",
+  );
   const releaseFlow = await read(
     "apps/workspace/src/surfaces/site-admin/release-flow-model.ts",
   );
@@ -788,8 +791,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /ReleaseStepper/);
   assert.match(releasePanel, /RouteParityPanel/);
   assert.match(releasePanel, /Production behind staging/);
-  assert.match(releasePanel, /Run status check/);
-  assert.match(releasePanel, /Recent Remote Jobs/);
+  assert.match(releaseRunnerCards, /Run status check/);
+  assert.match(releaseRunnerCards, /Recent Remote Jobs/);
+  assert.match(releaseRunnerCards, /Fallback/);
   assert.match(releasePanel, /useState<ReleaseExecutionMode>\("remote"\)/);
   assert.match(releasePanel, /Runner Override/);
   assert.match(releasePanel, /Mac mini wake failed/);
