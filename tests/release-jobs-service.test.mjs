@@ -32,6 +32,7 @@ test("release jobs: exposes only explicit release agent actions", () => {
     "promote-production-code",
     "publish-content-production-from-staging",
     "publish-content-staging",
+    "runner-self-test",
     "smart-release",
     "status",
   ]);
@@ -40,6 +41,12 @@ test("release jobs: exposes only explicit release agent actions", () => {
     "release:status:json",
     "--",
     "--skip-routes",
+  ]);
+  assert.deepEqual(releaseJobCommand("runner-self-test").args, [
+    "run",
+    "verify:release-runner",
+    "--",
+    "--skip-job",
   ]);
 });
 

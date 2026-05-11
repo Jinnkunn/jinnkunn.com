@@ -1549,6 +1549,7 @@
     var(--color-bg-surface-alt);
 }
 
+.release-center__content-preview,
 .release-center__route-parity {
   display: grid;
   gap: 10px;
@@ -1558,6 +1559,13 @@
   background: var(--color-bg-surface-alt);
 }
 
+.release-center__content-preview {
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 64%),
+    var(--color-bg-surface-alt);
+}
+
+.release-center__content-preview header,
 .release-center__route-parity header {
   display: flex;
   align-items: flex-start;
@@ -1565,6 +1573,7 @@
   gap: 12px;
 }
 
+.release-center__content-preview h2,
 .release-center__route-parity h2 {
   margin: 0;
   color: var(--color-text-primary);
@@ -1572,6 +1581,7 @@
   font-weight: 750;
 }
 
+.release-center__content-preview p,
 .release-center__route-parity p {
   margin: 3px 0 0;
   color: var(--color-text-muted);
@@ -1579,14 +1589,122 @@
   line-height: 1.4;
 }
 
+.release-center__content-preview header > strong,
 .release-center__route-parity header > strong {
   color: var(--release-warn);
   font-size: var(--font-size-small);
   font-weight: 760;
 }
 
+.release-center__content-preview header > strong[data-tone="ok"],
 .release-center__route-parity header > strong[data-tone="ok"] {
   color: var(--release-ok);
+}
+
+.release-center__route-parity-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.release-center__route-parity-actions > strong {
+  color: var(--release-warn);
+  font-size: var(--font-size-small);
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.release-center__route-parity-actions > strong[data-tone="ok"] {
+  color: var(--release-ok);
+}
+
+.release-center__content-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.release-center__content-preview-grid > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-bg-surface);
+}
+
+.release-center__content-preview-grid > div[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--release-ok) 24%, var(--color-border-subtle));
+}
+
+.release-center__content-preview-grid > div[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--release-warn) 30%, var(--color-border-subtle));
+}
+
+.release-center__content-preview-grid > div[data-tone="blocked"] {
+  border-color: color-mix(in srgb, var(--release-blocked) 30%, var(--color-border-subtle));
+}
+
+.release-center__content-preview-grid span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.release-center__content-preview-grid strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  font-weight: 760;
+}
+
+.release-center__content-preview-grid small {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.release-center__content-preview-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release-center__content-preview-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-bg-surface) 78%, transparent);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.release-center__content-preview-list code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-center__content-preview-list span,
+.release-center__content-preview-list time {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
 }
 
 .release-center__route-parity-list {
@@ -2779,6 +2897,7 @@
   .release-center__stepper,
   .release-center__route-path,
   .release-center__content-grid,
+  .release-center__content-preview-grid,
   .release-center__gate-list,
   .release-center__confirm dl,
   .release-center__route-parity-row {
@@ -2804,6 +2923,7 @@
   .release-center__stepper,
   .release-center__route-path,
   .release-center__content-grid,
+  .release-center__content-preview-grid,
   .release-center__gate-list,
   .release-center__confirm dl,
   .release-center__route-parity-row {
@@ -2813,6 +2933,7 @@
   .release-center__hero,
   .release-center__route > header,
   .release-center__notice,
+  .release-center__content-preview header,
   .release-center__route-parity header,
   .release-center__content-status > header,
   .release-center__content-suggestion,
@@ -2830,6 +2951,7 @@
   .release-center__confirm-actions,
   .release-center__advanced-actions,
   .release-center__runner-actions,
+  .release-center__route-parity-actions,
   .release-center__remote-job-actions {
     align-items: stretch;
     justify-content: stretch;
@@ -2841,12 +2963,15 @@
   .release-center__confirm-actions > .btn,
   .release-center__advanced-actions > .btn,
   .release-center__runner-actions > .btn,
+  .release-center__route-parity-actions > .btn,
   .release-center__remote-job-actions > .btn {
     width: 100%;
     justify-content: center;
   }
 
   .release-center__content-status > header,
+  .release-center__content-preview header,
+  .release-center__route-parity header,
   .release-center__content-suggestion {
     flex-direction: column;
     align-items: stretch;

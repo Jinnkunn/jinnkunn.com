@@ -54,12 +54,20 @@ function printHuman(status) {
   );
   if (status.routeParity) {
     const skipped = Number(status.routeParity.skippedCount || 0);
+    const auth = status.routeParity.auth?.stagingAuthenticated
+      ? `authenticated as ${status.routeParity.auth.login || "allowed user"}`
+      : "unauthenticated";
     console.log(
       `[release-status] routes ${
         status.routeParity.ok
           ? `matched${skipped ? ` (${skipped} gated skipped)` : ""}`
           : `${status.routeParity.mismatchCount} mismatch(es)`
-      }`,
+      } (${auth})`,
+    );
+  }
+  if (status.contentPreview) {
+    console.log(
+      `[release-status] content staging=${status.contentPreview.staging.action} production=${status.contentPreview.production.action} files=${status.contentPreview.fileCount}`,
     );
   }
   console.log(`[release-status] next=${plan.label}${plan.script ? ` (${plan.script})` : ""}: ${plan.reason}`);
@@ -67,7 +75,11 @@ function printHuman(status) {
 
 async function main() {
   const args = parseArgs();
-  loadProjectEnv({ cwd: ROOT, override: true });
+  // Release status compares deployed staging/production. Prefer the remote
+  // `.env` secrets over local dev overrides so authenticated staging route
+  // parity uses the same NEXTAUTH_SECRET that the deployed Worker expects.
+  loadProjectEnv({ cwd: ROOT, override: false, files: [".env.local"] });
+  loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
   const status = await buildLiveReleaseStatus({
     root: ROOT,
     target: args.target,

@@ -15,6 +15,7 @@ export type ReleaseJobStatus =
 export type ReleaseJobAction =
   | "status"
   | "smart-release"
+  | "runner-self-test"
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
@@ -87,6 +88,12 @@ const RELEASE_JOB_COMMANDS: Record<ReleaseJobAction, ReleaseJobCommand> = {
     action: "smart-release",
     args: ["run", "release:site"],
     npmScript: "release:site",
+    target: "production",
+  },
+  "runner-self-test": {
+    action: "runner-self-test",
+    args: ["run", "verify:release-runner", "--", "--skip-job"],
+    npmScript: "verify:release-runner",
     target: "production",
   },
   "publish-content-staging": {

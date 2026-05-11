@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveLiveReleasePlan } from "../scripts/_lib/release-live-status.mjs";
+import {
+  buildContentPreview,
+  deriveLiveReleasePlan,
+} from "../scripts/_lib/release-live-status.mjs";
 
 const CODE_SHA = "a".repeat(40);
 const CONTENT_SHA = "b".repeat(40);
@@ -91,4 +94,38 @@ test("release live status: content-only HEAD still publishes staging when overla
 
   assert.equal(plan.kind, "publish-content-staging");
   assert.equal(plan.script, "publish:content:staging");
+});
+
+test("release live status: content preview treats cleared overlays as current after full deploy", () => {
+  const preview = buildContentPreview({
+    contentInputSha: CONTENT_SHA,
+    git: {
+      dirtyFiles: [],
+      sha: CODE_SHA,
+    },
+    production: {
+      codeSha: CODE_SHA,
+      contentSha: CONTENT_SHA,
+    },
+    productionOverlay: {
+      exists: false,
+      snapshotSha: "",
+    },
+    staging: {
+      codeSha: CODE_SHA,
+      contentSha: CONTENT_SHA,
+    },
+    stagingDiffFromLocal: {
+      files: [],
+      ok: true,
+    },
+    stagingOverlay: {
+      exists: false,
+      snapshotSha: "",
+    },
+  });
+
+  assert.equal(preview.staging.action, "noop");
+  assert.equal(preview.production.action, "noop");
+  assert.equal(preview.fileCount, 0);
 });

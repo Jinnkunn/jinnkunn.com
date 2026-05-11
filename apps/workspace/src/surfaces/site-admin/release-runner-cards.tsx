@@ -9,6 +9,7 @@ export type RemoteReleaseJobStatus =
 
 export type RemoteReleaseJobAction =
   | "status"
+  | "runner-self-test"
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
@@ -69,18 +70,22 @@ export function ReleaseRunnerStatusCard({
   formatRelativeTime,
   jobs,
   onRefresh,
+  onRunSelfTest,
   onRunStatusCheck,
   shortId,
   statusCheckDisabled,
+  selfTestDisabled,
   status,
 }: {
   executionMode: ReleaseExecutionMode;
   formatRelativeTime: ReleaseRunnerFormatters["formatRelativeTime"];
   jobs: RemoteReleaseJobRow[];
   onRefresh: () => void;
+  onRunSelfTest: () => void;
   onRunStatusCheck: () => void;
   shortId: ReleaseRunnerFormatters["shortId"];
   statusCheckDisabled: boolean;
+  selfTestDisabled: boolean;
   status: RemoteReleaseRunnerStatus | null;
 }) {
   const agent = status?.agents[0] ?? null;
@@ -199,6 +204,14 @@ export function ReleaseRunnerStatusCard({
         </button>
         <button className="btn btn--secondary" type="button" onClick={onRefresh}>
           Refresh runner
+        </button>
+        <button
+          className="btn btn--secondary"
+          type="button"
+          disabled={selfTestDisabled}
+          onClick={onRunSelfTest}
+        >
+          Run self-test
         </button>
       </div>
     </section>
