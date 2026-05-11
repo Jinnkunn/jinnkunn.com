@@ -5,6 +5,7 @@ import { wakeReleaseRunnerForJob } from "../lib/server/release-runner-wake.ts";
 import {
   isWakeAuthorized,
   normalizeWakePayload,
+  wakeHealthPayload,
 } from "../scripts/release-agent.mjs";
 
 const job = {
@@ -75,4 +76,17 @@ test("release agent wake: validates token and allowlisted payloads", () => {
     jobId: "job-123",
     ok: true,
   });
+});
+
+test("release agent health: hides runner details without wake token", () => {
+  const snapshot = {
+    agentId: "mac-mini:123",
+    busy: true,
+    currentAction: "status",
+    currentJobId: "job-123",
+    ok: true,
+  };
+  assert.deepEqual(wakeHealthPayload(snapshot, "", "secret-token"), { ok: true });
+  assert.deepEqual(wakeHealthPayload(snapshot, "Bearer wrong", "secret-token"), { ok: true });
+  assert.deepEqual(wakeHealthPayload(snapshot, "Bearer secret-token", "secret-token"), snapshot);
 });

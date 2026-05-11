@@ -166,3 +166,24 @@ Expose the Mac mini agent only through Cloudflare Tunnel and Cloudflare Access.
 Clients still talk to the Cloudflare Site Admin API; only Site Admin uses a
 service token to call the runner wake endpoint. Keep the runner's own bearer
 token check enabled even behind Cloudflare Access.
+
+Current deployment:
+
+- tunnel: `jinnkunn-release-runner`
+- hostname: `https://release-runner.jinkunchen.com`
+- Mac mini LaunchAgent: `com.jinnkunn.release-runner-tunnel`
+- local origin: `http://127.0.0.1:8789`
+- Site Admin secrets configured in staging and production:
+  - `RELEASE_RUNNER_WAKE_URL`
+  - `RELEASE_RUNNER_WAKE_TOKEN`
+
+The public `/health` endpoint intentionally returns only `{ "ok": true }`
+without a wake token. Detailed runner status is available only when the caller
+sends `Authorization: Bearer $RELEASE_AGENT_WAKE_TOKEN`.
+
+Remaining hardening step: create a Cloudflare Access service token for the Site
+Admin Worker and protect `release-runner.jinkunchen.com` with an Access
+application that allows only that service token. The currently configured
+Cloudflare deploy token can read Access apps and policies, but it cannot manage
+Access service tokens (`/access/service_tokens` returns 403), so this step
+requires a stronger Cloudflare API token or manual Zero Trust dashboard setup.
