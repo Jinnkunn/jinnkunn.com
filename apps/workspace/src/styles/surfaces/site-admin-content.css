@@ -1115,9 +1115,9 @@
 
 .release-center__runner-status {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  align-items: center;
+  align-items: stretch;
   padding: 11px 12px;
   border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
@@ -1190,7 +1190,7 @@
 .release-center__runner-facts,
 .release-center__runner-guards {
   display: grid;
-  grid-template-columns: repeat(3, max-content);
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -1207,6 +1207,18 @@
 .release-center__runner-guards > div {
   min-width: 66px;
   background: color-mix(in srgb, var(--color-bg-surface-alt) 62%, transparent);
+}
+
+.release-center__runner-guards > div[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--release-ok) 24%, var(--color-border-subtle));
+}
+
+.release-center__runner-guards > div[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--release-warn) 30%, var(--color-border-subtle));
+}
+
+.release-center__runner-guards > div[data-tone="blocked"] {
+  border-color: color-mix(in srgb, var(--release-blocked) 30%, var(--color-border-subtle));
 }
 
 .release-center__runner-facts dt,
@@ -1231,7 +1243,7 @@
 .release-center__runner-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -1354,6 +1366,49 @@
 }
 
 .release-center__route {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, var(--surface-highlight-soft), transparent 70%),
+    color-mix(in srgb, var(--color-bg-surface-alt) 88%, transparent);
+}
+
+.release-center__route > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-center__route h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-subhead);
+  font-weight: 750;
+}
+
+.release-center__route p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+.release-center__route header > strong {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.release-center__route header > strong[data-tone="ok"] {
+  color: var(--release-ok);
+}
+
+.release-center__route-path {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr);
   gap: 8px;
@@ -1752,6 +1807,39 @@
   overflow-wrap: anywhere;
 }
 
+.release-center__node dl {
+  display: grid;
+  gap: 5px;
+  margin: 4px 0 0;
+}
+
+.release-center__node dl > div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 7px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.release-center__node dt {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.release-center__node dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .release-center__blockers,
 .release-center__job,
 .release-center__history,
@@ -2002,6 +2090,14 @@
 .release-center__log p {
   margin: 0;
   padding: 8px;
+}
+
+.release-center__log-summary {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--release-ok) 7%, var(--color-bg-surface));
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
 }
 
 .release-center__log-line {
@@ -2681,7 +2777,7 @@
   .release-panel__operations,
   .release-panel__env-grid,
   .release-center__stepper,
-  .release-center__route,
+  .release-center__route-path,
   .release-center__content-grid,
   .release-center__gate-list,
   .release-center__confirm dl,
@@ -2706,7 +2802,7 @@
   .release-panel__operations,
   .release-panel__env-grid,
   .release-center__stepper,
-  .release-center__route,
+  .release-center__route-path,
   .release-center__content-grid,
   .release-center__gate-list,
   .release-center__confirm dl,
@@ -2715,6 +2811,7 @@
   }
 
   .release-center__hero,
+  .release-center__route > header,
   .release-center__notice,
   .release-center__route-parity header,
   .release-center__content-status > header,
