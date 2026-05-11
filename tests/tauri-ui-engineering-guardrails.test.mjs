@@ -790,6 +790,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Production behind staging/);
   assert.match(releasePanel, /Run status check/);
   assert.match(releasePanel, /Recent Remote Jobs/);
+  assert.match(releasePanel, /useState<ReleaseExecutionMode>\("remote"\)/);
+  assert.match(releasePanel, /Runner Override/);
+  assert.match(releasePanel, /Mac mini wake failed/);
   assert.match(
     releasePanel,
     /smartPlan\.kind === "promote-production-code"[\s\S]*startRelease\(RELEASE_PROD_FROM_STAGING_SCRIPT\)/,

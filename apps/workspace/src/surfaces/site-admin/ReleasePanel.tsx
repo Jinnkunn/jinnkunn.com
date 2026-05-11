@@ -153,6 +153,13 @@ interface RemoteReleaseRunnerStatus {
   runningCount: number;
 }
 
+interface RemoteReleaseWakeResult {
+  configured: boolean;
+  ok: boolean;
+  status: number;
+  error: string;
+}
+
 type ReleaseCheck = {
   detail: string;
   label: string;
@@ -731,6 +738,17 @@ function parseRemoteReleaseRunnerStatus(raw: unknown): RemoteReleaseRunnerStatus
   };
 }
 
+function parseRemoteReleaseWake(raw: unknown): RemoteReleaseWakeResult | null {
+  const rec = asRecord(raw);
+  if (!("configured" in rec) && !("ok" in rec)) return null;
+  return {
+    configured: Boolean(rec.configured),
+    error: asString(rec.error),
+    ok: Boolean(rec.ok),
+    status: asNumber(rec.status),
+  };
+}
+
 function localStatusFromRemote(
   status: RemoteReleaseJobStatus,
 ): SiteAdminReleaseJobState["status"] {
@@ -924,7 +942,7 @@ export function ReleasePanel() {
   const [jobLog, setJobLog] = useState<ReleaseLogLine[]>([]);
   const [releaseTarget, setReleaseTarget] = useState<ReleaseTarget>("production");
   const [releaseExecutionMode, setReleaseExecutionMode] =
-    useState<ReleaseExecutionMode>(() => (isTauriRuntime() ? "local" : "remote"));
+    useState<ReleaseExecutionMode>("remote");
   const [activeRemoteJobId, setActiveRemoteJobId] = useState<string | null>(null);
   const [runnerStatus, setRunnerStatus] = useState<RemoteReleaseRunnerStatus | null>(null);
   const [remoteJobs, setRemoteJobs] = useState<RemoteReleaseJobRow[]>([]);
@@ -1434,6 +1452,7 @@ export function ReleasePanel() {
         }
         const parsed = parseRemoteReleaseJobPayload(response.data);
         if (!parsed) throw new Error("Remote release job returned an invalid payload.");
+        const wake = parseRemoteReleaseWake(asRecord(response.data).wake);
         setActiveRemoteJobId(parsed.job.id);
         setJob(remoteReleaseJobToLocalState(parsed.job));
         setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
@@ -1442,7 +1461,16 @@ export function ReleasePanel() {
           kind: "running",
           info: `${scriptLabel(script)} queued for Mac mini runner…`,
         });
-        setMessage("success", `${scriptLabel(script)} queued for Mac mini runner.`);
+        if (wake?.configured && !wake.ok) {
+          setMessage(
+            "warn",
+            `${scriptLabel(script)} queued, but Mac mini wake failed: ${wake.error || `HTTP ${wake.status}`}`,
+          );
+        } else if (wake?.ok) {
+          setMessage("success", `${scriptLabel(script)} queued and Mac mini wake sent.`);
+        } else {
+          setMessage("success", `${scriptLabel(script)} queued for Mac mini runner.`);
+        }
       } catch (err) {
         const message = String(err);
         setActiveRemoteJobId(null);
@@ -1572,6 +1600,7 @@ export function ReleasePanel() {
         }
         const parsed = parseRemoteReleaseJobPayload(response.data);
         if (!parsed) throw new Error("Remote release retry returned an invalid payload.");
+        const wake = parseRemoteReleaseWake(asRecord(response.data).wake);
         setActiveRemoteJobId(parsed.job.id);
         setJob(remoteReleaseJobToLocalState(parsed.job));
         setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
@@ -1580,7 +1609,14 @@ export function ReleasePanel() {
           kind: "running",
           info: `${scriptLabel(parsed.job.script)} retry queued for Mac mini runner…`,
         });
-        setMessage("success", `${scriptLabel(parsed.job.script)} retry queued.`);
+        if (wake?.configured && !wake.ok) {
+          setMessage(
+            "warn",
+            `${scriptLabel(parsed.job.script)} retry queued, but Mac mini wake failed: ${wake.error || `HTTP ${wake.status}`}`,
+          );
+        } else {
+          setMessage("success", `${scriptLabel(parsed.job.script)} retry queued.`);
+        }
       } catch (err) {
         setMessage("error", `Retry remote release failed: ${String(err)}`);
       }
@@ -1644,12 +1680,6 @@ export function ReleasePanel() {
               disabled={job?.status === "running"}
               value={releaseTarget}
               onChange={setReleaseTarget}
-            />
-            <ReleaseRunnerControl
-              canRunLocal={canRunLocalRelease}
-              disabled={job?.status === "running"}
-              value={releaseExecutionMode}
-              onChange={setReleaseExecutionMode}
             />
           </div>
         </div>
@@ -1817,6 +1847,21 @@ export function ReleasePanel() {
 
       <details className="release-panel__commands" aria-label="Recovery and advanced release commands">
         <summary>Recovery / Advanced</summary>
+        <div className="release-center__advanced-runner">
+          <div>
+            <h2>Runner Override</h2>
+            <p>
+              Daily releases use the Mac mini runner through the Site Admin API.
+              Switch to this Mac only when recovering a local desktop release.
+            </p>
+          </div>
+          <ReleaseRunnerControl
+            canRunLocal={canRunLocalRelease}
+            disabled={job?.status === "running"}
+            value={releaseExecutionMode}
+            onChange={setReleaseExecutionMode}
+          />
+        </div>
         <div className="release-panel__commands-grid">
           <div>
             <h2>Staging Content</h2>
