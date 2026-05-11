@@ -173,17 +173,26 @@ Current deployment:
 - hostname: `https://release-runner.jinkunchen.com`
 - Mac mini LaunchAgent: `com.jinnkunn.release-runner-tunnel`
 - local origin: `http://127.0.0.1:8789`
+- Access application: `Release Runner`
+- Access policy: `Allow Site Admin Worker Service Token`
 - Site Admin secrets configured in staging and production:
   - `RELEASE_RUNNER_WAKE_URL`
   - `RELEASE_RUNNER_WAKE_TOKEN`
+  - `RELEASE_RUNNER_CF_ACCESS_CLIENT_ID`
+  - `RELEASE_RUNNER_CF_ACCESS_CLIENT_SECRET`
 
 The public `/health` endpoint intentionally returns only `{ "ok": true }`
 without a wake token. Detailed runner status is available only when the caller
 sends `Authorization: Bearer $RELEASE_AGENT_WAKE_TOKEN`.
 
-Remaining hardening step: create a Cloudflare Access service token for the Site
-Admin Worker and protect `release-runner.jinkunchen.com` with an Access
-application that allows only that service token. The currently configured
-Cloudflare deploy token can read Access apps and policies, but it cannot manage
-Access service tokens (`/access/service_tokens` returns 403), so this step
-requires a stronger Cloudflare API token or manual Zero Trust dashboard setup.
+Cloudflare Access is enabled for the hostname. Unauthenticated public requests
+should receive an Access 403 before they reach the Mac mini. The Site Admin
+Worker presents the Access service token headers and then the runner validates
+its own bearer wake token before accepting `/wake`.
+
+The Access policy currently uses `any_valid_service_token` because the deploy
+API token cannot list Access service tokens (`/access/service_tokens` returns
+403), so it cannot resolve the token's internal UUID for a narrower
+`service_token.token_id` rule. This is still guarded by the runner's own bearer
+token, but if the service token UUID becomes available, narrow the policy to
+that specific service token.
