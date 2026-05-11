@@ -127,6 +127,44 @@ async function cloudflareApi(path) {
   return body;
 }
 
+function checkGitClean() {
+  const branch = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert(branch.status === 0, "git branch check failed", {
+    stderr: branch.stderr.trim(),
+  });
+  const sha = spawnSync("git", ["rev-parse", "--short=12", "HEAD"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert(sha.status === 0, "git sha check failed", { stderr: sha.stderr.trim() });
+  const status = spawnSync("git", ["status", "--porcelain"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert(status.status === 0, "git status check failed", {
+    stderr: status.stderr.trim(),
+  });
+  assert(!status.stdout.trim(), "release runner repo is dirty", {
+    branch: branch.stdout.trim(),
+    dirty: status.stdout.trim().split(/\r?\n/).filter(Boolean),
+    sha: sha.stdout.trim(),
+  });
+  console.log(
+    `[verify-release-runner] repo clean: ${branch.stdout.trim()} ${sha.stdout.trim()}`,
+  );
+}
+
+async function checkCloudflareDeployToken() {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  assert(accountId, "CLOUDFLARE_ACCOUNT_ID is required");
+  const payload = await cloudflareApi(`/accounts/${accountId}`);
+  const name = payload?.result?.name || accountId;
+  console.log(`[verify-release-runner] Cloudflare deploy token can read account ${name}`);
+}
+
 async function checkAccessPolicy(runnerUrl) {
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
   const hostname = new URL(runnerUrl).hostname;
@@ -149,6 +187,59 @@ async function checkAccessPolicy(runnerUrl) {
     policyNames: policies.map((policy) => policy.name),
   });
   console.log(`[verify-release-runner] Access policy is narrowed to a specific service token`);
+}
+
+async function checkRunnerAuthenticatedHealth(runnerUrl) {
+  const clientId = String(process.env.RELEASE_RUNNER_CF_ACCESS_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.RELEASE_RUNNER_CF_ACCESS_CLIENT_SECRET || "").trim();
+  const wakeToken = String(process.env.RELEASE_RUNNER_WAKE_TOKEN || "").trim();
+  assert(clientId, "RELEASE_RUNNER_CF_ACCESS_CLIENT_ID is required");
+  assert(clientSecret, "RELEASE_RUNNER_CF_ACCESS_CLIENT_SECRET is required");
+  assert(wakeToken, "RELEASE_RUNNER_WAKE_TOKEN is required");
+  const { body, response, text } = await fetchJson(`${runnerUrl}/health`, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${wakeToken}`,
+      "CF-Access-Client-Id": clientId,
+      "CF-Access-Client-Secret": clientSecret,
+    },
+    redirect: "manual",
+  });
+  assert(response.status === 200 && body?.ok === true, "runner authenticated health failed", {
+    body: body || text.slice(0, 500),
+    status: response.status,
+  });
+  console.log(`[verify-release-runner] authenticated runner health ok`);
+}
+
+function checkLaunchAgents() {
+  if (process.platform !== "darwin") {
+    console.log(`[verify-release-runner] launch agent check skipped on ${process.platform}`);
+    return;
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : 501;
+  const labels = [
+    "com.jinnkunn.release-runner",
+    "com.jinnkunn.release-runner-tunnel",
+  ];
+  let seen = 0;
+  for (const label of labels) {
+    const result = spawnSync("launchctl", ["print", `gui/${uid}/${label}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status === 0) {
+      seen += 1;
+      console.log(`[verify-release-runner] LaunchAgent loaded: ${label}`);
+    } else {
+      console.log(`[verify-release-runner] LaunchAgent not loaded: ${label}`);
+    }
+  }
+  if (seen === 0) {
+    console.log(
+      `[verify-release-runner] warning: no release runner LaunchAgent was detected for gui/${uid}`,
+    );
+  }
 }
 
 function listWranglerSecrets(env) {
@@ -245,8 +336,12 @@ async function main() {
   );
   const envs = hasFlag("staging-only") ? ["staging"] : ["staging", "production"];
 
+  checkGitClean();
+  await checkCloudflareDeployToken();
   await checkAccessProtection(runnerUrl);
   await checkAccessPolicy(runnerUrl);
+  await checkRunnerAuthenticatedHealth(runnerUrl);
+  checkLaunchAgents();
   for (const env of envs) checkWorkerSecrets(env);
 
   if (hasFlag("skip-job")) return;

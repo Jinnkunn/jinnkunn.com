@@ -143,6 +143,30 @@ interface LiveReleaseRoute {
 
 interface LiveReleaseStatus {
   checkedAt: string;
+  contentPreview?: {
+    contentInputSha: string;
+    fileCount: number;
+    files: string[];
+    truncated?: boolean;
+    staging: {
+      action: "noop" | "deploy-code-first" | "publish-overlay";
+      current: boolean;
+      overlayContentInputSha: string;
+      overlaySnapshotSha: string;
+      workerCodeSha: string;
+    };
+    production: {
+      action:
+        | "noop"
+        | "copy-staging-overlay"
+        | "wait-for-staging-overlay"
+        | "promote-code-first";
+      current: boolean;
+      overlaySnapshotSha: string;
+      stagingOverlaySnapshotSha: string;
+      workerCodeSha: string;
+    };
+  };
   plan?: {
     kind: ReleaseActionKind;
     label: string;
@@ -150,6 +174,11 @@ interface LiveReleaseStatus {
     script: ReleasePlan["script"];
   };
   routeParity?: {
+    auth?: {
+      login?: string;
+      reason?: string;
+      stagingAuthenticated?: boolean;
+    };
     ok: boolean;
     checkedCount?: number;
     mismatchCount: number;
@@ -684,6 +713,7 @@ function formatRelativeTime(ms: number, now = Date.now()): string {
 
 function scriptLabel(script: string): string {
   if (script === "release:status:json" || script === "release:status:staging:json") return "Checking release status";
+  if (script === "verify:release-runner") return "Runner self-test";
   if (script === "release:site") return "Smart Release";
   if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing content";
   if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing production content";
@@ -1021,6 +1051,7 @@ export function ReleasePanel() {
   const [historyError, setHistoryError] = useState("");
   const [liveStatus, setLiveStatus] = useState<LiveReleaseStatus | null>(null);
   const [liveStatusError, setLiveStatusError] = useState("");
+  const [liveStatusLoading, setLiveStatusLoading] = useState(false);
   const [localSource, setLocalSource] = useState<SiteAdminLocalReleaseSource | null>(null);
   const [contentSuggestion, setContentSuggestion] =
     useState<ContentPublishSuggestion | null>(() => readContentPublishSuggestion());
@@ -1192,6 +1223,7 @@ export function ReleasePanel() {
 
   const loadLiveStatus = useCallback(async () => {
     if (!isTauriRuntime()) return;
+    setLiveStatusLoading(true);
     try {
       const script =
         releaseTarget === "staging"
@@ -1207,6 +1239,8 @@ export function ReleasePanel() {
       setLiveStatusError("");
     } catch (err) {
       setLiveStatusError(String(err));
+    } finally {
+      setLiveStatusLoading(false);
     }
   }, [releaseTarget]);
 
@@ -1592,6 +1626,77 @@ export function ReleasePanel() {
     await startRemoteRelease("release:status:json");
   }, [startRemoteRelease]);
 
+  const startRemoteRunnerSelfTest = useCallback(async () => {
+    setJobLog([]);
+    setPendingProductionContinuation(false);
+    setRollbackCandidate(null);
+    const queuedAt = Date.now();
+    setJob({
+      command: "Mac mini runner · npm run verify:release-runner -- --skip-job",
+      cwd: "remote release runner",
+      duration_ms: null,
+      error: "",
+      exit_code: null,
+      finished_at_ms: null,
+      job_id: `remote-pending-${queuedAt}`,
+      phase: "queueing",
+      script: "verify:release-runner",
+      started_at_ms: queuedAt,
+      status: "running",
+      stderr_tail: "",
+      stdout_tail: "",
+    });
+    try {
+      const response = await request("/api/site-admin/release-jobs", "POST", {
+        action: "runner-self-test",
+        request: {
+          releaseTarget,
+          source: "release-center",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`${response.code}: ${response.error}`);
+      }
+      const parsed = parseRemoteReleaseJobPayload(response.data);
+      if (!parsed) throw new Error("Remote release job returned an invalid payload.");
+      const wake = parseRemoteReleaseWake(asRecord(response.data).wake);
+      setActiveRemoteJobId(parsed.job.id);
+      setJob(remoteReleaseJobToLocalState(parsed.job));
+      setJobLog(remoteEventsToLogLines(parsed.job, parsed.events));
+      void loadRemoteRunnerStatus();
+      dispatchReleaseState({
+        kind: "running",
+        info: "Runner self-test queued for Mac mini runner…",
+      });
+      if (wake?.configured && !wake.ok) {
+        setMessage(
+          "warn",
+          `Runner self-test queued, but Mac mini wake failed: ${wake.error || `HTTP ${wake.status}`}`,
+        );
+      } else if (wake?.ok) {
+        setMessage("success", "Runner self-test queued and Mac mini wake sent.");
+      } else {
+        setMessage("success", "Runner self-test queued for Mac mini runner.");
+      }
+    } catch (err) {
+      const message = String(err);
+      setActiveRemoteJobId(null);
+      setJob((current) =>
+        current
+          ? {
+              ...current,
+              error: message,
+              exit_code: 1,
+              finished_at_ms: Date.now(),
+              phase: "failed",
+              status: "failed",
+            }
+          : current,
+      );
+      setMessage("error", `Runner self-test failed to start: ${message}`);
+    }
+  }, [loadRemoteRunnerStatus, releaseTarget, request, setMessage]);
+
   const openRemoteJob = useCallback(
     async (jobId: string) => {
       const remoteJob = await loadRemoteReleaseJob(jobId);
@@ -1834,8 +1939,10 @@ export function ReleasePanel() {
         formatRelativeTime={formatRelativeTime}
         jobs={remoteJobs}
         onRefresh={() => void loadRemoteRunnerStatus()}
+        onRunSelfTest={() => void startRemoteRunnerSelfTest()}
         onRunStatusCheck={() => void startRemoteStatusCheck()}
         shortId={shortId}
+        selfTestDisabled={!ready || job?.status === "running"}
         statusCheckDisabled={!ready || job?.status === "running"}
         status={runnerStatus}
       />
@@ -1891,8 +1998,16 @@ export function ReleasePanel() {
         status={status}
       />
 
+      <ContentDiffPreviewPanel
+        contentDelta={preview?.ok === true ? preview.contentDelta : null}
+        preview={liveStatus?.contentPreview || null}
+      />
+
       <RouteParityPanel
+        checking={liveStatusLoading}
+        disabled={job?.status === "running"}
         error={liveStatusError}
+        onCheck={() => void loadLiveStatus()}
         routeParity={liveStatus?.routeParity || null}
       />
 
@@ -2628,30 +2743,148 @@ function ContentOverlayStatusPanel({
   );
 }
 
+function contentPreviewActionLabel(action: string): string {
+  if (action === "noop") return "Current";
+  if (action === "publish-overlay") return "Publish staging";
+  if (action === "copy-staging-overlay") return "Copy to production";
+  if (action === "deploy-code-first") return "Deploy code first";
+  if (action === "promote-code-first") return "Promote code first";
+  if (action === "wait-for-staging-overlay") return "Waiting for staging";
+  return action || "Unknown";
+}
+
+function ContentDiffPreviewPanel({
+  contentDelta,
+  preview,
+}: {
+  contentDelta: ContentDelta | null;
+  preview: LiveReleaseStatus["contentPreview"] | null;
+}) {
+  if (!preview && (!contentDelta || contentDelta.changedRows === 0 || contentDelta.error)) {
+    return null;
+  }
+  const files = preview?.files ?? [];
+  const productionFiles = contentDelta?.files ?? [];
+  const stagingTone: ReleaseTone =
+    preview?.staging.action === "noop"
+      ? "ok"
+      : preview?.staging.action === "publish-overlay"
+        ? "warn"
+        : "blocked";
+  const productionTone: ReleaseTone =
+    preview?.production.action === "noop"
+      ? "ok"
+      : preview?.production.action === "copy-staging-overlay"
+        ? "warn"
+        : "muted";
+  return (
+    <section className="release-center__content-preview" aria-label="Content publish preview">
+      <header>
+        <div>
+          <h2>Content Preview</h2>
+          <p>Files and overlays that Smart Release will move through staging and production.</p>
+        </div>
+        <strong data-tone={files.length || contentDelta?.changedRows ? "warn" : "ok"}>
+          {files.length || contentDelta?.changedRows
+            ? `${Math.max(files.length, contentDelta?.changedRows || 0)} change${Math.max(files.length, contentDelta?.changedRows || 0) === 1 ? "" : "s"}`
+            : "No content changes"}
+        </strong>
+      </header>
+      {preview ? (
+        <div className="release-center__content-preview-grid">
+          <div data-tone={stagingTone}>
+            <span>Staging</span>
+            <strong>{contentPreviewActionLabel(preview.staging.action)}</strong>
+            <small>
+              input {shortSha(preview.contentInputSha)} · overlay{" "}
+              {shortSha(preview.staging.overlaySnapshotSha)}
+            </small>
+          </div>
+          <div data-tone={productionTone}>
+            <span>Production</span>
+            <strong>{contentPreviewActionLabel(preview.production.action)}</strong>
+            <small>
+              staging {shortSha(preview.production.stagingOverlaySnapshotSha)} · prod{" "}
+              {shortSha(preview.production.overlaySnapshotSha)}
+            </small>
+          </div>
+        </div>
+      ) : null}
+      {files.length ? (
+        <ul className="release-center__content-preview-list">
+          {files.map((file) => (
+            <li key={file}>
+              <code>{file}</code>
+            </li>
+          ))}
+          {preview?.truncated ? <li>More content files are hidden.</li> : null}
+        </ul>
+      ) : productionFiles.length ? (
+        <ul className="release-center__content-preview-list">
+          {productionFiles.map((file) => (
+            <li key={file.relPath}>
+              <code>{file.relPath}</code>
+              <span>{formatBytes(file.sizeBytes)}</span>
+              {file.updatedAtMs ? <time>{formatRelativeTime(file.updatedAtMs)}</time> : null}
+            </li>
+          ))}
+          {contentDelta?.truncated ? <li>More production content rows are hidden.</li> : null}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function RouteParityPanel({
+  checking,
+  disabled,
   error,
+  onCheck,
   routeParity,
 }: {
+  checking: boolean;
+  disabled: boolean;
   error: string;
+  onCheck: () => void;
   routeParity: LiveReleaseStatus["routeParity"] | null;
 }) {
   if (!routeParity && !error) return null;
+  const auth = routeParity?.auth;
   return (
     <section className="release-center__route-parity" aria-label="Route parity">
       <header>
         <div>
           <h2>Route Parity</h2>
-          <p>Live staging and production route hashes, including static shell headers.</p>
+          <p>
+            Live staging and production route hashes, including static shell headers.
+            {auth?.stagingAuthenticated
+              ? ` Staging checked as ${auth.login || "an allowed user"}.`
+              : auth?.reason
+                ? ` Staging auth unavailable: ${auth.reason}`
+                : ""}
+          </p>
         </div>
-        <strong data-tone={routeParity?.ok ? "ok" : "warn"}>
-          {routeParity?.skippedCount
-            ? `${routeParity.skippedCount} gated`
-            : routeParity?.ok
-              ? "Matched"
-              : error
-                ? "Unavailable"
-                : `${routeParity?.mismatchCount || 0} mismatch`}
-        </strong>
+        <div className="release-center__route-parity-actions">
+          <strong data-tone={routeParity?.ok ? "ok" : "warn"}>
+            {checking
+              ? "Checking"
+              : routeParity?.skippedCount
+                ? `${routeParity.skippedCount} gated`
+                : routeParity?.ok
+                  ? "Matched"
+                  : error
+                    ? "Unavailable"
+                    : `${routeParity?.mismatchCount || 0} mismatch`}
+          </strong>
+          <button
+            className="btn btn--secondary"
+            disabled={disabled || checking}
+            type="button"
+            onClick={onCheck}
+          >
+            {checking ? "Checking…" : "Check pages"}
+          </button>
+        </div>
       </header>
       {error ? <p className="release-center__route-parity-error">{error}</p> : null}
       {routeParity?.routes?.length ? (

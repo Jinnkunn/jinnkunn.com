@@ -261,11 +261,19 @@ function firstAllowedGithubUser() {
   return "";
 }
 
-async function stagingCookieIfNeeded(env) {
-  if (env !== "staging") return "";
+async function createStagingRouteAuth() {
   const secret = readEnv("NEXTAUTH_SECRET") || readEnv("AUTH_SECRET");
   const login = firstAllowedGithubUser();
-  if (!secret || !login) return "";
+  if (!secret || !login) {
+    return {
+      cookie: "",
+      login,
+      ok: false,
+      reason: !secret
+        ? "NEXTAUTH_SECRET/AUTH_SECRET is missing."
+        : "SITE_ADMIN_GITHUB_USERS has no allowed login.",
+    };
+  }
   const token = await encode({
     secret,
     token: {
@@ -275,7 +283,12 @@ async function stagingCookieIfNeeded(env) {
     },
     maxAge: 5 * 60,
   });
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  return {
+    cookie: `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`,
+    login,
+    ok: true,
+    reason: "",
+  };
 }
 
 function sha1(value) {
@@ -328,9 +341,9 @@ function normalizeHtmlForParity(html) {
     .trim();
 }
 
-async function fetchRoute({ env, pathname }) {
+async function fetchRoute({ env, pathname, stagingCookie = "" }) {
   const origin = normalizeOrigin(env);
-  const cookie = await stagingCookieIfNeeded(env);
+  const cookie = env === "staging" ? stagingCookie : "";
   const response = await fetch(`${origin}${pathname}`, {
     redirect: "manual",
     cache: "no-store",
@@ -362,29 +375,115 @@ function isStagingAuthRedirect(route) {
 
 async function compareRoutes(routes) {
   const rows = [];
+  const stagingAuth = await createStagingRouteAuth();
   for (const pathname of routes) {
     const [staging, production] = await Promise.all([
-      fetchRoute({ env: "staging", pathname }),
+      fetchRoute({ env: "staging", pathname, stagingCookie: stagingAuth.cookie }),
       fetchRoute({ env: "production", pathname }),
     ]);
-    const skipped = isStagingAuthRedirect(staging);
+    const authRedirect = isStagingAuthRedirect(staging);
+    const skipped = !stagingAuth.ok && authRedirect;
+    const authenticatedRedirect = stagingAuth.ok && authRedirect;
     rows.push({
       path: pathname,
-      ok: skipped || (staging.status === 200 &&
+      ok: skipped || (!authenticatedRedirect &&
+        staging.status === 200 &&
         production.status === 200 &&
         staging.hash === production.hash),
       skipped,
-      reason: skipped ? "Staging route requires an authenticated browser session." : "",
+      reason: skipped
+        ? `Staging route requires an authenticated browser session: ${stagingAuth.reason}`
+        : authenticatedRedirect
+          ? "Authenticated staging route still redirected; check NEXTAUTH_SECRET and allowlist config."
+          : "",
       staging,
       production,
     });
   }
   return {
+    auth: {
+      login: stagingAuth.login,
+      reason: stagingAuth.reason,
+      stagingAuthenticated: stagingAuth.ok,
+    },
     ok: rows.every((row) => row.ok),
     mismatchCount: rows.filter((row) => !row.ok).length,
     checkedCount: rows.filter((row) => !row.skipped).length,
     skippedCount: rows.filter((row) => row.skipped).length,
     routes: rows,
+  };
+}
+
+export function buildContentPreview({
+  contentInputSha,
+  git,
+  production,
+  productionOverlay,
+  staging,
+  stagingDiffFromLocal,
+  stagingOverlay,
+}) {
+  const contentFiles = new Set();
+  if (Array.isArray(stagingDiffFromLocal.files)) {
+    for (const file of stagingDiffFromLocal.files) {
+      if (file.startsWith("content/")) contentFiles.add(file);
+    }
+  }
+  if (Array.isArray(git.dirtyFiles)) {
+    for (const file of git.dirtyFiles) {
+      if (file.startsWith("content/")) contentFiles.add(file);
+    }
+  }
+  const files = Array.from(contentFiles).sort();
+  const stagingOverlayCurrent =
+    Boolean(stagingOverlay?.contentInputSha) &&
+    stagingOverlay.contentInputSha === contentInputSha &&
+    stagingOverlay.workerCodeSha === staging.codeSha;
+  const stagingBundledCurrent =
+    !stagingOverlay?.exists &&
+    staging.contentSha === contentInputSha &&
+    staging.codeSha === git.sha;
+  const stagingCurrent = stagingOverlayCurrent || stagingBundledCurrent;
+  const stagingBlockedByCode =
+    !stagingDiffFromLocal.ok ||
+    (staging.codeSha && git.sha && staging.codeSha !== git.sha && files.length === 0);
+  const productionCanCopy =
+    Boolean(stagingOverlay?.snapshotSha) &&
+    production.codeSha === staging.codeSha;
+  const productionBundledCurrent =
+    !productionOverlay?.exists &&
+    !stagingOverlay?.exists &&
+    production.contentSha === contentInputSha &&
+    production.codeSha === staging.codeSha;
+  const productionCurrent =
+    productionBundledCurrent ||
+    (productionCanCopy && stagingOverlay.snapshotSha === productionOverlay?.snapshotSha);
+
+  return {
+    contentInputSha,
+    files: files.slice(0, 12),
+    fileCount: files.length,
+    truncated: files.length > 12,
+    staging: {
+      action: stagingCurrent ? "noop" : stagingBlockedByCode ? "deploy-code-first" : "publish-overlay",
+      current: stagingCurrent,
+      workerCodeSha: staging.codeSha,
+      overlayContentInputSha: stagingOverlay?.contentInputSha || "",
+      overlaySnapshotSha: stagingOverlay?.snapshotSha || "",
+    },
+    production: {
+      action: productionCurrent
+        ? "noop"
+        : productionCanCopy
+          ? "copy-staging-overlay"
+          : production.codeSha === staging.codeSha
+            ? "wait-for-staging-overlay"
+            : "promote-code-first",
+      current: productionCurrent,
+      workerCodeSha: production.codeSha,
+      overlaySnapshotSha: productionOverlay?.snapshotSha || "",
+      stagingOverlaySnapshotSha: stagingOverlay?.snapshotSha || "",
+    },
   };
 }
 
@@ -553,6 +652,15 @@ export async function buildLiveReleaseStatus({
     stagingDiffFromLocal,
     routeParity,
   };
+  status.contentPreview = buildContentPreview({
+    contentInputSha,
+    git,
+    production,
+    productionOverlay,
+    staging,
+    stagingDiffFromLocal,
+    stagingOverlay,
+  });
   return {
     ...status,
     plan: deriveLiveReleasePlan({ status, target, contentChanged }),

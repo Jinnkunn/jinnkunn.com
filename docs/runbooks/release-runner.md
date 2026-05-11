@@ -155,10 +155,11 @@ End-to-end remote verification from the repo:
 npm run verify:release-runner
 ```
 
-This checks that public access to the runner is blocked by Cloudflare Access,
-that the Access policy is narrowed to a specific service token, that staging
-and production Worker secrets are present, and that staging can create and wake
-a harmless `status` release job on the Mac mini.
+This checks that the runner repo is clean, the Cloudflare token can read the
+account, public access to the runner is blocked by Cloudflare Access, the
+Access policy is narrowed to a specific service token, authenticated `/health`
+works with the wake token, staging and production Worker secrets are present,
+and staging can create and wake a harmless `status` release job on the Mac mini.
 
 ## Job Actions
 
@@ -166,6 +167,7 @@ The agent only runs explicit allowlisted actions:
 
 - `status` -> `npm run release:status:json -- --skip-routes`
 - `smart-release` -> `npm run release:site`
+- `runner-self-test` -> `npm run verify:release-runner -- --skip-job`
 - `publish-content-staging` -> `npm run publish:content:staging`
 - `deploy-staging-code` -> `npm run release:staging`
 - `promote-production-code` -> `npm run release:prod:from-staging`

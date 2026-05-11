@@ -21,6 +21,10 @@ export const COMMANDS = {
     args: ["run", "release:site"],
     label: "Smart release",
   },
+  "runner-self-test": {
+    args: ["run", "verify:release-runner", "--", "--skip-job"],
+    label: "Release runner self-test",
+  },
   "publish-content-staging": {
     args: ["run", "publish:content:staging"],
     label: "Publish staging content",
