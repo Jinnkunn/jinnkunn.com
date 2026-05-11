@@ -45,6 +45,7 @@
     "release:status": "node scripts/release-status.mjs",
     "release:status:json": "node scripts/release-status.mjs --json --compact",
     "release:status:staging:json": "node scripts/release-status.mjs --json --compact --target=staging",
+    "verify:release-runner": "node scripts/verify-release-runner.mjs",
     "publish:content:staging": "node scripts/publish-content.mjs --env=staging",
     "publish:content:staging:dry-run": "node scripts/publish-content.mjs --env=staging --dry-run",
     "publish:content:staging:rollback": "node scripts/publish-content.mjs --env=staging --rollback",

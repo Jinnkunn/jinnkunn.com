@@ -149,6 +149,16 @@ curl -sS -X POST http://127.0.0.1:8789/wake \
   -d '{"jobId":"<queued-job-id>","action":"status"}'
 ```
 
+End-to-end remote verification from the repo:
+
+```bash
+npm run verify:release-runner
+```
+
+This checks that public access to the runner is blocked by Cloudflare Access,
+that staging and production Worker secrets are present, and that staging can
+create and wake a harmless `status` release job on the Mac mini.
+
 ## Job Actions
 
 The agent only runs explicit allowlisted actions:
