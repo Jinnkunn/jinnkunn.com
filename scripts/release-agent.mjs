@@ -135,6 +135,13 @@ export function normalizeWakePayload(payload) {
   return { ok: true, jobId, action };
 }
 
+export function wakeHealthPayload(snapshot, authorization, expectedToken) {
+  if (isWakeAuthorized(authorization, expectedToken)) {
+    return snapshot && typeof snapshot === "object" ? snapshot : { ok: true };
+  }
+  return { ok: true };
+}
+
 function tailPush(lines, line, max = 120) {
   lines.push(line);
   while (lines.length > max) lines.shift();
@@ -462,7 +469,7 @@ function startWakeServer({ controller, port, wakeToken }) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     if (req.method === "GET" && url.pathname === "/health") {
-      jsonResponse(res, 200, controller.snapshot());
+      jsonResponse(res, 200, wakeHealthPayload(controller.snapshot(), req.headers.authorization, wakeToken));
       return;
     }
     if (req.method !== "POST" || url.pathname !== "/wake") {
