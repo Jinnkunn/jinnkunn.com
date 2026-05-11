@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { confirm as confirmDialog, open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import {
   Bot,
   CheckCircle2,
   Database,
   FileClock,
+  HardDrive,
   RefreshCcw,
   Settings,
   ShieldCheck,
   X,
 } from "lucide-react";
+import { DataSettingsPanel, defaultWorkspaceBackupFilename } from "./DataSettingsPanel";
 import type { WorkspaceModuleDefinition } from "../modules/types";
 import {
+  workspaceBackupCreate,
+  workspaceBackupInfo,
+  workspaceBackupRestore,
   workspaceMcpAuditRecent,
   workspaceMcpConfirmationDecide,
   workspaceMcpConfirmationsList,
@@ -19,13 +25,16 @@ import {
   workspaceMcpStatus,
 } from "../lib/tauri";
 import type {
+  WorkspaceBackupInfo,
+  WorkspaceBackupCreateResult,
+  WorkspaceBackupRestoreResult,
   WorkspaceMcpAuditEntry,
   WorkspaceMcpConfirmation,
   WorkspaceMcpSettings,
   WorkspaceMcpStatus,
 } from "../lib/tauri";
 
-type SettingsSection = "modules" | "ai";
+type SettingsSection = "modules" | "data" | "ai";
 
 const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
   enabled: true,
@@ -338,6 +347,44 @@ function McpSettingsPanel({
     ? [status.serverCommand, ...status.serverArgs].join(" ")
     : "npm run workspace:mcp";
   const writable = settings.enabled && settings.writeMode === "local-write";
+  const applyProfile = (profile: "read-only" | "daily" | "site") => {
+    if (profile === "read-only") {
+      onUpdateSettings({
+        enabled: true,
+        writeMode: "read-only",
+        requireConfirmationForWrites: true,
+        allowCalendarWrite: false,
+      });
+      return;
+    }
+    if (profile === "site") {
+      onUpdateSettings({
+        enabled: true,
+        writeMode: "local-write",
+        requireConfirmationForWrites: true,
+        allowNotesWrite: true,
+        allowTodosWrite: false,
+        allowProjectsWrite: false,
+        allowSiteAdminWrite: true,
+        siteAdminWriteTarget: "api",
+        siteAdminFallbackToLocal: false,
+        allowCalendarWrite: false,
+      });
+      return;
+    }
+    onUpdateSettings({
+      enabled: true,
+      writeMode: "local-write",
+      requireConfirmationForWrites: true,
+      allowNotesWrite: true,
+      allowTodosWrite: true,
+      allowProjectsWrite: true,
+      allowSiteAdminWrite: true,
+      siteAdminWriteTarget: "api",
+      siteAdminFallbackToLocal: true,
+      allowCalendarWrite: false,
+    });
+  };
 
   return (
     <div className="settings-window__section settings-ai">
@@ -382,6 +429,21 @@ function McpSettingsPanel({
       </div>
 
       {error ? <div className="workspace-status-banner workspace-status-banner--error">{error}</div> : null}
+
+      <div className="settings-ai-profile-strip" aria-label="AI permission profiles">
+        <button type="button" onClick={() => applyProfile("daily")}>
+          <strong>Daily AI</strong>
+          <small>Local writes with confirmation</small>
+        </button>
+        <button type="button" onClick={() => applyProfile("site")}>
+          <strong>Site editing</strong>
+          <small>Staging API writes only</small>
+        </button>
+        <button type="button" onClick={() => applyProfile("read-only")}>
+          <strong>Read only</strong>
+          <small>Search and inspect</small>
+        </button>
+      </div>
 
       {status ? (
         <div className="settings-ai-path-grid">
@@ -547,6 +609,12 @@ export function SettingsWindow({
   const [mcpConfirmations, setMcpConfirmations] = useState<WorkspaceMcpConfirmation[]>([]);
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpError, setMcpError] = useState<string | null>(null);
+  const [dataInfo, setDataInfo] = useState<WorkspaceBackupInfo | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [dataMessage, setDataMessage] = useState<string | null>(null);
+  const [lastBackup, setLastBackup] = useState<WorkspaceBackupCreateResult | null>(null);
+  const [lastRestore, setLastRestore] = useState<WorkspaceBackupRestoreResult | null>(null);
 
   const refreshMcp = useCallback(async () => {
     setMcpLoading(true);
@@ -595,9 +663,71 @@ export function SettingsWindow({
     [refreshMcp],
   );
 
+  const refreshDataInfo = useCallback(async () => {
+    setDataLoading(true);
+    setDataError(null);
+    try {
+      setDataInfo(await workspaceBackupInfo());
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
+
+  const createBackup = useCallback(async () => {
+    setDataError(null);
+    setDataMessage(null);
+    const destinationPath = await save({
+      defaultPath: defaultWorkspaceBackupFilename(),
+      filters: [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }],
+      title: "Create Workspace Backup",
+    });
+    if (!destinationPath) return;
+    setDataLoading(true);
+    try {
+      const result = await workspaceBackupCreate(destinationPath);
+      setLastBackup(result);
+      setDataMessage(`Backup created: ${pathLeaf(result.path)}`);
+      await refreshDataInfo();
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDataLoading(false);
+    }
+  }, [refreshDataInfo]);
+
+  const restoreBackup = useCallback(async () => {
+    setDataError(null);
+    setDataMessage(null);
+    const selectedPath = await openDialog({
+      filters: [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }],
+      multiple: false,
+      title: "Restore Workspace Backup",
+    });
+    if (!selectedPath || Array.isArray(selectedPath)) return;
+    const confirmed = await confirmDialog(
+      "Restore this backup? The current database will be copied to a rollback backup first. Restart Workspace after restore.",
+      { kind: "warning", title: "Restore Workspace Backup" },
+    );
+    if (!confirmed) return;
+    setDataLoading(true);
+    try {
+      const result = await workspaceBackupRestore(selectedPath);
+      setLastRestore(result);
+      setDataMessage("Backup restored. Restart Workspace to reload every surface.");
+      await refreshDataInfo();
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDataLoading(false);
+    }
+  }, [refreshDataInfo]);
+
   const navItems = useMemo(
     () => [
       { id: "modules" as const, label: "Modules", icon: <Settings absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
+      { id: "data" as const, label: "Data", icon: <HardDrive absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
       { id: "ai" as const, label: "AI Access", icon: <Bot absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
     ],
     [],
@@ -618,6 +748,11 @@ export function SettingsWindow({
     if (!open || activeSection !== "ai") return;
     void refreshMcp();
   }, [activeSection, open, refreshMcp]);
+
+  useEffect(() => {
+    if (!open || activeSection !== "data") return;
+    void refreshDataInfo();
+  }, [activeSection, open, refreshDataInfo]);
 
   if (!open) return null;
   return (
@@ -664,6 +799,18 @@ export function SettingsWindow({
               enabledModuleIds={enabledModuleIds}
               modules={modules}
               onSetModuleEnabled={onSetModuleEnabled}
+            />
+          ) : activeSection === "data" ? (
+            <DataSettingsPanel
+              error={dataError}
+              info={dataInfo}
+              lastBackup={lastBackup}
+              lastRestore={lastRestore}
+              loading={dataLoading}
+              message={dataMessage}
+              onCreateBackup={() => void createBackup()}
+              onRefresh={() => void refreshDataInfo()}
+              onRestoreBackup={() => void restoreBackup()}
             />
           ) : (
             <McpSettingsPanel

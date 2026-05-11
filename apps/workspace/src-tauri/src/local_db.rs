@@ -12,11 +12,41 @@
 // poisoning handling. Per-call open keeps every Tauri command a clean
 // "open → query → drop" with no shared state to debug.
 
+use chrono::Utc;
 use rusqlite::{params, Connection};
-use std::path::PathBuf;
+use serde::Serialize;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 const DB_FILENAME: &str = "workspace.db";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupInfo {
+    db_path: String,
+    exists: bool,
+    size_bytes: u64,
+    modified_at_ms: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupCreateResult {
+    path: String,
+    size_bytes: u64,
+    created_at_ms: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupRestoreResult {
+    restored_from: String,
+    db_path: String,
+    rollback_backup_path: Option<String>,
+    restored_at_ms: i64,
+    restart_required: bool,
+}
 
 /// File-backed local DB path, e.g. on macOS:
 /// `~/Library/Application Support/com.jinnkunn.workspace/workspace.db`
@@ -41,6 +71,144 @@ pub fn open(app: &tauri::AppHandle) -> Result<Connection, String> {
         .map_err(|err| format!("failed to enable FK pragma: {err}"))?;
     run_migrations(&conn)?;
     Ok(conn)
+}
+
+#[tauri::command]
+pub fn workspace_backup_info(app: tauri::AppHandle) -> Result<WorkspaceBackupInfo, String> {
+    let path = db_path(&app)?;
+    let metadata = fs::metadata(&path).ok();
+    Ok(WorkspaceBackupInfo {
+        db_path: path.display().to_string(),
+        exists: metadata.is_some(),
+        size_bytes: metadata.as_ref().map(|value| value.len()).unwrap_or(0),
+        modified_at_ms: metadata
+            .and_then(|value| value.modified().ok())
+            .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|value| value.as_millis() as i64),
+    })
+}
+
+#[tauri::command]
+pub fn workspace_backup_create(
+    app: tauri::AppHandle,
+    destination_path: String,
+) -> Result<WorkspaceBackupCreateResult, String> {
+    let destination = normalized_user_path(destination_path)?;
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create backup directory {}: {err}",
+                parent.display()
+            )
+        })?;
+    }
+    if destination.exists() {
+        fs::remove_file(&destination).map_err(|err| {
+            format!(
+                "failed to replace existing backup {}: {err}",
+                destination.display()
+            )
+        })?;
+    }
+
+    let conn = open(&app)?;
+    conn.execute("VACUUM INTO ?1", params![destination.display().to_string()])
+        .map_err(|err| format!("failed to create backup {}: {err}", destination.display()))?;
+    drop(conn);
+
+    let metadata = fs::metadata(&destination).map_err(|err| {
+        format!(
+            "failed to inspect backup {} after creation: {err}",
+            destination.display()
+        )
+    })?;
+    Ok(WorkspaceBackupCreateResult {
+        path: destination.display().to_string(),
+        size_bytes: metadata.len(),
+        created_at_ms: Utc::now().timestamp_millis(),
+    })
+}
+
+#[tauri::command]
+pub fn workspace_backup_restore(
+    app: tauri::AppHandle,
+    source_path: String,
+) -> Result<WorkspaceBackupRestoreResult, String> {
+    let source = normalized_user_path(source_path)?;
+    if !source.exists() {
+        return Err(format!("backup file does not exist: {}", source.display()));
+    }
+    validate_sqlite_backup(&source)?;
+
+    let target = db_path(&app)?;
+    let rollback_backup_path = if target.exists() {
+        let backups_dir = target
+            .parent()
+            .ok_or_else(|| format!("failed to resolve parent for {}", target.display()))?
+            .join("backups");
+        fs::create_dir_all(&backups_dir).map_err(|err| {
+            format!(
+                "failed to create rollback backup directory {}: {err}",
+                backups_dir.display()
+            )
+        })?;
+        let rollback = backups_dir.join(format!(
+            "workspace-before-restore-{}.db",
+            Utc::now().format("%Y%m%d-%H%M%S")
+        ));
+        fs::copy(&target, &rollback).map_err(|err| {
+            format!(
+                "failed to create rollback backup {}: {err}",
+                rollback.display()
+            )
+        })?;
+        Some(rollback)
+    } else {
+        None
+    };
+
+    fs::copy(&source, &target).map_err(|err| {
+        format!(
+            "failed to restore backup {} to {}: {err}",
+            source.display(),
+            target.display()
+        )
+    })?;
+
+    let conn = open(&app)?;
+    drop(conn);
+
+    Ok(WorkspaceBackupRestoreResult {
+        restored_from: source.display().to_string(),
+        db_path: target.display().to_string(),
+        rollback_backup_path: rollback_backup_path.map(|path| path.display().to_string()),
+        restored_at_ms: Utc::now().timestamp_millis(),
+        restart_required: true,
+    })
+}
+
+fn normalized_user_path(value: String) -> Result<PathBuf, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("path is required".to_string());
+    }
+    Ok(PathBuf::from(trimmed))
+}
+
+fn validate_sqlite_backup(path: &Path) -> Result<(), String> {
+    let conn = Connection::open(path)
+        .map_err(|err| format!("failed to open backup {}: {err}", path.display()))?;
+    let result: String = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(|err| format!("failed to verify backup {}: {err}", path.display()))?;
+    if result == "ok" {
+        Ok(())
+    } else {
+        Err(format!(
+            "backup {} failed SQLite integrity check: {result}",
+            path.display()
+        ))
+    }
 }
 
 /// Apply the local schema. Idempotent — `CREATE TABLE IF NOT EXISTS` so

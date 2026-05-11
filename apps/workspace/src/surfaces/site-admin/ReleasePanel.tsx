@@ -59,6 +59,17 @@ import {
   readContentPublishSuggestion,
   type ContentPublishSuggestion,
 } from "./publish-suggestion";
+import {
+  ReleaseRemoteJobsCard,
+  ReleaseRunnerStatusCard,
+  type ReleaseExecutionMode,
+  type RemoteReleaseAgentRow,
+  type RemoteReleaseJobAction,
+  type RemoteReleaseJobRow,
+  type RemoteReleaseJobStatus,
+  type RemoteReleaseRunnerStatus,
+  type RemoteReleaseWakeResult,
+} from "./release-runner-cards";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { getSiteAdminEnvironment, normalizeString } from "./utils";
@@ -92,41 +103,6 @@ type ReleaseLogLine = {
   message: string;
 };
 
-type ReleaseExecutionMode = "local" | "remote";
-
-type RemoteReleaseJobStatus =
-  | "queued"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "canceled";
-
-type RemoteReleaseJobAction =
-  | "status"
-  | "publish-content-staging"
-  | "deploy-staging-code"
-  | "promote-production-code"
-  | "publish-content-production-from-staging";
-
-interface RemoteReleaseJobRow {
-  id: string;
-  action: string;
-  script: string;
-  target: string;
-  status: RemoteReleaseJobStatus;
-  actor: string;
-  agentId: string;
-  phase: string;
-  request: Record<string, unknown>;
-  result: Record<string, unknown>;
-  error: string;
-  createdAt: number;
-  updatedAt: number;
-  claimedAt: number | null;
-  startedAt: number | null;
-  finishedAt: number | null;
-}
-
 interface RemoteReleaseJobEventRow {
   id: string;
   jobId: string;
@@ -135,29 +111,6 @@ interface RemoteReleaseJobEventRow {
   phase: string;
   stream: "stdout" | "stderr" | "status";
   message: string;
-}
-
-interface RemoteReleaseAgentRow {
-  agentId: string;
-  status: "idle" | "running";
-  currentJobId: string;
-  capabilities: string[];
-  lastSeenAt: number;
-  updatedAt: number;
-}
-
-interface RemoteReleaseRunnerStatus {
-  agents: RemoteReleaseAgentRow[];
-  observedAt: number;
-  queuedCount: number;
-  runningCount: number;
-}
-
-interface RemoteReleaseWakeResult {
-  configured: boolean;
-  ok: boolean;
-  status: number;
-  error: string;
 }
 
 type ReleaseCheck = {
@@ -1733,17 +1686,22 @@ export function ReleasePanel() {
 
       <ReleaseRunnerStatusCard
         executionMode={releaseExecutionMode}
+        formatRelativeTime={formatRelativeTime}
         onRefresh={() => void loadRemoteRunnerStatus()}
         onRunStatusCheck={() => void startRemoteStatusCheck()}
+        shortId={shortId}
         statusCheckDisabled={!ready || job?.status === "running"}
         status={runnerStatus}
       />
 
       <ReleaseRemoteJobsCard
         activeJobId={activeRemoteJobId || (job?.cwd === "remote release runner" ? job.job_id : null)}
+        formatRelativeTime={formatRelativeTime}
         jobs={remoteJobs}
         onOpen={(jobId) => void openRemoteJob(jobId)}
         onRetry={(jobId) => void retryRemoteJob(jobId)}
+        scriptLabel={scriptLabel}
+        shortId={shortId}
       />
 
       <ReleaseEnvironmentNotice
@@ -2047,171 +2005,6 @@ function ReleaseRunnerControl({
         Mac mini runner
       </button>
     </div>
-  );
-}
-
-function ReleaseRunnerStatusCard({
-  executionMode,
-  onRefresh,
-  onRunStatusCheck,
-  statusCheckDisabled,
-  status,
-}: {
-  executionMode: ReleaseExecutionMode;
-  onRefresh: () => void;
-  onRunStatusCheck: () => void;
-  statusCheckDisabled: boolean;
-  status: RemoteReleaseRunnerStatus | null;
-}) {
-  const agent = status?.agents[0] ?? null;
-  const ageMs =
-    agent?.lastSeenAt && status
-      ? status.observedAt - agent.lastSeenAt
-      : Number.POSITIVE_INFINITY;
-  const online = Boolean(agent && ageMs < 30_000);
-  const stale = Boolean(agent && !online);
-  const tone: ReleaseTone = online
-    ? agent?.status === "running"
-      ? "warn"
-      : "ok"
-    : stale
-      ? "blocked"
-      : "muted";
-  const title = online
-    ? agent?.status === "running"
-      ? "Mac mini runner working"
-      : "Mac mini runner online"
-    : stale
-      ? "Mac mini runner stale"
-      : "Mac mini runner not seen";
-  const detail = online
-    ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}.`
-    : stale
-      ? `Last heartbeat ${formatRelativeTime(agent?.lastSeenAt || 0)}; check the LaunchAgent if jobs do not start.`
-      : "No heartbeat has reached Site Admin yet.";
-  return (
-    <section
-      className="release-center__runner-status"
-      data-tone={tone}
-      aria-label="Remote release runner status"
-    >
-      <div className="release-center__runner-main">
-        <span className="release-center__runner-dot" aria-hidden="true" />
-        <div>
-          <strong>{title}</strong>
-          <small>
-            {executionMode === "remote" ? "Remote runner selected. " : "Remote runner standby. "}
-            {detail}
-          </small>
-        </div>
-      </div>
-      <dl className="release-center__runner-facts">
-        <div>
-          <dt>Queue</dt>
-          <dd>{status ? `${status.queuedCount} queued` : "Unknown"}</dd>
-        </div>
-        <div>
-          <dt>Running</dt>
-          <dd>{status ? status.runningCount : "Unknown"}</dd>
-        </div>
-        <div>
-          <dt>Agent</dt>
-          <dd>{agent ? shortId(agent.agentId) : "None"}</dd>
-        </div>
-        {agent?.currentJobId ? (
-          <div>
-            <dt>Job</dt>
-            <dd>{shortId(agent.currentJobId)}</dd>
-          </div>
-        ) : null}
-      </dl>
-      <div className="release-center__runner-actions">
-        <button
-          className="btn btn--secondary"
-          type="button"
-          disabled={statusCheckDisabled}
-          onClick={onRunStatusCheck}
-        >
-          Run status check
-        </button>
-        <button className="btn btn--secondary" type="button" onClick={onRefresh}>
-          Refresh runner
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function remoteJobStatusTone(status: RemoteReleaseJobStatus): ReleaseTone {
-  if (status === "succeeded") return "ok";
-  if (status === "failed" || status === "canceled") return "blocked";
-  if (status === "running" || status === "queued") return "warn";
-  return "muted";
-}
-
-function remoteJobStatusLabel(job: RemoteReleaseJobRow): string {
-  if (job.status === "queued") return "Queued";
-  if (job.status === "running") return job.phase ? `Running · ${job.phase}` : "Running";
-  if (job.status === "succeeded") return "Succeeded";
-  if (job.status === "failed") return "Failed";
-  return "Canceled";
-}
-
-function ReleaseRemoteJobsCard({
-  activeJobId,
-  jobs,
-  onOpen,
-  onRetry,
-}: {
-  activeJobId: string | null;
-  jobs: RemoteReleaseJobRow[];
-  onOpen: (jobId: string) => void;
-  onRetry: (jobId: string) => void;
-}) {
-  return (
-    <section className="release-center__remote-jobs" aria-label="Recent remote release jobs">
-      <header>
-        <div>
-          <h2>Recent Remote Jobs</h2>
-          <p>Latest Mac mini runner activity. Open a row to inspect its logs.</p>
-        </div>
-        <strong>{jobs.length ? `${jobs.length} shown` : "No jobs"}</strong>
-      </header>
-      {jobs.length > 0 ? (
-        <div className="release-center__remote-job-list">
-          {jobs.map((item) => {
-            const active = activeJobId === item.id;
-            const canRetry = item.status === "failed" || item.status === "canceled";
-            return (
-              <div
-                className="release-center__remote-job-row"
-                data-active={active ? "true" : "false"}
-                data-tone={remoteJobStatusTone(item.status)}
-                key={item.id}
-              >
-                <button type="button" onClick={() => onOpen(item.id)}>
-                  <span>{scriptLabel(item.script)}</span>
-                  <strong>{remoteJobStatusLabel(item)}</strong>
-                  <small>
-                    {shortId(item.id)} · {item.target || "site"} · updated {formatRelativeTime(item.updatedAt)}
-                  </small>
-                </button>
-                <div className="release-center__remote-job-actions">
-                  {item.agentId ? <span>{shortId(item.agentId)}</span> : null}
-                  {canRetry ? (
-                    <button className="btn btn--secondary" type="button" onClick={() => onRetry(item.id)}>
-                      Retry
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="release-center__empty">No remote release jobs have been recorded yet.</p>
-      )}
-    </section>
   );
 }
 

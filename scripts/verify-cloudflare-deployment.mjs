@@ -146,6 +146,35 @@ async function checkAuthenticatedStaticShell({ name, url, contains }) {
   );
 }
 
+async function checkPublicStaticShell({ name, url, contains }) {
+  const response = await fetch(url, { redirect: "manual", cache: "no-store" });
+  const text = await response.text();
+  assert(response.status === 200, `${name} returned wrong status`, {
+    url,
+    status: response.status,
+    expectedStatus: 200,
+  });
+  assert(
+    response.headers.get("x-static-shell") === "1",
+    `${name} did not use static shell`,
+    {
+      url,
+      status: response.status,
+      staticShell: response.headers.get("x-static-shell"),
+      staticPath: response.headers.get("x-static-shell-path"),
+    },
+  );
+  if (contains) {
+    assert(text.includes(contains), `${name} static shell content drifted`, {
+      url,
+      contains,
+    });
+  }
+  console.log(
+    `[verify-cloudflare] ${name}: ${response.status} ${response.headers.get("x-static-shell-path")}`,
+  );
+}
+
 function wranglerStatus(envName) {
   const result = spawnSync(
     "npx",
@@ -236,15 +265,45 @@ async function verifyProduction(expectedVersion) {
   const origin = String(
     process.env.SITE_ADMIN_BASE_URL_PRODUCTION || "https://jinkunchen.com",
   ).replace(/\/+$/, "");
-  await checkHttp({
+  await checkPublicStaticShell({
     name: "production /",
     url: `${origin}/`,
-    expectedStatus: 200,
+    contains: "Hi there!",
   });
-  await checkHttp({
+  await checkPublicStaticShell({
     name: "production /blog",
     url: `${origin}/blog`,
-    expectedStatus: 200,
+    contains: "Blog",
+  });
+  await checkPublicStaticShell({
+    name: "production /news",
+    url: `${origin}/news`,
+    contains: "News",
+  });
+  await checkPublicStaticShell({
+    name: "production /publications",
+    url: `${origin}/publications`,
+    contains: "Publications",
+  });
+  await checkPublicStaticShell({
+    name: "production /works",
+    url: `${origin}/works`,
+    contains: "Works",
+  });
+  await checkPublicStaticShell({
+    name: "production /teaching",
+    url: `${origin}/teaching`,
+    contains: "Teaching",
+  });
+  await checkPublicStaticShell({
+    name: "production /bio",
+    url: `${origin}/bio`,
+    contains: "BIO",
+  });
+  await checkPublicStaticShell({
+    name: "production /connect",
+    url: `${origin}/connect`,
+    contains: "Connect",
   });
   await checkHttp({
     name: "production /api/site-admin/status",

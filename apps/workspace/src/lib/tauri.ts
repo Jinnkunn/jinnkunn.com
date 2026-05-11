@@ -48,6 +48,43 @@ export function secureStoreBackend(): Promise<"keychain" | "local-db"> {
   return invoke("secure_store_backend");
 }
 
+export interface WorkspaceBackupInfo {
+  dbPath: string;
+  exists: boolean;
+  sizeBytes: number;
+  modifiedAtMs: number | null;
+}
+
+export interface WorkspaceBackupCreateResult {
+  path: string;
+  sizeBytes: number;
+  createdAtMs: number;
+}
+
+export interface WorkspaceBackupRestoreResult {
+  restoredFrom: string;
+  dbPath: string;
+  rollbackBackupPath: string | null;
+  restoredAtMs: number;
+  restartRequired: boolean;
+}
+
+export function workspaceBackupInfo(): Promise<WorkspaceBackupInfo> {
+  return invoke("workspace_backup_info");
+}
+
+export function workspaceBackupCreate(
+  destinationPath: string,
+): Promise<WorkspaceBackupCreateResult> {
+  return invoke("workspace_backup_create", { destinationPath });
+}
+
+export function workspaceBackupRestore(
+  sourcePath: string,
+): Promise<WorkspaceBackupRestoreResult> {
+  return invoke("workspace_backup_restore", { sourcePath });
+}
+
 export type WorkspaceMcpWriteMode = "read-only" | "local-write";
 export type WorkspaceMcpSiteAdminWriteTarget = "api" | "local";
 

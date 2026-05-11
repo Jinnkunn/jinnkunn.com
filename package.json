@@ -63,6 +63,7 @@
     "verify:cf:staging": "node scripts/verify-cloudflare-deployment.mjs --env=staging",
     "verify:cf:prod": "node scripts/verify-cloudflare-deployment.mjs --env=production",
     "verify:cf:both": "node scripts/verify-cloudflare-deployment.mjs --env=both",
+    "verify:static-shell": "node scripts/verify-cloudflare-deployment.mjs --env=production",
     "verify:staging:authenticated": "node scripts/staging-authenticated-qa.mjs",
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "check:quality:prod": "node scripts/quality-prod.mjs",
