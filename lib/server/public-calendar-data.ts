@@ -9,6 +9,7 @@ import {
   type PublicCalendarData,
   type PublicCalendarEvent,
 } from "@/lib/shared/public-calendar";
+import bundledPublicCalendarSnapshot from "@/content/calendar-public.json";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import {
   readPublicCalendarEventFromDb,
@@ -33,7 +34,10 @@ function readFromDisk(): PublicCalendarData {
     const raw = readFileSync(CALENDAR_PUBLIC_PATH, "utf8");
     return normalizePublicCalendarData(JSON.parse(raw));
   } catch {
-    return normalizePublicCalendarData(null);
+    // Cloudflare Worker bundles do not guarantee arbitrary repository files
+    // are available to `fs`; keep the build-time calendar snapshot embedded
+    // so the public API cannot collapse to an empty response after hydration.
+    return normalizePublicCalendarData(bundledPublicCalendarSnapshot);
   }
 }
 
