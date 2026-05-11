@@ -103,6 +103,54 @@ async function checkAccessProtection(runnerUrl) {
   console.log(`[verify-release-runner] public runner health protected: HTTP ${response.status}`);
 }
 
+async function cloudflareApi(path) {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  const token = String(process.env.CLOUDFLARE_API_TOKEN || "").trim();
+  assert(accountId, "CLOUDFLARE_ACCOUNT_ID is required");
+  assert(token, "CLOUDFLARE_API_TOKEN is required");
+  const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const text = await response.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = null;
+  }
+  assert(response.ok && body?.success !== false, "Cloudflare API request failed", {
+    body: body || text.slice(0, 500),
+    path,
+    status: response.status,
+  });
+  return body;
+}
+
+async function checkAccessPolicy(runnerUrl) {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  const hostname = new URL(runnerUrl).hostname;
+  const payload = await cloudflareApi(`/accounts/${accountId}/access/apps?per_page=100`);
+  const app = (Array.isArray(payload.result) ? payload.result : []).find((item) => {
+    const domains = [item?.domain, ...(Array.isArray(item?.self_hosted_domains) ? item.self_hosted_domains : [])];
+    return domains.includes(hostname);
+  });
+  assert(app, "Release Runner Access application was not found", { hostname });
+  const policies = Array.isArray(app.policies) ? app.policies : [];
+  const includes = policies.flatMap((policy) => (Array.isArray(policy.include) ? policy.include : []));
+  const usesAnyValidServiceToken = includes.some((rule) => Boolean(rule?.any_valid_service_token));
+  const serviceTokenRules = includes.filter((rule) => rule?.service_token?.token_id);
+  assert(!usesAnyValidServiceToken, "Release Runner Access policy still allows any valid service token", {
+    appId: app.id,
+    policyNames: policies.map((policy) => policy.name),
+  });
+  assert(serviceTokenRules.length > 0, "Release Runner Access policy does not include a specific service token", {
+    appId: app.id,
+    policyNames: policies.map((policy) => policy.name),
+  });
+  console.log(`[verify-release-runner] Access policy is narrowed to a specific service token`);
+}
+
 function listWranglerSecrets(env) {
   const result = spawnSync("npx", ["wrangler", "secret", "list", "--env", env, "--format", "json"], {
     encoding: "utf8",
@@ -198,6 +246,7 @@ async function main() {
   const envs = hasFlag("staging-only") ? ["staging"] : ["staging", "production"];
 
   await checkAccessProtection(runnerUrl);
+  await checkAccessPolicy(runnerUrl);
   for (const env of envs) checkWorkerSecrets(env);
 
   if (hasFlag("skip-job")) return;

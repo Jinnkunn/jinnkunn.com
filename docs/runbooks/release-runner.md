@@ -156,8 +156,9 @@ npm run verify:release-runner
 ```
 
 This checks that public access to the runner is blocked by Cloudflare Access,
-that staging and production Worker secrets are present, and that staging can
-create and wake a harmless `status` release job on the Mac mini.
+that the Access policy is narrowed to a specific service token, that staging
+and production Worker secrets are present, and that staging can create and wake
+a harmless `status` release job on the Mac mini.
 
 ## Job Actions
 
@@ -200,9 +201,7 @@ should receive an Access 403 before they reach the Mac mini. The Site Admin
 Worker presents the Access service token headers and then the runner validates
 its own bearer wake token before accepting `/wake`.
 
-The Access policy currently uses `any_valid_service_token` because the deploy
-API token cannot list Access service tokens (`/access/service_tokens` returns
-403), so it cannot resolve the token's internal UUID for a narrower
-`service_token.token_id` rule. This is still guarded by the runner's own bearer
-token, but if the service token UUID becomes available, narrow the policy to
-that specific service token.
+The Access policy is narrowed to the Site Admin Worker service token with a
+specific `service_token.token_id` rule. Keep this scoped policy in place; do
+not replace it with `any_valid_service_token` unless temporarily recovering a
+broken service-token rotation.
