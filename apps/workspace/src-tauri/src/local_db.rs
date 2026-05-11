@@ -48,6 +48,57 @@ pub struct WorkspaceBackupRestoreResult {
     restart_required: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupListEntry {
+    path: String,
+    name: String,
+    size_bytes: u64,
+    modified_at_ms: Option<i64>,
+    automatic: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupAutoResult {
+    created: bool,
+    skipped_reason: Option<String>,
+    backup: Option<WorkspaceBackupCreateResult>,
+    deleted: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupPreviewTable {
+    name: String,
+    current_count: i64,
+    backup_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBackupPreview {
+    source_path: String,
+    size_bytes: u64,
+    modified_at_ms: Option<i64>,
+    tables: Vec<WorkspaceBackupPreviewTable>,
+}
+
+const AUTO_BACKUP_PREFIX: &str = "workspace-auto-";
+const BACKUP_PREVIEW_TABLES: &[&str] = &[
+    "content_files",
+    "notes",
+    "todos",
+    "projects",
+    "project_links",
+    "contacts",
+    "contact_interactions",
+    "local_calendars",
+    "local_calendar_events",
+    "calendar_publish_rules",
+    "secure_values",
+];
+
 /// File-backed local DB path, e.g. on macOS:
 /// `~/Library/Application Support/com.jinnkunn.workspace/workspace.db`
 pub fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -94,6 +145,119 @@ pub fn workspace_backup_create(
     destination_path: String,
 ) -> Result<WorkspaceBackupCreateResult, String> {
     let destination = normalized_user_path(destination_path)?;
+    create_backup_at(&app, &destination)
+}
+
+#[tauri::command]
+pub fn workspace_backups_list(
+    app: tauri::AppHandle,
+) -> Result<Vec<WorkspaceBackupListEntry>, String> {
+    let backups_dir = backups_dir(&app)?;
+    let mut entries = Vec::new();
+    let read_dir = match fs::read_dir(&backups_dir) {
+        Ok(value) => value,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+        Err(err) => {
+            return Err(format!(
+                "failed to read backups directory {}: {err}",
+                backups_dir.display()
+            ))
+        }
+    };
+    for entry in read_dir {
+        let entry = entry.map_err(|err| format!("failed to read backup entry: {err}"))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".db") {
+            continue;
+        }
+        let metadata = fs::metadata(&path)
+            .map_err(|err| format!("failed to inspect backup {}: {err}", path.display()))?;
+        entries.push(WorkspaceBackupListEntry {
+            automatic: name.starts_with(AUTO_BACKUP_PREFIX),
+            modified_at_ms: metadata_modified_ms(&metadata),
+            name: name.to_string(),
+            path: path.display().to_string(),
+            size_bytes: metadata.len(),
+        });
+    }
+    entries.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn workspace_backup_auto(
+    app: tauri::AppHandle,
+    retention_count: Option<usize>,
+) -> Result<WorkspaceBackupAutoResult, String> {
+    open(&app)?;
+    let backups_dir = backups_dir(&app)?;
+    fs::create_dir_all(&backups_dir).map_err(|err| {
+        format!(
+            "failed to create backups directory {}: {err}",
+            backups_dir.display()
+        )
+    })?;
+    let today = Utc::now().format("%Y%m%d").to_string();
+    let destination = backups_dir.join(format!("{AUTO_BACKUP_PREFIX}{today}.db"));
+    let created = if destination.exists() {
+        None
+    } else {
+        Some(create_backup_at(&app, &destination)?)
+    };
+    let deleted = prune_auto_backups(&app, retention_count.unwrap_or(10).max(1))?;
+    Ok(WorkspaceBackupAutoResult {
+        created: created.is_some(),
+        skipped_reason: if created.is_none() {
+            Some("today's automatic backup already exists".to_string())
+        } else {
+            None
+        },
+        backup: created,
+        deleted,
+    })
+}
+
+#[tauri::command]
+pub fn workspace_backup_preview(
+    app: tauri::AppHandle,
+    source_path: String,
+) -> Result<WorkspaceBackupPreview, String> {
+    let source = normalized_user_path(source_path)?;
+    if !source.exists() {
+        return Err(format!("backup file does not exist: {}", source.display()));
+    }
+    validate_sqlite_backup(&source)?;
+    let current = open(&app)?;
+    let backup = Connection::open(&source)
+        .map_err(|err| format!("failed to open backup {}: {err}", source.display()))?;
+    let metadata = fs::metadata(&source)
+        .map_err(|err| format!("failed to inspect backup {}: {err}", source.display()))?;
+    let mut tables = Vec::new();
+    for table in BACKUP_PREVIEW_TABLES {
+        tables.push(WorkspaceBackupPreviewTable {
+            name: table.to_string(),
+            current_count: count_table_rows(&current, table)?,
+            backup_count: count_table_rows(&backup, table)?,
+        });
+    }
+    Ok(WorkspaceBackupPreview {
+        source_path: source.display().to_string(),
+        size_bytes: metadata.len(),
+        modified_at_ms: metadata_modified_ms(&metadata),
+        tables,
+    })
+}
+
+fn create_backup_at(
+    app: &tauri::AppHandle,
+    destination: &Path,
+) -> Result<WorkspaceBackupCreateResult, String> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|err| {
             format!(
@@ -111,7 +275,7 @@ pub fn workspace_backup_create(
         })?;
     }
 
-    let conn = open(&app)?;
+    let conn = open(app)?;
     conn.execute("VACUUM INTO ?1", params![destination.display().to_string()])
         .map_err(|err| format!("failed to create backup {}: {err}", destination.display()))?;
     drop(conn);
@@ -193,6 +357,61 @@ fn normalized_user_path(value: String) -> Result<PathBuf, String> {
         return Err("path is required".to_string());
     }
     Ok(PathBuf::from(trimmed))
+}
+
+fn backups_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let db = db_path(app)?;
+    Ok(db
+        .parent()
+        .ok_or_else(|| format!("failed to resolve parent for {}", db.display()))?
+        .join("backups"))
+}
+
+fn metadata_modified_ms(metadata: &fs::Metadata) -> Option<i64> {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_millis() as i64)
+}
+
+fn prune_auto_backups(app: &tauri::AppHandle, keep: usize) -> Result<Vec<String>, String> {
+    let mut entries = workspace_backups_list(app.clone())?
+        .into_iter()
+        .filter(|entry| entry.automatic)
+        .collect::<Vec<_>>();
+    entries.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+    let mut deleted = Vec::new();
+    for entry in entries.into_iter().skip(keep) {
+        let path = PathBuf::from(&entry.path);
+        match fs::remove_file(&path) {
+            Ok(()) => deleted.push(entry.path),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(format!(
+                    "failed to prune old backup {}: {err}",
+                    path.display()
+                ))
+            }
+        }
+    }
+    Ok(deleted)
+}
+
+fn count_table_rows(conn: &Connection, table: &str) -> Result<i64, String> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+            params![table],
+            |row| row.get(0),
+        )
+        .map_err(|err| format!("failed to inspect table {table}: {err}"))?;
+    if exists == 0 {
+        return Ok(0);
+    }
+    let sql = format!("SELECT COUNT(*) FROM {table}");
+    conn.query_row(&sql, [], |row| row.get(0))
+        .map_err(|err| format!("failed to count table {table}: {err}"))
 }
 
 fn validate_sqlite_backup(path: &Path) -> Result<(), String> {

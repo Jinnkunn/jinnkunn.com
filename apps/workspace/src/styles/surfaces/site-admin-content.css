@@ -1458,6 +1458,13 @@
     var(--color-bg-surface-alt);
 }
 
+.release-center__notice[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--release-ok) 30%, var(--color-border-subtle));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--release-ok) 7%, transparent), transparent 68%),
+    var(--color-bg-surface-alt);
+}
+
 .release-center__notice[data-tone="muted"] {
   background: color-mix(in srgb, var(--color-bg-surface-alt) 78%, transparent);
 }

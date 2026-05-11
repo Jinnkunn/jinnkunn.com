@@ -257,6 +257,14 @@ interface ContentDelta {
   error: string;
 }
 
+interface ReleaseAutoCommitSummary {
+  files: string[];
+  newSha: string;
+  pushed: boolean | null;
+  pushError: string;
+  source: "report" | "log";
+}
+
 type PromotePreview =
   | {
       ok: true;
@@ -328,6 +336,50 @@ function asNullableNumber(value: unknown): number | null {
 function asFiniteNumberOrNull(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function parseReleaseAutoCommitObject(
+  raw: unknown,
+): ReleaseAutoCommitSummary | null {
+  const rec = asRecord(raw);
+  const commit = asRecord(rec.contentAutoCommit);
+  if (Object.keys(commit).length === 0) return null;
+  const newSha = asString(commit.newSha);
+  if (!newSha) return null;
+  const files = Array.isArray(commit.files)
+    ? commit.files.map(asString).filter(Boolean)
+    : [];
+  return {
+    files,
+    newSha,
+    pushed: typeof commit.pushed === "boolean" ? commit.pushed : null,
+    pushError: asString(commit.pushError),
+    source: "report",
+  };
+}
+
+function parseReleaseAutoCommitFromText(
+  raw: string,
+): ReleaseAutoCommitSummary | null {
+  const parsed = parseJsonObjectFromTail(raw);
+  const fromReport = parseReleaseAutoCommitObject(parsed);
+  if (fromReport) return fromReport;
+  const match = raw.match(
+    /auto-committed .*?→\s*([a-f0-9]{7,40})(?:\s*\((pushed|push failed: ([^)]+))\))?/i,
+  );
+  if (!match?.[1]) return null;
+  return {
+    files: [],
+    newSha: match[1],
+    pushed:
+      match[2] === "pushed"
+        ? true
+        : match[2]?.startsWith("push failed")
+          ? false
+          : null,
+    pushError: match[3] || "",
+    source: "log",
+  };
 }
 
 function parseSnapshot(raw: unknown): EnvironmentSnapshot | null {
@@ -1035,6 +1087,15 @@ export function ReleasePanel() {
           }
       : null;
   const smartPlan = continuationPlan || liveSmartPlan || fallbackSmartPlan;
+  const autoCommitSummary = useMemo(
+    () =>
+      parseReleaseAutoCommitFromText(
+        [job?.stdout_tail ?? "", ...jobLog.map((line) => line.message)]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    [job?.stdout_tail, jobLog],
+  );
 
   const loadHistory = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -1683,6 +1744,7 @@ export function ReleasePanel() {
       </header>
 
       {error ? <div className="release-panel__error">{error}</div> : null}
+      <ReleaseAutoCommitNotice summary={autoCommitSummary} />
 
       <ReleaseRunnerStatusCard
         executionMode={releaseExecutionMode}
@@ -2097,6 +2159,35 @@ function ReleaseStepper({
           </div>
         </div>
       ))}
+    </section>
+  );
+}
+
+function ReleaseAutoCommitNotice({
+  summary,
+}: {
+  summary: ReleaseAutoCommitSummary | null;
+}) {
+  if (!summary) return null;
+  const pushed =
+    summary.pushed === true
+      ? "pushed to GitHub"
+      : summary.pushed === false
+        ? `commit created, push failed${summary.pushError ? `: ${summary.pushError}` : ""}`
+        : "commit created";
+  const fileCount = summary.files.length
+    ? `${summary.files.length} content file${summary.files.length === 1 ? "" : "s"}`
+    : "content changes";
+  return (
+    <section
+      className="release-center__notice release-center__auto-commit"
+      data-tone={summary.pushed === false ? "warn" : "ok"}
+      aria-label="Content auto commit"
+    >
+      <strong>Content committed</strong>
+      <span>
+        {fileCount} were saved as {shortSha(summary.newSha)} and {pushed}.
+      </span>
     </section>
   );
 }

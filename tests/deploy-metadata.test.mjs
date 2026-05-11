@@ -66,6 +66,10 @@ test("release script uses a clean snapshot for dirty staging releases", async ()
   assert.match(script, /prepareCleanReleaseSnapshot/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
   assert.match(script, /ALLOW_D1_BUILD_CACHE/);
+  assert.match(script, /RELEASE_REUSE_STAGING_BUILD/);
+  assert.match(script, /RELEASE_EXPECT_CONTENT_SHA/);
+  assert.match(script, /buildCacheContentMatches/);
+  assert.match(script, /contentSnapshotSha/);
   assert.match(script, /hashReleaseContent/);
   assert.match(script, /content\/local\/site-config\.json/);
 });

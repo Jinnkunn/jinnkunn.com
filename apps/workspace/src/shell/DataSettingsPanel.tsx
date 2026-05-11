@@ -1,7 +1,9 @@
-import { Download, HardDrive, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
+import { Download, HardDrive, RefreshCw, ShieldCheck, Upload } from "lucide-react";
 import type {
   WorkspaceBackupCreateResult,
   WorkspaceBackupInfo,
+  WorkspaceBackupListEntry,
+  WorkspaceBackupPreview,
   WorkspaceBackupRestoreResult,
 } from "../lib/tauri";
 
@@ -61,9 +63,13 @@ export function DataSettingsPanel({
   lastRestore,
   loading,
   message,
+  preview,
+  recentBackups,
+  onCreateAutoBackup,
   onCreateBackup,
   onRefresh,
   onRestoreBackup,
+  onRestoreBackupFromPath,
 }: {
   error: string | null;
   info: WorkspaceBackupInfo | null;
@@ -71,10 +77,15 @@ export function DataSettingsPanel({
   lastRestore: WorkspaceBackupRestoreResult | null;
   loading: boolean;
   message: string | null;
+  preview: WorkspaceBackupPreview | null;
+  recentBackups: readonly WorkspaceBackupListEntry[];
+  onCreateAutoBackup: () => void;
   onCreateBackup: () => void;
   onRefresh: () => void;
   onRestoreBackup: () => void;
+  onRestoreBackupFromPath: (path: string) => void;
 }) {
+  const previewDelta = preview?.tables.filter((table) => table.currentCount !== table.backupCount) ?? [];
   return (
     <div className="settings-window__section settings-data">
       <div className="settings-window__section-head">
@@ -103,6 +114,10 @@ export function DataSettingsPanel({
       </div>
 
       <div className="settings-data-actions">
+        <button type="button" className="btn btn--primary" onClick={onCreateAutoBackup} disabled={loading || !info?.exists}>
+          <RefreshCw absoluteStrokeWidth size={14} strokeWidth={1.8} />
+          Auto Backup
+        </button>
         <button type="button" className="btn btn--primary" onClick={onCreateBackup} disabled={loading || !info?.exists}>
           <Download absoluteStrokeWidth size={14} strokeWidth={1.8} />
           Create Backup
@@ -112,7 +127,7 @@ export function DataSettingsPanel({
           Restore Backup
         </button>
         <button type="button" className="btn btn--ghost" onClick={onRefresh} disabled={loading}>
-          <RefreshCcw absoluteStrokeWidth size={14} strokeWidth={1.8} />
+          <RefreshCw absoluteStrokeWidth size={14} strokeWidth={1.8} />
           Refresh
         </button>
       </div>
@@ -142,6 +157,57 @@ export function DataSettingsPanel({
           ) : null}
         </div>
       </div>
+
+      {preview ? (
+        <section className="settings-data-preview" aria-label="Backup restore preview">
+          <header>
+            <strong>Restore preview</strong>
+            <small>{previewDelta.length ? `${previewDelta.length} changed tables` : "Tracked counts match"}</small>
+          </header>
+          <div className="settings-data-preview__grid">
+            {preview.tables.slice(0, 8).map((table) => (
+              <div key={table.name}>
+                <span>{table.name}</span>
+                <strong>
+                  {table.currentCount} → {table.backupCount}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="settings-data-backups" aria-label="Recent backups">
+        <header>
+          <strong>Recent backups</strong>
+          <small>{recentBackups.length}</small>
+        </header>
+        {recentBackups.length ? (
+          <div className="settings-data-backups__list">
+            {recentBackups.slice(0, 6).map((entry) => (
+              <div className="settings-data-backup-row" key={entry.path}>
+                <span>
+                  <strong>{entry.automatic ? "Automatic" : "Manual"}</strong>
+                  <small>{entry.name} · {formatBytes(entry.sizeBytes)} · {formatTimestamp(entry.modifiedAtMs)}</small>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  disabled={loading}
+                  onClick={() => onRestoreBackupFromPath(entry.path)}
+                >
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="settings-window__empty settings-window__empty--compact">
+            <strong>No backups yet</strong>
+            <span>Create one manually or let the daily auto backup run.</span>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
