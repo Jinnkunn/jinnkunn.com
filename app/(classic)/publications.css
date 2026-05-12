@@ -12,6 +12,42 @@
   line-height: 24px;
 }
 
+.pub-title-line {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.pub-title-text {
+  min-width: 0;
+}
+
+.pub-highlight-list {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pub-highlight-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 7px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-warning-bg);
+  outline: 1px solid var(--ds-warning-border);
+  outline-offset: -1px;
+  color: var(--ds-warning-text);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 16px;
+  vertical-align: baseline;
+}
+
 .pub-tag-prefix {
   display: inline-block;
   margin-top: 2px;

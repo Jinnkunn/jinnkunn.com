@@ -5,6 +5,7 @@ import type {
 } from "@/lib/seo/publications-items";
 
 import { classifyLabel, type LabelKind } from "./publication-card";
+import { PublicationHighlightBadge } from "./publication-highlight-badge";
 
 function orderYearKey(year: string): number {
   const m = /\d{4}/.exec(year);
@@ -137,12 +138,16 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
           </div>
         </div>
         <span className="notion-semantic-string">
-          <strong>{entry.title} </strong>
-          {highlights.map((highlight) => (
-            <span key={highlight} className="highlighted-color color-red">
-              <strong>[{highlight}]</strong>
-            </span>
-          ))}
+          <span className="pub-title-line">
+            <strong className="pub-title-text">{entry.title}</strong>
+            {highlights.length > 0 && (
+              <span className="pub-highlight-list">
+                {highlights.map((highlight) => (
+                  <PublicationHighlightBadge key={highlight} highlight={highlight} />
+                ))}
+              </span>
+            )}
+          </span>
           {labels.length > 0 && (
             <>
               <br />
