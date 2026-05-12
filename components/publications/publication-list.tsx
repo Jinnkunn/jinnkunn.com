@@ -128,6 +128,7 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const venues = fallbackVenues(entry);
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
+  const hasMetadata = labels.length > 0 || highlights.length > 0;
 
   return (
     <div className="notion-toggle closed publication-toggle">
@@ -140,22 +141,24 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
         <span className="notion-semantic-string">
           <span className="pub-title-line">
             <strong className="pub-title-text">{entry.title}</strong>
-            {highlights.length > 0 && (
-              <span className="pub-highlight-list">
-                {highlights.map((highlight) => (
-                  <PublicationHighlightBadge key={highlight} highlight={highlight} />
-                ))}
-              </span>
-            )}
           </span>
-          {labels.length > 0 && (
+          {hasMetadata && (
             <>
               <br />
-              {labels.map((label) => (
-                <span key={label} className="pub-tag-prefix">
-                  <PublicationTag label={label} />{" "}
-                </span>
-              ))}
+              <span className="pub-meta-line">
+                {labels.map((label) => (
+                  <span key={label} className="pub-tag-prefix">
+                    <PublicationTag label={label} />{" "}
+                  </span>
+                ))}
+                {highlights.length > 0 && (
+                  <span className="pub-highlight-list">
+                    {highlights.map((highlight) => (
+                      <PublicationHighlightBadge key={highlight} highlight={highlight} />
+                    ))}
+                  </span>
+                )}
+              </span>
             </>
           )}
         </span>
