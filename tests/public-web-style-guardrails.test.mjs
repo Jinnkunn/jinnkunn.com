@@ -399,7 +399,8 @@ test("public-web-style-guardrails: publication highlights render as badges, not 
   const publicationList = await read("components/publications/publication-list.tsx");
   const publicationsCss = await read("app/(classic)/publications.css");
 
-  assertIncludes(highlightBadge, "Oral presentation", "Publication highlight oral aria label");
+  assertIncludes(highlightBadge, "Oral presentation", "Publication highlight oral label");
+  assertIncludes(highlightBadge, "pub-highlight-dot", "Publication highlight subtle marker");
   assertIncludes(highlightBadge, 'className="pub-highlight-badge"', "Publication highlight CSS hook");
 
   for (const [name, source] of [
@@ -407,11 +408,13 @@ test("public-web-style-guardrails: publication highlights render as badges, not 
     ["PublicationList", publicationList],
   ]) {
     assertIncludes(source, "PublicationHighlightBadge", `${name} highlight component`);
+    assertIncludes(source, "hasMetadata", `${name} metadata row gate`);
     assertExcludes(source, "[{highlight}]", `${name} raw highlight brackets`);
   }
 
   assertIncludes(publicationsCss, ".pub-highlight-badge", "Publication highlight badge CSS");
-  assertIncludes(publicationsCss, "var(--ds-warning-bg)", "Publication highlight badge token");
+  assertIncludes(publicationsCss, ".pub-meta-line", "Publication metadata line CSS");
+  assertIncludes(publicationsCss, "var(--ds-warning-text)", "Publication highlight marker token");
 });
 
 test("public-web-style-guardrails: data-page embed blocks read from components, not pages or legacy JSON", async () => {

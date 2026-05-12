@@ -1,6 +1,6 @@
 function highlightLabel(highlight: string): string {
   const normalized = highlight.trim().toLowerCase();
-  if (normalized === "oral") return "Oral";
+  if (normalized === "oral") return "Oral presentation";
   return highlight.trim();
 }
 
@@ -16,6 +16,7 @@ export function PublicationHighlightBadge({ highlight }: { highlight: string }) 
 
   return (
     <span className="pub-highlight-badge" aria-label={highlightAriaLabel(highlight)}>
+      <span className="pub-highlight-dot" aria-hidden="true" />
       {label}
     </span>
   );
