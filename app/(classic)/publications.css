@@ -21,39 +21,23 @@
 }
 
 .pub-meta-line {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 3px 7px;
-  margin-top: 2px;
+  --ds-meta-row-margin-top: 2px;
 }
 
 .pub-highlight-list {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
+  --ds-meta-list-gap: 5px;
 }
 
 .pub-highlight-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--ds-warning-text);
-  font-size: 0.85em;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1;
-  vertical-align: baseline;
+  --ds-status-marker-gap: 4px;
+  --ds-status-marker-font-size: 0.85em;
+  --ds-status-marker-font-weight: 600;
+  --ds-status-marker-line-height: 1;
 }
 
 .pub-highlight-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: var(--ds-radius-pill);
-  background: currentcolor;
-  opacity: 0.7;
+  --ds-status-marker-dot-size: 5px;
+  --ds-status-marker-dot-opacity: 0.7;
 }
 
 .pub-tag-prefix {

@@ -111,14 +111,14 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
           {hasMetadata && (
             <>
               <br />
-              <span className="pub-meta-line">
+              <span className="pub-meta-line ds-meta-row">
                 {labels.map((label) => (
                   <span key={label} className="pub-tag-prefix">
                     <PublicationTag label={label} />{" "}
                   </span>
                 ))}
                 {highlights.length > 0 && (
-                  <span className="pub-highlight-list">
+                  <span className="pub-highlight-list ds-meta-list">
                     {highlights.map((highlight) => (
                       <PublicationHighlightBadge key={highlight} highlight={highlight} />
                     ))}

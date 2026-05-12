@@ -15,8 +15,11 @@ export function PublicationHighlightBadge({ highlight }: { highlight: string }) 
   if (!label) return null;
 
   return (
-    <span className="pub-highlight-badge" aria-label={highlightAriaLabel(highlight)}>
-      <span className="pub-highlight-dot" aria-hidden="true" />
+    <span
+      className="pub-highlight-badge ds-status-marker ds-status-marker--tone-warning"
+      aria-label={highlightAriaLabel(highlight)}
+    >
+      <span className="pub-highlight-dot ds-status-marker__dot" aria-hidden="true" />
       {label}
     </span>
   );

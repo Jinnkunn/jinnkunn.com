@@ -104,3 +104,22 @@ test("design-system-tokens: Tauri workspace exposes shared semantic aliases", ()
     assert.ok(WORKSPACE_CSS.includes(alias), `missing workspace alias ${alias}`);
   }
 });
+
+test("design-system-tokens: public web exposes metadata and control primitives", () => {
+  const requiredSelectors = [
+    ".ds-meta-row",
+    ".ds-meta-list",
+    ".ds-status-marker",
+    ".ds-status-marker__dot",
+    ".ds-property-strip",
+    ".ds-property-strip__property",
+    ".ds-control-toolbar",
+    ".ds-control-group",
+    ".ds-control-button",
+    ".ds-select-pill",
+  ];
+
+  for (const selector of requiredSelectors) {
+    assert.ok(DESIGN_SYSTEM_CSS.includes(selector), `missing public web primitive ${selector}`);
+  }
+});

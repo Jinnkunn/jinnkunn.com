@@ -400,8 +400,17 @@ test("public-web-style-guardrails: publication highlights render as badges, not 
   const publicationsCss = await read("app/(classic)/publications.css");
 
   assertIncludes(highlightBadge, "Oral presentation", "Publication highlight oral label");
-  assertIncludes(highlightBadge, "pub-highlight-dot", "Publication highlight subtle marker");
-  assertIncludes(highlightBadge, 'className="pub-highlight-badge"', "Publication highlight CSS hook");
+  assertIncludes(highlightBadge, "ds-status-marker--tone-warning", "Publication highlight tone");
+  assertIncludes(
+    highlightBadge,
+    "pub-highlight-dot ds-status-marker__dot",
+    "Publication highlight subtle marker",
+  );
+  assertIncludes(
+    highlightBadge,
+    'className="pub-highlight-badge ds-status-marker ds-status-marker--tone-warning"',
+    "Publication highlight CSS hook",
+  );
 
   for (const [name, source] of [
     ["PublicationsEntry", publicationsEntry],
@@ -414,7 +423,7 @@ test("public-web-style-guardrails: publication highlights render as badges, not 
 
   assertIncludes(publicationsCss, ".pub-highlight-badge", "Publication highlight badge CSS");
   assertIncludes(publicationsCss, ".pub-meta-line", "Publication metadata line CSS");
-  assertIncludes(publicationsCss, "var(--ds-warning-text)", "Publication highlight marker token");
+  assertIncludes(publicationsCss, "--ds-status-marker-dot-size", "Publication highlight marker token");
 });
 
 test("public-web-style-guardrails: data-page embed blocks read from components, not pages or legacy JSON", async () => {
@@ -446,6 +455,29 @@ test("public-web-style-guardrails: data-page embed blocks read from components, 
       `${name}-block must not import the deleted JSON`,
     );
   }
+});
+
+test("public-web-style-guardrails: public calendar toolbar uses shared control primitives", async () => {
+  const calendarView = await read("components/calendar/public-calendar-view.tsx");
+  const calendarCss = await read("app/(classic)/calendar.css");
+  const designSystemCss = await read("app/design-system.css");
+
+  assertIncludes(calendarView, "public-calendar__toolbar ds-control-toolbar", "Calendar toolbar DS class");
+  assertIncludes(calendarView, "ds-control-button ds-control-button--icon", "Calendar nav DS control");
+  assertIncludes(
+    calendarView,
+    "public-calendar__time-zone-select ds-select-pill",
+    "Calendar timezone DS select",
+  );
+  assertIncludes(
+    calendarView,
+    "public-calendar__subscribe ds-control-button ds-control-button--accent",
+    "Calendar subscribe DS control",
+  );
+  assertIncludes(calendarCss, "--ds-control-toolbar-columns", "Calendar toolbar DS variables");
+  assertIncludes(calendarCss, "--ds-select-pill-bg", "Calendar select DS variables");
+  assertIncludes(designSystemCss, ".ds-control-toolbar", "Design system calendar control primitive");
+  assertIncludes(designSystemCss, ".ds-select-pill", "Design system select primitive");
 });
 
 test("public-web-style-guardrails: classic list page CSS does not reintroduce card borders", async () => {
@@ -716,7 +748,7 @@ test("public-web-style-guardrails: blog post metadata renders as a distinct Noti
 
   assertIncludes(
     postView,
-    'className="notion-page__properties mdx-post__meta"',
+    'className="notion-page__properties mdx-post__meta ds-property-strip"',
     "Blog post metadata strip markup",
   );
   assertIncludes(
@@ -745,6 +777,7 @@ test("public-web-style-guardrails: blog post metadata renders as a distinct Noti
     "Blog post date property icon CSS",
   );
   assertIncludes(postsCss, ".page__blog-post .mdx-post__meta", "Blog post metadata strip CSS");
+  assertIncludes(postsCss, "--ds-property-strip-margin", "Blog post metadata strip CSS");
   assertIncludes(postsCss, "--mdx-post-reading-icon:", "Blog post reading-time icon CSS");
   assertIncludes(
     postsCss,
