@@ -492,11 +492,11 @@ export function PublicCalendarView({
 
   return (
     <div className="public-calendar">
-      <div className="public-calendar__toolbar">
-        <div className="public-calendar__nav">
+      <div className="public-calendar__toolbar ds-control-toolbar">
+        <div className="public-calendar__nav ds-control-group">
           <button
             type="button"
-            className="public-calendar__nav-button"
+            className="public-calendar__nav-button ds-control-button ds-control-button--icon"
             onClick={() =>
               onAnchorChange?.(shiftAnchor(anchor, view, -1, timeZone))
             }
@@ -522,14 +522,14 @@ export function PublicCalendarView({
           </button>
           <button
             type="button"
-            className="public-calendar__today-button"
+            className="public-calendar__today-button ds-control-button"
             onClick={() => onAnchorChange?.(startOfDay(new Date(), timeZone))}
           >
             Today
           </button>
           <button
             type="button"
-            className="public-calendar__nav-button"
+            className="public-calendar__nav-button ds-control-button ds-control-button--icon"
             onClick={() =>
               onAnchorChange?.(shiftAnchor(anchor, view, 1, timeZone))
             }
@@ -558,11 +558,11 @@ export function PublicCalendarView({
           </strong>
         </div>
         <label
-          className="public-calendar__time-zone-select"
+          className="public-calendar__time-zone-select ds-select-pill"
           title={`Times shown in ${timeZoneLabel}`}
         >
-          <span className="public-calendar__time-zone-label">Time zone</span>
-          <span className="public-calendar__time-zone-value">
+          <span className="public-calendar__time-zone-label ds-select-pill__label">Time zone</span>
+          <span className="public-calendar__time-zone-value ds-select-pill__value">
             {timeZoneLabel}
           </span>
           <select
@@ -579,14 +579,14 @@ export function PublicCalendarView({
           </select>
         </label>
         <div
-          className="public-calendar__view-switch public-calendar__view-switch--views"
+          className="public-calendar__view-switch public-calendar__view-switch--views ds-control-group"
           aria-label="Calendar view"
         >
           {VIEW_LABELS.map((item) => (
             <button
               key={item.value}
               type="button"
-              className="public-calendar__view-button"
+              className="public-calendar__view-button ds-control-button"
               data-active={view === item.value ? "true" : "false"}
               onClick={() => onViewChange?.(item.value)}
             >
@@ -596,14 +596,14 @@ export function PublicCalendarView({
         </div>
         {view === "agenda" ? (
           <div
-            className="public-calendar__view-switch public-calendar__view-switch--agenda"
+            className="public-calendar__view-switch public-calendar__view-switch--agenda ds-control-group"
             aria-label="Agenda range"
           >
             {([30, 90] as const).map((days) => (
               <button
                 key={days}
                 type="button"
-                className="public-calendar__view-button"
+                className="public-calendar__view-button ds-control-button"
                 data-active={agendaDays === days ? "true" : "false"}
                 onClick={() => onAgendaDaysChange?.(days)}
               >
@@ -621,7 +621,7 @@ export function PublicCalendarView({
           // scheme. The href is hand-crafted (not URL.toString()) so
           // the protocol stays `webcal:` rather than getting URL-coerced
           // to `https://` by Next.js's link wrappers.
-          className="public-calendar__subscribe"
+          className="public-calendar__subscribe ds-control-button ds-control-button--accent"
           href="webcal://jinkunchen.com/api/public/calendar/calendar.ics"
           title="Subscribe with Apple Calendar / Outlook / Google Calendar — your calendar app keeps it auto-updating."
         >
