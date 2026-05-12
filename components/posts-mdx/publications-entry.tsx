@@ -3,6 +3,7 @@ import "server-only";
 import type { ReactElement } from "react";
 
 import { classifyLabel, type LabelKind } from "@/components/publications/publication-card";
+import { PublicationHighlightBadge } from "@/components/publications/publication-highlight-badge";
 
 interface PubAuthor {
   name: string;
@@ -103,12 +104,16 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
           </div>
         </div>
         <span className="notion-semantic-string">
-          <strong>{title} </strong>
-          {highlights.map((highlight) => (
-            <span key={highlight} className="highlighted-color color-red">
-              <strong>[{highlight}]</strong>
-            </span>
-          ))}
+          <span className="pub-title-line">
+            <strong className="pub-title-text">{title}</strong>
+            {highlights.length > 0 && (
+              <span className="pub-highlight-list">
+                {highlights.map((highlight) => (
+                  <PublicationHighlightBadge key={highlight} highlight={highlight} />
+                ))}
+              </span>
+            )}
+          </span>
           {labels.length > 0 && (
             <>
               <br />

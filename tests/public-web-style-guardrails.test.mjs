@@ -270,6 +270,11 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
   );
   assertIncludes(
     publicationsEntry,
+    "PublicationHighlightBadge",
+    "PublicationsEntry highlight badge",
+  );
+  assertIncludes(
+    publicationsEntry,
     'className="pub-tag-colon"',
     "PublicationsEntry tag colon",
   );
@@ -386,6 +391,27 @@ test("public-web-style-guardrails: data-page files split between pages (shortcod
     "<PublicationsEntry data=",
     "components/publications.mdx contains PublicationsEntry blocks",
   );
+});
+
+test("public-web-style-guardrails: publication highlights render as badges, not raw bracket text", async () => {
+  const highlightBadge = await read("components/publications/publication-highlight-badge.tsx");
+  const publicationsEntry = await read("components/posts-mdx/publications-entry.tsx");
+  const publicationList = await read("components/publications/publication-list.tsx");
+  const publicationsCss = await read("app/(classic)/publications.css");
+
+  assertIncludes(highlightBadge, "Oral presentation", "Publication highlight oral aria label");
+  assertIncludes(highlightBadge, 'className="pub-highlight-badge"', "Publication highlight CSS hook");
+
+  for (const [name, source] of [
+    ["PublicationsEntry", publicationsEntry],
+    ["PublicationList", publicationList],
+  ]) {
+    assertIncludes(source, "PublicationHighlightBadge", `${name} highlight component`);
+    assertExcludes(source, "[{highlight}]", `${name} raw highlight brackets`);
+  }
+
+  assertIncludes(publicationsCss, ".pub-highlight-badge", "Publication highlight badge CSS");
+  assertIncludes(publicationsCss, "var(--ds-warning-bg)", "Publication highlight badge token");
 });
 
 test("public-web-style-guardrails: data-page embed blocks read from components, not pages or legacy JSON", async () => {
