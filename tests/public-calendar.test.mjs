@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  normalizePublicCalendarServedAt,
   normalizePublicCalendarData,
   publicCalendarJson,
 } from "../lib/shared/public-calendar.ts";
@@ -86,4 +87,21 @@ test("public-calendar: json serializer normalizes invalid rows away", () => {
   assert.equal(parsed.events.length, 1);
   assert.equal(parsed.events[0].id, "ok");
   assert.equal(parsed.events[0].description, null);
+});
+
+test("public-calendar: served-at timestamp is normalized for client today state", () => {
+  assert.equal(
+    normalizePublicCalendarServedAt(
+      "Fri, 15 May 2026 18:10:00 GMT",
+      "2026-05-12T00:00:00.000Z",
+    ),
+    "2026-05-15T18:10:00.000Z",
+  );
+  assert.equal(
+    normalizePublicCalendarServedAt(
+      "not-a-date",
+      "2026-05-12T00:00:00.000Z",
+    ),
+    "2026-05-12T00:00:00.000Z",
+  );
 });

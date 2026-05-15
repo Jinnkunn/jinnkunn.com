@@ -1,4 +1,5 @@
 export const PUBLIC_CALENDAR_CACHE_TAG = "public-calendar";
+export const PUBLIC_CALENDAR_SERVED_AT_HEADER = "X-Calendar-Served-At";
 
 export type PublicCalendarVisibility = "busy" | "titleOnly" | "full";
 
@@ -47,6 +48,13 @@ function normalizeIso(value: unknown, fallback: string): string {
   const ms = Date.parse(raw);
   if (!Number.isFinite(ms)) return fallback;
   return new Date(ms).toISOString();
+}
+
+export function normalizePublicCalendarServedAt(
+  value: unknown,
+  fallback = new Date().toISOString(),
+): string {
+  return normalizeIso(value, fallback);
 }
 
 function normalizeColorHex(value: unknown): string | undefined {

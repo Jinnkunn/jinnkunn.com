@@ -348,9 +348,10 @@ function buildAgendaGroups(
   events: DecoratedEvent[],
   index: DayIndex,
   windowDays: number,
+  currentDate: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Array<[string, DecoratedEvent[]]> {
-  const agendaStart = startOfDay(new Date(), timeZone);
+  const agendaStart = startOfDay(currentDate, timeZone);
   const startMs = agendaStart.getTime();
   const endMs = addDays(agendaStart, windowDays, timeZone).getTime();
   // Group by start-day so each event appears once even when multi-day.
@@ -378,6 +379,7 @@ export function PublicCalendarView({
   data,
   view = "agenda",
   anchorIso,
+  currentDateIso,
   agendaDays = 30,
   onViewChange,
   onAnchorChange,
@@ -395,6 +397,7 @@ export function PublicCalendarView({
   data: PublicCalendarData;
   view?: PublicCalendarViewMode;
   anchorIso?: string;
+  currentDateIso?: string | null;
   agendaDays?: 30 | 90;
   onViewChange?: (view: PublicCalendarViewMode) => void;
   onAnchorChange?: (date: Date) => void;
@@ -417,9 +420,20 @@ export function PublicCalendarView({
    * every internal view re-render (anchor change, view switch, etc.). */
   tagSummary?: ReadonlyArray<{ tag: string; count: number }>;
 }) {
-  const anchor = Number.isFinite(Date.parse(anchorIso ?? ""))
-    ? new Date(anchorIso ?? "")
-    : new Date();
+  const currentDate = useMemo(
+    () =>
+      Number.isFinite(Date.parse(currentDateIso ?? ""))
+        ? new Date(currentDateIso ?? "")
+        : null,
+    [currentDateIso],
+  );
+  const anchor = useMemo(
+    () =>
+      Number.isFinite(Date.parse(anchorIso ?? ""))
+        ? new Date(anchorIso ?? "")
+        : (currentDate ?? new Date()),
+    [anchorIso, currentDate],
+  );
 
   // Tag filter — applied BEFORE decoration so the day index, agenda
   // groups, and per-view event lists all share the same filtered set.
@@ -461,8 +475,15 @@ export function PublicCalendarView({
   const dayIndex = useMemo(() => buildDayIndex(decoratedEvents), [decoratedEvents]);
 
   const agendaGroups = useMemo(
-    () => buildAgendaGroups(decoratedEvents, dayIndex, agendaDays, timeZone),
-    [decoratedEvents, dayIndex, agendaDays, timeZone],
+    () =>
+      buildAgendaGroups(
+        decoratedEvents,
+        dayIndex,
+        agendaDays,
+        currentDate ?? anchor,
+        timeZone,
+      ),
+    [decoratedEvents, dayIndex, agendaDays, currentDate, anchor, timeZone],
   );
 
   const lastUpdatedLabel = useMemo(
@@ -523,7 +544,9 @@ export function PublicCalendarView({
           <button
             type="button"
             className="public-calendar__today-button ds-control-button"
-            onClick={() => onAnchorChange?.(startOfDay(new Date(), timeZone))}
+            onClick={() =>
+              onAnchorChange?.(startOfDay(currentDate ?? new Date(), timeZone))
+            }
           >
             Today
           </button>
@@ -718,6 +741,7 @@ export function PublicCalendarView({
         <MonthCalendar
           dayIndex={dayIndex}
           anchor={anchor}
+          currentDate={currentDate}
           timeZone={timeZone}
           selectedEventId={expandedEventId}
           onDaySelect={onDaySelect}
@@ -784,6 +808,7 @@ function WeekdayLabels({ timeZone }: { timeZone: string }) {
 function MonthCalendar({
   dayIndex,
   anchor,
+  currentDate,
   timeZone,
   selectedEventId,
   onDaySelect,
@@ -791,13 +816,14 @@ function MonthCalendar({
 }: {
   dayIndex: DayIndex;
   anchor: Date;
+  currentDate: Date | null;
   timeZone: string;
   selectedEventId?: string | null;
   onDaySelect?: (date: Date) => void;
   onEventToggle?: EventToggleHandler;
 }) {
   const days = useMemo(() => monthGridDays(anchor, timeZone), [anchor, timeZone]);
-  const todayKey = keyForDate(new Date(), timeZone);
+  const todayKey = currentDate ? keyForDate(currentDate, timeZone) : null;
   return (
     <div className="public-calendar__month">
       <WeekdayLabels timeZone={timeZone} />

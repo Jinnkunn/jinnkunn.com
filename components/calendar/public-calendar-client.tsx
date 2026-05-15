@@ -9,12 +9,15 @@ import {
 } from "@/components/calendar/public-calendar-view";
 import { summarizeTags } from "@/lib/shared/calendar-tags";
 import {
+  PUBLIC_CALENDAR_SERVED_AT_HEADER,
   normalizePublicCalendarData,
+  normalizePublicCalendarServedAt,
   type PublicCalendarData,
 } from "@/lib/shared/public-calendar";
 import {
   DEFAULT_CALENDAR_TIME_ZONE,
   normalizeCalendarTimeZone,
+  zonedStartOfDay,
 } from "@/lib/shared/calendar-timezone";
 
 // Tag filter persists in the URL search param `tag` (`?tag=foo&tag=bar`)
@@ -79,6 +82,13 @@ function writeTimeZoneToLocation(timeZone: string): void {
   window.history.replaceState(null, "", target);
 }
 
+function readResponseTimestampIso(response: Response): string {
+  return normalizePublicCalendarServedAt(
+    response.headers.get(PUBLIC_CALENDAR_SERVED_AT_HEADER) ??
+      response.headers.get("date"),
+  );
+}
+
 type SyncStatus = "idle" | "syncing" | "ok" | "failed";
 
 const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
@@ -105,7 +115,8 @@ export function PublicCalendarClient({
       ? "agenda"
       : "month",
   );
-  const [anchorIso, setAnchorIso] = useState(() => new Date().toISOString());
+  const [currentDateIso, setCurrentDateIso] = useState<string | null>(null);
+  const [anchorIso, setAnchorIso] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] =
     useState<SelectedCalendarEvent | null>(null);
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
@@ -178,11 +189,19 @@ export function PublicCalendarClient({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [selectedEvent]);
+
   // Hoist the tag summary so it's only rebuilt when the events list
   // actually changes, not when the operator pages anchor / switches
   // view. The view component then receives this stable reference and
   // skips its own summarize call.
   const tagSummary = useMemo(() => summarizeTags(data.events), [data.events]);
+  const automaticAnchorIso = useMemo(
+    () =>
+      currentDateIso
+        ? zonedStartOfDay(new Date(currentDateIso), timeZone).toISOString()
+        : null,
+    [currentDateIso, timeZone],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -194,18 +213,26 @@ export function PublicCalendarClient({
           headers: { accept: "application/json" },
           cache: "no-store",
         });
+        const servedAtIso = readResponseTimestampIso(res);
         if (!res.ok) {
-          if (!cancelled) setSyncStatus("failed");
+          if (!cancelled) {
+            setCurrentDateIso(servedAtIso);
+            setSyncStatus("failed");
+          }
           return;
         }
         const next = normalizePublicCalendarData(await res.json());
         if (cancelled) return;
         setData(next);
+        setCurrentDateIso(servedAtIso);
         setSyncStatus("ok");
-        setLastSyncedAt(new Date().toISOString());
+        setLastSyncedAt(servedAtIso);
       } catch {
         // Keep the static fallback visible if the dynamic endpoint is unavailable.
-        if (!cancelled) setSyncStatus("failed");
+        if (!cancelled) {
+          setCurrentDateIso(normalizePublicCalendarServedAt(null));
+          setSyncStatus("failed");
+        }
       }
     }
 
@@ -222,7 +249,8 @@ export function PublicCalendarClient({
       <PublicCalendarView
         data={data}
         view={view}
-        anchorIso={anchorIso}
+        anchorIso={anchorIso ?? automaticAnchorIso ?? initialData.generatedAt}
+        currentDateIso={currentDateIso}
         agendaDays={agendaDays}
         timeZone={timeZone}
         selectedTags={selectedTags}
