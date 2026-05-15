@@ -5,6 +5,7 @@ import {
   normalizePublicCalendarServedAt,
   normalizePublicCalendarData,
   publicCalendarJson,
+  selectPublicCalendarRuntimeData,
 } from "../lib/shared/public-calendar.ts";
 
 test("public-calendar: busy events never expose supplied details", () => {
@@ -103,5 +104,78 @@ test("public-calendar: served-at timestamp is normalized for client today state"
       "2026-05-12T00:00:00.000Z",
     ),
     "2026-05-12T00:00:00.000Z",
+  );
+});
+
+test("public-calendar: runtime data prefers complete source when db projection is partial", () => {
+  const base = {
+    schemaVersion: 1,
+    generatedAt: "2026-05-15T15:09:23.901Z",
+    range: {
+      startsAt: "2026-05-15T03:00:00.000Z",
+      endsAt: "2027-05-15T03:00:00.000Z",
+    },
+  };
+  const dbData = normalizePublicCalendarData({
+    ...base,
+    events: [
+      {
+        id: "db-only",
+        title: "DB event",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+  const sourceData = normalizePublicCalendarData({
+    ...base,
+    events: [
+      ...dbData.events,
+      {
+        id: "source-extra",
+        title: "Source event",
+        startsAt: "2026-05-16T14:00:00.000Z",
+        endsAt: "2026-05-16T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+
+  assert.equal(
+    selectPublicCalendarRuntimeData({ dbData, sourceData }).events.length,
+    2,
+  );
+});
+
+test("public-calendar: runtime data still prefers newer db projection", () => {
+  const sourceData = normalizePublicCalendarData({
+    generatedAt: "2026-05-15T15:09:23.901Z",
+    range: {
+      startsAt: "2026-05-15T03:00:00.000Z",
+      endsAt: "2027-05-15T03:00:00.000Z",
+    },
+    events: [
+      {
+        id: "source",
+        title: "Source event",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+  const dbData = normalizePublicCalendarData({
+    ...sourceData,
+    generatedAt: "2026-05-15T16:09:23.901Z",
+    events: [],
+  });
+
+  assert.equal(
+    selectPublicCalendarRuntimeData({ dbData, sourceData }).generatedAt,
+    "2026-05-15T16:09:23.901Z",
   );
 });
