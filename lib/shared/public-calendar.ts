@@ -160,3 +160,29 @@ export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
 export function publicCalendarJson(data: PublicCalendarData): string {
   return `${JSON.stringify(data, null, 2)}\n`;
 }
+
+function timestampMs(value: string): number {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+export function selectPublicCalendarRuntimeData({
+  dbData,
+  sourceData,
+}: {
+  dbData: PublicCalendarData | null | undefined;
+  sourceData: PublicCalendarData;
+}): PublicCalendarData {
+  if (!dbData) return sourceData;
+
+  const dbGeneratedAt = timestampMs(dbData.generatedAt);
+  const sourceGeneratedAt = timestampMs(sourceData.generatedAt);
+  if (dbGeneratedAt > sourceGeneratedAt) return dbData;
+  if (sourceGeneratedAt > dbGeneratedAt) return sourceData;
+
+  // When a full release embeds a richer calendar JSON snapshot but an
+  // older live D1 projection has the same generatedAt with fewer rows,
+  // prefer the complete source snapshot. That keeps static HTML and the
+  // hydration refresh from showing different event sets.
+  return sourceData.events.length > dbData.events.length ? sourceData : dbData;
+}

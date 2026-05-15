@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   filterStalePublicCalendarEvents,
   normalizePublicCalendarData,
+  selectPublicCalendarRuntimeData,
   type PublicCalendarData,
   type PublicCalendarEvent,
 } from "@/lib/shared/public-calendar";
@@ -45,17 +46,23 @@ export function getPublicCalendarData(): PublicCalendarData {
   return withDecay(readFromDisk());
 }
 
-export async function getLatestPublicCalendarData(): Promise<PublicCalendarData> {
-  const dbData = await readPublicCalendarFromDb();
-  if (dbData) return withDecay(dbData);
+async function readFromSourceStoreOrDisk(): Promise<PublicCalendarData> {
   try {
     const store = getSiteAdminSourceStore();
     const file = await store.readTextFile(CALENDAR_PUBLIC_REL_PATH);
-    if (!file) return getPublicCalendarData();
-    return withDecay(normalizePublicCalendarData(JSON.parse(file.content)));
+    if (!file) return readFromDisk();
+    return normalizePublicCalendarData(JSON.parse(file.content));
   } catch {
-    return getPublicCalendarData();
+    return readFromDisk();
   }
+}
+
+export async function getLatestPublicCalendarData(): Promise<PublicCalendarData> {
+  const [dbData, sourceData] = await Promise.all([
+    readPublicCalendarFromDb(),
+    readFromSourceStoreOrDisk(),
+  ]);
+  return withDecay(selectPublicCalendarRuntimeData({ dbData, sourceData }));
 }
 
 /** Per-id detail lookup. The /calendar/[id] route uses this instead
@@ -80,14 +87,9 @@ export async function getPublicCalendarEventById(
  * passed the time-decay cutoff — the agenda lists drop the past, but
  * a direct link still answers. */
 export async function getLatestPublicCalendarDataWithArchive(): Promise<PublicCalendarData> {
-  const dbData = await readPublicCalendarFromDb();
-  if (dbData) return dbData;
-  try {
-    const store = getSiteAdminSourceStore();
-    const file = await store.readTextFile(CALENDAR_PUBLIC_REL_PATH);
-    if (!file) return readFromDisk();
-    return normalizePublicCalendarData(JSON.parse(file.content));
-  } catch {
-    return readFromDisk();
-  }
+  const [dbData, sourceData] = await Promise.all([
+    readPublicCalendarFromDb(),
+    readFromSourceStoreOrDisk(),
+  ]);
+  return selectPublicCalendarRuntimeData({ dbData, sourceData });
 }
