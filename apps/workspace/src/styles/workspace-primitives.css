@@ -629,6 +629,74 @@
   color: var(--color-danger);
 }
 
+.workspace-data-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-bg-surface) 72%, transparent);
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.workspace-data-health__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.workspace-data-health__label,
+.workspace-data-health__summary,
+.workspace-data-health time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-data-health__summary,
+.workspace-data-health time {
+  color: var(--color-text-muted);
+  font-weight: 560;
+}
+
+.workspace-data-health[data-state="ready"] {
+  border-color: color-mix(in srgb, var(--color-success) 24%, var(--color-border-subtle));
+  color: var(--color-success);
+}
+
+.workspace-data-health[data-state="stale"] {
+  border-color: color-mix(in srgb, var(--color-warn) 28%, var(--color-border-subtle));
+  color: var(--color-warn);
+}
+
+.workspace-data-health[data-state="error"] {
+  border-color: color-mix(in srgb, var(--color-danger) 28%, var(--color-border-subtle));
+  color: var(--color-danger);
+}
+
+.workspace-data-health[data-state="loading"] .workspace-data-health__dot,
+.workspace-data-health[data-state="syncing"] .workspace-data-health__dot {
+  animation: workspace-data-health-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes workspace-data-health-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .workspace-empty-state {
   display: grid;
   place-items: center;
@@ -693,6 +761,11 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .workspace-data-health[data-state="loading"] .workspace-data-health__dot,
+  .workspace-data-health[data-state="syncing"] .workspace-data-health__dot {
+    animation: none;
+  }
+
   .workspace-empty-state__spinner {
     animation: none;
   }

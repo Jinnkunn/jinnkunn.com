@@ -22,6 +22,7 @@ import {
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
   WorkspaceCheckboxField,
+  WorkspaceDataHealthPill,
   WorkspaceDataStatus,
   WorkspaceInlineStatus,
   WorkspaceInspector,
@@ -33,6 +34,8 @@ import {
   WorkspaceTextareaField,
   WorkspaceTextField,
 } from "../../ui/primitives";
+import { useWorkspaceResource } from "../../modules/useWorkspaceResource";
+import { deriveWorkspaceDataHealth } from "../../modules/workspaceDataHealth";
 import { AgendaView } from "./AgendaView";
 import {
   calendarAuthorizationStatus,
@@ -252,6 +255,7 @@ export function CalendarSurface() {
   });
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [eventKitLoadedAt, setEventKitLoadedAt] = useState<number | null>(null);
   const [sources, setSources] = useState<CalendarSource[]>([]);
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   // Hydrate the visibility set from localStorage on first render so a
@@ -471,6 +475,7 @@ export function CalendarSurface() {
         calendarIds: [],
       });
       setEvents(evs);
+      setEventKitLoadedAt(Date.now());
       setLoadState("ready");
     } catch (err) {
       setLoadState("error");
@@ -493,69 +498,59 @@ export function CalendarSurface() {
     void loadAll();
   }, [auth, loadAll]);
 
-  // Todos load independently of EventKit auth — they live in workspace.db
-  // and are always available. Re-fetch on mount; toggle handler keeps
-  // local state in sync between fetches via optimistic update.
-  useEffect(() => {
-    let cancelled = false;
-    todosListWindow({
-      startsAt: new Date(range.startsAt).getTime(),
-      endsAt: new Date(range.endsAt).getTime(),
-    })
-      .then((next) => {
-        if (!cancelled) setTodos(sortCalendarTodos(next));
-      })
-      .catch(() => {
-        // Quiet failure — todos are an overlay, not core to the calendar
-        // surface. The Todos surface itself surfaces real errors.
+  // Todos and local-first calendars live in workspace.db. They now use
+  // the shared resource loader so stale data stays visible while each
+  // range refresh is in flight, matching Todos / Projects / Contacts.
+  const calendarTodosResource = useWorkspaceResource<TodoRow[]>({
+    initialData: [],
+    source: "local",
+    getSummary: (rows) => `${rows.length} tasks`,
+    hasData: (rows) => rows.length > 0,
+    load: useCallback(async () => {
+      const next = await todosListWindow({
+        startsAt: new Date(range.startsAt).getTime(),
+        endsAt: new Date(range.endsAt).getTime(),
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [range.endsAt, range.startsAt]);
+      return sortCalendarTodos(next);
+    }, [range.endsAt, range.startsAt]),
+    onSuccess: useCallback((next: TodoRow[]) => {
+      setTodos(next);
+    }, []),
+  });
 
-  // Local calendars also live in workspace.db — completely independent
-  // of EventKit. Load once on mount; CRUD callbacks below keep state
-  // in sync after the initial fetch.
-  useEffect(() => {
-    let cancelled = false;
-    localCalendarListCalendars()
-      .then((rows) => {
-        if (!cancelled) {
-          setLocalCalendars(rows);
-          setLocalCalendarsLoaded(true);
-        }
-      })
-      .catch(() => {
-        // Quiet — local calendar is optional. Errors will resurface
-        // the next time the user attempts a CRUD action via setMessage.
-        if (!cancelled) setLocalCalendarsLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const localCalendarsResource = useWorkspaceResource<LocalCalendarRow[]>({
+    initialData: [],
+    source: "local",
+    getSummary: (rows) => `${rows.length} workspace calendars`,
+    hasData: (rows) => rows.length > 0,
+    load: useCallback(() => localCalendarListCalendars(), []),
+    onError: useCallback(() => {
+      setLocalCalendarsLoaded(true);
+    }, []),
+    onSuccess: useCallback((rows: LocalCalendarRow[]) => {
+      setLocalCalendars(rows);
+      setLocalCalendarsLoaded(true);
+    }, []),
+  });
 
-  // Local events refetch whenever the visible range changes, mirroring
-  // the EventKit fetch but driven from workspace.db. Independent of
-  // auth — runs even when calendar permission is denied.
-  useEffect(() => {
-    let cancelled = false;
-    localCalendarFetchEvents({
-      startsAt: range.startsAt,
-      endsAt: range.endsAt,
-      calendarIds: [],
-    })
-      .then((rows) => {
-        if (!cancelled) setLocalEvents(rows);
-      })
-      .catch(() => {
-        // Quiet — same rationale as the calendar list above.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [range]);
+  const localEventsResource = useWorkspaceResource<LocalCalendarEventRow[]>({
+    initialData: [],
+    source: "local",
+    getSummary: (rows) => `${rows.length} workspace events`,
+    hasData: (rows) => rows.length > 0,
+    load: useCallback(
+      () =>
+        localCalendarFetchEvents({
+          startsAt: range.startsAt,
+          endsAt: range.endsAt,
+          calendarIds: [],
+        }),
+      [range.endsAt, range.startsAt],
+    ),
+    onSuccess: useCallback((rows: LocalCalendarEventRow[]) => {
+      setLocalEvents(rows);
+    }, []),
+  });
 
   const upsertLocalCalendar = useCallback((row: LocalCalendarRow) => {
     setLocalCalendars((prev) => {
@@ -1099,6 +1094,37 @@ export function CalendarSurface() {
       return false;
     });
   }, [mergedEvents, localEvents, searchEvents, searchQuery, selectedCalendarIds]);
+  const calendarHealthUpdatedAt = Math.max(
+    eventKitLoadedAt ?? 0,
+    localCalendarsResource.lastLoadedAt ?? 0,
+    localEventsResource.lastLoadedAt ?? 0,
+    calendarTodosResource.lastLoadedAt ?? 0,
+  );
+  const calendarHealth = deriveWorkspaceDataHealth({
+    error:
+      !localOnlyMode && loadState === "error"
+        ? errorMessage
+        : localEventsResource.error || calendarTodosResource.error,
+    hasData:
+      visibleEvents.length > 0 ||
+      todos.length > 0 ||
+      mergedCalendars.length > 0,
+    hasLoaded:
+      localOnlyMode
+        ? localCalendarsResource.hasLoaded || localEventsResource.hasLoaded
+        : loadState === "ready" ||
+          loadState === "error" ||
+          localCalendarsResource.hasLoaded ||
+          localEventsResource.hasLoaded,
+    loading:
+      (!localOnlyMode && loadState === "loading") ||
+      localCalendarsResource.loading ||
+      localEventsResource.loading ||
+      calendarTodosResource.loading,
+    source: localOnlyMode ? "local" : "mixed",
+    summary: `${visibleEvents.length} events`,
+    updatedAt: calendarHealthUpdatedAt > 0 ? calendarHealthUpdatedAt : null,
+  });
   // Publishing scope is intentionally EventKit-only. Local-first events
   // never go to the public /calendar projection — that's the whole
   // point of the "Workspace" source.
@@ -1727,6 +1753,10 @@ export function CalendarSurface() {
             align="end"
             className="calendar-commandbar__actions"
           >
+            <WorkspaceDataHealthPill
+              health={calendarHealth}
+              label={localOnlyMode ? "Local" : "Synced"}
+            />
             <WorkspaceCommandButton
               tone="accent"
               onClick={() => {

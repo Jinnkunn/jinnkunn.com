@@ -9,6 +9,10 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import {
+  workspaceDataHealthLabel,
+  type WorkspaceDataHealth,
+} from "../modules/workspaceDataHealth";
 
 export function joinClassNames(
   ...items: Array<string | false | null | undefined>
@@ -491,6 +495,56 @@ export interface WorkspaceDataStatusProps {
   loading: boolean;
   loadingLabel?: ReactNode;
   staleLabel?: ReactNode;
+}
+
+function formatHealthTime(ms: number | null): string {
+  if (!ms) return "";
+  return new Date(ms).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export interface WorkspaceDataHealthPillProps
+  extends HTMLAttributes<HTMLDivElement> {
+  health: WorkspaceDataHealth;
+  label?: ReactNode;
+}
+
+export function WorkspaceDataHealthPill({
+  className,
+  health,
+  label,
+  ...props
+}: WorkspaceDataHealthPillProps) {
+  const time = formatHealthTime(health.updatedAt);
+  const title = [
+    health.source,
+    workspaceDataHealthLabel(health),
+    health.summary,
+    time ? `updated ${time}` : "",
+    health.error ? String(health.error) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div
+      className={joinClassNames("workspace-data-health", className)}
+      data-state={health.state}
+      title={title}
+      {...props}
+    >
+      <span className="workspace-data-health__dot" aria-hidden="true" />
+      <span className="workspace-data-health__label">
+        {label ?? workspaceDataHealthLabel(health)}
+      </span>
+      {health.summary ? (
+        <span className="workspace-data-health__summary">{health.summary}</span>
+      ) : null}
+      {time ? <time>{time}</time> : null}
+    </div>
+  );
 }
 
 export function WorkspaceDataStatus({

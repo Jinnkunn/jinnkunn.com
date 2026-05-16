@@ -1495,6 +1495,60 @@
   color: var(--release-blocked);
 }
 
+.release-center__routine-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.release-center__routine-summary > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-bg-surface-alt) 82%, transparent);
+}
+
+.release-center__routine-summary span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.release-center__routine-summary strong,
+.release-center__routine-summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-center__routine-summary strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-small);
+  font-weight: 760;
+}
+
+.release-center__routine-summary small {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.release-center__routine-summary > div[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--release-ok) 24%, var(--color-border-subtle));
+}
+
+.release-center__routine-summary > div[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--release-warn) 28%, var(--color-border-subtle));
+}
+
+.release-center__routine-summary > div[data-tone="blocked"] {
+  border-color: color-mix(in srgb, var(--release-blocked) 28%, var(--color-border-subtle));
+}
+
 .release-center__notice {
   display: flex;
   align-items: center;
@@ -2899,6 +2953,7 @@
   .release-center__content-grid,
   .release-center__content-preview-grid,
   .release-center__gate-list,
+  .release-center__routine-summary,
   .release-center__confirm dl,
   .release-center__route-parity-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2925,6 +2980,7 @@
   .release-center__content-grid,
   .release-center__content-preview-grid,
   .release-center__gate-list,
+  .release-center__routine-summary,
   .release-center__confirm dl,
   .release-center__route-parity-row {
     grid-template-columns: 1fr;

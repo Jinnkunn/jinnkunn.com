@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { QUICK_CAPTURE_TODO_EVENT } from "../../shell/useTrayBindings";
 import { PanelRightOpen } from "lucide-react";
@@ -15,6 +15,7 @@ import {
   projectsList,
   type ProjectRow,
 } from "../../modules/projects/api";
+import { useWorkspaceResource } from "../../modules/useWorkspaceResource";
 import { parseNoteTodoSource } from "../../modules/notes/todoLinks";
 import type { NoteTodoSource } from "../../modules/notes/todoLinks";
 import {
@@ -48,6 +49,7 @@ import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceDataHealthPill,
   WorkspaceDataStatus,
   WorkspaceEmptyState,
   WorkspaceIconButton,
@@ -229,7 +231,6 @@ export function TodosSurface() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [draftTitles, setDraftTitles] = useState<Record<string, string>>({});
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   // Two-click archive guard — same id covers both the detail-panel
@@ -285,27 +286,42 @@ export function TodosSurface() {
     }
   }, [activeNavItemId, setActiveNavItemId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([todosList(), projectsList().catch(() => [])])
-      .then(([rows, projectRows]) => {
-        if (!cancelled) {
-          setTodos(sortTodos(rows));
-          setProjects(projectRows);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled && !isNativeBridgeUnavailable(error)) {
-          setMessage(`Failed to load todos: ${formatTodosError(error)}`);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const todosResource = useWorkspaceResource<{
+    projects: ProjectRow[];
+    todos: TodoRow[];
+  } | null>({
+    ignoreError: isNativeBridgeUnavailable,
+    source: "local",
+    getSummary: (result) =>
+      result ? `${result.todos.length} tasks` : "No task data",
+    hasData: (result) => Boolean(result && result.todos.length > 0),
+    initialData: null as {
+      projects: ProjectRow[];
+      todos: TodoRow[];
+    } | null,
+    load: useCallback(async () => {
+      const [rows, projectRows] = await Promise.all([
+        todosList(),
+        projectsList().catch(() => []),
+      ]);
+      return {
+        projects: projectRows,
+        todos: sortTodos(rows),
+      };
+    }, []),
+    onError: useCallback((error: unknown) => {
+      setMessage(`Failed to load todos: ${formatTodosError(error)}`);
+    }, []),
+    onSuccess: useCallback((result: {
+      projects: ProjectRow[];
+      todos: TodoRow[];
+    } | null) => {
+      if (!result) return;
+      setTodos(result.todos);
+      setProjects(result.projects);
+    }, []),
+  });
+  const loading = todosResource.loading;
 
   const filter = filterFromNavItem(activeNavItemId);
   const visibleTodos = useMemo(() => {
@@ -754,6 +770,10 @@ export function TodosSurface() {
             >
               {viewLabel} · {visibleTodos.length}
             </span>
+            <WorkspaceDataHealthPill
+              health={todosResource.health}
+              label="Local"
+            />
             <WorkspaceCommandButton
               disabled={completedCount === 0}
               onClick={() => void clearCompleted()}

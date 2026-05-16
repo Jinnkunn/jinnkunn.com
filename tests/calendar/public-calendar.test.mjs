@@ -221,7 +221,7 @@ test("public-calendar: hydration does not replace complete data with stale parti
   );
 });
 
-test("public-calendar: hydration accepts newer refreshed data", () => {
+test("public-calendar: hydration merges newer partial data without flicker", () => {
   const currentData = normalizePublicCalendarData({
     generatedAt: "2026-05-15T15:09:23.901Z",
     range: {
@@ -250,6 +250,48 @@ test("public-calendar: hydration accepts newer refreshed data", () => {
       currentData,
       refreshedData: newerData,
     }).events.length,
-    0,
+    1,
+  );
+});
+
+test("public-calendar: hydration accepts newer additions while carrying static rows", () => {
+  const currentData = normalizePublicCalendarData({
+    generatedAt: "2026-05-15T15:09:23.901Z",
+    range: {
+      startsAt: "2026-05-15T03:00:00.000Z",
+      endsAt: "2027-05-15T03:00:00.000Z",
+    },
+    events: [
+      {
+        id: "static",
+        title: "Static event",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+  const newerData = normalizePublicCalendarData({
+    ...currentData,
+    generatedAt: "2026-05-15T16:09:23.901Z",
+    events: [
+      {
+        id: "new",
+        title: "New accepted event",
+        startsAt: "2026-05-16T14:00:00.000Z",
+        endsAt: "2026-05-16T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    selectPublicCalendarHydrationData({
+      currentData,
+      refreshedData: newerData,
+    }).events.map((event) => event.id),
+    ["static", "new"],
   );
 });
