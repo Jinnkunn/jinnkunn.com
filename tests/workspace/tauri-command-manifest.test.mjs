@@ -33,11 +33,30 @@ test("Tauri command manifest matches Rust invoke handler", async () => {
   ]);
   const registered = extractRegisteredCommands(libRs);
   const manifest = JSON.parse(manifestRaw);
+  const groupNames = Object.keys(manifest.groups);
   const manifestCommands = Object.entries(manifest.groups).flatMap(
     ([group, commands]) => commands.map((name) => ({ group, name })),
   );
 
   assert.equal(manifest.commandCount, registered.length);
+  assert.deepEqual(groupNames, [...groupNames].sort(), "manifest groups stay sorted");
+  assert.deepEqual(
+    Object.keys(manifest.groupMetadata),
+    groupNames,
+    "each command group has ownership metadata",
+  );
+  for (const [group, commands] of Object.entries(manifest.groups)) {
+    assert.deepEqual(commands, [...commands].sort(), `${group} commands stay sorted`);
+    assert.match(
+      manifest.groupMetadata[group]?.rustModule ?? "",
+      /^apps\/workspace\/src-tauri\/src\//,
+      `${group} metadata points at a Rust module`,
+    );
+    assert.ok(
+      manifest.groupMetadata[group]?.tsApi,
+      `${group} metadata points at a TS API owner`,
+    );
+  }
   assert.deepEqual(
     manifestCommands
       .map((command) => `${command.group}:${command.name}`)

@@ -484,6 +484,42 @@ export function WorkspaceInlineStatus({
   );
 }
 
+export interface WorkspaceDataStatusProps {
+  className?: string;
+  error?: ReactNode;
+  hasData: boolean;
+  loading: boolean;
+  loadingLabel?: ReactNode;
+  staleLabel?: ReactNode;
+}
+
+export function WorkspaceDataStatus({
+  className,
+  error,
+  hasData,
+  loading,
+  loadingLabel = "Refreshing…",
+  staleLabel,
+}: WorkspaceDataStatusProps) {
+  if (!hasData) return null;
+  if (error) {
+    return (
+      <WorkspaceInlineStatus className={className} tone="warn">
+        {staleLabel ?? <>Unable to refresh. Showing the last loaded data.</>}
+        <span className="sr-only"> {error}</span>
+      </WorkspaceInlineStatus>
+    );
+  }
+  if (loading) {
+    return (
+      <WorkspaceInlineStatus className={className} tone="muted">
+        {loadingLabel}
+      </WorkspaceInlineStatus>
+    );
+  }
+  return null;
+}
+
 export interface WorkspaceEmptyStateProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
   action?: ReactNode;
