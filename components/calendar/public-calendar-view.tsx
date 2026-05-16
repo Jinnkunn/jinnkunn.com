@@ -9,20 +9,34 @@ import {
 import {
   CALENDAR_TIME_ZONE_OPTIONS,
   DEFAULT_CALENDAR_TIME_ZONE,
-  addZonedDays,
-  addZonedMonths,
   calendarTimeZoneLabel,
   formatInTimeZone,
-  getZonedDateParts,
-  isSameZonedMonth,
-  zonedDateFromDayKey,
-  zonedDayKey,
-  zonedStartOfDay,
-  zonedStartOfMonth,
 } from "@/lib/shared/calendar-timezone";
-import type { PublicCalendarData, PublicCalendarEvent } from "@/lib/shared/public-calendar";
+import {
+  PUBLIC_CALENDAR_VIEW_LABELS,
+  addCalendarDays,
+  buildAgendaGroups,
+  buildDayIndex,
+  decoratePublicCalendarEvent,
+  eventsForDay,
+  eventsForDayKey,
+  formatDay,
+  formatToolbarTitle,
+  isSameZonedMonth,
+  isWeekend,
+  keyForDate,
+  monthGridDays,
+  parseDayKey,
+  shiftAnchor,
+  startOfCalendarDay,
+  startOfWeek,
+  type DecoratedPublicCalendarEvent,
+  type PublicCalendarDayIndex,
+  type PublicCalendarViewMode,
+} from "./public-calendar-model";
+import type { PublicCalendarData } from "@/lib/shared/public-calendar";
 
-export type PublicCalendarViewMode = "month" | "week" | "day" | "agenda";
+export type { PublicCalendarViewMode } from "./public-calendar-model";
 
 export type PublicCalendarEventAnchor = {
   top: number;
@@ -34,23 +48,6 @@ export type PublicCalendarEventAnchor = {
   viewportWidth: number;
   viewportHeight: number;
 };
-
-const VIEW_LABELS: Array<{ value: PublicCalendarViewMode; label: string }> = [
-  { value: "month", label: "Month" },
-  { value: "week", label: "Week" },
-  { value: "day", label: "Day" },
-  { value: "agenda", label: "Agenda" },
-];
-
-type DecoratedEvent = PublicCalendarEvent & {
-  startTimestamp: number;
-  endTimestamp: number;
-  startDayKey: string;
-  formattedTime: string;
-  touchedDayKeys: string[];
-};
-
-type DayIndex = Map<string, DecoratedEvent[]>;
 
 type EventToggleHandler = (
   id: string,
@@ -137,242 +134,6 @@ function detailGeometryForAnchor(anchor?: PublicCalendarEventAnchor | null): {
       "--detail-arrow-y": `${arrowY}px`,
     } as CSSProperties,
   };
-}
-
-function keyForDate(
-  date: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): string {
-  return zonedDayKey(date, timeZone);
-}
-
-function parseDayKey(
-  key: string,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date {
-  return zonedDateFromDayKey(key, timeZone);
-}
-
-function startOfDay(
-  date: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date {
-  return zonedStartOfDay(date, timeZone);
-}
-
-function addDays(
-  date: Date,
-  days: number,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date {
-  return addZonedDays(date, days, timeZone);
-}
-
-function dayOfWeek(
-  date: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): number {
-  const parts = getZonedDateParts(date, timeZone);
-  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
-}
-
-function startOfWeek(
-  date: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date {
-  const start = startOfDay(date, timeZone);
-  return addDays(start, -dayOfWeek(start, timeZone), timeZone);
-}
-
-function isWeekend(
-  date: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): boolean {
-  const weekday = dayOfWeek(date, timeZone);
-  return weekday === 0 || weekday === 6;
-}
-
-function startOfMonth(
-  date: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date {
-  return zonedStartOfMonth(date, timeZone);
-}
-
-function monthGridDays(
-  anchor: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date[] {
-  const first = startOfMonth(anchor, timeZone);
-  const start = startOfWeek(first, timeZone);
-  return Array.from({ length: 42 }, (_, i) => addDays(start, i, timeZone));
-}
-
-function formatDay(key: string, timeZone = DEFAULT_CALENDAR_TIME_ZONE): string {
-  return formatInTimeZone(parseDayKey(key, timeZone), timeZone, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatToolbarTitle(
-  view: PublicCalendarViewMode,
-  anchor: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): string {
-  if (view === "day") {
-    return formatInTimeZone(anchor, timeZone, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-  if (view === "week") {
-    const start = startOfWeek(anchor, timeZone);
-    const end = addDays(start, 6, timeZone);
-    return `${formatInTimeZone(start, timeZone, {
-      month: "short",
-      day: "numeric",
-    })} - ${formatInTimeZone(end, timeZone, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })}`;
-  }
-  return formatInTimeZone(anchor, timeZone, { month: "long", year: "numeric" });
-}
-
-function shiftAnchor(
-  anchor: Date,
-  view: PublicCalendarViewMode,
-  direction: -1 | 1,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Date {
-  if (view === "month" || view === "agenda") {
-    return addZonedMonths(anchor, direction, timeZone);
-  }
-  if (view === "week") return addDays(anchor, direction * 7, timeZone);
-  return addDays(anchor, direction, timeZone);
-}
-
-function decorateEvent(
-  event: PublicCalendarEvent,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): DecoratedEvent {
-  const startTimestamp = Date.parse(event.startsAt);
-  const endTimestamp = Date.parse(event.endsAt);
-  const startDate = new Date(startTimestamp);
-  const endDate = new Date(endTimestamp);
-  const startDayKey = keyForDate(startDate, timeZone);
-
-  // Walk the calendar days the event covers, matching the original
-  // eventTouchesDay rule: a day is included when end > dayStart && start < dayEnd.
-  // Using setDate (via addDays) handles DST transitions correctly.
-  const touchedDayKeys: string[] = [];
-  let cursor = startOfDay(startDate, timeZone);
-  while (cursor.getTime() < endTimestamp) {
-    touchedDayKeys.push(keyForDate(cursor, timeZone));
-    cursor = addDays(cursor, 1, timeZone);
-  }
-  if (touchedDayKeys.length === 0) {
-    // Defensive: if endTimestamp <= startTimestamp slipped past normalize,
-    // still surface the event on its start day rather than dropping it.
-    touchedDayKeys.push(startDayKey);
-  }
-
-  let formattedTime: string;
-  if (event.isAllDay) {
-    formattedTime = "All day";
-  } else {
-    const startLabel = formatInTimeZone(startDate, timeZone, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const endLabel = formatInTimeZone(endDate, timeZone, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const sameDay = startDayKey === keyForDate(endDate, timeZone);
-    formattedTime = sameDay
-      ? `${startLabel} - ${endLabel}`
-      : `${startLabel} - ${formatInTimeZone(endDate, timeZone, {
-          month: "short",
-          day: "numeric",
-        })}, ${endLabel}`;
-  }
-
-  return {
-    ...event,
-    startTimestamp,
-    endTimestamp,
-    startDayKey,
-    formattedTime,
-    touchedDayKeys,
-  };
-}
-
-function buildDayIndex(events: DecoratedEvent[]): DayIndex {
-  const index: DayIndex = new Map();
-  for (const event of events) {
-    for (const key of event.touchedDayKeys) {
-      const bucket = index.get(key);
-      if (bucket) {
-        bucket.push(event);
-      } else {
-        index.set(key, [event]);
-      }
-    }
-  }
-  for (const bucket of index.values()) {
-    bucket.sort((a, b) => a.startTimestamp - b.startTimestamp);
-  }
-  return index;
-}
-
-function eventsForDayKey(index: DayIndex, key: string): DecoratedEvent[] {
-  return index.get(key) ?? [];
-}
-
-function eventsForDay(
-  index: DayIndex,
-  day: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): DecoratedEvent[] {
-  return eventsForDayKey(index, keyForDate(day, timeZone));
-}
-
-function buildAgendaGroups(
-  events: DecoratedEvent[],
-  index: DayIndex,
-  windowDays: number,
-  currentDate: Date,
-  timeZone = DEFAULT_CALENDAR_TIME_ZONE,
-): Array<[string, DecoratedEvent[]]> {
-  const agendaStart = startOfDay(currentDate, timeZone);
-  const startMs = agendaStart.getTime();
-  const endMs = addDays(agendaStart, windowDays, timeZone).getTime();
-  // Group by start-day so each event appears once even when multi-day.
-  const buckets = new Map<string, DecoratedEvent[]>();
-  for (const event of events) {
-    if (event.endTimestamp < startMs || event.startTimestamp > endMs) continue;
-    const bucket = buckets.get(event.startDayKey);
-    if (bucket) {
-      bucket.push(event);
-    } else {
-      buckets.set(event.startDayKey, [event]);
-    }
-  }
-  // Reuse the index's sort: each bucket already references events in
-  // index ordering, but to guarantee stable order we re-sort by start.
-  for (const bucket of buckets.values()) {
-    bucket.sort((a, b) => a.startTimestamp - b.startTimestamp);
-  }
-  // Suppress unused-parameter lint without changing the call site contract.
-  void index;
-  return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 export function PublicCalendarView({
@@ -465,7 +226,7 @@ export function PublicCalendarView({
   const decoratedEvents = useMemo(
     () =>
       [...filteredEvents]
-        .map((event) => decorateEvent(event, timeZone))
+        .map((event) => decoratePublicCalendarEvent(event, timeZone))
         .sort((a, b) => a.startTimestamp - b.startTimestamp),
     [filteredEvents, timeZone],
   );
@@ -478,12 +239,11 @@ export function PublicCalendarView({
     () =>
       buildAgendaGroups(
         decoratedEvents,
-        dayIndex,
         agendaDays,
         currentDate ?? anchor,
         timeZone,
       ),
-    [decoratedEvents, dayIndex, agendaDays, currentDate, anchor, timeZone],
+    [decoratedEvents, agendaDays, currentDate, anchor, timeZone],
   );
 
   const lastUpdatedLabel = useMemo(
@@ -545,7 +305,9 @@ export function PublicCalendarView({
             type="button"
             className="public-calendar__today-button ds-control-button"
             onClick={() =>
-              onAnchorChange?.(startOfDay(currentDate ?? new Date(), timeZone))
+              onAnchorChange?.(
+                startOfCalendarDay(currentDate ?? new Date(), timeZone),
+              )
             }
           >
             Today
@@ -605,7 +367,7 @@ export function PublicCalendarView({
           className="public-calendar__view-switch public-calendar__view-switch--views ds-control-group"
           aria-label="Calendar view"
         >
-          {VIEW_LABELS.map((item) => (
+          {PUBLIC_CALENDAR_VIEW_LABELS.map((item) => (
             <button
               key={item.value}
               type="button"
@@ -787,11 +549,11 @@ export function PublicCalendarView({
 }
 
 function WeekdayLabels({ timeZone }: { timeZone: string }) {
-  const sunday = zonedDateFromDayKey("2024-01-07", timeZone);
+  const sunday = parseDayKey("2024-01-07", timeZone);
   return (
     <div className="public-calendar__weekdays">
       {Array.from({ length: 7 }, (_, i) => {
-        const day = addDays(sunday, i, timeZone);
+        const day = addCalendarDays(sunday, i, timeZone);
         return (
           <span
             data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
@@ -814,7 +576,7 @@ function MonthCalendar({
   onDaySelect,
   onEventToggle,
 }: {
-  dayIndex: DayIndex;
+  dayIndex: PublicCalendarDayIndex;
   anchor: Date;
   currentDate: Date | null;
   timeZone: string;
@@ -888,7 +650,7 @@ function WeekCalendar({
   expandedEventId,
   onEventToggle,
 }: {
-  dayIndex: DayIndex;
+  dayIndex: PublicCalendarDayIndex;
   anchor: Date;
   timeZone: string;
   expandedEventId?: string | null;
@@ -897,7 +659,7 @@ function WeekCalendar({
   const days = useMemo(
     () =>
       Array.from({ length: 7 }, (_, i) =>
-        addDays(startOfWeek(anchor, timeZone), i, timeZone),
+        addCalendarDays(startOfWeek(anchor, timeZone), i, timeZone),
       ),
     [anchor, timeZone],
   );
@@ -939,7 +701,7 @@ function DayCalendar({
   expandedEventId,
   onEventToggle,
 }: {
-  dayIndex: DayIndex;
+  dayIndex: PublicCalendarDayIndex;
   anchor: Date;
   timeZone: string;
   expandedEventId?: string | null;
@@ -970,7 +732,7 @@ function AgendaCalendar({
   expandedEventId,
   onEventToggle,
 }: {
-  groups: Array<[string, DecoratedEvent[]]>;
+  groups: Array<[string, DecoratedPublicCalendarEvent[]]>;
   timeZone: string;
   expandedEventId?: string | null;
   onEventToggle?: EventToggleHandler;
@@ -1007,7 +769,7 @@ function EventPill({
   selected = false,
   onEventToggle,
 }: {
-  event: DecoratedEvent;
+  event: DecoratedPublicCalendarEvent;
   selected?: boolean;
   onEventToggle?: EventToggleHandler;
 }) {
@@ -1036,7 +798,7 @@ function EventDetailPanel({
   anchor,
   onClose,
 }: {
-  event: DecoratedEvent;
+  event: DecoratedPublicCalendarEvent;
   timeZone: string;
   anchor?: PublicCalendarEventAnchor | null;
   onClose: () => void;
@@ -1136,7 +898,7 @@ function EventCard({
   selected = false,
   onEventToggle,
 }: {
-  event: DecoratedEvent;
+  event: DecoratedPublicCalendarEvent;
   compact?: boolean;
   selected?: boolean;
   onEventToggle?: EventToggleHandler;

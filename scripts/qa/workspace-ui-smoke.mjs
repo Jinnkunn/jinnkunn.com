@@ -276,7 +276,7 @@ function main() {
     "Release panel GitHub fallback action",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    read("apps/workspace/src/surfaces/site-admin/ReleaseActivityPanels.tsx"),
     "Release History",
     "Release panel release history",
   );
