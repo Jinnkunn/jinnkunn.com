@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -20,6 +22,8 @@ import {
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
   WorkspaceCheckboxField,
+  WorkspaceDataStatus,
+  WorkspaceInlineStatus,
   WorkspaceInspector,
   WorkspaceInspectorHeader,
   WorkspaceInspectorSection,
@@ -154,14 +158,23 @@ import {
   type CalendarPublishState,
   type CalendarSyncHealth,
 } from "./CalendarSyncHealth";
-import { CalendarSettingsPanel } from "./CalendarSettingsPanel";
 import type { CalendarSettingsTab } from "./CalendarSettingsPanel";
 import {
-  CalendarPublishPanel,
   SyncPreviewChip,
   summarizePublishVisibility,
-} from "./CalendarPublishPanel";
+} from "./CalendarPublishSummary";
 import "../../styles/surfaces/calendar.css";
+
+const CalendarSettingsPanel = lazy(() =>
+  import("./CalendarSettingsPanel").then((module) => ({
+    default: module.CalendarSettingsPanel,
+  })),
+);
+const CalendarPublishPanel = lazy(() =>
+  import("./CalendarPublishPanel").then((module) => ({
+    default: module.CalendarPublishPanel,
+  })),
+);
 
 /** localStorage key for the "skip EventKit gate" preference. Stored as
  * the string `"true"` when set; absent otherwise. Kept here so the
@@ -1853,52 +1866,68 @@ export function CalendarSurface() {
           className="calendar-workspace-split"
           inspector={
             settingsPanelOpen ? (
-              <CalendarSettingsPanel
-                calendarsBySource={calendarsBySource}
-                calendars={mergedCalendars}
-                defaultEventCalendarId={defaultEventCalendarId}
-                sources={mergedSources}
-                timeZone={timeZone}
-                visible={selectedCalendarIds}
-                onClose={() => setSettingsPanelOpen(false)}
-                onCreateLocalCalendar={() => void createLocalCalendar()}
-                onArchiveLocalCalendar={(id) => void archiveLocalCalendar(id)}
-                onRenameLocalCalendar={(id, title) =>
-                  void updateLocalCalendar(id, { title })
+              <Suspense
+                fallback={
+                  <WorkspaceInlineStatus tone="muted">
+                    Loading calendar settings…
+                  </WorkspaceInlineStatus>
                 }
-                onRecolorLocalCalendar={(id, colorHex) =>
-                  void updateLocalCalendar(id, { colorHex })
-                }
-                onOpenAccountSettings={() => void openSystemCalendarAccounts()}
-                onRefreshAccounts={() => void refreshCalendarAccounts()}
-                onSetCalendarVisible={setCalendarVisible}
-                onSetSourceVisible={setSourceVisible}
-                onDefaultEventCalendarChange={handleDefaultEventCalendarChange}
-                onTimeZoneChange={handleTimeZoneChange}
-                initialTab={calendarSettingsTab}
-                publishPanel={
-                  <CalendarPublishPanel
-                    calendarDefaults={calendarDefaults}
-                    calendars={mergedCalendars}
-                    diff={syncPreviewDiff}
-                    hasBaseline={lastSyncSnapshot !== null}
-                    health={syncHealth}
-                    publishMessage={publishMessage}
-                    publishState={publishState}
-                    productionSyncPolicy={productionSyncPolicy}
-                    rulesEditorOpen={rulesEditorOpen}
-                    rulesLoaded={rulesLoaded}
-                    summary={publishSummary}
-                    onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
-                    onSetCalendarDefault={setCalendarDefault}
-                    onSetProductionSyncPolicy={setCalendarProductionSyncPolicy}
-                    onSync={() => void syncCalendarProjection("manual")}
-                    onToggleRulesEditor={() =>
-                      setRulesEditorOpen((open) => !open)
-                    }
-                  />
-                }
-              />
+              >
+                <CalendarSettingsPanel
+                  calendarsBySource={calendarsBySource}
+                  calendars={mergedCalendars}
+                  defaultEventCalendarId={defaultEventCalendarId}
+                  sources={mergedSources}
+                  timeZone={timeZone}
+                  visible={selectedCalendarIds}
+                  onClose={() => setSettingsPanelOpen(false)}
+                  onCreateLocalCalendar={() => void createLocalCalendar()}
+                  onArchiveLocalCalendar={(id) => void archiveLocalCalendar(id)}
+                  onRenameLocalCalendar={(id, title) =>
+                    void updateLocalCalendar(id, { title })
+                  }
+                  onRecolorLocalCalendar={(id, colorHex) =>
+                    void updateLocalCalendar(id, { colorHex })
+                  }
+                  onOpenAccountSettings={() => void openSystemCalendarAccounts()}
+                  onRefreshAccounts={() => void refreshCalendarAccounts()}
+                  onSetCalendarVisible={setCalendarVisible}
+                  onSetSourceVisible={setSourceVisible}
+                  onDefaultEventCalendarChange={handleDefaultEventCalendarChange}
+                  onTimeZoneChange={handleTimeZoneChange}
+                  initialTab={calendarSettingsTab}
+                  publishPanel={
+                    <Suspense
+                      fallback={
+                        <WorkspaceInlineStatus tone="muted">
+                          Loading publish settings…
+                        </WorkspaceInlineStatus>
+                      }
+                    >
+                      <CalendarPublishPanel
+                        calendarDefaults={calendarDefaults}
+                        calendars={mergedCalendars}
+                        diff={syncPreviewDiff}
+                        hasBaseline={lastSyncSnapshot !== null}
+                        health={syncHealth}
+                        publishMessage={publishMessage}
+                        publishState={publishState}
+                        productionSyncPolicy={productionSyncPolicy}
+                        rulesEditorOpen={rulesEditorOpen}
+                        rulesLoaded={rulesLoaded}
+                        summary={publishSummary}
+                        onRulesSaved={() => setSmartRulesRevision((rev) => rev + 1)}
+                        onSetCalendarDefault={setCalendarDefault}
+                        onSetProductionSyncPolicy={setCalendarProductionSyncPolicy}
+                        onSync={() => void syncCalendarProjection("manual")}
+                        onToggleRulesEditor={() =>
+                          setRulesEditorOpen((open) => !open)
+                        }
+                      />
+                    </Suspense>
+                  }
+                />
+              </Suspense>
             ) : selectedEvent && isLocalEventId(selectedEvent.eventIdentifier) ? (
               <LocalEventInspector
                 key={`${selectedEvent.eventIdentifier}-${timeZone}`}
@@ -2458,7 +2487,7 @@ function ViewPane({
   onTodoContextMenu: (todo: TodoRow) => void;
   onTodoToggle: (id: string, completed: boolean) => void;
 }) {
-  if (loadState === "error") {
+  if (loadState === "error" && events.length === 0) {
     return (
       <div className="text-[12.5px] text-text-danger px-1" role="alert">
         Failed to load events: {errorMessage}
@@ -2476,7 +2505,18 @@ function ViewPane({
     );
   }
 
-  switch (view) {
+  const status = (
+    <WorkspaceDataStatus
+      error={loadState === "error" ? errorMessage : null}
+      hasData={events.length > 0}
+      loading={loadState === "loading"}
+      loadingLabel="Refreshing events…"
+      staleLabel="Unable to refresh events. Showing the last loaded calendar."
+    />
+  );
+
+  const viewNode = (() => {
+    switch (view) {
     case "day":
       return (
         <DayView
@@ -2543,7 +2583,15 @@ function ViewPane({
           onTodoToggle={onTodoToggle}
         />
       );
-  }
+    }
+  })();
+
+  return (
+    <>
+      {status}
+      {viewNode}
+    </>
+  );
 }
 
 function CalendarEventInspector({

@@ -757,6 +757,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   const releaseActivityPanels = await read(
     "apps/workspace/src/surfaces/site-admin/ReleaseActivityPanels.tsx",
   );
+  const releaseHistoryPanel = await read(
+    "apps/workspace/src/surfaces/site-admin/ReleaseHistoryPanel.tsx",
+  );
   const releaseRunnerCards = await read(
     "apps/workspace/src/surfaces/site-admin/release-runner-cards.tsx",
   );
@@ -855,7 +858,7 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /Release route/);
   assert.match(releasePanel, /Production differs/);
   assert.match(releasePanel, /GitHub Dispatch Fallback/);
-  assert.match(releaseActivityPanels, /Release History/);
+  assert.match(releaseHistoryPanel, /Release History/);
   assert.match(releaseFlow, /Publish Same Content to Production/);
   assert.match(releasePanel, /PUBLISH_CONTENT_STAGING_COMMAND/);
   assert.match(releasePanel, /PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND/);

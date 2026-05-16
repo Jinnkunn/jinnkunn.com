@@ -276,9 +276,29 @@ function main() {
     "Release panel GitHub fallback action",
   );
   assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/ReleaseActivityPanels.tsx"),
+    read("apps/workspace/src/surfaces/site-admin/ReleaseHistoryPanel.tsx"),
     "Release History",
     "Release panel release history",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "import(\"./CalendarSettingsPanel\")",
+    "Calendar settings panel is loaded on demand",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "import(\"./CalendarPublishPanel\")",
+    "Calendar publish panel is loaded on demand",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "import(\"./ReleaseRunnerDiagnostics\")",
+    "Release runner diagnostics are loaded on demand",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "import(\"./ReleaseHistoryPanel\")",
+    "Release history is loaded on demand",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),

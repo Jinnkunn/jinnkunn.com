@@ -23,6 +23,7 @@ import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceDataStatus,
   WorkspaceEmptyState,
   WorkspaceInlineStatus,
   WorkspaceSurfaceFrame,
@@ -745,9 +746,15 @@ export function ContactsSurface() {
     ].filter(Boolean) as Parameters<typeof showContextMenuWithActions>[0];
     showContextMenuWithActions(entries);
   };
+  const loadError =
+    notice?.kind === "error" && notice.text.startsWith("Failed to load")
+      ? notice.text
+      : null;
+  const hasContactData =
+    contacts.length > 0 || archivedContacts.length > 0 || birthdays.length > 0;
 
   const renderSplit = () => {
-    if (loading && contacts.length === 0) {
+    if (loading && contacts.length === 0 && !hasContactData) {
       return <WorkspaceEmptyState className="contacts-empty" loading title="Loading contacts" />;
     }
     if (visibleContacts.length === 0) {
@@ -827,7 +834,7 @@ export function ContactsSurface() {
           </WorkspaceCommandGroup>
         }
       />
-      {notice ? (
+      {notice && (!loadError || !hasContactData) ? (
         <WorkspaceInlineStatus
           className="contacts-message"
           data-kind={notice.kind}
@@ -842,6 +849,13 @@ export function ContactsSurface() {
         </WorkspaceInlineStatus>
       ) : null}
       <div className="contacts-body">
+        <WorkspaceDataStatus
+          error={loadError}
+          hasData={hasContactData}
+          loading={loading}
+          loadingLabel="Refreshing contacts…"
+          staleLabel="Unable to refresh contacts. Showing the last loaded data."
+        />
         {filter === "archived" ? (
           <ArchivedPane
             contacts={visibleContacts}

@@ -38,6 +38,7 @@ import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceDataStatus,
   WorkspaceEmptyState,
   WorkspaceInlineStatus,
   WorkspaceSurfaceFrame,
@@ -673,6 +674,10 @@ export function ProjectsSurface() {
     view === "completed"
       ? filterProjects(projects, view)
       : [];
+  const loadError = notice?.kind === "error" && notice.text.startsWith("Failed to load")
+    ? notice.text
+    : null;
+  const hasProjectData = projects.length > 0 || allTodos.length > 0;
 
   return (
     <WorkspaceSurfaceFrame className="projects-surface">
@@ -712,7 +717,7 @@ export function ProjectsSurface() {
         }
       />
 
-      {notice ? (
+      {notice && (!loadError || !hasProjectData) ? (
         <WorkspaceInlineStatus
           className="projects-notice"
           data-kind={notice.kind}
@@ -722,7 +727,15 @@ export function ProjectsSurface() {
         </WorkspaceInlineStatus>
       ) : null}
 
-      {loading ? (
+      <WorkspaceDataStatus
+        error={loadError}
+        hasData={hasProjectData}
+        loading={loading}
+        loadingLabel="Refreshing projects…"
+        staleLabel="Unable to refresh projects. Showing the last loaded data."
+      />
+
+      {loading && !hasProjectData ? (
         <WorkspaceEmptyState className="projects-empty" loading title="Loading projects" />
       ) : selectedProject && view === "detail" ? (
         <ProjectDetailView

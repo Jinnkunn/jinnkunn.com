@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import {
@@ -59,23 +66,16 @@ import {
   readContentPublishSuggestion,
   type ContentPublishSuggestion,
 } from "./publish-suggestion";
-import {
-  ReleaseRemoteJobsCard,
-  ReleaseRunnerStatusCard,
-  type ReleaseExecutionMode,
-  type RemoteReleaseAgentRow,
-  type RemoteReleaseJobAction,
-  type RemoteReleaseJobRow,
-  type RemoteReleaseJobStatus,
-  type RemoteReleaseRunnerStatus,
-  type RemoteReleaseWakeResult,
+import type {
+  ReleaseExecutionMode,
+  RemoteReleaseAgentRow,
+  RemoteReleaseJobAction,
+  RemoteReleaseJobRow,
+  RemoteReleaseJobStatus,
+  RemoteReleaseRunnerStatus,
+  RemoteReleaseWakeResult,
 } from "./release-runner-cards";
-import {
-  ContentDeltaDetails,
-  ReleaseHistoryPanel,
-  ReleaseJobPanel,
-  type ReleaseLogLine,
-} from "./ReleaseActivityPanels";
+import { ReleaseJobPanel, type ReleaseLogLine } from "./ReleaseActivityPanels";
 import {
   ReleaseRunnerControl,
   ReleaseTargetControl,
@@ -86,6 +86,21 @@ import { getSiteAdminEnvironment, normalizeString } from "./utils";
 
 const PRODUCTION_RUNBOOK_PATH = "docs/runbooks/production-promotion.md";
 const PRODUCTION_HISTORY_FILE = "docs/runbooks/production-version-history.md";
+const ContentDeltaDetails = lazy(() =>
+  import("./ContentDeltaDetails").then((module) => ({
+    default: module.ContentDeltaDetails,
+  })),
+);
+const ReleaseHistoryPanel = lazy(() =>
+  import("./ReleaseHistoryPanel").then((module) => ({
+    default: module.ReleaseHistoryPanel,
+  })),
+);
+const ReleaseRunnerDiagnostics = lazy(() =>
+  import("./ReleaseRunnerDiagnostics").then((module) => ({
+    default: module.ReleaseRunnerDiagnostics,
+  })),
+);
 const PREFLIGHT_COMMAND = [
   "git switch main",
   "git pull --ff-only",
@@ -1983,28 +1998,28 @@ export function ReleasePanel() {
 
       <details className="release-panel__commands release-center__diagnostics">
         <summary>Diagnostics / Runner</summary>
-        <ReleaseRunnerStatusCard
-          executionMode={releaseExecutionMode}
-          formatRelativeTime={formatRelativeTime}
-          jobs={remoteJobs}
-          onRefresh={() => void loadRemoteRunnerStatus()}
-          onRunSelfTest={() => void startRemoteRunnerSelfTest()}
-          onRunStatusCheck={() => void startRemoteStatusCheck()}
-          shortId={shortId}
-          selfTestDisabled={!ready || job?.status === "running"}
-          statusCheckDisabled={!ready || job?.status === "running"}
-          status={runnerStatus}
-        />
-
-        <ReleaseRemoteJobsCard
-          activeJobId={activeRemoteJobId || (job?.cwd === "remote release runner" ? job.job_id : null)}
-          formatRelativeTime={formatRelativeTime}
-          jobs={remoteJobs}
-          onOpen={(jobId) => void openRemoteJob(jobId)}
-          onRetry={(jobId) => void retryRemoteJob(jobId)}
-          scriptLabel={scriptLabel}
-          shortId={shortId}
-        />
+        <Suspense
+          fallback={
+            <div className="release-center__empty">Loading runner diagnostics…</div>
+          }
+        >
+          <ReleaseRunnerDiagnostics
+            activeRemoteJobId={activeRemoteJobId}
+            executionMode={releaseExecutionMode}
+            formatRelativeTime={formatRelativeTime}
+            job={job}
+            jobs={remoteJobs}
+            onOpenRemoteJob={(jobId) => void openRemoteJob(jobId)}
+            onRefresh={() => void loadRemoteRunnerStatus()}
+            onRetryRemoteJob={(jobId) => void retryRemoteJob(jobId)}
+            onRunSelfTest={() => void startRemoteRunnerSelfTest()}
+            onRunStatusCheck={() => void startRemoteStatusCheck()}
+            ready={ready}
+            scriptLabel={scriptLabel}
+            shortId={shortId}
+            status={runnerStatus}
+          />
+        </Suspense>
 
         <ReleaseEnvironmentNotice
           contentChanged={Boolean(contentSuggestion)}
@@ -2055,11 +2070,15 @@ export function ReleasePanel() {
         {preview?.ok === true &&
         !preview.contentDelta.error &&
         preview.contentDelta.files.length > 0 ? (
-          <ContentDeltaDetails
-            delta={preview.contentDelta}
-            formatBytes={formatBytes}
-            formatRelativeTime={formatRelativeTime}
-          />
+          <Suspense
+            fallback={<div className="release-center__empty">Loading file list…</div>}
+          >
+            <ContentDeltaDetails
+              delta={preview.contentDelta}
+              formatBytes={formatBytes}
+              formatRelativeTime={formatRelativeTime}
+            />
+          </Suspense>
         ) : null}
 
         <RouteParityPanel
@@ -2073,12 +2092,16 @@ export function ReleasePanel() {
 
       <details className="release-panel__commands release-center__history">
         <summary>Release History</summary>
-        <ReleaseHistoryPanel
-          entries={history}
-          error={historyError}
-          onCopyRollback={(entry) => void copyText("rollback command", entry.rollback_command)}
-          onRollback={(entry) => setRollbackCandidate(entry)}
-        />
+        <Suspense fallback={<div className="release-center__empty">Loading history…</div>}>
+          <ReleaseHistoryPanel
+            entries={history}
+            error={historyError}
+            onCopyRollback={(entry) =>
+              void copyText("rollback command", entry.rollback_command)
+            }
+            onRollback={(entry) => setRollbackCandidate(entry)}
+          />
+        </Suspense>
       </details>
 
       <details className="release-panel__commands" aria-label="Recovery and advanced release commands">

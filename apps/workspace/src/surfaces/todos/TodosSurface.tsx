@@ -48,6 +48,7 @@ import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceDataStatus,
   WorkspaceEmptyState,
   WorkspaceIconButton,
   WorkspaceInlineStatus,
@@ -635,6 +636,7 @@ export function TodosSurface() {
     }
   };
   const hasPlanningDraft = Boolean(dueDate || scheduledAt || estimatedMinutes || projectId);
+  const loadError = message?.startsWith("Failed to load") ? message : null;
 
   return (
     <WorkspaceSurfaceFrame className="todos-surface">
@@ -763,7 +765,7 @@ export function TodosSurface() {
         }
       />
 
-      {message ? (
+      {message && (!loadError || visibleTodos.length === 0) ? (
         <WorkspaceInlineStatus
           className="todos-message"
           role="status"
@@ -800,7 +802,14 @@ export function TodosSurface() {
         }
       >
         <section className="todos-list-shell" aria-busy={loading ? "true" : undefined}>
-          {loading ? (
+          <WorkspaceDataStatus
+            error={loadError}
+            hasData={visibleTodos.length > 0}
+            loading={loading}
+            loadingLabel="Refreshing todos…"
+            staleLabel="Unable to refresh todos. Showing the last loaded tasks."
+          />
+          {loading && visibleTodos.length === 0 ? (
             <WorkspaceEmptyState className="todos-empty" loading title="Loading todos" />
           ) : visibleTodos.length === 0 ? (
             <WorkspaceEmptyState className="todos-empty" title={emptyLabel(filter)} />
