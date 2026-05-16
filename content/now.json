@@ -22,9 +22,5 @@
       "at": "2026-05-15T18:20:00-03:00"
     }
   ],
-  "links": [
-    { "label": "Calendar", "href": "/calendar" },
-    { "label": "Blog", "href": "/blog" },
-    { "label": "Publications", "href": "/publications" }
-  ]
+  "links": []
 }
