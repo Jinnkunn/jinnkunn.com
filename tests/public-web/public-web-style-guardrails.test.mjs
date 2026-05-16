@@ -487,11 +487,15 @@ test("public-web-style-guardrails: public calendar toolbar uses shared control p
 
 test("public-web-style-guardrails: Now page is content-managed and discoverable", async () => {
   const nowPage = await read("content/pages/now.mdx");
+  const nowData = JSON.parse(await read("content/now.json"));
   const pageTree = JSON.parse(await read("content/page-tree.json"));
   const siteConfig = JSON.parse(await read("content/filesystem/site-config.json"));
   const siteOverview = await read("apps/workspace/src/surfaces/site-admin/SiteOverviewCard.tsx");
 
   assertIncludes(nowPage, 'title: "Now"', "Now page frontmatter");
+  assertIncludes(nowPage, "<NowFeed />", "Now page should render the lightweight status feed");
+  assert.ok(nowData.current?.text, "Now status should have a current text");
+  assert.ok(Array.isArray(nowData.updates) && nowData.updates.length > 0, "Now status should have updates");
   assert.ok(pageTree.slugs.includes("now"), "Now page should appear in Site Admin page order");
   assert.ok(
     siteConfig.nav.top.some((item) => item.href === "/now" && item.label === "Now"),

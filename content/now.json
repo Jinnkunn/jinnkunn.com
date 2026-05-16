@@ -1,0 +1,30 @@
+{
+  "current": {
+    "text": "Tuning /now into a lighter daily status.",
+    "context": "Research, writing, and small systems work.",
+    "location": "Halifax",
+    "updatedAt": "2026-05-16T19:16:00-03:00"
+  },
+  "updates": [
+    {
+      "id": "2026-05-16-now-status-stream",
+      "text": "Moved /now from a small page into a tiny status stream.",
+      "at": "2026-05-16T19:16:00-03:00"
+    },
+    {
+      "id": "2026-05-16-calendar-reliability",
+      "text": "Checked the public calendar path after the recent reliability fixes.",
+      "at": "2026-05-16T15:30:00-03:00"
+    },
+    {
+      "id": "2026-05-15-web-design-system",
+      "text": "Kept tightening the public web design system without changing the visual tone.",
+      "at": "2026-05-15T18:20:00-03:00"
+    }
+  ],
+  "links": [
+    { "label": "Calendar", "href": "/calendar" },
+    { "label": "Blog", "href": "/blog" },
+    { "label": "Publications", "href": "/publications" }
+  ]
+}
