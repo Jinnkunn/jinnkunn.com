@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "slugs": [
     "news",
+    "now",
     "publications",
     "works",
     "teaching",
