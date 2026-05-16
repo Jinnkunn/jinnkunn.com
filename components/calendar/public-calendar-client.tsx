@@ -12,6 +12,7 @@ import {
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
   normalizePublicCalendarData,
   normalizePublicCalendarServedAt,
+  selectPublicCalendarHydrationData,
   type PublicCalendarData,
 } from "@/lib/shared/public-calendar";
 import {
@@ -223,7 +224,12 @@ export function PublicCalendarClient({
         }
         const next = normalizePublicCalendarData(await res.json());
         if (cancelled) return;
-        setData(next);
+        setData((current) =>
+          selectPublicCalendarHydrationData({
+            currentData: current,
+            refreshedData: next,
+          }),
+        );
         setCurrentDateIso(servedAtIso);
         setSyncStatus("ok");
         setLastSyncedAt(servedAtIso);

@@ -186,3 +186,22 @@ export function selectPublicCalendarRuntimeData({
   // hydration refresh from showing different event sets.
   return sourceData.events.length > dbData.events.length ? sourceData : dbData;
 }
+
+export function selectPublicCalendarHydrationData({
+  currentData,
+  refreshedData,
+}: {
+  currentData: PublicCalendarData;
+  refreshedData: PublicCalendarData;
+}): PublicCalendarData {
+  const refreshedGeneratedAt = timestampMs(refreshedData.generatedAt);
+  const currentGeneratedAt = timestampMs(currentData.generatedAt);
+  const responseIsNotNewer = refreshedGeneratedAt <= currentGeneratedAt;
+  if (
+    responseIsNotNewer &&
+    refreshedData.events.length < currentData.events.length
+  ) {
+    return currentData;
+  }
+  return refreshedData;
+}

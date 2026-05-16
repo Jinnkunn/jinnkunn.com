@@ -1,4 +1,5 @@
 import type { AnchorHTMLAttributes, CSSProperties, HTMLAttributes } from "react";
+import { Children, isValidElement } from "react";
 import type { MDXComponents } from "mdx/types";
 
 import { ClassicLink } from "@/components/classic/classic-link";
@@ -28,6 +29,23 @@ import { WorksEntry } from "./works-entry";
 
 function joinClassNames(...classNames: (string | undefined)[]): string {
   return classNames.filter(Boolean).join(" ");
+}
+
+function hasLinkContent(children: AnchorHTMLAttributes<HTMLAnchorElement>["children"]): boolean {
+  let hasContent = false;
+  Children.forEach(children, (child) => {
+    if (hasContent || child === null || child === undefined || child === false) return;
+    if (typeof child === "string") {
+      hasContent = child.trim().length > 0;
+      return;
+    }
+    if (typeof child === "number") {
+      hasContent = true;
+      return;
+    }
+    if (isValidElement(child)) hasContent = true;
+  });
+  return hasContent;
 }
 
 type IconStyleProperties = CSSProperties & {
@@ -106,6 +124,10 @@ function MdxLink({
         {children}
       </a>
     );
+  }
+
+  if (!props["aria-label"] && !props.title && !hasLinkContent(children)) {
+    return null;
   }
 
   return (

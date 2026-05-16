@@ -1,5 +1,8 @@
 import "server-only";
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { getProtectedRoutes } from "@/lib/protected-routes";
 import { getRoutesManifest, type RouteManifestItem } from "@/lib/routes-manifest";
 import {
@@ -15,6 +18,8 @@ import {
 } from "@/lib/shared/sitemap-policy";
 import { HIERARCHY_TRAVERSAL_LIMIT } from "@/lib/shared/hierarchy";
 import { getSyncMeta } from "@/lib/sync-meta";
+import { parsePageFile } from "@/lib/pages/meta";
+import { parsePostFile } from "@/lib/posts/meta";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
 import { canonicalizeRoutePath, compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
@@ -36,6 +41,7 @@ export type SitemapTreeRow = {
 export type SitemapSnapshot = {
   nodes: Map<string, SitemapNode>;
   routeMtimeMs: Map<string, number>;
+  routeTitles: Map<string, string>;
   fallbackLastmod: string | null;
 };
 
@@ -51,6 +57,17 @@ type SitemapExclusionContext = {
 const EXCLUDED_EXACT = new Set<string>(["/auth", "/site-admin", "/blog/list", "/list"]);
 const EXCLUDED_PREFIXES = ["/_next", "/api/", "/site-admin/", "/auth/", "/blog/list/", "/list/"];
 const EXTRA_ROUTES = ["/blog", "/calendar", "/sitemap"];
+
+type ContentRoute = {
+  routePath: string;
+  title: string;
+  mtimeMs: number;
+};
+
+type RouteSources = {
+  routeMtimeMs: Map<string, number>;
+  routeTitles: Map<string, string>;
+};
 
 function routePathFromRawRelPath(relPath: string): string {
   if (relPath === "index") return "/";
@@ -73,6 +90,120 @@ function displayTitleFromRoute(routePath: string): string {
   const seg = routePath.split("/").filter(Boolean).at(-1) || "";
   const decoded = decodeURIComponent(seg);
   return decoded.replace(/[-_]+/g, " ").trim() || decoded || "Untitled";
+}
+
+function getContentRoots(dirName: "pages" | "posts"): string[] {
+  const cwd = process.cwd();
+  const dirs = [
+    path.join(cwd, "content", dirName),
+    path.join(cwd, "server-functions", "default", "content", dirName),
+    path.join(cwd, ".open-next", "server-functions", "default", "content", dirName),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const dir of dirs) {
+    if (seen.has(dir)) continue;
+    seen.add(dir);
+    out.push(dir);
+  }
+  return out;
+}
+
+function listMdxFilesSync(rootDir: string, recursive: boolean): string[] {
+  const out: string[] = [];
+  const stack: Array<{ dir: string; prefix: string }> = [{ dir: rootDir, prefix: "" }];
+
+  while (stack.length) {
+    const { dir, prefix } = stack.pop()!;
+    let ents: fs.Dirent[] = [];
+    try {
+      ents = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const ent of ents) {
+      const abs = path.join(dir, ent.name);
+      const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
+      if (ent.isDirectory()) {
+        if (recursive) stack.push({ dir: abs, prefix: rel });
+        continue;
+      }
+      if (ent.isFile() && /\.mdx?$/.test(ent.name)) out.push(rel);
+    }
+  }
+
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
+function readMtimeMs(filePath: string): number {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function collectPageRoutes(): ContentRoute[] {
+  const out = new Map<string, ContentRoute>();
+  for (const root of getContentRoots("pages")) {
+    for (const rel of listMdxFilesSync(root, true)) {
+      const slug = rel.replace(/\.mdx?$/, "");
+      if (!slug) continue;
+      const filePath = path.join(root, rel);
+      let source = "";
+      try {
+        source = fs.readFileSync(filePath, "utf8");
+      } catch {
+        continue;
+      }
+      try {
+        const { entry } = parsePageFile(slug, source);
+        if (entry.draft) continue;
+        const routePath = canonicalizeRoutePath(`/${slug}`);
+        if (!routePath || out.has(routePath)) continue;
+        out.set(routePath, {
+          routePath,
+          title: entry.title,
+          mtimeMs: readMtimeMs(filePath),
+        });
+      } catch {
+        // Skip malformed drafts/content rather than breaking sitemap generation.
+      }
+    }
+  }
+  return Array.from(out.values());
+}
+
+function collectPostRoutes(): ContentRoute[] {
+  const out = new Map<string, ContentRoute>();
+  for (const root of getContentRoots("posts")) {
+    for (const rel of listMdxFilesSync(root, false)) {
+      const slug = rel.replace(/\.mdx?$/, "");
+      if (!slug) continue;
+      const filePath = path.join(root, rel);
+      let source = "";
+      try {
+        source = fs.readFileSync(filePath, "utf8");
+      } catch {
+        continue;
+      }
+      try {
+        const { entry } = parsePostFile(slug, source);
+        if (entry.draft) continue;
+        const routePath = canonicalizeRoutePath(`/blog/${slug}`);
+        if (!routePath || out.has(routePath)) continue;
+        out.set(routePath, {
+          routePath,
+          title: entry.title,
+          mtimeMs: readMtimeMs(filePath),
+        });
+      } catch {
+        // Skip malformed drafts/content rather than breaking sitemap generation.
+      }
+    }
+  }
+  return Array.from(out.values());
 }
 
 function candidateScore(item: RouteManifestItem, canonicalRoute: string): number {
@@ -241,35 +372,40 @@ function isExcludedFromSitemap(routePath: string, ctx: SitemapExclusionContext):
   return false;
 }
 
-function collectCanonicalRoutes(ctx: SitemapExclusionContext): Map<string, number> {
-  const out = new Map<string, number>();
-  const tryAdd = (rawRoute: string, mtimeMs = 0) => {
+function collectRouteSources(ctx: SitemapExclusionContext): RouteSources {
+  const routeMtimeMs = new Map<string, number>();
+  const routeTitles = new Map<string, string>();
+  const tryAdd = (rawRoute: string, mtimeMs = 0, title = "") => {
     const canonical = canonicalizeRoutePath(rawRoute);
     if (!canonical) return;
     if (!isPublicSitemapRoute(canonical)) return;
     if (isExcludedFromSitemap(canonical, ctx)) return;
-    const prev = out.get(canonical);
+    const prev = routeMtimeMs.get(canonical);
     if (typeof prev === "number") {
-      out.set(canonical, Math.max(prev, mtimeMs));
-      return;
+      routeMtimeMs.set(canonical, Math.max(prev, mtimeMs));
+    } else {
+      routeMtimeMs.set(canonical, mtimeMs);
     }
-    out.set(canonical, mtimeMs);
+    const cleanTitle = String(title || "").trim();
+    if (cleanTitle && !routeTitles.has(canonical)) routeTitles.set(canonical, cleanTitle);
   };
 
   for (const file of listRawHtmlFiles()) {
     const routePath = routePathFromRawRelPath(file.relPath);
     tryAdd(routePath, file.mtimeMs);
   }
+  for (const route of collectPageRoutes()) tryAdd(route.routePath, route.mtimeMs, route.title);
+  for (const route of collectPostRoutes()) tryAdd(route.routePath, route.mtimeMs, route.title);
   for (const extraRoute of EXTRA_ROUTES) tryAdd(extraRoute);
   tryAdd("/blog");
   tryAdd("/");
-  return out;
+  return { routeMtimeMs, routeTitles };
 }
 
 export function collectSitemapSnapshot(): SitemapSnapshot {
   const manifest = getRoutesManifest();
   const exclusionCtx = createSitemapExclusionContext(manifest);
-  const routeMtimeMs = collectCanonicalRoutes(exclusionCtx);
+  const { routeMtimeMs, routeTitles } = collectRouteSources(exclusionCtx);
   const routes = new Set(routeMtimeMs.keys());
   const manifestByRoute = pickManifestByCanonicalRoute(manifest);
   const nodes = new Map<string, SitemapNode>();
@@ -277,7 +413,10 @@ export function collectSitemapSnapshot(): SitemapSnapshot {
   const sortedRoutes = Array.from(routes).sort(compareRoutePath);
   for (const routePath of sortedRoutes) {
     const matched = manifestByRoute.get(routePath);
-    const title = routePath === "/" ? "Home" : (matched?.title?.trim() || displayTitleFromRoute(routePath));
+    const title =
+      routePath === "/"
+        ? "Home"
+        : (matched?.title?.trim() || routeTitles.get(routePath) || displayTitleFromRoute(routePath));
     const parentRoutePath = resolveParentRoutePath(
       routePath,
       matched?.parentRoutePath || "",
@@ -289,6 +428,7 @@ export function collectSitemapSnapshot(): SitemapSnapshot {
   return {
     nodes,
     routeMtimeMs,
+    routeTitles,
     fallbackLastmod: resolveFallbackLastmod(),
   };
 }
