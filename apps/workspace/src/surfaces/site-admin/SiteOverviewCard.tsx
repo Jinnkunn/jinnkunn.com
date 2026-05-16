@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  Clock3,
   ExternalLink,
   FileText,
   Home,
@@ -47,6 +48,7 @@ export function SiteOverviewCard() {
       // would be an OS-level handler issue).
     });
   };
+  const hasNowPage = pagesIndex.some((page) => page.slug === "now");
 
   const tiles: Array<{
     icon: LucideIcon;
@@ -68,6 +70,13 @@ export function SiteOverviewCard() {
       value: ready ? String(postsIndex.length) : "—",
       target: "posts",
       hint: "Open the Posts panel",
+    },
+    {
+      icon: Clock3,
+      label: "Now",
+      value: hasNowPage ? "Live" : "",
+      target: "pages:now",
+      hint: "Edit the Now page",
     },
     {
       icon: Home,

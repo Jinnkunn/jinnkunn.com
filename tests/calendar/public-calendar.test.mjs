@@ -57,6 +57,7 @@ test("public-calendar: full events preserve explicitly public details", () => {
         description: "Open to visitors.",
         location: "Room 1",
         url: "https://example.com/talk",
+        audience: "all",
         colorHex: "#abc123",
       },
     ],
@@ -66,6 +67,7 @@ test("public-calendar: full events preserve explicitly public details", () => {
   assert.equal(data.events[0].description, "Open to visitors.");
   assert.equal(data.events[0].location, "Room 1");
   assert.equal(data.events[0].url, "https://example.com/talk");
+  assert.equal(data.events[0].audience, "all");
   assert.equal(data.events[0].colorHex, "#ABC123");
 });
 

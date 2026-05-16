@@ -8,7 +8,10 @@
 // whole payload. That keeps the storage footprint tiny (~50 bytes
 // per event) and makes the diff cheap (compare two Maps).
 
-import type { CalendarPublicVisibility } from "./publicProjection";
+import type {
+  CalendarPublicAudience,
+  CalendarPublicVisibility,
+} from "./publicProjection";
 import type {
   PublicCalendarEventPayload,
   PublicCalendarPayload,
@@ -24,6 +27,7 @@ const STORAGE_KEY = "workspace.calendar.lastSyncedProjection.v1";
 
 export interface SnapshotEventEntry {
   id: string;
+  audience?: CalendarPublicAudience;
   title: string;
   visibility: PublicCalendarVisibility;
 }
@@ -59,6 +63,12 @@ export function loadSyncSnapshot(): SyncSnapshot | null {
       )
       .map((entry) => ({
         id: entry.id,
+        audience:
+          entry.audience === "featured" ||
+          entry.audience === "all" ||
+          entry.audience === "auto"
+            ? entry.audience
+            : undefined,
         title: entry.title,
         visibility: entry.visibility,
       }));
@@ -93,6 +103,7 @@ export function fingerprintPublicCalendarPayload(
       endsAt: event.endsAt,
       isAllDay: event.isAllDay,
       visibility: event.visibility,
+      audience: event.audience ?? null,
       description: event.description ?? null,
       location: event.location ?? null,
       url: event.url ?? null,
@@ -165,7 +176,10 @@ export function diffSnapshots(
       added.push(entry);
       continue;
     }
-    if (previousEntry.visibility !== entry.visibility) {
+    if (
+      previousEntry.visibility !== entry.visibility ||
+      previousEntry.audience !== entry.audience
+    ) {
       visibilityChanged.push({
         id: entry.id,
         title: entry.title,

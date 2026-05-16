@@ -113,7 +113,7 @@ export function CalendarPublishPanel({
       <header className="calendar-publish-panel__header">
         <div>
           <strong>Website Publish</strong>
-          <span>Public calendar settings.</span>
+          <span>Visibility, Featured mode, and sync.</span>
         </div>
       </header>
       <div className="calendar-publish-panel__status">

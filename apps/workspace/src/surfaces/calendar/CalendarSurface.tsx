@@ -63,6 +63,7 @@ import {
   emptyMetadataStore,
   updateMetadataForEvent,
   type CalendarPublishMetadataStore,
+  type CalendarPublicAudience,
   type CalendarPublicVisibility,
 } from "./publicProjection";
 import {
@@ -1164,6 +1165,7 @@ export function CalendarSurface() {
       if (meta.visibility === "hidden") continue;
       entries.push({
         id: event.externalIdentifier || event.eventIdentifier,
+        audience: meta.audience ?? "auto",
         title: meta.titleOverride?.trim() || event.title || "(No title)",
         visibility: meta.visibility,
       });
@@ -2642,6 +2644,7 @@ function CalendarEventInspector({
   calendar: Calendar | undefined;
   metadata: {
     visibility: CalendarPublicVisibility;
+    audience?: CalendarPublicAudience;
     titleOverride?: string;
     descriptionOverride?: string;
     locationOverride?: string;
@@ -2728,6 +2731,21 @@ function CalendarEventInspector({
                   ? "Using calendar default"
                   : "Using default"}
           </p>
+          {metadata.visibility !== "hidden" ? (
+            <WorkspaceSelectField
+              label="Featured mode"
+              value={metadata.audience ?? "auto"}
+              onChange={(e) =>
+                onMetadataChange({
+                  audience: e.currentTarget.value as CalendarPublicAudience,
+                })
+              }
+            >
+              <option value="auto">Auto</option>
+              <option value="featured">Featured</option>
+              <option value="all">All only</option>
+            </WorkspaceSelectField>
+          ) : null}
           {showPublicFields ? (
             <WorkspaceTextField
               label="Public title override"

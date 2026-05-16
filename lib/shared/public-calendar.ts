@@ -2,6 +2,7 @@ export const PUBLIC_CALENDAR_CACHE_TAG = "public-calendar";
 export const PUBLIC_CALENDAR_SERVED_AT_HEADER = "X-Calendar-Served-At";
 
 export type PublicCalendarVisibility = "busy" | "titleOnly" | "full";
+export type PublicCalendarAudience = "featured" | "all";
 
 export type PublicCalendarEvent = {
   id: string;
@@ -13,6 +14,7 @@ export type PublicCalendarEvent = {
   endsAt: string;
   isAllDay: boolean;
   visibility: PublicCalendarVisibility;
+  audience?: PublicCalendarAudience;
   description?: string | null;
   location?: string | null;
   url?: string | null;
@@ -63,6 +65,11 @@ function normalizeColorHex(value: unknown): string | undefined {
   return raw.toUpperCase();
 }
 
+function normalizeAudience(value: unknown): PublicCalendarAudience | undefined {
+  const raw = normalizeString(value);
+  return raw === "featured" || raw === "all" ? raw : undefined;
+}
+
 function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
@@ -89,6 +96,7 @@ function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
     endsAt,
     isAllDay: Boolean(obj.isAllDay),
     visibility,
+    audience: normalizeAudience(obj.audience),
     description:
       visibility === "full" ? normalizeNullableString(obj.description) : null,
     location: visibility === "full" ? normalizeNullableString(obj.location) : null,

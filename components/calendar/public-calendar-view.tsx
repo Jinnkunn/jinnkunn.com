@@ -20,6 +20,7 @@ import {
   decoratePublicCalendarEvent,
   eventsForDay,
   eventsForDayKey,
+  filterPublicCalendarAudience,
   formatDay,
   formatToolbarTitle,
   isSameZonedMonth,
@@ -27,9 +28,11 @@ import {
   keyForDate,
   monthGridDays,
   parseDayKey,
+  PUBLIC_CALENDAR_AUDIENCE_LABELS,
   shiftAnchor,
   startOfCalendarDay,
   startOfWeek,
+  type PublicCalendarAudienceMode,
   type DecoratedPublicCalendarEvent,
   type PublicCalendarDayIndex,
   type PublicCalendarViewMode,
@@ -37,6 +40,7 @@ import {
 import type { PublicCalendarData } from "@/lib/shared/public-calendar";
 
 export type { PublicCalendarViewMode } from "./public-calendar-model";
+export type { PublicCalendarAudienceMode } from "./public-calendar-model";
 
 export type PublicCalendarEventAnchor = {
   top: number;
@@ -142,9 +146,11 @@ export function PublicCalendarView({
   anchorIso,
   currentDateIso,
   agendaDays = 30,
+  audience = "featured",
   onViewChange,
   onAnchorChange,
   onAgendaDaysChange,
+  onAudienceChange,
   onDaySelect,
   expandedEventId,
   selectedEventAnchor,
@@ -160,9 +166,11 @@ export function PublicCalendarView({
   anchorIso?: string;
   currentDateIso?: string | null;
   agendaDays?: 30 | 90;
+  audience?: PublicCalendarAudienceMode;
   onViewChange?: (view: PublicCalendarViewMode) => void;
   onAnchorChange?: (date: Date) => void;
   onAgendaDaysChange?: (days: 30 | 90) => void;
+  onAudienceChange?: (audience: PublicCalendarAudienceMode) => void;
   onDaySelect?: (date: Date) => void;
   expandedEventId?: string | null;
   selectedEventAnchor?: PublicCalendarEventAnchor | null;
@@ -205,19 +213,25 @@ export function PublicCalendarView({
     () => new Set(selectedTags ?? []),
     [selectedTags],
   );
+  const audienceEvents = useMemo(
+    () => filterPublicCalendarAudience(data.events, audience),
+    [data.events, audience],
+  );
   const filteredEvents = useMemo(
     () =>
       selectedTagSet.size === 0
-        ? data.events
-        : data.events.filter((event) => eventMatchesAnyTag(event, selectedTagSet)),
-    [data.events, selectedTagSet],
+        ? audienceEvents
+        : audienceEvents.filter((event) =>
+            eventMatchesAnyTag(event, selectedTagSet),
+          ),
+    [audienceEvents, selectedTagSet],
   );
   // Prefer the parent-supplied summary (the client wrapper computes
   // it once per data change). Fall back to recomputing locally for
   // callers that don't pass it — keeps the component standalone-safe.
   const tagSummary = useMemo(
-    () => tagSummaryProp ?? summarizeTags(data.events),
-    [tagSummaryProp, data.events],
+    () => tagSummaryProp ?? summarizeTags(audienceEvents),
+    [tagSummaryProp, audienceEvents],
   );
 
   // Decorate each event once: parse timestamps, compute day keys + formatted
@@ -397,6 +411,23 @@ export function PublicCalendarView({
             ))}
           </div>
         ) : null}
+        <div
+          className="public-calendar__view-switch public-calendar__view-switch--audience ds-control-group"
+          aria-label="Calendar scope"
+        >
+          {PUBLIC_CALENDAR_AUDIENCE_LABELS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className="public-calendar__view-button ds-control-button"
+              data-active={audience === item.value ? "true" : "false"}
+              aria-pressed={audience === item.value}
+              onClick={() => onAudienceChange?.(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <a
           // `webcal://` is the iCal subscription scheme; macOS / iOS /
           // most desktop clients pop the "subscribe to calendar" dialog
@@ -488,7 +519,15 @@ export function PublicCalendarView({
       ) : null}
       <p className="public-calendar__sync-note">
         Last updated {lastUpdatedLabel}. Times shown in{" "}
-        {timeZoneLabel}.
+        {timeZoneLabel}.{" "}
+        {audience === "featured" ? (
+          <>
+            Showing visitor-facing events ({decoratedEvents.length} of{" "}
+            {data.events.length}).
+          </>
+        ) : (
+          <>Showing all public events.</>
+        )}
         {selectedTagSet.size > 0 ? (
           <>
             {" "}Filtered by{" "}

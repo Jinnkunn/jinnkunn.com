@@ -474,10 +474,30 @@ test("public-web-style-guardrails: public calendar toolbar uses shared control p
     "public-calendar__subscribe ds-control-button ds-control-button--accent",
     "Calendar subscribe DS control",
   );
+  assertIncludes(
+    calendarView,
+    "public-calendar__view-switch--audience ds-control-group",
+    "Calendar featured/all scope control",
+  );
   assertIncludes(calendarCss, "--ds-control-toolbar-columns", "Calendar toolbar DS variables");
   assertIncludes(calendarCss, "--ds-select-pill-bg", "Calendar select DS variables");
   assertIncludes(designSystemCss, ".ds-control-toolbar", "Design system calendar control primitive");
   assertIncludes(designSystemCss, ".ds-select-pill", "Design system select primitive");
+});
+
+test("public-web-style-guardrails: Now page is content-managed and discoverable", async () => {
+  const nowPage = await read("content/pages/now.mdx");
+  const pageTree = JSON.parse(await read("content/page-tree.json"));
+  const siteConfig = JSON.parse(await read("content/filesystem/site-config.json"));
+  const siteOverview = await read("apps/workspace/src/surfaces/site-admin/SiteOverviewCard.tsx");
+
+  assertIncludes(nowPage, 'title: "Now"', "Now page frontmatter");
+  assert.ok(pageTree.slugs.includes("now"), "Now page should appear in Site Admin page order");
+  assert.ok(
+    siteConfig.nav.top.some((item) => item.href === "/now" && item.label === "Now"),
+    "Now page should be linked from public top navigation",
+  );
+  assertIncludes(siteOverview, 'target: "pages:now"', "Site Admin overview Now shortcut");
 });
 
 test("public-web-style-guardrails: classic list page CSS does not reintroduce card borders", async () => {
