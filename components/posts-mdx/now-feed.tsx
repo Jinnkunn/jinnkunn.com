@@ -5,74 +5,9 @@ import { Fragment, type ReactElement } from "react";
 import nowContent from "@/content/now.json";
 
 import { ClassicLink } from "@/components/classic/classic-link";
-
-type NowLink = {
-  label: string;
-  href: string;
-};
-
-type NowUpdate = {
-  id: string;
-  text: string;
-  at: string;
-};
-
-type NowFeedData = {
-  current?: {
-    text?: string;
-    context?: string;
-    location?: string;
-    updatedAt?: string;
-  };
-  updates?: NowUpdate[];
-  links?: NowLink[];
-};
+import { normalizeNowData } from "@/lib/site-admin/now-normalize";
 
 const DISPLAY_TIME_ZONE = "America/Halifax";
-
-function asText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function normalizeLink(value: unknown): NowLink | null {
-  if (!isRecord(value)) return null;
-  const label = asText(value.label);
-  const href = asText(value.href);
-  if (!label || !href) return null;
-  return { label, href };
-}
-
-function normalizeUpdate(value: unknown): NowUpdate | null {
-  if (!isRecord(value)) return null;
-  const id = asText(value.id);
-  const text = asText(value.text);
-  const at = asText(value.at);
-  if (!id || !text || !at) return null;
-  return { id, text, at };
-}
-
-function normalizeNowFeedData(value: unknown): Required<NowFeedData> {
-  const root = isRecord(value) ? value : {};
-  const currentRaw = isRecord(root.current) ? root.current : {};
-  return {
-    current: {
-      text: asText(currentRaw.text),
-      context: asText(currentRaw.context),
-      location: asText(currentRaw.location),
-      updatedAt: asText(currentRaw.updatedAt),
-    },
-    updates: Array.isArray(root.updates)
-      ? root.updates.map(normalizeUpdate).filter((item): item is NowUpdate => Boolean(item))
-      : [],
-    links: Array.isArray(root.links)
-      ? root.links.map(normalizeLink).filter((item): item is NowLink => Boolean(item))
-      : [],
-  };
-}
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
@@ -91,7 +26,7 @@ function isExternalHref(href: string): boolean {
 }
 
 export function NowFeed(): ReactElement {
-  const data = normalizeNowFeedData(nowContent);
+  const data = normalizeNowData(nowContent);
   const currentText = data.current.text || "Working quietly.";
   const currentMeta = [
     data.current.location,

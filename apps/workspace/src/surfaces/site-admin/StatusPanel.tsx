@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { NowStatusComposer } from "./NowStatusComposer";
 import { PublishPipelineCard } from "./PublishPipelineCard";
 import { SiteOverviewCard } from "./SiteOverviewCard";
 import {
@@ -179,6 +180,7 @@ export function StatusPanel() {
   return (
     <section className="surface-card">
       <SiteOverviewCard />
+      <NowStatusComposer />
 
       <PublishPipelineCard
         loading={loading}

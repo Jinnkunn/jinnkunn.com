@@ -35,6 +35,7 @@ const D1_WRITE_PATH_PREFIXES = [
   "/api/site-admin/redirects",
   "/api/site-admin/components",
   "/api/site-admin/home",
+  "/api/site-admin/now",
   "/api/site-admin/news",
   "/api/site-admin/teaching",
   "/api/site-admin/works",

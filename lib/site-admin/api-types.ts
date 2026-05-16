@@ -277,6 +277,48 @@ export type SiteAdminHomePostPayload = {
 
 export type SiteAdminHomePostResult = SiteAdminHomePostPayload | SiteAdminApiError;
 
+// --- Now (lightweight public status feed) --------------------------------
+
+export type SiteAdminNowCurrent = {
+  text: string;
+  context?: string;
+  location?: string;
+  updatedAt?: string;
+};
+
+export type SiteAdminNowUpdate = {
+  id: string;
+  text: string;
+  at: string;
+};
+
+export type SiteAdminNowLink = {
+  label: string;
+  href: string;
+};
+
+export type SiteAdminNowData = {
+  current: SiteAdminNowCurrent;
+  updates: SiteAdminNowUpdate[];
+  links: SiteAdminNowLink[];
+};
+
+export type SiteAdminNowGetPayload = {
+  ok: true;
+  data: SiteAdminNowData;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminNowGetResult = SiteAdminNowGetPayload | SiteAdminApiError;
+
+export type SiteAdminNowPostPayload = {
+  ok: true;
+  data: SiteAdminNowData;
+  sourceVersion: { fileSha: string };
+};
+
+export type SiteAdminNowPostResult = SiteAdminNowPostPayload | SiteAdminApiError;
+
 export type SiteAdminDeployPayload = {
   ok: true;
   triggeredAt: string;
