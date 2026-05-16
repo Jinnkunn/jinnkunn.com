@@ -76,6 +76,10 @@ import {
   ReleaseJobPanel,
   type ReleaseLogLine,
 } from "./ReleaseActivityPanels";
+import {
+  ReleaseRunnerControl,
+  ReleaseTargetControl,
+} from "./ReleaseControls";
 import { useSiteAdmin } from "./state";
 import type { StatusPayload } from "./types";
 import { getSiteAdminEnvironment, normalizeString } from "./utils";
@@ -1932,83 +1936,6 @@ export function ReleasePanel() {
       <ReleaseBuildCacheNotice summary={buildCacheSummary} />
       <ReleaseAutoCommitNotice summary={autoCommitSummary} />
 
-      <ReleaseRunnerStatusCard
-        executionMode={releaseExecutionMode}
-        formatRelativeTime={formatRelativeTime}
-        jobs={remoteJobs}
-        onRefresh={() => void loadRemoteRunnerStatus()}
-        onRunSelfTest={() => void startRemoteRunnerSelfTest()}
-        onRunStatusCheck={() => void startRemoteStatusCheck()}
-        shortId={shortId}
-        selfTestDisabled={!ready || job?.status === "running"}
-        statusCheckDisabled={!ready || job?.status === "running"}
-        status={runnerStatus}
-      />
-
-      <ReleaseRemoteJobsCard
-        activeJobId={activeRemoteJobId || (job?.cwd === "remote release runner" ? job.job_id : null)}
-        formatRelativeTime={formatRelativeTime}
-        jobs={remoteJobs}
-        onOpen={(jobId) => void openRemoteJob(jobId)}
-        onRetry={(jobId) => void retryRemoteJob(jobId)}
-        scriptLabel={scriptLabel}
-        shortId={shortId}
-      />
-
-      <ReleaseEnvironmentNotice
-        contentChanged={Boolean(contentSuggestion)}
-        pendingProductionContinuation={pendingProductionContinuation}
-        plan={smartPlan}
-        preview={preview}
-        productionCodeMatchesStaging={productionCodeMatchesStaging}
-        productionSnapshot={productionOverlaySnapshot}
-        releaseTarget={releaseTarget}
-        stagingSnapshot={stagingOverlaySnapshot}
-      />
-
-      <ReleaseStepper
-        liveStatus={liveStatus}
-        plan={smartPlan}
-        preview={preview}
-        productionCodeMatchesStaging={productionCodeMatchesStaging}
-        routeParity={liveStatus?.routeParity || null}
-      />
-
-      <ReleaseFlowMap
-        isStaging={isStaging}
-        localDirty={localDirty}
-        localSource={localSource}
-        localStagingMismatch={localStagingMismatch}
-        preview={preview}
-        productionAlreadyCurrent={productionAlreadyCurrent}
-        productionOverlaySnapshot={productionOverlaySnapshot}
-        stagingOverlaySnapshot={stagingOverlaySnapshot}
-        status={status}
-      />
-
-      <ContentOverlayStatusPanel
-        contentSuggestion={contentSuggestion}
-        history={history}
-        liveStatus={liveStatus}
-        liveStatusError={liveStatusError}
-        localSource={localSource}
-        preview={preview}
-        status={status}
-      />
-
-      <ContentDiffPreviewPanel
-        contentDelta={preview?.ok === true ? preview.contentDelta : null}
-        preview={liveStatus?.contentPreview || null}
-      />
-
-      <RouteParityPanel
-        checking={liveStatusLoading}
-        disabled={job?.status === "running"}
-        error={liveStatusError}
-        onCheck={() => void loadLiveStatus()}
-        routeParity={liveStatus?.routeParity || null}
-      />
-
       {!isStaging ? (
         <div className="release-panel__notice" role="status">
           <div>
@@ -2030,7 +1957,9 @@ export function ReleasePanel() {
         </div>
       ) : null}
 
-      <ReleaseBlockers checks={checks} blockingCount={blockingChecks.length} />
+      {blockingChecks.length > 0 ? (
+        <ReleaseBlockers checks={checks} blockingCount={blockingChecks.length} />
+      ) : null}
 
       {rollbackCandidate ? (
         <RollbackConfirmPanel
@@ -2052,22 +1981,105 @@ export function ReleasePanel() {
         }
       />
 
-      <ReleaseHistoryPanel
-        entries={history}
-        error={historyError}
-        onCopyRollback={(entry) => void copyText("rollback command", entry.rollback_command)}
-        onRollback={(entry) => setRollbackCandidate(entry)}
-      />
-
-      {preview?.ok === true &&
-      !preview.contentDelta.error &&
-      preview.contentDelta.files.length > 0 ? (
-        <ContentDeltaDetails
-          delta={preview.contentDelta}
-          formatBytes={formatBytes}
+      <details className="release-panel__commands release-center__diagnostics">
+        <summary>Diagnostics / Runner</summary>
+        <ReleaseRunnerStatusCard
+          executionMode={releaseExecutionMode}
           formatRelativeTime={formatRelativeTime}
+          jobs={remoteJobs}
+          onRefresh={() => void loadRemoteRunnerStatus()}
+          onRunSelfTest={() => void startRemoteRunnerSelfTest()}
+          onRunStatusCheck={() => void startRemoteStatusCheck()}
+          shortId={shortId}
+          selfTestDisabled={!ready || job?.status === "running"}
+          statusCheckDisabled={!ready || job?.status === "running"}
+          status={runnerStatus}
         />
-      ) : null}
+
+        <ReleaseRemoteJobsCard
+          activeJobId={activeRemoteJobId || (job?.cwd === "remote release runner" ? job.job_id : null)}
+          formatRelativeTime={formatRelativeTime}
+          jobs={remoteJobs}
+          onOpen={(jobId) => void openRemoteJob(jobId)}
+          onRetry={(jobId) => void retryRemoteJob(jobId)}
+          scriptLabel={scriptLabel}
+          shortId={shortId}
+        />
+
+        <ReleaseEnvironmentNotice
+          contentChanged={Boolean(contentSuggestion)}
+          pendingProductionContinuation={pendingProductionContinuation}
+          plan={smartPlan}
+          preview={preview}
+          productionCodeMatchesStaging={productionCodeMatchesStaging}
+          productionSnapshot={productionOverlaySnapshot}
+          releaseTarget={releaseTarget}
+          stagingSnapshot={stagingOverlaySnapshot}
+        />
+
+        <ReleaseStepper
+          liveStatus={liveStatus}
+          plan={smartPlan}
+          preview={preview}
+          productionCodeMatchesStaging={productionCodeMatchesStaging}
+          routeParity={liveStatus?.routeParity || null}
+        />
+
+        <ReleaseFlowMap
+          isStaging={isStaging}
+          localDirty={localDirty}
+          localSource={localSource}
+          localStagingMismatch={localStagingMismatch}
+          preview={preview}
+          productionAlreadyCurrent={productionAlreadyCurrent}
+          productionOverlaySnapshot={productionOverlaySnapshot}
+          stagingOverlaySnapshot={stagingOverlaySnapshot}
+          status={status}
+        />
+
+        <ContentOverlayStatusPanel
+          contentSuggestion={contentSuggestion}
+          history={history}
+          liveStatus={liveStatus}
+          liveStatusError={liveStatusError}
+          localSource={localSource}
+          preview={preview}
+          status={status}
+        />
+
+        <ContentDiffPreviewPanel
+          contentDelta={preview?.ok === true ? preview.contentDelta : null}
+          preview={liveStatus?.contentPreview || null}
+        />
+
+        {preview?.ok === true &&
+        !preview.contentDelta.error &&
+        preview.contentDelta.files.length > 0 ? (
+          <ContentDeltaDetails
+            delta={preview.contentDelta}
+            formatBytes={formatBytes}
+            formatRelativeTime={formatRelativeTime}
+          />
+        ) : null}
+
+        <RouteParityPanel
+          checking={liveStatusLoading}
+          disabled={job?.status === "running"}
+          error={liveStatusError}
+          onCheck={() => void loadLiveStatus()}
+          routeParity={liveStatus?.routeParity || null}
+        />
+      </details>
+
+      <details className="release-panel__commands release-center__history">
+        <summary>Release History</summary>
+        <ReleaseHistoryPanel
+          entries={history}
+          error={historyError}
+          onCopyRollback={(entry) => void copyText("rollback command", entry.rollback_command)}
+          onRollback={(entry) => setRollbackCandidate(entry)}
+        />
+      </details>
 
       <details className="release-panel__commands" aria-label="Recovery and advanced release commands">
         <summary>Recovery / Advanced</summary>
@@ -2198,79 +2210,6 @@ export function ReleasePanel() {
         </button>
       </footer>
     </section>
-  );
-}
-
-function ReleaseTargetControl({
-  disabled,
-  onChange,
-  value,
-}: {
-  disabled: boolean;
-  onChange: (target: ReleaseTarget) => void;
-  value: ReleaseTarget;
-}) {
-  return (
-    <div className="release-center__target" aria-label="Release target">
-      <button
-        aria-pressed={value === "staging"}
-        disabled={disabled}
-        type="button"
-        onClick={() => onChange("staging")}
-      >
-        Staging only
-      </button>
-      <button
-        aria-pressed={value === "production"}
-        disabled={disabled}
-        type="button"
-        onClick={() => onChange("production")}
-      >
-        Staging to Production
-      </button>
-    </div>
-  );
-}
-
-function ReleaseRunnerControl({
-  canRunLocal,
-  disabled,
-  onChange,
-  value,
-}: {
-  canRunLocal: boolean;
-  disabled: boolean;
-  onChange: (mode: ReleaseExecutionMode) => void;
-  value: ReleaseExecutionMode;
-}) {
-  if (!canRunLocal) {
-    return (
-      <div className="release-center__target" aria-label="Release runner">
-        <button aria-pressed="true" disabled type="button">
-          Mac mini runner
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="release-center__target" aria-label="Release runner">
-      <button
-        aria-pressed={value === "local"}
-        disabled={disabled}
-        type="button"
-        onClick={() => onChange("local")}
-      >
-        This Mac
-      </button>
-      <button
-        aria-pressed={value === "remote"}
-        disabled={disabled}
-        type="button"
-        onClick={() => onChange("remote")}
-      >
-        Mac mini runner
-      </button>
-    </div>
   );
 }
 

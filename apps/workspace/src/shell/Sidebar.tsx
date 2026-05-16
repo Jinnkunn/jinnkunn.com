@@ -21,6 +21,11 @@ import {
 } from "./contextMenu";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
+import {
+  readBooleanMapFromStorage,
+  writeJsonToStorage,
+  type BooleanMap,
+} from "./storage";
 import { WorkspaceIconButton, WorkspaceSidebarRow } from "../ui/primitives";
 
 interface SidebarProps {
@@ -97,31 +102,6 @@ type ContextMenuEntries = Parameters<typeof showContextMenuWithActions>[0];
 const CONTEXT_SECTION_COLLAPSE_STORAGE_KEY =
   "workspace.sidebar.contextSections.v1";
 
-type CollapseMap = Record<string, boolean>;
-
-function loadCollapseMap(storageKey: string): CollapseMap {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: CollapseMap = {};
-    for (const key of Object.keys(parsed)) {
-      if (typeof parsed[key] === "boolean") out[key] = parsed[key] as boolean;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function persistCollapseMap(storageKey: string, state: CollapseMap): void {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-  } catch {
-    // ignore quota / private-mode errors; state stays in-memory
-  }
-}
-
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <ChevronRight
@@ -179,7 +159,7 @@ interface RenderNavItemArgs {
   draggingItemId: string | null;
   isFavorite: (surfaceId: string, itemId: string) => boolean;
   item: SurfaceNavItem;
-  itemTreeCollapsed: CollapseMap;
+  itemTreeCollapsed: BooleanMap;
   onDragEnd: () => void;
   onDragOver: (itemId: string | null) => void;
   onDragStart: (itemId: string) => void;
@@ -791,30 +771,30 @@ export function Sidebar({
     },
     [draggingItemId, dragSurfaceId, endDrag, onMoveNavItem],
   );
-  const [groupCollapsed, setGroupCollapsed] = useState<CollapseMap>(() =>
-    loadCollapseMap(GROUP_COLLAPSE_STORAGE_KEY),
+  const [groupCollapsed, setGroupCollapsed] = useState<BooleanMap>(() =>
+    readBooleanMapFromStorage(GROUP_COLLAPSE_STORAGE_KEY),
   );
-  const [itemTreeCollapsed, setItemTreeCollapsed] = useState<CollapseMap>(() =>
-    loadCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY),
+  const [itemTreeCollapsed, setItemTreeCollapsed] = useState<BooleanMap>(() =>
+    readBooleanMapFromStorage(ITEM_TREE_COLLAPSE_STORAGE_KEY),
   );
   // Recent + Favorites can be collapsed individually so a daily reorder
   // of the surface tree doesn't have to step around stale recents the
   // operator already knows about. State is keyed by section id ("recent"
   // / "favorites") so adding a future section is a one-line change.
-  const [contextSectionCollapsed, setContextSectionCollapsed] = useState<CollapseMap>(
-    () => loadCollapseMap(CONTEXT_SECTION_COLLAPSE_STORAGE_KEY),
+  const [contextSectionCollapsed, setContextSectionCollapsed] = useState<BooleanMap>(
+    () => readBooleanMapFromStorage(CONTEXT_SECTION_COLLAPSE_STORAGE_KEY),
   );
 
   useEffect(() => {
-    persistCollapseMap(GROUP_COLLAPSE_STORAGE_KEY, groupCollapsed);
+    writeJsonToStorage(GROUP_COLLAPSE_STORAGE_KEY, groupCollapsed);
   }, [groupCollapsed]);
 
   useEffect(() => {
-    persistCollapseMap(ITEM_TREE_COLLAPSE_STORAGE_KEY, itemTreeCollapsed);
+    writeJsonToStorage(ITEM_TREE_COLLAPSE_STORAGE_KEY, itemTreeCollapsed);
   }, [itemTreeCollapsed]);
 
   useEffect(() => {
-    persistCollapseMap(
+    writeJsonToStorage(
       CONTEXT_SECTION_COLLAPSE_STORAGE_KEY,
       contextSectionCollapsed,
     );
