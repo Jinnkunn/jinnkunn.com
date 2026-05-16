@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, useEffect, type ReactNode } from "react";
+import { StrictMode, act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -17,12 +17,12 @@ describe("useWorkspaceResource", () => {
     container = null;
   });
 
-  function mount(ui: ReactNode) {
+  function mount(ui: ReactNode, options: { strict?: boolean } = {}) {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     act(() => {
-      root?.render(ui);
+      root?.render(options.strict ? <StrictMode>{ui}</StrictMode> : ui);
     });
   }
 
@@ -45,6 +45,34 @@ describe("useWorkspaceResource", () => {
     }
 
     mount(<Probe />);
+    await vi.waitFor(() =>
+      expect(snapshots).toContainEqual({
+        data: "loaded",
+        loading: false,
+        state: "ready",
+      }),
+    );
+  });
+
+  it("settles loading under React StrictMode", async () => {
+    const snapshots: Array<{ data: string; loading: boolean; state: string }> = [];
+
+    function Probe() {
+      const resource = useWorkspaceResource({
+        initialData: "initial",
+        load: async () => "loaded",
+      });
+      useEffect(() => {
+        snapshots.push({
+          data: resource.data,
+          loading: resource.loading,
+          state: resource.health.state,
+        });
+      }, [resource.data, resource.health.state, resource.loading]);
+      return null;
+    }
+
+    mount(<Probe />, { strict: true });
     await vi.waitFor(() =>
       expect(snapshots).toContainEqual({
         data: "loaded",
