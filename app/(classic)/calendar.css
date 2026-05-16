@@ -769,7 +769,11 @@
 }
 
 .public-calendar__month-cell[data-muted="true"] {
-  opacity: 0.45;
+  background: color-mix(in srgb, var(--ds-text-primary) 1.5%, transparent);
+}
+
+.public-calendar__month-cell[data-muted="true"] .public-calendar__date-number {
+  color: var(--ds-text-secondary);
 }
 
 .public-calendar__date-button {
@@ -805,7 +809,11 @@
 
 .public-calendar__date-number[data-today="true"] {
   border-radius: 999px;
-  background: var(--ds-accent);
+  background: color-mix(in srgb, var(--ds-accent) 55%, var(--ds-text-primary));
+  color: var(--ds-text-inverse);
+}
+
+html[data-theme="dark"] .public-calendar__date-number[data-today="true"] {
   color: var(--ds-accent-contrast);
 }
 

@@ -5,6 +5,7 @@ import {
   normalizePublicCalendarServedAt,
   normalizePublicCalendarData,
   publicCalendarJson,
+  selectPublicCalendarHydrationData,
   selectPublicCalendarRuntimeData,
 } from "../lib/shared/public-calendar.ts";
 
@@ -177,5 +178,78 @@ test("public-calendar: runtime data still prefers newer db projection", () => {
   assert.equal(
     selectPublicCalendarRuntimeData({ dbData, sourceData }).generatedAt,
     "2026-05-15T16:09:23.901Z",
+  );
+});
+
+test("public-calendar: hydration does not replace complete data with stale partial data", () => {
+  const currentData = normalizePublicCalendarData({
+    generatedAt: "2026-05-15T15:09:23.901Z",
+    range: {
+      startsAt: "2026-05-15T03:00:00.000Z",
+      endsAt: "2027-05-15T03:00:00.000Z",
+    },
+    events: [
+      {
+        id: "one",
+        title: "One",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+      {
+        id: "two",
+        title: "Two",
+        startsAt: "2026-05-16T14:00:00.000Z",
+        endsAt: "2026-05-16T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+  const stalePartial = normalizePublicCalendarData({
+    ...currentData,
+    events: [currentData.events[0]],
+  });
+
+  assert.equal(
+    selectPublicCalendarHydrationData({
+      currentData,
+      refreshedData: stalePartial,
+    }).events.length,
+    2,
+  );
+});
+
+test("public-calendar: hydration accepts newer refreshed data", () => {
+  const currentData = normalizePublicCalendarData({
+    generatedAt: "2026-05-15T15:09:23.901Z",
+    range: {
+      startsAt: "2026-05-15T03:00:00.000Z",
+      endsAt: "2027-05-15T03:00:00.000Z",
+    },
+    events: [
+      {
+        id: "one",
+        title: "One",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+  const newerData = normalizePublicCalendarData({
+    ...currentData,
+    generatedAt: "2026-05-15T16:09:23.901Z",
+    events: [],
+  });
+
+  assert.equal(
+    selectPublicCalendarHydrationData({
+      currentData,
+      refreshedData: newerData,
+    }).events.length,
+    0,
   );
 });

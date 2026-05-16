@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
@@ -21,6 +21,18 @@ const REFERENCES_POST =
   "/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models";
 const SCRIPT_NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
+
+async function loadStalePartialCalendarPayload() {
+  const raw = await readFile(
+    path.join(process.cwd(), "content", "calendar-public.json"),
+    "utf8",
+  );
+  const data = JSON.parse(raw);
+  return {
+    ...data,
+    events: Array.isArray(data.events) ? data.events.slice(0, 1) : [],
+  };
+}
 
 function buildThemedUrl(baseURL, pathname, theme) {
   const url = new URL(pathname, baseURL);
@@ -236,6 +248,56 @@ async function main() {
       } catch (e) {
         record("desktop:site-admin-dark", false, { error: String(e) });
         await captureFailure(page, outDir, "fail-desktop-site-admin");
+      }
+
+      await context.close();
+    }
+
+    // Calendar hydration should not replace a complete static snapshot with
+    // a stale partial refresh. This guards against the "events appear, then
+    // disappear after hydration" regression.
+    {
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 900 },
+        colorScheme: "light",
+      });
+      const page = await context.newPage();
+      const partialCalendar = await loadStalePartialCalendarPayload();
+      await page.route("**/api/public/calendar", async (route) => {
+        await sleep(800);
+        await route.fulfill({
+          status: 200,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "x-calendar-served-at": "2026-05-15T18:10:00.000Z",
+          },
+          body: JSON.stringify(partialCalendar),
+        });
+      });
+
+      try {
+        const url = buildThemedUrl(baseURL, "/calendar?tz=America/Halifax", "light");
+        await page.goto(url, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".public-calendar__event-pill", { timeout: 5000 });
+        const before = await page.locator(".public-calendar__event-pill").count();
+        await page.waitForTimeout(1600);
+        const after = await page.locator(".public-calendar__event-pill").count();
+        const emptyState = await page
+          .getByText("No public calendar events are currently listed.")
+          .isVisible()
+          .catch(() => false);
+        record("calendar:hydration-keeps-complete-events", before > 1 && after >= before && !emptyState, {
+          before,
+          after,
+          emptyState,
+          partialEvents: partialCalendar.events.length,
+        });
+        if (after < before || emptyState) {
+          await captureFailure(page, outDir, "fail-calendar-hydration");
+        }
+      } catch (e) {
+        record("calendar:hydration-keeps-complete-events", false, { error: String(e) });
+        await captureFailure(page, outDir, "fail-calendar-hydration");
       }
 
       await context.close();

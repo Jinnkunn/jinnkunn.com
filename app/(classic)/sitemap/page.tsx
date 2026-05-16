@@ -2,15 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getHierarchicalSitemapRoutes, type SitemapRoute } from "@/lib/server/sitemap-routes";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteConfig } from "@/lib/site-config";
 
 import styles from "./sitemap.module.css";
 
 export const dynamic = "force-static";
 
-export const metadata: Metadata = {
-  title: "Sitemap",
-  description: "A hierarchical index of all public pages.",
-};
+export function generateMetadata(): Metadata {
+  const cfg = getSiteConfig();
+  return buildPageMetadata({
+    cfg,
+    title: "Sitemap",
+    description: "A hierarchical index of all public pages.",
+    pathname: "/sitemap",
+    type: "website",
+  });
+}
 
 type ChildrenMap = Map<string, SitemapRoute[]>;
 
