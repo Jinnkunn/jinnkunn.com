@@ -754,6 +754,9 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   );
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
   const releasePanel = await read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx");
+  const releaseActivityPanels = await read(
+    "apps/workspace/src/surfaces/site-admin/ReleaseActivityPanels.tsx",
+  );
   const releaseRunnerCards = await read(
     "apps/workspace/src/surfaces/site-admin/release-runner-cards.tsx",
   );
@@ -844,15 +847,15 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releasePanel, /siteAdminStartReleaseJob/);
   assert.match(releasePanel, /siteAdminLocalReleaseSource/);
   assert.match(releasePanel, /site-admin:\/\/release-job/);
-  assert.match(releasePanel, /useRef<HTMLDivElement \| null>/);
-  assert.match(releasePanel, /log\.scrollTop = log\.scrollHeight/);
+  assert.match(releaseActivityPanels, /useRef<HTMLDivElement \| null>/);
+  assert.match(releaseActivityPanels, /log\.scrollTop = log\.scrollHeight/);
   assert.match(releasePanel, /contentSuggestionSatisfiedByStagingOverlay/);
   assert.match(releasePanel, /Production promotion starts from Staging/);
   assert.match(releasePanel, /Release gates/);
   assert.match(releasePanel, /Release route/);
   assert.match(releasePanel, /Production differs/);
   assert.match(releasePanel, /GitHub Dispatch Fallback/);
-  assert.match(releasePanel, /Release History/);
+  assert.match(releaseActivityPanels, /Release History/);
   assert.match(releaseFlow, /Publish Same Content to Production/);
   assert.match(releasePanel, /PUBLISH_CONTENT_STAGING_COMMAND/);
   assert.match(releasePanel, /PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND/);
