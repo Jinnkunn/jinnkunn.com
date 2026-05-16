@@ -75,7 +75,7 @@ jobs:
 
       - name: Materialize staging D1 → content/
         if: steps.diff.outputs.total != '0'
-        run: node scripts/dump-content-from-db.mjs --remote --env=staging
+        run: node scripts/content/dump-content-from-db.mjs --remote --env=staging
 
       - name: Build summary for PR body
         # Re-run the diff JSON dump now that content/ has been written;
@@ -96,7 +96,7 @@ jobs:
             echo "- modified: ${{ steps.diff.outputs.modified }}"
             echo "- removed: ${{ steps.diff.outputs.removed }}"
             echo
-            echo "Content dumped from \`SITE_ADMIN_DB --env=staging\` via \`scripts/dump-content-from-db.mjs\`. Staging worker is the source of truth for operator-edited content; this PR snapshots that state into git so the working tree stays a recoverable baseline (and so \`npm run db:diff:staging\` continues to give a short, accurate answer)."
+            echo "Content dumped from \`SITE_ADMIN_DB --env=staging\` via \`scripts/content/dump-content-from-db.mjs\`. Staging worker is the source of truth for operator-edited content; this PR snapshots that state into git so the working tree stays a recoverable baseline (and so \`npm run db:diff:staging\` continues to give a short, accurate answer)."
             echo
             echo "Top of file delta (full list in commit diff):"
             echo

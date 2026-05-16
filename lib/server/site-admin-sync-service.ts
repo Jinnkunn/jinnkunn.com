@@ -1,7 +1,7 @@
 // Powers the Tauri local-cache sync flow (Phase 5a). Reads content_files
 // rows updated after the caller's watermark and returns them as a JSON
 // batch. Body bytes are hex-encoded so the JSON envelope stays text-clean
-// — same trick scripts/dump-content-from-db.mjs uses.
+// — same trick scripts/content/dump-content-from-db.mjs uses.
 //
 // Only the *db* SITE_ADMIN_STORAGE backend exposes a meaningful
 // implementation. Local mode returns ok=false so the Tauri client knows

@@ -23,7 +23,7 @@ const PNG_PATH = path.join(ROOT, "tray.png");
 
 // Use the project root's sharp install. The workspace package.json
 // doesn't depend on sharp directly; the root does (already pulled in
-// for `scripts/perf-budget.mjs` and friends).
+// for `scripts/qa/perf-budget.mjs` and friends).
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const sharpEntry = path.join(REPO_ROOT, "node_modules", "sharp", "lib", "index.js");
 const sharp = (await import(sharpEntry)).default;

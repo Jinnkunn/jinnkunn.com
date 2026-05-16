@@ -89,7 +89,7 @@ cpu_ms = 300000
   - On hit, it returns immediately with header `x-static-shell: 1`.
   - On miss, it falls back to OpenNext runtime.
 - Prerendered HTML assets are exported from Next build output by:
-  - `scripts/export-static-shell-assets.mjs`
+  - `scripts/build/export-static-shell-assets.mjs`
   - invoked automatically by `npm run build:cf`.
 
 ### Operational Notes

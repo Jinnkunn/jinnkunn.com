@@ -277,7 +277,7 @@ fn package_json_looks_like_repo_root(path: &Path) -> bool {
     raw.contains("\"name\": \"jinnkunn.com\"")
         && raw.contains("\"release:staging\"")
         && raw.contains("\"publish:content:staging\"")
-        && path.join("scripts/release-cloudflare.mjs").exists()
+        && path.join("scripts/release/release-cloudflare.mjs").exists()
 }
 
 fn resolve_release_repo_root() -> Result<PathBuf, String> {

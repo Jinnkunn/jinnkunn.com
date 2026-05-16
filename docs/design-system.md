@@ -66,7 +66,7 @@ This repo now has a code-first design system built as a compatibility layer on t
 
 ## QA Baseline
 
-- Visual regression uses [`scripts/ui-snapshots.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/ui-snapshots.mjs) with a fixed light/dark matrix across:
+- Visual regression uses [`scripts/qa/ui-snapshots.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/qa/ui-snapshots.mjs) with a fixed light/dark matrix across:
   - home
   - `/news`
   - `/publications`
@@ -78,12 +78,12 @@ This repo now has a code-first design system built as a compatibility layer on t
   - one representative blog post
   - `/site-admin`
   - `/site-admin/design-system`
-- Interaction regression uses [`scripts/smoke-ui.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/smoke-ui.mjs) and must cover:
+- Interaction regression uses [`scripts/qa/smoke-ui.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/qa/smoke-ui.mjs) and must cover:
   - theme toggle
   - persisted theme after refresh
   - dark-mode navigation, search, mobile menu, and site-admin shell
-- Accessibility regression stays on [`scripts/a11y-check.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/a11y-check.mjs) and audits representative light/dark pages through the same theme contract.
-- Token leakage hard gate is [`scripts/check-design-system.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/check-design-system.mjs), exposed as `npm run check:design-system`.
+- Accessibility regression stays on [`scripts/qa/a11y-check.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/qa/a11y-check.mjs) and audits representative light/dark pages through the same theme contract.
+- Token leakage hard gate is [`scripts/qa/check-design-system.mjs`](/Users/jinnkunn/Desktop/jinnkunn.com/scripts/qa/check-design-system.mjs), exposed as `npm run check:design-system`.
 - Live staging visual parity is checked by `npm run check:staging-visual`, which
   compares authenticated staging public pages against production using the same
   typography, layout, link, and Notion structure contracts as local regression.

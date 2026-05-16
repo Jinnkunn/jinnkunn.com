@@ -210,7 +210,7 @@ npm run release:prod:from-staging
 
 Pass `--skip-visual` to skip the slow Playwright pass, or
 `--note "<message>"` to annotate the version-history row. See
-`scripts/release-from-staging.mjs` for the full flag list.
+`scripts/release/release-from-staging.mjs` for the full flag list.
 
 ## Long-form Preflight Checklist (fallback)
 
