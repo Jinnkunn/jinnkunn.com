@@ -11,8 +11,10 @@ import {
   zonedStartOfMonth,
 } from "../../lib/shared/calendar-timezone.ts";
 import type { PublicCalendarEvent } from "../../lib/shared/public-calendar.ts";
+import { extractEventTags } from "../../lib/shared/calendar-tags.ts";
 
 export type PublicCalendarViewMode = "month" | "week" | "day" | "agenda";
+export type PublicCalendarAudienceMode = "featured" | "all";
 
 export const PUBLIC_CALENDAR_VIEW_LABELS: Array<{
   value: PublicCalendarViewMode;
@@ -23,6 +25,58 @@ export const PUBLIC_CALENDAR_VIEW_LABELS: Array<{
   { value: "day", label: "Day" },
   { value: "agenda", label: "Agenda" },
 ];
+
+export const PUBLIC_CALENDAR_AUDIENCE_LABELS: Array<{
+  value: PublicCalendarAudienceMode;
+  label: string;
+}> = [
+  { value: "featured", label: "Featured" },
+  { value: "all", label: "All" },
+];
+
+const FEATURED_TAGS = new Set([
+  "availability",
+  "available",
+  "conference",
+  "deadline",
+  "office-hours",
+  "public",
+  "research",
+  "talk",
+  "teaching",
+  "travel",
+  "workshop",
+]);
+
+const FEATURED_KEYWORDS = /\b(abstract|camera-ready|conference|deadline|due|office hours?|presentation|public|research|seminar|submission|talk|travel|visit|workshop)\b/i;
+
+export function isFeaturedPublicCalendarEvent(
+  event: PublicCalendarEvent,
+): boolean {
+  if (event.visibility === "busy") return false;
+  if (event.audience === "all") return false;
+  if (event.audience === "featured") return true;
+  const tags = extractEventTags(event);
+  if (tags.some((tag) => FEATURED_TAGS.has(tag))) return true;
+  const searchable = [
+    event.title,
+    event.calendarTitle,
+    event.description,
+    event.location,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (FEATURED_KEYWORDS.test(searchable)) return true;
+  return true;
+}
+
+export function filterPublicCalendarAudience(
+  events: readonly PublicCalendarEvent[],
+  audience: PublicCalendarAudienceMode,
+): PublicCalendarEvent[] {
+  if (audience === "all") return [...events];
+  return events.filter(isFeaturedPublicCalendarEvent);
+}
 
 export type DecoratedPublicCalendarEvent = PublicCalendarEvent & {
   startTimestamp: number;

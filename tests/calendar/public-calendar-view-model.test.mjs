@@ -7,6 +7,7 @@ import {
   buildDayIndex,
   decoratePublicCalendarEvent,
   eventsForDayKey,
+  filterPublicCalendarAudience,
   formatToolbarTitle,
   keyForDate,
   monthGridDays,
@@ -146,4 +147,46 @@ test("public-calendar-view-model: agenda groups start from the live current date
   );
 
   assert.deepEqual(groups.map(([day]) => day), ["2026-05-15"]);
+});
+
+test("public-calendar-view-model: featured audience hides busy and all-only events", () => {
+  const data = normalizePublicCalendarData({
+    events: [
+      {
+        id: "busy",
+        title: "Busy",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "busy",
+      },
+      {
+        id: "deadline",
+        audience: "all",
+        title: "EMNLP Deadline",
+        startsAt: "2026-05-16T14:00:00.000Z",
+        endsAt: "2026-05-16T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "full",
+      },
+      {
+        id: "talk",
+        audience: "featured",
+        title: "Lab talk #research",
+        startsAt: "2026-05-17T14:00:00.000Z",
+        endsAt: "2026-05-17T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "titleOnly",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    filterPublicCalendarAudience(data.events, "featured").map((event) => event.id),
+    ["talk"],
+  );
+  assert.deepEqual(
+    filterPublicCalendarAudience(data.events, "all").map((event) => event.id),
+    ["busy", "deadline", "talk"],
+  );
 });

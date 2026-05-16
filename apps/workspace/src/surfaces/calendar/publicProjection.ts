@@ -1,12 +1,14 @@
 import type { Calendar, CalendarEvent } from "./types";
 
 export type CalendarPublicVisibility = "hidden" | "busy" | "titleOnly" | "full";
+export type CalendarPublicAudience = "auto" | "featured" | "all";
 
 const PUBLIC_BUSY_COLOR = "#9B9A97";
 const BUSY_ROUND_MINUTES = 15;
 
 export interface CalendarPublishMetadata {
   visibility: CalendarPublicVisibility;
+  audience?: CalendarPublicAudience;
   titleOverride?: string;
   descriptionOverride?: string;
   locationOverride?: string;
@@ -28,6 +30,7 @@ export interface PublicCalendarEventPayload {
   endsAt: string;
   isAllDay: boolean;
   visibility: Exclude<CalendarPublicVisibility, "hidden">;
+  audience?: Exclude<CalendarPublicAudience, "auto">;
   description?: string | null;
   location?: string | null;
   url?: string | null;
@@ -158,6 +161,10 @@ export function buildPublicCalendarPayload(input: {
     const visibility = meta.visibility;
     const calendar = input.calendarsById.get(event.calendarId);
     if (shouldSkipPublicEvent(event, calendar)) continue;
+    const audience =
+      meta.audience === "featured" || meta.audience === "all"
+        ? meta.audience
+        : undefined;
     const title =
       visibility === "busy"
         ? "Busy"
@@ -176,6 +183,7 @@ export function buildPublicCalendarPayload(input: {
       endsAt: rounded.endsAt,
       isAllDay: event.isAllDay,
       visibility,
+      audience,
       description:
         visibility === "full"
           ? meta.descriptionOverride?.trim() || event.notes || null
@@ -208,6 +216,7 @@ export function normalizeCalendarPublishMetadata(raw: unknown): CalendarPublishM
   const visibility = normalizeVisibility(obj.visibility);
   return {
     visibility,
+    audience: normalizeAudience(obj.audience),
     titleOverride: normalizeOptionalString(obj.titleOverride),
     descriptionOverride: normalizeOptionalString(obj.descriptionOverride),
     locationOverride: normalizeOptionalString(obj.locationOverride),
@@ -219,6 +228,12 @@ function normalizeVisibility(raw: unknown): CalendarPublicVisibility {
   return raw === "busy" || raw === "titleOnly" || raw === "full"
     ? raw
     : "hidden";
+}
+
+function normalizeAudience(raw: unknown): CalendarPublicAudience | undefined {
+  return raw === "featured" || raw === "all" || raw === "auto"
+    ? raw
+    : undefined;
 }
 
 function normalizeOptionalString(raw: unknown): string | undefined {

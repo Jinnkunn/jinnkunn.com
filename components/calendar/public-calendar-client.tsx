@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   PublicCalendarView,
+  type PublicCalendarAudienceMode,
   type PublicCalendarEventAnchor,
   type PublicCalendarViewMode,
 } from "@/components/calendar/public-calendar-view";
-import { summarizeTags } from "@/lib/shared/calendar-tags";
 import {
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
   normalizePublicCalendarData,
@@ -26,6 +26,7 @@ import {
 // Reading the initial state from the URL once at mount is enough — the
 // useEffect that listens to popstate handles back/forward.
 const TAG_QUERY_KEY = "tag";
+const SCOPE_QUERY_KEY = "scope";
 const TIME_ZONE_QUERY_KEY = "tz";
 const TIME_ZONE_STORAGE_KEY = "public-calendar.timeZone.v1";
 
@@ -42,6 +43,23 @@ function writeTagsToLocation(tags: readonly string[]): void {
   for (const tag of tags) {
     if (tag) params.append(TAG_QUERY_KEY, tag);
   }
+  const next = params.toString();
+  const target =
+    window.location.pathname + (next ? `?${next}` : "") + window.location.hash;
+  window.history.replaceState(null, "", target);
+}
+
+function readAudienceFromLocation(): PublicCalendarAudienceMode {
+  if (typeof window === "undefined") return "featured";
+  const params = new URLSearchParams(window.location.search);
+  return params.get(SCOPE_QUERY_KEY) === "all" ? "all" : "featured";
+}
+
+function writeAudienceToLocation(audience: PublicCalendarAudienceMode): void {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  if (audience === "all") params.set(SCOPE_QUERY_KEY, "all");
+  else params.delete(SCOPE_QUERY_KEY);
   const next = params.toString();
   const target =
     window.location.pathname + (next ? `?${next}` : "") + window.location.hash;
@@ -121,6 +139,9 @@ export function PublicCalendarClient({
   const [selectedEvent, setSelectedEvent] =
     useState<SelectedCalendarEvent | null>(null);
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
+  const [audience, setAudience] = useState<PublicCalendarAudienceMode>(() =>
+    readAudienceFromLocation(),
+  );
   const [timeZone, setTimeZone] = useState<string>(() =>
     readTimeZoneFromLocation(),
   );
@@ -139,6 +160,7 @@ export function PublicCalendarClient({
   useEffect(() => {
     const onPopState = () => {
       setSelectedTags(readTagsFromLocation());
+      setAudience(readAudienceFromLocation());
       setTimeZone(readTimeZoneFromLocation());
       setSelectedEvent(null);
     };
@@ -150,6 +172,11 @@ export function PublicCalendarClient({
     // share captures the filtered view + a refresh preserves it.
     writeTagsToLocation(next);
     setSelectedTags(next);
+    setSelectedEvent(null);
+  }, []);
+  const handleAudienceChange = useCallback((next: PublicCalendarAudienceMode) => {
+    writeAudienceToLocation(next);
+    setAudience(next);
     setSelectedEvent(null);
   }, []);
   const handleTimeZoneChange = useCallback((next: string) => {
@@ -191,11 +218,6 @@ export function PublicCalendarClient({
     };
   }, [selectedEvent]);
 
-  // Hoist the tag summary so it's only rebuilt when the events list
-  // actually changes, not when the operator pages anchor / switches
-  // view. The view component then receives this stable reference and
-  // skips its own summarize call.
-  const tagSummary = useMemo(() => summarizeTags(data.events), [data.events]);
   const automaticAnchorIso = useMemo(
     () =>
       currentDateIso
@@ -258,10 +280,11 @@ export function PublicCalendarClient({
         anchorIso={anchorIso ?? automaticAnchorIso ?? initialData.generatedAt}
         currentDateIso={currentDateIso}
         agendaDays={agendaDays}
+        audience={audience}
         timeZone={timeZone}
         selectedTags={selectedTags}
         onSelectedTagsChange={handleSelectedTagsChange}
-        tagSummary={tagSummary}
+        onAudienceChange={handleAudienceChange}
         onViewChange={handleViewChange}
         onAnchorChange={handleAnchorChange}
         onAgendaDaysChange={setAgendaDays}

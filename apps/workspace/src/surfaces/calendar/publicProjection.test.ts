@@ -4,6 +4,7 @@ import {
   buildPublicCalendarPayload,
   emptyMetadataStore,
   metadataForEvent,
+  normalizeCalendarPublishMetadata,
 } from "./publicProjection";
 import { fingerprintPublicCalendarPayload } from "./syncSnapshot";
 import type { Calendar, CalendarEvent } from "./types";
@@ -109,6 +110,47 @@ describe("calendar public projection", () => {
     });
   });
 
+  it("carries explicit public audience into the website projection", () => {
+    const payload = buildPublicCalendarPayload({
+      events: [event],
+      calendarsById: new Map([[calendar.id, calendar]]),
+      metadata: {
+        schemaVersion: 1,
+        byEventKey: {
+          "external-1": {
+            audience: "all",
+            visibility: "titleOnly",
+          },
+        },
+      },
+      range: {
+        startsAt: "2026-04-28T00:00:00.000Z",
+        endsAt: "2026-04-29T00:00:00.000Z",
+      },
+    });
+
+    expect(payload.events[0]).toMatchObject({
+      audience: "all",
+      title: "Private appointment",
+      visibility: "titleOnly",
+    });
+  });
+
+  it("normalizes invalid audience settings back to auto", () => {
+    expect(
+      normalizeCalendarPublishMetadata({
+        audience: "featured",
+        visibility: "full",
+      }).audience,
+    ).toBe("featured");
+    expect(
+      normalizeCalendarPublishMetadata({
+        audience: "private",
+        visibility: "full",
+      }).audience,
+    ).toBeUndefined();
+  });
+
   it("rounds and merges busy blocks while filtering non-work availability noise", () => {
     const payload = buildPublicCalendarPayload({
       events: [
@@ -195,6 +237,12 @@ describe("calendar public projection", () => {
       fingerprintPublicCalendarPayload({
         ...payload,
         events: [{ ...payload.events[0], url: "https://example.com/changed" }],
+      }),
+    ).not.toBe(fingerprintPublicCalendarPayload(payload));
+    expect(
+      fingerprintPublicCalendarPayload({
+        ...payload,
+        events: [{ ...payload.events[0], audience: "all" }],
       }),
     ).not.toBe(fingerprintPublicCalendarPayload(payload));
   });
