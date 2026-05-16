@@ -63,7 +63,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Compare staging vs production (Notion-style contract)
-        # `check:staging-visual` calls scripts/production-style-regression.mjs
+        # `check:staging-visual` calls scripts/qa/production-style-regression.mjs
         # with --candidate-origin=staging + --candidate-auth, which:
         #   - skips the local `next build`
         #   - skips spawning `npm run start` (no SIGTERM hang)

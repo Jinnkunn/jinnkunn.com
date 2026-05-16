@@ -247,7 +247,7 @@ jobs:
         # known marker per page. Replaces the previous /robots.txt-only
         # ping that would happily green-light a worker that booted but
         # 5xx'd every actual route.
-        run: node scripts/smoke-deployed.mjs --env=$TARGET_ENV
+        run: node scripts/qa/smoke-deployed.mjs --env=$TARGET_ENV
 
       - name: Mark GitHub Deployment status
         # Always runs so a failed release flips the Deployment row to

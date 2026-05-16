@@ -9,7 +9,7 @@ This template is for bundled first-party workspace modules. These are not runtim
 3. Register `__MODULE_CONST___MODULE` in `src/modules/registry.tsx`.
 4. Add any required Rust command to `src-tauri/src/main.rs` and `tauri::generate_handler!`.
 5. If the module owns local data, add its schema to `src-tauri/src/local_db.rs`.
-6. Add registry/unit tests and a guardrail assertion in `../../scripts/workspace-ui-smoke.mjs`.
+6. Add registry/unit tests and a guardrail assertion in `../../scripts/qa/workspace-ui-smoke.mjs`.
 
 ## Recommended File Layout
 

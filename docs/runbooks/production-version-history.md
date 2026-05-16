@@ -5,7 +5,7 @@ to-bottom: most-recent first. The version IDs in this file are the
 fastest path to a known-good rollback target during an incident.
 
 Each row is written by `npm run snapshot:prod` (standalone) or by
-`scripts/release-from-staging.mjs` after a successful production
+`scripts/release/release-from-staging.mjs` after a successful production
 release.
 
 | Snapshot at (UTC) | Version ID | Deployment ID | Code SHA | Branch | Note |

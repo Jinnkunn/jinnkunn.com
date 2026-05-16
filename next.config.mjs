@@ -41,7 +41,7 @@ const nextConfig = {
 
     // Notion-imported media still lives under `/notion-assets/<hash>.png`
     // in the admin's content because that's the path the legacy
-    // `scripts/sync-notion.mjs` writer used. The deployed Cloudflare
+    // `scripts/content/sync-notion.mjs` writer used. The deployed Cloudflare
     // Worker doesn't serve from `public/`, so the actual asset lives on
     // R2 (cdn.jinkunchen.com). Redirect any `/notion-assets/*` request
     // to its CDN counterpart so admin-saved relative URLs keep working

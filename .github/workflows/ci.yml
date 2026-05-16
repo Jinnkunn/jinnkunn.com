@@ -57,9 +57,9 @@ jobs:
               - "lib/site-config.ts"
               - "lib/seo/**"
               - "public/**"
-              - "scripts/smoke-ui.mjs"
-              - "scripts/a11y-check.mjs"
-              - "scripts/perf-budget.mjs"
+              - "scripts/qa/smoke-ui.mjs"
+              - "scripts/qa/a11y-check.mjs"
+              - "scripts/qa/perf-budget.mjs"
               - "package.json"
               - "package-lock.json"
 

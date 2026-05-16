@@ -5,7 +5,7 @@
 - **Staging D1 is the source of truth** for every operator-edited file
   (nav, page bodies, blog posts, link audit, etc.).
 - **Production D1 is not the editing source.** Both staging *and* production
-  full builds dump from staging D1 (`scripts/release-cloudflare.mjs` for the
+  full builds dump from staging D1 (`scripts/release/release-cloudflare.mjs` for the
   local path, `.github/workflows/release-from-dispatch.yml` for fallback).
   Production D1 is only used by the content-only static-shell overlay table.
 - **We don't delete production D1** — leaving it bound costs $0 and
@@ -40,7 +40,7 @@ operator just looked at on staging.
 
 ## Guardrails
 
-- `scripts/release-cloudflare.mjs` forces build-time `SITE_ADMIN_DB_ENV=staging`
+- `scripts/release/release-cloudflare.mjs` forces build-time `SITE_ADMIN_DB_ENV=staging`
   for both local staging and production releases.
 - The release script records a post-build `content=` snapshot hash in Worker
   metadata. This is what lets production preflight detect content-only edits
@@ -76,7 +76,7 @@ Until then: leave it.
 
 ## Content-only overlay table
 
-`scripts/publish-content.mjs` writes generated public HTML shells into
+`scripts/content/publish-content.mjs` writes generated public HTML shells into
 `static_shell_overlays`:
 
 - staging: `npm run publish:content:staging`
@@ -119,5 +119,5 @@ does not shadow the freshly deployed bundle.
 - `docs/runbooks/production-promotion.md` — the full promote flow
 - `lib/server/promote-to-production-service.ts` — Cloudflare preflight +
   GitHub fallback URL service used by the workspace's production promotion panel
-- `scripts/dump-content-from-db.mjs` — the dump script (with `--diff-only`)
+- `scripts/content/dump-content-from-db.mjs` — the dump script (with `--diff-only`)
 - `tests/release-from-dispatch-contract.test.mjs` — workflow guardrails
