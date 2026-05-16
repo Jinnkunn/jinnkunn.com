@@ -15,6 +15,7 @@ import { HeroBlock } from "./hero-block";
 import { LinkListBlock } from "./link-list-block";
 import { NewsBlock } from "./news-block";
 import { NewsEntry } from "./news-entry";
+import { NowStatus } from "./now-status";
 import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
 import { PublicationsEntry } from "./publications-entry";
@@ -193,6 +194,7 @@ export const postMdxComponents: MDXComponents = {
   LinkListBlock,
   NewsBlock,
   NewsEntry,
+  NowStatus,
   PageLink,
   PublicationsBlock,
   PublicationsEntry,
