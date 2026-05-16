@@ -197,11 +197,26 @@ export function selectPublicCalendarHydrationData({
   const refreshedGeneratedAt = timestampMs(refreshedData.generatedAt);
   const currentGeneratedAt = timestampMs(currentData.generatedAt);
   const responseIsNotNewer = refreshedGeneratedAt <= currentGeneratedAt;
-  if (
-    responseIsNotNewer &&
-    refreshedData.events.length < currentData.events.length
-  ) {
+  const refreshedIds = new Set(refreshedData.events.map((event) => event.id));
+  const refreshedContainsCurrent = currentData.events.every((event) =>
+    refreshedIds.has(event.id),
+  );
+
+  if (responseIsNotNewer && !refreshedContainsCurrent) {
     return currentData;
   }
-  return refreshedData;
+  if (refreshedContainsCurrent) {
+    return refreshedData;
+  }
+
+  // The live calendar endpoint can briefly return a newer but partial
+  // overlay while a desktop sync/write is still settling. Hydration
+  // should never make visible events disappear on page load; merge the
+  // refreshed rows over the static rows so new/updated events appear
+  // without dropping rows the static shell already proved renderable.
+  const carried = currentData.events.filter((event) => !refreshedIds.has(event.id));
+  return normalizePublicCalendarData({
+    ...refreshedData,
+    events: [...refreshedData.events, ...carried],
+  });
 }

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import { Plus } from "lucide-react";
 
 import {
@@ -33,11 +41,13 @@ import {
   todosUpdate,
   type TodoRow,
 } from "../../modules/todos/api";
+import { useWorkspaceResource } from "../../modules/useWorkspaceResource";
 import { useSurfaceNav } from "../../shell/surface-nav-context";
 import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceDataHealthPill,
   WorkspaceDataStatus,
   WorkspaceEmptyState,
   WorkspaceInlineStatus,
@@ -45,7 +55,6 @@ import {
 } from "../../ui/primitives";
 import { noteNavId } from "../notes/tree";
 import { todoIdFromNavItem, todoNavId } from "../todos/nav";
-import { ProjectDetailView } from "./ProjectDetail";
 import { ProjectsHome, ProjectsListView } from "./ProjectsHome";
 import {
   PROJECTS_ACTIVE_NAV_ID,
@@ -71,6 +80,12 @@ import {
   type ProjectUpdatePatch,
 } from "./projectFormat";
 import "../../styles/surfaces/projects.css";
+
+const ProjectDetailView = lazy(() =>
+  import("./ProjectDetail").then((module) => ({
+    default: module.ProjectDetailView,
+  })),
+);
 
 const PROJECT_NAV_IDS = new Set([
   PROJECTS_HOME_NAV_ID,
@@ -133,7 +148,6 @@ export function ProjectsSurface() {
   const [links, setLinks] = useState<ProjectLinkRow[]>([]);
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newTodoTitle, setNewTodoTitle] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<ProjectsNotice | null>(null);
   // Two-click archive guard. The same id covers both the row context-
@@ -175,32 +189,46 @@ export function ProjectsSurface() {
     setProjects(sortProjects(rows));
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [projectRows, todoRows] = await Promise.all([
-          projectsList(),
-          todosList(),
-        ]);
-        if (cancelled) return;
-        setProjects(sortProjects(projectRows));
-        setAllTodos(todoRows);
-      } catch (error) {
-        if (!cancelled && !isNativeBridgeUnavailable(error)) {
-          setNotice({
-            kind: "error",
-            text: `Failed to load projects: ${formatProjectsError(error)}`,
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const projectsResource = useWorkspaceResource<{
+    projects: ProjectRow[];
+    todos: TodoRow[];
+  } | null>({
+    ignoreError: isNativeBridgeUnavailable,
+    source: "local",
+    getSummary: (result) =>
+      result ? `${result.projects.length} projects` : "No project data",
+    hasData: (result) =>
+      Boolean(result && (result.projects.length > 0 || result.todos.length > 0)),
+    initialData: null as {
+      projects: ProjectRow[];
+      todos: TodoRow[];
+    } | null,
+    load: useCallback(async () => {
+      const [projectRows, todoRows] = await Promise.all([
+        projectsList(),
+        todosList(),
+      ]);
+      return {
+        projects: sortProjects(projectRows),
+        todos: todoRows,
+      };
+    }, []),
+    onError: useCallback((error: unknown) => {
+      setNotice({
+        kind: "error",
+        text: `Failed to load projects: ${formatProjectsError(error)}`,
+      });
+    }, []),
+    onSuccess: useCallback((result: {
+      projects: ProjectRow[];
+      todos: TodoRow[];
+    } | null) => {
+      if (!result) return;
+      setProjects(result.projects);
+      setAllTodos(result.todos);
+    }, []),
+  });
+  const loading = projectsResource.loading;
 
   useEffect(() => {
     if (!activeNavItemId) {
@@ -713,6 +741,10 @@ export function ProjectsSurface() {
             <span className="projects-commandbar__count">
               {viewTitle(view)} · {view === "home" ? activeProjects.length : visibleProjects.length}
             </span>
+            <WorkspaceDataHealthPill
+              health={projectsResource.health}
+              label="Local"
+            />
           </WorkspaceCommandGroup>
         }
       />
@@ -738,28 +770,38 @@ export function ProjectsSurface() {
       {loading && !hasProjectData ? (
         <WorkspaceEmptyState className="projects-empty" loading title="Loading projects" />
       ) : selectedProject && view === "detail" ? (
-        <ProjectDetailView
-          linkDraft={linkDraft}
-          links={links}
-          newTodoTitle={newTodoTitle}
-          onAddLink={(event) => void addLink(selectedProject, event)}
-          archiveConfirming={confirmArchiveProjectId === selectedProject.id}
-          onArchive={() => void archiveProject(selectedProject)}
-          onCreateNote={() => void createProjectNote(selectedProject)}
-          onCreateTodo={() => void createProjectTodo(selectedProject)}
-          onDeleteLink={(link) => void deleteLink(link)}
-          onLinkDraftChange={setLinkDraft}
-          onOpenNote={(noteId) => selectWorkspaceNavItem("notes", noteNavId(noteId))}
-          onOpenTodo={(todo) =>
-            selectWorkspaceNavItem("todos", todoNavId(todo.id))
+        <Suspense
+          fallback={
+            <WorkspaceEmptyState
+              className="projects-empty"
+              loading
+              title="Loading project detail"
+            />
           }
-          onRestore={() => void restoreProject(selectedProject)}
-          onSetNewTodoTitle={setNewTodoTitle}
-          onToggleTodo={(todo) => void toggleTodo(todo)}
-          onUpdate={(patch) => void updateProject(selectedProject, patch)}
-          project={selectedProject}
-          todos={projectTodos}
-        />
+        >
+          <ProjectDetailView
+            linkDraft={linkDraft}
+            links={links}
+            newTodoTitle={newTodoTitle}
+            onAddLink={(event) => void addLink(selectedProject, event)}
+            archiveConfirming={confirmArchiveProjectId === selectedProject.id}
+            onArchive={() => void archiveProject(selectedProject)}
+            onCreateNote={() => void createProjectNote(selectedProject)}
+            onCreateTodo={() => void createProjectTodo(selectedProject)}
+            onDeleteLink={(link) => void deleteLink(link)}
+            onLinkDraftChange={setLinkDraft}
+            onOpenNote={(noteId) => selectWorkspaceNavItem("notes", noteNavId(noteId))}
+            onOpenTodo={(todo) =>
+              selectWorkspaceNavItem("todos", todoNavId(todo.id))
+            }
+            onRestore={() => void restoreProject(selectedProject)}
+            onSetNewTodoTitle={setNewTodoTitle}
+            onToggleTodo={(todo) => void toggleTodo(todo)}
+            onUpdate={(patch) => void updateProject(selectedProject, patch)}
+            project={selectedProject}
+            todos={projectTodos}
+          />
+        </Suspense>
       ) : view === "home" ? (
         <ProjectsHome
           onOpenProject={openProject}

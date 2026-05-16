@@ -217,6 +217,11 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
+    "ReleaseRoutineSummary",
+    "Release panel routine summary",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
     "PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND",
     "Release panel production content from staging command",
   );
@@ -299,6 +304,52 @@ function main() {
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
     "import(\"./ReleaseHistoryPanel\")",
     "Release history is loaded on demand",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/projects/ProjectsSurface.tsx"),
+    "import(\"./ProjectDetail\")",
+    "Project detail is loaded on demand",
+  );
+  assertIncludes(
+    read("apps/workspace/src/modules/useWorkspaceResource.ts"),
+    "export function useWorkspaceResource",
+    "Workspace resource loading hook",
+  );
+  assertIncludes(
+    read("apps/workspace/src/modules/workspaceDataHealth.ts"),
+    "deriveWorkspaceDataHealth",
+    "Workspace resource health model",
+  );
+  assertIncludes(
+    read("apps/workspace/src/ui/primitives.tsx"),
+    "WorkspaceDataHealthPill",
+    "Workspace resource health primitive",
+  );
+  for (const relPath of [
+    "apps/workspace/src/surfaces/todos/TodosSurface.tsx",
+    "apps/workspace/src/surfaces/projects/ProjectsSurface.tsx",
+    "apps/workspace/src/surfaces/contacts/ContactsSurface.tsx",
+  ]) {
+    assertIncludes(
+      read(relPath),
+      "useWorkspaceResource",
+      `${relPath} should use the shared resource loader`,
+    );
+    assertIncludes(
+      read(relPath),
+      "WorkspaceDataHealthPill",
+      `${relPath} should expose the shared resource health UI`,
+    );
+  }
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "useWorkspaceResource",
+    "Calendar should use shared resource loading for local overlays",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/calendar/CalendarSurface.tsx"),
+    "WorkspaceDataHealthPill",
+    "Calendar should expose shared sync health UI",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),

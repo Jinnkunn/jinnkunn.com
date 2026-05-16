@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -23,6 +30,7 @@ import {
   WorkspaceCommandBar,
   WorkspaceCommandButton,
   WorkspaceCommandGroup,
+  WorkspaceDataHealthPill,
   WorkspaceDataStatus,
   WorkspaceEmptyState,
   WorkspaceInlineStatus,
@@ -49,6 +57,7 @@ import {
   type ContactRow,
   type UpcomingBirthday,
 } from "../../modules/contacts/api";
+import { useWorkspaceResource } from "../../modules/useWorkspaceResource";
 import {
   CONTACTS_ALL_NAV_ID,
   CONTACTS_ARCHIVED_NAV_ID,
@@ -289,7 +298,6 @@ export function ContactsSurface() {
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [archivedContacts, setArchivedContacts] = useState<ContactRow[]>([]);
   const [nowMs] = useState(() => Date.now());
-  const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<ContactsNotice | null>(null);
   const [undoContact, setUndoContact] = useState<ContactRow | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -311,34 +319,60 @@ export function ContactsSurface() {
     }
   }, [activeNavItemId, setActiveNavItemId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      contactsList(),
-      contactsListArchived(),
-      contactsUpcomingBirthdays(60),
-    ])
-      .then(([activeRows, archivedRows, birthdayRows]) => {
-        if (cancelled) return;
-        setContacts(sortContacts(activeRows));
-        setArchivedContacts(archivedRows);
-        setBirthdays(birthdayRows);
-      })
-      .catch((error) => {
-        if (!cancelled && !isNativeBridgeUnavailable(error)) {
-          setNotice({
-            kind: "error",
-            text: `Failed to load contacts: ${formatContactsError(error)}`,
-          });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+  const contactsResource = useWorkspaceResource<{
+    active: ContactRow[];
+    archived: ContactRow[];
+    birthdays: UpcomingBirthday[];
+  } | null>({
+    ignoreError: isNativeBridgeUnavailable,
+    source: "local",
+    getSummary: (result) =>
+      result ? `${result.active.length + result.archived.length} contacts` : "No contact data",
+    hasData: (result) =>
+      Boolean(
+        result &&
+          (result.active.length > 0 ||
+            result.archived.length > 0 ||
+            result.birthdays.length > 0),
+      ),
+    initialData: null as {
+      active: ContactRow[];
+      archived: ContactRow[];
+      birthdays: UpcomingBirthday[];
+    } | null,
+    load: useCallback(async () => {
+      const [activeRows, archivedRows, birthdayRows] = await Promise.all([
+        contactsList(),
+        contactsListArchived(),
+        contactsUpcomingBirthdays(60),
+      ]);
+      return {
+        active: sortContacts(activeRows),
+        archived: archivedRows,
+        birthdays: birthdayRows,
+      };
+    }, []),
+    onError: useCallback((error: unknown) => {
+      setNotice({
+        kind: "error",
+        text: `Failed to load contacts: ${formatContactsError(error)}`,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    }, []),
+    onSuccess: useCallback(
+      (result: {
+        active: ContactRow[];
+        archived: ContactRow[];
+        birthdays: UpcomingBirthday[];
+      } | null) => {
+        if (!result) return;
+        setContacts(result.active);
+        setArchivedContacts(result.archived);
+        setBirthdays(result.birthdays);
+      },
+      [],
+    ),
+  });
+  const loading = contactsResource.loading;
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -816,6 +850,10 @@ export function ContactsSurface() {
         }
         trailing={
           <WorkspaceCommandGroup align="end">
+            <WorkspaceDataHealthPill
+              health={contactsResource.health}
+              label="Local"
+            />
             <WorkspaceCommandButton
               tone="ghost"
               onClick={() => void handleSyncFromCalendar()}

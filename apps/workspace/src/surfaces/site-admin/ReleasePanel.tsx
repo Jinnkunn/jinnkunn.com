@@ -1950,6 +1950,14 @@ export function ReleasePanel() {
       {error ? <div className="release-panel__error">{error}</div> : null}
       <ReleaseBuildCacheNotice summary={buildCacheSummary} />
       <ReleaseAutoCommitNotice summary={autoCommitSummary} />
+      <ReleaseRoutineSummary
+        blockingCount={blockingChecks.length}
+        job={job}
+        plan={smartPlan}
+        releaseExecutionMode={releaseExecutionMode}
+        releaseTarget={releaseTarget}
+        runnerStatus={runnerStatus}
+      />
 
       {!isStaging ? (
         <div className="release-panel__notice" role="status">
@@ -2323,6 +2331,90 @@ function ReleaseStepper({
             <strong>{step.label}</strong>
             <small>{step.detail}</small>
           </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function ReleaseRoutineSummary({
+  blockingCount,
+  job,
+  plan,
+  releaseExecutionMode,
+  releaseTarget,
+  runnerStatus,
+}: {
+  blockingCount: number;
+  job: SiteAdminReleaseJobState | null;
+  plan: ReleasePlan;
+  releaseExecutionMode: ReleaseExecutionMode;
+  releaseTarget: ReleaseTarget;
+  runnerStatus: RemoteReleaseRunnerStatus | null;
+}) {
+  const runner = runnerStatus?.agents[0] ?? null;
+  const runnerOnline = Boolean(
+    runner && runnerStatus && runnerStatus.observedAt - runner.lastSeenAt < 30_000,
+  );
+  const items = [
+    {
+      detail:
+        plan.kind === "noop"
+          ? "Nothing to run"
+          : job?.status === "running"
+            ? job.phase
+            : plan.reason,
+      key: "next",
+      label: "Next",
+      tone:
+        plan.kind === "blocked"
+          ? "blocked"
+          : plan.kind === "noop"
+            ? "ok"
+            : "warn",
+      value: job?.status === "running" ? "Running" : plan.label,
+    },
+    {
+      detail:
+        releaseExecutionMode === "remote"
+          ? runnerOnline
+            ? "Mac mini heartbeat is fresh"
+            : "Runner will also be picked up by fallback polling"
+          : "Local recovery path",
+      key: "runner",
+      label: "Runner",
+      tone:
+        releaseExecutionMode === "remote"
+          ? runnerOnline
+            ? "ok"
+            : "warn"
+          : "muted",
+      value: releaseExecutionMode === "remote" ? "Mac mini" : "This Mac",
+    },
+    {
+      detail:
+        blockingCount > 0
+          ? "Open blockers are listed below"
+          : releaseTarget === "production"
+            ? "Staging-first production path"
+            : "Staging-only target",
+      key: "gates",
+      label: "Gates",
+      tone: blockingCount > 0 ? "blocked" : "ok",
+      value:
+        blockingCount > 0
+          ? `${blockingCount} blocker${blockingCount === 1 ? "" : "s"}`
+          : "Clear",
+    },
+  ];
+
+  return (
+    <section className="release-center__routine-summary" aria-label="Routine release summary">
+      {items.map((item) => (
+        <div data-tone={item.tone} key={item.key}>
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+          <small>{item.detail}</small>
         </div>
       ))}
     </section>
