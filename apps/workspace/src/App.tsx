@@ -30,6 +30,12 @@ import { SettingsWindow } from "./shell/SettingsWindow";
 import { WorkspaceCommandPalette } from "./shell/WorkspaceCommandPalette";
 import { WorkspaceDashboard } from "./shell/WorkspaceDashboard";
 import {
+  readBooleanFromStorage,
+  readStringListFromStorage,
+  writeBooleanToStorage,
+  writeJsonToStorage,
+} from "./shell/storage";
+import {
   appendWorkspaceEvent,
   loadWorkspaceEvents,
   persistWorkspaceEvents,
@@ -84,25 +90,6 @@ function createWorkspaceTab(
   };
 }
 
-function loadBoolean(storageKey: string, fallback = false): boolean {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw === "true") return true;
-    if (raw === "false") return false;
-    return fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function persistBoolean(storageKey: string, value: boolean): void {
-  try {
-    localStorage.setItem(storageKey, value ? "true" : "false");
-  } catch {
-    // ignore quota / private-mode errors; state stays in-memory
-  }
-}
-
 function WorkspaceSurfaceLoading({ title }: { title: string }) {
   return (
     <div className="workspace-surface-loading" role="status">
@@ -111,28 +98,8 @@ function WorkspaceSurfaceLoading({ title }: { title: string }) {
   );
 }
 
-function readStringListFromStorage(key: string): readonly string[] | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed.filter((id): id is string => typeof id === "string");
-  } catch {
-    return null;
-  }
-}
-
 function persistKnownModuleIds(ids: readonly string[]): void {
-  try {
-    localStorage.setItem(
-      KNOWN_MODULES_STORAGE_KEY,
-      JSON.stringify([...ids]),
-    );
-  } catch {
-    // ignore quota / private-mode errors; the migration just re-runs
-    // next launch, which is the same outcome as the first launch.
-  }
+  writeJsonToStorage(KNOWN_MODULES_STORAGE_KEY, [...ids]);
 }
 
 function loadEnabledModuleIds(): string[] {
@@ -147,14 +114,7 @@ function loadEnabledModuleIds(): string[] {
 }
 
 function persistEnabledModuleIds(ids: readonly string[]): void {
-  try {
-    localStorage.setItem(
-      ENABLED_MODULES_STORAGE_KEY,
-      JSON.stringify(normalizeEnabledModuleIds(ids)),
-    );
-  } catch {
-    // ignore quota / private-mode errors; state stays in-memory
-  }
+  writeJsonToStorage(ENABLED_MODULES_STORAGE_KEY, normalizeEnabledModuleIds(ids));
 }
 
 function navItemStorageKey(surfaceId: string): string {
@@ -180,11 +140,7 @@ function loadSurfaceOrder(): string[] {
 }
 
 function persistSurfaceOrder(ids: readonly string[]): void {
-  try {
-    localStorage.setItem(SURFACE_ORDER_STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    // ignore quota / private-mode errors; state stays in-memory
-  }
+  writeJsonToStorage(SURFACE_ORDER_STORAGE_KEY, ids);
 }
 
 function orderWorkspaceSurfaces(
@@ -313,7 +269,7 @@ export function App() {
   ]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0]?.id ?? "tab_initial");
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() =>
-    loadBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY),
+    readBooleanFromStorage(SIDEBAR_COLLAPSED_STORAGE_KEY),
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navHistoryRef = useRef<WorkspaceNavLocation[]>([]);
@@ -626,7 +582,7 @@ export function App() {
   useDeferredPersist(surfaceOrder, persistSurfaceOrder);
   useDeferredPersist(enabledModuleIds, persistEnabledModuleIds);
   useDeferredPersist(sidebarCollapsed, (value) =>
-    persistBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, value),
+    writeBooleanToStorage(SIDEBAR_COLLAPSED_STORAGE_KEY, value),
   );
 
   const activateTab = useCallback((tabId: string) => {

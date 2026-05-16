@@ -1,0 +1,135 @@
+{
+  "description": "Tauri IPC command manifest. Keep in sync with src/lib.rs generate_handler and TS module APIs.",
+  "generatedFrom": "apps/workspace/src-tauri/src/lib.rs",
+  "commandCount": 102,
+  "groups": {
+    "calendar": [
+      "calendar_authorization_status",
+      "calendar_create_event",
+      "calendar_fetch_events",
+      "calendar_list_calendars",
+      "calendar_list_sources",
+      "calendar_publish_rules_load",
+      "calendar_publish_rules_save",
+      "calendar_request_access"
+    ],
+    "contacts": [
+      "contact_interactions_create",
+      "contact_interactions_delete",
+      "contact_interactions_list",
+      "contact_interactions_update",
+      "contacts_archive",
+      "contacts_create",
+      "contacts_derive_calendar_interactions",
+      "contacts_get",
+      "contacts_list",
+      "contacts_list_archived",
+      "contacts_list_backlinks",
+      "contacts_search",
+      "contacts_unarchive",
+      "contacts_upcoming_birthdays",
+      "contacts_update"
+    ],
+    "desktop_shell": [
+      "debug_set_traffic_lights",
+      "open_calendar_account_settings",
+      "open_external_url",
+      "open_macos_calendar_privacy",
+      "show_context_menu",
+      "tray_set_menu"
+    ],
+    "local_calendar": [
+      "local_calendar_archive_calendar",
+      "local_calendar_archive_event",
+      "local_calendar_create_calendar",
+      "local_calendar_create_event",
+      "local_calendar_fetch_events",
+      "local_calendar_list_calendars",
+      "local_calendar_unarchive_event",
+      "local_calendar_update_calendar",
+      "local_calendar_update_event"
+    ],
+    "local_db": [
+      "workspace_backup_auto",
+      "workspace_backup_create",
+      "workspace_backup_info",
+      "workspace_backup_preview",
+      "workspace_backup_restore",
+      "workspace_backups_list"
+    ],
+    "mcp": [
+      "workspace_mcp_audit_recent",
+      "workspace_mcp_confirmation_decide",
+      "workspace_mcp_confirmations_list",
+      "workspace_mcp_content_publish_suggestion_clear",
+      "workspace_mcp_content_publish_suggestion_get",
+      "workspace_mcp_settings_get",
+      "workspace_mcp_settings_update",
+      "workspace_mcp_status"
+    ],
+    "notes": [
+      "notes_archive",
+      "notes_create",
+      "notes_get",
+      "notes_list",
+      "notes_list_archived",
+      "notes_move",
+      "notes_save_asset",
+      "notes_search",
+      "notes_unarchive",
+      "notes_update"
+    ],
+    "outbox": [
+      "outbox_drain",
+      "outbox_enqueue",
+      "outbox_list",
+      "outbox_remove",
+      "outbox_status"
+    ],
+    "projects": [
+      "project_links_create",
+      "project_links_delete",
+      "project_links_list",
+      "projects_archive",
+      "projects_create",
+      "projects_get",
+      "projects_list",
+      "projects_move",
+      "projects_unarchive",
+      "projects_update"
+    ],
+    "secrets": [
+      "secure_store_backend",
+      "secure_store_delete",
+      "secure_store_get",
+      "secure_store_set"
+    ],
+    "site_admin": [
+      "site_admin_browser_login",
+      "site_admin_cancel_release_job",
+      "site_admin_http_request",
+      "site_admin_local_release_source",
+      "site_admin_release_history",
+      "site_admin_release_job_status",
+      "site_admin_run_release_command",
+      "site_admin_start_release_job",
+      "site_admin_start_rollback_job"
+    ],
+    "sync": [
+      "local_get_file",
+      "local_list_files",
+      "local_sync_status",
+      "sync_pull"
+    ],
+    "todos": [
+      "todos_archive",
+      "todos_clear_completed",
+      "todos_create",
+      "todos_list",
+      "todos_list_by_note_source",
+      "todos_list_by_project",
+      "todos_list_window",
+      "todos_update"
+    ]
+  }
+}
