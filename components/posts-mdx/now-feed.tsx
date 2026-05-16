@@ -6,8 +6,11 @@ import nowContent from "@/content/now.json";
 
 import { ClassicLink } from "@/components/classic/classic-link";
 import { normalizeNowData } from "@/lib/site-admin/now-normalize";
+import type { SiteAdminNowData, SiteAdminNowUpdate } from "@/lib/site-admin/api-types";
 
 const DISPLAY_TIME_ZONE = "America/Halifax";
+const RECENT_UPDATE_WINDOW_DAYS = 7;
+const RECENT_UPDATE_LIMIT = 3;
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
@@ -25,9 +28,26 @@ function isExternalHref(href: string): boolean {
   return /^https?:\/\//i.test(href);
 }
 
+function recentHistoryUpdates(data: SiteAdminNowData): SiteAdminNowUpdate[] {
+  const reference = data.current.updatedAt
+    ? new Date(data.current.updatedAt).getTime()
+    : Date.now();
+  const cutoff = Number.isFinite(reference)
+    ? reference - RECENT_UPDATE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    : 0;
+  return data.updates
+    .filter((item) => {
+      const timestamp = new Date(item.at).getTime();
+      if (!Number.isFinite(timestamp) || timestamp < cutoff) return false;
+      return item.at !== data.current.updatedAt || item.text !== data.current.text;
+    })
+    .slice(0, RECENT_UPDATE_LIMIT);
+}
+
 export function NowFeed(): ReactElement {
   const data = normalizeNowData(nowContent);
   const currentText = data.current.text || "Working quietly.";
+  const recentUpdates = recentHistoryUpdates(data);
   const currentMeta = [
     data.current.location,
     data.current.updatedAt ? formatTimestamp(data.current.updatedAt) : "",
@@ -48,17 +68,20 @@ export function NowFeed(): ReactElement {
         </div>
       </div>
 
-      {data.updates.length > 0 ? (
-        <ol className="now-feed__updates" aria-label="Recent updates">
-          {data.updates.map((item) => (
-            <li className="now-feed__update" key={item.id}>
-              <time className="now-feed__update-time" dateTime={item.at}>
-                {formatTimestamp(item.at)}
-              </time>
-              <span className="now-feed__update-text">{item.text}</span>
-            </li>
-          ))}
-        </ol>
+      {recentUpdates.length > 0 ? (
+        <details className="now-feed__history">
+          <summary>Recent trail</summary>
+          <ol className="now-feed__updates" aria-label="Recent updates">
+            {recentUpdates.map((item) => (
+              <li className="now-feed__update" key={item.id}>
+                <time className="now-feed__update-time" dateTime={item.at}>
+                  {formatTimestamp(item.at)}
+                </time>
+                <span className="now-feed__update-text">{item.text}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
 
       {data.links.length > 0 ? (

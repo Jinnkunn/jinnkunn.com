@@ -117,7 +117,7 @@
 }
 
 .page__mdx-page:has(.now-feed) .notion-header__title-wrapper {
-  margin-bottom: 0;
+  margin-bottom: 22px;
 }
 
 .page__mdx-page:has(.now-feed) .notion-header__title {
@@ -128,7 +128,7 @@
 
 .mdx-post__body .now-feed {
   max-width: 660px;
-  margin: 0 0 30px;
+  margin: 0 0 34px;
 }
 
 .mdx-post__body .now-feed__current {
@@ -167,10 +167,44 @@
   color: var(--ds-text-muted);
 }
 
+.mdx-post__body .now-feed__history {
+  margin: 18px 0 0;
+}
+
+.mdx-post__body .now-feed__history summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ds-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  list-style: none;
+}
+
+.mdx-post__body .now-feed__history summary::-webkit-details-marker {
+  display: none;
+}
+
+.mdx-post__body .now-feed__history summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 140ms var(--ds-ease-standard);
+}
+
+.mdx-post__body .now-feed__history[open] summary::before {
+  transform: rotate(45deg);
+}
+
 .mdx-post__body .now-feed__updates {
   display: grid;
   gap: 0;
-  margin: 24px 0 0;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
   border-top: 1px solid var(--ds-border-subtle);
@@ -213,6 +247,10 @@
 }
 
 @media (max-width: 640px) {
+  .page__mdx-page:has(.now-feed) .notion-header__title-wrapper {
+    margin-bottom: 18px;
+  }
+
   .mdx-post__body .now-feed__update {
     grid-template-columns: 1fr;
     gap: 2px;
