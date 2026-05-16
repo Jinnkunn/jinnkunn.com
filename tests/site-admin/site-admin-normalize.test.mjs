@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { normalizeHomeData } from "../../lib/site-admin/home-normalize.ts";
+import { normalizeNowData } from "../../lib/site-admin/now-normalize.ts";
 
 // ----------------------------------------------------------------------------
 // Home — single Notion-style MDX document. The legacy section-based
@@ -86,3 +87,45 @@ test("normalizeHomeData: silently drops legacy section data", () => {
 // `content/pages/works.mdx`. Equivalent invariants live in the
 // works-entry round-trip tests in
 // apps/workspace/src/surfaces/site-admin/mdx-blocks.test.ts.
+
+// ----------------------------------------------------------------------------
+// Now — lightweight public status feed.
+// ----------------------------------------------------------------------------
+
+test("normalizeNowData: returns a lightweight fallback for invalid input", () => {
+  assert.deepEqual(normalizeNowData(null), {
+    current: { text: "Working quietly." },
+    updates: [],
+    links: [],
+  });
+});
+
+test("normalizeNowData: trims current status and drops invalid update/link rows", () => {
+  const result = normalizeNowData({
+    current: {
+      text: "  Drafting a tiny status.  ",
+      context: "  Writing  ",
+      location: "  Halifax  ",
+      updatedAt: "  2026-05-16T20:00:00.000Z  ",
+    },
+    updates: [
+      { id: "a", text: "  one  ", at: "  2026-05-16T20:00:00.000Z  " },
+      { id: "missing-text", at: "2026-05-16T19:00:00.000Z" },
+    ],
+    links: [
+      { label: "  Calendar  ", href: " /calendar " },
+      { label: "", href: "/blog" },
+    ],
+  });
+
+  assert.deepEqual(result.current, {
+    text: "Drafting a tiny status.",
+    context: "Writing",
+    location: "Halifax",
+    updatedAt: "2026-05-16T20:00:00.000Z",
+  });
+  assert.deepEqual(result.updates, [
+    { id: "a", text: "one", at: "2026-05-16T20:00:00.000Z" },
+  ]);
+  assert.deepEqual(result.links, [{ label: "Calendar", href: "/calendar" }]);
+});

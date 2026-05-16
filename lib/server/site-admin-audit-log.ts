@@ -35,6 +35,7 @@ type SiteAdminAuditAction =
   | "teaching.save"
   | "works.save"
   | "home.save"
+  | "now.save"
   | "components.update";
 
 export type SiteAdminAuditEvent = {

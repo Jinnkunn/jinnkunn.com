@@ -491,6 +491,9 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   const pageTree = JSON.parse(await read("content/page-tree.json"));
   const siteConfig = JSON.parse(await read("content/filesystem/site-config.json"));
   const siteOverview = await read("apps/workspace/src/surfaces/site-admin/SiteOverviewCard.tsx");
+  const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
+  const syncOnWrite = await read("apps/workspace/src/surfaces/site-admin/sync-on-write.ts");
+  const nowApi = await read("app/api/site-admin/now/route.ts");
 
   assertIncludes(nowPage, 'title: "Now"', "Now page frontmatter");
   assertIncludes(nowPage, "<NowFeed />", "Now page should render the lightweight status feed");
@@ -502,6 +505,9 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
     "Now page should be linked from public top navigation",
   );
   assertIncludes(siteOverview, 'target: "pages:now"', "Site Admin overview Now shortcut");
+  assertIncludes(statusPanel, "NowStatusComposer", "Site Admin should expose a quick Now updater");
+  assertIncludes(syncOnWrite, '"/api/site-admin/now"', "Now updates should refresh local D1 mirrors");
+  assertIncludes(nowApi, "appendSiteAdminNowUpdate", "Now updates should use the source-store API");
 });
 
 test("public-web-style-guardrails: classic list page CSS does not reintroduce card borders", async () => {

@@ -4333,3 +4333,178 @@
   font-size: 13px;
   color: var(--color-text-primary);
 }
+
+.now-status-composer {
+  display: grid;
+  gap: 10px;
+  padding: 14px 2px 2px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.now-status-composer__head,
+.now-status-composer__form,
+.now-status-composer__meta,
+.now-status-composer__stamp {
+  display: flex;
+  align-items: center;
+}
+
+.now-status-composer__head {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.now-status-composer__head h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+}
+
+.now-status-composer__head p {
+  margin: 2px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.now-status-composer__reload,
+.now-status-composer__submit {
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.now-status-composer__form {
+  align-items: stretch;
+  gap: 8px;
+}
+
+.now-status-composer__main-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.now-status-composer__main-field,
+.now-status-composer__meta label {
+  display: grid;
+  gap: 5px;
+}
+
+.now-status-composer__main-field > span,
+.now-status-composer__meta label > span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.now-status-composer textarea,
+.now-status-composer input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9px;
+  background: var(--color-bg-surface-alt);
+  color: var(--color-text-primary);
+  font: inherit;
+  outline: none;
+  transition:
+    background-color 120ms var(--ease-out),
+    border-color 120ms var(--ease-out),
+    box-shadow 120ms var(--ease-out);
+}
+
+.now-status-composer textarea {
+  min-height: 48px;
+  max-height: 96px;
+  padding: 10px 11px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.now-status-composer input {
+  height: 34px;
+  padding: 0 10px;
+}
+
+.now-status-composer textarea:focus,
+.now-status-composer input:focus {
+  background: var(--color-bg-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border-default));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.now-status-composer textarea:disabled,
+.now-status-composer input:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.now-status-composer__submit {
+  align-self: end;
+  min-height: 48px;
+}
+
+.now-status-composer__meta {
+  gap: 8px;
+}
+
+.now-status-composer__meta label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.now-status-composer__stamp {
+  align-self: end;
+  flex: 0 0 auto;
+  min-height: 34px;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.now-status-composer__updates {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.now-status-composer__updates li {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) 1fr;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+}
+
+.now-status-composer__updates time {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.now-status-composer__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .now-status-composer__form,
+  .now-status-composer__meta {
+    display: grid;
+  }
+
+  .now-status-composer__submit,
+  .now-status-composer__stamp {
+    width: 100%;
+  }
+
+  .now-status-composer__stamp {
+    justify-content: space-between;
+  }
+}
