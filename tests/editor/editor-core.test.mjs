@@ -37,7 +37,13 @@ import {
   mergeEditorExtensionManifests,
   selectionAtBlockEnd,
 } from "../../packages/editor-core/src/index.ts";
-import { createMemoryEditorBridge } from "../../packages/editor-bridge/src/index.ts";
+import {
+  createCommandResultMessage,
+  createMemoryEditorBridge,
+  createReadyMessage,
+  EDITOR_BRIDGE_PROTOCOL_VERSION,
+  parseHostToEditorMessage,
+} from "../../packages/editor-bridge/src/index.ts";
 import { renderDocumentToHtml } from "../../packages/editor-renderer/src/index.ts";
 
 await initializeEditorCore(
@@ -364,14 +370,34 @@ test("editor-renderer: renders read-only html for rich marks and structured bloc
   assert.match(html, /<img src="https:\/\/example.com\/yiling.jpg" alt="Yiling" \/>/);
 });
 
-test("editor-bridge: memory bridge captures host messages and dispatches client messages", () => {
+test("editor-bridge: parses protocol v1 host messages and ignores unsafe input", () => {
+  const document = createDocument({ title: "Bridge", blocks: [createBlock({ id: "a", text: "Loaded" })] });
+  const loadMessage = {
+    type: "host:load-document",
+    protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+    requestId: "load-1",
+    document,
+  };
+  assert.deepEqual(parseHostToEditorMessage(loadMessage), loadMessage);
+  assert.equal(parseHostToEditorMessage({ ...loadMessage, protocolVersion: 2 }), null);
+  assert.equal(parseHostToEditorMessage({ ...loadMessage, requestId: "" }), null);
+  assert.equal(parseHostToEditorMessage({ ...loadMessage, document: { version: 1, title: "Bad" } }), null);
+  assert.equal(parseHostToEditorMessage({ type: "host:run-command", protocolVersion: 1, command: "get-document" }), null);
+  assert.equal(parseHostToEditorMessage({ type: "host:unknown", protocolVersion: 1 }), null);
+});
+
+test("editor-bridge: memory bridge captures host messages and dispatches valid client messages", () => {
   const bridge = createMemoryEditorBridge();
   let received = "";
   bridge.adapter.subscribe((message) => {
     received = message.type;
   });
-  bridge.adapter.postMessage({ type: "editor:ready" });
-  bridge.sendToEditor({ type: "host:set-read-only", readOnly: true });
-  assert.equal(bridge.hostMessages.length, 1);
+  bridge.adapter.postMessage(createReadyMessage());
+  bridge.adapter.postMessage(createCommandResultMessage("cmd-1", "get-document", { ok: false, error: { code: "NOPE", message: "Nope" } }));
+  assert.equal(bridge.sendToEditor({ type: "host:set-read-only", protocolVersion: 1, readOnly: true }), true);
+  assert.equal(bridge.sendToEditor({ type: "host:set-read-only", readOnly: false }), false);
+  assert.equal(bridge.hostMessages.length, 2);
+  assert.equal(bridge.hostMessages[0].protocolVersion, 1);
+  assert.equal(bridge.hostMessages[1].ok, false);
   assert.equal(received, "host:set-read-only");
 });

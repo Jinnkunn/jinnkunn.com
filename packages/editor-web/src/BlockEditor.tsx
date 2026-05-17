@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   applyTransaction,
   clampSelection,
@@ -7,6 +7,7 @@ import {
   createDocument,
   createDefaultEditorExtensionManifest,
   createEditorHistory,
+  documentToMarkdown,
   deleteBlock,
   getSelectionFocus,
   getBlockPlainText,
@@ -46,7 +47,15 @@ export type BlockEditorProps = {
   extensionManifests?: EditorExtensionManifest[];
   initialDocument?: EditorDocument;
   readOnly?: boolean;
-  onChange?: (document: EditorDocument, transaction: EditorTransaction) => void;
+  onChange?: (document: EditorDocument, transaction?: EditorTransaction) => void;
+};
+
+export type BlockEditorHandle = {
+  exportMarkdown(): string;
+  focus(): void;
+  getDocument(): EditorDocument;
+  redo(): EditorDocument;
+  undo(): EditorDocument;
 };
 
 type SlashState = {
@@ -787,7 +796,10 @@ function StructuredBlockEditor({
   return null;
 }
 
-export function BlockEditor({ extensionManifests, initialDocument, readOnly = false, onChange }: BlockEditorProps) {
+export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(function BlockEditor(
+  { extensionManifests, initialDocument, readOnly = false, onChange },
+  ref,
+) {
   const initial = useMemo(() => createEditorHistory(initialDocument || createDocument()), [initialDocument]);
   const [history, setHistory] = useState(initial);
   const [selection, setSelection] = useState<EditorSelection | null>(() => {
@@ -849,6 +861,32 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     focusSelection(pending);
   }, [history.document]);
 
+  function notifyHistoryChange(nextHistory: typeof history, nextSelection: EditorSelection | null) {
+    pendingFocusRef.current = nextSelection;
+    setHistory(nextHistory);
+    setSelection(nextSelection);
+    setSlash(null);
+    setBubblePosition(null);
+    setBlockTypeMenu(null);
+    setDragState(null);
+    onChange?.(nextHistory.document);
+    return nextHistory.document;
+  }
+
+  function undoHistory() {
+    if (history.undoStack.length === 0) return history.document;
+    const nextHistory = undo(history);
+    const nextSelection = selectionForDocument(nextHistory.document, selection);
+    return notifyHistoryChange(nextHistory, nextSelection);
+  }
+
+  function redoHistory() {
+    if (history.redoStack.length === 0) return history.document;
+    const nextHistory = redo(history);
+    const nextSelection = selectionForDocument(nextHistory.document, selection);
+    return notifyHistoryChange(nextHistory, nextSelection);
+  }
+
   function commit(transaction: EditorTransaction) {
     const nextSelection = transaction.selection
       ? clampSelection(transaction.after, transaction.selection)
@@ -862,6 +900,25 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     setDragState(null);
     onChange?.(transaction.after, transaction);
   }
+
+  useImperativeHandle(ref, () => ({
+    exportMarkdown() {
+      return documentToMarkdown(history.document);
+    },
+    focus() {
+      const nextSelection = selectionForDocument(history.document, selection);
+      if (nextSelection) setSelectionAndFocus(nextSelection);
+    },
+    getDocument() {
+      return history.document;
+    },
+    redo() {
+      return redoHistory();
+    },
+    undo() {
+      return undoHistory();
+    },
+  }));
 
   function currentBlock(blockId: string) {
     return history.document.blocks.find((block) => block.id === blockId) || null;
@@ -1016,25 +1073,14 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
 
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
-      const nextHistory = event.shiftKey ? redo(history) : undo(history);
-      const nextSelection = selectionForDocument(nextHistory.document, selection);
-      pendingFocusRef.current = nextSelection;
-      setHistory(nextHistory);
-      setSelection(nextSelection);
-      setSlash(null);
-      setBubblePosition(null);
+      if (event.shiftKey) redoHistory();
+      else undoHistory();
       return;
     }
 
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
       event.preventDefault();
-      const nextHistory = redo(history);
-      const nextSelection = selectionForDocument(nextHistory.document, selection);
-      pendingFocusRef.current = nextSelection;
-      setHistory(nextHistory);
-      setSelection(nextSelection);
-      setSlash(null);
-      setBubblePosition(null);
+      redoHistory();
       return;
     }
 
@@ -1249,6 +1295,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
         onChange={(event) => {
           const next = { ...history.document, title: event.target.value };
           setHistory((current) => ({ ...current, document: next }));
+          onChange?.(next);
         }}
         onFocus={() => {
           setSelection(null);
@@ -1405,4 +1452,4 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
       ) : null}
     </section>
   );
-}
+});
