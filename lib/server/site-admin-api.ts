@@ -14,6 +14,7 @@ import {
   verifyCloudflareAccessFromHeaders,
 } from "@/lib/server/cloudflare-access-auth";
 import type { ParseResult } from "@/lib/site-admin/request-types";
+import type { ParseJsonCommandOptions } from "@/lib/server/site-admin-request";
 import {
   inferSiteAdminAppTokenEnvironment,
   verifySiteAdminAppToken,
@@ -286,7 +287,7 @@ export function fromParsedCommand<T>(parsed: ParseResult<T>): SiteAdminGuardResu
 export async function readSiteAdminJsonCommand<T>(
   req: Request,
   parseBody: (body: Record<string, unknown>) => ParseResult<T>,
-  opts?: { invalidJsonError?: string; invalidJsonStatus?: number },
+  opts?: ParseJsonCommandOptions,
 ): Promise<SiteAdminGuardResult<T>> {
   const parsed = await parseSiteAdminJsonCommand(req, parseBody, opts);
   return fromParsedCommand(parsed);

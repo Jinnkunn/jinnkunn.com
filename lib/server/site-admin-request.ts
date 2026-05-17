@@ -80,7 +80,7 @@ function bad(error: string, status = 400): ParseResult<never> {
   return { ok: false, error, status };
 }
 
-type ParseJsonCommandOptions = {
+export type ParseJsonCommandOptions = {
   invalidJsonError?: string;
   invalidJsonStatus?: number;
   /** Reject bodies whose declared Content-Length exceeds this value */
