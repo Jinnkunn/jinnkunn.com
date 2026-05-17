@@ -1,83 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-16T15:56:11.047Z",
+  "generatedAt": "2026-05-17T02:27:00.982Z",
   "range": {
-    "startsAt": "2026-05-10T03:00:00.000Z",
+    "startsAt": "2026-05-16T03:00:00.000Z",
     "endsAt": "2027-05-16T03:00:00.000Z"
   },
   "events": [
-    {
-      "id": "4BC94409-A125-4F80-888F-4E0D55E06AA8",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-12T03:00:00.000Z",
-      "endsAt": "2026-05-13T03:00:00.000Z",
-      "isAllDay": true,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
-    {
-      "id": "F8A3FA51-1675-4B4F-9F96-6F5C6833A89D",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-12T18:00:00.000Z",
-      "endsAt": "2026-05-12T18:30:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
-    {
-      "id": "475C59E1-CD8B-4174-9749-D5799BE5CC12",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-14T16:00:00.000Z",
-      "endsAt": "2026-05-14T16:30:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
-    {
-      "id": "3C87B05C-B3F7-49C7-96E8-09905291B45F",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-14T19:00:00.000Z",
-      "endsAt": "2026-05-14T20:00:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
-    {
-      "id": "E72F124E-58DF-481B-B478-C44A36C48267",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-15T14:00:00.000Z",
-      "endsAt": "2026-05-15T14:30:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
-    {
-      "id": "AA2B799C-0079-481A-B18A-C15B5DFDF18D",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-15T16:00:00.000Z",
-      "endsAt": "2026-05-15T17:00:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
     {
       "id": "72856D91-3D03-4860-A34E-58E433E318BF",
       "colorHex": "#9B9A97",
@@ -333,6 +261,18 @@
       "url": null
     },
     {
+      "id": "714A598A-014E-47E0-95A4-C8AD30F457FD",
+      "colorHex": "#9B9A97",
+      "title": "Busy",
+      "startsAt": "2026-07-22T11:45:00.000Z",
+      "endsAt": "2026-07-22T12:00:00.000Z",
+      "isAllDay": false,
+      "visibility": "busy",
+      "description": null,
+      "location": null,
+      "url": null
+    },
+    {
       "id": "475C59E1-CD8B-4174-9749-D5799BE5CC12",
       "colorHex": "#9B9A97",
       "title": "Busy",
@@ -350,6 +290,18 @@
       "title": "Busy",
       "startsAt": "2026-07-24T14:00:00.000Z",
       "endsAt": "2026-07-24T14:30:00.000Z",
+      "isAllDay": false,
+      "visibility": "busy",
+      "description": null,
+      "location": null,
+      "url": null
+    },
+    {
+      "id": "D85A5D27-04F9-4C73-9645-A404DCAAAE93",
+      "colorHex": "#9B9A97",
+      "title": "Busy",
+      "startsAt": "2026-07-29T11:45:00.000Z",
+      "endsAt": "2026-07-29T12:00:00.000Z",
       "isAllDay": false,
       "visibility": "busy",
       "description": null,
