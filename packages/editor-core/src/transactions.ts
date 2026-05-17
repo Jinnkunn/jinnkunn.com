@@ -154,6 +154,25 @@ export function moveBlock(document: EditorDocument, blockId: string, toIndex: nu
   );
 }
 
+export function setBlockIndent(
+  document: EditorDocument,
+  blockId: string,
+  indent: number,
+  offset?: number,
+): EditorTransaction {
+  return transaction(
+    "set-block-indent",
+    document,
+    updateTopLevel(document, (blocks) => {
+      const block = blocks.find((item) => item.id === blockId);
+      if (!block) return undefined;
+      const nextIndent = Math.max(0, Math.min(6, Math.floor(indent)));
+      block.indent = nextIndent > 0 ? nextIndent : undefined;
+      return createCollapsedSelection(blockId, offset ?? getBlockPlainText(block).length);
+    }),
+  );
+}
+
 export function toggleTodo(document: EditorDocument, blockId: string): EditorTransaction {
   return transaction(
     "toggle-todo",

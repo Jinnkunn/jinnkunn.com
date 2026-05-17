@@ -8,6 +8,12 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "react": ["node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["node_modules/@types/react/jsx-runtime.d.ts"],
+      "react-dom/client": ["node_modules/@types/react-dom/client.d.ts"]
+    },
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "jsx": "react-jsx",
@@ -15,4 +21,3 @@
   },
   "include": ["src", "../../packages/editor-core/src", "../../packages/editor-web/src", "../../packages/editor-bridge/src"]
 }
-

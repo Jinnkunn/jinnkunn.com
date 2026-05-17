@@ -19,6 +19,7 @@ export type EditorBlock = {
   type: EditorBlockType;
   text: EditorTextSpan[];
   level?: 1 | 2 | 3;
+  indent?: number;
   checked?: boolean;
   children?: EditorBlock[];
 };
@@ -46,6 +47,7 @@ export type EditorTransactionKind =
   | "merge-block"
   | "delete-block"
   | "move-block"
+  | "set-block-indent"
   | "toggle-todo"
   | "set-block-type"
   | "normalize";

@@ -1,6 +1,8 @@
 import { createEditorId } from "./ids.ts";
 import type { EditorBlock, EditorBlockType, EditorDocument, EditorTextSpan } from "./types.ts";
 
+const MAX_BLOCK_INDENT = 6;
+
 function cloneText(text: EditorTextSpan[] | undefined): EditorTextSpan[] {
   const source = Array.isArray(text) ? text : [];
   return source.map((span) => ({
@@ -18,16 +20,19 @@ export function createBlock(input: {
   type?: EditorBlockType;
   text?: string | EditorTextSpan[];
   level?: 1 | 2 | 3;
+  indent?: number;
   checked?: boolean;
   children?: EditorBlock[];
 } = {}): EditorBlock {
   const type = input.type || "paragraph";
   const text = typeof input.text === "string" ? [{ text: input.text }] : cloneText(input.text);
+  const indent = Math.max(0, Math.min(MAX_BLOCK_INDENT, Math.floor(input.indent || 0)));
   return {
     id: input.id || createEditorId(),
     type,
     text,
     level: type === "heading" ? input.level || 1 : undefined,
+    indent: indent > 0 ? indent : undefined,
     checked: type === "todo" ? Boolean(input.checked) : undefined,
     children: input.children?.map((child) => normalizeBlock(child)),
   };
@@ -47,6 +52,7 @@ export function normalizeBlock(block: EditorBlock): EditorBlock {
     type: block.type || "paragraph",
     text: block.text,
     level: block.level,
+    indent: block.indent,
     checked: block.checked,
     children: block.children,
   });
