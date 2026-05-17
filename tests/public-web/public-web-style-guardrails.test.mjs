@@ -494,6 +494,9 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
   const syncOnWrite = await read("apps/workspace/src/surfaces/site-admin/sync-on-write.ts");
   const nowApi = await read("app/api/site-admin/now/route.ts");
+  const publicNowApi = await read("app/api/public/now/route.ts");
+  const nowFeed = await read("components/posts-mdx/now-feed.tsx");
+  const nowFeedClient = await read("components/posts-mdx/now-feed-client.tsx");
 
   assertIncludes(nowPage, 'title: "Now"', "Now page frontmatter");
   assertIncludes(nowPage, "<NowFeed />", "Now page should render the lightweight status feed");
@@ -508,6 +511,10 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   assertIncludes(statusPanel, "NowStatusComposer", "Site Admin should expose a quick Now updater");
   assertIncludes(syncOnWrite, '"/api/site-admin/now"', "Now updates should refresh local D1 mirrors");
   assertIncludes(nowApi, "appendSiteAdminNowUpdate", "Now updates should use the source-store API");
+  assertIncludes(nowFeed, "NowFeedClient", "Now page should keep a static shell with client hydration");
+  assertIncludes(nowFeedClient, 'fetch("/api/public/now"', "Now page should refresh runtime data without rebuild");
+  assertIncludes(publicNowApi, "loadSiteAdminNowData", "Public Now API should read the current source-store data");
+  assertIncludes(publicNowApi, "stale-while-revalidate", "Public Now API should stay lightweight and cache briefly");
 });
 
 test("public-web-style-guardrails: classic list page CSS does not reintroduce card borders", async () => {

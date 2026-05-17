@@ -13,7 +13,8 @@ export type RemoteReleaseJobAction =
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
-  | "publish-content-production-from-staging";
+  | "publish-content-production-from-staging"
+  | "publish-now-production-from-staging";
 
 export interface RemoteReleaseJobRow {
   id: string;

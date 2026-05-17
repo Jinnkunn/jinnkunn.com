@@ -56,6 +56,8 @@
     "publish:content:prod:dry-run": "node scripts/content/publish-content.mjs --env=production --dry-run",
     "publish:content:prod:from-staging": "node scripts/content/publish-content.mjs --env=production --from-staging",
     "publish:content:prod:from-staging:dry-run": "node scripts/content/publish-content.mjs --env=production --from-staging --dry-run",
+    "publish:now:prod:from-staging": "node scripts/content/copy-content-db.mjs --remote --source-env=staging --target-env=production --only=now.json",
+    "publish:now:prod:from-staging:dry-run": "node scripts/content/copy-content-db.mjs --remote --source-env=staging --target-env=production --only=now.json --dry-run",
     "publish:content:prod:rollback": "node scripts/content/publish-content.mjs --env=production --rollback",
     "publish:content:prod:clear": "node scripts/content/publish-content.mjs --env=production --clear",
     "publish:content:prod:snapshots": "node scripts/content/publish-content.mjs --env=production --list-snapshots",

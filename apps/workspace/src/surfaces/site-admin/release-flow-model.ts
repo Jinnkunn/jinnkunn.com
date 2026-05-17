@@ -9,6 +9,8 @@ export const PUBLISH_CONTENT_STAGING_SCRIPT = "publish:content:staging";
 export const PUBLISH_CONTENT_PROD_SCRIPT = "publish:content:prod";
 export const PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT =
   "publish:content:prod:from-staging";
+export const PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT =
+  "publish:now:prod:from-staging";
 export const PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT =
   "publish:content:staging:rollback";
 export const PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT = "publish:content:staging:clear";
@@ -23,6 +25,8 @@ export const PUBLISH_CONTENT_STAGING_COMMAND =
 export const PUBLISH_CONTENT_PROD_COMMAND = `npm run ${PUBLISH_CONTENT_PROD_SCRIPT}`;
 export const PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND =
   `npm run ${PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT}`;
+export const PUBLISH_NOW_PROD_FROM_STAGING_COMMAND =
+  `npm run ${PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT}`;
 export const PUBLISH_CONTENT_STAGING_ROLLBACK_COMMAND =
   `npm run ${PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT}`;
 export const PUBLISH_CONTENT_STAGING_CLEAR_COMMAND =
@@ -101,6 +105,7 @@ export type ReleaseActionKind =
   | "deploy-staging-code"
   | "promote-production-code"
   | "publish-content-production-from-staging"
+  | "publish-now-production-from-staging"
   | "noop"
   | "blocked";
 
@@ -115,6 +120,7 @@ export interface ReleasePlan {
   script:
     | typeof PUBLISH_CONTENT_STAGING_SCRIPT
     | typeof PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
+    | typeof PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT
     | typeof RELEASE_STAGING_SCRIPT
     | typeof RELEASE_PROD_FROM_STAGING_SCRIPT
     | "";

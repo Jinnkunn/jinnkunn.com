@@ -12,6 +12,8 @@ const OLD_CONTENT_SHA = "c".repeat(40);
 const LOCAL_SHA = "d".repeat(40);
 const STAGING_SNAPSHOT = "e".repeat(40);
 const PRODUCTION_SNAPSHOT = "f".repeat(40);
+const NOW_SHA = "1".repeat(40);
+const OLD_NOW_SHA = "2".repeat(40);
 
 function statusFixture(overrides = {}) {
   return {
@@ -48,6 +50,20 @@ function statusFixture(overrides = {}) {
         },
       },
     },
+    now: {
+      current: true,
+      productionAction: "noop",
+      staging: {
+        ok: true,
+        exists: true,
+        sha: NOW_SHA,
+      },
+      production: {
+        ok: true,
+        exists: true,
+        sha: NOW_SHA,
+      },
+    },
     stagingDiffFromLocal: {
       ok: true,
       files: ["content/home.json"],
@@ -66,6 +82,47 @@ test("release live status: content-only HEAD after staging publish advances to p
 
   assert.equal(plan.kind, "publish-content-production-from-staging");
   assert.equal(plan.script, "publish:content:prod:from-staging");
+});
+
+test("release live status: Now-only change publishes one D1 row to production", () => {
+  const plan = deriveLiveReleasePlan({
+    status: statusFixture({
+      overlays: {
+        staging: {
+          status: {
+            contentInputSha: CONTENT_SHA,
+            snapshotSha: STAGING_SNAPSHOT,
+            workerCodeSha: CODE_SHA,
+          },
+        },
+        production: {
+          status: {
+            contentInputSha: CONTENT_SHA,
+            snapshotSha: STAGING_SNAPSHOT,
+            workerCodeSha: CODE_SHA,
+          },
+        },
+      },
+      now: {
+        current: false,
+        productionAction: "copy-staging-now",
+        staging: {
+          ok: true,
+          exists: true,
+          sha: NOW_SHA,
+        },
+        production: {
+          ok: true,
+          exists: true,
+          sha: OLD_NOW_SHA,
+        },
+      },
+    }),
+    target: "production",
+  });
+
+  assert.equal(plan.kind, "publish-now-production-from-staging");
+  assert.equal(plan.script, "publish:now:prod:from-staging");
 });
 
 test("release live status: content-only HEAD still publishes staging when overlay is stale", () => {

@@ -17,6 +17,7 @@ const ROOT = path.resolve(__dirname, "../..");
 const WRANGLER_TOML = path.join(ROOT, "wrangler.toml");
 const STATIC_ROOT = path.join(ROOT, ".open-next", "assets", "__static");
 const ENVIRONMENTS = new Set(["staging", "production"]);
+const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/now.json"]);
 const RELEASE_HISTORY_PATH = path.join(
   ROOT,
   ".cache",
@@ -297,6 +298,7 @@ function hashContentInput(root = ROOT) {
       if (entry.name === ".DS_Store") continue;
       const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
       if (rel === "local" || rel.startsWith("local/")) continue;
+      if (RUNTIME_CONTENT_INPUT_REL_PATHS.has(`content/${rel}`)) continue;
       const abs = path.join(absDir, entry.name);
       if (entry.isDirectory()) {
         walk(abs, rel);

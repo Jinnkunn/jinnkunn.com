@@ -46,6 +46,7 @@ export type SiteAdminReleaseScript =
   | "publish:content:staging:clear"
   | "publish:content:prod"
   | "publish:content:prod:from-staging"
+  | "publish:now:prod:from-staging"
   | "publish:content:prod:rollback"
   | "publish:content:prod:clear";
 

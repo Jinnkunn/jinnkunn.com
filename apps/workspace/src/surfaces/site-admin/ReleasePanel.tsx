@@ -41,6 +41,8 @@ import {
   PUBLISH_CONTENT_PROD_SCRIPT,
   PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND,
   PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT,
+  PUBLISH_NOW_PROD_FROM_STAGING_COMMAND,
+  PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT,
   PUBLISH_CONTENT_STAGING_CLEAR_COMMAND,
   PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT,
   PUBLISH_CONTENT_STAGING_COMMAND,
@@ -257,6 +259,7 @@ function releasePlanFromLiveStatus(
     "deploy-staging-code",
     "promote-production-code",
     "publish-content-production-from-staging",
+    "publish-now-production-from-staging",
     "noop",
     "blocked",
   ];
@@ -735,6 +738,7 @@ function scriptLabel(script: string): string {
   if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing content";
   if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing production content";
   if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) return "Publishing production content from staging";
+  if (script === PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT) return "Publishing Now to live";
   if (script === PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT) return "Rolling back staging content";
   if (script === PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT) return "Rolling back production content";
   if (script === PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT) return "Clearing staging content overlay";
@@ -754,6 +758,9 @@ function remoteActionForScript(
   if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "promote-production-code";
   if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {
     return "publish-content-production-from-staging";
+  }
+  if (script === PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT) {
+    return "publish-now-production-from-staging";
   }
   return null;
 }
@@ -1859,6 +1866,10 @@ export function ReleasePanel() {
       void startRelease(PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT);
       return;
     }
+    if (smartPlan.kind === "publish-now-production-from-staging") {
+      void startRelease(PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT);
+      return;
+    }
     if (smartPlan.kind === "noop") {
       void loadStatus();
       void loadHistory();
@@ -1878,7 +1889,8 @@ export function ReleasePanel() {
 
   const smartReleaseIsProductionAction =
     smartPlan.kind === "promote-production-code" ||
-    smartPlan.kind === "publish-content-production-from-staging";
+    smartPlan.kind === "publish-content-production-from-staging" ||
+    smartPlan.kind === "publish-now-production-from-staging";
   const smartReleaseButtonLabel =
     smartPlan.kind === "noop"
       ? "Refresh Status"
@@ -2159,6 +2171,10 @@ export function ReleasePanel() {
             <pre>{PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND}</pre>
           </div>
           <div>
+            <h2>Production Now From Staging</h2>
+            <pre>{PUBLISH_NOW_PROD_FROM_STAGING_COMMAND}</pre>
+          </div>
+          <div>
             <h2>Production Content Rollback</h2>
             <pre>{PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND}</pre>
           </div>
@@ -2289,7 +2305,8 @@ function ReleaseStepper({
       label: "Production",
       state:
         plan.kind === "promote-production-code" ||
-        plan.kind === "publish-content-production-from-staging"
+        plan.kind === "publish-content-production-from-staging" ||
+        plan.kind === "publish-now-production-from-staging"
           ? "active"
           : productionCodeMatchesStaging
             ? "ok"
@@ -2299,6 +2316,8 @@ function ReleaseStepper({
           ? "Promote code"
           : plan.kind === "publish-content-production-from-staging"
             ? "Copy content"
+            : plan.kind === "publish-now-production-from-staging"
+              ? "Copy Now"
             : productionCodeMatchesStaging
               ? "Code matched"
               : "Pending",
