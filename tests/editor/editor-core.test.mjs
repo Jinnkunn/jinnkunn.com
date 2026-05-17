@@ -12,7 +12,9 @@ import {
   createDocument,
   createEditorHistory,
   documentToMarkdown,
+  getBlockPlainText,
   insertBlockAfter,
+  insertDocumentFragment,
   listBlockSpecs,
   listTextMarkSpecs,
   markdownToDocument,
@@ -28,6 +30,7 @@ import {
   toggleTextMark,
   undo,
   updateBlockText,
+  updateBlockTextWithMarkdownShortcut,
   getSelectionFocus,
   initializeEditorCore,
   isSelectionCollapsed,
@@ -291,6 +294,41 @@ test("editor-core: markdown shortcuts produce block type changes", () => {
   assert.equal(applyMarkdownShortcut(createBlock({ text: "---" })).type, "divider");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "```" })).type, "code-block");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "! " })).type, "callout");
+
+  const document = createDocument({ blocks: [createBlock({ id: "a", text: "" })] });
+  const tx = updateBlockTextWithMarkdownShortcut(document, "a", "## ", 3);
+  assert.equal(tx.kind, "markdown-shortcut");
+  assert.equal(tx.before.blocks[0].type, "paragraph");
+  assert.equal(tx.after.blocks[0].type, "heading");
+  assert.equal(tx.after.blocks[0].level, 2);
+  assert.equal(getBlockPlainText(tx.after.blocks[0]), "");
+  assert.deepEqual(getSelectionFocus(tx.selection), { blockId: "a", offset: 0 });
+});
+
+test("editor-core: inserts markdown document fragments as one transaction", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Hello world" })],
+  });
+  const inlineFragment = markdownToDocument("**bold**", "Clipboard");
+  let tx = insertDocumentFragment(document, "a", 6, 6, inlineFragment);
+  document = tx.after;
+  assert.equal(tx.kind, "insert-fragment");
+  assert.deepEqual(document.blocks[0].text, [
+    { text: "Hello " },
+    { text: "bold", marks: [{ type: "bold" }] },
+    { text: "world" },
+  ]);
+  assert.deepEqual(getSelectionFocus(tx.selection), { blockId: "a", offset: 10 });
+
+  const fullBlock = createDocument({
+    blocks: [createBlock({ id: "empty", text: "" })],
+  });
+  tx = insertDocumentFragment(fullBlock, "empty", 0, 0, markdownToDocument("# Title\n- Item", "Clipboard"));
+  assert.equal(tx.after.blocks.length, 2);
+  assert.equal(tx.after.blocks[0].id, "empty");
+  assert.equal(tx.after.blocks[0].type, "heading");
+  assert.equal(tx.after.blocks[1].type, "bulleted-list");
+  assert.deepEqual(getSelectionFocus(tx.selection), { blockId: tx.after.blocks[1].id, offset: 4 });
 });
 
 test("editor-core: structured block attrs support media-like blocks", () => {
