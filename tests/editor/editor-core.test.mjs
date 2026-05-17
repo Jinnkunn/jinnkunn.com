@@ -41,6 +41,7 @@ import {
   createCommandResultMessage,
   createMemoryEditorBridge,
   createReadyMessage,
+  EDITOR_BRIDGE_COMMANDS,
   EDITOR_BRIDGE_PROTOCOL_VERSION,
   parseHostToEditorMessage,
 } from "../../packages/editor-bridge/src/index.ts";
@@ -383,6 +384,13 @@ test("editor-bridge: parses protocol v1 host messages and ignores unsafe input",
   assert.equal(parseHostToEditorMessage({ ...loadMessage, requestId: "" }), null);
   assert.equal(parseHostToEditorMessage({ ...loadMessage, document: { version: 1, title: "Bad" } }), null);
   assert.equal(parseHostToEditorMessage({ type: "host:run-command", protocolVersion: 1, command: "get-document" }), null);
+  assert.deepEqual(parseHostToEditorMessage({ type: "host:mark-saved", protocolVersion: 1, requestId: "saved-1" }), {
+    type: "host:mark-saved",
+    protocolVersion: 1,
+    requestId: "saved-1",
+    document: undefined,
+  });
+  assert.equal(parseHostToEditorMessage({ type: "host:mark-saved", protocolVersion: 1, requestId: "saved-1", document: { version: 1 } }), null);
   assert.equal(parseHostToEditorMessage({ type: "host:unknown", protocolVersion: 1 }), null);
 });
 
@@ -398,6 +406,9 @@ test("editor-bridge: memory bridge captures host messages and dispatches valid c
   assert.equal(bridge.sendToEditor({ type: "host:set-read-only", readOnly: false }), false);
   assert.equal(bridge.hostMessages.length, 2);
   assert.equal(bridge.hostMessages[0].protocolVersion, 1);
+  assert.deepEqual(bridge.hostMessages[0].capabilities, EDITOR_BRIDGE_COMMANDS);
+  assert.ok(bridge.hostMessages[0].capabilities.includes("get-dirty-state"));
+  assert.ok(bridge.hostMessages[0].capabilities.includes("request-save"));
   assert.equal(bridge.hostMessages[1].ok, false);
   assert.equal(received, "host:set-read-only");
 });

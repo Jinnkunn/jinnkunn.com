@@ -30,9 +30,29 @@ export function BridgeBlockEditor({
   const editorRef = useRef<BlockEditorHandle>(null);
   const [loadedDocument, setLoadedDocument] = useState<EditorDocument>(() => initialDocument ?? createDocument());
   const [bridgeReadOnly, setBridgeReadOnly] = useState(readOnly);
+  const latestDocumentRef = useRef(loadedDocument);
+  const dirtyRef = useRef(false);
+
+  function postDirtyChange(dirty: boolean, force = false) {
+    if (!force && dirtyRef.current === dirty) return;
+    dirtyRef.current = dirty;
+    bridge.postMessage({
+      type: "editor:dirty-change",
+      protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+      dirty,
+    });
+  }
+
+  function markSaved(document: EditorDocument) {
+    latestDocumentRef.current = document;
+    postDirtyChange(false);
+  }
 
   useEffect(() => {
-    setLoadedDocument(initialDocument ?? createDocument());
+    const nextDocument = initialDocument ?? createDocument();
+    latestDocumentRef.current = nextDocument;
+    setLoadedDocument(nextDocument);
+    postDirtyChange(false);
   }, [initialDocument]);
 
   useEffect(() => {
@@ -41,6 +61,7 @@ export function BridgeBlockEditor({
 
   useEffect(() => {
     bridge.postMessage(createReadyMessage());
+    postDirtyChange(dirtyRef.current, true);
 
     function postSuccess(requestId: string | undefined, command: string, result?: unknown) {
       if (!requestId) return;
@@ -88,6 +109,26 @@ export function BridgeBlockEditor({
         postSuccess(message.requestId, message.command, null);
         return;
       }
+      if (message.command === "get-dirty-state") {
+        postSuccess(message.requestId, message.command, { dirty: dirtyRef.current });
+        return;
+      }
+      if (message.command === "mark-saved") {
+        markSaved(editor.getDocument());
+        postSuccess(message.requestId, message.command, { dirty: false });
+        return;
+      }
+      if (message.command === "request-save") {
+        const document = editor.getDocument();
+        bridge.postMessage({
+          type: "editor:save-request",
+          protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+          requestId: message.requestId,
+          document,
+        });
+        postSuccess(message.requestId, message.command, { dirty: dirtyRef.current, requested: true });
+        return;
+      }
       postFailure(message.requestId, message.command, "UNKNOWN_COMMAND", `Unknown editor command: ${message.command}`);
     }
 
@@ -98,8 +139,15 @@ export function BridgeBlockEditor({
           return;
         }
         if (message.type === "host:load-document") {
+          latestDocumentRef.current = message.document;
           setLoadedDocument(message.document);
+          postDirtyChange(false);
           postSuccess(message.requestId, "load-document", message.document);
+          return;
+        }
+        if (message.type === "host:mark-saved") {
+          markSaved(message.document ?? editorRef.current?.getDocument() ?? latestDocumentRef.current);
+          postSuccess(message.requestId, "mark-saved", { dirty: false });
           return;
         }
         if (message.type === "host:set-read-only") {
@@ -118,6 +166,8 @@ export function BridgeBlockEditor({
   }, [bridge]);
 
   function handleChange(nextDocument: EditorDocument, transaction?: EditorTransaction) {
+    latestDocumentRef.current = nextDocument;
+    postDirtyChange(true);
     bridge.postMessage({
       type: "editor:change",
       protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,

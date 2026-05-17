@@ -4,7 +4,15 @@ export const EDITOR_BRIDGE_PROTOCOL_VERSION = 1;
 
 export type EditorBridgeProtocolVersion = typeof EDITOR_BRIDGE_PROTOCOL_VERSION;
 
-export type EditorCommandName = "get-document" | "export-markdown" | "undo" | "redo" | "focus";
+export type EditorCommandName =
+  | "get-document"
+  | "export-markdown"
+  | "undo"
+  | "redo"
+  | "focus"
+  | "get-dirty-state"
+  | "mark-saved"
+  | "request-save";
 
 export type EditorBridgeError = {
   code: string;
@@ -26,6 +34,17 @@ export type EditorToHostMessage =
       protocolVersion: EditorBridgeProtocolVersion;
       document: EditorDocument;
       transaction?: EditorTransaction;
+    }
+  | {
+      type: "editor:dirty-change";
+      protocolVersion: EditorBridgeProtocolVersion;
+      dirty: boolean;
+    }
+  | {
+      type: "editor:save-request";
+      protocolVersion: EditorBridgeProtocolVersion;
+      requestId?: string;
+      document: EditorDocument;
     }
   | {
       type: "editor:command-result";
@@ -54,6 +73,12 @@ export type HostToEditorMessage =
       readOnly: boolean;
     }
   | {
+      type: "host:mark-saved";
+      protocolVersion: EditorBridgeProtocolVersion;
+      requestId?: string;
+      document?: EditorDocument;
+    }
+  | {
       type: "host:run-command";
       protocolVersion: EditorBridgeProtocolVersion;
       requestId: string;
@@ -76,6 +101,7 @@ export type EditorBridgeAdapter = {
 
 const HOST_MESSAGE_TYPES = new Set([
   "host:load-document",
+  "host:mark-saved",
   "host:set-read-only",
   "host:run-command",
   "host:ping",
@@ -87,6 +113,9 @@ export const EDITOR_BRIDGE_COMMANDS: EditorCommandName[] = [
   "undo",
   "redo",
   "focus",
+  "get-dirty-state",
+  "mark-saved",
+  "request-save",
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -133,6 +162,17 @@ export function parseHostToEditorMessage(value: unknown): HostToEditorMessage | 
       protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
       requestId: value.requestId,
       readOnly: value.readOnly,
+    };
+  }
+
+  if (type === "host:mark-saved") {
+    if (value.requestId !== undefined && !isRequestId(value.requestId)) return null;
+    if (value.document !== undefined && !isEditorDocument(value.document)) return null;
+    return {
+      type,
+      protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+      document: value.document,
     };
   }
 

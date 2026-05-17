@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   applyTransaction,
   clampSelection,
@@ -123,6 +123,37 @@ type TypingMergeState = {
   updatedAt: number;
 };
 
+type EditorBlockViewHandlers = {
+  onActiveSlashIndexChange(block: EditorBlock, activeIndex: number): void;
+  onAddBlockAfter(block: EditorBlock): void;
+  onBlockMouseDown(event: React.MouseEvent<HTMLElement>, block: EditorBlock): void;
+  onBlockTypeSelect(block: EditorBlock, spec: EditorBlockExtensionSpec): void;
+  onDeleteBlock(block: EditorBlock): void;
+  onDragEnd(): void;
+  onDragLeave(event: React.DragEvent<HTMLElement>, block: EditorBlock): void;
+  onDragOver(event: React.DragEvent<HTMLElement>, block: EditorBlock): void;
+  onDragStart(event: React.DragEvent, block: EditorBlock): void;
+  onDrop(event: React.DragEvent, index: number, block: EditorBlock): void;
+  onDuplicateBlock(block: EditorBlock): void;
+  onEditableClick(event: React.MouseEvent<HTMLElement>, block: EditorBlock): void;
+  onEditableFocus(element: HTMLElement, blockId: string): void;
+  onEditableKeyDown(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock): void;
+  onEditableKeyUp(element: HTMLElement, blockId: string): void;
+  onEditableMouseDown(event: React.MouseEvent<HTMLElement>, block: EditorBlock): void;
+  onEditableMouseUp(element: HTMLElement, blockId: string): void;
+  onEditablePaste(event: React.ClipboardEvent<HTMLElement>, block: EditorBlock): void;
+  onEditableRef(blockId: string, node: HTMLElement | null): void;
+  onInput(element: HTMLElement, block: EditorBlock, isComposing: boolean): void;
+  onMoveBlock(block: EditorBlock, direction: -1 | 1): void;
+  onOpenBlockMenu(block: EditorBlock): void;
+  onPatchBlockAttrs(block: EditorBlock, attrs: Record<string, unknown>): void;
+  onPatchBlockText(block: EditorBlock, text: string): void;
+  onSelectCommand(command: EditorBlockExtensionSpec, blockId?: string): void;
+  onToggleTodo(block: EditorBlock): void;
+  onCompositionStart(): void;
+  onCompositionEnd(element: HTMLElement, block: EditorBlock): void;
+};
+
 const STRUCTURED_BLOCK_TYPES = new Set<EditorBlock["type"]>([
   "image",
   "bookmark",
@@ -179,6 +210,8 @@ const GROUP_ORDER: Record<string, number> = {
   Advanced: 6,
 };
 
+const EMPTY_SLASH_SECTIONS: SlashSection[] = [];
+
 function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockExtensionSpec[], isFocused: boolean): string {
   if (!isFocused) return "";
   if (block.type === "paragraph") return "Type '/' for commands";
@@ -198,6 +231,93 @@ function blockClassName(block: EditorBlock): string {
 
 function blockTextLength(block: EditorBlock): number {
   return getBlockPlainText(block).length;
+}
+
+function textMarkAttrsEqual(left: EditorTextMarkAttrs | undefined, right: EditorTextMarkAttrs | undefined): boolean {
+  const leftKeys = Object.keys(left ?? {});
+  const rightKeys = Object.keys(right ?? {});
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => left?.[key] === right?.[key]);
+}
+
+function textMarksEqual(left: EditorTextMark[] | undefined, right: EditorTextMark[] | undefined): boolean {
+  if (!left?.length && !right?.length) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((mark, index) => mark.type === right[index].type && textMarkAttrsEqual(mark.attrs, right[index].attrs));
+}
+
+function textSpansEqual(left: EditorTextSpan[], right: EditorTextSpan[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((span, index) => span.text === right[index].text && textMarksEqual(span.marks, right[index].marks));
+}
+
+function plainEditableBlock(block: EditorBlock): boolean {
+  return block.text.length === 1 && !block.text[0].marks?.length;
+}
+
+function attrsEqual(left: Record<string, unknown> | undefined, right: Record<string, unknown> | undefined): boolean {
+  const leftKeys = Object.keys(left ?? {});
+  const rightKeys = Object.keys(right ?? {});
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => left?.[key] === right?.[key]);
+}
+
+function blocksEqual(left: EditorBlock, right: EditorBlock): boolean {
+  const leftChildren = left.children ?? [];
+  const rightChildren = right.children ?? [];
+  return (
+    left.id === right.id &&
+    left.type === right.type &&
+    left.level === right.level &&
+    left.indent === right.indent &&
+    left.checked === right.checked &&
+    leftChildren.length === rightChildren.length &&
+    leftChildren.every((child, index) => blocksEqual(child, rightChildren[index])) &&
+    attrsEqual(left.attrs, right.attrs) &&
+    textSpansEqual(left.text, right.text)
+  );
+}
+
+function shareDocumentBlocks(previous: EditorDocument | null, next: EditorDocument): EditorDocument {
+  if (!previous || previous.blocks.length === 0 || next.blocks.length === 0) return next;
+  const previousBlocks = new Map(previous.blocks.map((block) => [block.id, block]));
+  let reused = false;
+  const blocks = next.blocks.map((block) => {
+    const previousBlock = previousBlocks.get(block.id);
+    if (!previousBlock || !blocksEqual(previousBlock, block)) return block;
+    reused = true;
+    return previousBlock;
+  });
+  return reused ? { ...next, blocks } : next;
+}
+
+function shareHistoryDocument(previous: EditorHistory | null, next: EditorHistory): EditorHistory {
+  return {
+    ...next,
+    document: shareDocumentBlocks(previous?.document ?? null, next.document),
+  };
+}
+
+function selectionsEqual(left: EditorSelection | null, right: EditorSelection | null): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.anchor.blockId === right.anchor.blockId &&
+    left.anchor.offset === right.anchor.offset &&
+    left.focus.blockId === right.focus.blockId &&
+    left.focus.offset === right.focus.offset
+  );
+}
+
+function bubblePositionsEqual(left: BubblePosition | null, right: BubblePosition | null): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.blockId === right.blockId &&
+    left.placement === right.placement &&
+    Math.round(left.left) === Math.round(right.left) &&
+    Math.round(left.top) === Math.round(right.top)
+  );
 }
 
 function isSelectionAtStart(selection: EditorSelection | null, block: EditorBlock): boolean {
@@ -298,6 +418,39 @@ function readSelectionBubblePosition(element: HTMLElement, blockId: string, allo
     placement,
     top: placement === "top" ? box.top : box.bottom,
   };
+}
+
+function editableSelectionTarget(editor: HTMLElement | null): { blockId: string; element: HTMLElement } | null {
+  const nativeSelection = window.getSelection();
+  if (!editor || !nativeSelection || nativeSelection.rangeCount === 0) return null;
+  const anchor = nativeSelection.anchorNode instanceof Element ? nativeSelection.anchorNode : nativeSelection.anchorNode?.parentElement;
+  const focus = nativeSelection.focusNode instanceof Element ? nativeSelection.focusNode : nativeSelection.focusNode?.parentElement;
+  if (!anchor || !focus || !editor.contains(anchor) || !editor.contains(focus)) return null;
+  const anchorEditable = anchor.closest<HTMLElement>(".je-editable");
+  const focusEditable = focus.closest<HTMLElement>(".je-editable");
+  if (!anchorEditable || anchorEditable !== focusEditable) return null;
+  const block = anchorEditable.closest<HTMLElement>(".je-block[data-block-id]");
+  const blockId = block?.dataset.blockId;
+  return blockId ? { blockId, element: anchorEditable } : null;
+}
+
+function autoScrollDuringDrag(clientY: number) {
+  const edge = 72;
+  const viewportHeight = window.innerHeight;
+  if (clientY < edge) {
+    window.scrollBy(0, -Math.ceil((edge - clientY) / 4));
+  } else if (clientY > viewportHeight - edge) {
+    window.scrollBy(0, Math.ceil((clientY - viewportHeight + edge) / 4));
+  }
+}
+
+function createBlockDragPreview(block: EditorBlock): HTMLElement {
+  const preview = document.createElement("div");
+  preview.className = "je-drag-preview";
+  preview.textContent = getBlockPlainText(block).trim() || block.type.replace(/-/g, " ");
+  document.body.append(preview);
+  requestAnimationFrame(() => preview.remove());
+  return preview;
 }
 
 function textPointAtOffset(element: HTMLElement, offset: number): { node: Text; offset: number } {
@@ -681,13 +834,51 @@ function syncEditableDom(element: HTMLElement, block: EditorBlock) {
   element.replaceChildren(fragment);
 }
 
+function shouldSyncEditableDom(element: HTMLElement, previousBlock: EditorBlock | undefined, block: EditorBlock): boolean {
+  if (previousBlock === block) return false;
+  const isActivePlainTextEdit =
+    document.activeElement === element &&
+    element.textContent === getBlockPlainText(block) &&
+    previousBlock &&
+    previousBlock.type === block.type &&
+    plainEditableBlock(previousBlock) &&
+    plainEditableBlock(block);
+  return !isActivePlainTextEdit;
+}
+
 function commandMatchesQuery(command: EditorBlockExtensionSpec, query: string): boolean {
   return commandSearchScore(command, query) < Number.POSITIVE_INFINITY;
+}
+
+function compactSearchValue(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function commandSearchAliases(command: EditorBlockExtensionSpec): string[] {
+  const aliases = [
+    command.name,
+    command.name.replace(/^heading-/, "h"),
+    command.blockType,
+    command.icon,
+    command.markdownShortcut,
+  ];
+  if (command.blockType === "bulleted-list") aliases.push("bullet", "ul");
+  if (command.blockType === "numbered-list") aliases.push("number", "ol");
+  if (command.blockType === "todo") aliases.push("task", "checkbox");
+  if (command.blockType === "code-block") aliases.push("codeblock", "pre");
+  if (command.blockType === "callout") aliases.push("note", "notice");
+  return aliases.filter((value): value is string => Boolean(value));
 }
 
 function commandSearchScore(command: EditorBlockExtensionSpec, query: string): number {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return 0;
+  const compactQuery = compactSearchValue(normalized);
+  for (const alias of commandSearchAliases(command)) {
+    const compactAlias = compactSearchValue(alias);
+    if (compactAlias === compactQuery) return 0;
+    if (compactAlias.startsWith(compactQuery)) return 0.5;
+  }
   const haystacks = [
     command.name.replace(/-/g, " "),
     command.label,
@@ -708,6 +899,10 @@ function commandSearchScore(command: EditorBlockExtensionSpec, query: string): n
     }
   }
   return best;
+}
+
+function commandShortcutLabel(command: EditorBlockExtensionSpec): string {
+  return command.markdownShortcut?.trim() || command.name.replace(/-/g, " ");
 }
 
 function compareCommands(left: EditorBlockExtensionSpec, right: EditorBlockExtensionSpec, query: string): number {
@@ -766,8 +961,9 @@ function SlashMenu({
 }) {
   let cursor = 0;
   const commandCount = sections.reduce((count, section) => count + section.items.length, 0);
+  const activeId = commandCount > 0 ? `je-slash-${slash.blockId}-${slash.activeIndex}` : undefined;
   return (
-    <div className="je-slash-menu" role="listbox" aria-label="Block commands">
+    <div className="je-slash-menu" role="listbox" aria-activedescendant={activeId} aria-label="Block commands">
       <div className="je-slash-menu__label">Commands</div>
       {commandCount === 0 ? <div className="je-slash-menu__empty">No commands</div> : null}
       {sections.map((section) => (
@@ -780,6 +976,7 @@ function SlashMenu({
                 aria-label={command.label}
                 aria-selected={slash.activeIndex === index}
                 className="je-slash-menu__item"
+                id={`je-slash-${slash.blockId}-${index}`}
                 key={command.name}
                 role="option"
                 type="button"
@@ -790,10 +987,11 @@ function SlashMenu({
                 onMouseEnter={() => onActiveIndexChange(index)}
               >
                 <span className="je-slash-menu__icon">{command.icon || command.label.slice(0, 1)}</span>
-                <span>
+                <span className="je-slash-menu__content">
                   <strong>{command.label}</strong>
                   <small>{command.description}</small>
                 </span>
+                <kbd className="je-slash-menu__shortcut">{commandShortcutLabel(command)}</kbd>
               </button>
             );
           })}
@@ -1381,6 +1579,169 @@ function StructuredBlockEditor({
   return null;
 }
 
+type EditorBlockViewProps = {
+  block: EditorBlock;
+  blockCount: number;
+  blockSpecs: EditorBlockExtensionSpec[];
+  blockTypeMenuOpen: boolean;
+  controlsOpen: boolean;
+  dropPosition?: DragState["placement"];
+  handlers: EditorBlockViewHandlers;
+  index: number;
+  isDragging: boolean;
+  isFocused: boolean;
+  isSelected: boolean;
+  readOnly: boolean;
+  slash: SlashState | null;
+  slashSections: SlashSection[];
+};
+
+function slashStateEqual(left: SlashState | null, right: SlashState | null): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return left.blockId === right.blockId && left.query === right.query && left.activeIndex === right.activeIndex;
+}
+
+const EditorBlockView = memo(function EditorBlockView({
+  block,
+  blockCount,
+  blockSpecs,
+  blockTypeMenuOpen,
+  controlsOpen,
+  dropPosition,
+  handlers,
+  index,
+  isDragging,
+  isFocused,
+  isSelected,
+  readOnly,
+  slash,
+  slashSections,
+}: EditorBlockViewProps) {
+  return (
+    <div
+      className={blockClassName(block)}
+      data-block-id={block.id}
+      data-dragging={isDragging ? "true" : undefined}
+      data-drop-position={dropPosition}
+      data-indent={block.indent || undefined}
+      data-heading-level={block.type === "heading" ? block.level : undefined}
+      data-focused={isFocused ? "true" : "false"}
+      data-selected={isSelected ? "true" : "false"}
+      data-controls-open={controlsOpen ? "true" : "false"}
+      key={block.id}
+      role="listitem"
+      onMouseDown={(event) => handlers.onBlockMouseDown(event, block)}
+      onDragLeave={(event) => handlers.onDragLeave(event, block)}
+      onDragOver={(event) => handlers.onDragOver(event, block)}
+      onDrop={(event) => handlers.onDrop(event, index, block)}
+    >
+      <div className="je-block__gutter">
+        <button
+          aria-label="Add block below"
+          className="je-block__button"
+          disabled={readOnly}
+          type="button"
+          onClick={() => handlers.onAddBlockAfter(block)}
+        >
+          +
+        </button>
+        <button
+          aria-expanded={blockTypeMenuOpen}
+          aria-label="Block actions"
+          className="je-block__handle"
+          draggable={!readOnly}
+          disabled={readOnly}
+          type="button"
+          onClick={() => handlers.onOpenBlockMenu(block)}
+          onDragEnd={handlers.onDragEnd}
+          onDragStart={(event) => handlers.onDragStart(event, block)}
+        >
+          ⋮⋮
+        </button>
+      </div>
+      {block.type === "todo" ? (
+        <button
+          className="je-todo-check"
+          type="button"
+          aria-pressed={Boolean(block.checked)}
+          disabled={readOnly}
+          onClick={() => handlers.onToggleTodo(block)}
+        />
+      ) : null}
+      {block.type === "divider" ? (
+        <hr className="je-divider" />
+      ) : STRUCTURED_BLOCK_TYPES.has(block.type) ? (
+        <StructuredBlockEditor
+          block={block}
+          onAttrs={(attrs) => handlers.onPatchBlockAttrs(block, attrs)}
+          onText={(nextText) => handlers.onPatchBlockText(block, nextText)}
+        />
+      ) : (
+        <div
+          className="je-editable"
+          contentEditable={!readOnly}
+          data-placeholder={blockPlaceholder(block, blockSpecs, isFocused)}
+          suppressContentEditableWarning
+          ref={(node) => handlers.onEditableRef(block.id, node)}
+          onFocus={(event) => {
+            handlers.onEditableFocus(event.currentTarget, block.id);
+          }}
+          onKeyUp={(event) => {
+            handlers.onEditableKeyUp(event.currentTarget, block.id);
+          }}
+          onMouseUp={(event) => {
+            handlers.onEditableMouseUp(event.currentTarget, block.id);
+          }}
+          onMouseDown={(event) => handlers.onEditableMouseDown(event, block)}
+          onClick={(event) => handlers.onEditableClick(event, block)}
+          onInput={(event) => handlers.onInput(event.currentTarget, block, event.nativeEvent.isComposing)}
+          onPaste={(event) => handlers.onEditablePaste(event, block)}
+          onCompositionStart={handlers.onCompositionStart}
+          onCompositionEnd={(event) => handlers.onCompositionEnd(event.currentTarget, block)}
+          onKeyDown={(event) => handlers.onEditableKeyDown(event, block)}
+        />
+      )}
+      {slash ? (
+        <SlashMenu
+          slash={slash}
+          sections={slashSections}
+          onSelect={(command) => handlers.onSelectCommand(command, slash.blockId)}
+          onActiveIndexChange={(activeIndex) => handlers.onActiveSlashIndexChange(block, activeIndex)}
+        />
+      ) : null}
+      {blockTypeMenuOpen ? (
+        <BlockTypeMenu
+          activeBlock={block}
+          canMoveDown={index < blockCount - 1}
+          canMoveUp={index > 0}
+          onDelete={() => handlers.onDeleteBlock(block)}
+          onDuplicate={() => handlers.onDuplicateBlock(block)}
+          onMoveDown={() => handlers.onMoveBlock(block, 1)}
+          onMoveUp={() => handlers.onMoveBlock(block, -1)}
+          specs={blockSpecs}
+          onSelect={(spec) => handlers.onBlockTypeSelect(block, spec)}
+        />
+      ) : null}
+    </div>
+  );
+}, (previous, next) => (
+  previous.block === next.block &&
+  previous.blockCount === next.blockCount &&
+  previous.blockSpecs === next.blockSpecs &&
+  previous.blockTypeMenuOpen === next.blockTypeMenuOpen &&
+  previous.controlsOpen === next.controlsOpen &&
+  previous.dropPosition === next.dropPosition &&
+  previous.handlers === next.handlers &&
+  previous.index === next.index &&
+  previous.isDragging === next.isDragging &&
+  previous.isFocused === next.isFocused &&
+  previous.isSelected === next.isSelected &&
+  previous.readOnly === next.readOnly &&
+  slashStateEqual(previous.slash, next.slash) &&
+  previous.slashSections === next.slashSections
+));
+
 export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(function BlockEditor(
   { extensionManifests, initialDocument, readOnly = false, onChange },
   ref,
@@ -1399,18 +1760,60 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [recentCommandNames, setRecentCommandNames] = useState<string[]>([]);
   const [storedMarksState, setStoredMarksState] = useState<StoredMarksState | null>(null);
+  const editorRef = useRef<HTMLElement | null>(null);
   const blockRefs = useRef(new Map<string, HTMLElement>());
+  const syncedBlocksRef = useRef(new Map<string, EditorBlock>());
+  const historyRef = useRef(history);
+  const selectionRef = useRef(selection);
+  const readOnlyRef = useRef(readOnly);
+  const blockViewHandlersRef = useRef<EditorBlockViewHandlers | null>(null);
+  const selectionFrameRef = useRef<number | null>(null);
+  const dragScrollFrameRef = useRef<number | null>(null);
+  const dragScrollYRef = useRef(0);
   const didDragRef = useRef(false);
   const storedMarksRef = useRef<StoredMarksState | null>(null);
   const typingMergeRef = useRef<TypingMergeState | null>(null);
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
+  historyRef.current = history;
+  selectionRef.current = selection;
+  readOnlyRef.current = readOnly;
   const manifest = useMemo(
     () => mergeEditorExtensionManifests([createDefaultEditorExtensionManifest(), ...(extensionManifests ?? [])]),
     [extensionManifests],
   );
   const blockSpecs = manifest.blocks;
   const textMarkSpecs = manifest.textMarks;
+  const blockViewHandlers = useMemo<EditorBlockViewHandlers>(() => ({
+    onActiveSlashIndexChange: (block, activeIndex) => blockViewHandlersRef.current?.onActiveSlashIndexChange(block, activeIndex),
+    onAddBlockAfter: (block) => blockViewHandlersRef.current?.onAddBlockAfter(block),
+    onBlockMouseDown: (event, block) => blockViewHandlersRef.current?.onBlockMouseDown(event, block),
+    onBlockTypeSelect: (block, spec) => blockViewHandlersRef.current?.onBlockTypeSelect(block, spec),
+    onDeleteBlock: (block) => blockViewHandlersRef.current?.onDeleteBlock(block),
+    onDragEnd: () => blockViewHandlersRef.current?.onDragEnd(),
+    onDragLeave: (event, block) => blockViewHandlersRef.current?.onDragLeave(event, block),
+    onDragOver: (event, block) => blockViewHandlersRef.current?.onDragOver(event, block),
+    onDragStart: (event, block) => blockViewHandlersRef.current?.onDragStart(event, block),
+    onDrop: (event, index, block) => blockViewHandlersRef.current?.onDrop(event, index, block),
+    onDuplicateBlock: (block) => blockViewHandlersRef.current?.onDuplicateBlock(block),
+    onEditableClick: (event, block) => blockViewHandlersRef.current?.onEditableClick(event, block),
+    onEditableFocus: (element, blockId) => blockViewHandlersRef.current?.onEditableFocus(element, blockId),
+    onEditableKeyDown: (event, block) => blockViewHandlersRef.current?.onEditableKeyDown(event, block),
+    onEditableKeyUp: (element, blockId) => blockViewHandlersRef.current?.onEditableKeyUp(element, blockId),
+    onEditableMouseDown: (event, block) => blockViewHandlersRef.current?.onEditableMouseDown(event, block),
+    onEditableMouseUp: (element, blockId) => blockViewHandlersRef.current?.onEditableMouseUp(element, blockId),
+    onEditablePaste: (event, block) => blockViewHandlersRef.current?.onEditablePaste(event, block),
+    onEditableRef: (blockId, node) => blockViewHandlersRef.current?.onEditableRef(blockId, node),
+    onInput: (element, block, isComposing) => blockViewHandlersRef.current?.onInput(element, block, isComposing),
+    onMoveBlock: (block, direction) => blockViewHandlersRef.current?.onMoveBlock(block, direction),
+    onOpenBlockMenu: (block) => blockViewHandlersRef.current?.onOpenBlockMenu(block),
+    onPatchBlockAttrs: (block, attrs) => blockViewHandlersRef.current?.onPatchBlockAttrs(block, attrs),
+    onPatchBlockText: (block, text) => blockViewHandlersRef.current?.onPatchBlockText(block, text),
+    onSelectCommand: (command, blockId) => blockViewHandlersRef.current?.onSelectCommand(command, blockId),
+    onToggleTodo: (block) => blockViewHandlersRef.current?.onToggleTodo(block),
+    onCompositionStart: () => blockViewHandlersRef.current?.onCompositionStart(),
+    onCompositionEnd: (element, block) => blockViewHandlersRef.current?.onCompositionEnd(element, block),
+  }), []);
 
   function getSlashSections(query: string): SlashSection[] {
     return slashSections(blockSpecs, query, recentCommandNames);
@@ -1452,16 +1855,45 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setStoredMarks(null);
   }
 
+  function setSelectionIfChanged(nextSelection: EditorSelection | null) {
+    selectionRef.current = nextSelection;
+    setSelection((current) => selectionsEqual(current, nextSelection) ? current : nextSelection);
+  }
+
+  function setBubblePositionIfChanged(nextPosition: BubblePosition | null) {
+    setBubblePosition((current) => bubblePositionsEqual(current, nextPosition) ? current : nextPosition);
+  }
+
+  function shareNextHistory(previous: EditorHistory | null, nextHistory: EditorHistory): EditorHistory {
+    return shareHistoryDocument(previous, nextHistory);
+  }
+
+  function currentBlockFromDocument(document: EditorDocument, blockId: string) {
+    return document.blocks.find((block) => block.id === blockId) || null;
+  }
+
+  function scheduleDragAutoScroll(clientY: number) {
+    dragScrollYRef.current = clientY;
+    if (dragScrollFrameRef.current !== null) return;
+    dragScrollFrameRef.current = window.requestAnimationFrame(() => {
+      dragScrollFrameRef.current = null;
+      autoScrollDuringDrag(dragScrollYRef.current);
+    });
+  }
+
   useEffect(() => {
-    setHistory(initial);
+    const nextHistory = shareNextHistory(null, initial);
+    setHistory(nextHistory);
+    historyRef.current = nextHistory;
     const first = initial.document.blocks[0];
-    setSelection(first ? createCollapsedSelection(first.id, 0) : null);
+    setSelectionIfChanged(first ? createCollapsedSelection(first.id, 0) : null);
     setSlash(null);
     setBubblePosition(null);
     setBlockTypeMenu(null);
     setLinkPopover(null);
     setSelectedBlockId(null);
     setDragState(null);
+    syncedBlocksRef.current.clear();
     setStoredMarks(null);
     typingMergeRef.current = null;
   }, [initial]);
@@ -1476,15 +1908,24 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
 
   function setSelectionAndFocus(nextSelection: EditorSelection) {
     pendingFocusRef.current = nextSelection;
-    setSelection(nextSelection);
+    setSelectionIfChanged(nextSelection);
     requestAnimationFrame(() => focusSelection(nextSelection));
   }
 
   useLayoutEffect(() => {
     if (isComposingRef.current) return;
+    const seenBlockIds = new Set<string>();
     for (const block of history.document.blocks) {
+      seenBlockIds.add(block.id);
       const target = blockRefs.current.get(block.id);
-      if (target && block.type !== "divider") syncEditableDom(target, block);
+      if (target && block.type !== "divider") {
+        const previousBlock = syncedBlocksRef.current.get(block.id);
+        if (shouldSyncEditableDom(target, previousBlock, block)) syncEditableDom(target, block);
+        syncedBlocksRef.current.set(block.id, block);
+      }
+    }
+    for (const blockId of syncedBlocksRef.current.keys()) {
+      if (!seenBlockIds.has(blockId)) syncedBlocksRef.current.delete(blockId);
     }
     const pending = pendingFocusRef.current;
     if (!pending) return;
@@ -1492,33 +1933,90 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     focusSelection(pending);
   }, [history.document]);
 
+  useEffect(() => {
+    function clearFloatingSelectionUi() {
+      setBubblePositionIfChanged(null);
+      setBlockTypeMenu(null);
+      setLinkPopover(null);
+      setSlash(null);
+    }
+
+    function flushDocumentSelectionChange() {
+      selectionFrameRef.current = null;
+      if (readOnlyRef.current) return;
+      const target = editableSelectionTarget(editorRef.current);
+      if (!target) {
+        setBubblePositionIfChanged(null);
+        clearStoredMarks();
+        return;
+      }
+      const block = currentBlockFromDocument(historyRef.current.document, target.blockId);
+      const nextSelection = readTextSelection(target.element, target.blockId);
+      const editableMarkRange = editableMarkRangeAtSelection(block, nextSelection);
+      setSelectionIfChanged(nextSelection);
+      if (
+        !isCollapsedSelection(nextSelection) ||
+        storedMarksRef.current?.blockId !== nextSelection.anchor.blockId ||
+        storedMarksRef.current.offset !== nextSelection.anchor.offset
+      ) {
+        clearStoredMarks();
+      }
+      setBubblePositionIfChanged(readSelectionBubblePosition(target.element, target.blockId, Boolean(editableMarkRange)));
+    }
+
+    function handleDocumentSelectionChange() {
+      if (selectionFrameRef.current !== null) return;
+      selectionFrameRef.current = window.requestAnimationFrame(flushDocumentSelectionChange);
+    }
+
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const target = event.target instanceof Node ? event.target : null;
+      if (!target || editorRef.current?.contains(target)) return;
+      clearFloatingSelectionUi();
+      setSelectedBlockId(null);
+    }
+
+    document.addEventListener("selectionchange", handleDocumentSelectionChange);
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    return () => {
+      if (selectionFrameRef.current !== null) window.cancelAnimationFrame(selectionFrameRef.current);
+      if (dragScrollFrameRef.current !== null) window.cancelAnimationFrame(dragScrollFrameRef.current);
+      document.removeEventListener("selectionchange", handleDocumentSelectionChange);
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+    };
+  }, []);
+
   function notifyHistoryChange(nextHistory: typeof history, nextSelection: EditorSelection | null) {
+    const sharedHistory = shareNextHistory(historyRef.current, nextHistory);
     pendingFocusRef.current = nextSelection;
-    setHistory(nextHistory);
-    setSelection(nextSelection);
+    historyRef.current = sharedHistory;
+    setHistory(sharedHistory);
+    setSelectionIfChanged(nextSelection);
     setSlash(null);
-    setBubblePosition(null);
+    setBubblePositionIfChanged(null);
     setBlockTypeMenu(null);
     setLinkPopover(null);
     setSelectedBlockId(null);
     setDragState(null);
     clearStoredMarks();
     typingMergeRef.current = null;
-    onChange?.(nextHistory.document);
-    return nextHistory.document;
+    onChange?.(sharedHistory.document);
+    return sharedHistory.document;
   }
 
   function undoHistory() {
-    if (history.undoStack.length === 0) return history.document;
-    const nextHistory = undo(history);
-    const nextSelection = selectionForDocument(nextHistory.document, selection);
+    const current = historyRef.current;
+    if (current.undoStack.length === 0) return current.document;
+    const nextHistory = undo(current);
+    const nextSelection = selectionForDocument(nextHistory.document, selectionRef.current);
     return notifyHistoryChange(nextHistory, nextSelection);
   }
 
   function redoHistory() {
-    if (history.redoStack.length === 0) return history.document;
-    const nextHistory = redo(history);
-    const nextSelection = selectionForDocument(nextHistory.document, selection);
+    const current = historyRef.current;
+    if (current.redoStack.length === 0) return current.document;
+    const nextHistory = redo(current);
+    const nextSelection = selectionForDocument(nextHistory.document, selectionRef.current);
     return notifyHistoryChange(nextHistory, nextSelection);
   }
 
@@ -1531,33 +2029,36 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     pendingFocusRef.current = nextSelection;
     if (!options.preserveStoredMarks) clearStoredMarks();
     if (!options.mergeTyping) typingMergeRef.current = null;
-    setHistory((current): EditorHistory => {
-      const last = current.undoStack.at(-1);
-      const typingMerge = typingMergeRef.current;
-      if (
-        options.mergeTyping &&
-        nextFocus &&
-        last &&
-        typingMerge &&
-        typingMerge.transactionId === last.id &&
-        typingMerge.blockId === nextFocus.blockId &&
-        now - typingMerge.updatedAt <= TYPING_MERGE_WINDOW_MS &&
-        last.kind === "update-text" &&
-        transaction.kind === "update-text"
-      ) {
-        const mergedTransaction = { ...transaction, before: last.before };
-        typingMergeRef.current = {
-          blockId: nextFocus.blockId,
-          transactionId: mergedTransaction.id,
-          updatedAt: now,
-        };
-        return {
-          document: transaction.after,
-          undoStack: [...current.undoStack.slice(0, -1), mergedTransaction],
-          redoStack: [],
-        };
-      }
+    const current = historyRef.current;
+    const last = current.undoStack.at(-1);
+    const typingMerge = typingMergeRef.current;
+    let nextHistory: EditorHistory;
+    let committedTransaction = transaction;
 
+    if (
+      options.mergeTyping &&
+      nextFocus &&
+      last &&
+      typingMerge &&
+      typingMerge.transactionId === last.id &&
+      typingMerge.blockId === nextFocus.blockId &&
+      now - typingMerge.updatedAt <= TYPING_MERGE_WINDOW_MS &&
+      last.kind === "update-text" &&
+      transaction.kind === "update-text"
+    ) {
+      const mergedTransaction = { ...transaction, before: last.before };
+      typingMergeRef.current = {
+        blockId: nextFocus.blockId,
+        transactionId: mergedTransaction.id,
+        updatedAt: now,
+      };
+      committedTransaction = mergedTransaction;
+      nextHistory = {
+        document: transaction.after,
+        undoStack: [...current.undoStack.slice(0, -1), mergedTransaction],
+        redoStack: [],
+      };
+    } else {
       if (options.mergeTyping && nextFocus && transaction.kind === "update-text") {
         typingMergeRef.current = {
           blockId: nextFocus.blockId,
@@ -1565,28 +2066,33 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
           updatedAt: now,
         };
       }
-      return applyTransaction(current, transaction);
-    });
-    setSelection(nextSelection);
+      nextHistory = applyTransaction(current, transaction);
+    }
+
+    const shared = shareNextHistory(current, nextHistory);
+    const committedDocument = shared.document;
+    historyRef.current = shared;
+    setHistory(shared);
+    setSelectionIfChanged(nextSelection);
     setSlash(null);
-    setBubblePosition(null);
+    setBubblePositionIfChanged(null);
     setBlockTypeMenu(null);
     setLinkPopover(null);
     setSelectedBlockId(null);
     setDragState(null);
-    onChange?.(transaction.after, transaction);
+    onChange?.(committedDocument, { ...committedTransaction, after: committedDocument });
   }
 
   useImperativeHandle(ref, () => ({
     exportMarkdown() {
-      return documentToMarkdown(history.document);
+      return documentToMarkdown(historyRef.current.document);
     },
     focus() {
-      const nextSelection = selectionForDocument(history.document, selection);
+      const nextSelection = selectionForDocument(historyRef.current.document, selectionRef.current);
       if (nextSelection) setSelectionAndFocus(nextSelection);
     },
     getDocument() {
-      return history.document;
+      return historyRef.current.document;
     },
     redo() {
       return redoHistory();
@@ -1807,7 +2313,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const nextSelection = readTextSelection(element, blockId);
     const block = currentBlock(blockId);
     const editableMarkRange = editableMarkRangeAtSelection(block, nextSelection);
-    setSelection(nextSelection);
+    setSelectionIfChanged(nextSelection);
     if (
       !isCollapsedSelection(nextSelection) ||
       storedMarksRef.current?.blockId !== nextSelection.anchor.blockId ||
@@ -1815,7 +2321,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     ) {
       clearStoredMarks();
     }
-    setBubblePosition(readSelectionBubblePosition(element, blockId, Boolean(editableMarkRange)));
+    setBubblePositionIfChanged(readSelectionBubblePosition(element, blockId, Boolean(editableMarkRange)));
   }
 
   function handleBlockMouseDown(event: React.MouseEvent<HTMLElement>, block: EditorBlock) {
@@ -1889,7 +2395,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
       focus: { blockId: block.id, offset: linkRange.end },
     }, "icon-link");
     const box = anchor.getBoundingClientRect();
-    setSelection({
+    setSelectionIfChanged({
       anchor: { blockId: block.id, offset: linkRange.start },
       focus: { blockId: block.id, offset: linkRange.end },
     });
@@ -1910,7 +2416,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMarkType) {
     const nextSelection = readTextSelection(event.currentTarget, block.id);
     setSelectedBlockId(null);
-    setSelection(nextSelection);
+    setSelectionIfChanged(nextSelection);
     if (nextSelection.anchor.blockId !== nextSelection.focus.blockId) return;
     event.preventDefault();
     if (nextSelection.anchor.offset === nextSelection.focus.offset) {
@@ -2131,6 +2637,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   function handleDragStart(event: React.DragEvent, block: EditorBlock) {
     event.dataTransfer.setData("application/x-jinnkunn-editor-block", block.id);
     event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setDragImage(createBlockDragPreview(block), 14, 16);
     didDragRef.current = true;
     setDragState({ blockId: block.id, overBlockId: block.id, placement: "before" });
   }
@@ -2149,6 +2656,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     if (!blockId || blockId === block.id) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
+    scheduleDragAutoScroll(event.clientY);
     const rect = event.currentTarget.getBoundingClientRect();
     const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
     setDragState((current) => {
@@ -2169,27 +2677,107 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
 
   function handleDragEnd() {
     setDragState(null);
+    if (dragScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragScrollFrameRef.current);
+      dragScrollFrameRef.current = null;
+    }
     window.setTimeout(() => {
       didDragRef.current = false;
     }, 0);
   }
 
+  blockViewHandlersRef.current = {
+    onActiveSlashIndexChange(block, activeIndex) {
+      setSlash((current) => current?.blockId === block.id ? { ...current, activeIndex } : current);
+    },
+    onAddBlockAfter(block) {
+      commit(insertBlockAfter(historyRef.current.document, block.id));
+    },
+    onBlockMouseDown: handleBlockMouseDown,
+    onBlockTypeSelect: selectBlockType,
+    onDeleteBlock: deleteCurrentBlock,
+    onDragEnd: handleDragEnd,
+    onDragLeave(event, block) {
+      const relatedTarget = event.relatedTarget;
+      if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+        setDragState((current) => current && current.overBlockId === block.id ? { ...current, overBlockId: null } : current);
+      }
+    },
+    onDragOver: handleDragOver,
+    onDragStart: handleDragStart,
+    onDrop: handleDrop,
+    onDuplicateBlock: duplicateBlock,
+    onEditableClick(event, block) {
+      handleLinkClick(event, currentBlock(block.id) || block);
+    },
+    onEditableFocus: handleSelectionChange,
+    onEditableKeyDown(event, block) {
+      handleKeyDown(event, currentBlock(block.id) || block);
+    },
+    onEditableKeyUp: handleSelectionChange,
+    onEditableMouseDown(event, block) {
+      handleEditableMouseDown(event, currentBlock(block.id) || block);
+    },
+    onEditableMouseUp: handleSelectionChange,
+    onEditablePaste(event, block) {
+      handlePaste(event, currentBlock(block.id) || block);
+    },
+    onEditableRef(blockId, node) {
+      if (node) blockRefs.current.set(blockId, node);
+      else blockRefs.current.delete(blockId);
+    },
+    onInput(element, block, isComposing) {
+      if (isComposingRef.current || isComposing) return;
+      const offset = readTextOffset(element);
+      handleText(currentBlock(block.id) || block, element.textContent || "", offset);
+    },
+    onMoveBlock: moveCurrentBlock,
+    onOpenBlockMenu(block) {
+      if (didDragRef.current) {
+        didDragRef.current = false;
+        return;
+      }
+      setSlash(null);
+      setBubblePositionIfChanged(null);
+      setLinkPopover(null);
+      setBlockTypeMenu((current) => (current?.blockId === block.id ? null : { blockId: block.id }));
+    },
+    onPatchBlockAttrs: patchBlockAttrs,
+    onPatchBlockText: patchBlockText,
+    onSelectCommand: selectCommand,
+    onToggleTodo(block) {
+      commit(toggleTodo(historyRef.current.document, block.id));
+    },
+    onCompositionStart() {
+      isComposingRef.current = true;
+      setSlash(null);
+    },
+    onCompositionEnd(element, block) {
+      isComposingRef.current = false;
+      const offset = readTextOffset(element);
+      handleText(currentBlock(block.id) || block, element.textContent || "", offset);
+    },
+  };
+
   const focusedBlockId = selection ? getSelectionFocus(selection).blockId : null;
 
   return (
-    <section className="je-editor" data-readonly={readOnly ? "true" : "false"}>
+    <section className="je-editor" data-drag-active={dragState ? "true" : "false"} data-readonly={readOnly ? "true" : "false"} ref={editorRef}>
       <input
         className="je-title"
         value={history.document.title}
         readOnly={readOnly}
         aria-label="Document title"
         onChange={(event) => {
-          const next = { ...history.document, title: event.target.value };
-          setHistory((current) => ({ ...current, document: next }));
+          const current = historyRef.current;
+          const next = { ...current.document, title: event.target.value };
+          const nextHistory = { ...current, document: next };
+          historyRef.current = nextHistory;
+          setHistory(nextHistory);
           onChange?.(next);
         }}
         onFocus={() => {
-          setSelection(null);
+          setSelectionIfChanged(null);
           setSlash(null);
           setBubblePosition(null);
           setBlockTypeMenu(null);
@@ -2199,146 +2787,29 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
       />
       <div className="je-blocks" role="list">
         {history.document.blocks.map((block, index) => {
-          const text = getBlockPlainText(block);
           const isFocused = focusedBlockId === block.id;
           const isSelected = selectedBlockId === block.id;
           const dropPosition = dragState?.overBlockId === block.id ? dragState.placement : undefined;
-          const currentSlashSections = slash?.blockId === block.id ? getSlashSections(slash.query) : [];
+          const currentSlashSections = slash?.blockId === block.id ? getSlashSections(slash.query) : EMPTY_SLASH_SECTIONS;
           const controlsOpen = blockTypeMenu?.blockId === block.id || slash?.blockId === block.id || isSelected;
           return (
-            <div
-              className={blockClassName(block)}
-              data-block-id={block.id}
-              data-dragging={dragState?.blockId === block.id ? "true" : undefined}
-              data-drop-position={dropPosition}
-              data-indent={block.indent || undefined}
-              data-heading-level={block.type === "heading" ? block.level : undefined}
-              data-focused={isFocused ? "true" : "false"}
-              data-selected={isSelected ? "true" : "false"}
-              data-controls-open={controlsOpen ? "true" : "false"}
+            <EditorBlockView
+              block={block}
+              blockCount={history.document.blocks.length}
+              blockSpecs={blockSpecs}
+              blockTypeMenuOpen={blockTypeMenu?.blockId === block.id}
+              controlsOpen={controlsOpen}
+              dropPosition={dropPosition}
+              handlers={blockViewHandlers}
+              index={index}
+              isDragging={dragState?.blockId === block.id}
               key={block.id}
-              role="listitem"
-              onMouseDown={(event) => handleBlockMouseDown(event, block)}
-              onDragLeave={(event) => {
-                const relatedTarget = event.relatedTarget;
-                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
-                  setDragState((current) => current && current.overBlockId === block.id ? { ...current, overBlockId: null } : current);
-                }
-              }}
-              onDragOver={(event) => handleDragOver(event, block)}
-              onDrop={(event) => handleDrop(event, index, block)}
-            >
-              <div className="je-block__gutter">
-                <button
-                  aria-label="Add block below"
-                  className="je-block__button"
-                  disabled={readOnly}
-                  type="button"
-                  onClick={() => commit(insertBlockAfter(history.document, block.id))}
-                >
-                  +
-                </button>
-                <button
-                  aria-expanded={blockTypeMenu?.blockId === block.id}
-                  aria-label="Block actions"
-                  className="je-block__handle"
-                  draggable={!readOnly}
-                  disabled={readOnly}
-                  type="button"
-                  onClick={() => {
-                    if (didDragRef.current) {
-                      didDragRef.current = false;
-                      return;
-                    }
-                    setSlash(null);
-                    setBubblePosition(null);
-                    setLinkPopover(null);
-                    setBlockTypeMenu((current) => (current?.blockId === block.id ? null : { blockId: block.id }));
-                  }}
-                  onDragEnd={handleDragEnd}
-                  onDragStart={(event) => handleDragStart(event, block)}
-                >
-                  ⋮⋮
-                </button>
-              </div>
-              {block.type === "todo" ? (
-                <button
-                  className="je-todo-check"
-                  type="button"
-                  aria-pressed={Boolean(block.checked)}
-                  disabled={readOnly}
-                  onClick={() => commit(toggleTodo(history.document, block.id))}
-                />
-              ) : null}
-              {block.type === "divider" ? (
-                <hr className="je-divider" />
-              ) : STRUCTURED_BLOCK_TYPES.has(block.type) ? (
-                <StructuredBlockEditor
-                  block={block}
-                  onAttrs={(attrs) => patchBlockAttrs(block, attrs)}
-                  onText={(nextText) => patchBlockText(block, nextText)}
-                />
-              ) : (
-                <div
-                  className="je-editable"
-                  contentEditable={!readOnly}
-                  data-placeholder={blockPlaceholder(block, blockSpecs, isFocused)}
-                  suppressContentEditableWarning
-                  ref={(node) => {
-                    if (node) blockRefs.current.set(block.id, node);
-                    else blockRefs.current.delete(block.id);
-                  }}
-                  onFocus={(event) => {
-                    handleSelectionChange(event.currentTarget, block.id);
-                  }}
-                  onKeyUp={(event) => {
-                    handleSelectionChange(event.currentTarget, block.id);
-                  }}
-                  onMouseUp={(event) => {
-                    handleSelectionChange(event.currentTarget, block.id);
-                  }}
-                  onMouseDown={(event) => handleEditableMouseDown(event, currentBlock(block.id) || block)}
-                  onClick={(event) => handleLinkClick(event, currentBlock(block.id) || block)}
-                  onInput={(event) => {
-                    if (isComposingRef.current || event.nativeEvent.isComposing) return;
-                    const offset = readTextOffset(event.currentTarget);
-                    handleText(block, event.currentTarget.textContent || "", offset);
-                  }}
-                  onPaste={(event) => handlePaste(event, currentBlock(block.id) || block)}
-                  onCompositionStart={() => {
-                    isComposingRef.current = true;
-                    setSlash(null);
-                  }}
-                  onCompositionEnd={(event) => {
-                    isComposingRef.current = false;
-                    const offset = readTextOffset(event.currentTarget);
-                    handleText(block, event.currentTarget.textContent || "", offset);
-                  }}
-                  onKeyDown={(event) => handleKeyDown(event, currentBlock(block.id) || block)}
-                />
-              )}
-              {slash?.blockId === block.id ? (
-                <SlashMenu
-                  slash={slash}
-                  sections={currentSlashSections}
-                  onSelect={selectCommand}
-                  onActiveIndexChange={(activeIndex) => setSlash({ ...slash, activeIndex })}
-                />
-              ) : null}
-              {blockTypeMenu?.blockId === block.id ? (
-                <BlockTypeMenu
-                  activeBlock={block}
-                  canMoveDown={index < history.document.blocks.length - 1}
-                  canMoveUp={index > 0}
-                  onDelete={() => deleteCurrentBlock(block)}
-                  onDuplicate={() => duplicateBlock(block)}
-                  onMoveDown={() => moveCurrentBlock(block, 1)}
-                  onMoveUp={() => moveCurrentBlock(block, -1)}
-                  specs={blockSpecs}
-                  onSelect={(spec) => selectBlockType(block, spec)}
-                />
-              ) : null}
-            </div>
+              isFocused={isFocused}
+              isSelected={isSelected}
+              readOnly={readOnly}
+              slash={slash?.blockId === block.id ? slash : null}
+              slashSections={currentSlashSections}
+            />
           );
         })}
       </div>
