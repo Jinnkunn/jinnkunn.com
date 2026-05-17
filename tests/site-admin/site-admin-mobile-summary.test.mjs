@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseSiteAdminAppRedirectUri } from "../../lib/site-admin/app-auth-redirect.ts";
+import {
+  buildSiteAdminAppAuthSignInUrl,
+  parseSiteAdminAppRedirectUri,
+} from "../../lib/site-admin/app-auth-redirect.ts";
 import { buildSiteAdminMobileSummary } from "../../lib/site-admin/mobile-summary.ts";
 
 function status(overrides = {}) {
@@ -94,4 +97,17 @@ test("app auth redirect: allows localhost and the fixed iOS callback only", () =
   assert.equal(parseSiteAdminAppRedirectUri("https://example.com/callback"), null);
   assert.equal(parseSiteAdminAppRedirectUri("jinnkunn-site-admin://evil/callback"), null);
   assert.equal(parseSiteAdminAppRedirectUri("other-app://auth/callback"), null);
+});
+
+test("app auth redirect: sends unauthenticated users to NextAuth with the full authorize URL", () => {
+  const signIn = buildSiteAdminAppAuthSignInUrl(
+    "https://jinkunchen.com/api/site-admin/app-auth/authorize?redirect_uri=jinnkunn-site-admin%3A%2F%2Fauth%2Fcallback&state=abc123",
+  );
+
+  assert.equal(signIn.origin, "https://jinkunchen.com");
+  assert.equal(signIn.pathname, "/api/auth/signin");
+  assert.equal(
+    signIn.searchParams.get("callbackUrl"),
+    "/api/site-admin/app-auth/authorize?redirect_uri=jinnkunn-site-admin%3A%2F%2Fauth%2Fcallback&state=abc123",
+  );
 });

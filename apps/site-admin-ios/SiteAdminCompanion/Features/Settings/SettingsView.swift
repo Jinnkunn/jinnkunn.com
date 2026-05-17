@@ -8,25 +8,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Environment") {
-                    Picker(
-                        "Site",
-                        selection: Binding(
-                            get: { session.environment },
-                            set: { session.selectEnvironment($0) }
-                        )
-                    ) {
-                        ForEach(SiteAdminEnvironment.allCases) { environment in
-                            Text(environment.name).tag(environment)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    LabeledContent("URL") {
-                        Text(session.baseURLString)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
-                    }
+                    SiteAdminEnvironmentPicker()
                 }
 
                 Section("Account") {

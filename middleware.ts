@@ -134,7 +134,8 @@ export async function middleware(req: NextRequest) {
       // back to the original page after sign-in.
       const url = req.nextUrl.clone();
       url.pathname = "/api/auth/signin";
-      url.searchParams.set("callbackUrl", pathname);
+      url.search = "";
+      url.searchParams.set("callbackUrl", `${pathname}${req.nextUrl.search}`);
       return NextResponse.redirect(url, 302);
     }
   }
@@ -167,8 +168,9 @@ export async function middleware(req: NextRequest) {
     const ok = await isContentGithubAuthorized(req);
     if (ok) return NextResponse.next();
     const url = req.nextUrl.clone();
-    url.pathname = "/site-admin/login";
-    url.searchParams.set("next", pathname);
+    url.pathname = "/api/auth/signin";
+    url.search = "";
+    url.searchParams.set("callbackUrl", `${pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(url, 302);
   }
 
