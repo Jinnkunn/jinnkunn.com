@@ -18,12 +18,15 @@ import {
   setBlockType,
   splitBlock,
   toggleTodo,
+  toggleTextMark,
   undo,
   updateBlockText,
   type EditorBlock,
   type EditorCommand,
   type EditorDocument,
   type EditorSelection,
+  type EditorTextMark,
+  type EditorTextSpan,
   type EditorTransaction,
 } from "../../editor-core/src/index.ts";
 
@@ -54,30 +57,103 @@ function blockClassName(block: EditorBlock): string {
     .join(" ");
 }
 
-function readTextOffset(element: HTMLElement): number {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return element.textContent?.length || 0;
-  const range = selection.getRangeAt(0);
-  if (!selection.focusNode || !element.contains(selection.focusNode)) {
-    return element.textContent?.length || 0;
-  }
-  const before = range.cloneRange();
+function readNodeOffset(element: HTMLElement, node: Node | null, offset: number): number {
+  if (!node || !element.contains(node)) return element.textContent?.length || 0;
+  const before = document.createRange();
   before.selectNodeContents(element);
-  before.setEnd(selection.focusNode, selection.focusOffset);
+  before.setEnd(node, offset);
   return before.toString().length;
 }
 
-function setTextOffset(element: HTMLElement, offset: number) {
-  element.focus();
+function readTextSelection(element: HTMLElement, blockId: string): EditorSelection {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return createCollapsedSelection(blockId, element.textContent?.length || 0);
+  }
+  return {
+    anchor: {
+      blockId,
+      offset: readNodeOffset(element, selection.anchorNode, selection.anchorOffset),
+    },
+    focus: {
+      blockId,
+      offset: readNodeOffset(element, selection.focusNode, selection.focusOffset),
+    },
+  };
+}
+
+function readTextOffset(element: HTMLElement): number {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return element.textContent?.length || 0;
+  return readNodeOffset(element, selection.focusNode, selection.focusOffset);
+}
+
+function textPointAtOffset(element: HTMLElement, offset: number): { node: Text; offset: number } {
   const text = element.textContent || "";
   const safeOffset = Math.max(0, Math.min(offset, text.length));
-  const node = element.firstChild || element.appendChild(document.createTextNode(""));
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode() as Text | null;
+  let cursor = 0;
+
+  while (node) {
+    const nextCursor = cursor + node.data.length;
+    if (safeOffset <= nextCursor) {
+      return { node, offset: safeOffset - cursor };
+    }
+    cursor = nextCursor;
+    node = walker.nextNode() as Text | null;
+  }
+
+  return {
+    node: element.appendChild(document.createTextNode("")),
+    offset: 0,
+  };
+}
+
+function setTextSelection(element: HTMLElement, nextSelection: EditorSelection) {
+  element.focus();
+  const anchor = textPointAtOffset(element, nextSelection.anchor.offset);
+  const focus = textPointAtOffset(element, nextSelection.focus.offset);
   const range = document.createRange();
-  range.setStart(node, Math.min(safeOffset, node.textContent?.length || 0));
+  range.setStart(anchor.node, anchor.offset);
   range.collapse(true);
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+  selection?.extend?.(focus.node, focus.offset);
+}
+
+function applyMarksToNode(text: string, marks: EditorTextMark[] | undefined): Node {
+  let node: Node = document.createTextNode(text);
+  if (marks?.includes("code")) {
+    const code = document.createElement("code");
+    code.append(node);
+    node = code;
+  }
+  if (marks?.includes("bold")) {
+    const strong = document.createElement("strong");
+    strong.append(node);
+    node = strong;
+  }
+  if (marks?.includes("italic")) {
+    const em = document.createElement("em");
+    em.append(node);
+    node = em;
+  }
+  if (marks?.includes("underline")) {
+    const underline = document.createElement("u");
+    underline.append(node);
+    node = underline;
+  }
+  return node;
+}
+
+function syncEditableDom(element: HTMLElement, block: EditorBlock) {
+  const fragment = document.createDocumentFragment();
+  for (const span of block.text) {
+    fragment.append(applyMarksToNode(span.text, span.marks));
+  }
+  element.replaceChildren(fragment);
 }
 
 function SlashMenu({
@@ -141,15 +217,19 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     const focus = getSelectionFocus(nextSelection);
     const target = blockRefs.current.get(focus.blockId);
     if (!target) return;
-    setTextOffset(target, focus.offset);
+    setTextSelection(target, nextSelection);
   }
 
   useLayoutEffect(() => {
+    for (const block of history.document.blocks) {
+      const target = blockRefs.current.get(block.id);
+      if (target && block.type !== "divider") syncEditableDom(target, block);
+    }
     const pending = pendingFocusRef.current;
     if (!pending) return;
     pendingFocusRef.current = null;
     focusSelection(pending);
-  }, [history.document, selection]);
+  }, [history.document]);
 
   function commit(transaction: EditorTransaction) {
     const nextSelection = transaction.selection
@@ -169,15 +249,13 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
   function selectCommand(command: EditorCommand, blockId = slash?.blockId) {
     if (!blockId) return;
     const block = currentBlock(blockId);
-    const focus = selection ? getSelectionFocus(selection) : null;
     let nextText: string | undefined;
 
-    if (slash?.blockId === blockId && block && focus?.blockId === blockId) {
+    if (slash?.blockId === blockId && block) {
       const text = getBlockPlainText(block);
-      const beforeCursor = text.slice(0, focus.offset);
-      const slashStart = beforeCursor.lastIndexOf("/");
+      const slashStart = text.lastIndexOf(`/${slash.query}`);
       if (slashStart >= 0) {
-        nextText = `${beforeCursor.slice(0, slashStart)}${text.slice(focus.offset)}`;
+        nextText = `${text.slice(0, slashStart)}${text.slice(slashStart + slash.query.length + 1)}`;
       }
     }
 
@@ -206,6 +284,19 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
       if (current?.blockId === block.id && current.query === query) return current;
       return { blockId: block.id, query, activeIndex: 0 };
     });
+  }
+
+  function handleSelectionChange(element: HTMLElement, blockId: string) {
+    setSelection(readTextSelection(element, blockId));
+  }
+
+  function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMark) {
+    const nextSelection = readTextSelection(event.currentTarget, block.id);
+    setSelection(nextSelection);
+    if (nextSelection.anchor.blockId !== nextSelection.focus.blockId) return;
+    if (nextSelection.anchor.offset === nextSelection.focus.offset) return;
+    event.preventDefault();
+    commit(toggleTextMark(history.document, block.id, nextSelection.anchor.offset, nextSelection.focus.offset, mark));
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock) {
@@ -237,6 +328,16 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
       setHistory(nextHistory);
       setSelection(nextSelection);
       setSlash(null);
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+      toggleSelectionMark(event, block, "bold");
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "i") {
+      toggleSelectionMark(event, block, "italic");
       return;
     }
 
@@ -383,16 +484,13 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
                     else blockRefs.current.delete(block.id);
                   }}
                   onFocus={(event) => {
-                    const offset = readTextOffset(event.currentTarget);
-                    setSelection(createCollapsedSelection(block.id, offset));
+                    handleSelectionChange(event.currentTarget, block.id);
                   }}
                   onKeyUp={(event) => {
-                    const offset = readTextOffset(event.currentTarget);
-                    setSelection(createCollapsedSelection(block.id, offset));
+                    handleSelectionChange(event.currentTarget, block.id);
                   }}
                   onMouseUp={(event) => {
-                    const offset = readTextOffset(event.currentTarget);
-                    setSelection(createCollapsedSelection(block.id, offset));
+                    handleSelectionChange(event.currentTarget, block.id);
                   }}
                   onInput={(event) => {
                     const offset = readTextOffset(event.currentTarget);
@@ -408,9 +506,7 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
                     handleText(block, event.currentTarget.textContent || "", offset);
                   }}
                   onKeyDown={(event) => handleKeyDown(event, currentBlock(block.id) || block)}
-                >
-                  {text}
-                </div>
+                />
               )}
               {slash?.blockId === block.id ? (
                 <SlashMenu

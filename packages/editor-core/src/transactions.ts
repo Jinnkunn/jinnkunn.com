@@ -5,9 +5,13 @@ import type {
   EditorBlockType,
   EditorDocument,
   EditorSelection,
+  EditorTextMark,
+  EditorTextSpan,
   EditorTransaction,
   EditorTransactionKind,
 } from "./types.ts";
+
+const TEXT_MARK_ORDER: EditorTextMark[] = ["bold", "italic", "code", "underline"];
 
 type MutationResult = {
   document: EditorDocument;
@@ -42,6 +46,37 @@ function updateTopLevel(
   return { document: next, selection };
 }
 
+function normalizeMarks(marks: EditorTextMark[] | undefined): EditorTextMark[] | undefined {
+  const next = TEXT_MARK_ORDER.filter((mark) => marks?.includes(mark));
+  return next.length > 0 ? next : undefined;
+}
+
+function marksEqual(left: EditorTextMark[] | undefined, right: EditorTextMark[] | undefined): boolean {
+  const normalizedLeft = normalizeMarks(left) || [];
+  const normalizedRight = normalizeMarks(right) || [];
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((mark, index) => mark === normalizedRight[index]);
+}
+
+function textSpan(text: string, marks: EditorTextMark[] | undefined): EditorTextSpan {
+  const normalizedMarks = normalizeMarks(marks);
+  return normalizedMarks ? { text, marks: normalizedMarks } : { text };
+}
+
+function mergeTextSpans(spans: EditorTextSpan[]): EditorTextSpan[] {
+  const merged: EditorTextSpan[] = [];
+  for (const span of spans) {
+    if (span.text.length === 0) continue;
+    const next = textSpan(span.text, span.marks);
+    const previous = merged.at(-1);
+    if (previous && marksEqual(previous.marks, next.marks)) {
+      previous.text += next.text;
+    } else {
+      merged.push(next);
+    }
+  }
+  return merged.length > 0 ? merged : [{ text: "" }];
+}
+
 export function updateBlockText(
   document: EditorDocument,
   blockId: string,
@@ -56,6 +91,70 @@ export function updateBlockText(
       if (!block || block.type === "divider") return undefined;
       block.text = [{ text }];
       return createCollapsedSelection(blockId, offset);
+    }),
+  );
+}
+
+export function toggleTextMark(
+  document: EditorDocument,
+  blockId: string,
+  startOffset: number,
+  endOffset: number,
+  mark: EditorTextMark,
+): EditorTransaction {
+  return transaction(
+    "toggle-text-mark",
+    document,
+    updateTopLevel(document, (blocks) => {
+      const block = blocks.find((item) => item.id === blockId);
+      if (!block || block.type === "divider") return undefined;
+
+      const textLength = getBlockPlainText(block).length;
+      const start = Math.max(0, Math.min(Math.min(startOffset, endOffset), textLength));
+      const end = Math.max(0, Math.min(Math.max(startOffset, endOffset), textLength));
+      if (start === end) return createCollapsedSelection(blockId, start);
+
+      let cursor = 0;
+      let everySelectedSpanHasMark = true;
+      for (const span of block.text) {
+        const spanStart = cursor;
+        const spanEnd = cursor + span.text.length;
+        cursor = spanEnd;
+        if (spanEnd <= start || spanStart >= end) continue;
+        if (!span.marks?.includes(mark)) everySelectedSpanHasMark = false;
+      }
+
+      cursor = 0;
+      const nextSpans: EditorTextSpan[] = [];
+      for (const span of block.text) {
+        const spanStart = cursor;
+        const spanEnd = cursor + span.text.length;
+        cursor = spanEnd;
+
+        if (spanEnd <= start || spanStart >= end) {
+          nextSpans.push(span);
+          continue;
+        }
+
+        const selectionStart = Math.max(start, spanStart) - spanStart;
+        const selectionEnd = Math.min(end, spanEnd) - spanStart;
+        const before = span.text.slice(0, selectionStart);
+        const selected = span.text.slice(selectionStart, selectionEnd);
+        const after = span.text.slice(selectionEnd);
+        const selectedMarks = new Set(span.marks || []);
+        if (everySelectedSpanHasMark) selectedMarks.delete(mark);
+        else selectedMarks.add(mark);
+
+        if (before) nextSpans.push(textSpan(before, span.marks));
+        if (selected) nextSpans.push(textSpan(selected, [...selectedMarks]));
+        if (after) nextSpans.push(textSpan(after, span.marks));
+      }
+
+      block.text = mergeTextSpans(nextSpans);
+      return {
+        anchor: { blockId, offset: startOffset },
+        focus: { blockId, offset: endOffset },
+      };
     }),
   );
 }
