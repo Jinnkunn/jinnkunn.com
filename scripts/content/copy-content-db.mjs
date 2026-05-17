@@ -19,6 +19,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const out = {
     dryRun: false,
     json: false,
+    only: [],
     quiet: false,
     sourceEnv: "staging",
     targetEnv: "production",
@@ -29,12 +30,14 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--quiet") out.quiet = true;
     else if (arg.startsWith("--source-env=")) out.sourceEnv = arg.slice("--source-env=".length);
     else if (arg.startsWith("--target-env=")) out.targetEnv = arg.slice("--target-env=".length);
-    else if (arg === "--remote") {
+    else if (arg.startsWith("--only=")) {
+      out.only.push(normalizeContentRel(arg.slice("--only=".length)));
+    } else if (arg === "--remote") {
       // Kept for package-script readability. This script always targets remote D1.
     } else {
       console.error(`unknown arg: ${arg}`);
       console.error(
-        "usage: node scripts/content/copy-content-db.mjs [--remote] [--source-env=staging] [--target-env=production] [--dry-run] [--json] [--quiet]",
+        "usage: node scripts/content/copy-content-db.mjs [--remote] [--source-env=staging] [--target-env=production] [--only=now.json] [--dry-run] [--json] [--quiet]",
       );
       process.exit(2);
     }
@@ -45,6 +48,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     console.error("--source-env and --target-env must be different");
     process.exit(2);
   }
+  out.only = [...new Set(out.only)].filter(Boolean).sort();
   return out;
 }
 
@@ -82,6 +86,21 @@ function normalizeEnv(value, label) {
   if (raw === "staging" || raw === "production") return raw;
   console.error(`invalid --${label}: ${raw || "(empty)"}`);
   process.exit(2);
+}
+
+function normalizeContentRel(value) {
+  const raw = String(value || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/^content\//, "");
+  const parts = raw.split("/").filter(Boolean);
+  if (
+    parts.length === 0 ||
+    parts.some((part) => part === "." || part === ".." || part.includes("\0"))
+  ) {
+    throw new Error(`invalid --only path: ${value}`);
+  }
+  return parts.join("/");
 }
 
 async function cfD1Query({ env, sql, params = [] }) {
@@ -156,6 +175,9 @@ function summarizeRows(rows) {
 async function main() {
   loadProjectEnv({ cwd: ROOT, override: true });
   const args = parseArgs();
+  const onlyWhere = args.only.length
+    ? `WHERE rel_path IN (${args.only.map(() => "?").join(", ")})`
+    : "";
   const sourceRows = (
     await cfD1Query({
       env: args.sourceEnv,
@@ -167,16 +189,29 @@ async function main() {
                    updated_at,
                    updated_by
               FROM content_files
+              ${onlyWhere}
              ORDER BY rel_path`,
+      params: args.only,
     })
   ).map(normalizeRow);
   if (sourceRows.length === 0) {
-    throw new Error(`Refusing to mirror empty ${args.sourceEnv} content_files`);
+    throw new Error(
+      args.only.length
+        ? `No matching ${args.sourceEnv} content_files rows for ${args.only.join(", ")}`
+        : `Refusing to mirror empty ${args.sourceEnv} content_files`,
+    );
+  }
+  const found = new Set(sourceRows.map((row) => row.relPath));
+  const missing = args.only.filter((relPath) => !found.has(relPath));
+  if (missing.length > 0) {
+    throw new Error(`Missing ${args.sourceEnv} content_files rows: ${missing.join(", ")}`);
   }
 
   const summary = {
     ok: true,
     dryRun: args.dryRun,
+    mode: args.only.length ? "selected" : "full",
+    only: args.only,
     sourceEnv: args.sourceEnv,
     targetEnv: args.targetEnv,
     copied: args.dryRun ? 0 : sourceRows.length,
@@ -184,7 +219,17 @@ async function main() {
   };
 
   if (!args.dryRun) {
-    await cfD1Query({ env: args.targetEnv, sql: "DELETE FROM content_files" });
+    if (args.only.length) {
+      for (const relPath of args.only) {
+        await cfD1Query({
+          env: args.targetEnv,
+          sql: "DELETE FROM content_files WHERE rel_path = ?",
+          params: [relPath],
+        });
+      }
+    } else {
+      await cfD1Query({ env: args.targetEnv, sql: "DELETE FROM content_files" });
+    }
     for (const row of sourceRows) {
       if (row.isBinary) {
         throw new Error(`Refusing to mirror binary content row via text params: ${row.relPath}`);
@@ -216,7 +261,7 @@ async function main() {
     console.log(JSON.stringify(summary, null, 2));
   } else if (!args.quiet) {
     console.log(
-      `[copy-content-db] ${args.dryRun ? "would copy" : "copied"} ${sourceRows.length} content_files rows ${args.sourceEnv} → ${args.targetEnv} (posts=${summary.source.posts}, pages=${summary.source.pages})`,
+      `[copy-content-db] ${args.dryRun ? "would copy" : "copied"} ${sourceRows.length} content_files rows ${args.sourceEnv} → ${args.targetEnv} (${summary.mode}, posts=${summary.source.posts}, pages=${summary.source.pages})`,
     );
   }
 }

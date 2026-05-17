@@ -242,6 +242,11 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src-tauri/src/site_admin.rs"),
+    "publish:now:prod:from-staging",
+    "Tauri release job Now-only production copy whitelist",
+  );
+  assertIncludes(
+    read("apps/workspace/src-tauri/src/site_admin.rs"),
     "release:status:json",
     "Tauri release live status whitelist",
   );

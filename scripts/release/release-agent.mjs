@@ -41,6 +41,10 @@ export const COMMANDS = {
     args: ["run", "publish:content:prod:from-staging"],
     label: "Publish production content from staging",
   },
+  "publish-now-production-from-staging": {
+    args: ["run", "publish:now:prod:from-staging"],
+    label: "Publish Now to live",
+  },
 };
 
 function parseArgs(argv = process.argv.slice(2)) {

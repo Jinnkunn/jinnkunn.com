@@ -10,6 +10,7 @@ import { effectiveCodeSha } from "./deploy-metadata.mjs";
 
 export const DEFAULT_RELEASE_ROUTES = ["/", "/news", "/blog", "/calendar"];
 export const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
+const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/now.json"]);
 
 function run(command, args, options = {}) {
   const capture = Boolean(options.capture);
@@ -170,6 +171,10 @@ function isMissingOverlayTableError(error) {
   return /no such table:\s*static_shell_overlay/i.test(String(error?.message || error));
 }
 
+function isMissingContentFilesTableError(error) {
+  return /no such table:\s*content_files/i.test(String(error?.message || error));
+}
+
 async function readOverlayStatus({ root, env }) {
   try {
     const result = await cfD1Query({
@@ -200,6 +205,78 @@ async function readOverlayStatus({ root, env }) {
       fileCount: 0,
     };
   }
+}
+
+async function readContentFileStatus({ root, env, relPath }) {
+  try {
+    const result = await cfD1Query({
+      root,
+      env,
+      sql: `SELECT sha, updated_at
+              FROM content_files
+             WHERE rel_path = ?
+             LIMIT 1`,
+      params: [relPath],
+    });
+    const row = d1Rows(result)[0];
+    if (!row) {
+      return {
+        ok: true,
+        exists: false,
+        relPath,
+        sha: "",
+        updatedAt: 0,
+      };
+    }
+    return {
+      ok: true,
+      exists: true,
+      relPath,
+      sha: String(row.sha || ""),
+      updatedAt: Number(row.updated_at || 0),
+    };
+  } catch (error) {
+    if (isMissingContentFilesTableError(error)) {
+      return {
+        ok: true,
+        exists: false,
+        relPath,
+        sha: "",
+        updatedAt: 0,
+      };
+    }
+    return {
+      ok: false,
+      exists: false,
+      relPath,
+      sha: "",
+      updatedAt: 0,
+      error: error?.message || String(error),
+    };
+  }
+}
+
+function buildNowPreview({ staging, production }) {
+  const comparable = Boolean(staging?.ok && production?.ok);
+  const stagingHasNow = Boolean(staging?.exists && staging?.sha);
+  const productionHasNow = Boolean(production?.exists && production?.sha);
+  return {
+    current:
+      comparable &&
+      stagingHasNow &&
+      productionHasNow &&
+      staging.sha === production.sha,
+    productionAction:
+      !comparable
+        ? "unknown"
+        : !stagingHasNow
+          ? "noop"
+          : !productionHasNow || staging.sha !== production.sha
+            ? "copy-staging-now"
+            : "noop",
+    staging,
+    production,
+  };
 }
 
 async function readDeployment({ root, env }) {
@@ -304,6 +381,7 @@ function hashContentInput(root) {
       if (entry.name === ".DS_Store") continue;
       const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
       if (rel === "local" || rel.startsWith("local/")) continue;
+      if (RUNTIME_CONTENT_INPUT_REL_PATHS.has(`content/${rel}`)) continue;
       const abs = path.join(absDir, entry.name);
       if (entry.isDirectory()) {
         walk(abs, rel);
@@ -579,6 +657,14 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
       reason: "Production content overlay is behind staging.",
     };
   }
+  if (status.now?.productionAction === "copy-staging-now") {
+    return {
+      kind: "publish-now-production-from-staging",
+      label: "Publish Now to Live",
+      script: "publish:now:prod:from-staging",
+      reason: "The Now status is newer on staging.",
+    };
+  }
   if (status.routeParity && !status.routeParity.ok) {
     if (!stagingOverlay?.snapshotSha) {
       return {
@@ -613,11 +699,20 @@ export async function buildLiveReleaseStatus({
   includeRoutes = true,
 } = {}) {
   const git = readGitState({ root });
-  const [staging, production, stagingOverlay, productionOverlay] = await Promise.all([
+  const [
+    staging,
+    production,
+    stagingOverlay,
+    productionOverlay,
+    stagingNow,
+    productionNow,
+  ] = await Promise.all([
     readDeployment({ root, env: "staging" }),
     readDeployment({ root, env: "production" }),
     readOverlayStatus({ root, env: "staging" }),
     readOverlayStatus({ root, env: "production" }),
+    readContentFileStatus({ root, env: "staging", relPath: "now.json" }),
+    readContentFileStatus({ root, env: "production", relPath: "now.json" }),
   ]);
   const contentInputSha = hashContentInput(root);
   const stagingDiffFromLocal = contentOnlyDiffFrom({
@@ -649,6 +744,7 @@ export async function buildLiveReleaseStatus({
       staging: { status: stagingOverlay },
       production: { status: productionOverlay },
     },
+    now: buildNowPreview({ staging: stagingNow, production: productionNow }),
     stagingDiffFromLocal,
     routeParity,
   };

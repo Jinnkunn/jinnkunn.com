@@ -19,7 +19,8 @@ export type ReleaseJobAction =
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
-  | "publish-content-production-from-staging";
+  | "publish-content-production-from-staging"
+  | "publish-now-production-from-staging";
 
 export type ReleaseJobTarget = "staging" | "production";
 
@@ -118,6 +119,12 @@ const RELEASE_JOB_COMMANDS: Record<ReleaseJobAction, ReleaseJobCommand> = {
     action: "publish-content-production-from-staging",
     args: ["run", "publish:content:prod:from-staging"],
     npmScript: "publish:content:prod:from-staging",
+    target: "production",
+  },
+  "publish-now-production-from-staging": {
+    action: "publish-now-production-from-staging",
+    args: ["run", "publish:now:prod:from-staging"],
+    npmScript: "publish:now:prod:from-staging",
     target: "production",
   },
 };

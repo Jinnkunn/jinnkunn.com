@@ -13,11 +13,13 @@ test("release plan model: exposes smart release action kinds and scripts", async
   assert.match(source, /"deploy-staging-code"/);
   assert.match(source, /"promote-production-code"/);
   assert.match(source, /"publish-content-production-from-staging"/);
+  assert.match(source, /"publish-now-production-from-staging"/);
   assert.match(source, /"noop"/);
   assert.match(source, /"blocked"/);
   assert.match(source, /export type ReleaseTarget = "staging" \| "production"/);
   assert.match(source, /PUBLISH_CONTENT_STAGING_SCRIPT/);
   assert.match(source, /PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT/);
+  assert.match(source, /PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT/);
   assert.match(source, /RELEASE_STAGING_SCRIPT/);
   assert.match(source, /RELEASE_PROD_FROM_STAGING_SCRIPT/);
 });

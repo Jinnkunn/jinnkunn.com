@@ -32,6 +32,7 @@ test("release jobs: exposes only explicit release agent actions", () => {
     "promote-production-code",
     "publish-content-production-from-staging",
     "publish-content-staging",
+    "publish-now-production-from-staging",
     "runner-self-test",
     "smart-release",
     "status",

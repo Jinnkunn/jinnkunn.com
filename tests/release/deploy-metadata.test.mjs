@@ -83,6 +83,8 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(script, /fetchLiveBuildId/);
   assert.match(script, /hashContentInput/);
   assert.match(script, /contentInputSha/);
+  assert.match(script, /RUNTIME_CONTENT_INPUT_REL_PATHS/);
+  assert.match(script, /content\/now\.json/);
   assert.match(script, /workerCodeSha/);
   assert.match(script, /skipping build and upload/);
   assert.match(script, /copyStagingOverlayToProduction/);
@@ -110,8 +112,11 @@ test("smart release CLI and package scripts expose content production copy", asy
   assert.match(releaseSite, /buildLiveReleaseStatus/);
   assert.match(releaseStatus, /Route Parity|routeParity|DEFAULT_RELEASE_ROUTES/);
   assert.match(liveStatus, /deriveLiveReleasePlan/);
+  assert.match(liveStatus, /RUNTIME_CONTENT_INPUT_REL_PATHS/);
   assert.match(liveStatus, /publish-content-production-from-staging/);
   assert.match(liveStatus, /publish:content:prod:from-staging/);
+  assert.match(liveStatus, /publish-now-production-from-staging/);
+  assert.match(packageJson, /"publish:now:prod:from-staging"/);
   assert.match(packageJson, /"release:site"/);
   assert.match(packageJson, /"release:status"/);
   assert.match(packageJson, /"publish:content:prod:from-staging"/);
