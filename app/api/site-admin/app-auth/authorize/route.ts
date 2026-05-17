@@ -2,7 +2,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { apiError, requireSiteAdminContext } from "@/lib/server/site-admin-api";
-import { issueSiteAdminAppToken } from "@/lib/server/site-admin-app-token";
+import {
+  inferSiteAdminAppTokenEnvironment,
+  issueSiteAdminAppToken,
+} from "@/lib/server/site-admin-app-token";
 import { checkRateLimit, requestIpFromHeaders } from "@/lib/server/rate-limit";
 import {
   buildSiteAdminAppAuthSignInUrl,
@@ -62,7 +65,9 @@ export async function GET(req: NextRequest) {
 
   let token: { token: string; expiresAt: string };
   try {
-    token = issueSiteAdminAppToken(auth.value.login);
+    token = issueSiteAdminAppToken(auth.value.login, {
+      environment: inferSiteAdminAppTokenEnvironment(req.url),
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err || "Token issue failed");
     return apiError(message, { status: 500, code: "APP_TOKEN_ISSUE_FAILED" });

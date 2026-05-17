@@ -81,6 +81,13 @@ struct TodayView: View {
                     Label("Update Now", systemImage: "square.and.pencil")
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!session.environment.canEditContent)
+
+                if !session.environment.canEditContent {
+                    Text("Live is read-only. Switch to Draft to update this status.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

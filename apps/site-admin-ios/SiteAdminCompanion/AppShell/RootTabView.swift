@@ -25,8 +25,8 @@ struct RootTabView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
-        .task {
-            if session.isSignedIn, session.summary == nil {
+        .task(id: session.environment) {
+            if session.isSignedIn {
                 await session.refresh()
             }
         }
@@ -71,10 +71,15 @@ struct SiteAdminEnvironmentPicker: View {
             }
             .pickerStyle(.segmented)
 
+            Text(session.environment.subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+
             if showURL {
                 Text(session.baseURLString)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -91,7 +96,7 @@ struct EmptySignedOutView: View {
             Label("Connect Site Admin", systemImage: "lock.open")
         } description: {
             VStack(spacing: 12) {
-                Text("Choose a Site Admin environment, then sign in once to manage the website from this device.")
+                Text("Use Draft for editing and Live for the published site. Each environment keeps its own sign-in.")
                 SiteAdminEnvironmentPicker()
                     .frame(maxWidth: 320)
             }

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  inferSiteAdminAppTokenEnvironment,
   issueSiteAdminAppToken,
   verifySiteAdminAppToken,
 } from "../../lib/server/site-admin-app-token.ts";
@@ -25,16 +26,51 @@ function withTokenSecret(value, run) {
 
 test("site-admin app token: issue + verify roundtrip", () => {
   withTokenSecret("test-site-admin-app-secret", () => {
-    const issued = issueSiteAdminAppToken("JinnKunn", { ttlSeconds: 120 });
+    const issued = issueSiteAdminAppToken("JinnKunn", {
+      ttlSeconds: 120,
+      environment: "staging",
+    });
     assert.ok(issued.token.includes("."), "token should be jwt-like");
     assert.ok(issued.expiresAt, "expiresAt should be present");
 
-    const verified = verifySiteAdminAppToken(issued.token);
+    const verified = verifySiteAdminAppToken(issued.token, { environment: "staging" });
     assert.equal(verified.ok, true);
     if (!verified.ok) return;
     assert.equal(verified.login, "jinnkunn");
     assert.ok(verified.expiresAt);
   });
+});
+
+test("site-admin app token: environment mismatch is rejected", () => {
+  withTokenSecret("test-site-admin-app-secret", () => {
+    const issued = issueSiteAdminAppToken("jinnkunn", { environment: "staging" });
+    assert.equal(verifySiteAdminAppToken(issued.token, { environment: "staging" }).ok, true);
+    const verified = verifySiteAdminAppToken(issued.token, { environment: "production" });
+    assert.equal(verified.ok, false);
+  });
+});
+
+test("site-admin app token: environment inference follows site hostnames", () => {
+  assert.equal(
+    inferSiteAdminAppTokenEnvironment("https://staging.jinkunchen.com/api/site-admin/app-auth/authorize"),
+    "staging",
+  );
+  assert.equal(
+    inferSiteAdminAppTokenEnvironment("https://jinkunchen.com/api/site-admin/app-auth/authorize"),
+    "production",
+  );
+  const originalDeployEnv = process.env.DEPLOY_ENV;
+  const originalCfDeployEnv = process.env.CLOUDFLARE_DEPLOY_ENV;
+  process.env.DEPLOY_ENV = "";
+  process.env.CLOUDFLARE_DEPLOY_ENV = "";
+  try {
+    assert.equal(inferSiteAdminAppTokenEnvironment("http://localhost:3000"), null);
+  } finally {
+    if (originalDeployEnv === undefined) delete process.env.DEPLOY_ENV;
+    else process.env.DEPLOY_ENV = originalDeployEnv;
+    if (originalCfDeployEnv === undefined) delete process.env.CLOUDFLARE_DEPLOY_ENV;
+    else process.env.CLOUDFLARE_DEPLOY_ENV = originalCfDeployEnv;
+  }
 });
 
 test("site-admin app token: invalid signature is rejected", () => {
@@ -63,4 +99,3 @@ test("site-admin app token: missing secret fails fast", () => {
     process.env.AUTH_SECRET = ORIGINAL_AUTH_SECRET;
   }
 });
-
