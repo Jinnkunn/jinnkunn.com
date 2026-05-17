@@ -4,9 +4,12 @@ type SiteAdminAppTokenPayload = {
   iss: "site-admin";
   aud: "site-admin-app";
   sub: string;
+  env?: SiteAdminAppTokenEnvironment;
   iat: number;
   exp: number;
 };
+
+export type SiteAdminAppTokenEnvironment = "staging" | "production";
 
 export type SiteAdminAppTokenIssueResult = {
   token: string;
@@ -54,9 +57,30 @@ function toExpiresAtIso(exp: number): string {
   return new Date(exp * 1000).toISOString();
 }
 
+function normalizeEnvironment(value: unknown): SiteAdminAppTokenEnvironment | null {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "staging") return "staging";
+  if (raw === "production" || raw === "prod") return "production";
+  return null;
+}
+
+export function inferSiteAdminAppTokenEnvironment(
+  value: string | URL,
+): SiteAdminAppTokenEnvironment | null {
+  const url = typeof value === "string" ? new URL(value) : value;
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === "staging.jinkunchen.com" || hostname.startsWith("staging.")) {
+    return "staging";
+  }
+  if (hostname === "jinkunchen.com" || hostname === "www.jinkunchen.com") {
+    return "production";
+  }
+  return normalizeEnvironment(process.env.CLOUDFLARE_DEPLOY_ENV || process.env.DEPLOY_ENV);
+}
+
 export function issueSiteAdminAppToken(
   login: string,
-  opts?: { ttlSeconds?: number },
+  opts?: { ttlSeconds?: number; environment?: SiteAdminAppTokenEnvironment | null },
 ): SiteAdminAppTokenIssueResult {
   const secret = getTokenSecret();
   if (!secret) {
@@ -74,6 +98,7 @@ export function issueSiteAdminAppToken(
     iat: now,
     exp: now + ttl,
   };
+  if (opts?.environment) payload.env = opts.environment;
 
   const header = { alg: "HS256", typ: "JWT" as const };
   const headerPart = base64UrlEncode(JSON.stringify(header));
@@ -95,7 +120,10 @@ function verifySignature(
   return crypto.timingSafeEqual(a, b);
 }
 
-export function verifySiteAdminAppToken(token: string): SiteAdminAppTokenVerifyResult {
+export function verifySiteAdminAppToken(
+  token: string,
+  opts?: { environment?: SiteAdminAppTokenEnvironment | null },
+): SiteAdminAppTokenVerifyResult {
   const rawToken = String(token || "").trim();
   if (!rawToken) return { ok: false, error: "Missing app token" };
   const parts = rawToken.split(".");
@@ -124,6 +152,9 @@ export function verifySiteAdminAppToken(token: string): SiteAdminAppTokenVerifyR
   }
   const login = toLogin(payload.sub);
   if (!login) return { ok: false, error: "Invalid app token subject" };
+  if (opts?.environment && payload.env !== opts.environment) {
+    return { ok: false, error: "Invalid app token environment" };
+  }
   const now = Math.floor(Date.now() / 1000);
   if (!Number.isFinite(payload.exp) || payload.exp <= now) {
     return { ok: false, error: "App token expired" };

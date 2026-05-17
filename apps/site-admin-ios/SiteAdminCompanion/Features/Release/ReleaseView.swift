@@ -14,6 +14,17 @@ struct ReleaseView: View {
                             releaseSummary
                         }
 
+                        Section("Mode") {
+                            LabeledContent(session.environment.name, value: session.environment.technicalName)
+                            Text(
+                                session.environment == .staging
+                                    ? "Draft release publishes the staging preview first."
+                                    : "Live release promotes the validated staging build to production."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+
                         if let job = session.summary?.release.runningJob {
                             Section("Current Job") {
                                 jobRow(job)

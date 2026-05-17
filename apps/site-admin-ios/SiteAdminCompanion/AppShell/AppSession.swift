@@ -10,10 +10,32 @@ enum SiteAdminEnvironment: String, CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .staging:
+            return "Draft"
+        case .production:
+            return "Live"
+        }
+    }
+
+    var technicalName: String {
+        switch self {
+        case .staging:
             return "Staging"
         case .production:
             return "Production"
         }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .staging:
+            return "Edit and preview before publishing."
+        case .production:
+            return "Published site, read-only for edits."
+        }
+    }
+
+    var canEditContent: Bool {
+        self == .staging
     }
 
     var baseURLString: String {
@@ -41,7 +63,8 @@ final class AppSession {
     var message: String?
 
     @ObservationIgnored private let defaults = UserDefaults.standard
-    @ObservationIgnored private let tokenStore = KeychainTokenStore(
+    @ObservationIgnored private let keychainService = "com.jinkunchen.SiteAdminCompanion"
+    @ObservationIgnored private let legacyTokenStore = KeychainTokenStore(
         service: "com.jinkunchen.SiteAdminCompanion",
         account: "site-admin-token"
     )
@@ -58,9 +81,7 @@ final class AppSession {
             baseURLString = savedBaseURL
             environment = savedBaseURL.contains("staging.") ? .staging : .production
         }
-        if let stored = tokenStore.load() {
-            token = stored
-        }
+        loadAuth(for: environment)
     }
 
     var isSignedIn: Bool {
@@ -90,8 +111,12 @@ final class AppSession {
         baseURLString = next.baseURLString
         defaults.set(next.rawValue, forKey: environmentKey)
         defaults.set(next.baseURLString, forKey: baseURLKey)
-        clearAuth()
-        message = "Switched to \(next.name). Sign in again for this environment."
+        summary = nil
+        releaseDetail = nil
+        loadAuth(for: next)
+        message = isSignedIn
+            ? "Switched to \(next.name). Using the saved \(next.technicalName) sign-in."
+            : "Switched to \(next.name). Sign in once for \(next.technicalName)."
     }
 
     func saveCustomBaseURL() {
@@ -116,6 +141,7 @@ final class AppSession {
                 releaseDetail = nil
             }
         } catch {
+            clearCurrentTokenIfExpired(error)
             message = friendlyMessage(for: error)
         }
     }
@@ -133,7 +159,8 @@ final class AppSession {
             token = result.token
             login = result.login
             tokenExpiresAt = result.expiresAt
-            try tokenStore.save(result.token)
+            try tokenStore(for: environment).save(result.token)
+            saveAuthMetadata(login: result.login, expiresAt: result.expiresAt, for: environment)
             await refresh()
         } catch {
             message = friendlyMessage(for: error)
@@ -141,15 +168,41 @@ final class AppSession {
     }
 
     func clearAuth() {
+        tokenStore(for: environment).delete()
+        clearAuthMetadata(for: environment)
+        resetCurrentAuthState()
+    }
+
+    func clearAllAuth() {
+        for environment in SiteAdminEnvironment.allCases {
+            tokenStore(for: environment).delete()
+            clearAuthMetadata(for: environment)
+        }
+        legacyTokenStore.delete()
+        resetCurrentAuthState()
+    }
+
+    func isSignedIn(to environment: SiteAdminEnvironment) -> Bool {
+        tokenStore(for: environment).load()?.isEmpty == false
+    }
+
+    func signInStatus(for environment: SiteAdminEnvironment) -> String {
+        isSignedIn(to: environment) ? "Signed in" : "Not signed in"
+    }
+
+    private func resetCurrentAuthState() {
         token = nil
         login = ""
         tokenExpiresAt = ""
         summary = nil
         releaseDetail = nil
-        tokenStore.delete()
     }
 
     func updateNow(text: String, context: String, location: String) async -> Bool {
+        guard environment.canEditContent else {
+            message = "Switch to Draft to edit site content. Live is read-only."
+            return false
+        }
         guard let client else {
             message = "Invalid Site Admin URL."
             return false
@@ -162,6 +215,7 @@ final class AppSession {
             await refresh()
             return true
         } catch {
+            clearCurrentTokenIfExpired(error)
             message = friendlyMessage(for: error)
             return false
         }
@@ -181,6 +235,7 @@ final class AppSession {
             await refresh()
             await refreshReleaseDetail(jobId: job.id, reportErrors: false)
         } catch {
+            clearCurrentTokenIfExpired(error)
             message = friendlyMessage(for: error)
         }
     }
@@ -204,9 +259,67 @@ final class AppSession {
                 message = nil
             }
         } catch {
+            clearCurrentTokenIfExpired(error)
             if reportErrors {
                 message = friendlyMessage(for: error)
             }
+        }
+    }
+
+    private func tokenStore(for environment: SiteAdminEnvironment) -> KeychainTokenStore {
+        KeychainTokenStore(
+            service: keychainService,
+            account: "site-admin-token-\(environment.rawValue)"
+        )
+    }
+
+    private func metadataKey(_ suffix: String, for environment: SiteAdminEnvironment) -> String {
+        "site-admin-\(environment.rawValue)-\(suffix)"
+    }
+
+    private func loadAuth(for environment: SiteAdminEnvironment) {
+        if let stored = tokenStore(for: environment).load() {
+            token = stored
+        } else if let legacyToken = legacyTokenStore.load(), environment == .staging {
+            token = legacyToken
+            try? tokenStore(for: environment).save(legacyToken)
+            legacyTokenStore.delete()
+        } else {
+            token = nil
+        }
+        login = defaults.string(forKey: metadataKey("login", for: environment)) ?? ""
+        tokenExpiresAt = defaults.string(forKey: metadataKey("expires-at", for: environment)) ?? ""
+    }
+
+    private func saveAuthMetadata(login: String, expiresAt: String, for environment: SiteAdminEnvironment) {
+        defaults.set(login, forKey: metadataKey("login", for: environment))
+        defaults.set(expiresAt, forKey: metadataKey("expires-at", for: environment))
+    }
+
+    private func clearAuthMetadata(for environment: SiteAdminEnvironment) {
+        defaults.removeObject(forKey: metadataKey("login", for: environment))
+        defaults.removeObject(forKey: metadataKey("expires-at", for: environment))
+    }
+
+    private func clearCurrentTokenIfExpired(_ error: Error) {
+        guard isAuthExpired(error) else { return }
+        tokenStore(for: environment).delete()
+        clearAuthMetadata(for: environment)
+        token = nil
+        login = ""
+        tokenExpiresAt = ""
+        summary = nil
+        releaseDetail = nil
+    }
+
+    private func isAuthExpired(_ error: Error) -> Bool {
+        guard let clientError = error as? SiteAdminClientError else { return false }
+        switch clientError {
+        case .api(let message):
+            let normalized = message.lowercased()
+            return normalized.contains("expired") || normalized.contains("unauthorized")
+        default:
+            return false
         }
     }
 

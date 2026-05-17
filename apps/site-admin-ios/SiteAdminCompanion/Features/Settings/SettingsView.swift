@@ -9,11 +9,15 @@ struct SettingsView: View {
             Form {
                 Section("Environment") {
                     SiteAdminEnvironmentPicker()
+                    ForEach(SiteAdminEnvironment.allCases) { environment in
+                        LabeledContent(environment.name, value: session.signInStatus(for: environment))
+                    }
                 }
 
                 Section("Account") {
                     if session.isSignedIn {
                         LabeledContent("Status", value: "Signed in")
+                        LabeledContent("Mode", value: "\(session.environment.name) / \(session.environment.technicalName)")
                         if !session.login.isEmpty {
                             LabeledContent("Login", value: session.login)
                         }
@@ -27,13 +31,16 @@ struct SettingsView: View {
                         Button("Refresh") {
                             Task { await session.refresh() }
                         }
-                        Button("Sign Out", role: .destructive) {
+                        Button("Sign Out from \(session.environment.name)", role: .destructive) {
                             session.clearAuth()
                         }
                     } else {
-                        Button("Sign In") {
+                        Button("Sign In to \(session.environment.name)") {
                             Task { await session.signIn() }
                         }
+                    }
+                    Button("Sign Out Everywhere", role: .destructive) {
+                        session.clearAllAuth()
                     }
                 }
 
@@ -43,7 +50,7 @@ struct SettingsView: View {
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
 
-                    Button("Save URL and Sign Out") {
+                    Button("Save URL and Sign Out from Current Mode") {
                         session.saveCustomBaseURL()
                         session.clearAuth()
                         session.message = "Custom URL saved. Sign in again."

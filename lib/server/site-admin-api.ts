@@ -14,7 +14,10 @@ import {
   verifyCloudflareAccessFromHeaders,
 } from "@/lib/server/cloudflare-access-auth";
 import type { ParseResult } from "@/lib/site-admin/request-types";
-import { verifySiteAdminAppToken } from "@/lib/server/site-admin-app-token";
+import {
+  inferSiteAdminAppTokenEnvironment,
+  verifySiteAdminAppToken,
+} from "@/lib/server/site-admin-app-token";
 import { parseSiteAdminJsonCommand } from "@/lib/server/site-admin-request";
 import {
   noStoreData,
@@ -180,7 +183,9 @@ export async function requireSiteAdminContext(
 
   const bearerToken = readBearerToken(req);
   if (bearerToken) {
-    const verified = verifySiteAdminAppToken(bearerToken);
+    const verified = verifySiteAdminAppToken(bearerToken, {
+      environment: inferSiteAdminAppTokenEnvironment(req.url),
+    });
     if (!verified.ok || !allow.has(verified.login)) {
       return { ok: false, res: apiError("Unauthorized", { status: 401, code: "UNAUTHORIZED" }) };
     }
