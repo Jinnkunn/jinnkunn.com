@@ -80,6 +80,13 @@ type BlockTypeMenuState = {
   blockId: string;
 };
 
+type LinkPopoverState = TextRange & {
+  href: string;
+  icon: string | null;
+  left: number;
+  top: number;
+};
+
 type DragState = {
   blockId: string;
   overBlockId: string | null;
@@ -186,6 +193,19 @@ function readTextOffset(element: HTMLElement): number {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return element.textContent?.length || 0;
   return readNodeOffset(element, selection.focusNode, selection.focusOffset);
+}
+
+function readElementTextRange(root: HTMLElement, element: HTMLElement): TextRange | null {
+  if (!root.contains(element)) return null;
+  const before = document.createRange();
+  before.selectNodeContents(root);
+  before.setEndBefore(element);
+  const start = before.toString().length;
+  return {
+    blockId: "",
+    end: start + (element.textContent?.length || 0),
+    start,
+  };
 }
 
 function readSelectionBubblePosition(element: HTMLElement, blockId: string, allowCollapsed = false): BubblePosition | null {
@@ -447,6 +467,16 @@ function selectedMarkAttrs(
     return markAttrs(span.marks, mark);
   }
   return null;
+}
+
+function normalizedHref(href: string): string {
+  const trimmed = href.trim();
+  if (!trimmed) return "";
+  try {
+    return new URL(trimmed, window.location.origin).toString();
+  } catch {
+    return trimmed;
+  }
 }
 
 function blockAttrString(block: EditorBlock, key: string): string {
@@ -810,6 +840,92 @@ function InlineToolbar({
   );
 }
 
+function LinkPopover({
+  link,
+  onApply,
+  onClose,
+  onOpen,
+  onRemove,
+}: {
+  link: LinkPopoverState;
+  onApply: (href: string, icon: string | null) => void;
+  onClose: () => void;
+  onOpen: (href: string) => void;
+  onRemove: () => void;
+}) {
+  const [href, setHref] = useState(link.href);
+  const [icon, setIcon] = useState(link.icon ?? "");
+  const hrefRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setHref(link.href);
+    setIcon(link.icon ?? "");
+  }, [link.href, link.icon, link.start, link.end]);
+
+  function apply() {
+    onApply(href, link.icon === null ? null : icon);
+  }
+
+  return (
+    <div
+      className="je-link-popover"
+      role="dialog"
+      aria-label="Link"
+      style={{
+        left: `${link.left}px`,
+        top: `${link.top}px`,
+      }}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+      onMouseDown={(event) => {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest("input")) return;
+        event.preventDefault();
+      }}
+    >
+      <div className="je-link-popover__row">
+        <input
+          ref={hrefRef}
+          aria-label="Link URL"
+          value={href}
+          placeholder="https:// or /page"
+          onChange={(event) => setHref(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              apply();
+            }
+          }}
+        />
+        <button type="button" onClick={() => onOpen(href)}>Open</button>
+      </div>
+      {link.icon !== null ? (
+        <input
+          aria-label="Link icon URL"
+          value={icon}
+          placeholder="/icon.svg"
+          onChange={(event) => setIcon(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              apply();
+            }
+          }}
+        />
+      ) : null}
+      <div className="je-link-popover__actions">
+        <button type="button" onClick={apply}>Apply</button>
+        <button type="button" onClick={onRemove}>Remove</button>
+      </div>
+    </div>
+  );
+}
+
 function BlockTypeMenu({
   activeBlock,
   specs,
@@ -925,6 +1041,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [bubblePosition, setBubblePosition] = useState<BubblePosition | null>(null);
   const [blockTypeMenu, setBlockTypeMenu] = useState<BlockTypeMenuState | null>(null);
+  const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [recentCommandNames, setRecentCommandNames] = useState<string[]>([]);
   const blockRefs = useRef(new Map<string, HTMLElement>());
@@ -984,6 +1101,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setSlash(null);
     setBubblePosition(null);
     setBlockTypeMenu(null);
+    setLinkPopover(null);
     setDragState(null);
     onChange?.(nextHistory.document);
     return nextHistory.document;
@@ -1013,6 +1131,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setSlash(null);
     setBubblePosition(null);
     setBlockTypeMenu(null);
+    setLinkPopover(null);
     setDragState(null);
     onChange?.(transaction.after, transaction);
   }
@@ -1115,6 +1234,23 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     commit({ ...iconTx, before: history.document });
   }
 
+  function applyLinkRange(range: TextRange, href: string, icon: string | null) {
+    const nextHref = href.trim();
+    const linkTx = nextHref
+      ? setTextMark(history.document, range.blockId, range.start, range.end, "link", { href: nextHref })
+      : unsetTextMark(history.document, range.blockId, range.start, range.end, "link");
+    const iconTx = icon === null
+      ? unsetTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link")
+      : setTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link", icon ? { icon } : {});
+    commit({ ...iconTx, before: history.document });
+  }
+
+  function openHref(href: string) {
+    const target = normalizedHref(href);
+    if (!target) return;
+    window.open(target, "_blank", "noopener,noreferrer");
+  }
+
   function handleText(block: EditorBlock, text: string, offset: number) {
     const tx = updateBlockTextWithMarkdownShortcut(history.document, block.id, text, offset);
     commit(tx);
@@ -1164,6 +1300,58 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const editableMarkRange = editableMarkRangeAtSelection(block, nextSelection);
     setSelection(nextSelection);
     setBubblePosition(readSelectionBubblePosition(element, blockId, Boolean(editableMarkRange)));
+  }
+
+  function handleLinkClick(event: React.MouseEvent<HTMLElement>, block: EditorBlock) {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const anchor = target?.closest("a[data-je-link]");
+    if (!(anchor instanceof HTMLAnchorElement) || !event.currentTarget.contains(anchor)) {
+      setLinkPopover(null);
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const href = anchor.getAttribute("href") || anchor.href;
+    if (readOnly || event.metaKey || event.ctrlKey) {
+      openHref(href);
+      return;
+    }
+
+    const clickedRange = readElementTextRange(event.currentTarget, anchor);
+    if (!clickedRange) return;
+    const probeOffset = Math.max(clickedRange.start, Math.min(clickedRange.end, clickedRange.start + 1));
+    const linkRange = markRangeAtOffset(block, probeOffset, "link") ?? {
+      ...clickedRange,
+      blockId: block.id,
+    };
+    const iconRange = markRangeAtOffset(block, probeOffset, "icon-link");
+    const linkAttrs = selectedMarkAttrs(block, {
+      anchor: { blockId: block.id, offset: linkRange.start },
+      focus: { blockId: block.id, offset: linkRange.end },
+    }, "link");
+    const iconAttrs = selectedMarkAttrs(block, {
+      anchor: { blockId: block.id, offset: linkRange.start },
+      focus: { blockId: block.id, offset: linkRange.end },
+    }, "icon-link");
+    const box = anchor.getBoundingClientRect();
+    setSelection({
+      anchor: { blockId: block.id, offset: linkRange.start },
+      focus: { blockId: block.id, offset: linkRange.end },
+    });
+    setBubblePosition(null);
+    setBlockTypeMenu(null);
+    setSlash(null);
+    setLinkPopover({
+      blockId: block.id,
+      end: linkRange.end,
+      href: linkAttrs?.href || href,
+      icon: iconRange ? iconAttrs?.icon ?? "" : null,
+      left: Math.min(Math.max(12, box.left), window.innerWidth - 300),
+      start: linkRange.start,
+      top: box.bottom + 8,
+    });
   }
 
   function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMarkType) {
@@ -1443,6 +1631,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
           setSlash(null);
           setBubblePosition(null);
           setBlockTypeMenu(null);
+          setLinkPopover(null);
         }}
       />
       <div className="je-blocks" role="list">
@@ -1542,6 +1731,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
                   onMouseUp={(event) => {
                     handleSelectionChange(event.currentTarget, block.id);
                   }}
+                  onClick={(event) => handleLinkClick(event, currentBlock(block.id) || block)}
                   onInput={(event) => {
                     if (isComposingRef.current || event.nativeEvent.isComposing) return;
                     const offset = readTextOffset(event.currentTarget);
@@ -1589,6 +1779,15 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
           onSet={setStoredSelectionMark}
           onToggle={toggleStoredSelectionMark}
           onUnset={unsetStoredSelectionMark}
+        />
+      ) : null}
+      {!readOnly && linkPopover ? (
+        <LinkPopover
+          link={linkPopover}
+          onApply={(href, icon) => applyLinkRange(linkPopover, href, icon)}
+          onClose={() => setLinkPopover(null)}
+          onOpen={openHref}
+          onRemove={() => applyLinkRange(linkPopover, "", null)}
         />
       ) : null}
     </section>
