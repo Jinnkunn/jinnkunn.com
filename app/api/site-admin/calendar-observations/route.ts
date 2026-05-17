@@ -21,6 +21,7 @@ const RATE_LIMIT = {
   maxRequests: 120,
   windowMs: 60 * 1000,
 };
+const CALENDAR_OBSERVATION_SYNC_MAX_BYTES = 4 * 1024 * 1024;
 
 function parseObservationSyncCommand(
   raw: Record<string, unknown>,
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       const parsed = await readSiteAdminJsonCommand(
         req,
         parseObservationSyncCommand,
+        { maxBytes: CALENDAR_OBSERVATION_SYNC_MAX_BYTES },
       );
       if (!parsed.ok) return parsed.res;
 

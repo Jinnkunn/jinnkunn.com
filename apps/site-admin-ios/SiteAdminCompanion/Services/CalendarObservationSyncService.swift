@@ -17,6 +17,11 @@ final class CalendarObservationSyncService {
     private let store = EKEventStore()
     private let defaults = UserDefaults.standard
     private let collectorIdKey = "calendar-observation-collector-id"
+    private let titleMaxLength = 240
+    private let noteMaxLength = 1_500
+    private let locationMaxLength = 300
+    private let urlMaxLength = 600
+    private let identifierMaxLength = 500
     private let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -149,9 +154,9 @@ final class CalendarObservationSyncService {
         CalendarSourcePayload(
             id: sourcePayloadId(source.sourceIdentifier),
             provider: providerName(for: source.sourceType),
-            title: source.title,
-            accountKey: source.title,
-            externalSourceId: source.sourceIdentifier,
+            title: limitedRequiredString(source.title, maxLength: titleMaxLength, fallback: "Calendar"),
+            accountKey: limitedString(source.title, maxLength: titleMaxLength),
+            externalSourceId: limitedString(source.sourceIdentifier, maxLength: identifierMaxLength),
             syncScope: [
                 "adapter": "eventkit",
                 "platform": "ios",
@@ -172,15 +177,15 @@ final class CalendarObservationSyncService {
         return CalendarObservationPayload(
             sourceId: effectiveSourceId,
             collectorId: collectorId,
-            sourceEventId: event.eventIdentifier,
-            iCalUid: event.calendarItemExternalIdentifier,
+            sourceEventId: limitedString(event.eventIdentifier, maxLength: identifierMaxLength),
+            iCalUid: limitedString(event.calendarItemExternalIdentifier, maxLength: identifierMaxLength),
             recurrenceInstanceId: event.hasRecurrenceRules ? iso(event.startDate) : nil,
-            calendarId: event.calendar.calendarIdentifier,
-            calendarTitle: event.calendar.title,
-            title: event.title,
-            notes: event.notes,
-            location: event.location,
-            url: event.url?.absoluteString,
+            calendarId: limitedString(event.calendar.calendarIdentifier, maxLength: identifierMaxLength),
+            calendarTitle: limitedString(event.calendar.title, maxLength: titleMaxLength),
+            title: limitedString(event.title, maxLength: titleMaxLength),
+            notes: compactNotes(event.notes),
+            location: limitedString(event.location, maxLength: locationMaxLength),
+            url: limitedString(event.url?.absoluteString, maxLength: urlMaxLength),
             startsAt: iso(event.startDate),
             endsAt: iso(event.endDate),
             isAllDay: event.isAllDay,
@@ -209,10 +214,33 @@ final class CalendarObservationSyncService {
 
     private func sourcePayloadId(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "eventkit:\(trimmed.isEmpty ? "unknown" : trimmed)"
+        let bounded = String(trimmed.prefix(identifierMaxLength))
+        return "eventkit:\(bounded.isEmpty ? "unknown" : bounded)"
     }
 
     private func iso(_ date: Date) -> String {
         isoFormatter.string(from: date)
+    }
+
+    private func limitedString(_ value: String?, maxLength: Int) -> String? {
+        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.count <= maxLength { return trimmed }
+        return String(trimmed.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func limitedRequiredString(
+        _ value: String?,
+        maxLength: Int,
+        fallback: String
+    ) -> String {
+        limitedString(value, maxLength: maxLength) ?? fallback
+    }
+
+    private func compactNotes(_ value: String?) -> String? {
+        guard let trimmed = limitedString(value, maxLength: noteMaxLength) else {
+            return nil
+        }
+        return trimmed
     }
 }

@@ -62,6 +62,9 @@ test("site-admin-ios: calendar sync uploads EventKit observations to Draft", asy
   assert.match(service, /providerName\(for sourceType: EKSourceType\)/);
   assert.match(service, /collectorId = "ios:/);
   assert.match(service, /hasFullCalendarAccess/);
+  assert.match(service, /noteMaxLength = 1_500/);
+  assert.match(service, /compactNotes\(event\.notes\)/);
+  assert.match(service, /limitedString\(event\.url\?\.absoluteString/);
 
   assert.match(client, /\/api\/site-admin\/calendar-observations/);
   assert.match(client, /\/api\/site-admin\/calendar-observations\/publish-live/);
