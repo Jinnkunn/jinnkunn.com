@@ -253,6 +253,15 @@ async function calendarSummary(database) {
   };
 }
 
+async function staticOverlayCount(database) {
+  const row = await first(
+    database,
+    `SELECT COUNT(*) AS count FROM static_shell_overlays
+      WHERE asset_path <> '/__static/protected-routes-policy.json'`,
+  );
+  return num(row?.count);
+}
+
 function mapJob(row) {
   return {
     id: str(row.id),
@@ -278,21 +287,34 @@ function mapRunner(row) {
 }
 
 async function releaseSummary(database) {
-  const jobs = (await all(
-    database,
-    `SELECT id, action, script, target, status, phase, created_at, updated_at, finished_at, error
-       FROM release_jobs
-      ORDER BY updated_at DESC
-      LIMIT 5`,
-  )).map(mapJob);
-  const runners = (await all(
-    database,
-    `SELECT agent_id, status, current_job_id, last_seen_at
-       FROM release_agents
-      ORDER BY last_seen_at DESC
-      LIMIT 4`,
-  )).map(mapRunner);
+  const [jobs, runners, overlayCount] = await Promise.all([
+    all(
+      database,
+      `SELECT id, action, script, target, status, phase, created_at, updated_at, finished_at, error
+         FROM release_jobs
+        ORDER BY updated_at DESC
+        LIMIT 5`,
+    ).then((rows) => rows.map(mapJob)),
+    all(
+      database,
+      `SELECT agent_id, status, current_job_id, last_seen_at
+         FROM release_agents
+        ORDER BY last_seen_at DESC
+        LIMIT 4`,
+    ).then((rows) => rows.map(mapRunner)),
+    staticOverlayCount(database),
+  ]);
   const runningJob = jobs.find((job) => job.status === "queued" || job.status === "running") || null;
+  if (!runningJob && overlayCount > 0) {
+    return {
+      headline: "Release needed",
+      detail: "Draft content has a staging overlay ready to publish.",
+      recommendedAction: { kind: "smart-release", label: "Smart Release", destructive: false },
+      runningJob: null,
+      latestJob: jobs[0] || null,
+      runners,
+    };
+  }
   return {
     headline: runningJob ? `${runningJob.status === "queued" ? "Queued" : "Running"}: ${runningJob.script}` : "Up to date",
     detail: runningJob ? runningJob.phase || "Release job is active." : "No mobile release action is needed.",
