@@ -136,3 +136,41 @@ export type EditorTextMarkSpec = {
   tag: string;
   values?: string[];
 };
+
+export type EditorAttrValueType = "string" | "url" | "boolean" | "number" | "select" | "color";
+
+export type EditorAttrSpec = {
+  name: string;
+  label: string;
+  valueType: EditorAttrValueType;
+  defaultValue?: string | number | boolean;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  values?: string[];
+};
+
+export type EditorExtensionGroup = "basic" | "format" | "media" | "embed" | "navigation" | "advanced";
+
+export type EditorBlockRenderKind = "text" | "structured" | "void" | "container";
+
+export type EditorBlockExtensionSpec = EditorBlockSpec & {
+  attrsSchema?: EditorAttrSpec[];
+  group: EditorExtensionGroup;
+  renderKind: EditorBlockRenderKind;
+  slashMenu: boolean;
+};
+
+export type EditorTextMarkExtensionSpec = EditorTextMarkSpec & {
+  attrsSchema?: EditorAttrSpec[];
+  group: EditorExtensionGroup;
+  toolbar: boolean;
+};
+
+export type EditorExtensionManifest = {
+  id: string;
+  label: string;
+  version: string;
+  blocks: EditorBlockExtensionSpec[];
+  textMarks: EditorTextMarkExtensionSpec[];
+};

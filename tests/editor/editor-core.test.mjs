@@ -7,6 +7,7 @@ import {
   applyTransaction,
   clampSelection,
   createBlock,
+  createDefaultEditorExtensionManifest,
   createCollapsedSelection,
   createDocument,
   createEditorHistory,
@@ -30,9 +31,11 @@ import {
   getSelectionFocus,
   initializeEditorCore,
   isSelectionCollapsed,
+  mergeEditorExtensionManifests,
   selectionAtBlockEnd,
 } from "../../packages/editor-core/src/index.ts";
 import { createMemoryEditorBridge } from "../../packages/editor-bridge/src/index.ts";
+import { renderDocumentToHtml } from "../../packages/editor-renderer/src/index.ts";
 
 await initializeEditorCore(
   await readFile(new URL("../../packages/editor-core/pkg/jinnkunn_editor_core_bg.wasm", import.meta.url)),
@@ -166,6 +169,34 @@ test("editor-core: extended block and mark specs are available from wasm", () =>
   assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "background-color" && spec.values.includes("yellow")));
 });
 
+test("editor-core: extension manifest describes block and mark attrs", () => {
+  const manifest = createDefaultEditorExtensionManifest();
+  const image = manifest.blocks.find((spec) => spec.name === "image");
+  const link = manifest.textMarks.find((spec) => spec.mark === "link");
+  assert.equal(image?.renderKind, "structured");
+  assert.equal(image?.group, "media");
+  assert.ok(image?.attrsSchema?.some((attr) => attr.name === "url" && attr.valueType === "url"));
+  assert.equal(link?.toolbar, true);
+  assert.ok(link?.attrsSchema?.some((attr) => attr.name === "href" && attr.required));
+
+  const merged = mergeEditorExtensionManifests([
+    manifest,
+    {
+      id: "test",
+      label: "Test",
+      version: "0.0.1",
+      blocks: [
+        {
+          ...image,
+          label: "Image Override",
+        },
+      ],
+      textMarks: [],
+    },
+  ]);
+  assert.equal(merged.blocks.find((spec) => spec.name === "image")?.label, "Image Override");
+});
+
 test("editor-core: extended text marks and block markdown roundtrip", () => {
   let document = createDocument({
     blocks: [createBlock({ id: "a", text: "Alpha Beta Gamma" })],
@@ -242,6 +273,25 @@ test("editor-core: structured block attrs support media-like blocks", () => {
   assert.equal(imported.blocks[0].type, "image");
   assert.equal(imported.blocks[0].attrs.url, "https://example.com/a.png");
   assert.equal(imported.blocks[1].type, "embed");
+});
+
+test("editor-renderer: renders read-only html for rich marks and structured blocks", () => {
+  let document = createDocument({
+    blocks: [
+      createBlock({ id: "q", type: "quote", text: "Context" }),
+      createBlock({ id: "p", text: "Yimen Chen" }),
+      createBlock({ id: "img", type: "image", text: "River view" }),
+    ],
+  });
+  document = setTextMark(document, "p", 0, 10, "link", { href: "/chen" }).after;
+  document = setTextMark(document, "p", 0, 10, "icon-link", {}).after;
+  document = setBlockAttrs(document, "img", { url: "https://example.com/yiling.jpg", alt: "Yiling" }).after;
+
+  const html = renderDocumentToHtml(document);
+  assert.match(html, /<blockquote class="jer-block jer-block--quote">Context<\/blockquote>/);
+  assert.match(html, /data-link-style="icon"/);
+  assert.match(html, /<a href="\/chen" rel="noreferrer">Yimen Chen<\/a>/);
+  assert.match(html, /<img src="https:\/\/example.com\/yiling.jpg" alt="Yiling" \/>/);
 });
 
 test("editor-bridge: memory bridge captures host messages and dispatches client messages", () => {

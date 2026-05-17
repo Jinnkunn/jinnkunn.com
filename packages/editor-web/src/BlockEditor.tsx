@@ -6,13 +6,13 @@ import {
   createBlock,
   createCollapsedSelection,
   createDocument,
+  createDefaultEditorExtensionManifest,
   createEditorHistory,
   findEditorCommand,
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
-  listBlockSpecs,
-  listTextMarkSpecs,
+  mergeEditorExtensionManifests,
   mergeWithPrevious,
   moveBlock,
   redo,
@@ -27,28 +27,24 @@ import {
   undo,
   updateBlockText,
   type EditorBlock,
-  type EditorBlockSpec,
+  type EditorBlockExtensionSpec,
   type EditorCommand,
   type EditorDocument,
+  type EditorExtensionManifest,
   type EditorSelection,
   type EditorTextMark,
   type EditorTextMarkAttrs,
   type EditorTextMarkType,
-  type EditorTextMarkSpec,
+  type EditorTextMarkExtensionSpec,
   type EditorTextSpan,
   type EditorTransaction,
 } from "../../editor-core/src/index.ts";
 
 export type BlockEditorProps = {
-  extensions?: EditorExtension[];
+  extensionManifests?: EditorExtensionManifest[];
   initialDocument?: EditorDocument;
   readOnly?: boolean;
   onChange?: (document: EditorDocument, transaction: EditorTransaction) => void;
-};
-
-export type EditorExtension = {
-  blockSpecs?: EditorBlockSpec[];
-  textMarkSpecs?: EditorTextMarkSpec[];
 };
 
 type SlashState = {
@@ -84,13 +80,7 @@ const TOGGLE_MARK_LABELS: Record<string, string> = {
   highlight: "H",
 };
 
-function mergeSpecs<T extends { name?: string; mark?: string }>(base: T[], extra: T[] | undefined): T[] {
-  if (!extra?.length) return base;
-  const ids = new Set(base.map((item) => item.name ?? item.mark).filter(Boolean));
-  return [...base, ...extra.filter((item) => !ids.has(item.name ?? item.mark))];
-}
-
-function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockSpec[]): string {
+function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockExtensionSpec[]): string {
   const spec = blockSpecs.find((candidate) => {
     if (candidate.blockType !== block.type) return false;
     if (candidate.blockType !== "heading") return true;
@@ -283,7 +273,7 @@ function shortcutMatches(event: React.KeyboardEvent<HTMLElement>, shortcut: stri
 
 function textMarkForShortcut(
   event: React.KeyboardEvent<HTMLElement>,
-  textMarkSpecs: EditorTextMarkSpec[],
+  textMarkSpecs: EditorTextMarkExtensionSpec[],
 ): EditorTextMarkType | null {
   return textMarkSpecs.find((spec) => spec.shortcut && spec.kind === "toggle" && shortcutMatches(event, spec.shortcut))?.mark || null;
 }
@@ -300,7 +290,7 @@ function selectedRange(selection: EditorSelection): { blockId: string; start: nu
   };
 }
 
-function blockMatchesSpec(block: EditorBlock, spec: EditorBlockSpec): boolean {
+function blockMatchesSpec(block: EditorBlock, spec: EditorBlockExtensionSpec): boolean {
   if (block.type !== spec.blockType) return false;
   if (block.type !== "heading") return true;
   return (block.level || 1) === spec.level;
@@ -406,12 +396,12 @@ function InlineToolbar({
   activeBlock: EditorBlock | null;
   position: BubblePosition;
   selection: EditorSelection | null;
-  specs: EditorTextMarkSpec[];
+  specs: EditorTextMarkExtensionSpec[];
   onSet: (mark: EditorTextMarkType, attrs?: EditorTextMarkAttrs) => void;
   onToggle: (mark: EditorTextMarkType) => void;
   onUnset: (mark: EditorTextMarkType) => void;
 }) {
-  const [panel, setPanel] = useState<null | { mark: EditorTextMarkSpec }>(null);
+  const [panel, setPanel] = useState<null | { mark: EditorTextMarkExtensionSpec }>(null);
   const linkAttrs = selectedMarkAttrs(activeBlock, selection, "link");
   const iconAttrs = selectedMarkAttrs(activeBlock, selection, "icon-link");
   const [href, setHref] = useState(linkAttrs?.href ?? "");
@@ -561,8 +551,8 @@ function BlockTypeMenu({
   onSelect,
 }: {
   activeBlock: EditorBlock;
-  specs: EditorBlockSpec[];
-  onSelect: (spec: EditorBlockSpec) => void;
+  specs: EditorBlockExtensionSpec[];
+  onSelect: (spec: EditorBlockExtensionSpec) => void;
 }) {
   return (
     <div className="je-block-type-menu" role="listbox" aria-label="Block types">
@@ -657,7 +647,7 @@ function StructuredBlockEditor({
   return null;
 }
 
-export function BlockEditor({ extensions, initialDocument, readOnly = false, onChange }: BlockEditorProps) {
+export function BlockEditor({ extensionManifests, initialDocument, readOnly = false, onChange }: BlockEditorProps) {
   const initial = useMemo(() => createEditorHistory(initialDocument || createDocument()), [initialDocument]);
   const [history, setHistory] = useState(initial);
   const [selection, setSelection] = useState<EditorSelection | null>(() => {
@@ -670,14 +660,12 @@ export function BlockEditor({ extensions, initialDocument, readOnly = false, onC
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
-  const blockSpecs = useMemo(
-    () => mergeSpecs(listBlockSpecs(), extensions?.flatMap((extension) => extension.blockSpecs ?? [])),
-    [extensions],
+  const manifest = useMemo(
+    () => mergeEditorExtensionManifests([createDefaultEditorExtensionManifest(), ...(extensionManifests ?? [])]),
+    [extensionManifests],
   );
-  const textMarkSpecs = useMemo(
-    () => mergeSpecs(listTextMarkSpecs(), extensions?.flatMap((extension) => extension.textMarkSpecs ?? [])),
-    [extensions],
-  );
+  const blockSpecs = manifest.blocks;
+  const textMarkSpecs = manifest.textMarks;
 
   useEffect(() => {
     setHistory(initial);
@@ -737,7 +725,7 @@ export function BlockEditor({ extensions, initialDocument, readOnly = false, onC
     commit(setBlockType(history.document, blockId, command.blockType, command.level, nextText));
   }
 
-  function selectBlockType(block: EditorBlock, spec: EditorBlockSpec) {
+  function selectBlockType(block: EditorBlock, spec: EditorBlockExtensionSpec) {
     const text = block.type === "divider" ? undefined : getBlockPlainText(block);
     commit(setBlockType(history.document, block.id, spec.blockType, spec.level, text));
   }

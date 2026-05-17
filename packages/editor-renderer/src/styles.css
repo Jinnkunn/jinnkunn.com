@@ -1,0 +1,125 @@
+.jer-document {
+  color: #312f2b;
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.jer-block {
+  margin: 0.35rem 0;
+}
+
+.jer-block--heading {
+  font-weight: 760;
+  line-height: 1.15;
+  margin: 1rem 0 0.5rem;
+}
+
+h1.jer-block--heading {
+  font-size: 2.2rem;
+}
+
+h2.jer-block--heading {
+  font-size: 1.55rem;
+}
+
+h3.jer-block--heading {
+  font-size: 1.2rem;
+}
+
+.jer-block--quote {
+  border-left: 3px solid #312f2b;
+  color: #5f5b54;
+  margin-left: 0;
+  padding-left: 0.85rem;
+}
+
+.jer-block--divider {
+  border: 0;
+  border-top: 1px solid rgba(49, 47, 43, 0.18);
+  margin: 1rem 0;
+}
+
+.jer-block--callout {
+  background: rgba(246, 241, 233, 0.78);
+  border: 1px solid rgba(49, 47, 43, 0.12);
+  border-radius: 10px;
+  display: block;
+  padding: 0.7rem 0.8rem;
+}
+
+.jer-block--code-block,
+.jer-block--raw {
+  background: rgba(49, 47, 43, 0.06);
+  border-radius: 10px;
+  overflow: auto;
+  padding: 0.8rem;
+}
+
+.jer-block--image img {
+  border-radius: 10px;
+  display: block;
+  max-width: 100%;
+}
+
+.jer-block--image figcaption {
+  color: #77726a;
+  font-size: 0.92rem;
+  margin-top: 0.4rem;
+}
+
+.jer-block--bookmark,
+.jer-block--embed,
+.jer-block--file,
+.jer-block--page-link {
+  border: 1px solid rgba(49, 47, 43, 0.14);
+  border-radius: 10px;
+  color: inherit;
+  display: block;
+  padding: 0.7rem 0.8rem;
+  text-decoration: none;
+}
+
+.jer-document a {
+  color: inherit;
+  text-decoration-color: rgba(49, 47, 43, 0.26);
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+
+.jer-document [data-link-style="icon"]::before {
+  background: rgba(49, 47, 43, 0.08);
+  border: 1px solid rgba(49, 47, 43, 0.12);
+  border-radius: 0.35em;
+  content: "↗";
+  display: inline-grid;
+  font-size: 0.72em;
+  height: 1.35em;
+  margin-right: 0.28em;
+  place-items: center;
+  vertical-align: 0.08em;
+  width: 1.35em;
+}
+
+.jer-document [data-color="gray"] {
+  color: #77726a;
+}
+
+.jer-document [data-color="orange"] {
+  color: #ba5b00;
+}
+
+.jer-document [data-color="blue"] {
+  color: #2563a8;
+}
+
+.jer-document [data-bg="yellow"] {
+  background: #fff1b8;
+}
+
+.jer-document [data-bg="orange"] {
+  background: #ffe2c7;
+}
+
+.jer-document [data-bg="blue"] {
+  background: #dcecff;
+}
