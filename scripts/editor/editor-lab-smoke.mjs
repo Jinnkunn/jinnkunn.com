@@ -52,6 +52,16 @@ page.on("pageerror", (error) => errors.push(error.message));
 
 await page.goto(url, { waitUntil: "networkidle" });
 assert.equal(await page.locator(".je-block").count(), 10);
+const blockWidths = await page.evaluate(() => {
+  const width = (selector) => Math.round(document.querySelector(selector)?.getBoundingClientRect().width || 0);
+  return {
+    callout: width(".je-block--callout .je-editable"),
+    image: width(".je-structured-block--image"),
+    paragraph: width(".je-block--paragraph .je-editable"),
+  };
+});
+assert.ok(Math.abs(blockWidths.paragraph - blockWidths.callout) <= 1, JSON.stringify(blockWidths));
+assert.ok(Math.abs(blockWidths.paragraph - blockWidths.image) <= 1, JSON.stringify(blockWidths));
 
 await loadDocument(page, {
   version: 1,
@@ -63,6 +73,11 @@ await page.getByRole("button", { exact: true, name: "Link" }).click();
 await page.getByLabel("URL").fill("/hello");
 await page.keyboard.press("Enter");
 await page.waitForSelector('.je-editable a[href="/hello"]');
+await page.locator('.je-editable a[href="/hello"]').click();
+await page.waitForSelector(".je-link-popover");
+await page.getByLabel("Link URL").fill("/hello-updated");
+await page.getByRole("button", { exact: true, name: "Apply" }).click();
+await page.waitForSelector('.je-editable a[href="/hello-updated"]');
 
 await loadDocument(page, {
   version: 1,
