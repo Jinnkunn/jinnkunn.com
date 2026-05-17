@@ -19,6 +19,7 @@ import {
   setBlockType,
   splitBlock,
   toggleTodo,
+  toggleTextMark,
   undo,
   updateBlockText,
   getSelectionFocus,
@@ -108,6 +109,39 @@ test("editor-core: block indent is clamped and survives markdown roundtrip", () 
   const imported = markdownToDocument(markdown, "Imported");
   assert.equal(imported.blocks[0].indent, 2);
   assert.equal(imported.blocks[0].type, "bulleted-list");
+});
+
+test("editor-core: text marks split, merge, toggle, and roundtrip through markdown", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Hello world" })],
+  });
+
+  const boldTx = toggleTextMark(document, "a", 6, 11, "bold");
+  document = boldTx.after;
+  assert.deepEqual(document.blocks[0].text, [
+    { text: "Hello " },
+    { text: "world", marks: ["bold"] },
+  ]);
+  assert.deepEqual(boldTx.selection, {
+    anchor: { blockId: "a", offset: 6 },
+    focus: { blockId: "a", offset: 11 },
+  });
+
+  document = toggleTextMark(document, "a", 0, 5, "italic").after;
+  assert.equal(documentToMarkdown(document), "*Hello* **world**");
+
+  document = toggleTextMark(document, "a", 6, 11, "bold").after;
+  assert.deepEqual(document.blocks[0].text, [
+    { text: "Hello", marks: ["italic"] },
+    { text: " world" },
+  ]);
+
+  const imported = markdownToDocument("*Hello* **world**", "Inline");
+  assert.deepEqual(imported.blocks[0].text, [
+    { text: "Hello", marks: ["italic"] },
+    { text: " " },
+    { text: "world", marks: ["bold"] },
+  ]);
 });
 
 test("editor-core: markdown shortcuts produce block type changes", () => {

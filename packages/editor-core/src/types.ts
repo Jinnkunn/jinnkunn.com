@@ -48,6 +48,7 @@ export type EditorTransactionKind =
   | "delete-block"
   | "move-block"
   | "set-block-indent"
+  | "toggle-text-mark"
   | "toggle-todo"
   | "set-block-type"
   | "normalize";

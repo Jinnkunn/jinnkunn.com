@@ -5,10 +5,10 @@ const MAX_BLOCK_INDENT = 6;
 
 function cloneText(text: EditorTextSpan[] | undefined): EditorTextSpan[] {
   const source = Array.isArray(text) ? text : [];
-  return source.map((span) => ({
-    text: String(span.text || ""),
-    marks: Array.isArray(span.marks) ? [...span.marks] : undefined,
-  }));
+  return source.map((span) => {
+    const marks = Array.isArray(span.marks) && span.marks.length > 0 ? [...span.marks] : undefined;
+    return marks ? { text: String(span.text || ""), marks } : { text: String(span.text || "") };
+  });
 }
 
 export function getBlockPlainText(block: Pick<EditorBlock, "text">): string {

@@ -1,5 +1,73 @@
 import { createBlock, createDocument, getBlockPlainText } from "./document.ts";
-import type { EditorBlock, EditorDocument } from "./types.ts";
+import type { EditorBlock, EditorDocument, EditorTextMark, EditorTextSpan } from "./types.ts";
+
+function applyInlineMarkdown(text: string, marks: EditorTextMark[] | undefined): string {
+  let next = text;
+  if (marks?.includes("code")) next = `\`${next}\``;
+  if (marks?.includes("bold") && marks.includes("italic")) next = `***${next}***`;
+  else if (marks?.includes("bold")) next = `**${next}**`;
+  else if (marks?.includes("italic")) next = `*${next}*`;
+  if (marks?.includes("underline")) next = `<u>${next}</u>`;
+  return next;
+}
+
+function textSpansToMarkdown(spans: EditorTextSpan[]): string {
+  return spans.map((span) => applyInlineMarkdown(span.text, span.marks)).join("");
+}
+
+function appendSpan(spans: EditorTextSpan[], text: string, marks?: EditorTextMark[]) {
+  if (!text) return;
+  const previous = spans.at(-1);
+  const sortedMarks = marks?.length ? [...marks].sort() : undefined;
+  if (previous && JSON.stringify(previous.marks || []) === JSON.stringify(sortedMarks || [])) {
+    previous.text += text;
+    return;
+  }
+  spans.push(sortedMarks ? { text, marks: sortedMarks } : { text });
+}
+
+function markdownInlineToTextSpans(input: string): EditorTextSpan[] {
+  const spans: EditorTextSpan[] = [];
+  let index = 0;
+
+  while (index < input.length) {
+    const rest = input.slice(index);
+    const strongItalicEnd = rest.startsWith("***") ? input.indexOf("***", index + 3) : -1;
+    if (strongItalicEnd > index) {
+      appendSpan(spans, input.slice(index + 3, strongItalicEnd), ["bold", "italic"]);
+      index = strongItalicEnd + 3;
+      continue;
+    }
+
+    const strongEnd = rest.startsWith("**") ? input.indexOf("**", index + 2) : -1;
+    if (strongEnd > index) {
+      appendSpan(spans, input.slice(index + 2, strongEnd), ["bold"]);
+      index = strongEnd + 2;
+      continue;
+    }
+
+    const italicEnd = rest.startsWith("*") ? input.indexOf("*", index + 1) : -1;
+    if (italicEnd > index) {
+      appendSpan(spans, input.slice(index + 1, italicEnd), ["italic"]);
+      index = italicEnd + 1;
+      continue;
+    }
+
+    const codeEnd = rest.startsWith("`") ? input.indexOf("`", index + 1) : -1;
+    if (codeEnd > index) {
+      appendSpan(spans, input.slice(index + 1, codeEnd), ["code"]);
+      index = codeEnd + 1;
+      continue;
+    }
+
+    const nextMarker = input.slice(index + 1).search(/[*`]/);
+    const end = nextMarker >= 0 ? index + 1 + nextMarker : input.length;
+    appendSpan(spans, input.slice(index, end));
+    index = end;
+  }
+
+  return spans.length > 0 ? spans : [{ text: "" }];
+}
 
 export function applyMarkdownShortcut(block: EditorBlock): EditorBlock {
   const text = getBlockPlainText(block);
@@ -25,7 +93,7 @@ export function applyMarkdownShortcut(block: EditorBlock): EditorBlock {
 
 export function documentToMarkdown(document: EditorDocument): string {
   const lines = document.blocks.map((block) => {
-    const text = getBlockPlainText(block);
+    const text = textSpansToMarkdown(block.text);
     const prefix = "  ".repeat(block.indent || 0);
     switch (block.type) {
       case "heading":
@@ -59,19 +127,26 @@ export function markdownToDocument(markdown: string, title = "Imported document"
         type: "heading",
         level: heading[1].length as 1 | 2 | 3,
         indent,
-        text: heading[2],
+        text: markdownInlineToTextSpans(heading[2]),
       });
     }
     if (/^---\s*$/.test(content)) return createBlock({ type: "divider", indent });
     const todo = /^\[(x|X| )\]\s+(.*)$/.exec(content);
-    if (todo) return createBlock({ type: "todo", indent, checked: todo[1].toLowerCase() === "x", text: todo[2] });
+    if (todo) {
+      return createBlock({
+        type: "todo",
+        indent,
+        checked: todo[1].toLowerCase() === "x",
+        text: markdownInlineToTextSpans(todo[2]),
+      });
+    }
     const quote = /^>\s?(.*)$/.exec(content);
-    if (quote) return createBlock({ type: "quote", indent, text: quote[1] });
+    if (quote) return createBlock({ type: "quote", indent, text: markdownInlineToTextSpans(quote[1]) });
     const bullet = /^[-*]\s+(.*)$/.exec(content);
-    if (bullet) return createBlock({ type: "bulleted-list", indent, text: bullet[1] });
+    if (bullet) return createBlock({ type: "bulleted-list", indent, text: markdownInlineToTextSpans(bullet[1]) });
     const numbered = /^\d+\.\s+(.*)$/.exec(content);
-    if (numbered) return createBlock({ type: "numbered-list", indent, text: numbered[1] });
-    return createBlock({ type: "paragraph", indent, text: content });
+    if (numbered) return createBlock({ type: "numbered-list", indent, text: markdownInlineToTextSpans(numbered[1]) });
+    return createBlock({ type: "paragraph", indent, text: markdownInlineToTextSpans(content) });
   });
   return createDocument({ title, blocks });
 }
