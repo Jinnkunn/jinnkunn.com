@@ -1,0 +1,20 @@
+{
+  "name": "jinnkunn_editor_core",
+  "type": "module",
+  "description": "Rust/WASM core logic for the standalone Jinnkunn editor.",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jinnkunn/jinnkunn.com"
+  },
+  "files": [
+    "jinnkunn_editor_core_bg.wasm",
+    "jinnkunn_editor_core.js",
+    "jinnkunn_editor_core.d.ts"
+  ],
+  "main": "jinnkunn_editor_core.js",
+  "types": "jinnkunn_editor_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

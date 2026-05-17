@@ -1,31 +1,40 @@
-import { createBlock, createDocument } from "../../../packages/editor-core/src/index.ts";
+import type { EditorDocument } from "../../../packages/editor-core/src/index.ts";
 
-export const sampleDocument = createDocument({
+export const sampleDocument: EditorDocument = {
+  version: 1,
   title: "Editor Lab",
   blocks: [
-    createBlock({
+    {
+      id: "sample-intro",
       type: "paragraph",
-      text: "A standalone block editor line. Type / to open commands, or try #, >, [], and --- shortcuts.",
-    }),
-    createBlock({
+      text: [{ text: "A standalone block editor line. Type / to open commands, or try #, >, [], and --- shortcuts." }],
+    },
+    {
+      id: "sample-heading",
       type: "heading",
       level: 2,
-      text: "The editor is not bound to the website",
-    }),
-    createBlock({
+      text: [{ text: "The editor is not bound to the website" }],
+    },
+    {
+      id: "sample-todo",
       type: "todo",
-      text: "Make the document model boring and reliable first",
-    }),
-    createBlock({
+      checked: false,
+      text: [{ text: "Make the document model boring and reliable first" }],
+    },
+    {
+      id: "sample-quote",
       type: "quote",
-      text: "The host app should save and publish; the editor should only edit.",
-    }),
-    createBlock({
+      text: [{ text: "The host app should save and publish; the editor should only edit." }],
+    },
+    {
+      id: "sample-divider",
       type: "divider",
-    }),
-    createBlock({
+      text: [],
+    },
+    {
+      id: "sample-list",
       type: "bulleted-list",
-      text: "Web, Tauri, iOS WebView, and future open-source consumers can share this surface.",
-    }),
+      text: [{ text: "Web, Tauri, iOS WebView, and future open-source consumers can share this surface." }],
+    },
   ],
-});
+};

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -23,10 +24,15 @@ import {
   undo,
   updateBlockText,
   getSelectionFocus,
+  initializeEditorCore,
   isSelectionCollapsed,
   selectionAtBlockEnd,
 } from "../../packages/editor-core/src/index.ts";
 import { createMemoryEditorBridge } from "../../packages/editor-bridge/src/index.ts";
+
+await initializeEditorCore(
+  await readFile(new URL("../../packages/editor-core/pkg/jinnkunn_editor_core_bg.wasm", import.meta.url)),
+);
 
 test("editor-core: creates a normalized document with at least one block", () => {
   const document = createDocument({ title: "Demo", blocks: [] });

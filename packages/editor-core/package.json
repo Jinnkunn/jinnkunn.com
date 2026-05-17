@@ -3,8 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "wasm-pack build src-rust --target web --out-dir ../pkg --release"
+  },
   "exports": {
     ".": "./src/index.ts"
   }
 }
-
