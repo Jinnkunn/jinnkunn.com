@@ -108,6 +108,8 @@ const TOGGLE_MARK_LABELS: Record<string, string> = {
   highlight: "H",
 };
 
+const EXIT_TO_PARAGRAPH_ON_ENTER = new Set<EditorBlock["type"]>(["heading", "quote", "callout", "toggle"]);
+
 const GROUP_LABELS: Record<EditorBlockExtensionSpec["group"], string> = {
   advanced: "Advanced",
   basic: "Basic",
@@ -115,6 +117,16 @@ const GROUP_LABELS: Record<EditorBlockExtensionSpec["group"], string> = {
   format: "Format",
   media: "Media",
   navigation: "Navigation",
+};
+
+const GROUP_ORDER: Record<string, number> = {
+  Recent: 0,
+  Basic: 1,
+  Format: 2,
+  Media: 3,
+  Embed: 4,
+  Navigation: 5,
+  Advanced: 6,
 };
 
 function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockExtensionSpec[]): string {
@@ -451,11 +463,39 @@ function syncEditableDom(element: HTMLElement, block: EditorBlock) {
 }
 
 function commandMatchesQuery(command: EditorBlockExtensionSpec, query: string): boolean {
+  return commandSearchScore(command, query) < Number.POSITIVE_INFINITY;
+}
+
+function commandSearchScore(command: EditorBlockExtensionSpec, query: string): number {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return [command.name, command.label, command.description, command.group, command.blockType]
+  if (!normalized) return 0;
+  const haystacks = [
+    command.name.replace(/-/g, " "),
+    command.label,
+    command.description,
+    command.group,
+    command.blockType.replace(/-/g, " "),
+    command.markdownShortcut,
+  ]
     .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(normalized));
+    .map((value) => String(value).toLowerCase());
+  let best = Number.POSITIVE_INFINITY;
+  for (const value of haystacks) {
+    if (value === normalized) best = Math.min(best, 0);
+    else if (value.startsWith(normalized)) best = Math.min(best, 1);
+    else {
+      const index = value.indexOf(normalized);
+      if (index >= 0) best = Math.min(best, 2 + index / 100);
+    }
+  }
+  return best;
+}
+
+function compareCommands(left: EditorBlockExtensionSpec, right: EditorBlockExtensionSpec, query: string): number {
+  const leftScore = commandSearchScore(left, query);
+  const rightScore = commandSearchScore(right, query);
+  if (leftScore !== rightScore) return leftScore - rightScore;
+  return left.label.localeCompare(right.label);
 }
 
 function slashSections(
@@ -463,7 +503,13 @@ function slashSections(
   query: string,
   recentCommandNames: string[],
 ): SlashSection[] {
-  const available = commands.filter((command) => command.slashMenu && commandMatchesQuery(command, query));
+  const available = commands
+    .filter((command) => command.slashMenu && commandMatchesQuery(command, query))
+    .sort((left, right) => compareCommands(left, right, query));
+  if (query.trim()) {
+    return available.length ? [{ group: "Best matches", items: available }] : [];
+  }
+
   const recent = query
     ? []
     : recentCommandNames
@@ -481,7 +527,7 @@ function slashSections(
     else sections.push({ group: label, items: [command] });
   }
 
-  return sections;
+  return sections.sort((left, right) => (GROUP_ORDER[left.group] ?? 99) - (GROUP_ORDER[right.group] ?? 99));
 }
 
 function flattenSlashSections(sections: SlashSection[]): EditorBlockExtensionSpec[] {
@@ -538,6 +584,35 @@ function SlashMenu({
   );
 }
 
+function ToolbarGlyph({ spec }: { spec: EditorTextMarkExtensionSpec }) {
+  if (spec.mark === "link") {
+    return (
+      <svg aria-hidden="true" className="je-toolbar-glyph" viewBox="0 0 16 16">
+        <path d="M6.4 10.8 5.2 12a2.8 2.8 0 0 1-4-4l2-2a2.8 2.8 0 0 1 4 0" />
+        <path d="m9.6 5.2 1.2-1.2a2.8 2.8 0 0 1 4 4l-2 2a2.8 2.8 0 0 1-4 0" />
+        <path d="m5.8 10.2 4.4-4.4" />
+      </svg>
+    );
+  }
+  if (spec.mark === "icon-link") {
+    return (
+      <svg aria-hidden="true" className="je-toolbar-glyph" viewBox="0 0 16 16">
+        <path d="M3 5.5h4.5V10H3z" />
+        <path d="M9 4h3v3" />
+        <path d="m8.8 7.2 3-3" />
+        <path d="M7.5 12H3a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.5" />
+      </svg>
+    );
+  }
+  if (spec.mark === "background-color") {
+    return <span className="je-toolbar-glyph je-toolbar-glyph--fill">A</span>;
+  }
+  if (spec.mark === "text-color") {
+    return <span className="je-toolbar-glyph je-toolbar-glyph--color">A</span>;
+  }
+  return <span className="je-toolbar-glyph je-toolbar-glyph--text">{TOGGLE_MARK_LABELS[spec.mark] || spec.label.slice(0, 1)}</span>;
+}
+
 function InlineToolbar({
   activeBlock,
   position,
@@ -562,11 +637,18 @@ function InlineToolbar({
   const iconAttrs = selectedMarkAttrs(activeBlock, selection, "icon-link");
   const [href, setHref] = useState(linkAttrs?.href ?? "");
   const [icon, setIcon] = useState(iconAttrs?.icon ?? "");
+  const hrefInputRef = useRef<HTMLInputElement>(null);
+  const linkPanelOpen = panel?.mark.kind === "link" || panel?.mark.kind === "icon-link";
 
   useEffect(() => {
     setHref(linkAttrs?.href ?? "");
     setIcon(iconAttrs?.icon ?? "");
   }, [linkAttrs?.href, iconAttrs?.icon, selection?.anchor.offset, selection?.focus.offset]);
+
+  useEffect(() => {
+    if (!linkPanelOpen) return;
+    requestAnimationFrame(() => hrefInputRef.current?.focus());
+  }, [linkPanelOpen, panel?.mark.mark]);
 
   const applyLink = (iconMode: boolean) => {
     const nextHref = href.trim();
@@ -588,7 +670,12 @@ function InlineToolbar({
         left: `${position.left}px`,
         top: `${position.top}px`,
       }}
-      onMouseDown={(event) => event.preventDefault()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest("input")) return;
+        event.preventDefault();
+      }}
     >
       {specs.map((spec) => {
         if (spec.kind === "toggle") {
@@ -605,7 +692,7 @@ function InlineToolbar({
                 onToggle(spec.mark);
               }}
             >
-              {TOGGLE_MARK_LABELS[spec.mark] || spec.label.slice(0, 1)}
+              <ToolbarGlyph spec={spec} />
             </button>
           );
         }
@@ -623,7 +710,7 @@ function InlineToolbar({
                 setPanel((current) => current?.mark.mark === spec.mark ? null : { mark: spec });
               }}
             >
-              {spec.kind === "icon-link" ? "->" : "Link"}
+              <ToolbarGlyph spec={spec} />
             </button>
           );
         }
@@ -640,20 +727,49 @@ function InlineToolbar({
               setPanel((current) => current?.mark.mark === spec.mark ? null : { mark: spec });
             }}
           >
-            {spec.mark === "text-color" ? "A" : "BG"}
+            <ToolbarGlyph spec={spec} />
           </button>
         );
       })}
-      {panel?.mark.kind === "link" || panel?.mark.kind === "icon-link" ? (
+      {linkPanelOpen && panel ? (
         <div className="je-inline-popover" role="dialog" aria-label={panel.mark.label}>
           <label>
             <span>URL</span>
-            <input value={href} placeholder="https:// or /page" onChange={(event) => setHref(event.target.value)} />
+            <input
+              ref={hrefInputRef}
+              value={href}
+              placeholder="https:// or /page"
+              onChange={(event) => setHref(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  applyLink(panel.mark.kind === "icon-link");
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setPanel(null);
+                }
+              }}
+            />
           </label>
           {panel.mark.kind === "icon-link" ? (
             <label>
               <span>Icon URL</span>
-              <input value={icon} placeholder="/icon.svg" onChange={(event) => setIcon(event.target.value)} />
+              <input
+                value={icon}
+                placeholder="/icon.svg"
+                onChange={(event) => setIcon(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    applyLink(true);
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setPanel(null);
+                  }
+                }}
+              />
             </label>
           ) : null}
           <div className="je-inline-popover__actions">
@@ -665,7 +781,7 @@ function InlineToolbar({
                 setPanel(null);
               }}
             >
-              Clear
+              Remove
             </button>
           </div>
         </div>
@@ -1067,6 +1183,25 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     commit(updateBlockText(history.document, block.id, text, text.length));
   }
 
+  function splitBlockForEnter(block: EditorBlock, offset: number): EditorTransaction {
+    const splitTx = splitBlock(history.document, block.id, offset);
+    if (!EXIT_TO_PARAGRAPH_ON_ENTER.has(block.type)) return splitTx;
+
+    const splitIndex = splitTx.after.blocks.findIndex((item) => item.id === block.id);
+    const nextBlock = splitIndex >= 0 ? splitTx.after.blocks[splitIndex + 1] : null;
+    if (!nextBlock) return splitTx;
+
+    const typeTx = setBlockType(splitTx.after, nextBlock.id, "paragraph", undefined, getBlockPlainText(nextBlock));
+    return {
+      ...typeTx,
+      before: history.document,
+      createdAt: splitTx.createdAt,
+      id: splitTx.id,
+      kind: splitTx.kind,
+      selection: splitTx.selection,
+    };
+  }
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock) {
     if (readOnly) return;
     if (event.nativeEvent.isComposing || isComposingRef.current || event.key === "Process") return;
@@ -1115,7 +1250,13 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
         });
         return;
       }
-      if (event.key === "Enter") {
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        if (commands.length === 0) return;
+        setSlash({ ...slash, activeIndex: event.key === "Home" ? 0 : commands.length - 1 });
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
         const command = commands[slash.activeIndex] || commands[0];
         if (command) selectCommand(command, slash.blockId);
@@ -1216,7 +1357,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
       }
       const element = event.currentTarget;
       const offset = readTextOffset(element);
-      commit(splitBlock(history.document, block.id, offset));
+      commit(splitBlockForEnter(block, offset));
       return;
     }
 

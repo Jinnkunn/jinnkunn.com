@@ -86,6 +86,7 @@
     "editor:core:build": "wasm-pack build packages/editor-core/src-rust --target web --out-dir ../pkg --release",
     "editor:lab": "npm run editor:core:build && npm --prefix apps/editor-lab run dev",
     "editor:lab:build": "npm run editor:core:build && npm --prefix apps/editor-lab run build",
+    "editor:smoke": "node scripts/editor/editor-lab-smoke.mjs",
     "editor:test": "npm run editor:core:build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/editor/**/*.test.mjs'"
   },
   "dependencies": {
