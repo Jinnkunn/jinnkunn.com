@@ -29,12 +29,18 @@ final class SiteAdminAuthenticator: NSObject, ASWebAuthenticationPresentationCon
                 callbackURLScheme: "jinnkunn-site-admin"
             ) { callbackURL, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    let nsError = error as NSError
+                    if nsError.domain == ASWebAuthenticationSessionError.errorDomain,
+                       nsError.code == ASWebAuthenticationSessionError.Code.canceledLogin.rawValue {
+                        continuation.resume(throwing: SiteAdminClientError.signInCanceled)
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                     return
                 }
                 guard let callbackURL,
                       let result = Self.parseCallback(callbackURL, expectedState: state) else {
-                    continuation.resume(throwing: SiteAdminClientError.invalidResponse)
+                    continuation.resume(throwing: SiteAdminClientError.signInCallbackFailed)
                     return
                 }
                 continuation.resume(returning: result)

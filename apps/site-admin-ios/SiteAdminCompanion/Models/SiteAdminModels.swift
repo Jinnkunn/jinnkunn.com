@@ -101,6 +101,21 @@ struct ReleaseJobPayload: Decodable {
     let job: ReleaseJob
 }
 
+struct ReleaseJobDetailPayload: Decodable {
+    let job: ReleaseJob
+    let events: [ReleaseJobEvent]
+}
+
+struct ReleaseJobEvent: Decodable, Identifiable {
+    let id: String
+    let jobId: String
+    let seq: Int
+    let at: Int64
+    let phase: String
+    let stream: String
+    let message: String
+}
+
 struct AuthResult: Equatable {
     let token: String
     let login: String
