@@ -15,6 +15,7 @@ import {
   mergeWithPrevious,
   moveBlock,
   redo,
+  setBlockIndent,
   setBlockType,
   splitBlock,
   toggleTodo,
@@ -90,6 +91,23 @@ test("editor-core: block type commands and markdown conversion", () => {
     imported.blocks.map((block) => block.type),
     ["heading", "quote", "divider", "bulleted-list"],
   );
+});
+
+test("editor-core: block indent is clamped and survives markdown roundtrip", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Nested" })],
+  });
+  document = setBlockIndent(document, "a", 2, 3).after;
+  assert.equal(document.blocks[0].indent, 2);
+  assert.deepEqual(getSelectionFocus(setBlockIndent(document, "a", 9, 1).selection), { blockId: "a", offset: 1 });
+  document = setBlockType(document, "a", "bulleted-list").after;
+
+  const markdown = documentToMarkdown(document);
+  assert.equal(markdown, "    - Nested");
+
+  const imported = markdownToDocument(markdown, "Imported");
+  assert.equal(imported.blocks[0].indent, 2);
+  assert.equal(imported.blocks[0].type, "bulleted-list");
 });
 
 test("editor-core: markdown shortcuts produce block type changes", () => {

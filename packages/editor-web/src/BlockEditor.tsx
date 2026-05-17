@@ -14,6 +14,7 @@ import {
   mergeWithPrevious,
   moveBlock,
   redo,
+  setBlockIndent,
   setBlockType,
   splitBlock,
   toggleTodo,
@@ -35,6 +36,7 @@ export type BlockEditorProps = {
 type SlashState = {
   blockId: string;
   query: string;
+  activeIndex: number;
 };
 
 function blockPlaceholder(block: EditorBlock): string {
@@ -81,23 +83,29 @@ function setTextOffset(element: HTMLElement, offset: number) {
 function SlashMenu({
   slash,
   onSelect,
+  onActiveIndexChange,
 }: {
   slash: SlashState;
   onSelect: (command: EditorCommand) => void;
+  onActiveIndexChange: (index: number) => void;
 }) {
   const commands = findEditorCommand(slash.query);
   return (
     <div className="je-slash-menu" role="listbox" aria-label="Block commands">
       <div className="je-slash-menu__label">Commands</div>
-      {commands.map((command) => (
+      {commands.length === 0 ? <div className="je-slash-menu__empty">No commands</div> : null}
+      {commands.map((command, index) => (
         <button
+          aria-selected={slash.activeIndex === index}
           className="je-slash-menu__item"
           key={command.name}
+          role="option"
           type="button"
           onMouseDown={(event) => {
             event.preventDefault();
             onSelect(command);
           }}
+          onMouseEnter={() => onActiveIndexChange(index)}
         >
           <span className="je-slash-menu__icon">{command.label.slice(0, 1)}</span>
           <span>
@@ -120,6 +128,7 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
   const [slash, setSlash] = useState<SlashState | null>(null);
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const pendingFocusRef = useRef<EditorSelection | null>(null);
+  const isComposingRef = useRef(false);
 
   useEffect(() => {
     setHistory(initial);
@@ -179,6 +188,8 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     const tx = updateBlockText(history.document, block.id, text, offset);
     const updatedBlock = tx.after.blocks.find((item) => item.id === block.id);
     commit(tx);
+    if (isComposingRef.current) return;
+
     if (updatedBlock) {
       const converted = applyMarkdownShortcut(updatedBlock);
       if (converted.type !== updatedBlock.type || converted.level !== updatedBlock.level) {
@@ -189,11 +200,17 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
 
     const beforeCursor = text.slice(0, offset);
     const slashMatch = /\/([\w-]*)$/.exec(beforeCursor);
-    setSlash(slashMatch ? { blockId: block.id, query: slashMatch[1] } : null);
+    setSlash((current) => {
+      if (!slashMatch) return null;
+      const query = slashMatch[1];
+      if (current?.blockId === block.id && current.query === query) return current;
+      return { blockId: block.id, query, activeIndex: 0 };
+    });
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock) {
     if (readOnly) return;
+    if (event.nativeEvent.isComposing || isComposingRef.current || event.key === "Process") return;
 
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
@@ -209,10 +226,55 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
       return;
     }
 
-    if (slash && event.key === "Enter") {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
       event.preventDefault();
-      const command = findEditorCommand(slash.query)[0];
-      if (command) selectCommand(command, slash.blockId);
+      const nextHistory = redo(history);
+      const focusBlock = nextHistory.document.blocks[0];
+      const nextSelection = focusBlock
+        ? createCollapsedSelection(focusBlock.id, getBlockPlainText(focusBlock).length)
+        : null;
+      pendingFocusRef.current = nextSelection;
+      setHistory(nextHistory);
+      setSelection(nextSelection);
+      setSlash(null);
+      return;
+    }
+
+    if (slash) {
+      const commands = findEditorCommand(slash.query);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlash(null);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (commands.length === 0) return;
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        setSlash({
+          ...slash,
+          activeIndex: (slash.activeIndex + direction + commands.length) % commands.length,
+        });
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const command = commands[slash.activeIndex] || commands[0];
+        if (command) selectCommand(command, slash.blockId);
+        return;
+      }
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const direction = event.shiftKey ? -1 : 1;
+      commit(setBlockIndent(history.document, block.id, (block.indent || 0) + direction, readTextOffset(event.currentTarget)));
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && block.type === "todo") {
+      event.preventDefault();
+      commit(toggleTodo(history.document, block.id));
       return;
     }
 
@@ -226,6 +288,15 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
 
     if (event.key === "Backspace" && readTextOffset(event.currentTarget) === 0) {
       event.preventDefault();
+      const text = getBlockPlainText(block);
+      if ((block.indent || 0) > 0) {
+        commit(setBlockIndent(history.document, block.id, (block.indent || 0) - 1, 0));
+        return;
+      }
+      if (block.type !== "paragraph") {
+        commit(setBlockType(history.document, block.id, "paragraph", undefined, text));
+        return;
+      }
       commit(mergeWithPrevious(history.document, block.id));
     }
   }
@@ -263,6 +334,7 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
           return (
             <div
               className={blockClassName(block)}
+              data-indent={block.indent || undefined}
               data-focused={isFocused ? "true" : "false"}
               key={block.id}
               role="listitem"
@@ -326,12 +398,27 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
                     const offset = readTextOffset(event.currentTarget);
                     handleText(block, event.currentTarget.textContent || "", offset);
                   }}
+                  onCompositionStart={() => {
+                    isComposingRef.current = true;
+                    setSlash(null);
+                  }}
+                  onCompositionEnd={(event) => {
+                    isComposingRef.current = false;
+                    const offset = readTextOffset(event.currentTarget);
+                    handleText(block, event.currentTarget.textContent || "", offset);
+                  }}
                   onKeyDown={(event) => handleKeyDown(event, currentBlock(block.id) || block)}
                 >
                   {text}
                 </div>
               )}
-              {slash?.blockId === block.id ? <SlashMenu slash={slash} onSelect={selectCommand} /> : null}
+              {slash?.blockId === block.id ? (
+                <SlashMenu
+                  slash={slash}
+                  onSelect={selectCommand}
+                  onActiveIndexChange={(activeIndex) => setSlash({ ...slash, activeIndex })}
+                />
+              ) : null}
             </div>
           );
         })}
