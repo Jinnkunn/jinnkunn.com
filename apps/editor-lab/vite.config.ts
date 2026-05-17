@@ -18,6 +18,9 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 1440,
     strictPort: true,
+    fs: {
+      allow: [appRoot, resolve(appRoot, "../..")],
+    },
   },
   clearScreen: false,
 });

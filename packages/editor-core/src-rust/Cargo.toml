@@ -1,0 +1,18 @@
+[package]
+name = "jinnkunn_editor_core"
+version = "0.1.0"
+edition = "2021"
+description = "Rust/WASM core logic for the standalone Jinnkunn editor."
+repository = "https://github.com/Jinnkunn/jinnkunn.com"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true

@@ -42,8 +42,10 @@ node_modules/
 
 # production
 /build
+apps/editor-lab/dist/
 apps/workspace/dist/
 apps/workspace/src-tauri/target/
+packages/editor-core/src-rust/target/
 
 # misc
 .DS_Store
