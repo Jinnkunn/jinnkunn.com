@@ -30,6 +30,8 @@ export type PublicCalendarData = {
   events: PublicCalendarEvent[];
 };
 
+const PUBLIC_BUSY_COLOR = "#9B9A97";
+const BUSY_ROUND_MINUTES = 15;
 const VISIBILITIES = new Set<PublicCalendarVisibility>([
   "busy",
   "titleOnly",
@@ -174,25 +176,160 @@ function timestampMs(value: string): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function earlierIso(left: string, right: string): string {
+  return timestampMs(left) <= timestampMs(right) ? left : right;
+}
+
+function laterIso(left: string, right: string): string {
+  return timestampMs(left) >= timestampMs(right) ? left : right;
+}
+
+function roundBusyWindow(startsAt: string, endsAt: string): {
+  startsAt: string;
+  endsAt: string;
+} {
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  const step = BUSY_ROUND_MINUTES * 60 * 1000;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return { startsAt, endsAt };
+  }
+  const roundedStart = Math.floor(start / step) * step;
+  const roundedEnd = Math.max(roundedStart + step, Math.ceil(end / step) * step);
+  return {
+    startsAt: new Date(roundedStart).toISOString(),
+    endsAt: new Date(roundedEnd).toISOString(),
+  };
+}
+
+function toBusySupplementEvent(event: PublicCalendarEvent): PublicCalendarEvent {
+  const rounded = event.isAllDay
+    ? { startsAt: event.startsAt, endsAt: event.endsAt }
+    : roundBusyWindow(event.startsAt, event.endsAt);
+  return {
+    id: event.id,
+    title: "Busy",
+    startsAt: rounded.startsAt,
+    endsAt: rounded.endsAt,
+    isAllDay: event.isAllDay,
+    visibility: "busy",
+    colorHex: PUBLIC_BUSY_COLOR,
+    description: null,
+    location: null,
+    url: null,
+  };
+}
+
+function overlapMs(left: PublicCalendarEvent, right: PublicCalendarEvent): number {
+  const startsAt = Math.max(timestampMs(left.startsAt), timestampMs(right.startsAt));
+  const endsAt = Math.min(timestampMs(left.endsAt), timestampMs(right.endsAt));
+  return Math.max(0, endsAt - startsAt);
+}
+
+function eventDurationMs(event: PublicCalendarEvent): number {
+  return Math.max(0, timestampMs(event.endsAt) - timestampMs(event.startsAt));
+}
+
+function isCoveredByPublicEvent(
+  publicEvent: PublicCalendarEvent,
+  observedBusy: PublicCalendarEvent,
+): boolean {
+  if (publicEvent.id === observedBusy.id) return true;
+  if (publicEvent.isAllDay !== observedBusy.isAllDay) return false;
+  const overlap = overlapMs(publicEvent, observedBusy);
+  if (overlap <= 0) return false;
+  const publicDuration = eventDurationMs(publicEvent);
+  const observedDuration = eventDurationMs(observedBusy);
+  const shortest = Math.min(publicDuration, observedDuration);
+  return shortest > 0 && overlap / shortest >= 0.8;
+}
+
+function mergeBusyRuntimeEvents(
+  events: readonly PublicCalendarEvent[],
+): PublicCalendarEvent[] {
+  const sorted = [...events].sort((a, b) =>
+    a.startsAt.localeCompare(b.startsAt) ||
+    a.endsAt.localeCompare(b.endsAt) ||
+    a.title.localeCompare(b.title),
+  );
+  const out: PublicCalendarEvent[] = [];
+  for (const event of sorted) {
+    const previous = out[out.length - 1];
+    if (
+      previous &&
+      previous.visibility === "busy" &&
+      event.visibility === "busy" &&
+      previous.isAllDay === event.isAllDay &&
+      timestampMs(event.startsAt) <= timestampMs(previous.endsAt)
+    ) {
+      if (timestampMs(event.endsAt) > timestampMs(previous.endsAt)) {
+        previous.endsAt = event.endsAt;
+      }
+      if (!previous.id.includes(event.id)) previous.id = `${previous.id}+${event.id}`;
+      continue;
+    }
+    out.push({ ...event });
+  }
+  return out;
+}
+
+export function supplementPublicCalendarWithObservedData({
+  publicData,
+  observedData,
+}: {
+  publicData: PublicCalendarData;
+  observedData: PublicCalendarData | null | undefined;
+}): PublicCalendarData {
+  if (!observedData?.events.length) return publicData;
+
+  const events = [...publicData.events];
+  for (const observed of observedData.events) {
+    const busy = toBusySupplementEvent(observed);
+    if (events.some((event) => isCoveredByPublicEvent(event, busy))) continue;
+    events.push(busy);
+  }
+
+  return normalizePublicCalendarData({
+    schemaVersion: 1,
+    generatedAt: laterIso(publicData.generatedAt, observedData.generatedAt),
+    range: {
+      startsAt: earlierIso(publicData.range.startsAt, observedData.range.startsAt),
+      endsAt: laterIso(publicData.range.endsAt, observedData.range.endsAt),
+    },
+    events: mergeBusyRuntimeEvents(events),
+  });
+}
+
 export function selectPublicCalendarRuntimeData({
   dbData,
   sourceData,
+  observedData,
 }: {
   dbData: PublicCalendarData | null | undefined;
   sourceData: PublicCalendarData;
+  observedData?: PublicCalendarData | null | undefined;
 }): PublicCalendarData {
-  if (!dbData) return sourceData;
+  if (!dbData) {
+    return supplementPublicCalendarWithObservedData({ publicData: sourceData, observedData });
+  }
 
   const dbGeneratedAt = timestampMs(dbData.generatedAt);
   const sourceGeneratedAt = timestampMs(sourceData.generatedAt);
-  if (dbGeneratedAt > sourceGeneratedAt) return dbData;
-  if (sourceGeneratedAt > dbGeneratedAt) return sourceData;
+  if (dbGeneratedAt > sourceGeneratedAt) {
+    return supplementPublicCalendarWithObservedData({ publicData: dbData, observedData });
+  }
+  if (sourceGeneratedAt > dbGeneratedAt) {
+    return supplementPublicCalendarWithObservedData({ publicData: sourceData, observedData });
+  }
 
   // When a full release embeds a richer calendar JSON snapshot but an
   // older live D1 projection has the same generatedAt with fewer rows,
   // prefer the complete source snapshot. That keeps static HTML and the
   // hydration refresh from showing different event sets.
-  return sourceData.events.length > dbData.events.length ? sourceData : dbData;
+  return supplementPublicCalendarWithObservedData({
+    publicData: sourceData.events.length > dbData.events.length ? sourceData : dbData,
+    observedData,
+  });
 }
 
 export function selectPublicCalendarHydrationData({
