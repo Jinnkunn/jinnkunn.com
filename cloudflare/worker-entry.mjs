@@ -7,6 +7,7 @@ import {
   isStaticProtectionSatisfied,
   pickStaticProtectedRule,
 } from "./static-shell-protection.mjs";
+import { handleMobileSummaryRequest } from "./mobile-summary-direct.mjs";
 
 const BYPASS_PREFIXES = [
   "/api/",
@@ -234,6 +235,10 @@ async function tryServeStaticShell(request, env) {
 const worker = {
   async fetch(request, env, ctx) {
     const method = String(request.method || "GET").toUpperCase();
+    const url = new URL(request.url);
+    if (normalizePathname(url.pathname) === "/api/site-admin/mobile/summary") {
+      return handleMobileSummaryRequest(request, env);
+    }
     // When `STAGING_GATE=1`, skip the static-asset shortcut so every
     // anonymous request flows through OpenNext and hits the Next.js
     // middleware. Authenticated public-page requests may still use the
