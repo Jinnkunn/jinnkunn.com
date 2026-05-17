@@ -8,7 +8,7 @@ import {
   createDocument,
   createDefaultEditorExtensionManifest,
   createEditorHistory,
-  findEditorCommand,
+  deleteBlock,
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
@@ -28,7 +28,6 @@ import {
   updateBlockText,
   type EditorBlock,
   type EditorBlockExtensionSpec,
-  type EditorCommand,
   type EditorDocument,
   type EditorExtensionManifest,
   type EditorSelection,
@@ -63,6 +62,17 @@ type BlockTypeMenuState = {
   blockId: string;
 };
 
+type DragState = {
+  blockId: string;
+  overBlockId: string | null;
+  placement: "before" | "after";
+};
+
+type SlashSection = {
+  group: string;
+  items: EditorBlockExtensionSpec[];
+};
+
 const STRUCTURED_BLOCK_TYPES = new Set<EditorBlock["type"]>([
   "image",
   "bookmark",
@@ -80,6 +90,15 @@ const TOGGLE_MARK_LABELS: Record<string, string> = {
   highlight: "H",
 };
 
+const GROUP_LABELS: Record<EditorBlockExtensionSpec["group"], string> = {
+  advanced: "Advanced",
+  basic: "Basic",
+  embed: "Embed",
+  format: "Format",
+  media: "Media",
+  navigation: "Navigation",
+};
+
 function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockExtensionSpec[]): string {
   const spec = blockSpecs.find((candidate) => {
     if (candidate.blockType !== block.type) return false;
@@ -93,6 +112,19 @@ function blockClassName(block: EditorBlock): string {
   return ["je-block", `je-block--${block.type}`, block.checked ? "is-checked" : ""]
     .filter(Boolean)
     .join(" ");
+}
+
+function blockTextLength(block: EditorBlock): number {
+  return getBlockPlainText(block).length;
+}
+
+function isSelectionAtStart(selection: EditorSelection | null, block: EditorBlock): boolean {
+  return isSameBlockSelection(selection) && selection.anchor.offset === 0 && selection.focus.offset === 0;
+}
+
+function isSelectionAtEnd(selection: EditorSelection | null, block: EditorBlock): boolean {
+  const length = blockTextLength(block);
+  return isSameBlockSelection(selection) && selection.anchor.offset === length && selection.focus.offset === length;
 }
 
 function readNodeOffset(element: HTMLElement, node: Node | null, offset: number): number {
@@ -345,40 +377,89 @@ function syncEditableDom(element: HTMLElement, block: EditorBlock) {
   element.replaceChildren(fragment);
 }
 
+function commandMatchesQuery(command: EditorBlockExtensionSpec, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [command.name, command.label, command.description, command.group, command.blockType]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(normalized));
+}
+
+function slashSections(
+  commands: EditorBlockExtensionSpec[],
+  query: string,
+  recentCommandNames: string[],
+): SlashSection[] {
+  const available = commands.filter((command) => command.slashMenu && commandMatchesQuery(command, query));
+  const recent = query
+    ? []
+    : recentCommandNames
+        .map((name) => available.find((command) => command.name === name))
+        .filter((command): command is EditorBlockExtensionSpec => Boolean(command));
+  const recentNames = new Set(recent.map((command) => command.name));
+  const rest = available.filter((command) => !recentNames.has(command.name));
+  const sections: SlashSection[] = [];
+  if (recent.length) sections.push({ group: "Recent", items: recent });
+
+  for (const command of rest) {
+    const label = GROUP_LABELS[command.group] ?? "Other";
+    const existing = sections.find((section) => section.group === label);
+    if (existing) existing.items.push(command);
+    else sections.push({ group: label, items: [command] });
+  }
+
+  return sections;
+}
+
+function flattenSlashSections(sections: SlashSection[]): EditorBlockExtensionSpec[] {
+  return sections.flatMap((section) => section.items);
+}
+
 function SlashMenu({
   slash,
+  sections,
   onSelect,
   onActiveIndexChange,
 }: {
   slash: SlashState;
-  onSelect: (command: EditorCommand) => void;
+  sections: SlashSection[];
+  onSelect: (command: EditorBlockExtensionSpec) => void;
   onActiveIndexChange: (index: number) => void;
 }) {
-  const commands = findEditorCommand(slash.query);
+  let cursor = 0;
+  const commandCount = sections.reduce((count, section) => count + section.items.length, 0);
   return (
     <div className="je-slash-menu" role="listbox" aria-label="Block commands">
       <div className="je-slash-menu__label">Commands</div>
-      {commands.length === 0 ? <div className="je-slash-menu__empty">No commands</div> : null}
-      {commands.map((command, index) => (
-        <button
-          aria-label={command.label}
-          aria-selected={slash.activeIndex === index}
-          className="je-slash-menu__item"
-          key={command.name}
-          role="option"
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault();
-            onSelect(command);
-          }}
-          onMouseEnter={() => onActiveIndexChange(index)}
-        >
-          <span className="je-slash-menu__icon">{command.icon || command.label.slice(0, 1)}</span>
-          <span>
-            <strong>{command.label}</strong>
-            <small>{command.description}</small>
-          </span>
-        </button>
+      {commandCount === 0 ? <div className="je-slash-menu__empty">No commands</div> : null}
+      {sections.map((section) => (
+        <div className="je-slash-menu__section" key={section.group}>
+          <div className="je-slash-menu__group">{section.group}</div>
+          {section.items.map((command) => {
+            const index = cursor++;
+            return (
+              <button
+                aria-label={command.label}
+                aria-selected={slash.activeIndex === index}
+                className="je-slash-menu__item"
+                key={command.name}
+                role="option"
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelect(command);
+                }}
+                onMouseEnter={() => onActiveIndexChange(index)}
+              >
+                <span className="je-slash-menu__icon">{command.icon || command.label.slice(0, 1)}</span>
+                <span>
+                  <strong>{command.label}</strong>
+                  <small>{command.description}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       ))}
     </div>
   );
@@ -657,6 +738,8 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [bubblePosition, setBubblePosition] = useState<BubblePosition | null>(null);
   const [blockTypeMenu, setBlockTypeMenu] = useState<BlockTypeMenuState | null>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [recentCommandNames, setRecentCommandNames] = useState<string[]>([]);
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
@@ -666,6 +749,14 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
   );
   const blockSpecs = manifest.blocks;
   const textMarkSpecs = manifest.textMarks;
+
+  function getSlashSections(query: string): SlashSection[] {
+    return slashSections(blockSpecs, query, recentCommandNames);
+  }
+
+  function getSlashCommands(query: string): EditorBlockExtensionSpec[] {
+    return flattenSlashSections(getSlashSections(query));
+  }
 
   useEffect(() => {
     setHistory(initial);
@@ -679,6 +770,12 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     const target = blockRefs.current.get(focus.blockId);
     if (!target) return;
     setTextSelection(target, nextSelection);
+  }
+
+  function setSelectionAndFocus(nextSelection: EditorSelection) {
+    pendingFocusRef.current = nextSelection;
+    setSelection(nextSelection);
+    requestAnimationFrame(() => focusSelection(nextSelection));
   }
 
   useLayoutEffect(() => {
@@ -702,6 +799,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     setSlash(null);
     setBubblePosition(null);
     setBlockTypeMenu(null);
+    setDragState(null);
     onChange?.(transaction.after, transaction);
   }
 
@@ -709,7 +807,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     return history.document.blocks.find((block) => block.id === blockId) || null;
   }
 
-  function selectCommand(command: EditorCommand, blockId = slash?.blockId) {
+  function selectCommand(command: EditorBlockExtensionSpec, blockId = slash?.blockId) {
     if (!blockId) return;
     const block = currentBlock(blockId);
     let nextText: string | undefined;
@@ -722,6 +820,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
       }
     }
 
+    setRecentCommandNames((current) => [command.name, ...current.filter((name) => name !== command.name)].slice(0, 4));
     commit(setBlockType(history.document, blockId, command.blockType, command.level, nextText));
   }
 
@@ -849,7 +948,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     }
 
     if (slash) {
-      const commands = findEditorCommand(slash.query);
+      const commands = getSlashCommands(slash.query);
       if (event.key === "Escape") {
         event.preventDefault();
         setSlash(null);
@@ -874,6 +973,52 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
       }
     }
 
+    const currentSelection = readTextSelection(event.currentTarget, block.id);
+
+    if (event.key === "ArrowUp" && isSelectionAtStart(currentSelection, block)) {
+      const index = history.document.blocks.findIndex((item) => item.id === block.id);
+      const previous = history.document.blocks[index - 1];
+      if (previous && !STRUCTURED_BLOCK_TYPES.has(previous.type) && previous.type !== "divider") {
+        event.preventDefault();
+        const nextSelection = createCollapsedSelection(previous.id, blockTextLength(previous));
+        setSelectionAndFocus(nextSelection);
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown" && isSelectionAtEnd(currentSelection, block)) {
+      const index = history.document.blocks.findIndex((item) => item.id === block.id);
+      const next = history.document.blocks[index + 1];
+      if (next && !STRUCTURED_BLOCK_TYPES.has(next.type) && next.type !== "divider") {
+        event.preventDefault();
+        const nextSelection = createCollapsedSelection(next.id, 0);
+        setSelectionAndFocus(nextSelection);
+      }
+      return;
+    }
+
+    if (event.key === "ArrowLeft" && isSelectionAtStart(currentSelection, block)) {
+      const index = history.document.blocks.findIndex((item) => item.id === block.id);
+      const previous = history.document.blocks[index - 1];
+      if (previous && !STRUCTURED_BLOCK_TYPES.has(previous.type) && previous.type !== "divider") {
+        event.preventDefault();
+        const nextSelection = createCollapsedSelection(previous.id, blockTextLength(previous));
+        setSelectionAndFocus(nextSelection);
+      }
+      return;
+    }
+
+    if (event.key === "ArrowRight" && isSelectionAtEnd(currentSelection, block)) {
+      const index = history.document.blocks.findIndex((item) => item.id === block.id);
+      const next = history.document.blocks[index + 1];
+      if (next && !STRUCTURED_BLOCK_TYPES.has(next.type) && next.type !== "divider") {
+        event.preventDefault();
+        const nextSelection = createCollapsedSelection(next.id, 0);
+        setSelectionAndFocus(nextSelection);
+      }
+      return;
+    }
+
     if (event.key === "Tab") {
       event.preventDefault();
       const direction = event.shiftKey ? -1 : 1;
@@ -884,6 +1029,12 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && block.type === "todo") {
       event.preventDefault();
       commit(toggleTodo(history.document, block.id));
+      return;
+    }
+
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && block.type === "code-block") {
+      event.preventDefault();
+      commit(insertBlockAfter(history.document, block.id, createBlock({ type: "paragraph" })));
       return;
     }
 
@@ -908,13 +1059,18 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
 
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      const text = getBlockPlainText(block);
+      if (!text.trim() && block.type !== "paragraph") {
+        commit(setBlockType(history.document, block.id, "paragraph", undefined, ""));
+        return;
+      }
       const element = event.currentTarget;
       const offset = readTextOffset(element);
       commit(splitBlock(history.document, block.id, offset));
       return;
     }
 
-    if (event.key === "Backspace" && readTextOffset(event.currentTarget) === 0) {
+    if (event.key === "Backspace" && isSelectionAtStart(currentSelection, block)) {
       event.preventDefault();
       const text = getBlockPlainText(block);
       if ((block.indent || 0) > 0) {
@@ -925,6 +1081,12 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
         commit(setBlockType(history.document, block.id, "paragraph", undefined, text));
         return;
       }
+      const index = history.document.blocks.findIndex((item) => item.id === block.id);
+      if (index === 0) return;
+      if (!text && history.document.blocks[index - 1]?.type === "divider") {
+        commit(deleteBlock(history.document, block.id));
+        return;
+      }
       commit(mergeWithPrevious(history.document, block.id));
     }
   }
@@ -932,13 +1094,43 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
   function handleDragStart(event: React.DragEvent, block: EditorBlock) {
     event.dataTransfer.setData("application/x-jinnkunn-editor-block", block.id);
     event.dataTransfer.effectAllowed = "move";
+    setDragState({ blockId: block.id, overBlockId: block.id, placement: "before" });
   }
 
-  function handleDrop(event: React.DragEvent, targetIndex: number) {
+  function moveBlockTo(blockId: string, targetIndex: number, placement: DragState["placement"]) {
+    const fromIndex = history.document.blocks.findIndex((block) => block.id === blockId);
+    if (fromIndex < 0) return;
+    let insertionIndex = targetIndex + (placement === "after" ? 1 : 0);
+    if (fromIndex < insertionIndex) insertionIndex -= 1;
+    if (fromIndex === insertionIndex) return;
+    commit(moveBlock(history.document, blockId, insertionIndex));
+  }
+
+  function handleDragOver(event: React.DragEvent, block: EditorBlock) {
+    const blockId = event.dataTransfer.getData("application/x-jinnkunn-editor-block") || dragState?.blockId;
+    if (!blockId || blockId === block.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    setDragState((current) => {
+      if (current?.blockId === blockId && current.overBlockId === block.id && current.placement === placement) return current;
+      return { blockId, overBlockId: block.id, placement };
+    });
+  }
+
+  function handleDrop(event: React.DragEvent, targetIndex: number, targetBlock: EditorBlock) {
     const blockId = event.dataTransfer.getData("application/x-jinnkunn-editor-block");
     if (!blockId) return;
     event.preventDefault();
-    commit(moveBlock(history.document, blockId, targetIndex));
+    const rect = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    moveBlockTo(blockId, targetIndex, blockId === targetBlock.id ? "before" : placement);
+    setDragState(null);
+  }
+
+  function handleDragEnd() {
+    setDragState(null);
   }
 
   const focusedBlockId = selection ? getSelectionFocus(selection).blockId : null;
@@ -965,15 +1157,26 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
         {history.document.blocks.map((block, index) => {
           const text = getBlockPlainText(block);
           const isFocused = focusedBlockId === block.id;
+          const dropPosition = dragState?.overBlockId === block.id ? dragState.placement : undefined;
+          const currentSlashSections = slash?.blockId === block.id ? getSlashSections(slash.query) : [];
           return (
             <div
               className={blockClassName(block)}
+              data-block-id={block.id}
+              data-dragging={dragState?.blockId === block.id ? "true" : undefined}
+              data-drop-position={dropPosition}
               data-indent={block.indent || undefined}
               data-focused={isFocused ? "true" : "false"}
               key={block.id}
               role="listitem"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => handleDrop(event, index)}
+              onDragLeave={(event) => {
+                const relatedTarget = event.relatedTarget;
+                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+                  setDragState((current) => current && current.overBlockId === block.id ? { ...current, overBlockId: null } : current);
+                }
+              }}
+              onDragOver={(event) => handleDragOver(event, block)}
+              onDrop={(event) => handleDrop(event, index, block)}
             >
               <div className="je-block__gutter">
                 <button
@@ -1005,6 +1208,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
                   className="je-block__handle"
                   draggable={!readOnly}
                   type="button"
+                  onDragEnd={handleDragEnd}
                   onDragStart={(event) => handleDragStart(event, block)}
                 >
                   ⋮⋮
@@ -1065,6 +1269,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
               {slash?.blockId === block.id ? (
                 <SlashMenu
                   slash={slash}
+                  sections={currentSlashSections}
                   onSelect={selectCommand}
                   onActiveIndexChange={(activeIndex) => setSlash({ ...slash, activeIndex })}
                 />
