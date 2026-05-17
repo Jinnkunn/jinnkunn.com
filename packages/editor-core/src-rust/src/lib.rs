@@ -85,6 +85,26 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 ))
             })
         }
+        "insertDocumentFragment" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                block_id: String,
+                start_offset: i32,
+                end_offset: i32,
+                fragment: Document,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(insert_document_fragment(
+                    input.document,
+                    &input.block_id,
+                    input.start_offset,
+                    input.end_offset,
+                    input.fragment,
+                ))
+            })
+        }
         "isSelectionCollapsed" => {
             unary::<Selection, _>(payload, |selection| Ok(selection.anchor == selection.focus))
         }
@@ -279,6 +299,27 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 ))
             })
         }
+        "updateBlockTextWithMarkdownShortcut" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                block_id: String,
+                text: String,
+                offset: Option<i32>,
+            }
+            unary::<Input, _>(payload, |input| {
+                let offset = input
+                    .offset
+                    .unwrap_or_else(|| utf16_len(&input.text) as i32);
+                Ok(update_block_text_with_markdown_shortcut(
+                    input.document,
+                    &input.block_id,
+                    input.text,
+                    offset,
+                ))
+            })
+        }
         _ => Err(format!("unknown method")),
     }
 }
@@ -417,6 +458,7 @@ struct Selection {
 #[serde(rename_all = "kebab-case")]
 enum TransactionKind {
     InsertBlock,
+    InsertFragment,
     UpdateText,
     SplitBlock,
     MergeBlock,
@@ -429,6 +471,7 @@ enum TransactionKind {
     ToggleTodo,
     SetBlockType,
     SetBlockAttrs,
+    MarkdownShortcut,
     Normalize,
 }
 
@@ -736,6 +779,57 @@ fn update_text_preserving_marks(block: &Block, next_text: &str) -> Vec<TextSpan>
     merge_text_spans(next_spans)
 }
 
+fn slice_text_spans(block: &Block, start_offset: i32, end_offset: i32) -> Vec<TextSpan> {
+    let text_length = utf16_len(&block_plain_text(block)) as i32;
+    let start = start_offset.clamp(0, text_length);
+    let end = end_offset.clamp(start, text_length);
+    let mut cursor = 0;
+    let mut spans = Vec::new();
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if span_end <= start || span_start >= end {
+            continue;
+        }
+        let slice_start = start.max(span_start) - span_start;
+        let slice_end = end.min(span_end) - span_start;
+        let text = slice_utf16(&span.text, slice_start, slice_end);
+        if !text.is_empty() {
+            spans.push(text_span(text, span.marks.clone()));
+        }
+    }
+    merge_text_spans(spans)
+}
+
+fn spans_plain_text_len(spans: &[TextSpan]) -> i32 {
+    spans
+        .iter()
+        .map(|span| utf16_len(&span.text) as i32)
+        .sum()
+}
+
+fn clone_block_with_fresh_ids(mut block: Block) -> Block {
+    block.id = next_id("blk");
+    block.children = block.children.map(|children| {
+        children
+            .into_iter()
+            .map(clone_block_with_fresh_ids)
+            .collect()
+    });
+    normalize_block(block)
+}
+
+fn block_with_id(mut block: Block, id: String) -> Block {
+    block.id = id;
+    normalize_block(block)
+}
+
+fn replace_block_text(mut block: Block, text: Vec<TextSpan>) -> Block {
+    block.text = merge_text_spans(text);
+    normalize_block(block)
+}
+
 fn create_block(input: CreateBlockInput) -> Block {
     let block_type = input.block_type.unwrap_or_default();
     let text = match input.text {
@@ -919,6 +1013,37 @@ fn update_block_text(document: Document, block_id: &str, text: String, offset: i
         Some(create_collapsed_selection(block_id, offset))
     });
     transaction(TransactionKind::UpdateText, before, after, selection)
+}
+
+fn update_block_text_with_markdown_shortcut(
+    document: Document,
+    block_id: &str,
+    text: String,
+    offset: i32,
+) -> Transaction {
+    let before = document.clone();
+    let text_tx = update_block_text(document, block_id, text, offset);
+    let mut after = text_tx.after;
+    let mut kind = TransactionKind::UpdateText;
+    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id)
+    {
+        let updated = after.blocks[index].clone();
+        if updated.block_type == BlockType::Paragraph {
+            let converted = apply_markdown_shortcut(updated.clone());
+            if converted.block_type != updated.block_type || converted.level != updated.level {
+                after.blocks[index] = converted;
+                kind = TransactionKind::MarkdownShortcut;
+                Some(create_collapsed_selection(block_id, 0))
+            } else {
+                text_tx.selection
+            }
+        } else {
+            text_tx.selection
+        }
+    } else {
+        text_tx.selection
+    };
+    transaction(kind, before, after, selection)
 }
 
 fn toggle_text_mark(
@@ -1108,6 +1233,88 @@ fn insert_block_after(
         Some(create_collapsed_selection(block.id, 0))
     };
     transaction(TransactionKind::InsertBlock, before, after, selection)
+}
+
+fn insert_document_fragment(
+    document: Document,
+    block_id: &str,
+    start_offset: i32,
+    end_offset: i32,
+    fragment: Document,
+) -> Transaction {
+    let before = document.clone();
+    let mut after = document;
+    let mut fragment_blocks: Vec<Block> = fragment
+        .blocks
+        .into_iter()
+        .map(clone_block_with_fresh_ids)
+        .collect();
+    if fragment_blocks.is_empty() {
+        return transaction(TransactionKind::InsertFragment, before, after, None);
+    }
+
+    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id) {
+        let target = after.blocks[index].clone();
+        let target_text_length = utf16_len(&block_plain_text(&target)) as i32;
+        let start = start_offset.min(end_offset).clamp(0, target_text_length);
+        let end = start_offset.max(end_offset).clamp(0, target_text_length);
+        let replaces_whole_block = start == 0 && end == target_text_length;
+        let prefix_spans = slice_text_spans(&target, 0, start);
+        let suffix_spans = slice_text_spans(&target, end, target_text_length);
+
+        if fragment_blocks.len() == 1 {
+            let inserted = fragment_blocks.remove(0);
+            let inserted_len = spans_plain_text_len(&inserted.text);
+            if replaces_whole_block {
+                let next_block = block_with_id(inserted, target.id.clone());
+                let selection_offset = utf16_len(&block_plain_text(&next_block)) as i32;
+                after.blocks[index] = next_block;
+                Some(create_collapsed_selection(block_id, selection_offset))
+            } else {
+                let mut next_spans = prefix_spans;
+                next_spans.extend(inserted.text);
+                next_spans.extend(suffix_spans);
+                after.blocks[index] = replace_block_text(target, next_spans);
+                Some(create_collapsed_selection(block_id, start + inserted_len))
+            }
+        } else if replaces_whole_block {
+            let mut inserted_blocks = fragment_blocks;
+            inserted_blocks[0].id = target.id.clone();
+            let last_id = inserted_blocks
+                .last()
+                .map(|block| block.id.clone())
+                .unwrap_or_else(|| target.id.clone());
+            let last_offset = inserted_blocks
+                .last()
+                .map(|block| utf16_len(&block_plain_text(block)) as i32)
+                .unwrap_or(0);
+            after.blocks.splice(index..index + 1, inserted_blocks.into_iter().map(normalize_block));
+            Some(create_collapsed_selection(last_id, last_offset))
+        } else {
+            let first = fragment_blocks.remove(0);
+            let mut last = fragment_blocks.pop().expect("fragment has at least two blocks");
+            let last_id = last.id.clone();
+            let last_offset = utf16_len(&block_plain_text(&last)) as i32;
+
+            let mut first_spans = prefix_spans;
+            first_spans.extend(first.text);
+            let first_block = replace_block_text(target, first_spans);
+
+            last.text.extend(suffix_spans);
+            let mut inserted_blocks = Vec::with_capacity(fragment_blocks.len() + 2);
+            inserted_blocks.push(first_block);
+            inserted_blocks.extend(fragment_blocks.into_iter().map(normalize_block));
+            inserted_blocks.push(normalize_block(last));
+            after.blocks.splice(index..index + 1, inserted_blocks);
+            Some(create_collapsed_selection(last_id, last_offset))
+        }
+    } else {
+        let last = fragment_blocks.last().cloned();
+        after.blocks.extend(fragment_blocks.into_iter().map(normalize_block));
+        last.map(|block| create_collapsed_selection(block.id.clone(), utf16_len(&block_plain_text(&block)) as i32))
+    };
+
+    transaction(TransactionKind::InsertFragment, before, after, selection)
 }
 
 fn split_block(document: Document, block_id: &str, offset: i32) -> Transaction {

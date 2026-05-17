@@ -139,6 +139,15 @@ export function updateBlockText(
   return callEditorCore("updateBlockText", { document, blockId, text, offset });
 }
 
+export function updateBlockTextWithMarkdownShortcut(
+  document: EditorDocument,
+  blockId: string,
+  text: string,
+  offset = text.length,
+): EditorTransaction {
+  return callEditorCore("updateBlockTextWithMarkdownShortcut", { document, blockId, text, offset });
+}
+
 export function toggleTextMark(
   document: EditorDocument,
   blockId: string,
@@ -176,6 +185,16 @@ export function insertBlockAfter(
   block: EditorBlock = createBlock(),
 ): EditorTransaction {
   return callEditorCore("insertBlockAfter", { document, afterBlockId, block });
+}
+
+export function insertDocumentFragment(
+  document: EditorDocument,
+  blockId: string,
+  startOffset: number,
+  endOffset: number,
+  fragment: EditorDocument,
+): EditorTransaction {
+  return callEditorCore("insertDocumentFragment", { document, blockId, startOffset, endOffset, fragment });
 }
 
 export function splitBlock(document: EditorDocument, blockId: string, offset: number): EditorTransaction {

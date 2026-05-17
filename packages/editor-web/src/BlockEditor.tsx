@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  applyMarkdownShortcut,
   applyTransaction,
   clampSelection,
   createBlock,
@@ -12,6 +11,8 @@ import {
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
+  insertDocumentFragment,
+  markdownToDocument,
   mergeEditorExtensionManifests,
   mergeWithPrevious,
   moveBlock,
@@ -26,6 +27,7 @@ import {
   unsetTextMark,
   undo,
   updateBlockText,
+  updateBlockTextWithMarkdownShortcut,
   type EditorBlock,
   type EditorBlockExtensionSpec,
   type EditorDocument,
@@ -38,6 +40,7 @@ import {
   type EditorTextSpan,
   type EditorTransaction,
 } from "../../editor-core/src/index.ts";
+import { clipboardDataToMarkdown } from "./clipboard.ts";
 
 export type BlockEditorProps = {
   extensionManifests?: EditorExtensionManifest[];
@@ -940,18 +943,9 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
   }
 
   function handleText(block: EditorBlock, text: string, offset: number) {
-    const tx = updateBlockText(history.document, block.id, text, offset);
-    const updatedBlock = tx.after.blocks.find((item) => item.id === block.id);
+    const tx = updateBlockTextWithMarkdownShortcut(history.document, block.id, text, offset);
     commit(tx);
-    if (isComposingRef.current) return;
-
-    if (updatedBlock) {
-      const converted = applyMarkdownShortcut(updatedBlock);
-      if (converted.type !== updatedBlock.type || converted.level !== updatedBlock.level) {
-        commit(setBlockType(tx.after, updatedBlock.id, converted.type, converted.level, getBlockPlainText(converted)));
-        return;
-      }
-    }
+    if (isComposingRef.current || tx.kind === "markdown-shortcut") return;
 
     const beforeCursor = text.slice(0, offset);
     const slashMatch = /\/([\w-]*)$/.exec(beforeCursor);
@@ -962,6 +956,33 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
       if (current?.blockId === block.id && current.query === query) return current;
       return { blockId: block.id, query, activeIndex: 0 };
     });
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLElement>, block: EditorBlock) {
+    if (readOnly) return;
+    const text = event.clipboardData.getData("text/plain");
+    const markdown = block.type === "code-block" ? text : clipboardDataToMarkdown(event.clipboardData);
+    if (!markdown) return;
+
+    event.preventDefault();
+    const nextSelection = readTextSelection(event.currentTarget, block.id);
+    const range = selectedRange(nextSelection);
+
+    if (block.type === "code-block") {
+      const currentText = event.currentTarget.textContent || "";
+      commit(
+        updateBlockText(
+          history.document,
+          block.id,
+          `${currentText.slice(0, range.start)}${text}${currentText.slice(range.end)}`,
+          range.start + text.length,
+        ),
+      );
+      return;
+    }
+
+    const fragment = markdownToDocument(markdown, "Clipboard");
+    commit(insertDocumentFragment(history.document, block.id, range.start, range.end, fragment));
   }
 
   function handleSelectionChange(element: HTMLElement, blockId: string) {
@@ -1338,6 +1359,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
                     const offset = readTextOffset(event.currentTarget);
                     handleText(block, event.currentTarget.textContent || "", offset);
                   }}
+                  onPaste={(event) => handlePaste(event, currentBlock(block.id) || block)}
                   onCompositionStart={() => {
                     isComposingRef.current = true;
                     setSlash(null);

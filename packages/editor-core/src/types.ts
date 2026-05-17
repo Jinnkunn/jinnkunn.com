@@ -70,6 +70,7 @@ export type EditorSelection = {
 
 export type EditorTransactionKind =
   | "insert-block"
+  | "insert-fragment"
   | "update-text"
   | "split-block"
   | "merge-block"
@@ -82,6 +83,7 @@ export type EditorTransactionKind =
   | "toggle-todo"
   | "set-block-type"
   | "set-block-attrs"
+  | "markdown-shortcut"
   | "normalize";
 
 export type EditorTransaction = {

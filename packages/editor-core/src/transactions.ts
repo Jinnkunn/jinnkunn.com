@@ -1,6 +1,7 @@
 export {
   deleteBlock,
   insertBlockAfter,
+  insertDocumentFragment,
   mergeWithPrevious,
   moveBlock,
   setBlockIndent,
@@ -9,4 +10,5 @@ export {
   toggleTextMark,
   toggleTodo,
   updateBlockText,
+  updateBlockTextWithMarkdownShortcut,
 } from "./wasm.ts";
