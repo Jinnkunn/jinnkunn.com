@@ -59,9 +59,12 @@ final class AppSession {
     var summary: SiteAdminMobileSummary?
     var releaseDetail: ReleaseJobDetailPayload?
     var calendarSyncResult: CalendarObservationSyncResult?
+    var calendarSyncHealth: CalendarSyncHealth?
+    var calendarSyncStatus: CalendarDeviceSyncStatus?
     var isLoading = false
     var isReleaseDetailLoading = false
     var isCalendarSyncing = false
+    var isCalendarHealthLoading = false
     var message: String?
 
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -74,12 +77,15 @@ final class AppSession {
     @ObservationIgnored private let calendarSyncService = CalendarObservationSyncService()
     @ObservationIgnored private let environmentKey = "site-admin-environment"
     @ObservationIgnored private let baseURLKey = "site-admin-base-url"
+    @ObservationIgnored private let calendarSyncStatusKey = "site-admin-calendar-sync-status-v1"
+    @ObservationIgnored private let isoFormatter = ISO8601DateFormatter()
 
     init() {
         environment = .staging
         baseURLString = SiteAdminEnvironment.staging.baseURLString
         defaults.set(SiteAdminEnvironment.staging.rawValue, forKey: environmentKey)
         defaults.set(SiteAdminEnvironment.staging.baseURLString, forKey: baseURLKey)
+        calendarSyncStatus = loadCalendarSyncStatus()
         loadAuth(for: environment)
     }
 
@@ -134,6 +140,7 @@ final class AppSession {
         do {
             summary = try await client.summary()
             message = nil
+            await refreshCalendarSyncHealth(reportErrors: false)
             if let jobId = currentReleaseJobId {
                 await refreshReleaseDetail(jobId: jobId, reportErrors: false)
             } else {
@@ -196,6 +203,7 @@ final class AppSession {
         summary = nil
         releaseDetail = nil
         calendarSyncResult = nil
+        calendarSyncHealth = nil
     }
 
     func updateNow(text: String, context: String, location: String) async -> Bool {
@@ -295,11 +303,63 @@ final class AppSession {
             let payload = try await calendarSyncService.makeSnapshotPayload()
             let result = try await client.syncCalendarObservations(payload: payload)
             calendarSyncResult = result
+            saveCalendarSyncStatus(
+                CalendarDeviceSyncStatus(
+                    state: "succeeded",
+                    message: "Synced \(result.observationsWritten) events from \(result.sourcesWritten) sources.",
+                    recordedAt: nowIsoString(),
+                    syncedAt: result.syncedAt,
+                    sourcesWritten: result.sourcesWritten,
+                    observationsWritten: result.observationsWritten,
+                    entitiesWritten: result.entitiesWritten,
+                    staleObservations: result.staleObservations
+                )
+            )
+            await refreshCalendarSyncHealth(reportErrors: false)
             await refresh()
             message = "Synced \(result.observationsWritten) calendar events from \(result.sourcesWritten) sources."
         } catch {
             clearCurrentTokenIfExpired(error)
-            message = friendlyMessage(for: error)
+            let friendlyMessage = friendlyMessage(for: error)
+            saveCalendarSyncStatus(
+                CalendarDeviceSyncStatus(
+                    state: "failed",
+                    message: friendlyMessage,
+                    recordedAt: nowIsoString(),
+                    syncedAt: nil,
+                    sourcesWritten: nil,
+                    observationsWritten: nil,
+                    entitiesWritten: nil,
+                    staleObservations: nil
+                )
+            )
+            message = friendlyMessage
+        }
+    }
+
+    func refreshCalendarSyncHealth(reportErrors: Bool = true) async {
+        guard let client else {
+            if reportErrors {
+                message = "Invalid Site Admin URL."
+            }
+            return
+        }
+        guard isSignedIn else {
+            calendarSyncHealth = nil
+            return
+        }
+        isCalendarHealthLoading = true
+        defer { isCalendarHealthLoading = false }
+        do {
+            calendarSyncHealth = try await client.calendarSyncHealth()
+            if reportErrors {
+                message = nil
+            }
+        } catch {
+            clearCurrentTokenIfExpired(error)
+            if reportErrors {
+                message = friendlyMessage(for: error)
+            }
         }
     }
 
@@ -369,5 +429,23 @@ final class AppSession {
             return "Network request failed. Check your connection and try again."
         }
         return error.localizedDescription
+    }
+
+    private func nowIsoString() -> String {
+        isoFormatter.string(from: Date())
+    }
+
+    private func loadCalendarSyncStatus() -> CalendarDeviceSyncStatus? {
+        guard let data = defaults.data(forKey: calendarSyncStatusKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CalendarDeviceSyncStatus.self, from: data)
+    }
+
+    private func saveCalendarSyncStatus(_ status: CalendarDeviceSyncStatus) {
+        calendarSyncStatus = status
+        if let data = try? JSONEncoder().encode(status) {
+            defaults.set(data, forKey: calendarSyncStatusKey)
+        }
     }
 }

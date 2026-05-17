@@ -80,6 +80,13 @@ struct SiteAdminClient {
         )
     }
 
+    func calendarSyncHealth() async throws -> CalendarSyncHealth {
+        let payload: CalendarSyncHealthPayload = try await request(
+            path: "/api/site-admin/calendar-observations"
+        )
+        return payload.health
+    }
+
     private func request<T: Decodable>(
         path: String,
         method: String = "GET",

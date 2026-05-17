@@ -60,9 +60,15 @@ test("site-admin-ios: calendar sync uploads EventKit observations to Draft", asy
   assert.match(service, /collectorId = "ios:/);
 
   assert.match(client, /\/api\/site-admin\/calendar-observations/);
+  assert.match(client, /func calendarSyncHealth\(\)/);
   assert.match(appSession, /func syncCalendarsFromDevice\(\)/);
+  assert.match(appSession, /func refreshCalendarSyncHealth/);
+  assert.match(appSession, /calendarSyncStatusKey/);
   assert.match(appSession, /guard environment\.canEditContent/);
   assert.match(settings, /Sync iPhone Calendars/);
+  assert.match(settings, /Refresh Sync Status/);
+  assert.match(settings, /Last sync succeeded/);
+  assert.match(settings, /Server merged events/);
 
   assert.match(plist, /NSCalendarsFullAccessUsageDescription/);
 });

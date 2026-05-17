@@ -57,3 +57,40 @@ struct CalendarObservationSyncResult: Decodable {
     let staleObservations: Int
     let syncedAt: String
 }
+
+struct CalendarSyncHealthPayload: Decodable {
+    let health: CalendarSyncHealth
+}
+
+struct CalendarSyncHealth: Decodable {
+    let sources: [CalendarSyncHealthSource]
+    let entityCount: Int
+
+    var latestSyncedAt: String? {
+        sources.compactMap(\.lastSyncedAt).max()
+    }
+}
+
+struct CalendarSyncHealthSource: Decodable, Identifiable {
+    let id: String
+    let provider: String
+    let title: String
+    let collectorId: String
+    let lastSyncedAt: String?
+    let eventCount: Int
+}
+
+struct CalendarDeviceSyncStatus: Codable {
+    let state: String
+    let message: String
+    let recordedAt: String
+    let syncedAt: String?
+    let sourcesWritten: Int?
+    let observationsWritten: Int?
+    let entitiesWritten: Int?
+    let staleObservations: Int?
+
+    var isSuccess: Bool {
+        state == "succeeded"
+    }
+}
