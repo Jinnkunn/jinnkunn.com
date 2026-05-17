@@ -27,11 +27,27 @@ async function selectText(page, selector, start, end) {
   await page.evaluate(
     ({ selector, start, end }) => {
       const editable = document.querySelector(selector);
-      if (!editable?.firstChild) throw new Error(`Missing editable text for ${selector}`);
+      if (!editable) throw new Error(`Missing editable text for ${selector}`);
+      function textPointAt(root, offset) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        let cursor = 0;
+        while (node) {
+          const next = cursor + node.textContent.length;
+          if (offset <= next) return { node, offset: Math.max(0, offset - cursor) };
+          cursor = next;
+          node = walker.nextNode();
+        }
+        const fallback = root.lastChild;
+        if (fallback?.nodeType === Node.TEXT_NODE) return { node: fallback, offset: fallback.textContent.length };
+        throw new Error(`Missing selectable text for ${selector}`);
+      }
       editable.focus();
       const range = document.createRange();
-      range.setStart(editable.firstChild, start);
-      range.setEnd(editable.firstChild, end);
+      const startPoint = textPointAt(editable, start);
+      const endPoint = textPointAt(editable, end);
+      range.setStart(startPoint.node, startPoint.offset);
+      range.setEnd(endPoint.node, endPoint.offset);
       const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);
@@ -62,12 +78,53 @@ const blockWidths = await page.evaluate(() => {
 });
 assert.ok(Math.abs(blockWidths.paragraph - blockWidths.callout) <= 1, JSON.stringify(blockWidths));
 assert.ok(Math.abs(blockWidths.paragraph - blockWidths.image) <= 1, JSON.stringify(blockWidths));
+const headingBlockBox = await page.locator(".je-block--heading").first().boundingBox();
+assert.ok(headingBlockBox);
+await page.mouse.move(headingBlockBox.x + 10, headingBlockBox.y + 10);
+const headingGutterAlignment = await page.evaluate(() => {
+  const button = document.querySelector(".je-block--heading .je-block__gutter button");
+  const editable = document.querySelector(".je-block--heading .je-editable");
+  return Math.abs(button.getBoundingClientRect().top - editable.getBoundingClientRect().top);
+});
+assert.ok(headingGutterAlignment <= 5, `Heading gutter is misaligned by ${headingGutterAlignment}px`);
+await selectText(page, ".je-block--heading .je-editable", 0, 3);
+assert.equal(await page.getByRole("button", { exact: true, name: "Block type: Heading 2" }).isVisible(), true);
 
 await loadDocument(page, {
   version: 1,
   title: "Smoke",
   blocks: [{ id: "a", type: "paragraph", text: [{ text: "Hello world" }] }],
 });
+const blockBox = await page.locator(".je-block").boundingBox();
+assert.ok(blockBox);
+await page.mouse.move(blockBox.x + 10, blockBox.y + 10);
+await page.waitForFunction(() => getComputedStyle(document.querySelector(".je-block__gutter")).opacity === "1");
+const hoverState = await page.evaluate(() => {
+  const block = document.querySelector(".je-block");
+  const gutter = document.querySelector(".je-block__gutter");
+  return {
+    background: getComputedStyle(block).backgroundColor,
+    gutterOpacity: getComputedStyle(gutter).opacity,
+  };
+});
+assert.equal(hoverState.background, "rgba(0, 0, 0, 0)");
+assert.equal(hoverState.gutterOpacity, "1");
+assert.equal(await page.locator(".je-block__gutter button").count(), 2);
+await page.locator(".je-editable").click({ position: { x: 24, y: 16 } });
+assert.equal(await page.locator(".je-block").getAttribute("data-selected"), "false");
+const editableBox = await page.locator(".je-editable").boundingBox();
+assert.ok(editableBox);
+await page.mouse.click(editableBox.x + editableBox.width - 8, editableBox.y + 16);
+assert.equal(await page.locator(".je-block").getAttribute("data-selected"), "true");
+assert.equal(
+  await page.locator(".je-block").evaluate((block) => getComputedStyle(block).backgroundColor),
+  "rgba(0, 0, 0, 0)",
+);
+assert.notEqual(
+  await page.locator(".je-editable").evaluate((editable) => getComputedStyle(editable).backgroundColor),
+  "rgba(0, 0, 0, 0)",
+);
+await page.locator(".je-editable").click({ position: { x: 24, y: 16 } });
 await selectText(page, ".je-editable", 0, 5);
 await page.getByRole("button", { exact: true, name: "Link" }).click();
 await page.getByLabel("URL").fill("/hello");
@@ -75,9 +132,27 @@ await page.keyboard.press("Enter");
 await page.waitForSelector('.je-editable a[href="/hello"]');
 await page.locator('.je-editable a[href="/hello"]').click();
 await page.waitForSelector(".je-link-popover");
+await page.getByRole("button", { exact: true, name: "Edit" }).click();
 await page.getByLabel("Link URL").fill("/hello-updated");
 await page.getByRole("button", { exact: true, name: "Apply" }).click();
 await page.waitForSelector('.je-editable a[href="/hello-updated"]');
+
+await loadDocument(page, {
+  version: 1,
+  title: "Color",
+  blocks: [{ id: "a", type: "paragraph", text: [{ text: "Hello world" }] }],
+});
+await selectText(page, ".je-editable", 0, 5);
+await page.getByRole("button", { exact: true, name: "Text color" }).click();
+await page.getByRole("button", { exact: true, name: "Text color blue" }).click();
+await page.waitForSelector('.je-editable span[data-color="blue"]');
+await selectText(page, ".je-editable", 0, 5);
+const textColorButton = page.getByRole("button", { exact: true, name: "Text color" });
+assert.equal(await textColorButton.getAttribute("aria-pressed"), "true");
+assert.equal(await textColorButton.getAttribute("data-current-color"), "blue");
+await selectText(page, ".je-editable", 0, 11);
+assert.equal(await textColorButton.getAttribute("aria-pressed"), "false");
+assert.equal(await textColorButton.getAttribute("data-mixed"), "true");
 
 await loadDocument(page, {
   version: 1,
