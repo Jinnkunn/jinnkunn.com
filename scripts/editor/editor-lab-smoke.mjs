@@ -18,6 +18,23 @@ function hostLoadDocument(document) {
   };
 }
 
+function hostMarkSaved() {
+  return {
+    protocolVersion: 1,
+    requestId: `smoke-${Math.random().toString(36).slice(2)}`,
+    type: "host:mark-saved",
+  };
+}
+
+function hostRunCommand(command) {
+  return {
+    command,
+    protocolVersion: 1,
+    requestId: `smoke-${Math.random().toString(36).slice(2)}`,
+    type: "host:run-command",
+  };
+}
+
 async function loadDocument(page, document) {
   await page.evaluate((message) => window.postMessage(message, window.location.origin), hostLoadDocument(document));
   await page.waitForFunction((title) => document.querySelector(".je-title")?.value === title, document.title);
@@ -61,12 +78,20 @@ async function selectText(page, selector, start, end) {
 const browser = await chromium.launch({ headless: true, executablePath });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
+await page.addInitScript(() => {
+  window.__editorMessages = [];
+  window.addEventListener("message", (event) => {
+    if (event.data?.type?.startsWith("editor:")) window.__editorMessages.push(event.data);
+  });
+});
 page.on("console", (message) => {
   if (message.type() === "error") errors.push(message.text());
 });
 page.on("pageerror", (error) => errors.push(error.message));
 
 await page.goto(url, { waitUntil: "networkidle" });
+await page.waitForFunction(() => window.__editorMessages.some((message) => message.type === "editor:ready"));
+await page.waitForFunction(() => window.__editorMessages.some((message) => message.type === "editor:dirty-change" && message.dirty === false));
 assert.equal(await page.locator(".je-block").count(), 10);
 const blockWidths = await page.evaluate(() => {
   const width = (selector) => Math.round(document.querySelector(selector)?.getBoundingClientRect().width || 0);
@@ -191,8 +216,19 @@ await page.keyboard.type("/co");
 await page.waitForSelector(".je-slash-menu");
 const firstSlashItem = await page.locator(".je-slash-menu__item").first().innerText();
 assert.match(firstSlashItem, /Code block|Callout/);
+assert.match(firstSlashItem, /```|!/);
 await page.keyboard.press("Tab");
 await page.waitForSelector(".je-block--code-block, .je-block--callout");
+
+await loadDocument(page, {
+  version: 1,
+  title: "Slash aliases",
+  blocks: [{ id: "a", type: "paragraph", text: [{ text: "" }] }],
+});
+await page.locator(".je-editable").click();
+await page.keyboard.type("/h2");
+await page.waitForSelector(".je-slash-menu");
+assert.match(await page.locator(".je-slash-menu__item").first().innerText(), /Heading 2/);
 
 await loadDocument(page, {
   version: 1,
@@ -204,6 +240,63 @@ await page.keyboard.press("Enter");
 await page.waitForSelector(".je-block--paragraph");
 assert.equal(await page.locator(".je-block--heading").count(), 1);
 assert.equal(await page.locator(".je-block--paragraph").count(), 1);
+
+await loadDocument(page, {
+  version: 1,
+  title: "Bridge dirty",
+  blocks: [{ id: "a", type: "paragraph", text: [{ text: "Clean" }] }],
+});
+const dirtyStartCount = await page.evaluate(() => window.__editorMessages.filter((message) => message.type === "editor:dirty-change" && message.dirty === false).length);
+const dirtyTrueStartCount = await page.evaluate(() => window.__editorMessages.filter((message) => message.type === "editor:dirty-change" && message.dirty === true).length);
+await page.locator(".je-editable").click();
+await page.keyboard.press("End");
+await page.keyboard.type("!");
+await page.waitForFunction(
+  (count) => window.__editorMessages.filter((message) => message.type === "editor:dirty-change" && message.dirty === true).length > count,
+  dirtyTrueStartCount,
+);
+const dirtyCommand = hostRunCommand("get-dirty-state");
+await page.evaluate((message) => window.postMessage(message, window.location.origin), dirtyCommand);
+await page.waitForFunction(
+  (requestId) => window.__editorMessages.some((message) => message.type === "editor:command-result" && message.requestId === requestId && message.ok && message.result?.dirty === true),
+  dirtyCommand.requestId,
+);
+await page.evaluate((message) => window.postMessage(message, window.location.origin), hostMarkSaved());
+await page.waitForFunction(
+  (count) => window.__editorMessages.filter((message) => message.type === "editor:dirty-change" && message.dirty === false).length > count,
+  dirtyStartCount,
+);
+
+await loadDocument(page, {
+  version: 1,
+  title: "Large",
+  blocks: Array.from({ length: 220 }, (_, index) => ({
+    id: `block-${index}`,
+    type: "paragraph",
+    text: [{ text: `Large block ${index}` }],
+  })),
+});
+await page.waitForFunction(() => document.querySelectorAll(".je-block").length === 220);
+await page.evaluate(() => {
+  window.__largeMutationCounts = { first: 0, last: 0 };
+  const observe = (key, element) => {
+    const observer = new MutationObserver((records) => {
+      window.__largeMutationCounts[key] += records.length;
+    });
+    observer.observe(element, { childList: true, characterData: true, subtree: true });
+  };
+  observe("first", document.querySelectorAll(".je-editable")[0]);
+  observe("last", document.querySelectorAll(".je-editable")[219]);
+});
+await page.locator(".je-editable").nth(110).click();
+await page.keyboard.press("End");
+await page.keyboard.type(" plus");
+await page.waitForFunction(() => document.querySelectorAll(".je-editable")[110]?.textContent?.endsWith(" plus"));
+assert.deepEqual(await page.evaluate(() => window.__largeMutationCounts), { first: 0, last: 0 });
+await selectText(page, ".je-block:nth-child(111) .je-editable", 0, 5);
+await page.waitForSelector(".je-inline-toolbar");
+await page.locator(".je-title").click();
+await page.waitForFunction(() => !document.querySelector(".je-inline-toolbar"));
 
 await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(url, { waitUntil: "networkidle" });
