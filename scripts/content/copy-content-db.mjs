@@ -5,41 +5,36 @@
 // runtime mirror so production admin/mobile APIs can read the same content
 // that was just promoted, without making production an editing target.
 
-import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+
 const BINDING = "SITE_ADMIN_DB";
-const ALLOWED_PASSTHROUGH = new Set(["--remote", "--local", "--preview"]);
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
+const WRANGLER_TOML = path.join(ROOT, "wrangler.toml");
 
 function parseArgs(argv = process.argv.slice(2)) {
   const out = {
     dryRun: false,
     json: false,
-    passthrough: ["--remote"],
     quiet: false,
     sourceEnv: "staging",
     targetEnv: "production",
   };
-  let sawLocation = false;
   for (const arg of argv) {
     if (arg === "--dry-run") out.dryRun = true;
     else if (arg === "--json") out.json = true;
     else if (arg === "--quiet") out.quiet = true;
     else if (arg.startsWith("--source-env=")) out.sourceEnv = arg.slice("--source-env=".length);
     else if (arg.startsWith("--target-env=")) out.targetEnv = arg.slice("--target-env=".length);
-    else if (ALLOWED_PASSTHROUGH.has(arg)) {
-      if (arg === "--remote" || arg === "--local" || arg === "--preview") {
-        if (sawLocation) out.passthrough = out.passthrough.filter((v) => !ALLOWED_PASSTHROUGH.has(v));
-        sawLocation = true;
-      }
-      out.passthrough.push(arg);
+    else if (arg === "--remote") {
+      // Kept for package-script readability. This script always targets remote D1.
     } else {
       console.error(`unknown arg: ${arg}`);
       console.error(
-        "usage: node scripts/content/copy-content-db.mjs [--remote|--local] [--source-env=staging] [--target-env=production] [--dry-run] [--json] [--quiet]",
+        "usage: node scripts/content/copy-content-db.mjs [--remote] [--source-env=staging] [--target-env=production] [--dry-run] [--json] [--quiet]",
       );
       process.exit(2);
     }
@@ -53,6 +48,35 @@ function parseArgs(argv = process.argv.slice(2)) {
   return out;
 }
 
+function readEnv(name) {
+  return String(process.env[name] || "").trim();
+}
+
+function accountId() {
+  return readEnv("CLOUDFLARE_ACCOUNT_ID") || readEnv("CF_ACCOUNT_ID");
+}
+
+function apiToken() {
+  return readEnv("CLOUDFLARE_API_TOKEN") || readEnv("CF_API_TOKEN");
+}
+
+function databaseIdForEnv(env) {
+  const raw = fs.readFileSync(WRANGLER_TOML, "utf8");
+  const marker = `[[env.${env}.d1_databases]]`;
+  const start = raw.indexOf(marker);
+  if (start < 0) throw new Error(`Missing ${marker} in wrangler.toml`);
+  const rest = raw.slice(start + marker.length);
+  const nextBlock = rest.search(/\n\[/);
+  const block = nextBlock >= 0 ? rest.slice(0, nextBlock) : rest;
+  const bindingMatch = /^\s*binding\s*=\s*"([^"]+)"/m.exec(block);
+  const databaseMatch = /^\s*database_id\s*=\s*"([^"]+)"/m.exec(block);
+  if (bindingMatch?.[1] !== BINDING) {
+    throw new Error(`Missing ${BINDING} binding for env.${env}`);
+  }
+  if (!databaseMatch) throw new Error(`Missing database_id for env.${env}.${BINDING}`);
+  return databaseMatch[1];
+}
+
 function normalizeEnv(value, label) {
   const raw = String(value || "").trim();
   if (raw === "staging" || raw === "production") return raw;
@@ -60,88 +84,51 @@ function normalizeEnv(value, label) {
   process.exit(2);
 }
 
-function runWranglerCapture(args) {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("npx", args, { env: process.env });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => {
-      stdout += d.toString();
-    });
-    proc.stderr.on("data", (d) => {
-      stderr += d.toString();
-    });
-    proc.on("exit", (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`wrangler exited ${code}\n${stderr}${stdout}`));
-    });
-    proc.on("error", reject);
+async function cfD1Query({ env, sql, params = [] }) {
+  const cfAccount = accountId();
+  const token = apiToken();
+  if (!cfAccount) throw new Error("Missing CLOUDFLARE_ACCOUNT_ID");
+  if (!token) throw new Error("Missing CLOUDFLARE_API_TOKEN");
+  const databaseId = databaseIdForEnv(env);
+  const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfAccount)}/d1/database/${encodeURIComponent(databaseId)}/query`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sql, params }),
   });
-}
-
-function extractJsonArray(stdout) {
-  const idx = stdout.indexOf("[");
-  if (idx < 0) throw new Error("wrangler returned no JSON payload");
-  return JSON.parse(stdout.slice(idx));
-}
-
-async function d1Query({ env, passthrough, sql }) {
-  const stdout = await runWranglerCapture([
-    "wrangler",
-    "d1",
-    "execute",
-    BINDING,
-    `--env=${env}`,
-    ...passthrough,
-    "--command",
-    sql,
-    "--json",
-  ]);
-  const payload = extractJsonArray(stdout);
-  if (payload?.[0]?.success !== true) {
-    throw new Error(`D1 query failed: ${JSON.stringify(payload).slice(0, 500)}`);
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`Cloudflare D1 returned non-JSON: ${text.slice(0, 240)}`);
   }
-  return payload?.[0]?.results ?? [];
-}
-
-async function d1ExecuteFile({ env, passthrough, file }) {
-  const stdout = await runWranglerCapture([
-    "wrangler",
-    "d1",
-    "execute",
-    BINDING,
-    `--env=${env}`,
-    ...passthrough,
-    "--file",
-    file,
-    "--json",
-  ]);
-  const payload = extractJsonArray(stdout);
-  const failed = payload.find((entry) => entry?.success !== true);
-  if (failed) {
-    throw new Error(`D1 file execution failed: ${JSON.stringify(payload).slice(0, 500)}`);
+  if (!response.ok || payload?.success === false) {
+    const errors = Array.isArray(payload?.errors)
+      ? payload.errors.map((item) => item.message).join("; ")
+      : text;
+    throw new Error(`Cloudflare D1 query failed (${response.status}): ${errors}`);
   }
-  return payload;
-}
-
-function sqlString(value) {
-  if (value === null || value === undefined || value === "") return "NULL";
-  return `'${String(value).replaceAll("'", "''")}'`;
-}
-
-function sqlText(value) {
-  return `'${String(value).replaceAll("'", "''")}'`;
-}
-
-function sqlInt(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? String(Math.trunc(n)) : String(fallback);
+  const result = payload?.result;
+  if (Array.isArray(result)) {
+    const failed = result.find((entry) => entry?.success === false);
+    if (failed) throw new Error(`Cloudflare D1 query failed: ${JSON.stringify(failed)}`);
+    return result[0]?.results ?? [];
+  }
+  return result?.results ?? [];
 }
 
 function normalizeRow(row) {
   const relPath = String(row.rel_path || "");
   const bodyHex = String(row.body_hex || "");
   const sha = String(row.sha || "");
+  const rawUpdatedAt = row.updated_at;
+  const updatedAtNumber = Number(rawUpdatedAt);
+  const updatedAtParsed =
+    Number.isFinite(updatedAtNumber) ? updatedAtNumber : Date.parse(String(rawUpdatedAt || ""));
   if (!relPath || relPath.includes("\0")) throw new Error(`invalid rel_path: ${relPath}`);
   if (!/^[0-9a-f]*$/i.test(bodyHex)) throw new Error(`invalid body hex for ${relPath}`);
   if (!sha) throw new Error(`missing sha for ${relPath}`);
@@ -151,7 +138,7 @@ function normalizeRow(row) {
     isBinary: Number(row.is_binary || 0) ? 1 : 0,
     sha,
     size: Number(row.size || 0),
-    updatedAt: Number(row.updated_at || Date.now()),
+    updatedAt: Number.isFinite(updatedAtParsed) ? updatedAtParsed : Date.now(),
     updatedBy: row.updated_by === null || row.updated_by === undefined ? null : String(row.updated_by),
   };
 }
@@ -166,26 +153,12 @@ function summarizeRows(rows) {
   return { rows: rows.length, posts, pages };
 }
 
-function buildMirrorSql(rows) {
-  const lines = [
-    "BEGIN TRANSACTION;",
-    "DELETE FROM content_files;",
-  ];
-  for (const row of rows) {
-    lines.push(
-      `INSERT INTO content_files (rel_path, body, is_binary, sha, size, updated_at, updated_by) VALUES (${sqlText(row.relPath)}, X'${row.bodyHex}', ${row.isBinary}, ${sqlText(row.sha)}, ${sqlInt(row.size)}, ${sqlInt(row.updatedAt)}, ${sqlString(row.updatedBy)});`,
-    );
-  }
-  lines.push("COMMIT;");
-  return `${lines.join("\n")}\n`;
-}
-
 async function main() {
+  loadProjectEnv({ cwd: ROOT, override: true });
   const args = parseArgs();
   const sourceRows = (
-    await d1Query({
+    await cfD1Query({
       env: args.sourceEnv,
-      passthrough: args.passthrough,
       sql: `SELECT rel_path,
                    lower(hex(body)) AS body_hex,
                    is_binary,
@@ -197,6 +170,9 @@ async function main() {
              ORDER BY rel_path`,
     })
   ).map(normalizeRow);
+  if (sourceRows.length === 0) {
+    throw new Error(`Refusing to mirror empty ${args.sourceEnv} content_files`);
+  }
 
   const summary = {
     ok: true,
@@ -208,17 +184,31 @@ async function main() {
   };
 
   if (!args.dryRun) {
-    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "content-db-copy-"));
-    const sqlFile = path.join(tmpDir, "mirror-content-files.sql");
-    try {
-      await writeFile(sqlFile, buildMirrorSql(sourceRows));
-      await d1ExecuteFile({
-        env: args.targetEnv,
-        passthrough: args.passthrough,
-        file: sqlFile,
-      });
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
+    await cfD1Query({ env: args.targetEnv, sql: "DELETE FROM content_files" });
+    for (const row of sourceRows) {
+      if (row.isBinary) {
+        throw new Error(`Refusing to mirror binary content row via text params: ${row.relPath}`);
+      }
+      try {
+        await cfD1Query({
+          env: args.targetEnv,
+          sql: `INSERT INTO content_files
+                  (rel_path, body, is_binary, sha, size, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          params: [
+            row.relPath,
+            Buffer.from(row.bodyHex, "hex").toString("utf8"),
+            row.isBinary,
+            row.sha,
+            row.size,
+            row.updatedAt,
+            row.updatedBy,
+          ],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to mirror ${row.relPath}: ${message}`);
+      }
     }
   }
 
