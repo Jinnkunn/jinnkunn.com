@@ -82,7 +82,10 @@
     "workspace:mcp:self-test": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --self-test",
     "workspace:mcp:confirmations": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --confirmations",
     "workspace:mcp:approve": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --approve",
-    "workspace:mcp:reject": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --reject"
+    "workspace:mcp:reject": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --reject",
+    "editor:lab": "npm --prefix apps/editor-lab run dev",
+    "editor:lab:build": "npm --prefix apps/editor-lab run build",
+    "editor:test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/editor/**/*.test.mjs'"
   },
   "dependencies": {
     "@mdx-js/mdx": "^3.1.1",
