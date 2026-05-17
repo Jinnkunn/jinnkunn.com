@@ -112,7 +112,7 @@ database_id = "adb6f272-f7e6-471a-9c22-b257184b3adf"
 name = "jinnkunn-site"
 
 [env.production.vars]
-SITE_ADMIN_STORAGE = "local"
+SITE_ADMIN_STORAGE = "db"
 SITE_ADMIN_REPO_BRANCH = "main"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 

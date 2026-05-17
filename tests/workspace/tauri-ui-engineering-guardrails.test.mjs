@@ -868,12 +868,20 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
 test("tauri-ui-engineering: staging D1 snapshot workflow is manual-only", async () => {
   const snapshotWorkflow = await read(".github/workflows/snapshot-staging-d1.yml");
   const d1Runbook = await read("docs/runbooks/d1-bindings.md");
+  const releaseFromStaging = await read("scripts/release/release-from-staging.mjs");
+  const packageJson = await read("package.json");
+  const wrangler = await read("wrangler.toml");
 
   assert.match(snapshotWorkflow, /^\s*workflow_dispatch:/m);
   assert.doesNotMatch(snapshotWorkflow, /^\s*schedule:/m);
   assert.match(snapshotWorkflow, /schedule is intentionally\s+disabled/i);
   assert.match(d1Runbook, /manual-only/);
   assert.match(d1Runbook, /schedule stays disabled/);
+  assert.match(d1Runbook, /read-only runtime mirror/);
+  assert.match(packageJson, /db:copy:staging-to-production/);
+  assert.match(releaseFromStaging, /copy-content-db\.mjs/);
+  assert.match(releaseFromStaging, /syncProductionD1FromStaging/);
+  assert.match(wrangler, /\[env\.production\.vars\][\s\S]*SITE_ADMIN_STORAGE = "db"/);
 });
 
 test("tauri-ui-engineering: site admin has a unified topbar save action", async () => {

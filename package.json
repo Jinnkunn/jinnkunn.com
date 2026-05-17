@@ -15,6 +15,7 @@
     "db:migrate": "node scripts/content/db-migrate.mjs",
     "db:diff:staging": "node scripts/content/dump-content-from-db.mjs --remote --env=staging --diff-only",
     "db:diff:staging:json": "node scripts/content/dump-content-from-db.mjs --remote --env=staging --diff-only --json",
+    "db:copy:staging-to-production": "node scripts/content/copy-content-db.mjs --remote --source-env=staging --target-env=production",
     "sync:notion": "node scripts/content/sync-notion.mjs",
     "snapshot:ui": "node scripts/qa/ui-snapshots.mjs",
     "snapshot:search": "node scripts/qa/search-snapshots.mjs",
