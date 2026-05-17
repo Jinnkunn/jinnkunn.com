@@ -2,6 +2,13 @@ export const SITE_ADMIN_IOS_CALLBACK_SCHEME = "jinnkunn-site-admin";
 export const SITE_ADMIN_IOS_CALLBACK_HOST = "auth";
 export const SITE_ADMIN_IOS_CALLBACK_PATH = "/callback";
 
+export function buildSiteAdminAppAuthSignInUrl(requestUrl: string): URL {
+  const current = new URL(requestUrl);
+  const signIn = new URL("/api/auth/signin", current);
+  signIn.searchParams.set("callbackUrl", `${current.pathname}${current.search}`);
+  return signIn;
+}
+
 export function parseSiteAdminAppRedirectUri(raw: string): URL | null {
   try {
     const target = new URL(String(raw || ""));

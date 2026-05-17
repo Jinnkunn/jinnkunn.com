@@ -52,6 +52,37 @@ struct AdminCard<Content: View>: View {
     }
 }
 
+struct SiteAdminEnvironmentPicker: View {
+    @Environment(AppSession.self) private var session
+    var showURL = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker(
+                "Site Admin environment",
+                selection: Binding(
+                    get: { session.environment },
+                    set: { session.selectEnvironment($0) }
+                )
+            ) {
+                ForEach(SiteAdminEnvironment.allCases) { environment in
+                    Text(environment.name).tag(environment)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if showURL {
+                Text(session.baseURLString)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+}
+
 struct EmptySignedOutView: View {
     @Environment(AppSession.self) private var session
 
@@ -59,12 +90,17 @@ struct EmptySignedOutView: View {
         ContentUnavailableView {
             Label("Connect Site Admin", systemImage: "lock.open")
         } description: {
-            Text("Sign in once to manage the website from this device.")
+            VStack(spacing: 12) {
+                Text("Choose a Site Admin environment, then sign in once to manage the website from this device.")
+                SiteAdminEnvironmentPicker()
+                    .frame(maxWidth: 320)
+            }
         } actions: {
-            Button("Sign In") {
+            Button("Sign In to \(session.environment.name)") {
                 Task { await session.signIn() }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(session.isLoading)
         }
     }
 }

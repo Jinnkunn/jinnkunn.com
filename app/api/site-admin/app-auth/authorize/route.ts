@@ -4,7 +4,10 @@ import { NextResponse } from "next/server";
 import { apiError, requireSiteAdminContext } from "@/lib/server/site-admin-api";
 import { issueSiteAdminAppToken } from "@/lib/server/site-admin-app-token";
 import { checkRateLimit, requestIpFromHeaders } from "@/lib/server/rate-limit";
-import { parseSiteAdminAppRedirectUri } from "@/lib/site-admin/app-auth-redirect";
+import {
+  buildSiteAdminAppAuthSignInUrl,
+  parseSiteAdminAppRedirectUri,
+} from "@/lib/site-admin/app-auth-redirect";
 
 export const runtime = "nodejs";
 
@@ -19,10 +22,7 @@ const APP_AUTH_RATE_LIMIT = {
 };
 
 function toLoginRedirect(req: NextRequest): NextResponse {
-  const current = new URL(req.url);
-  const login = new URL("/site-admin/login", req.url);
-  login.searchParams.set("next", `${current.pathname}${current.search}`);
-  return NextResponse.redirect(login, { status: 302 });
+  return NextResponse.redirect(buildSiteAdminAppAuthSignInUrl(req.url), { status: 302 });
 }
 
 export async function GET(req: NextRequest) {
