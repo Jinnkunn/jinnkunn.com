@@ -4,7 +4,14 @@ use std::cell::Cell;
 use wasm_bindgen::prelude::*;
 
 const MAX_BLOCK_INDENT: i32 = 6;
-const MARK_ORDER: [TextMark; 4] = [TextMark::Bold, TextMark::Italic, TextMark::Code, TextMark::Underline];
+const MARK_ORDER: [TextMark; 6] = [
+    TextMark::Bold,
+    TextMark::Italic,
+    TextMark::Code,
+    TextMark::Underline,
+    TextMark::Strikethrough,
+    TextMark::Highlight,
+];
 
 thread_local! {
     static NEXT_ID: Cell<u64> = const { Cell::new(1) };
@@ -16,25 +23,42 @@ pub fn editor_core_call(method: &str, payload: &str) -> Result<String, JsValue> 
         .map_err(|error| JsValue::from_str(&format!("Invalid editor-core payload: {error}")))?;
     let output = dispatch(method, payload)
         .map_err(|error| JsValue::from_str(&format!("editor-core {method} failed: {error}")))?;
-    serde_json::to_string(&output)
-        .map_err(|error| JsValue::from_str(&format!("Failed to serialize editor-core output: {error}")))
+    serde_json::to_string(&output).map_err(|error| {
+        JsValue::from_str(&format!("Failed to serialize editor-core output: {error}"))
+    })
 }
 
 fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
     match method {
-        "applyMarkdownShortcut" => unary::<Block, _>(payload, |block| Ok(apply_markdown_shortcut(block))),
-        "applyTransaction" => value2(payload, |history: History, tx: Transaction| Ok(apply_transaction(history, tx))),
-        "clampSelection" => value2(payload, |document: Document, selection: Selection| Ok(clamp_selection(&document, selection))),
-        "createBlock" => unary::<Option<CreateBlockInput>, _>(payload, |input| Ok(create_block(input.unwrap_or_default()))),
+        "applyMarkdownShortcut" => {
+            unary::<Block, _>(payload, |block| Ok(apply_markdown_shortcut(block)))
+        }
+        "applyTransaction" => value2(payload, |history: History, tx: Transaction| {
+            Ok(apply_transaction(history, tx))
+        }),
+        "clampSelection" => value2(payload, |document: Document, selection: Selection| {
+            Ok(clamp_selection(&document, selection))
+        }),
+        "createBlock" => unary::<Option<CreateBlockInput>, _>(payload, |input| {
+            Ok(create_block(input.unwrap_or_default()))
+        }),
         "createCollapsedSelection" => {
             let block_id = get_string(&payload, "blockId").unwrap_or_default();
             let offset = get_i32(&payload, "offset").unwrap_or(0);
             Ok(json!(create_collapsed_selection(block_id, offset)))
         }
-        "createDocument" => unary::<Option<CreateDocumentInput>, _>(payload, |input| Ok(create_document(input.unwrap_or_default()))),
-        "createEditorHistory" => unary::<Document, _>(payload, |document| Ok(create_history(document))),
-        "deleteBlock" => value2(payload, |document: Document, block_id: String| Ok(delete_block(document, &block_id))),
-        "documentToMarkdown" => unary::<Document, _>(payload, |document| Ok(document_to_markdown(&document))),
+        "createDocument" => unary::<Option<CreateDocumentInput>, _>(payload, |input| {
+            Ok(create_document(input.unwrap_or_default()))
+        }),
+        "createEditorHistory" => {
+            unary::<Document, _>(payload, |document| Ok(create_history(document)))
+        }
+        "deleteBlock" => value2(payload, |document: Document, block_id: String| {
+            Ok(delete_block(document, &block_id))
+        }),
+        "documentToMarkdown" => {
+            unary::<Document, _>(payload, |document| Ok(document_to_markdown(&document)))
+        }
         "findEditorCommand" => unary::<String, _>(payload, |query| Ok(find_editor_command(&query))),
         "getBlockPlainText" => unary::<Block, _>(payload, |block| Ok(block_plain_text(&block))),
         "getSelectionFocus" => unary::<Selection, _>(payload, |selection| Ok(selection.focus)),
@@ -50,20 +74,33 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 Ok(insert_block_after(
                     input.document,
                     input.after_block_id.as_deref(),
-                    input.block.unwrap_or_else(|| create_block(CreateBlockInput::default())),
+                    input
+                        .block
+                        .unwrap_or_else(|| create_block(CreateBlockInput::default())),
                 ))
             })
         }
-        "isSelectionCollapsed" => unary::<Selection, _>(payload, |selection| Ok(selection.anchor == selection.focus)),
+        "isSelectionCollapsed" => {
+            unary::<Selection, _>(payload, |selection| Ok(selection.anchor == selection.focus))
+        }
+        "listBlockSpecs" => Ok(json!(block_specs())),
+        "listTextMarkSpecs" => Ok(json!(text_mark_specs())),
         "markdownToDocument" => {
             #[derive(Deserialize)]
             struct Input {
                 markdown: String,
                 title: Option<String>,
             }
-            unary::<Input, _>(payload, |input| Ok(markdown_to_document(&input.markdown, input.title.as_deref().unwrap_or("Imported document"))))
+            unary::<Input, _>(payload, |input| {
+                Ok(markdown_to_document(
+                    &input.markdown,
+                    input.title.as_deref().unwrap_or("Imported document"),
+                ))
+            })
         }
-        "mergeWithPrevious" => value2(payload, |document: Document, block_id: String| Ok(merge_with_previous(document, &block_id))),
+        "mergeWithPrevious" => value2(payload, |document: Document, block_id: String| {
+            Ok(merge_with_previous(document, &block_id))
+        }),
         "moveBlock" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -72,10 +109,14 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 block_id: String,
                 to_index: i32,
             }
-            unary::<Input, _>(payload, |input| Ok(move_block(input.document, &input.block_id, input.to_index)))
+            unary::<Input, _>(payload, |input| {
+                Ok(move_block(input.document, &input.block_id, input.to_index))
+            })
         }
         "redo" => unary::<History, _>(payload, |history| Ok(redo(history))),
-        "selectionAtBlockEnd" => value2(payload, |document: Document, block_id: String| Ok(selection_at_block_end(&document, &block_id))),
+        "selectionAtBlockEnd" => value2(payload, |document: Document, block_id: String| {
+            Ok(selection_at_block_end(&document, &block_id))
+        }),
         "setBlockIndent" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -85,7 +126,14 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 indent: i32,
                 offset: Option<i32>,
             }
-            unary::<Input, _>(payload, |input| Ok(set_block_indent(input.document, &input.block_id, input.indent, input.offset)))
+            unary::<Input, _>(payload, |input| {
+                Ok(set_block_indent(
+                    input.document,
+                    &input.block_id,
+                    input.indent,
+                    input.offset,
+                ))
+            })
         }
         "setBlockType" => {
             #[derive(Deserialize)]
@@ -97,7 +145,15 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 level: Option<i32>,
                 text: Option<String>,
             }
-            unary::<Input, _>(payload, |input| Ok(set_block_type(input.document, &input.block_id, input.block_type, input.level, input.text)))
+            unary::<Input, _>(payload, |input| {
+                Ok(set_block_type(
+                    input.document,
+                    &input.block_id,
+                    input.block_type,
+                    input.level,
+                    input.text,
+                ))
+            })
         }
         "splitBlock" => {
             #[derive(Deserialize)]
@@ -107,7 +163,9 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 block_id: String,
                 offset: i32,
             }
-            unary::<Input, _>(payload, |input| Ok(split_block(input.document, &input.block_id, input.offset)))
+            unary::<Input, _>(payload, |input| {
+                Ok(split_block(input.document, &input.block_id, input.offset))
+            })
         }
         "toggleTextMark" => {
             #[derive(Deserialize)]
@@ -129,7 +187,9 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 ))
             })
         }
-        "toggleTodo" => value2(payload, |document: Document, block_id: String| Ok(toggle_todo(document, &block_id))),
+        "toggleTodo" => value2(payload, |document: Document, block_id: String| {
+            Ok(toggle_todo(document, &block_id))
+        }),
         "undo" => unary::<History, _>(payload, |history| Ok(undo(history))),
         "updateBlockText" => {
             #[derive(Deserialize)]
@@ -141,8 +201,15 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 offset: Option<i32>,
             }
             unary::<Input, _>(payload, |input| {
-                let offset = input.offset.unwrap_or_else(|| utf16_len(&input.text) as i32);
-                Ok(update_block_text(input.document, &input.block_id, input.text, offset))
+                let offset = input
+                    .offset
+                    .unwrap_or_else(|| utf16_len(&input.text) as i32);
+                Ok(update_block_text(
+                    input.document,
+                    &input.block_id,
+                    input.text,
+                    offset,
+                ))
             })
         }
         _ => Err(format!("unknown method")),
@@ -158,14 +225,19 @@ where
     serde_json::to_value(f(input)?).map_err(|error| error.to_string())
 }
 
-fn value2<A, B, R>(payload: Value, f: impl FnOnce(A, B) -> Result<R, String>) -> Result<Value, String>
+fn value2<A, B, R>(
+    payload: Value,
+    f: impl FnOnce(A, B) -> Result<R, String>,
+) -> Result<Value, String>
 where
     A: for<'de> Deserialize<'de>,
     B: for<'de> Deserialize<'de>,
     R: Serialize,
 {
-    let first = serde_json::from_value(payload.get("0").cloned().ok_or("missing argument 0")?).map_err(|error| error.to_string())?;
-    let second = serde_json::from_value(payload.get("1").cloned().ok_or("missing argument 1")?).map_err(|error| error.to_string())?;
+    let first = serde_json::from_value(payload.get("0").cloned().ok_or("missing argument 0")?)
+        .map_err(|error| error.to_string())?;
+    let second = serde_json::from_value(payload.get("1").cloned().ok_or("missing argument 1")?)
+        .map_err(|error| error.to_string())?;
     serde_json::to_value(f(first, second)?).map_err(|error| error.to_string())
 }
 
@@ -187,6 +259,8 @@ enum BlockType {
     Todo,
     BulletedList,
     NumberedList,
+    CodeBlock,
+    Callout,
 }
 
 impl Default for BlockType {
@@ -202,6 +276,8 @@ enum TextMark {
     Italic,
     Code,
     Underline,
+    Strikethrough,
+    Highlight,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -317,6 +393,19 @@ struct Command {
     block_type: BlockType,
     #[serde(skip_serializing_if = "Option::is_none")]
     level: Option<i32>,
+    icon: &'static str,
+    placeholder: &'static str,
+    #[serde(rename = "markdownShortcut", skip_serializing_if = "Option::is_none")]
+    markdown_shortcut: Option<&'static str>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct TextMarkSpec {
+    mark: TextMark,
+    label: &'static str,
+    description: &'static str,
+    shortcut: &'static str,
+    tag: &'static str,
 }
 
 fn next_id(prefix: &str) -> String {
@@ -446,7 +535,10 @@ fn normalize_block(mut block: Block) -> Block {
     } else {
         block.checked = Some(block.checked.unwrap_or(false));
     }
-    block.indent = block.indent.map(|value| value.clamp(0, MAX_BLOCK_INDENT)).filter(|value| *value > 0);
+    block.indent = block
+        .indent
+        .map(|value| value.clamp(0, MAX_BLOCK_INDENT))
+        .filter(|value| *value > 0);
     block.children = block
         .children
         .map(|children| children.into_iter().map(normalize_block).collect());
@@ -506,7 +598,12 @@ fn create_collapsed_selection(block_id: impl Into<String>, offset: i32) -> Selec
 fn clamp_cursor(document: &Document, cursor: Cursor) -> Cursor {
     let block = find_block(document, &cursor.block_id).or_else(|| document.blocks.first());
     if let Some(block) = block {
-        create_cursor(&block.id, cursor.offset.clamp(0, utf16_len(&block_plain_text(block)) as i32))
+        create_cursor(
+            &block.id,
+            cursor
+                .offset
+                .clamp(0, utf16_len(&block_plain_text(block)) as i32),
+        )
     } else {
         cursor
     }
@@ -526,7 +623,12 @@ fn selection_at_block_end(document: &Document, block_id: &str) -> Selection {
     create_collapsed_selection(block_id, offset)
 }
 
-fn transaction(kind: TransactionKind, before: Document, after: Document, selection: Option<Selection>) -> Transaction {
+fn transaction(
+    kind: TransactionKind,
+    before: Document,
+    after: Document,
+    selection: Option<Selection>,
+) -> Transaction {
     Transaction {
         id: next_id("tx"),
         kind,
@@ -550,7 +652,13 @@ fn update_block_text(document: Document, block_id: &str, text: String, offset: i
     transaction(TransactionKind::UpdateText, before, after, selection)
 }
 
-fn toggle_text_mark(document: Document, block_id: &str, start_offset: i32, end_offset: i32, mark: TextMark) -> Transaction {
+fn toggle_text_mark(
+    document: Document,
+    block_id: &str,
+    start_offset: i32,
+    end_offset: i32,
+    mark: TextMark,
+) -> Transaction {
     let before = document.clone();
     let mut after = document;
     let selection = find_block_mut(&mut after.blocks, block_id).and_then(|block| {
@@ -573,7 +681,11 @@ fn toggle_text_mark(document: Document, block_id: &str, start_offset: i32, end_o
             if span_end <= start || span_start >= end {
                 continue;
             }
-            if !span.marks.as_ref().is_some_and(|marks| marks.contains(&mark)) {
+            if !span
+                .marks
+                .as_ref()
+                .is_some_and(|marks| marks.contains(&mark))
+            {
                 every_selected_span_has_mark = false;
             }
         }
@@ -618,7 +730,11 @@ fn toggle_text_mark(document: Document, block_id: &str, start_offset: i32, end_o
     transaction(TransactionKind::ToggleTextMark, before, after, selection)
 }
 
-fn insert_block_after(document: Document, after_block_id: Option<&str>, block: Block) -> Transaction {
+fn insert_block_after(
+    document: Document,
+    after_block_id: Option<&str>,
+    block: Block,
+) -> Transaction {
     let before = document.clone();
     let mut after = document;
     let selection = if let Some(after_block_id) = after_block_id {
@@ -640,7 +756,8 @@ fn insert_block_after(document: Document, after_block_id: Option<&str>, block: B
 fn split_block(document: Document, block_id: &str, offset: i32) -> Transaction {
     let before = document.clone();
     let mut after = document;
-    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id) {
+    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id)
+    {
         let block = after.blocks[index].clone();
         let text = block_plain_text(&block);
         let safe_offset = offset.clamp(0, utf16_len(&text) as i32);
@@ -651,7 +768,11 @@ fn split_block(document: Document, block_id: &str, offset: i32) -> Transaction {
             } else {
                 block.block_type
             }),
-            text: Some(TextInput::String(slice_utf16(&text, safe_offset, utf16_len(&text) as i32))),
+            text: Some(TextInput::String(slice_utf16(
+                &text,
+                safe_offset,
+                utf16_len(&text) as i32,
+            ))),
             checked: if block.block_type == BlockType::Todo {
                 Some(false)
             } else {
@@ -670,15 +791,22 @@ fn split_block(document: Document, block_id: &str, offset: i32) -> Transaction {
 fn merge_with_previous(document: Document, block_id: &str) -> Transaction {
     let before = document.clone();
     let mut after = document;
-    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id) {
+    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id)
+    {
         if index == 0 || after.blocks[index - 1].block_type == BlockType::Divider {
             None
         } else {
             let current = after.blocks.remove(index);
             let previous = &mut after.blocks[index - 1];
             let previous_text = block_plain_text(previous);
-            previous.text = vec![text_span(format!("{}{}", previous_text, block_plain_text(&current)), None)];
-            Some(create_collapsed_selection(&previous.id, utf16_len(&previous_text) as i32))
+            previous.text = vec![text_span(
+                format!("{}{}", previous_text, block_plain_text(&current)),
+                None,
+            )];
+            Some(create_collapsed_selection(
+                &previous.id,
+                utf16_len(&previous_text) as i32,
+            ))
         }
     } else {
         None
@@ -689,14 +817,22 @@ fn merge_with_previous(document: Document, block_id: &str) -> Transaction {
 fn delete_block(document: Document, block_id: &str) -> Transaction {
     let before = document.clone();
     let mut after = document;
-    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id) {
+    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id)
+    {
         if after.blocks.len() == 1 {
             None
         } else {
             let removed = after.blocks.remove(index);
             let next_index = index.min(after.blocks.len() - 1);
-            let next = after.blocks.get(next_index).or_else(|| after.blocks.get(index.saturating_sub(1))).unwrap_or(&removed);
-            Some(create_collapsed_selection(&next.id, utf16_len(&block_plain_text(next)) as i32))
+            let next = after
+                .blocks
+                .get(next_index)
+                .or_else(|| after.blocks.get(index.saturating_sub(1)))
+                .unwrap_or(&removed);
+            Some(create_collapsed_selection(
+                &next.id,
+                utf16_len(&block_plain_text(next)) as i32,
+            ))
         }
     } else {
         None
@@ -707,25 +843,34 @@ fn delete_block(document: Document, block_id: &str) -> Transaction {
 fn move_block(document: Document, block_id: &str, to_index: i32) -> Transaction {
     let before = document.clone();
     let mut after = document;
-    let selection = if let Some(from_index) = after.blocks.iter().position(|block| block.id == block_id) {
-        let block = after.blocks.remove(from_index);
-        let safe_index = to_index.clamp(0, after.blocks.len() as i32) as usize;
-        let text_length = utf16_len(&block_plain_text(&block)) as i32;
-        after.blocks.insert(safe_index, block);
-        Some(create_collapsed_selection(block_id, text_length))
-    } else {
-        None
-    };
+    let selection =
+        if let Some(from_index) = after.blocks.iter().position(|block| block.id == block_id) {
+            let block = after.blocks.remove(from_index);
+            let safe_index = to_index.clamp(0, after.blocks.len() as i32) as usize;
+            let text_length = utf16_len(&block_plain_text(&block)) as i32;
+            after.blocks.insert(safe_index, block);
+            Some(create_collapsed_selection(block_id, text_length))
+        } else {
+            None
+        };
     transaction(TransactionKind::MoveBlock, before, after, selection)
 }
 
-fn set_block_indent(document: Document, block_id: &str, indent: i32, offset: Option<i32>) -> Transaction {
+fn set_block_indent(
+    document: Document,
+    block_id: &str,
+    indent: i32,
+    offset: Option<i32>,
+) -> Transaction {
     let before = document.clone();
     let mut after = document;
     let selection = find_block_mut(&mut after.blocks, block_id).map(|block| {
         let indent = indent.clamp(0, MAX_BLOCK_INDENT);
         block.indent = (indent > 0).then_some(indent);
-        create_collapsed_selection(block_id, offset.unwrap_or_else(|| utf16_len(&block_plain_text(block)) as i32))
+        create_collapsed_selection(
+            block_id,
+            offset.unwrap_or_else(|| utf16_len(&block_plain_text(block)) as i32),
+        )
     });
     transaction(TransactionKind::SetBlockIndent, before, after, selection)
 }
@@ -741,7 +886,13 @@ fn toggle_todo(document: Document, block_id: &str) -> Transaction {
     transaction(TransactionKind::ToggleTodo, before, after, selection)
 }
 
-fn set_block_type(document: Document, block_id: &str, block_type: BlockType, level: Option<i32>, text: Option<String>) -> Transaction {
+fn set_block_type(
+    document: Document,
+    block_id: &str,
+    block_type: BlockType,
+    level: Option<i32>,
+    text: Option<String>,
+) -> Transaction {
     let before = document.clone();
     let mut after = document;
     let selection = find_block_mut(&mut after.blocks, block_id).map(|block| {
@@ -794,7 +945,11 @@ fn redo(mut history: History) -> History {
 fn apply_markdown_shortcut(block: Block) -> Block {
     let text = block_plain_text(&block);
     if text.ends_with(' ') {
-        let hashes = text.trim_end().chars().take_while(|character| *character == '#').count();
+        let hashes = text
+            .trim_end()
+            .chars()
+            .take_while(|character| *character == '#')
+            .count();
         if (1..=3).contains(&hashes) && text.trim_end().len() == hashes {
             return create_block(CreateBlockInput {
                 id: Some(block.id),
@@ -812,6 +967,8 @@ fn apply_markdown_shortcut(block: Block) -> Block {
         "1. " => Some(BlockType::NumberedList),
         "[] " | "[ ] " => Some(BlockType::Todo),
         "---" => Some(BlockType::Divider),
+        "```" | "``` " => Some(BlockType::CodeBlock),
+        "! " => Some(BlockType::Callout),
         _ => None,
     };
     block_type.map_or(block.clone(), |block_type| {
@@ -830,7 +987,9 @@ fn inline_markdown(text: &str, marks: Option<&Vec<TextMark>>) -> String {
     if marks.is_some_and(|marks| marks.contains(&TextMark::Code)) {
         next = format!("`{next}`");
     }
-    if marks.is_some_and(|marks| marks.contains(&TextMark::Bold) && marks.contains(&TextMark::Italic)) {
+    if marks
+        .is_some_and(|marks| marks.contains(&TextMark::Bold) && marks.contains(&TextMark::Italic))
+    {
         next = format!("***{next}***");
     } else if marks.is_some_and(|marks| marks.contains(&TextMark::Bold)) {
         next = format!("**{next}**");
@@ -839,6 +998,12 @@ fn inline_markdown(text: &str, marks: Option<&Vec<TextMark>>) -> String {
     }
     if marks.is_some_and(|marks| marks.contains(&TextMark::Underline)) {
         next = format!("<u>{next}</u>");
+    }
+    if marks.is_some_and(|marks| marks.contains(&TextMark::Strikethrough)) {
+        next = format!("~~{next}~~");
+    }
+    if marks.is_some_and(|marks| marks.contains(&TextMark::Highlight)) {
+        next = format!("=={next}==");
     }
     next
 }
@@ -855,15 +1020,35 @@ fn document_to_markdown(document: &Document) -> String {
         .blocks
         .iter()
         .map(|block| {
-            let text = spans_to_markdown(&block.text);
+            let text = if block.block_type == BlockType::CodeBlock {
+                block_plain_text(block)
+            } else {
+                spans_to_markdown(&block.text)
+            };
             let prefix = "  ".repeat(block.indent.unwrap_or(0) as usize);
             match block.block_type {
-                BlockType::Heading => format!("{}{} {}", prefix, "#".repeat(block.level.unwrap_or(1) as usize), text),
+                BlockType::Heading => format!(
+                    "{}{} {}",
+                    prefix,
+                    "#".repeat(block.level.unwrap_or(1) as usize),
+                    text
+                ),
                 BlockType::Quote => format!("{prefix}> {text}"),
                 BlockType::Divider => format!("{prefix}---"),
-                BlockType::Todo => format!("{}{} {}", prefix, if block.checked.unwrap_or(false) { "[x]" } else { "[ ]" }, text),
+                BlockType::Todo => format!(
+                    "{}{} {}",
+                    prefix,
+                    if block.checked.unwrap_or(false) {
+                        "[x]"
+                    } else {
+                        "[ ]"
+                    },
+                    text
+                ),
                 BlockType::BulletedList => format!("{prefix}- {text}"),
                 BlockType::NumberedList => format!("{prefix}1. {text}"),
+                BlockType::CodeBlock => format!("{prefix}```\n{text}\n{prefix}```"),
+                BlockType::Callout => format!("{prefix}> [!note] {text}"),
                 BlockType::Paragraph => format!("{prefix}{text}"),
             }
         })
@@ -893,7 +1078,11 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
         if rest.starts_with("***") {
             if let Some(end) = input[index + 3..].find("***") {
                 let end = index + 3 + end;
-                append_span(&mut spans, input[index + 3..end].to_string(), Some(vec![TextMark::Bold, TextMark::Italic]));
+                append_span(
+                    &mut spans,
+                    input[index + 3..end].to_string(),
+                    Some(vec![TextMark::Bold, TextMark::Italic]),
+                );
                 index = end + 3;
                 continue;
             }
@@ -901,7 +1090,11 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
         if rest.starts_with("**") {
             if let Some(end) = input[index + 2..].find("**") {
                 let end = index + 2 + end;
-                append_span(&mut spans, input[index + 2..end].to_string(), Some(vec![TextMark::Bold]));
+                append_span(
+                    &mut spans,
+                    input[index + 2..end].to_string(),
+                    Some(vec![TextMark::Bold]),
+                );
                 index = end + 2;
                 continue;
             }
@@ -909,7 +1102,11 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
         if rest.starts_with('*') {
             if let Some(end) = input[index + 1..].find('*') {
                 let end = index + 1 + end;
-                append_span(&mut spans, input[index + 1..end].to_string(), Some(vec![TextMark::Italic]));
+                append_span(
+                    &mut spans,
+                    input[index + 1..end].to_string(),
+                    Some(vec![TextMark::Italic]),
+                );
                 index = end + 1;
                 continue;
             }
@@ -917,13 +1114,59 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
         if rest.starts_with('`') {
             if let Some(end) = input[index + 1..].find('`') {
                 let end = index + 1 + end;
-                append_span(&mut spans, input[index + 1..end].to_string(), Some(vec![TextMark::Code]));
+                append_span(
+                    &mut spans,
+                    input[index + 1..end].to_string(),
+                    Some(vec![TextMark::Code]),
+                );
                 index = end + 1;
                 continue;
             }
         }
+        if rest.starts_with("~~") {
+            if let Some(end) = input[index + 2..].find("~~") {
+                let end = index + 2 + end;
+                append_span(
+                    &mut spans,
+                    input[index + 2..end].to_string(),
+                    Some(vec![TextMark::Strikethrough]),
+                );
+                index = end + 2;
+                continue;
+            }
+        }
+        if rest.starts_with("==") {
+            if let Some(end) = input[index + 2..].find("==") {
+                let end = index + 2 + end;
+                append_span(
+                    &mut spans,
+                    input[index + 2..end].to_string(),
+                    Some(vec![TextMark::Highlight]),
+                );
+                index = end + 2;
+                continue;
+            }
+        }
+        if rest.starts_with("<u>") {
+            if let Some(end) = input[index + 3..].find("</u>") {
+                let end = index + 3 + end;
+                append_span(
+                    &mut spans,
+                    input[index + 3..end].to_string(),
+                    Some(vec![TextMark::Underline]),
+                );
+                index = end + 4;
+                continue;
+            }
+        }
         let marker = input[index + 1..]
-            .find(|character| character == '*' || character == '`')
+            .find(|character| {
+                character == '*'
+                    || character == '`'
+                    || character == '~'
+                    || character == '='
+                    || character == '<'
+            })
             .map(|next| index + 1 + next)
             .unwrap_or(input.len());
         append_span(&mut spans, input[index..marker].to_string(), None);
@@ -936,126 +1179,325 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
     }
 }
 
+fn markdown_line_to_block(line: &str) -> Block {
+    let leading_spaces = line
+        .chars()
+        .take_while(|character| *character == ' ')
+        .count() as i32;
+    let indent = leading_spaces / 2;
+    let content = line.trim_start();
+    if content.starts_with("### ") {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Heading),
+            level: Some(3),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(&content[4..]))),
+            ..Default::default()
+        });
+    }
+    if content.starts_with("## ") {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Heading),
+            level: Some(2),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(&content[3..]))),
+            ..Default::default()
+        });
+    }
+    if content.starts_with("# ") {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Heading),
+            level: Some(1),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(&content[2..]))),
+            ..Default::default()
+        });
+    }
+    if content.trim() == "---" {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Divider),
+            indent: Some(indent),
+            ..Default::default()
+        });
+    }
+    if let Some(rest) = content
+        .strip_prefix("[x] ")
+        .or_else(|| content.strip_prefix("[X] "))
+    {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Todo),
+            checked: Some(true),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    if let Some(rest) = content.strip_prefix("[ ] ") {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Todo),
+            checked: Some(false),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    if let Some(rest) = content.strip_prefix("> [!note] ") {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Callout),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    if let Some(rest) = content.strip_prefix("> ") {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Quote),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    if let Some(rest) = content
+        .strip_prefix("- ")
+        .or_else(|| content.strip_prefix("* "))
+    {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::BulletedList),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    let numbered = content.split_once(". ").filter(|(left, _)| {
+        !left.is_empty() && left.chars().all(|character| character.is_ascii_digit())
+    });
+    if let Some((_, rest)) = numbered {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::NumberedList),
+            indent: Some(indent),
+            text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    create_block(CreateBlockInput {
+        block_type: Some(BlockType::Paragraph),
+        indent: Some(indent),
+        text: Some(TextInput::Spans(inline_markdown_to_spans(content))),
+        ..Default::default()
+    })
+}
+
 fn markdown_to_document(markdown: &str, title: &str) -> Document {
-    let blocks = markdown
-        .split('\n')
-        .map(|line| {
-            let leading_spaces = line.chars().take_while(|character| *character == ' ').count() as i32;
-            let indent = leading_spaces / 2;
-            let content = line.trim_start();
-            if content.starts_with("### ") {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Heading),
-                    level: Some(3),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(&content[4..]))),
+    let mut blocks = Vec::new();
+    let mut code_block: Option<(i32, Vec<String>)> = None;
+    for line in markdown.split('\n') {
+        let leading_spaces = line
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count() as i32;
+        let indent = leading_spaces / 2;
+        let content = line.trim_start();
+        if content.starts_with("```") {
+            if let Some((code_indent, lines)) = code_block.take() {
+                blocks.push(create_block(CreateBlockInput {
+                    block_type: Some(BlockType::CodeBlock),
+                    indent: Some(code_indent),
+                    text: Some(TextInput::String(lines.join("\n"))),
                     ..Default::default()
-                });
+                }));
+            } else {
+                code_block = Some((indent, Vec::new()));
             }
-            if content.starts_with("## ") {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Heading),
-                    level: Some(2),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(&content[3..]))),
-                    ..Default::default()
-                });
-            }
-            if content.starts_with("# ") {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Heading),
-                    level: Some(1),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(&content[2..]))),
-                    ..Default::default()
-                });
-            }
-            if content.trim() == "---" {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Divider),
-                    indent: Some(indent),
-                    ..Default::default()
-                });
-            }
-            if let Some(rest) = content.strip_prefix("[x] ").or_else(|| content.strip_prefix("[X] ")) {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Todo),
-                    checked: Some(true),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
-                    ..Default::default()
-                });
-            }
-            if let Some(rest) = content.strip_prefix("[ ] ") {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Todo),
-                    checked: Some(false),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
-                    ..Default::default()
-                });
-            }
-            if let Some(rest) = content.strip_prefix("> ") {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::Quote),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
-                    ..Default::default()
-                });
-            }
-            if let Some(rest) = content.strip_prefix("- ").or_else(|| content.strip_prefix("* ")) {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::BulletedList),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
-                    ..Default::default()
-                });
-            }
-            let numbered = content
-                .split_once(". ")
-                .filter(|(left, _)| !left.is_empty() && left.chars().all(|character| character.is_ascii_digit()));
-            if let Some((_, rest)) = numbered {
-                return create_block(CreateBlockInput {
-                    block_type: Some(BlockType::NumberedList),
-                    indent: Some(indent),
-                    text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
-                    ..Default::default()
-                });
-            }
-            create_block(CreateBlockInput {
-                block_type: Some(BlockType::Paragraph),
-                indent: Some(indent),
-                text: Some(TextInput::Spans(inline_markdown_to_spans(content))),
-                ..Default::default()
-            })
-        })
-        .collect();
+            continue;
+        }
+        if let Some((_, lines)) = code_block.as_mut() {
+            lines.push(line.to_string());
+            continue;
+        }
+        blocks.push(markdown_line_to_block(line));
+    }
+    if let Some((code_indent, lines)) = code_block.take() {
+        blocks.push(create_block(CreateBlockInput {
+            block_type: Some(BlockType::CodeBlock),
+            indent: Some(code_indent),
+            text: Some(TextInput::String(lines.join("\n"))),
+            ..Default::default()
+        }));
+    }
     create_document(CreateDocumentInput {
         title: Some(title.to_string()),
         blocks: Some(blocks),
     })
 }
 
-fn commands() -> Vec<Command> {
+fn block_specs() -> Vec<Command> {
     vec![
-        Command { name: "paragraph", label: "Text", description: "Plain paragraph text", block_type: BlockType::Paragraph, level: None },
-        Command { name: "heading-1", label: "Heading 1", description: "Large section heading", block_type: BlockType::Heading, level: Some(1) },
-        Command { name: "heading-2", label: "Heading 2", description: "Medium section heading", block_type: BlockType::Heading, level: Some(2) },
-        Command { name: "heading-3", label: "Heading 3", description: "Small section heading", block_type: BlockType::Heading, level: Some(3) },
-        Command { name: "quote", label: "Quote", description: "Quoted text block", block_type: BlockType::Quote, level: None },
-        Command { name: "divider", label: "Divider", description: "Horizontal divider", block_type: BlockType::Divider, level: None },
-        Command { name: "todo", label: "To-do", description: "Checkbox item", block_type: BlockType::Todo, level: None },
-        Command { name: "bulleted-list", label: "Bullet list", description: "Bulleted list item", block_type: BlockType::BulletedList, level: None },
-        Command { name: "numbered-list", label: "Numbered list", description: "Numbered list item", block_type: BlockType::NumberedList, level: None },
+        Command {
+            name: "paragraph",
+            label: "Text",
+            description: "Plain paragraph text",
+            block_type: BlockType::Paragraph,
+            level: None,
+            icon: "T",
+            placeholder: "Type '/' for commands",
+            markdown_shortcut: None,
+        },
+        Command {
+            name: "heading-1",
+            label: "Heading 1",
+            description: "Large section heading",
+            block_type: BlockType::Heading,
+            level: Some(1),
+            icon: "H1",
+            placeholder: "Heading 1",
+            markdown_shortcut: Some("# "),
+        },
+        Command {
+            name: "heading-2",
+            label: "Heading 2",
+            description: "Medium section heading",
+            block_type: BlockType::Heading,
+            level: Some(2),
+            icon: "H2",
+            placeholder: "Heading 2",
+            markdown_shortcut: Some("## "),
+        },
+        Command {
+            name: "heading-3",
+            label: "Heading 3",
+            description: "Small section heading",
+            block_type: BlockType::Heading,
+            level: Some(3),
+            icon: "H3",
+            placeholder: "Heading 3",
+            markdown_shortcut: Some("### "),
+        },
+        Command {
+            name: "quote",
+            label: "Quote",
+            description: "Quoted text block",
+            block_type: BlockType::Quote,
+            level: None,
+            icon: "Q",
+            placeholder: "Quote",
+            markdown_shortcut: Some("> "),
+        },
+        Command {
+            name: "divider",
+            label: "Divider",
+            description: "Horizontal divider",
+            block_type: BlockType::Divider,
+            level: None,
+            icon: "--",
+            placeholder: "",
+            markdown_shortcut: Some("---"),
+        },
+        Command {
+            name: "todo",
+            label: "To-do",
+            description: "Checkbox item",
+            block_type: BlockType::Todo,
+            level: None,
+            icon: "[]",
+            placeholder: "To-do",
+            markdown_shortcut: Some("[ ] "),
+        },
+        Command {
+            name: "bulleted-list",
+            label: "Bullet list",
+            description: "Bulleted list item",
+            block_type: BlockType::BulletedList,
+            level: None,
+            icon: "*",
+            placeholder: "List item",
+            markdown_shortcut: Some("- "),
+        },
+        Command {
+            name: "numbered-list",
+            label: "Numbered list",
+            description: "Numbered list item",
+            block_type: BlockType::NumberedList,
+            level: None,
+            icon: "1.",
+            placeholder: "Numbered item",
+            markdown_shortcut: Some("1. "),
+        },
+        Command {
+            name: "code-block",
+            label: "Code block",
+            description: "Preformatted code or text",
+            block_type: BlockType::CodeBlock,
+            level: None,
+            icon: "{}",
+            placeholder: "Code",
+            markdown_shortcut: Some("```"),
+        },
+        Command {
+            name: "callout",
+            label: "Callout",
+            description: "Highlighted note block",
+            block_type: BlockType::Callout,
+            level: None,
+            icon: "!",
+            placeholder: "Callout",
+            markdown_shortcut: Some("! "),
+        },
+    ]
+}
+
+fn text_mark_specs() -> Vec<TextMarkSpec> {
+    vec![
+        TextMarkSpec {
+            mark: TextMark::Bold,
+            label: "Bold",
+            description: "Strong emphasis",
+            shortcut: "mod+b",
+            tag: "strong",
+        },
+        TextMarkSpec {
+            mark: TextMark::Italic,
+            label: "Italic",
+            description: "Soft emphasis",
+            shortcut: "mod+i",
+            tag: "em",
+        },
+        TextMarkSpec {
+            mark: TextMark::Underline,
+            label: "Underline",
+            description: "Underlined text",
+            shortcut: "mod+u",
+            tag: "u",
+        },
+        TextMarkSpec {
+            mark: TextMark::Code,
+            label: "Code",
+            description: "Inline code",
+            shortcut: "mod+e",
+            tag: "code",
+        },
+        TextMarkSpec {
+            mark: TextMark::Strikethrough,
+            label: "Strikethrough",
+            description: "Crossed-out text",
+            shortcut: "mod+shift+x",
+            tag: "s",
+        },
+        TextMarkSpec {
+            mark: TextMark::Highlight,
+            label: "Highlight",
+            description: "Highlighted text",
+            shortcut: "mod+shift+h",
+            tag: "mark",
+        },
     ]
 }
 
 fn find_editor_command(query: &str) -> Vec<Command> {
     let needle = query.trim().to_lowercase();
     if needle.is_empty() {
-        return commands();
+        return block_specs();
     }
-    commands()
+    block_specs()
         .into_iter()
         .filter(|command| {
             command.label.to_lowercase().contains(&needle)

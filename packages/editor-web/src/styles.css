@@ -153,6 +153,19 @@
   text-underline-offset: 0.16em;
 }
 
+.je-editable s {
+  color: color-mix(in srgb, var(--je-text) 70%, var(--je-muted));
+  text-decoration-color: rgba(48, 47, 44, 0.55);
+  text-decoration-thickness: 0.08em;
+}
+
+.je-editable mark {
+  background: rgba(250, 218, 132, 0.48);
+  border-radius: 0.22em;
+  color: inherit;
+  padding: 0.02em 0.14em 0.05em;
+}
+
 .je-block--heading .je-editable {
   font-weight: 760;
   letter-spacing: 0;
@@ -168,6 +181,27 @@
   color: #4b4944;
   margin-left: 8px;
   padding-left: 16px;
+}
+
+.je-block--code-block .je-editable {
+  background: rgba(48, 47, 44, 0.055);
+  border: 1px solid rgba(48, 47, 44, 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.95em;
+  line-height: 1.55;
+  margin: 4px 8px;
+  min-height: 44px;
+  padding: 10px 12px;
+  tab-size: 2;
+}
+
+.je-block--callout .je-editable {
+  background: rgba(201, 108, 18, 0.08);
+  border: 1px solid rgba(201, 108, 18, 0.14);
+  box-shadow: inset 3px 0 0 rgba(201, 108, 18, 0.58);
+  color: #3f3a33;
+  margin: 4px 8px;
+  padding: 10px 12px 10px 16px;
 }
 
 .je-block--bulleted-list .je-editable::before {

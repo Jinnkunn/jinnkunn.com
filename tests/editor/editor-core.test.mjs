@@ -12,6 +12,8 @@ import {
   createEditorHistory,
   documentToMarkdown,
   insertBlockAfter,
+  listBlockSpecs,
+  listTextMarkSpecs,
   markdownToDocument,
   mergeWithPrevious,
   moveBlock,
@@ -93,11 +95,12 @@ test("editor-core: block type commands and markdown conversion", () => {
   assert.equal(document.blocks[0].checked, true);
   assert.match(documentToMarkdown(document), /\[x\] Ship it/);
 
-  const imported = markdownToDocument("# Title\n> Quote\n---\n- Item", "Imported");
+  const imported = markdownToDocument("# Title\n> Quote\n> [!note] Note\n```\nlet ok = true;\n```\n---\n- Item", "Imported");
   assert.deepEqual(
     imported.blocks.map((block) => block.type),
-    ["heading", "quote", "divider", "bulleted-list"],
+    ["heading", "quote", "callout", "code-block", "divider", "bulleted-list"],
   );
+  assert.equal(imported.blocks[3].text[0].text, "let ok = true;");
 });
 
 test("editor-core: block indent is clamped and survives markdown roundtrip", () => {
@@ -150,11 +153,44 @@ test("editor-core: text marks split, merge, toggle, and roundtrip through markdo
   ]);
 });
 
+test("editor-core: extended block and mark specs are available from wasm", () => {
+  assert.ok(listBlockSpecs().some((spec) => spec.blockType === "code-block" && spec.markdownShortcut === "```"));
+  assert.ok(listBlockSpecs().some((spec) => spec.blockType === "callout" && spec.placeholder === "Callout"));
+  assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "strikethrough" && spec.shortcut === "mod+shift+x"));
+  assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "highlight" && spec.tag === "mark"));
+});
+
+test("editor-core: extended text marks and block markdown roundtrip", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Alpha Beta Gamma" })],
+  });
+  document = toggleTextMark(document, "a", 0, 5, "highlight").after;
+  document = toggleTextMark(document, "a", 6, 10, "strikethrough").after;
+  assert.equal(documentToMarkdown(document), "==Alpha== ~~Beta~~ Gamma");
+
+  document = setBlockType(document, "a", "callout").after;
+  assert.equal(documentToMarkdown(document), "> [!note] ==Alpha== ~~Beta~~ Gamma");
+
+  const imported = markdownToDocument("==Alpha== ~~Beta~~ Gamma", "Inline");
+  assert.deepEqual(imported.blocks[0].text, [
+    { text: "Alpha", marks: ["highlight"] },
+    { text: " " },
+    { text: "Beta", marks: ["strikethrough"] },
+    { text: " Gamma" },
+  ]);
+
+  const code = markdownToDocument("```\none\ntwo\n```", "Code");
+  assert.equal(code.blocks[0].type, "code-block");
+  assert.equal(code.blocks[0].text[0].text, "one\ntwo");
+});
+
 test("editor-core: markdown shortcuts produce block type changes", () => {
   assert.equal(applyMarkdownShortcut(createBlock({ text: "# " })).type, "heading");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "> " })).type, "quote");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "[] " })).type, "todo");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "---" })).type, "divider");
+  assert.equal(applyMarkdownShortcut(createBlock({ text: "```" })).type, "code-block");
+  assert.equal(applyMarkdownShortcut(createBlock({ text: "! " })).type, "callout");
 });
 
 test("editor-bridge: memory bridge captures host messages and dispatches client messages", () => {

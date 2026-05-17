@@ -5,9 +5,11 @@ export type EditorBlockType =
   | "divider"
   | "todo"
   | "bulleted-list"
-  | "numbered-list";
+  | "numbered-list"
+  | "code-block"
+  | "callout";
 
-export type EditorTextMark = "bold" | "italic" | "code" | "underline";
+export type EditorTextMark = "bold" | "italic" | "code" | "underline" | "strikethrough" | "highlight";
 
 export type EditorTextSpan = {
   text: string;
@@ -71,7 +73,9 @@ export type EditorCommandName =
   | "divider"
   | "todo"
   | "bulleted-list"
-  | "numbered-list";
+  | "numbered-list"
+  | "code-block"
+  | "callout";
 
 export type EditorCommand = {
   name: EditorCommandName;
@@ -79,4 +83,17 @@ export type EditorCommand = {
   description: string;
   blockType: EditorBlockType;
   level?: 1 | 2 | 3;
+  icon?: string;
+  placeholder?: string;
+  markdownShortcut?: string;
+};
+
+export type EditorBlockSpec = EditorCommand;
+
+export type EditorTextMarkSpec = {
+  mark: EditorTextMark;
+  label: string;
+  description: string;
+  shortcut: string;
+  tag: string;
 };

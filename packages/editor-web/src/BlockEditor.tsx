@@ -11,6 +11,8 @@ import {
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
+  listBlockSpecs,
+  listTextMarkSpecs,
   mergeWithPrevious,
   moveBlock,
   redo,
@@ -22,10 +24,12 @@ import {
   undo,
   updateBlockText,
   type EditorBlock,
+  type EditorBlockSpec,
   type EditorCommand,
   type EditorDocument,
   type EditorSelection,
   type EditorTextMark,
+  type EditorTextMarkSpec,
   type EditorTextSpan,
   type EditorTransaction,
 } from "../../editor-core/src/index.ts";
@@ -42,13 +46,13 @@ type SlashState = {
   activeIndex: number;
 };
 
-function blockPlaceholder(block: EditorBlock): string {
-  if (block.type === "heading") return `Heading ${block.level || 1}`;
-  if (block.type === "todo") return "To-do";
-  if (block.type === "quote") return "Quote";
-  if (block.type === "bulleted-list") return "List item";
-  if (block.type === "numbered-list") return "Numbered item";
-  return "Type '/' for commands";
+function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockSpec[]): string {
+  const spec = blockSpecs.find((candidate) => {
+    if (candidate.blockType !== block.type) return false;
+    if (candidate.blockType !== "heading") return true;
+    return candidate.level === (block.level || 1);
+  });
+  return spec?.placeholder || "Type '/' for commands";
 }
 
 function blockClassName(block: EditorBlock): string {
@@ -145,7 +149,36 @@ function applyMarksToNode(text: string, marks: EditorTextMark[] | undefined): No
     underline.append(node);
     node = underline;
   }
+  if (marks?.includes("strikethrough")) {
+    const strike = document.createElement("s");
+    strike.append(node);
+    node = strike;
+  }
+  if (marks?.includes("highlight")) {
+    const highlight = document.createElement("mark");
+    highlight.append(node);
+    node = highlight;
+  }
   return node;
+}
+
+function shortcutMatches(event: React.KeyboardEvent<HTMLElement>, shortcut: string): boolean {
+  const parts = shortcut.toLowerCase().split("+");
+  const key = parts.at(-1);
+  const expectsMod = parts.includes("mod");
+  const expectsShift = parts.includes("shift");
+  if (!key) return false;
+  if (expectsMod !== (event.metaKey || event.ctrlKey)) return false;
+  if (expectsShift !== event.shiftKey) return false;
+  if (event.altKey) return false;
+  return event.key.toLowerCase() === key;
+}
+
+function textMarkForShortcut(
+  event: React.KeyboardEvent<HTMLElement>,
+  textMarkSpecs: EditorTextMarkSpec[],
+): EditorTextMark | null {
+  return textMarkSpecs.find((spec) => shortcutMatches(event, spec.shortcut))?.mark || null;
 }
 
 function syncEditableDom(element: HTMLElement, block: EditorBlock) {
@@ -183,7 +216,7 @@ function SlashMenu({
           }}
           onMouseEnter={() => onActiveIndexChange(index)}
         >
-          <span className="je-slash-menu__icon">{command.label.slice(0, 1)}</span>
+          <span className="je-slash-menu__icon">{command.icon || command.label.slice(0, 1)}</span>
           <span>
             <strong>{command.label}</strong>
             <small>{command.description}</small>
@@ -205,6 +238,8 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
+  const blockSpecs = useMemo(() => listBlockSpecs(), []);
+  const textMarkSpecs = useMemo(() => listTextMarkSpecs(), []);
 
   useEffect(() => {
     setHistory(initial);
@@ -331,13 +366,10 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
-      toggleSelectionMark(event, block, "bold");
-      return;
-    }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "i") {
-      toggleSelectionMark(event, block, "italic");
+    const shortcutMark = textMarkForShortcut(event, textMarkSpecs);
+    if (shortcutMark) {
+      event.preventDefault();
+      toggleSelectionMark(event, block, shortcutMark);
       return;
     }
 
@@ -376,6 +408,25 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && block.type === "todo") {
       event.preventDefault();
       commit(toggleTodo(history.document, block.id));
+      return;
+    }
+
+    if (event.key === "Enter" && block.type === "code-block" && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault();
+      const nextSelection = readTextSelection(event.currentTarget, block.id);
+      const startOffset = Math.min(nextSelection.anchor.offset, nextSelection.focus.offset);
+      const endOffset = Math.max(nextSelection.anchor.offset, nextSelection.focus.offset);
+      const text = event.currentTarget.textContent || "";
+      const insertText = endOffset === text.length ? "\n\n" : "\n";
+      commit(
+        updateBlockText(
+          history.document,
+          block.id,
+          `${text.slice(0, startOffset)}${insertText}${text.slice(endOffset)}`,
+          startOffset + 1,
+        ),
+      );
+      setSlash(null);
       return;
     }
 
@@ -477,7 +528,7 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
                 <div
                   className="je-editable"
                   contentEditable={!readOnly}
-                  data-placeholder={blockPlaceholder(block)}
+                  data-placeholder={blockPlaceholder(block, blockSpecs)}
                   suppressContentEditableWarning
                   ref={(node) => {
                     if (node) blockRefs.current.set(block.id, node);
