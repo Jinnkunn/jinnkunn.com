@@ -45,3 +45,24 @@ test("site-admin-ios: content editing does not expose a Live mode switch", async
   assert.doesNotMatch(todayView, /Switch to Draft/);
   assert.match(todayView, /Publish Draft to Live/);
 });
+
+test("site-admin-ios: calendar sync uploads EventKit observations to Draft", async () => {
+  const appSession = await read("apps/site-admin-ios/SiteAdminCompanion/AppShell/AppSession.swift");
+  const client = await read("apps/site-admin-ios/SiteAdminCompanion/Services/SiteAdminClient.swift");
+  const service = await read("apps/site-admin-ios/SiteAdminCompanion/Services/CalendarObservationSyncService.swift");
+  const settings = await read("apps/site-admin-ios/SiteAdminCompanion/Features/Settings/SettingsView.swift");
+  const plist = await read("apps/site-admin-ios/SiteAdminCompanion/Info.plist");
+
+  assert.match(service, /import EventKit/);
+  assert.match(service, /requestFullAccessToEvents/);
+  assert.match(service, /syncMode: "snapshot"/);
+  assert.match(service, /providerName\(for sourceType: EKSourceType\)/);
+  assert.match(service, /collectorId = "ios:/);
+
+  assert.match(client, /\/api\/site-admin\/calendar-observations/);
+  assert.match(appSession, /func syncCalendarsFromDevice\(\)/);
+  assert.match(appSession, /guard environment\.canEditContent/);
+  assert.match(settings, /Sync iPhone Calendars/);
+
+  assert.match(plist, /NSCalendarsFullAccessUsageDescription/);
+});

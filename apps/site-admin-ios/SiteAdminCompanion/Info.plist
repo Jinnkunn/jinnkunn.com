@@ -33,6 +33,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Site Admin reads calendars on this iPhone to sync public availability with your Draft workspace.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Site Admin reads calendars on this iPhone to sync public availability with your Draft workspace.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -19,6 +19,8 @@
 		B0000000000000000000000A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* SettingsView.swift */; };
 		B0000000000000000000000B /* SiteAdminAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* SiteAdminAuthenticator.swift */; };
 		B0000000000000000000000C /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000C /* KeychainTokenStore.swift */; };
+		B0000000000000000000000D /* CalendarSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000F /* CalendarSyncModels.swift */; };
+		B0000000000000000000000E /* CalendarObservationSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* CalendarObservationSyncService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,8 @@
 		A0000000000000000000000C /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
 		A0000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A0000000000000000000000E /* SiteAdminCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SiteAdminCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A0000000000000000000000F /* CalendarSyncModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSyncModels.swift; sourceTree = "<group>"; };
+		A00000000000000000000010 /* CalendarObservationSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarObservationSyncService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000005 /* SiteAdminModels.swift */,
+				A0000000000000000000000F /* CalendarSyncModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -93,6 +98,7 @@
 				A00000000000000000000004 /* SiteAdminClient.swift */,
 				A0000000000000000000000B /* SiteAdminAuthenticator.swift */,
 				A0000000000000000000000C /* KeychainTokenStore.swift */,
+				A00000000000000000000010 /* CalendarObservationSyncService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -229,6 +235,8 @@
 				B0000000000000000000000A /* SettingsView.swift in Sources */,
 				B0000000000000000000000B /* SiteAdminAuthenticator.swift in Sources */,
 				B0000000000000000000000C /* KeychainTokenStore.swift in Sources */,
+				B0000000000000000000000D /* CalendarSyncModels.swift in Sources */,
+				B0000000000000000000000E /* CalendarObservationSyncService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -70,10 +70,21 @@ struct SiteAdminClient {
         )
     }
 
+    func syncCalendarObservations(
+        payload: CalendarObservationSyncPayload
+    ) async throws -> CalendarObservationSyncResult {
+        try await requestEncodable(
+            path: "/api/site-admin/calendar-observations",
+            method: "POST",
+            body: payload
+        )
+    }
+
     private func request<T: Decodable>(
         path: String,
         method: String = "GET",
-        body: Any? = nil
+        body: Any? = nil,
+        bodyData: Data? = nil
     ) async throws -> T {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw SiteAdminClientError.invalidBaseURL
@@ -87,7 +98,10 @@ struct SiteAdminClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        if let body {
+        if let bodyData {
+            request.httpBody = bodyData
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        } else if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
@@ -114,5 +128,19 @@ struct SiteAdminClient {
 
         let fallback = HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
         throw SiteAdminClientError.api(envelope.error ?? fallback)
+    }
+
+    private func requestEncodable<T: Decodable, Body: Encodable>(
+        path: String,
+        method: String,
+        body: Body
+    ) async throws -> T {
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(body)
+        return try await request(
+            path: path,
+            method: method,
+            bodyData: data
+        )
     }
 }

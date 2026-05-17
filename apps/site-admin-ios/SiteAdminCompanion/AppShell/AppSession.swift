@@ -58,8 +58,10 @@ final class AppSession {
     var tokenExpiresAt: String = ""
     var summary: SiteAdminMobileSummary?
     var releaseDetail: ReleaseJobDetailPayload?
+    var calendarSyncResult: CalendarObservationSyncResult?
     var isLoading = false
     var isReleaseDetailLoading = false
+    var isCalendarSyncing = false
     var message: String?
 
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -69,6 +71,7 @@ final class AppSession {
         account: "site-admin-token"
     )
     @ObservationIgnored private let authenticator = SiteAdminAuthenticator()
+    @ObservationIgnored private let calendarSyncService = CalendarObservationSyncService()
     @ObservationIgnored private let environmentKey = "site-admin-environment"
     @ObservationIgnored private let baseURLKey = "site-admin-base-url"
 
@@ -192,6 +195,7 @@ final class AppSession {
         tokenExpiresAt = ""
         summary = nil
         releaseDetail = nil
+        calendarSyncResult = nil
     }
 
     func updateNow(text: String, context: String, location: String) async -> Bool {
@@ -272,6 +276,30 @@ final class AppSession {
             if reportErrors {
                 message = friendlyMessage(for: error)
             }
+        }
+    }
+
+    func syncCalendarsFromDevice() async {
+        guard environment.canEditContent else {
+            message = "Calendar sync writes to Draft. Publish from Release when it is ready for Live."
+            return
+        }
+        guard let client else {
+            message = "Invalid Site Admin URL."
+            return
+        }
+        isCalendarSyncing = true
+        defer { isCalendarSyncing = false }
+        do {
+            message = nil
+            let payload = try await calendarSyncService.makeSnapshotPayload()
+            let result = try await client.syncCalendarObservations(payload: payload)
+            calendarSyncResult = result
+            await refresh()
+            message = "Synced \(result.observationsWritten) calendar events from \(result.sourcesWritten) sources."
+        } catch {
+            clearCurrentTokenIfExpired(error)
+            message = friendlyMessage(for: error)
         }
     }
 
