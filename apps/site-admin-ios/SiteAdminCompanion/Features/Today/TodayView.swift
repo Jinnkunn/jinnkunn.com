@@ -81,13 +81,6 @@ struct TodayView: View {
                     Label("Update Now", systemImage: "square.and.pencil")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!session.environment.canEditContent)
-
-                if !session.environment.canEditContent {
-                    Text("Live is read-only. Switch to Draft to update this status.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -101,16 +94,29 @@ struct TodayView: View {
                     .foregroundStyle(.secondary)
 
                 Button {
-                    Task { await session.smartRelease() }
+                    Task { await session.runRecommendedReleaseAction() }
                 } label: {
                     Label(
-                        session.summary?.release.recommendedAction.label ?? "Smart Release",
+                        releaseActionLabel,
                         systemImage: "bolt.circle"
                     )
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(session.isLoading || session.summary?.release.recommendedAction.kind == "noop")
             }
+        }
+    }
+
+    private var releaseActionLabel: String {
+        switch session.summary?.release.recommendedAction.kind {
+        case "noop":
+            return "Current"
+        case "watch-release":
+            return "View Release"
+        case "refresh":
+            return "Refresh"
+        default:
+            return "Publish Draft to Live"
         }
     }
 

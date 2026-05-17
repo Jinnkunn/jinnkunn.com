@@ -9,11 +9,12 @@ Native SwiftUI companion for managing `jinkunchen.com` from iPhone.
 - Starts the unified remote release flow through `/api/site-admin/release-jobs/smart`.
 - Uses the existing Site Admin app-token flow with the iOS callback URL:
   `jinnkunn-site-admin://auth/callback`.
-- Presents the environments as **Draft** (`staging.jinkunchen.com`) and
-  **Live** (`jinkunchen.com`). Draft is the editing source; Live is the
-  published site and is read-only for content edits.
-- Stores separate app tokens for Draft and Live so switching environments does
-  not require signing in again once both are authorized on the device.
+- Uses **Draft** (`staging.jinkunchen.com`) as the only visible editing
+  workspace.
+- Treats **Live** (`jinkunchen.com`) as a release target, not a second editing
+  mode. Users publish Draft to Live from the Release tab.
+- Keeps environment-bound token storage internally so old Live tokens can be
+  cleared safely, but the app no longer exposes a global Draft/Live switch.
 
 The app is intentionally not a mobile clone of the Tauri workspace. Complex
 site structure editing stays in desktop/web Site Admin; this app is the quick

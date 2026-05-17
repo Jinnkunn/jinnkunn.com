@@ -14,13 +14,10 @@ struct ReleaseView: View {
                             releaseSummary
                         }
 
-                        Section("Mode") {
-                            LabeledContent(session.environment.name, value: session.environment.technicalName)
-                            Text(
-                                session.environment == .staging
-                                    ? "Draft release publishes the staging preview first."
-                                    : "Live release promotes the validated staging build to production."
-                            )
+                        Section("Publishing") {
+                            LabeledContent("Edit", value: "Draft")
+                            LabeledContent("Publish", value: "Live")
+                            Text("The app always edits Draft. Release publishes the verified Draft state to Live.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         }
@@ -115,10 +112,10 @@ struct ReleaseView: View {
                 .foregroundStyle(.secondary)
 
             Button {
-                Task { await session.smartRelease() }
+                Task { await session.runRecommendedReleaseAction() }
             } label: {
                 Label(
-                    session.summary?.release.recommendedAction.label ?? "Smart Release",
+                    releaseActionLabel,
                     systemImage: "bolt.circle"
                 )
             }
@@ -126,6 +123,19 @@ struct ReleaseView: View {
             .disabled(session.isLoading || session.summary?.release.recommendedAction.kind == "noop")
         }
         .padding(.vertical, 6)
+    }
+
+    private var releaseActionLabel: String {
+        switch session.summary?.release.recommendedAction.kind {
+        case "noop":
+            return "Current"
+        case "watch-release":
+            return "View Release"
+        case "refresh":
+            return "Refresh"
+        default:
+            return "Publish Draft to Live"
+        }
     }
 
     private var releaseIcon: String {

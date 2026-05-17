@@ -25,7 +25,7 @@ struct RootTabView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
-        .task(id: session.environment) {
+        .task {
             if session.isSignedIn {
                 await session.refresh()
             }
@@ -52,28 +52,19 @@ struct AdminCard<Content: View>: View {
     }
 }
 
-struct SiteAdminEnvironmentPicker: View {
+struct DraftWorkspaceStatus: View {
     @Environment(AppSession.self) private var session
     var showURL = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker(
-                "Site Admin environment",
-                selection: Binding(
-                    get: { session.environment },
-                    set: { session.selectEnvironment($0) }
-                )
-            ) {
-                ForEach(SiteAdminEnvironment.allCases) { environment in
-                    Text(environment.name).tag(environment)
-                }
-            }
-            .pickerStyle(.segmented)
+        VStack(spacing: 8) {
+            Label("Draft Workspace", systemImage: "square.and.pencil")
+                .font(.headline)
 
-            Text(session.environment.subtitle)
+            Text("Edit and preview here. Publish from Release when Draft is ready for Live.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             if showURL {
@@ -96,12 +87,12 @@ struct EmptySignedOutView: View {
             Label("Connect Site Admin", systemImage: "lock.open")
         } description: {
             VStack(spacing: 12) {
-                Text("Use Draft for editing and Live for the published site. Each environment keeps its own sign-in.")
-                SiteAdminEnvironmentPicker()
+                Text("Sign in once to manage the Draft workspace. Live is updated from the Release tab.")
+                DraftWorkspaceStatus()
                     .frame(maxWidth: 320)
             }
         } actions: {
-            Button("Sign In to \(session.environment.name)") {
+            Button("Sign In") {
                 Task { await session.signIn() }
             }
             .buttonStyle(.borderedProminent)
