@@ -69,6 +69,54 @@ test("calendar-sync-store: writes observations and deduped entities", async () =
   assert.equal(health.sources.length, 2);
 });
 
+test("calendar-sync-store: batches writes under D1 SQL variable limit", async () => {
+  const client = await makeCalendarSyncDb();
+  const maxVariables = 90;
+  const limitedExecutor = {
+    async execute(opts) {
+      assert.ok(
+        (opts.args ?? []).length <= maxVariables,
+        `expected <=${maxVariables} SQL variables, got ${(opts.args ?? []).length}`,
+      );
+      return client.execute(opts);
+    },
+  };
+  const sources = Array.from({ length: 12 }, (_, index) => ({
+    id: `source-${index}`,
+    provider: "apple",
+    title: `Calendar ${index}`,
+  }));
+  const observations = Array.from({ length: 25 }, (_, index) => {
+    const startsAt = new Date(Date.UTC(2026, 4, 17, index, 0, 0));
+    const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
+    return {
+      sourceId: sources[index % sources.length].id,
+      sourceEventId: `event-${index}`,
+      title: `Private event ${index}`,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+    };
+  });
+
+  const result = await writeCalendarObservationSync(
+    {
+      collector: { id: "ios:phone", kind: "ios" },
+      sources,
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-20T00:00:00Z",
+      },
+      observedAt: "2026-05-17T12:00:00.000Z",
+      observations,
+    },
+    limitedExecutor,
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.skipped, false);
+  assert.equal(result.observationsWritten, observations.length);
+});
+
 test("calendar-sync-store: snapshot stale deletion is scoped to source", async () => {
   const client = await makeCalendarSyncDb();
   await writeCalendarObservationSync(

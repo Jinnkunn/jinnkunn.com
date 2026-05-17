@@ -12,7 +12,24 @@ import {
   type CalendarObservationSyncPayload,
 } from "../shared/calendar-core.ts";
 
-const INSERT_BATCH_SIZE = 20;
+// Cloudflare D1 currently rejects statements with too many bound SQL variables
+// much earlier than local SQLite/libSQL. Keep batch statements comfortably below
+// that ceiling so a full iOS EventKit snapshot can be written reliably.
+const D1_SQL_VARIABLE_LIMIT = 90;
+const SOURCE_INSERT_COLUMN_COUNT = 10;
+const OBSERVATION_INSERT_COLUMN_COUNT = 13;
+const ENTITY_INSERT_COLUMN_COUNT = 7;
+
+function rowsPerStatement(columnCount: number): number {
+  return Math.max(1, Math.floor(D1_SQL_VARIABLE_LIMIT / columnCount));
+}
+
+const SOURCE_INSERT_BATCH_SIZE = rowsPerStatement(SOURCE_INSERT_COLUMN_COUNT);
+const OBSERVATION_INSERT_BATCH_SIZE = rowsPerStatement(
+  OBSERVATION_INSERT_COLUMN_COUNT,
+);
+const ENTITY_INSERT_BATCH_SIZE = rowsPerStatement(ENTITY_INSERT_COLUMN_COUNT);
+const ID_BATCH_SIZE = D1_SQL_VARIABLE_LIMIT;
 
 export type CalendarObservationSyncResult =
   | {
@@ -81,7 +98,7 @@ const CALENDAR_OBSERVATION_MIRROR_TABLES: CalendarMirrorTable[] = [
       "created_at",
       "updated_at",
     ],
-    batchSize: 10,
+    batchSize: rowsPerStatement(10),
   },
   {
     name: "calendar_event_observations",
@@ -101,7 +118,7 @@ const CALENDAR_OBSERVATION_MIRROR_TABLES: CalendarMirrorTable[] = [
       "body_json",
       "updated_at",
     ],
-    batchSize: 7,
+    batchSize: rowsPerStatement(13),
   },
   {
     name: "calendar_event_entities",
@@ -115,7 +132,7 @@ const CALENDAR_OBSERVATION_MIRROR_TABLES: CalendarMirrorTable[] = [
       "body_json",
       "updated_at",
     ],
-    batchSize: 14,
+    batchSize: rowsPerStatement(7),
   },
   {
     name: "calendar_sync_state",
@@ -131,7 +148,7 @@ const CALENDAR_OBSERVATION_MIRROR_TABLES: CalendarMirrorTable[] = [
       "synced_at",
       "updated_at",
     ],
-    batchSize: 11,
+    batchSize: rowsPerStatement(9),
   },
 ];
 
@@ -221,8 +238,8 @@ async function upsertSources(
   payload: CalendarObservationSyncPayload,
   now: number,
 ): Promise<void> {
-  for (let i = 0; i < payload.sources.length; i += INSERT_BATCH_SIZE) {
-    const batch = payload.sources.slice(i, i + INSERT_BATCH_SIZE);
+  for (let i = 0; i < payload.sources.length; i += SOURCE_INSERT_BATCH_SIZE) {
+    const batch = payload.sources.slice(i, i + SOURCE_INSERT_BATCH_SIZE);
     const args: unknown[] = [];
     for (const source of batch) {
       args.push(
@@ -247,8 +264,15 @@ async function upsertObservations(
   payload: CalendarObservationSyncPayload,
   now: number,
 ): Promise<void> {
-  for (let i = 0; i < payload.observations.length; i += INSERT_BATCH_SIZE) {
-    const batch = payload.observations.slice(i, i + INSERT_BATCH_SIZE);
+  for (
+    let i = 0;
+    i < payload.observations.length;
+    i += OBSERVATION_INSERT_BATCH_SIZE
+  ) {
+    const batch = payload.observations.slice(
+      i,
+      i + OBSERVATION_INSERT_BATCH_SIZE,
+    );
     const args: unknown[] = [];
     for (const observation of batch) {
       args.push(
@@ -339,8 +363,8 @@ async function upsertEntities(
   entities: CalendarEntity[],
   now: number,
 ): Promise<void> {
-  for (let i = 0; i < entities.length; i += INSERT_BATCH_SIZE) {
-    const batch = entities.slice(i, i + INSERT_BATCH_SIZE);
+  for (let i = 0; i < entities.length; i += ENTITY_INSERT_BATCH_SIZE) {
+    const batch = entities.slice(i, i + ENTITY_INSERT_BATCH_SIZE);
     const args: unknown[] = [];
     for (const entity of batch) {
       args.push(
@@ -382,8 +406,8 @@ async function pruneStaleEntitiesInRange(
   const staleIds = existing.rows
     .map((row) => (typeof row.entity_id === "string" ? row.entity_id : ""))
     .filter((id) => id && !activeIds.has(id));
-  for (let i = 0; i < staleIds.length; i += INSERT_BATCH_SIZE) {
-    const batch = staleIds.slice(i, i + INSERT_BATCH_SIZE);
+  for (let i = 0; i < staleIds.length; i += ID_BATCH_SIZE) {
+    const batch = staleIds.slice(i, i + ID_BATCH_SIZE);
     const marks = Array.from({ length: batch.length }, () => "?").join(", ");
     await executor.execute({
       sql: `DELETE FROM calendar_event_entities WHERE entity_id IN (${marks})`,
@@ -518,8 +542,8 @@ async function pruneMirrorRows(
     .filter((id) => id && !activeIds.has(id));
 
   let deleted = 0;
-  for (let i = 0; i < staleIds.length; i += INSERT_BATCH_SIZE) {
-    const batch = staleIds.slice(i, i + INSERT_BATCH_SIZE);
+  for (let i = 0; i < staleIds.length; i += ID_BATCH_SIZE) {
+    const batch = staleIds.slice(i, i + ID_BATCH_SIZE);
     const result = await executor.execute({
       sql: buildMirrorDeleteSql(table, batch.length),
       args: batch,
