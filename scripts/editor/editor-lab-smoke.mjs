@@ -89,6 +89,10 @@ const headingGutterAlignment = await page.evaluate(() => {
 assert.ok(headingGutterAlignment <= 5, `Heading gutter is misaligned by ${headingGutterAlignment}px`);
 await selectText(page, ".je-block--heading .je-editable", 0, 3);
 assert.equal(await page.getByRole("button", { exact: true, name: "Block type: Heading 2" }).isVisible(), true);
+await page.getByRole("button", { exact: true, name: "Block type: Heading 2" }).click();
+await page.waitForSelector(".je-inline-block-menu");
+assert.equal(await page.getByRole("option", { exact: true, name: "Image" }).count(), 0);
+await page.keyboard.press("Escape");
 
 await loadDocument(page, {
   version: 1,
@@ -110,6 +114,16 @@ const hoverState = await page.evaluate(() => {
 assert.equal(hoverState.background, "rgba(0, 0, 0, 0)");
 assert.equal(hoverState.gutterOpacity, "1");
 assert.equal(await page.locator(".je-block__gutter button").count(), 2);
+await page.getByRole("button", { exact: true, name: "Block actions" }).click();
+await page.waitForSelector(".je-block-type-menu");
+await page.getByRole("button", { exact: true, name: "Duplicate" }).click();
+await page.waitForFunction(() => document.querySelectorAll(".je-block").length === 2);
+assert.equal(await page.locator(".je-block").count(), 2);
+await loadDocument(page, {
+  version: 1,
+  title: "Smoke",
+  blocks: [{ id: "a", type: "paragraph", text: [{ text: "Hello world" }] }],
+});
 await page.locator(".je-editable").click({ position: { x: 24, y: 16 } });
 assert.equal(await page.locator(".je-block").getAttribute("data-selected"), "false");
 const editableBox = await page.locator(".je-editable").boundingBox();
@@ -153,6 +167,19 @@ assert.equal(await textColorButton.getAttribute("data-current-color"), "blue");
 await selectText(page, ".je-editable", 0, 11);
 assert.equal(await textColorButton.getAttribute("aria-pressed"), "false");
 assert.equal(await textColorButton.getAttribute("data-mixed"), "true");
+
+await loadDocument(page, {
+  version: 1,
+  title: "Stored",
+  blocks: [{ id: "a", type: "paragraph", text: [{ text: "" }] }],
+});
+await page.locator(".je-editable").click();
+await page.keyboard.press("Meta+B");
+await page.keyboard.type("abc");
+await page.waitForSelector(".je-editable strong");
+assert.equal(await page.locator(".je-editable strong").innerText(), "abc");
+await page.keyboard.press("Meta+Z");
+await page.waitForFunction(() => document.querySelector(".je-editable")?.textContent === "");
 
 await loadDocument(page, {
   version: 1,
