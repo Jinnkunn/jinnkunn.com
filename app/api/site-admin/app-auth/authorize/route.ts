@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { apiError, requireSiteAdminContext } from "@/lib/server/site-admin-api";
 import { issueSiteAdminAppToken } from "@/lib/server/site-admin-app-token";
 import { checkRateLimit, requestIpFromHeaders } from "@/lib/server/rate-limit";
+import { parseSiteAdminAppRedirectUri } from "@/lib/site-admin/app-auth-redirect";
 
 export const runtime = "nodejs";
 
@@ -16,18 +17,6 @@ const APP_AUTH_RATE_LIMIT = {
   maxRequests: 15,
   windowMs: 60 * 1000,
 };
-
-function parseLocalRedirectUri(raw: string): URL | null {
-  try {
-    const target = new URL(String(raw || ""));
-    if (target.protocol !== "http:") return null;
-    if (target.hostname !== "127.0.0.1" && target.hostname !== "localhost") return null;
-    if (!target.port) return null;
-    return target;
-  } catch {
-    return null;
-  }
-}
 
 function toLoginRedirect(req: NextRequest): NextResponse {
   const current = new URL(req.url);
@@ -55,7 +44,7 @@ export async function GET(req: NextRequest) {
   const current = new URL(req.url);
   const redirectUriRaw = current.searchParams.get("redirect_uri") || "";
   const state = String(current.searchParams.get("state") || "").trim();
-  const callbackTarget = parseLocalRedirectUri(redirectUriRaw);
+  const callbackTarget = parseSiteAdminAppRedirectUri(redirectUriRaw);
   if (!callbackTarget) {
     return apiError("Invalid redirect_uri", { status: 400, code: "INVALID_REDIRECT_URI" });
   }
@@ -85,4 +74,3 @@ export async function GET(req: NextRequest) {
   if (state) callbackTarget.searchParams.set("state", state);
   return NextResponse.redirect(callbackTarget, { status: 302 });
 }
-
