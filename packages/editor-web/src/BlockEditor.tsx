@@ -33,6 +33,7 @@ import {
   type EditorBlockExtensionSpec,
   type EditorDocument,
   type EditorExtensionManifest,
+  type EditorHistory,
   type EditorSelection,
   type EditorTextMark,
   type EditorTextMarkAttrs,
@@ -67,6 +68,7 @@ type SlashState = {
 type BubblePosition = {
   blockId: string;
   left: number;
+  placement: "bottom" | "top";
   top: number;
 };
 
@@ -104,6 +106,23 @@ type SelectionMarkState = {
   mixed: boolean;
 };
 
+type StoredMarksState = {
+  blockId: string;
+  offset: number;
+  marks: EditorTextMark[];
+};
+
+type CommitOptions = {
+  mergeTyping?: boolean;
+  preserveStoredMarks?: boolean;
+};
+
+type TypingMergeState = {
+  blockId: string;
+  transactionId: string;
+  updatedAt: number;
+};
+
 const STRUCTURED_BLOCK_TYPES = new Set<EditorBlock["type"]>([
   "image",
   "bookmark",
@@ -111,6 +130,24 @@ const STRUCTURED_BLOCK_TYPES = new Set<EditorBlock["type"]>([
   "file",
   "page-link",
 ]);
+
+const INLINE_TURN_INTO_BLOCK_TYPES = new Set<EditorBlock["type"]>([
+  "paragraph",
+  "heading",
+  "quote",
+  "todo",
+  "bulleted-list",
+  "numbered-list",
+  "code-block",
+  "callout",
+  "toggle",
+  "raw",
+]);
+
+const TYPING_MERGE_WINDOW_MS = 1300;
+const TOOLBAR_EDGE_MARGIN = 12;
+const TOOLBAR_ESTIMATED_WIDTH = 560;
+const TOOLBAR_ESTIMATED_HEIGHT = 40;
 
 const TOGGLE_MARK_LABELS: Record<string, string> = {
   bold: "B",
@@ -247,11 +284,19 @@ function readSelectionBubblePosition(element: HTMLElement, blockId: string, allo
   const elementBox = element.getBoundingClientRect();
   const box = rect.width > 0 || rect.height > 0 ? rect : fallback ?? elementBox;
   if (!box) return null;
+  const toolbarWidth = Math.min(TOOLBAR_ESTIMATED_WIDTH, Math.max(0, window.innerWidth - TOOLBAR_EDGE_MARGIN * 2));
+  const halfWidth = toolbarWidth / 2;
+  const preferredLeft = selection.isCollapsed ? box.left : box.left + box.width / 2;
+  const minLeft = TOOLBAR_EDGE_MARGIN + halfWidth;
+  const maxLeft = Math.max(minLeft, window.innerWidth - TOOLBAR_EDGE_MARGIN - halfWidth);
+  const hasRoomAbove = box.top - TOOLBAR_ESTIMATED_HEIGHT - TOOLBAR_EDGE_MARGIN > 0;
+  const placement = hasRoomAbove ? "top" : "bottom";
 
   return {
     blockId,
-    left: selection.isCollapsed ? box.left : box.left + box.width / 2,
-    top: Math.max(8, box.top - 8),
+    left: Math.min(Math.max(preferredLeft, minLeft), maxLeft),
+    placement,
+    top: placement === "top" ? box.top : box.bottom,
   };
 }
 
@@ -408,6 +453,29 @@ function markAttrsEqual(left: EditorTextMarkAttrs | null, right: EditorTextMarkA
   return leftEntries.every(([key, value]) => right?.[key] === value);
 }
 
+function textMarkFrom(mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}): EditorTextMark {
+  return Object.keys(attrs).length ? { type: mark, attrs } : { type: mark };
+}
+
+function normalizeStoredMarks(marks: EditorTextMark[]): EditorTextMark[] {
+  const next = new Map<EditorTextMarkType, EditorTextMark>();
+  for (const mark of marks) next.set(mark.type, mark);
+  return Array.from(next.values());
+}
+
+function toggleStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType): EditorTextMark[] {
+  const existing = marks.find((item) => item.type === mark);
+  return existing ? marks.filter((item) => item.type !== mark) : normalizeStoredMarks([...marks, { type: mark }]);
+}
+
+function setStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}): EditorTextMark[] {
+  return normalizeStoredMarks([...marks.filter((item) => item.type !== mark), textMarkFrom(mark, attrs)]);
+}
+
+function unsetStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType): EditorTextMark[] {
+  return marks.filter((item) => item.type !== mark);
+}
+
 function markRangesInBlock(block: EditorBlock, mark: EditorTextMarkType): Array<TextRange & { attrs: EditorTextMarkAttrs | null }> {
   const ranges: Array<TextRange & { attrs: EditorTextMarkAttrs | null }> = [];
   let cursor = 0;
@@ -425,6 +493,32 @@ function markRangesInBlock(block: EditorBlock, mark: EditorTextMarkType): Array<
     }
   }
   return ranges;
+}
+
+function isCollapsedSelection(selection: EditorSelection | null): selection is EditorSelection {
+  return Boolean(selection && selection.anchor.blockId === selection.focus.blockId && selection.anchor.offset === selection.focus.offset);
+}
+
+function commonPrefixLength(left: string, right: string): number {
+  const max = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < max && left[index] === right[index]) index += 1;
+  return index;
+}
+
+function commonSuffixLength(left: string, right: string, prefixLength: number): number {
+  const max = Math.min(left.length, right.length) - prefixLength;
+  let index = 0;
+  while (index < max && left[left.length - 1 - index] === right[right.length - 1 - index]) index += 1;
+  return index;
+}
+
+function insertedTextRange(previousText: string, nextText: string): TextRange | null {
+  if (nextText.length <= previousText.length) return null;
+  const start = commonPrefixLength(previousText, nextText);
+  const suffix = commonSuffixLength(previousText, nextText, start);
+  const end = nextText.length - suffix;
+  return end > start ? { blockId: "", start, end } : null;
 }
 
 function markRangeAtOffset(block: EditorBlock, offset: number, mark: EditorTextMarkType): TextRange | null {
@@ -496,14 +590,35 @@ function selectedMarkAttrs(
   return null;
 }
 
+function marksAtOffset(block: EditorBlock | null, offset: number): EditorTextMark[] {
+  if (!block) return [];
+  let cursor = 0;
+  for (const span of block.text) {
+    const spanStart = cursor;
+    const spanEnd = cursor + span.text.length;
+    cursor = spanEnd;
+    if (offset === 0 ? spanStart === 0 : offset > spanStart && offset <= spanEnd) {
+      return span.marks ? [...span.marks] : [];
+    }
+  }
+  return [];
+}
+
 function selectionMarkState(
   block: EditorBlock | null,
   selection: EditorSelection | null,
   mark: EditorTextMarkType,
+  storedMarks: EditorTextMark[] | null = null,
 ): SelectionMarkState {
   if (!block || !isSameBlockSelection(selection)) return { active: false, attrs: null, mixed: false };
   const range = selectedRange(selection);
   if (range.start === range.end) {
+    if (storedMarks) {
+      const storedMark = storedMarks.find((item) => item.type === mark);
+      return storedMark
+        ? { active: true, attrs: storedMark.attrs ?? null, mixed: false }
+        : { active: false, attrs: null, mixed: false };
+    }
     return selectionHasMark(block, selection, mark)
       ? { active: true, attrs: selectedMarkAttrs(block, selection, mark), mixed: false }
       : { active: false, attrs: null, mixed: false };
@@ -537,6 +652,10 @@ function selectionMarkState(
   if (!touched || marked === 0) return { active: false, attrs: null, mixed: false };
   if (unmarked > 0) return { active: false, attrs: firstAttrs ?? null, mixed: true };
   return { active: true, attrs: attrsMixed ? null : firstAttrs ?? null, mixed: attrsMixed };
+}
+
+function inlineToolbarBlockSpecs(specs: EditorBlockExtensionSpec[]): EditorBlockExtensionSpec[] {
+  return specs.filter((spec) => INLINE_TURN_INTO_BLOCK_TYPES.has(spec.blockType));
 }
 
 function normalizedHref(href: string): string {
@@ -724,6 +843,7 @@ function InlineToolbar({
   position,
   selection,
   specs,
+  storedMarks,
   onApplyLink,
   onSetBlockType,
   onSet,
@@ -735,6 +855,7 @@ function InlineToolbar({
   position: BubblePosition;
   selection: EditorSelection | null;
   specs: EditorTextMarkExtensionSpec[];
+  storedMarks: EditorTextMark[] | null;
   onApplyLink: (href: string, icon: string | null) => void;
   onSetBlockType: (block: EditorBlock, spec: EditorBlockExtensionSpec) => void;
   onSet: (mark: EditorTextMarkType, attrs?: EditorTextMarkAttrs) => void;
@@ -743,6 +864,7 @@ function InlineToolbar({
 }) {
   const [panel, setPanel] = useState<null | { mark: EditorTextMarkExtensionSpec }>(null);
   const [blockPanelOpen, setBlockPanelOpen] = useState(false);
+  const blockTypeSpecs = inlineToolbarBlockSpecs(blockSpecs);
   const currentBlockSpec = activeBlockSpec(activeBlock, blockSpecs);
   const linkAttrs = selectedMarkAttrs(activeBlock, selection, "link");
   const iconAttrs = selectedMarkAttrs(activeBlock, selection, "icon-link");
@@ -750,7 +872,7 @@ function InlineToolbar({
   const [icon, setIcon] = useState(iconAttrs?.icon ?? "");
   const hrefInputRef = useRef<HTMLInputElement>(null);
   const linkPanelOpen = panel?.mark.kind === "link" || panel?.mark.kind === "icon-link";
-  const panelMarkState = panel ? selectionMarkState(activeBlock, selection, panel.mark.mark) : null;
+  const panelMarkState = panel ? selectionMarkState(activeBlock, selection, panel.mark.mark, storedMarks) : null;
   const panelSelectedColor = panel?.mark.kind === "color" && panelMarkState?.active && !panelMarkState.mixed
     ? panelMarkState.attrs?.color ?? "default"
     : "default";
@@ -779,6 +901,7 @@ function InlineToolbar({
   return (
     <div
       className="je-inline-toolbar"
+      data-placement={position.placement}
       role="toolbar"
       aria-label="Inline text styles"
       style={{
@@ -813,7 +936,7 @@ function InlineToolbar({
         </>
       ) : null}
       {specs.map((spec) => {
-        const markState = selectionMarkState(activeBlock, selection, spec.mark);
+        const markState = selectionMarkState(activeBlock, selection, spec.mark, storedMarks);
         const currentColor = spec.kind === "color" && markState.active && !markState.mixed ? markState.attrs?.color : undefined;
         const title = currentColor && currentColor !== "default" ? `${spec.label}: ${currentColor}` : spec.label;
         const commonButtonProps = {
@@ -872,7 +995,7 @@ function InlineToolbar({
       })}
       {blockPanelOpen && activeBlock ? (
         <div className="je-inline-block-menu" role="listbox" aria-label="Block type">
-          {blockSpecs.map((spec) => (
+          {blockTypeSpecs.map((spec) => (
             <button
               aria-label={spec.label}
               aria-selected={blockMatchesSpec(activeBlock, spec)}
@@ -1112,15 +1235,33 @@ function LinkPopover({
 
 function BlockTypeMenu({
   activeBlock,
+  canMoveDown,
+  canMoveUp,
+  onDelete,
+  onDuplicate,
+  onMoveDown,
+  onMoveUp,
   specs,
   onSelect,
 }: {
   activeBlock: EditorBlock;
+  canMoveDown: boolean;
+  canMoveUp: boolean;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onMoveDown: () => void;
+  onMoveUp: () => void;
   specs: EditorBlockExtensionSpec[];
   onSelect: (spec: EditorBlockExtensionSpec) => void;
 }) {
   return (
     <div className="je-block-type-menu" role="listbox" aria-label="Block types">
+      <div className="je-block-type-menu__actions" role="group" aria-label="Block actions">
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onDuplicate}>Duplicate</button>
+        <button type="button" disabled={!canMoveUp} onMouseDown={(event) => event.preventDefault()} onClick={onMoveUp}>Move up</button>
+        <button type="button" disabled={!canMoveDown} onMouseDown={(event) => event.preventDefault()} onClick={onMoveDown}>Move down</button>
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onDelete}>Delete</button>
+      </div>
       <div className="je-slash-menu__label">Block type</div>
       {specs.map((spec) => (
         <button
@@ -1257,8 +1398,11 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [recentCommandNames, setRecentCommandNames] = useState<string[]>([]);
+  const [storedMarksState, setStoredMarksState] = useState<StoredMarksState | null>(null);
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const didDragRef = useRef(false);
+  const storedMarksRef = useRef<StoredMarksState | null>(null);
+  const typingMergeRef = useRef<TypingMergeState | null>(null);
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
   const manifest = useMemo(
@@ -1276,6 +1420,38 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     return flattenSlashSections(getSlashSections(query));
   }
 
+  function setStoredMarks(next: StoredMarksState | null) {
+    storedMarksRef.current = next;
+    setStoredMarksState(next);
+  }
+
+  function storedMarksForSelection(nextSelection = selection): EditorTextMark[] | null {
+    if (!isCollapsedSelection(nextSelection)) return null;
+    const current = storedMarksRef.current;
+    if (!current) return null;
+    return current.blockId === nextSelection.anchor.blockId && current.offset === nextSelection.anchor.offset ? current.marks : null;
+  }
+
+  function collapsedMarksForSelection(nextSelection = selection): EditorTextMark[] {
+    if (!isCollapsedSelection(nextSelection)) return [];
+    const explicitMarks = storedMarksForSelection(nextSelection);
+    if (explicitMarks) return explicitMarks;
+    return marksAtOffset(currentBlock(nextSelection.anchor.blockId), nextSelection.anchor.offset);
+  }
+
+  function setCollapsedStoredMarks(marks: EditorTextMark[], nextSelection = selection) {
+    if (!isCollapsedSelection(nextSelection)) return;
+    setStoredMarks({
+      blockId: nextSelection.anchor.blockId,
+      offset: nextSelection.anchor.offset,
+      marks: normalizeStoredMarks(marks),
+    });
+  }
+
+  function clearStoredMarks() {
+    setStoredMarks(null);
+  }
+
   useEffect(() => {
     setHistory(initial);
     const first = initial.document.blocks[0];
@@ -1286,6 +1462,8 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setLinkPopover(null);
     setSelectedBlockId(null);
     setDragState(null);
+    setStoredMarks(null);
+    typingMergeRef.current = null;
   }, [initial]);
 
   function focusSelection(nextSelection: EditorSelection | null) {
@@ -1324,6 +1502,8 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setLinkPopover(null);
     setSelectedBlockId(null);
     setDragState(null);
+    clearStoredMarks();
+    typingMergeRef.current = null;
     onChange?.(nextHistory.document);
     return nextHistory.document;
   }
@@ -1342,12 +1522,51 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     return notifyHistoryChange(nextHistory, nextSelection);
   }
 
-  function commit(transaction: EditorTransaction) {
+  function commit(transaction: EditorTransaction, options: CommitOptions = {}) {
     const nextSelection = transaction.selection
       ? clampSelection(transaction.after, transaction.selection)
       : selection;
+    const nextFocus = nextSelection ? getSelectionFocus(nextSelection) : null;
+    const now = Date.now();
     pendingFocusRef.current = nextSelection;
-    setHistory((current) => applyTransaction(current, transaction));
+    if (!options.preserveStoredMarks) clearStoredMarks();
+    if (!options.mergeTyping) typingMergeRef.current = null;
+    setHistory((current): EditorHistory => {
+      const last = current.undoStack.at(-1);
+      const typingMerge = typingMergeRef.current;
+      if (
+        options.mergeTyping &&
+        nextFocus &&
+        last &&
+        typingMerge &&
+        typingMerge.transactionId === last.id &&
+        typingMerge.blockId === nextFocus.blockId &&
+        now - typingMerge.updatedAt <= TYPING_MERGE_WINDOW_MS &&
+        last.kind === "update-text" &&
+        transaction.kind === "update-text"
+      ) {
+        const mergedTransaction = { ...transaction, before: last.before };
+        typingMergeRef.current = {
+          blockId: nextFocus.blockId,
+          transactionId: mergedTransaction.id,
+          updatedAt: now,
+        };
+        return {
+          document: transaction.after,
+          undoStack: [...current.undoStack.slice(0, -1), mergedTransaction],
+          redoStack: [],
+        };
+      }
+
+      if (options.mergeTyping && nextFocus && transaction.kind === "update-text") {
+        typingMergeRef.current = {
+          blockId: nextFocus.blockId,
+          transactionId: transaction.id,
+          updatedAt: now,
+        };
+      }
+      return applyTransaction(current, transaction);
+    });
     setSelection(nextSelection);
     setSlash(null);
     setBubblePosition(null);
@@ -1411,6 +1630,29 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     commit(setBlockType(history.document, block.id, spec.blockType, spec.level, text));
   }
 
+  function duplicateBlock(block: EditorBlock) {
+    const clone = createBlock({
+      type: block.type,
+      text: block.text,
+      level: block.level,
+      indent: block.indent,
+      checked: block.checked,
+      attrs: block.attrs,
+      children: block.children,
+    });
+    commit(insertBlockAfter(history.document, block.id, clone));
+  }
+
+  function deleteCurrentBlock(block: EditorBlock) {
+    commit(deleteBlock(history.document, block.id));
+  }
+
+  function moveCurrentBlock(block: EditorBlock, direction: -1 | 1) {
+    const index = history.document.blocks.findIndex((item) => item.id === block.id);
+    if (index < 0) return;
+    commit(moveBlock(history.document, block.id, index + direction));
+  }
+
   function selectedTextRange(expandMark?: EditorTextMarkType): TextRange | undefined {
     if (!isSameBlockSelection(selection)) return;
     const range = selectedRange(selection);
@@ -1423,7 +1665,10 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
 
   function toggleStoredSelectionMark(mark: EditorTextMarkType) {
     const range = selectedTextRange();
-    if (!range) return;
+    if (!range) {
+      if (isCollapsedSelection(selection)) setCollapsedStoredMarks(toggleStoredMark(collapsedMarksForSelection(selection), mark), selection);
+      return;
+    }
     commit(toggleTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark));
   }
 
@@ -1431,7 +1676,12 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const range = mark === "link" || mark === "icon-link"
       ? selectedTextRange(mark) ?? selectedTextRange("link") ?? selectedTextRange("icon-link")
       : selectedTextRange();
-    if (!range) return;
+    if (!range) {
+      if (isCollapsedSelection(selection) && mark !== "link" && mark !== "icon-link") {
+        setCollapsedStoredMarks(setStoredMark(collapsedMarksForSelection(selection), mark, attrs), selection);
+      }
+      return;
+    }
     commit(setTextMark(history.document, range.blockId, range.start, range.end, mark, attrs));
   }
 
@@ -1439,7 +1689,10 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const range = mark === "link" || mark === "icon-link"
       ? selectedTextRange(mark) ?? selectedTextRange("link") ?? selectedTextRange("icon-link")
       : selectedTextRange();
-    if (!range) return;
+    if (!range) {
+      if (isCollapsedSelection(selection)) setCollapsedStoredMarks(unsetStoredMark(collapsedMarksForSelection(selection), mark), selection);
+      return;
+    }
     commit(unsetTextMark(history.document, range.blockId, range.start, range.end, mark));
   }
 
@@ -1467,6 +1720,24 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     commit({ ...iconTx, before: history.document });
   }
 
+  function transactionWithExactMarks(transaction: EditorTransaction, blockId: string, range: TextRange, marks: EditorTextMark[]): EditorTransaction {
+    let after = transaction.after;
+    let lastTransaction = transaction;
+    for (const spec of textMarkSpecs) {
+      const mark = marks.find((candidate) => candidate.type === spec.mark);
+      lastTransaction = mark
+        ? setTextMark(after, blockId, range.start, range.end, spec.mark, mark.attrs ?? {})
+        : unsetTextMark(after, blockId, range.start, range.end, spec.mark);
+      after = lastTransaction.after;
+    }
+    return {
+      ...lastTransaction,
+      before: transaction.before,
+      kind: transaction.kind,
+      selection: transaction.selection,
+    };
+  }
+
   function openHref(href: string) {
     const target = normalizedHref(href);
     if (!target) return;
@@ -1475,8 +1746,23 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
 
   function handleText(block: EditorBlock, text: string, offset: number) {
     setSelectedBlockId(null);
-    const tx = updateBlockTextWithMarkdownShortcut(history.document, block.id, text, offset);
-    commit(tx);
+    const previousText = getBlockPlainText(block);
+    const storedMarks = storedMarksRef.current;
+    const insertedRange = insertedTextRange(previousText, text);
+    const shouldApplyStoredMarks = Boolean(
+      storedMarks &&
+      storedMarks.blockId === block.id &&
+      insertedRange &&
+      insertedRange.start === storedMarks.offset,
+    );
+    const baseTx = updateBlockTextWithMarkdownShortcut(history.document, block.id, text, offset);
+    const tx = shouldApplyStoredMarks && insertedRange && baseTx.kind === "update-text"
+      ? transactionWithExactMarks(baseTx, block.id, insertedRange, storedMarks!.marks)
+      : baseTx;
+    commit(tx, { mergeTyping: tx.kind === "update-text", preserveStoredMarks: shouldApplyStoredMarks });
+    if (shouldApplyStoredMarks) {
+      setStoredMarks({ blockId: block.id, offset, marks: storedMarks!.marks });
+    }
     if (isComposingRef.current || tx.kind === "markdown-shortcut") return;
 
     const beforeCursor = text.slice(0, offset);
@@ -1522,6 +1808,13 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const block = currentBlock(blockId);
     const editableMarkRange = editableMarkRangeAtSelection(block, nextSelection);
     setSelection(nextSelection);
+    if (
+      !isCollapsedSelection(nextSelection) ||
+      storedMarksRef.current?.blockId !== nextSelection.anchor.blockId ||
+      storedMarksRef.current.offset !== nextSelection.anchor.offset
+    ) {
+      clearStoredMarks();
+    }
     setBubblePosition(readSelectionBubblePosition(element, blockId, Boolean(editableMarkRange)));
   }
 
@@ -1619,8 +1912,11 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setSelectedBlockId(null);
     setSelection(nextSelection);
     if (nextSelection.anchor.blockId !== nextSelection.focus.blockId) return;
-    if (nextSelection.anchor.offset === nextSelection.focus.offset) return;
     event.preventDefault();
+    if (nextSelection.anchor.offset === nextSelection.focus.offset) {
+      setCollapsedStoredMarks(toggleStoredMark(collapsedMarksForSelection(nextSelection), mark), nextSelection);
+      return;
+    }
     commit(toggleTextMark(history.document, block.id, nextSelection.anchor.offset, nextSelection.focus.offset, mark));
   }
 
@@ -2032,6 +2328,12 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
               {blockTypeMenu?.blockId === block.id ? (
                 <BlockTypeMenu
                   activeBlock={block}
+                  canMoveDown={index < history.document.blocks.length - 1}
+                  canMoveUp={index > 0}
+                  onDelete={() => deleteCurrentBlock(block)}
+                  onDuplicate={() => duplicateBlock(block)}
+                  onMoveDown={() => moveCurrentBlock(block, 1)}
+                  onMoveUp={() => moveCurrentBlock(block, -1)}
                   specs={blockSpecs}
                   onSelect={(spec) => selectBlockType(block, spec)}
                 />
@@ -2050,6 +2352,14 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
           onApplyLink={applyStoredLink}
           onSetBlockType={selectBlockType}
           onSet={setStoredSelectionMark}
+          storedMarks={
+            storedMarksState &&
+            isCollapsedSelection(selection) &&
+            storedMarksState.blockId === selection.anchor.blockId &&
+            storedMarksState.offset === selection.anchor.offset
+              ? storedMarksState.marks
+              : null
+          }
           onToggle={toggleStoredSelectionMark}
           onUnset={unsetStoredSelectionMark}
         />
