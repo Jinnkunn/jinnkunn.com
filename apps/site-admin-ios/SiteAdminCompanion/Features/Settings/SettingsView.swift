@@ -40,6 +40,33 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Calendar Sync") {
+                    Text("Upload the calendars visible on this iPhone to Draft. The server merges them with other collectors by source instead of treating this phone as the only source of truth.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        Task { await session.syncCalendarsFromDevice() }
+                    } label: {
+                        if session.isCalendarSyncing {
+                            Label("Syncing Calendars", systemImage: "arrow.triangle.2.circlepath")
+                        } else {
+                            Label("Sync iPhone Calendars", systemImage: "calendar.badge.clock")
+                        }
+                    }
+                    .disabled(!session.isSignedIn || session.isCalendarSyncing || session.isLoading)
+
+                    if let result = session.calendarSyncResult {
+                        LabeledContent("Last sync", value: result.syncedAt)
+                        LabeledContent("Sources", value: "\(result.sourcesWritten)")
+                        LabeledContent("Observed events", value: "\(result.observationsWritten)")
+                        LabeledContent("Merged events", value: "\(result.entitiesWritten)")
+                        if result.staleObservations > 0 {
+                            LabeledContent("Stale in source", value: "\(result.staleObservations)")
+                        }
+                    }
+                }
+
                 Section("Advanced Diagnostics") {
                     LabeledContent("Draft API") {
                         Text(SiteAdminEnvironment.staging.baseURLString)
