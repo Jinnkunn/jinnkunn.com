@@ -58,6 +58,12 @@ type BubblePosition = {
   top: number;
 };
 
+type TextRange = {
+  blockId: string;
+  end: number;
+  start: number;
+};
+
 type BlockTypeMenuState = {
   blockId: string;
 };
@@ -158,20 +164,22 @@ function readTextOffset(element: HTMLElement): number {
   return readNodeOffset(element, selection.focusNode, selection.focusOffset);
 }
 
-function readSelectionBubblePosition(element: HTMLElement, blockId: string): BubblePosition | null {
+function readSelectionBubblePosition(element: HTMLElement, blockId: string, allowCollapsed = false): BubblePosition | null {
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  if (!selection || selection.rangeCount === 0) return null;
+  if (selection.isCollapsed && !allowCollapsed) return null;
   if (!element.contains(selection.anchorNode) || !element.contains(selection.focusNode)) return null;
 
   const range = selection.getRangeAt(0);
   const rect = range.getBoundingClientRect();
   const fallback = range.getClientRects()[0];
-  const box = rect.width > 0 || rect.height > 0 ? rect : fallback;
+  const elementBox = element.getBoundingClientRect();
+  const box = rect.width > 0 || rect.height > 0 ? rect : fallback ?? elementBox;
   if (!box) return null;
 
   return {
     blockId,
-    left: box.left + box.width / 2,
+    left: selection.isCollapsed ? box.left : box.left + box.width / 2,
     top: Math.max(8, box.top - 8),
   };
 }
@@ -322,6 +330,53 @@ function selectedRange(selection: EditorSelection): { blockId: string; start: nu
   };
 }
 
+function markAttrsEqual(left: EditorTextMarkAttrs | null, right: EditorTextMarkAttrs | null): boolean {
+  const leftEntries = Object.entries(left ?? {});
+  const rightEntries = Object.entries(right ?? {});
+  if (leftEntries.length !== rightEntries.length) return false;
+  return leftEntries.every(([key, value]) => right?.[key] === value);
+}
+
+function markRangesInBlock(block: EditorBlock, mark: EditorTextMarkType): Array<TextRange & { attrs: EditorTextMarkAttrs | null }> {
+  const ranges: Array<TextRange & { attrs: EditorTextMarkAttrs | null }> = [];
+  let cursor = 0;
+  for (const span of block.text) {
+    const spanStart = cursor;
+    const spanEnd = cursor + span.text.length;
+    cursor = spanEnd;
+    const attrs = markAttrs(span.marks, mark);
+    if (!hasMarkType(span.marks, mark)) continue;
+    const previous = ranges.at(-1);
+    if (previous && previous.end === spanStart && markAttrsEqual(previous.attrs, attrs)) {
+      previous.end = spanEnd;
+    } else {
+      ranges.push({ attrs, blockId: block.id, end: spanEnd, start: spanStart });
+    }
+  }
+  return ranges;
+}
+
+function markRangeAtOffset(block: EditorBlock, offset: number, mark: EditorTextMarkType): TextRange | null {
+  const safeOffset = Math.max(0, Math.min(offset, blockTextLength(block)));
+  return (
+    markRangesInBlock(block, mark).find((range) => {
+      if (range.start === range.end) return false;
+      if (safeOffset === 0) return range.start === 0;
+      return safeOffset > range.start && safeOffset <= range.end;
+    }) ?? null
+  );
+}
+
+function editableMarkRangeAtSelection(
+  block: EditorBlock | null,
+  selection: EditorSelection | null,
+): TextRange | null {
+  if (!block || !isSameBlockSelection(selection)) return null;
+  const range = selectedRange(selection);
+  if (range.start !== range.end) return range;
+  return markRangeAtOffset(block, range.start, "link") ?? markRangeAtOffset(block, range.start, "icon-link");
+}
+
 function blockMatchesSpec(block: EditorBlock, spec: EditorBlockExtensionSpec): boolean {
   if (block.type !== spec.blockType) return false;
   if (block.type !== "heading") return true;
@@ -331,7 +386,7 @@ function blockMatchesSpec(block: EditorBlock, spec: EditorBlockExtensionSpec): b
 function selectionHasMark(block: EditorBlock | null, selection: EditorSelection | null, mark: EditorTextMarkType): boolean {
   if (!block || !isSameBlockSelection(selection)) return false;
   const range = selectedRange(selection);
-  if (range.start === range.end) return false;
+  if (range.start === range.end) return Boolean(markRangeAtOffset(block, range.start, mark));
 
   let cursor = 0;
   let touched = false;
@@ -353,12 +408,18 @@ function selectedMarkAttrs(
 ): EditorTextMarkAttrs | null {
   if (!block || !isSameBlockSelection(selection)) return null;
   const range = selectedRange(selection);
+  if (range.start === range.end) {
+    const markRange = markRangeAtOffset(block, range.start, mark);
+    if (!markRange) return null;
+  }
   let cursor = 0;
   for (const span of block.text) {
     const spanStart = cursor;
     const spanEnd = cursor + span.text.length;
     cursor = spanEnd;
-    if (spanEnd <= range.start || spanStart >= range.end) continue;
+    if (range.start === range.end) {
+      if (range.start === 0 ? spanStart !== 0 : range.start <= spanStart || range.start > spanEnd) continue;
+    } else if (spanEnd <= range.start || spanStart >= range.end) continue;
     return markAttrs(span.marks, mark);
   }
   return null;
@@ -470,6 +531,7 @@ function InlineToolbar({
   position,
   selection,
   specs,
+  onApplyLink,
   onSet,
   onToggle,
   onUnset,
@@ -478,6 +540,7 @@ function InlineToolbar({
   position: BubblePosition;
   selection: EditorSelection | null;
   specs: EditorTextMarkExtensionSpec[];
+  onApplyLink: (href: string, icon: string | null) => void;
   onSet: (mark: EditorTextMarkType, attrs?: EditorTextMarkAttrs) => void;
   onToggle: (mark: EditorTextMarkType) => void;
   onUnset: (mark: EditorTextMarkType) => void;
@@ -496,17 +559,11 @@ function InlineToolbar({
   const applyLink = (iconMode: boolean) => {
     const nextHref = href.trim();
     if (!nextHref) {
-      onUnset("link");
-      onUnset("icon-link");
+      onApplyLink("", null);
       setPanel(null);
       return;
     }
-    onSet("link", { href: nextHref });
-    if (iconMode) {
-      onSet("icon-link", icon.trim() ? { icon: icon.trim() } : {});
-    } else {
-      onUnset("icon-link");
-    }
+    onApplyLink(nextHref, iconMode ? icon.trim() : null);
     setPanel(null);
   };
 
@@ -592,8 +649,7 @@ function InlineToolbar({
             <button
               type="button"
               onClick={() => {
-                onUnset("link");
-                onUnset("icon-link");
+                onApplyLink("", null);
                 setPanel(null);
               }}
             >
@@ -779,6 +835,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
   }
 
   useLayoutEffect(() => {
+    if (isComposingRef.current) return;
     for (const block of history.document.blocks) {
       const target = blockRefs.current.get(block.id);
       if (target && block.type !== "divider") syncEditableDom(target, block);
@@ -807,6 +864,14 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     return history.document.blocks.find((block) => block.id === blockId) || null;
   }
 
+  function selectionForDocument(document: EditorDocument, preferred: EditorSelection | null): EditorSelection | null {
+    if (preferred && document.blocks.some((block) => block.id === getSelectionFocus(preferred).blockId)) {
+      return clampSelection(document, preferred);
+    }
+    const firstTextBlock = document.blocks.find((block) => block.type !== "divider" && !STRUCTURED_BLOCK_TYPES.has(block.type));
+    return firstTextBlock ? createCollapsedSelection(firstTextBlock.id, blockTextLength(firstTextBlock)) : null;
+  }
+
   function selectCommand(command: EditorBlockExtensionSpec, blockId = slash?.blockId) {
     if (!blockId) return;
     const block = currentBlock(blockId);
@@ -829,10 +894,13 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     commit(setBlockType(history.document, block.id, spec.blockType, spec.level, text));
   }
 
-  function selectedTextRange() {
+  function selectedTextRange(expandMark?: EditorTextMarkType): TextRange | undefined {
     if (!isSameBlockSelection(selection)) return;
     const range = selectedRange(selection);
-    if (range.start === range.end) return;
+    if (range.start === range.end) {
+      const block = currentBlock(range.blockId);
+      return block && expandMark ? markRangeAtOffset(block, range.start, expandMark) ?? undefined : undefined;
+    }
     return range;
   }
 
@@ -843,15 +911,32 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
   }
 
   function setStoredSelectionMark(mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}) {
-    const range = selectedTextRange();
+    const range = mark === "link" || mark === "icon-link"
+      ? selectedTextRange(mark) ?? selectedTextRange("link") ?? selectedTextRange("icon-link")
+      : selectedTextRange();
     if (!range) return;
-    commit(setTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark, attrs));
+    commit(setTextMark(history.document, range.blockId, range.start, range.end, mark, attrs));
   }
 
   function unsetStoredSelectionMark(mark: EditorTextMarkType) {
-    const range = selectedTextRange();
+    const range = mark === "link" || mark === "icon-link"
+      ? selectedTextRange(mark) ?? selectedTextRange("link") ?? selectedTextRange("icon-link")
+      : selectedTextRange();
     if (!range) return;
-    commit(unsetTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark));
+    commit(unsetTextMark(history.document, range.blockId, range.start, range.end, mark));
+  }
+
+  function applyStoredLink(href: string, icon: string | null) {
+    const range = selectedTextRange("link") ?? selectedTextRange("icon-link") ?? selectedTextRange();
+    if (!range) return;
+    const nextHref = href.trim();
+    const linkTx = nextHref
+      ? setTextMark(history.document, range.blockId, range.start, range.end, "link", { href: nextHref })
+      : unsetTextMark(history.document, range.blockId, range.start, range.end, "link");
+    const iconTx = icon === null
+      ? unsetTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link")
+      : setTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link", icon ? { icon } : {});
+    commit({ ...iconTx, before: history.document });
   }
 
   function handleText(block: EditorBlock, text: string, offset: number) {
@@ -881,8 +966,10 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
 
   function handleSelectionChange(element: HTMLElement, blockId: string) {
     const nextSelection = readTextSelection(element, blockId);
+    const block = currentBlock(blockId);
+    const editableMarkRange = editableMarkRangeAtSelection(block, nextSelection);
     setSelection(nextSelection);
-    setBubblePosition(readSelectionBubblePosition(element, blockId));
+    setBubblePosition(readSelectionBubblePosition(element, blockId, Boolean(editableMarkRange)));
   }
 
   function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMarkType) {
@@ -909,28 +996,24 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       const nextHistory = event.shiftKey ? redo(history) : undo(history);
-      const focusBlock = nextHistory.document.blocks[0];
-      const nextSelection = focusBlock
-        ? createCollapsedSelection(focusBlock.id, getBlockPlainText(focusBlock).length)
-        : null;
+      const nextSelection = selectionForDocument(nextHistory.document, selection);
       pendingFocusRef.current = nextSelection;
       setHistory(nextHistory);
       setSelection(nextSelection);
       setSlash(null);
+      setBubblePosition(null);
       return;
     }
 
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
       event.preventDefault();
       const nextHistory = redo(history);
-      const focusBlock = nextHistory.document.blocks[0];
-      const nextSelection = focusBlock
-        ? createCollapsedSelection(focusBlock.id, getBlockPlainText(focusBlock).length)
-        : null;
+      const nextSelection = selectionForDocument(nextHistory.document, selection);
       pendingFocusRef.current = nextSelection;
       setHistory(nextHistory);
       setSelection(nextSelection);
       setSlash(null);
+      setBubblePosition(null);
       return;
     }
 
@@ -1251,6 +1334,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
                     handleSelectionChange(event.currentTarget, block.id);
                   }}
                   onInput={(event) => {
+                    if (isComposingRef.current || event.nativeEvent.isComposing) return;
                     const offset = readTextOffset(event.currentTarget);
                     handleText(block, event.currentTarget.textContent || "", offset);
                   }}
@@ -1291,6 +1375,7 @@ export function BlockEditor({ extensionManifests, initialDocument, readOnly = fa
           position={bubblePosition}
           selection={selection}
           specs={textMarkSpecs}
+          onApplyLink={applyStoredLink}
           onSet={setStoredSelectionMark}
           onToggle={toggleStoredSelectionMark}
           onUnset={unsetStoredSelectionMark}
