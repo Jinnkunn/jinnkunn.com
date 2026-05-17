@@ -16,11 +16,14 @@ import {
   mergeWithPrevious,
   moveBlock,
   redo,
+  setBlockAttrs,
   setBlockIndent,
   setBlockType,
+  setTextMark,
   splitBlock,
   toggleTodo,
   toggleTextMark,
+  unsetTextMark,
   undo,
   updateBlockText,
   type EditorBlock,
@@ -29,15 +32,23 @@ import {
   type EditorDocument,
   type EditorSelection,
   type EditorTextMark,
+  type EditorTextMarkAttrs,
+  type EditorTextMarkType,
   type EditorTextMarkSpec,
   type EditorTextSpan,
   type EditorTransaction,
 } from "../../editor-core/src/index.ts";
 
 export type BlockEditorProps = {
+  extensions?: EditorExtension[];
   initialDocument?: EditorDocument;
   readOnly?: boolean;
   onChange?: (document: EditorDocument, transaction: EditorTransaction) => void;
+};
+
+export type EditorExtension = {
+  blockSpecs?: EditorBlockSpec[];
+  textMarkSpecs?: EditorTextMarkSpec[];
 };
 
 type SlashState = {
@@ -55,6 +66,29 @@ type BubblePosition = {
 type BlockTypeMenuState = {
   blockId: string;
 };
+
+const STRUCTURED_BLOCK_TYPES = new Set<EditorBlock["type"]>([
+  "image",
+  "bookmark",
+  "embed",
+  "file",
+  "page-link",
+]);
+
+const TOGGLE_MARK_LABELS: Record<string, string> = {
+  bold: "B",
+  italic: "I",
+  underline: "U",
+  code: "<>",
+  strikethrough: "S",
+  highlight: "H",
+};
+
+function mergeSpecs<T extends { name?: string; mark?: string }>(base: T[], extra: T[] | undefined): T[] {
+  if (!extra?.length) return base;
+  const ids = new Set(base.map((item) => item.name ?? item.mark).filter(Boolean));
+  return [...base, ...extra.filter((item) => !ids.has(item.name ?? item.mark))];
+}
 
 function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockSpec[]): string {
   const spec = blockSpecs.find((candidate) => {
@@ -155,37 +189,82 @@ function setTextSelection(element: HTMLElement, nextSelection: EditorSelection) 
   selection?.extend?.(focus.node, focus.offset);
 }
 
+function markOfType(marks: EditorTextMark[] | undefined, type: EditorTextMarkType): EditorTextMark | null {
+  return marks?.find((mark) => mark.type === type) ?? null;
+}
+
+function markAttrs(marks: EditorTextMark[] | undefined, type: EditorTextMarkType): EditorTextMarkAttrs | null {
+  return markOfType(marks, type)?.attrs ?? null;
+}
+
+function hasMarkType(marks: EditorTextMark[] | undefined, type: EditorTextMarkType): boolean {
+  return Boolean(markOfType(marks, type));
+}
+
 function applyMarksToNode(text: string, marks: EditorTextMark[] | undefined): Node {
   let node: Node = document.createTextNode(text);
-  if (marks?.includes("code")) {
+  if (hasMarkType(marks, "code")) {
     const code = document.createElement("code");
     code.append(node);
     node = code;
   }
-  if (marks?.includes("bold")) {
+  if (hasMarkType(marks, "bold")) {
     const strong = document.createElement("strong");
     strong.append(node);
     node = strong;
   }
-  if (marks?.includes("italic")) {
+  if (hasMarkType(marks, "italic")) {
     const em = document.createElement("em");
     em.append(node);
     node = em;
   }
-  if (marks?.includes("underline")) {
+  if (hasMarkType(marks, "underline")) {
     const underline = document.createElement("u");
     underline.append(node);
     node = underline;
   }
-  if (marks?.includes("strikethrough")) {
+  if (hasMarkType(marks, "strikethrough")) {
     const strike = document.createElement("s");
     strike.append(node);
     node = strike;
   }
-  if (marks?.includes("highlight")) {
+  if (hasMarkType(marks, "highlight")) {
     const highlight = document.createElement("mark");
     highlight.append(node);
     node = highlight;
+  }
+  const linkAttrs = markAttrs(marks, "link");
+  if (linkAttrs?.href) {
+    const link = document.createElement("a");
+    link.href = linkAttrs.href;
+    link.setAttribute("data-je-link", "true");
+    link.append(node);
+    node = link;
+  }
+  const iconAttrs = markAttrs(marks, "icon-link");
+  if (iconAttrs || hasMarkType(marks, "icon-link")) {
+    const icon = document.createElement("span");
+    icon.setAttribute("data-link-style", "icon");
+    if (iconAttrs?.icon) {
+      icon.setAttribute("data-link-icon", iconAttrs.icon);
+      icon.style.setProperty("--je-link-icon-image", `url("${iconAttrs.icon}")`);
+    }
+    icon.append(node);
+    node = icon;
+  }
+  const textColor = markAttrs(marks, "text-color")?.color;
+  if (textColor) {
+    const color = document.createElement("span");
+    color.setAttribute("data-color", textColor);
+    color.append(node);
+    node = color;
+  }
+  const backgroundColor = markAttrs(marks, "background-color")?.color;
+  if (backgroundColor) {
+    const bg = document.createElement("span");
+    bg.setAttribute("data-bg", backgroundColor);
+    bg.append(node);
+    node = bg;
   }
   return node;
 }
@@ -205,8 +284,8 @@ function shortcutMatches(event: React.KeyboardEvent<HTMLElement>, shortcut: stri
 function textMarkForShortcut(
   event: React.KeyboardEvent<HTMLElement>,
   textMarkSpecs: EditorTextMarkSpec[],
-): EditorTextMark | null {
-  return textMarkSpecs.find((spec) => shortcutMatches(event, spec.shortcut))?.mark || null;
+): EditorTextMarkType | null {
+  return textMarkSpecs.find((spec) => spec.shortcut && spec.kind === "toggle" && shortcutMatches(event, spec.shortcut))?.mark || null;
 }
 
 function isSameBlockSelection(selection: EditorSelection | null): selection is EditorSelection {
@@ -227,7 +306,7 @@ function blockMatchesSpec(block: EditorBlock, spec: EditorBlockSpec): boolean {
   return (block.level || 1) === spec.level;
 }
 
-function selectionHasMark(block: EditorBlock | null, selection: EditorSelection | null, mark: EditorTextMark): boolean {
+function selectionHasMark(block: EditorBlock | null, selection: EditorSelection | null, mark: EditorTextMarkType): boolean {
   if (!block || !isSameBlockSelection(selection)) return false;
   const range = selectedRange(selection);
   if (range.start === range.end) return false;
@@ -240,9 +319,32 @@ function selectionHasMark(block: EditorBlock | null, selection: EditorSelection 
     cursor = spanEnd;
     if (spanEnd <= range.start || spanStart >= range.end) continue;
     touched = true;
-    if (!span.marks?.includes(mark)) return false;
+    if (!hasMarkType(span.marks, mark)) return false;
   }
   return touched;
+}
+
+function selectedMarkAttrs(
+  block: EditorBlock | null,
+  selection: EditorSelection | null,
+  mark: EditorTextMarkType,
+): EditorTextMarkAttrs | null {
+  if (!block || !isSameBlockSelection(selection)) return null;
+  const range = selectedRange(selection);
+  let cursor = 0;
+  for (const span of block.text) {
+    const spanStart = cursor;
+    const spanEnd = cursor + span.text.length;
+    cursor = spanEnd;
+    if (spanEnd <= range.start || spanStart >= range.end) continue;
+    return markAttrs(span.marks, mark);
+  }
+  return null;
+}
+
+function blockAttrString(block: EditorBlock, key: string): string {
+  const value = block.attrs?.[key];
+  return typeof value === "string" ? value : "";
 }
 
 function syncEditableDom(element: HTMLElement, block: EditorBlock) {
@@ -297,14 +399,46 @@ function InlineToolbar({
   position,
   selection,
   specs,
+  onSet,
   onToggle,
+  onUnset,
 }: {
   activeBlock: EditorBlock | null;
   position: BubblePosition;
   selection: EditorSelection | null;
   specs: EditorTextMarkSpec[];
-  onToggle: (mark: EditorTextMark) => void;
+  onSet: (mark: EditorTextMarkType, attrs?: EditorTextMarkAttrs) => void;
+  onToggle: (mark: EditorTextMarkType) => void;
+  onUnset: (mark: EditorTextMarkType) => void;
 }) {
+  const [panel, setPanel] = useState<null | { mark: EditorTextMarkSpec }>(null);
+  const linkAttrs = selectedMarkAttrs(activeBlock, selection, "link");
+  const iconAttrs = selectedMarkAttrs(activeBlock, selection, "icon-link");
+  const [href, setHref] = useState(linkAttrs?.href ?? "");
+  const [icon, setIcon] = useState(iconAttrs?.icon ?? "");
+
+  useEffect(() => {
+    setHref(linkAttrs?.href ?? "");
+    setIcon(iconAttrs?.icon ?? "");
+  }, [linkAttrs?.href, iconAttrs?.icon, selection?.anchor.offset, selection?.focus.offset]);
+
+  const applyLink = (iconMode: boolean) => {
+    const nextHref = href.trim();
+    if (!nextHref) {
+      onUnset("link");
+      onUnset("icon-link");
+      setPanel(null);
+      return;
+    }
+    onSet("link", { href: nextHref });
+    if (iconMode) {
+      onSet("icon-link", icon.trim() ? { icon: icon.trim() } : {});
+    } else {
+      onUnset("icon-link");
+    }
+    setPanel(null);
+  };
+
   return (
     <div
       className="je-inline-toolbar"
@@ -316,22 +450,107 @@ function InlineToolbar({
       }}
       onMouseDown={(event) => event.preventDefault()}
     >
-      {specs.map((spec) => (
-        <button
-          aria-label={spec.label}
-          aria-pressed={selectionHasMark(activeBlock, selection, spec.mark)}
-          className="je-inline-toolbar__button"
-          key={spec.mark}
-          title={`${spec.label} (${spec.shortcut})`}
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault();
-            onToggle(spec.mark);
-          }}
-        >
-          {spec.label.slice(0, 1)}
-        </button>
-      ))}
+      {specs.map((spec) => {
+        if (spec.kind === "toggle") {
+          return (
+            <button
+              aria-label={spec.label}
+              aria-pressed={selectionHasMark(activeBlock, selection, spec.mark)}
+              className="je-inline-toolbar__button"
+              key={spec.mark}
+              title={`${spec.label}${spec.shortcut ? ` (${spec.shortcut})` : ""}`}
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onToggle(spec.mark);
+              }}
+            >
+              {TOGGLE_MARK_LABELS[spec.mark] || spec.label.slice(0, 1)}
+            </button>
+          );
+        }
+        if (spec.kind === "link" || spec.kind === "icon-link") {
+          return (
+            <button
+              aria-label={spec.label}
+              aria-pressed={selectionHasMark(activeBlock, selection, spec.mark)}
+              className="je-inline-toolbar__button"
+              key={spec.mark}
+              title={spec.label}
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                setPanel((current) => current?.mark.mark === spec.mark ? null : { mark: spec });
+              }}
+            >
+              {spec.kind === "icon-link" ? "->" : "Link"}
+            </button>
+          );
+        }
+        return (
+          <button
+            aria-label={spec.label}
+            aria-pressed={selectionHasMark(activeBlock, selection, spec.mark)}
+            className="je-inline-toolbar__button"
+            key={spec.mark}
+            title={spec.label}
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setPanel((current) => current?.mark.mark === spec.mark ? null : { mark: spec });
+            }}
+          >
+            {spec.mark === "text-color" ? "A" : "BG"}
+          </button>
+        );
+      })}
+      {panel?.mark.kind === "link" || panel?.mark.kind === "icon-link" ? (
+        <div className="je-inline-popover" role="dialog" aria-label={panel.mark.label}>
+          <label>
+            <span>URL</span>
+            <input value={href} placeholder="https:// or /page" onChange={(event) => setHref(event.target.value)} />
+          </label>
+          {panel.mark.kind === "icon-link" ? (
+            <label>
+              <span>Icon URL</span>
+              <input value={icon} placeholder="/icon.svg" onChange={(event) => setIcon(event.target.value)} />
+            </label>
+          ) : null}
+          <div className="je-inline-popover__actions">
+            <button type="button" onClick={() => applyLink(panel.mark.kind === "icon-link")}>Apply</button>
+            <button
+              type="button"
+              onClick={() => {
+                onUnset("link");
+                onUnset("icon-link");
+                setPanel(null);
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {panel?.mark.kind === "color" ? (
+        <div className="je-color-popover" role="dialog" aria-label={panel.mark.label}>
+          {(panel.mark.values ?? []).map((value) => (
+            <button
+              aria-label={`${panel.mark.label} ${value}`}
+              className="je-color-swatch"
+              data-color-value={value}
+              key={value}
+              type="button"
+              onClick={() => {
+                if (value === "default") onUnset(panel.mark.mark);
+                else onSet(panel.mark.mark, { color: value });
+                setPanel(null);
+              }}
+            >
+              {value === "default" ? "x" : "A"}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -372,7 +591,73 @@ function BlockTypeMenu({
   );
 }
 
-export function BlockEditor({ initialDocument, readOnly = false, onChange }: BlockEditorProps) {
+function StructuredBlockEditor({
+  block,
+  onAttrs,
+  onText,
+}: {
+  block: EditorBlock;
+  onAttrs: (attrs: Record<string, unknown>) => void;
+  onText: (text: string) => void;
+}) {
+  const text = getBlockPlainText(block);
+
+  if (block.type === "image") {
+    const url = blockAttrString(block, "url");
+    const alt = blockAttrString(block, "alt");
+    return (
+      <div className="je-structured-block je-structured-block--image">
+        {url ? <img src={url} alt={alt || text} /> : <div className="je-structured-block__empty">Image</div>}
+        <label>
+          <span>URL</span>
+          <input value={url} placeholder="https://image.jpg" onChange={(event) => onAttrs({ url: event.target.value })} />
+        </label>
+        <label>
+          <span>Alt</span>
+          <input
+            value={alt || text}
+            placeholder="Image description"
+            onChange={(event) => {
+              onAttrs({ alt: event.target.value });
+              onText(event.target.value);
+            }}
+          />
+        </label>
+        <label>
+          <span>Caption</span>
+          <input value={text} placeholder="Optional caption" onChange={(event) => onText(event.target.value)} />
+        </label>
+      </div>
+    );
+  }
+
+  if (block.type === "bookmark" || block.type === "embed" || block.type === "file" || block.type === "page-link") {
+    const urlKey = block.type === "file" ? "url" : block.type === "page-link" ? "href" : "url";
+    const titleLabel = block.type === "file" ? "Name" : block.type === "page-link" ? "Page" : "Title";
+    const urlLabel = block.type === "page-link" ? "Href" : "URL";
+    return (
+      <div className={`je-structured-block je-structured-block--${block.type}`}>
+        <div className="je-structured-block__badge">{block.type}</div>
+        <label>
+          <span>{titleLabel}</span>
+          <input value={text} placeholder={titleLabel} onChange={(event) => onText(event.target.value)} />
+        </label>
+        <label>
+          <span>{urlLabel}</span>
+          <input
+            value={blockAttrString(block, urlKey)}
+            placeholder={block.type === "page-link" ? "/page" : "https://"}
+            onChange={(event) => onAttrs({ [urlKey]: event.target.value })}
+          />
+        </label>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+export function BlockEditor({ extensions, initialDocument, readOnly = false, onChange }: BlockEditorProps) {
   const initial = useMemo(() => createEditorHistory(initialDocument || createDocument()), [initialDocument]);
   const [history, setHistory] = useState(initial);
   const [selection, setSelection] = useState<EditorSelection | null>(() => {
@@ -385,8 +670,14 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
-  const blockSpecs = useMemo(() => listBlockSpecs(), []);
-  const textMarkSpecs = useMemo(() => listTextMarkSpecs(), []);
+  const blockSpecs = useMemo(
+    () => mergeSpecs(listBlockSpecs(), extensions?.flatMap((extension) => extension.blockSpecs ?? [])),
+    [extensions],
+  );
+  const textMarkSpecs = useMemo(
+    () => mergeSpecs(listTextMarkSpecs(), extensions?.flatMap((extension) => extension.textMarkSpecs ?? [])),
+    [extensions],
+  );
 
   useEffect(() => {
     setHistory(initial);
@@ -451,11 +742,29 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     commit(setBlockType(history.document, block.id, spec.blockType, spec.level, text));
   }
 
-  function toggleStoredSelectionMark(mark: EditorTextMark) {
+  function selectedTextRange() {
     if (!isSameBlockSelection(selection)) return;
     const range = selectedRange(selection);
     if (range.start === range.end) return;
-    commit(toggleTextMark(history.document, range.blockId, selection.anchor.offset, selection.focus.offset, mark));
+    return range;
+  }
+
+  function toggleStoredSelectionMark(mark: EditorTextMarkType) {
+    const range = selectedTextRange();
+    if (!range) return;
+    commit(toggleTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark));
+  }
+
+  function setStoredSelectionMark(mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}) {
+    const range = selectedTextRange();
+    if (!range) return;
+    commit(setTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark, attrs));
+  }
+
+  function unsetStoredSelectionMark(mark: EditorTextMarkType) {
+    const range = selectedTextRange();
+    if (!range) return;
+    commit(unsetTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark));
   }
 
   function handleText(block: EditorBlock, text: string, offset: number) {
@@ -489,13 +798,21 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     setBubblePosition(readSelectionBubblePosition(element, blockId));
   }
 
-  function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMark) {
+  function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMarkType) {
     const nextSelection = readTextSelection(event.currentTarget, block.id);
     setSelection(nextSelection);
     if (nextSelection.anchor.blockId !== nextSelection.focus.blockId) return;
     if (nextSelection.anchor.offset === nextSelection.focus.offset) return;
     event.preventDefault();
     commit(toggleTextMark(history.document, block.id, nextSelection.anchor.offset, nextSelection.focus.offset, mark));
+  }
+
+  function patchBlockAttrs(block: EditorBlock, attrs: Record<string, unknown>) {
+    commit(setBlockAttrs(history.document, block.id, attrs, getBlockPlainText(block).length));
+  }
+
+  function patchBlockText(block: EditorBlock, text: string) {
+    commit(updateBlockText(history.document, block.id, text, text.length));
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock) {
@@ -716,6 +1033,12 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
               ) : null}
               {block.type === "divider" ? (
                 <hr className="je-divider" />
+              ) : STRUCTURED_BLOCK_TYPES.has(block.type) ? (
+                <StructuredBlockEditor
+                  block={block}
+                  onAttrs={(attrs) => patchBlockAttrs(block, attrs)}
+                  onText={(nextText) => patchBlockText(block, nextText)}
+                />
               ) : (
                 <div
                   className="je-editable"
@@ -775,7 +1098,9 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
           position={bubblePosition}
           selection={selection}
           specs={textMarkSpecs}
+          onSet={setStoredSelectionMark}
           onToggle={toggleStoredSelectionMark}
+          onUnset={unsetStoredSelectionMark}
         />
       ) : null}
     </section>

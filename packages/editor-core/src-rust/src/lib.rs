@@ -1,16 +1,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 const MAX_BLOCK_INDENT: i32 = 6;
-const MARK_ORDER: [TextMark; 6] = [
-    TextMark::Bold,
-    TextMark::Italic,
-    TextMark::Code,
-    TextMark::Underline,
-    TextMark::Strikethrough,
-    TextMark::Highlight,
+const MARK_ORDER: [TextMarkType; 10] = [
+    TextMarkType::Bold,
+    TextMarkType::Italic,
+    TextMarkType::Code,
+    TextMarkType::Underline,
+    TextMarkType::Strikethrough,
+    TextMarkType::Highlight,
+    TextMarkType::Link,
+    TextMarkType::IconLink,
+    TextMarkType::TextColor,
+    TextMarkType::BackgroundColor,
 ];
 
 thread_local! {
@@ -135,6 +140,24 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 ))
             })
         }
+        "setBlockAttrs" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                block_id: String,
+                attrs: BTreeMap<String, Value>,
+                offset: Option<i32>,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(set_block_attrs(
+                    input.document,
+                    &input.block_id,
+                    input.attrs,
+                    input.offset,
+                ))
+            })
+        }
         "setBlockType" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -175,10 +198,54 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 block_id: String,
                 start_offset: i32,
                 end_offset: i32,
-                mark: TextMark,
+                mark: TextMarkType,
             }
             unary::<Input, _>(payload, |input| {
                 Ok(toggle_text_mark(
+                    input.document,
+                    &input.block_id,
+                    input.start_offset,
+                    input.end_offset,
+                    input.mark,
+                ))
+            })
+        }
+        "setTextMark" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                block_id: String,
+                start_offset: i32,
+                end_offset: i32,
+                mark: TextMarkType,
+                attrs: Option<BTreeMap<String, String>>,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(set_text_mark(
+                    input.document,
+                    &input.block_id,
+                    input.start_offset,
+                    input.end_offset,
+                    TextMark {
+                        mark_type: input.mark,
+                        attrs: clean_mark_attrs(input.attrs.unwrap_or_default()),
+                    },
+                ))
+            })
+        }
+        "unsetTextMark" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                block_id: String,
+                start_offset: i32,
+                end_offset: i32,
+                mark: TextMarkType,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(unset_text_mark(
                     input.document,
                     &input.block_id,
                     input.start_offset,
@@ -261,6 +328,14 @@ enum BlockType {
     NumberedList,
     CodeBlock,
     Callout,
+    Image,
+    Toggle,
+    Table,
+    Bookmark,
+    Embed,
+    File,
+    PageLink,
+    Raw,
 }
 
 impl Default for BlockType {
@@ -271,13 +346,26 @@ impl Default for BlockType {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum TextMark {
+enum TextMarkType {
     Bold,
     Italic,
     Code,
     Underline,
     Strikethrough,
     Highlight,
+    Link,
+    IconLink,
+    TextColor,
+    BackgroundColor,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextMark {
+    #[serde(rename = "type")]
+    mark_type: TextMarkType,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    attrs: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -299,6 +387,8 @@ struct Block {
     indent: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     checked: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attrs: Option<BTreeMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     children: Option<Vec<Block>>,
 }
@@ -334,8 +424,11 @@ enum TransactionKind {
     MoveBlock,
     SetBlockIndent,
     ToggleTextMark,
+    SetTextMark,
+    UnsetTextMark,
     ToggleTodo,
     SetBlockType,
+    SetBlockAttrs,
     Normalize,
 }
 
@@ -374,6 +467,7 @@ struct CreateBlockInput {
     level: Option<i32>,
     indent: Option<i32>,
     checked: Option<bool>,
+    attrs: Option<BTreeMap<String, Value>>,
     children: Option<Vec<Block>>,
 }
 
@@ -401,11 +495,14 @@ struct Command {
 
 #[derive(Clone, Debug, Serialize)]
 struct TextMarkSpec {
-    mark: TextMark,
+    mark: TextMarkType,
     label: &'static str,
     description: &'static str,
+    kind: &'static str,
     shortcut: &'static str,
     tag: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    values: Option<Vec<&'static str>>,
 }
 
 fn next_id(prefix: &str) -> String {
@@ -441,12 +538,37 @@ fn slice_utf16(text: &str, start: i32, end: i32) -> String {
     text[start.min(text.len())..end.min(text.len())].to_string()
 }
 
+fn clean_mark_attrs(attrs: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    attrs
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let trimmed = value.trim().to_string();
+            (!key.trim().is_empty() && !trimmed.is_empty()).then_some((key, trimmed))
+        })
+        .collect()
+}
+
+fn text_mark(mark_type: TextMarkType) -> TextMark {
+    TextMark {
+        mark_type,
+        attrs: BTreeMap::new(),
+    }
+}
+
 fn normalize_marks(marks: Option<Vec<TextMark>>) -> Option<Vec<TextMark>> {
     let marks = marks?;
     let ordered: Vec<TextMark> = MARK_ORDER
         .iter()
-        .copied()
-        .filter(|mark| marks.contains(mark))
+        .filter_map(|mark_type| {
+            marks
+                .iter()
+                .rev()
+                .find(|mark| mark.mark_type == *mark_type)
+                .map(|mark| TextMark {
+                    mark_type: mark.mark_type,
+                    attrs: clean_mark_attrs(mark.attrs.clone()),
+                })
+        })
         .collect();
     if ordered.is_empty() {
         None
@@ -460,6 +582,21 @@ fn text_span(text: impl Into<String>, marks: Option<Vec<TextMark>>) -> TextSpan 
         text: text.into(),
         marks: normalize_marks(marks),
     }
+}
+
+fn has_mark_type(marks: Option<&Vec<TextMark>>, mark_type: TextMarkType) -> bool {
+    marks.is_some_and(|marks| marks.iter().any(|mark| mark.mark_type == mark_type))
+}
+
+fn mark_attrs<'a>(
+    marks: Option<&'a Vec<TextMark>>,
+    mark_type: TextMarkType,
+) -> Option<&'a BTreeMap<String, String>> {
+    marks?.iter().find(|mark| mark.mark_type == mark_type).map(|mark| &mark.attrs)
+}
+
+fn remove_mark_type(marks: &mut Vec<TextMark>, mark_type: TextMarkType) {
+    marks.retain(|candidate| candidate.mark_type != mark_type);
 }
 
 fn merge_text_spans(spans: Vec<TextSpan>) -> Vec<TextSpan> {
@@ -513,6 +650,7 @@ fn create_block(input: CreateBlockInput) -> Block {
         } else {
             None
         },
+        attrs: input.attrs.filter(|attrs| !attrs.is_empty()),
         children: input
             .children
             .map(|children| children.into_iter().map(normalize_block).collect()),
@@ -534,6 +672,23 @@ fn normalize_block(mut block: Block) -> Block {
         block.checked = None;
     } else {
         block.checked = Some(block.checked.unwrap_or(false));
+    }
+    if matches!(
+        block.block_type,
+        BlockType::Image
+            | BlockType::Toggle
+            | BlockType::Table
+            | BlockType::Bookmark
+            | BlockType::Embed
+            | BlockType::File
+            | BlockType::PageLink
+            | BlockType::Raw
+            | BlockType::CodeBlock
+            | BlockType::Callout
+    ) {
+        block.attrs = block.attrs.filter(|attrs| !attrs.is_empty());
+    } else {
+        block.attrs = block.attrs.filter(|attrs| !attrs.is_empty());
     }
     block.indent = block
         .indent
@@ -657,7 +812,7 @@ fn toggle_text_mark(
     block_id: &str,
     start_offset: i32,
     end_offset: i32,
-    mark: TextMark,
+    mark_type: TextMarkType,
 ) -> Transaction {
     let before = document.clone();
     let mut after = document;
@@ -681,11 +836,7 @@ fn toggle_text_mark(
             if span_end <= start || span_start >= end {
                 continue;
             }
-            if !span
-                .marks
-                .as_ref()
-                .is_some_and(|marks| marks.contains(&mark))
-            {
+            if !has_mark_type(span.marks.as_ref(), mark_type) {
                 every_selected_span_has_mark = false;
             }
         }
@@ -707,9 +858,9 @@ fn toggle_text_mark(
             let after_text = slice_utf16(&span.text, selection_end, utf16_len(&span.text) as i32);
             let mut marks = span.marks.clone().unwrap_or_default();
             if every_selected_span_has_mark {
-                marks.retain(|candidate| *candidate != mark);
-            } else if !marks.contains(&mark) {
-                marks.push(mark);
+                remove_mark_type(&mut marks, mark_type);
+            } else if !has_mark_type(Some(&marks), mark_type) {
+                marks.push(text_mark(mark_type));
             }
             if !before_text.is_empty() {
                 next_spans.push(text_span(before_text, span.marks.clone()));
@@ -728,6 +879,98 @@ fn toggle_text_mark(
         })
     });
     transaction(TransactionKind::ToggleTextMark, before, after, selection)
+}
+
+fn apply_text_mark(
+    mut document: Document,
+    block_id: &str,
+    start_offset: i32,
+    end_offset: i32,
+    mark: TextMark,
+    remove: bool,
+) -> (Document, Option<Selection>) {
+    let selection = find_block_mut(&mut document.blocks, block_id).and_then(|block| {
+        if block.block_type == BlockType::Divider {
+            return None;
+        }
+        let text_length = utf16_len(&block_plain_text(block)) as i32;
+        let start = start_offset.min(end_offset).clamp(0, text_length);
+        let end = start_offset.max(end_offset).clamp(0, text_length);
+        if start == end {
+            return Some(create_collapsed_selection(block_id, start));
+        }
+
+        let mut cursor = 0;
+        let mut next_spans = Vec::new();
+        for span in &block.text {
+            let span_start = cursor;
+            let span_end = cursor + utf16_len(&span.text) as i32;
+            cursor = span_end;
+            if span_end <= start || span_start >= end {
+                next_spans.push(span.clone());
+                continue;
+            }
+
+            let selection_start = start.max(span_start) - span_start;
+            let selection_end = end.min(span_end) - span_start;
+            let before_text = slice_utf16(&span.text, 0, selection_start);
+            let selected_text = slice_utf16(&span.text, selection_start, selection_end);
+            let after_text = slice_utf16(&span.text, selection_end, utf16_len(&span.text) as i32);
+            let mut marks = span.marks.clone().unwrap_or_default();
+            remove_mark_type(&mut marks, mark.mark_type);
+            if !remove {
+                marks.push(mark.clone());
+            }
+
+            if !before_text.is_empty() {
+                next_spans.push(text_span(before_text, span.marks.clone()));
+            }
+            if !selected_text.is_empty() {
+                next_spans.push(text_span(selected_text, Some(marks)));
+            }
+            if !after_text.is_empty() {
+                next_spans.push(text_span(after_text, span.marks.clone()));
+            }
+        }
+        block.text = merge_text_spans(next_spans);
+        Some(Selection {
+            anchor: create_cursor(block_id, start_offset),
+            focus: create_cursor(block_id, end_offset),
+        })
+    });
+    (document, selection)
+}
+
+fn set_text_mark(
+    document: Document,
+    block_id: &str,
+    start_offset: i32,
+    end_offset: i32,
+    mark: TextMark,
+) -> Transaction {
+    let before = document.clone();
+    let (after, selection) =
+        apply_text_mark(document, block_id, start_offset, end_offset, mark, false);
+    transaction(TransactionKind::SetTextMark, before, after, selection)
+}
+
+fn unset_text_mark(
+    document: Document,
+    block_id: &str,
+    start_offset: i32,
+    end_offset: i32,
+    mark_type: TextMarkType,
+) -> Transaction {
+    let before = document.clone();
+    let (after, selection) = apply_text_mark(
+        document,
+        block_id,
+        start_offset,
+        end_offset,
+        text_mark(mark_type),
+        true,
+    );
+    transaction(TransactionKind::UnsetTextMark, before, after, selection)
 }
 
 fn insert_block_after(
@@ -875,6 +1118,34 @@ fn set_block_indent(
     transaction(TransactionKind::SetBlockIndent, before, after, selection)
 }
 
+fn set_block_attrs(
+    document: Document,
+    block_id: &str,
+    attrs: BTreeMap<String, Value>,
+    offset: Option<i32>,
+) -> Transaction {
+    let before = document.clone();
+    let mut after = document;
+    let selection = find_block_mut(&mut after.blocks, block_id).map(|block| {
+        let mut next_attrs = block.attrs.clone().unwrap_or_default();
+        for (key, value) in attrs {
+            if value.is_null()
+                || value.as_str().is_some_and(|value| value.trim().is_empty())
+            {
+                next_attrs.remove(&key);
+            } else {
+                next_attrs.insert(key, value);
+            }
+        }
+        block.attrs = (!next_attrs.is_empty()).then_some(next_attrs);
+        create_collapsed_selection(
+            block_id,
+            offset.unwrap_or_else(|| utf16_len(&block_plain_text(block)) as i32),
+        )
+    });
+    transaction(TransactionKind::SetBlockAttrs, before, after, selection)
+}
+
 fn toggle_todo(document: Document, block_id: &str) -> Transaction {
     let before = document.clone();
     let mut after = document;
@@ -899,6 +1170,9 @@ fn set_block_type(
         block.block_type = block_type;
         block.level = (block_type == BlockType::Heading).then_some(level.unwrap_or(1).clamp(1, 3));
         block.checked = (block_type == BlockType::Todo).then_some(block.checked.unwrap_or(false));
+        if !matches!(block_type, BlockType::CodeBlock | BlockType::Callout) {
+            block.attrs = None;
+        }
         if let Some(text) = text {
             block.text = vec![text_span(text, None)];
         }
@@ -984,26 +1258,47 @@ fn apply_markdown_shortcut(block: Block) -> Block {
 
 fn inline_markdown(text: &str, marks: Option<&Vec<TextMark>>) -> String {
     let mut next = text.to_string();
-    if marks.is_some_and(|marks| marks.contains(&TextMark::Code)) {
+    if has_mark_type(marks, TextMarkType::Code) {
         next = format!("`{next}`");
     }
-    if marks
-        .is_some_and(|marks| marks.contains(&TextMark::Bold) && marks.contains(&TextMark::Italic))
-    {
+    if has_mark_type(marks, TextMarkType::Bold) && has_mark_type(marks, TextMarkType::Italic) {
         next = format!("***{next}***");
-    } else if marks.is_some_and(|marks| marks.contains(&TextMark::Bold)) {
+    } else if has_mark_type(marks, TextMarkType::Bold) {
         next = format!("**{next}**");
-    } else if marks.is_some_and(|marks| marks.contains(&TextMark::Italic)) {
+    } else if has_mark_type(marks, TextMarkType::Italic) {
         next = format!("*{next}*");
     }
-    if marks.is_some_and(|marks| marks.contains(&TextMark::Underline)) {
+    if has_mark_type(marks, TextMarkType::Underline) {
         next = format!("<u>{next}</u>");
     }
-    if marks.is_some_and(|marks| marks.contains(&TextMark::Strikethrough)) {
+    if has_mark_type(marks, TextMarkType::Strikethrough) {
         next = format!("~~{next}~~");
     }
-    if marks.is_some_and(|marks| marks.contains(&TextMark::Highlight)) {
+    if has_mark_type(marks, TextMarkType::Highlight) {
         next = format!("=={next}==");
+    }
+    if let Some(attrs) = mark_attrs(marks, TextMarkType::Link) {
+        if let Some(href) = attrs.get("href") {
+            next = format!("[{next}]({href})");
+        }
+    }
+    if let Some(attrs) = mark_attrs(marks, TextMarkType::IconLink) {
+        let icon = attrs
+            .get("icon")
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| format!(" data-link-icon=\"{}\"", escape_html_attr(value)))
+            .unwrap_or_default();
+        next = format!("<span data-link-style=\"icon\"{icon}>{next}</span>");
+    }
+    if let Some(attrs) = mark_attrs(marks, TextMarkType::TextColor) {
+        if let Some(color) = attrs.get("color") {
+            next = format!("<span data-color=\"{}\">{next}</span>", escape_html_attr(color));
+        }
+    }
+    if let Some(attrs) = mark_attrs(marks, TextMarkType::BackgroundColor) {
+        if let Some(color) = attrs.get("color") {
+            next = format!("<span data-bg=\"{}\">{next}</span>", escape_html_attr(color));
+        }
     }
     next
 }
@@ -1013,6 +1308,23 @@ fn spans_to_markdown(spans: &[TextSpan]) -> String {
         .iter()
         .map(|span| inline_markdown(&span.text, span.marks.as_ref()))
         .collect()
+}
+
+fn escape_html_attr(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn attr_string(block: &Block, key: &str) -> Option<String> {
+    block
+        .attrs
+        .as_ref()?
+        .get(key)?
+        .as_str()
+        .map(ToOwned::to_owned)
 }
 
 fn document_to_markdown(document: &Document) -> String {
@@ -1049,6 +1361,45 @@ fn document_to_markdown(document: &Document) -> String {
                 BlockType::NumberedList => format!("{prefix}1. {text}"),
                 BlockType::CodeBlock => format!("{prefix}```\n{text}\n{prefix}```"),
                 BlockType::Callout => format!("{prefix}> [!note] {text}"),
+                BlockType::Image => {
+                    let alt = attr_string(block, "alt").unwrap_or_else(|| text.clone());
+                    let url = attr_string(block, "url").unwrap_or_default();
+                    if url.is_empty() {
+                        format!("{prefix}![{alt}]()")
+                    } else {
+                        format!("{prefix}![{alt}]({url})")
+                    }
+                }
+                BlockType::Toggle => format!(
+                    "{prefix}<details>\n{prefix}<summary>{text}</summary>\n{prefix}</details>"
+                ),
+                BlockType::Table => text
+                    .lines()
+                    .map(|line| format!("{prefix}{line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                BlockType::Bookmark => {
+                    let url = attr_string(block, "url").unwrap_or_default();
+                    format!("{prefix}<Bookmark url=\"{}\">{text}</Bookmark>", escape_html_attr(&url))
+                }
+                BlockType::Embed => {
+                    let url = attr_string(block, "url").unwrap_or_default();
+                    format!("{prefix}<Embed url=\"{}\" />", escape_html_attr(&url))
+                }
+                BlockType::File => {
+                    let url = attr_string(block, "url").unwrap_or_default();
+                    let name = attr_string(block, "name").unwrap_or_else(|| text.clone());
+                    format!(
+                        "{prefix}<File href=\"{}\" name=\"{}\" />",
+                        escape_html_attr(&url),
+                        escape_html_attr(&name)
+                    )
+                }
+                BlockType::PageLink => {
+                    let href = attr_string(block, "href").unwrap_or_default();
+                    format!("{prefix}[{text}]({href})")
+                }
+                BlockType::Raw => format!("{prefix}{text}"),
                 BlockType::Paragraph => format!("{prefix}{text}"),
             }
         })
@@ -1070,18 +1421,126 @@ fn append_span(spans: &mut Vec<TextSpan>, text: String, marks: Option<Vec<TextMa
     spans.push(text_span(text, sorted_marks));
 }
 
+fn mark_with_attr(mark_type: TextMarkType, key: &str, value: impl Into<String>) -> TextMark {
+    let mut attrs = BTreeMap::new();
+    attrs.insert(key.to_string(), value.into());
+    TextMark {
+        mark_type,
+        attrs: clean_mark_attrs(attrs),
+    }
+}
+
+fn attr_value(input: &str, name: &str) -> Option<String> {
+    let double = format!("{name}=\"");
+    if let Some(start) = input.find(&double) {
+        let start = start + double.len();
+        let end = input[start..].find('"')?;
+        return Some(input[start..start + end].to_string());
+    }
+    let single = format!("{name}='");
+    if let Some(start) = input.find(&single) {
+        let start = start + single.len();
+        let end = input[start..].find('\'')?;
+        return Some(input[start..start + end].to_string());
+    }
+    None
+}
+
+fn parse_markdown_link(input: &str) -> Option<(String, String, usize)> {
+    if !input.starts_with('[') {
+        return None;
+    }
+    let label_end = input[1..].find("](")? + 1;
+    let href_start = label_end + 2;
+    let href_end = input[href_start..].find(')')? + href_start;
+    Some((
+        input[1..label_end].to_string(),
+        input[href_start..href_end].to_string(),
+        href_end + 1,
+    ))
+}
+
+fn parse_image_markdown(input: &str) -> Option<(String, String)> {
+    if !input.starts_with("![") {
+        return None;
+    }
+    let label_end = input[2..].find("](")? + 2;
+    let href_start = label_end + 2;
+    let href_end = input[href_start..].find(')')? + href_start;
+    Some((input[2..label_end].to_string(), input[href_start..href_end].to_string()))
+}
+
+fn parse_self_closing_attr(input: &str, tag: &str, attr: &str) -> Option<String> {
+    let prefix = format!("<{tag} ");
+    if !input.starts_with(&prefix) || !input.trim_end().ends_with("/>") {
+        return None;
+    }
+    attr_value(input, attr)
+}
+
 fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
     let mut spans = Vec::new();
     let mut index = 0usize;
     while index < input.len() {
         let rest = &input[index..];
+        if rest.starts_with("<span") {
+            if let Some(open_end) = rest.find('>') {
+                let open = &rest[..open_end + 1];
+                if let Some(close_start) = rest[open_end + 1..].find("</span>") {
+                    let inner_start = index + open_end + 1;
+                    let inner_end = inner_start + close_start;
+                    let consumed = open_end + 1 + close_start + "</span>".len();
+                    let mut inner_spans = inline_markdown_to_spans(&input[inner_start..inner_end]);
+                    for span in &mut inner_spans {
+                        let mut marks = span.marks.clone().unwrap_or_default();
+                        if open.contains("data-link-style=\"icon\"")
+                            || open.contains("data-link-style='icon'")
+                        {
+                            let mut attrs = BTreeMap::new();
+                            if let Some(icon) = attr_value(open, "data-link-icon") {
+                                attrs.insert("icon".to_string(), icon);
+                            }
+                            remove_mark_type(&mut marks, TextMarkType::IconLink);
+                            marks.push(TextMark {
+                                mark_type: TextMarkType::IconLink,
+                                attrs: clean_mark_attrs(attrs),
+                            });
+                        }
+                        if let Some(color) = attr_value(open, "data-color") {
+                            remove_mark_type(&mut marks, TextMarkType::TextColor);
+                            marks.push(mark_with_attr(TextMarkType::TextColor, "color", color));
+                        }
+                        if let Some(color) = attr_value(open, "data-bg") {
+                            remove_mark_type(&mut marks, TextMarkType::BackgroundColor);
+                            marks.push(mark_with_attr(TextMarkType::BackgroundColor, "color", color));
+                        }
+                        span.marks = normalize_marks(Some(marks));
+                    }
+                    spans.extend(inner_spans);
+                    index += consumed;
+                    continue;
+                }
+            }
+        }
+        if let Some((label, href, consumed)) = parse_markdown_link(rest) {
+            let mut link_spans = inline_markdown_to_spans(&label);
+            for span in &mut link_spans {
+                let mut marks = span.marks.clone().unwrap_or_default();
+                remove_mark_type(&mut marks, TextMarkType::Link);
+                marks.push(mark_with_attr(TextMarkType::Link, "href", href.clone()));
+                span.marks = normalize_marks(Some(marks));
+            }
+            spans.extend(link_spans);
+            index += consumed;
+            continue;
+        }
         if rest.starts_with("***") {
             if let Some(end) = input[index + 3..].find("***") {
                 let end = index + 3 + end;
                 append_span(
                     &mut spans,
                     input[index + 3..end].to_string(),
-                    Some(vec![TextMark::Bold, TextMark::Italic]),
+                    Some(vec![text_mark(TextMarkType::Bold), text_mark(TextMarkType::Italic)]),
                 );
                 index = end + 3;
                 continue;
@@ -1093,7 +1552,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 2..end].to_string(),
-                    Some(vec![TextMark::Bold]),
+                    Some(vec![text_mark(TextMarkType::Bold)]),
                 );
                 index = end + 2;
                 continue;
@@ -1105,7 +1564,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 1..end].to_string(),
-                    Some(vec![TextMark::Italic]),
+                    Some(vec![text_mark(TextMarkType::Italic)]),
                 );
                 index = end + 1;
                 continue;
@@ -1117,7 +1576,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 1..end].to_string(),
-                    Some(vec![TextMark::Code]),
+                    Some(vec![text_mark(TextMarkType::Code)]),
                 );
                 index = end + 1;
                 continue;
@@ -1129,7 +1588,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 2..end].to_string(),
-                    Some(vec![TextMark::Strikethrough]),
+                    Some(vec![text_mark(TextMarkType::Strikethrough)]),
                 );
                 index = end + 2;
                 continue;
@@ -1141,7 +1600,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 2..end].to_string(),
-                    Some(vec![TextMark::Highlight]),
+                    Some(vec![text_mark(TextMarkType::Highlight)]),
                 );
                 index = end + 2;
                 continue;
@@ -1153,7 +1612,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 3..end].to_string(),
-                    Some(vec![TextMark::Underline]),
+                    Some(vec![text_mark(TextMarkType::Underline)]),
                 );
                 index = end + 4;
                 continue;
@@ -1166,6 +1625,7 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                     || character == '~'
                     || character == '='
                     || character == '<'
+                    || character == '['
             })
             .map(|next| index + 1 + next)
             .unwrap_or(input.len());
@@ -1220,6 +1680,45 @@ fn markdown_line_to_block(line: &str) -> Block {
             ..Default::default()
         });
     }
+    if let Some((alt, url)) = parse_image_markdown(content) {
+        let mut attrs = BTreeMap::new();
+        attrs.insert("alt".to_string(), Value::String(alt.clone()));
+        attrs.insert("url".to_string(), Value::String(url));
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Image),
+            indent: Some(indent),
+            text: Some(TextInput::String(alt)),
+            attrs: Some(attrs),
+            ..Default::default()
+        });
+    }
+    if let Some(url) = parse_self_closing_attr(content, "Embed", "url") {
+        let mut attrs = BTreeMap::new();
+        attrs.insert("url".to_string(), Value::String(url.clone()));
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Embed),
+            indent: Some(indent),
+            text: Some(TextInput::String(url)),
+            attrs: Some(attrs),
+            ..Default::default()
+        });
+    }
+    if content.starts_with("<File ") {
+        let mut attrs = BTreeMap::new();
+        if let Some(url) = attr_value(content, "href") {
+            attrs.insert("url".to_string(), Value::String(url));
+        }
+        if let Some(name) = attr_value(content, "name") {
+            attrs.insert("name".to_string(), Value::String(name.clone()));
+            return create_block(CreateBlockInput {
+                block_type: Some(BlockType::File),
+                indent: Some(indent),
+                text: Some(TextInput::String(name)),
+                attrs: Some(attrs),
+                ..Default::default()
+            });
+        }
+    }
     if let Some(rest) = content
         .strip_prefix("[x] ")
         .or_else(|| content.strip_prefix("[X] "))
@@ -1246,6 +1745,14 @@ fn markdown_line_to_block(line: &str) -> Block {
             block_type: Some(BlockType::Callout),
             indent: Some(indent),
             text: Some(TextInput::Spans(inline_markdown_to_spans(rest))),
+            ..Default::default()
+        });
+    }
+    if content.starts_with('|') && content.ends_with('|') {
+        return create_block(CreateBlockInput {
+            block_type: Some(BlockType::Table),
+            indent: Some(indent),
+            text: Some(TextInput::String(content.to_string())),
             ..Default::default()
         });
     }
@@ -1442,52 +1949,186 @@ fn block_specs() -> Vec<Command> {
             placeholder: "Callout",
             markdown_shortcut: Some("! "),
         },
+        Command {
+            name: "image",
+            label: "Image",
+            description: "Image with alt text and caption",
+            block_type: BlockType::Image,
+            level: None,
+            icon: "Img",
+            placeholder: "Paste an image URL",
+            markdown_shortcut: Some("!["),
+        },
+        Command {
+            name: "toggle",
+            label: "Toggle",
+            description: "Collapsible section",
+            block_type: BlockType::Toggle,
+            level: None,
+            icon: ">",
+            placeholder: "Toggle title",
+            markdown_shortcut: Some("> "),
+        },
+        Command {
+            name: "table",
+            label: "Table",
+            description: "Markdown table",
+            block_type: BlockType::Table,
+            level: None,
+            icon: "Tbl",
+            placeholder: "Header | Header",
+            markdown_shortcut: Some("|"),
+        },
+        Command {
+            name: "bookmark",
+            label: "Bookmark",
+            description: "Link preview card",
+            block_type: BlockType::Bookmark,
+            level: None,
+            icon: "Bm",
+            placeholder: "Bookmark title",
+            markdown_shortcut: None,
+        },
+        Command {
+            name: "embed",
+            label: "Embed",
+            description: "Embedded external content",
+            block_type: BlockType::Embed,
+            level: None,
+            icon: "<>",
+            placeholder: "Embed URL",
+            markdown_shortcut: None,
+        },
+        Command {
+            name: "file",
+            label: "File",
+            description: "File attachment",
+            block_type: BlockType::File,
+            level: None,
+            icon: "File",
+            placeholder: "File name",
+            markdown_shortcut: None,
+        },
+        Command {
+            name: "page-link",
+            label: "Page link",
+            description: "Link to another document",
+            block_type: BlockType::PageLink,
+            level: None,
+            icon: "@",
+            placeholder: "Page title",
+            markdown_shortcut: Some("@"),
+        },
+        Command {
+            name: "raw",
+            label: "Raw",
+            description: "Raw MDX or host markup",
+            block_type: BlockType::Raw,
+            level: None,
+            icon: "{}",
+            placeholder: "Raw content",
+            markdown_shortcut: None,
+        },
     ]
 }
 
 fn text_mark_specs() -> Vec<TextMarkSpec> {
     vec![
         TextMarkSpec {
-            mark: TextMark::Bold,
+            mark: TextMarkType::Bold,
             label: "Bold",
             description: "Strong emphasis",
+            kind: "toggle",
             shortcut: "mod+b",
             tag: "strong",
+            values: None,
         },
         TextMarkSpec {
-            mark: TextMark::Italic,
+            mark: TextMarkType::Italic,
             label: "Italic",
             description: "Soft emphasis",
+            kind: "toggle",
             shortcut: "mod+i",
             tag: "em",
+            values: None,
         },
         TextMarkSpec {
-            mark: TextMark::Underline,
+            mark: TextMarkType::Underline,
             label: "Underline",
             description: "Underlined text",
+            kind: "toggle",
             shortcut: "mod+u",
             tag: "u",
+            values: None,
         },
         TextMarkSpec {
-            mark: TextMark::Code,
+            mark: TextMarkType::Code,
             label: "Code",
             description: "Inline code",
+            kind: "toggle",
             shortcut: "mod+e",
             tag: "code",
+            values: None,
         },
         TextMarkSpec {
-            mark: TextMark::Strikethrough,
+            mark: TextMarkType::Strikethrough,
             label: "Strikethrough",
             description: "Crossed-out text",
+            kind: "toggle",
             shortcut: "mod+shift+x",
             tag: "s",
+            values: None,
         },
         TextMarkSpec {
-            mark: TextMark::Highlight,
+            mark: TextMarkType::Highlight,
             label: "Highlight",
             description: "Highlighted text",
+            kind: "toggle",
             shortcut: "mod+shift+h",
             tag: "mark",
+            values: None,
+        },
+        TextMarkSpec {
+            mark: TextMarkType::Link,
+            label: "Link",
+            description: "Inline hyperlink",
+            kind: "link",
+            shortcut: "mod+k",
+            tag: "a",
+            values: None,
+        },
+        TextMarkSpec {
+            mark: TextMarkType::IconLink,
+            label: "Icon link",
+            description: "Link presentation with a leading icon",
+            kind: "icon-link",
+            shortcut: "mod+shift+k",
+            tag: "span",
+            values: None,
+        },
+        TextMarkSpec {
+            mark: TextMarkType::TextColor,
+            label: "Text color",
+            description: "Named text color",
+            kind: "color",
+            shortcut: "",
+            tag: "span",
+            values: Some(vec![
+                "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple",
+                "pink", "red",
+            ]),
+        },
+        TextMarkSpec {
+            mark: TextMarkType::BackgroundColor,
+            label: "Background",
+            description: "Named background color",
+            kind: "color",
+            shortcut: "",
+            tag: "span",
+            values: Some(vec![
+                "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple",
+                "pink", "red",
+            ]),
         },
     ]
 }
