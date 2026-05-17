@@ -1,12 +1,14 @@
 import init, { editor_core_call, type InitInput } from "../pkg/jinnkunn_editor_core.js";
 import type {
   EditorBlock,
+  EditorBlockSpec,
   EditorBlockType,
   EditorCommand,
   EditorCursorPosition,
   EditorDocument,
   EditorSelection,
   EditorTextMark,
+  EditorTextMarkSpec,
   EditorTextSpan,
   EditorTransaction,
 } from "./types.ts";
@@ -105,6 +107,14 @@ export function redo(history: EditorHistory): EditorHistory {
 
 export function findEditorCommand(query: string): EditorCommand[] {
   return callEditorCore("findEditorCommand", query);
+}
+
+export function listBlockSpecs(): EditorBlockSpec[] {
+  return callEditorCore("listBlockSpecs", null);
+}
+
+export function listTextMarkSpecs(): EditorTextMarkSpec[] {
+  return callEditorCore("listTextMarkSpecs", null);
 }
 
 export function applyMarkdownShortcut(block: EditorBlock): EditorBlock {

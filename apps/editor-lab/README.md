@@ -10,6 +10,10 @@ no debug sidebar, transaction inspector, or host controls.
 - `packages/editor-web`: DOM/React editor surface.
 - `packages/editor-bridge`: host protocol for WebView/Tauri/iOS embedding.
 
+`editor-core` exposes block and inline mark specs through WASM. Add new
+text-first block types and boolean inline styles there first, then let host UI
+surfaces render from the same spec list.
+
 Run locally:
 
 ```bash

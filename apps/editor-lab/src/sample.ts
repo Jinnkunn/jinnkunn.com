@@ -27,6 +27,19 @@ export const sampleDocument: EditorDocument = {
       text: [{ text: "The host app should save and publish; the editor should only edit." }],
     },
     {
+      id: "sample-callout",
+      type: "callout",
+      text: [
+        { text: "The Rust/WASM core now owns block behavior; " },
+        { text: "React only renders the surface.", marks: ["highlight"] },
+      ],
+    },
+    {
+      id: "sample-code",
+      type: "code-block",
+      text: [{ text: "const editor = await initializeEditorCore();" }],
+    },
+    {
       id: "sample-divider",
       type: "divider",
       text: [],
@@ -34,7 +47,11 @@ export const sampleDocument: EditorDocument = {
     {
       id: "sample-list",
       type: "bulleted-list",
-      text: [{ text: "Web, Tauri, iOS WebView, and future open-source consumers can share this surface." }],
+      text: [
+        { text: "Web, Tauri, iOS WebView, and future native hosts can share " },
+        { text: "one boring core", marks: ["strikethrough"] },
+        { text: " one reliable core." },
+      ],
     },
   ],
 };

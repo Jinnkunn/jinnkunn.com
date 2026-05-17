@@ -1,1 +1,5 @@
-export { findEditorCommand } from "./wasm.ts";
+export {
+  findEditorCommand,
+  listBlockSpecs,
+  listTextMarkSpecs,
+} from "./wasm.ts";
