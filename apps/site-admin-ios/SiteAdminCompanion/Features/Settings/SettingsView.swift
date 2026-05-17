@@ -4,20 +4,19 @@ struct SettingsView: View {
     @Environment(AppSession.self) private var session
 
     var body: some View {
-        @Bindable var bindableSession = session
         NavigationStack {
             Form {
-                Section("Environment") {
-                    SiteAdminEnvironmentPicker()
-                    ForEach(SiteAdminEnvironment.allCases) { environment in
-                        LabeledContent(environment.name, value: session.signInStatus(for: environment))
-                    }
+                Section("Workspace") {
+                    LabeledContent("Editing source", value: "Draft")
+                    LabeledContent("Published site", value: "Live")
+                    Text("Use this app to edit Draft. Release publishes the verified Draft state to Live.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Account") {
                     if session.isSignedIn {
                         LabeledContent("Status", value: "Signed in")
-                        LabeledContent("Mode", value: "\(session.environment.name) / \(session.environment.technicalName)")
                         if !session.login.isEmpty {
                             LabeledContent("Login", value: session.login)
                         }
@@ -31,31 +30,34 @@ struct SettingsView: View {
                         Button("Refresh") {
                             Task { await session.refresh() }
                         }
-                        Button("Sign Out from \(session.environment.name)", role: .destructive) {
+                        Button("Sign Out", role: .destructive) {
                             session.clearAuth()
                         }
                     } else {
-                        Button("Sign In to \(session.environment.name)") {
+                        Button("Sign In") {
                             Task { await session.signIn() }
                         }
                     }
-                    Button("Sign Out Everywhere", role: .destructive) {
-                        session.clearAllAuth()
-                    }
                 }
 
-                Section("Advanced") {
-                    TextField("Custom Site Admin URL", text: $bindableSession.baseURLString)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-
-                    Button("Save URL and Sign Out from Current Mode") {
-                        session.saveCustomBaseURL()
-                        session.clearAuth()
-                        session.message = "Custom URL saved. Sign in again."
+                Section("Advanced Diagnostics") {
+                    LabeledContent("Draft API") {
+                        Text(SiteAdminEnvironment.staging.baseURLString)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-                    .disabled(session.baseURL == nil)
+                    LabeledContent("Live API") {
+                        Text(SiteAdminEnvironment.production.baseURLString)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Text("Direct Live editing is intentionally hidden. The Release tab is the path from Draft to Live.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Reset Saved Sessions", role: .destructive) {
+                        session.clearAllAuth()
+                    }
                 }
 
                 Section("Runtime") {

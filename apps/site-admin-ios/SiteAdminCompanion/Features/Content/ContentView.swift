@@ -11,23 +11,12 @@ struct ContentView: View {
                     EmptySignedOutView()
                 } else {
                     List {
-                        if !session.environment.canEditContent {
-                            Section {
-                                Label {
-                                    Text("Live is read-only. Switch to Draft to edit content before publishing.")
-                                } icon: {
-                                    Image(systemName: "lock")
-                                }
-                            }
-                        }
-
                         Section("Quick Edit") {
                             Button {
                                 showNowSheet = true
                             } label: {
                                 Label("Now Status", systemImage: "sparkle")
                             }
-                            .disabled(!session.environment.canEditContent)
                         }
 
                         Section("Library") {

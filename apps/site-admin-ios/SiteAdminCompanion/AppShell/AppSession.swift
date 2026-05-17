@@ -73,14 +73,10 @@ final class AppSession {
     @ObservationIgnored private let baseURLKey = "site-admin-base-url"
 
     init() {
-        if let raw = defaults.string(forKey: environmentKey),
-           let savedEnvironment = SiteAdminEnvironment(rawValue: raw) {
-            environment = savedEnvironment
-            baseURLString = savedEnvironment.baseURLString
-        } else if let savedBaseURL = defaults.string(forKey: baseURLKey), !savedBaseURL.isEmpty {
-            baseURLString = savedBaseURL
-            environment = savedBaseURL.contains("staging.") ? .staging : .production
-        }
+        environment = .staging
+        baseURLString = SiteAdminEnvironment.staging.baseURLString
+        defaults.set(SiteAdminEnvironment.staging.rawValue, forKey: environmentKey)
+        defaults.set(SiteAdminEnvironment.staging.baseURLString, forKey: baseURLKey)
         loadAuth(for: environment)
     }
 
@@ -200,7 +196,7 @@ final class AppSession {
 
     func updateNow(text: String, context: String, location: String) async -> Bool {
         guard environment.canEditContent else {
-            message = "Switch to Draft to edit site content. Live is read-only."
+            message = "Content editing is available only in the Draft workspace."
             return false
         }
         guard let client else {
@@ -237,6 +233,19 @@ final class AppSession {
         } catch {
             clearCurrentTokenIfExpired(error)
             message = friendlyMessage(for: error)
+        }
+    }
+
+    func runRecommendedReleaseAction() async {
+        switch summary?.release.recommendedAction.kind {
+        case "refresh":
+            await refresh()
+        case "watch-release":
+            await refreshReleaseDetail(reportErrors: true)
+        case "noop":
+            return
+        default:
+            await smartRelease()
         }
     }
 
@@ -329,7 +338,7 @@ final class AppSession {
         }
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain {
-            return "Network request failed. Check your connection and the selected Site Admin environment."
+            return "Network request failed. Check your connection and try again."
         }
         return error.localizedDescription
     }
