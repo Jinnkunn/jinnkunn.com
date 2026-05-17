@@ -6,6 +6,7 @@ struct NowQuickUpdateSheet: View {
     @State private var text = ""
     @State private var context = ""
     @State private var location = ""
+    @State private var isSaving = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +29,8 @@ struct NowQuickUpdateSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
+                            isSaving = true
+                            defer { isSaving = false }
                             let ok = await session.updateNow(
                                 text: text,
                                 context: context,
@@ -36,10 +39,16 @@ struct NowQuickUpdateSheet: View {
                             if ok { dismiss() }
                         }
                     }
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isSaving {
+                        ProgressView()
+                    }
                 }
             }
         }
+        .interactiveDismissDisabled(isSaving)
         .onAppear {
             text = session.summary?.now.text ?? ""
             context = session.summary?.now.context ?? ""

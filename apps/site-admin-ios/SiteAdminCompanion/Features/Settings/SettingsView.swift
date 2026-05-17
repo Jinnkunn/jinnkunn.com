@@ -4,19 +4,43 @@ struct SettingsView: View {
     @Environment(AppSession.self) private var session
 
     var body: some View {
-        @Bindable var session = session
+        @Bindable var bindableSession = session
         NavigationStack {
             Form {
-                Section("Connection") {
-                    TextField("Site Admin URL", text: $session.baseURLString)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
+                Section("Environment") {
+                    Picker(
+                        "Site",
+                        selection: Binding(
+                            get: { session.environment },
+                            set: { session.selectEnvironment($0) }
+                        )
+                    ) {
+                        ForEach(SiteAdminEnvironment.allCases) { environment in
+                            Text(environment.name).tag(environment)
+                        }
+                    }
+                    .pickerStyle(.segmented)
 
+                    LabeledContent("URL") {
+                        Text(session.baseURLString)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+
+                Section("Account") {
                     if session.isSignedIn {
                         LabeledContent("Status", value: "Signed in")
                         if !session.login.isEmpty {
                             LabeledContent("Login", value: session.login)
+                        }
+                        if !session.tokenExpiresAt.isEmpty {
+                            LabeledContent("Token") {
+                                Text(session.tokenExpiresAt)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Button("Refresh") {
                             Task { await session.refresh() }
@@ -29,6 +53,20 @@ struct SettingsView: View {
                             Task { await session.signIn() }
                         }
                     }
+                }
+
+                Section("Advanced") {
+                    TextField("Custom Site Admin URL", text: $bindableSession.baseURLString)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+
+                    Button("Save URL and Sign Out") {
+                        session.saveCustomBaseURL()
+                        session.clearAuth()
+                        session.message = "Custom URL saved. Sign in again."
+                    }
+                    .disabled(session.baseURL == nil)
                 }
 
                 Section("Runtime") {

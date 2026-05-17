@@ -4,6 +4,8 @@ enum SiteAdminClientError: LocalizedError {
     case invalidBaseURL
     case missingToken
     case invalidResponse
+    case signInCanceled
+    case signInCallbackFailed
     case api(String)
 
     var errorDescription: String? {
@@ -14,6 +16,10 @@ enum SiteAdminClientError: LocalizedError {
             return "Sign in before making Site Admin requests."
         case .invalidResponse:
             return "The server returned an unexpected response."
+        case .signInCanceled:
+            return "Sign-in was canceled."
+        case .signInCallbackFailed:
+            return "Sign-in finished, but the app did not receive a valid token. Check the deployed callback configuration."
         case .api(let message):
             return message
         }
@@ -58,6 +64,12 @@ struct SiteAdminClient {
         return payload.job
     }
 
+    func releaseJob(id: String) async throws -> ReleaseJobDetailPayload {
+        try await request(
+            path: "/api/site-admin/release-jobs/\(id)"
+        )
+    }
+
     private func request<T: Decodable>(
         path: String,
         method: String = "GET",
@@ -85,7 +97,17 @@ struct SiteAdminClient {
             throw SiteAdminClientError.invalidResponse
         }
 
-        let envelope = try JSONDecoder().decode(APIEnvelope<T>.self, from: data)
+        let envelope: APIEnvelope<T>
+        do {
+            envelope = try JSONDecoder().decode(APIEnvelope<T>.self, from: data)
+        } catch {
+            if http.statusCode == 401 {
+                throw SiteAdminClientError.api("Your app session has expired. Sign in again.")
+            }
+            throw SiteAdminClientError.api(
+                "The server returned an unexpected response (HTTP \(http.statusCode))."
+            )
+        }
         if envelope.ok, let payload = envelope.data {
             return payload
         }
