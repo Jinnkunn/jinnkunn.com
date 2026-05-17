@@ -1,5 +1,6 @@
 import {
   calendarFetchEvents,
+  calendarListSources,
   calendarListCalendars,
 } from "./api";
 import { loadCalendarDefaultRules } from "./calendarDefaults";
@@ -17,6 +18,7 @@ import {
 } from "./publicProjection";
 import { loadCalendarPublishRules } from "./publishRulesStore";
 import {
+  syncCalendarObservations,
   publishPublicCalendarToProduction,
   syncPublicCalendarProjection,
   type CalendarProductionPromotionResult,
@@ -32,7 +34,17 @@ import {
   type SyncSnapshot,
 } from "./syncSnapshot";
 import { loadActiveRules, resolveSmartDefault } from "./smartDefaults";
-import type { Calendar, CalendarEvent } from "./types";
+import type {
+  Calendar,
+  CalendarEvent,
+  CalendarSource,
+  CalendarSourceType,
+} from "./types";
+import {
+  normalizeCalendarObservationSyncPayload,
+  type CalendarObservationInput,
+  type CalendarSourceDescriptor,
+} from "../../../../../lib/shared/calendar-core.ts";
 
 export type CalendarSyncReason = "auto" | "manual" | "background";
 export type CalendarSyncStatus = "synced" | "unchanged";
@@ -62,6 +74,7 @@ export type CalendarProjectionSyncResult =
   | CalendarProjectionSyncFailure;
 
 let syncInFlight: Promise<CalendarProjectionSyncResult> | null = null;
+const COLLECTOR_ID_STORAGE_KEY = "workspace.calendar.collectorId.v1";
 
 export function mergeCalendarEvents(
   primary: readonly CalendarEvent[],
@@ -113,6 +126,118 @@ function rangeUnion(
         ? right.endsAt
         : left.endsAt,
   };
+}
+
+function loadCollectorId(): string {
+  try {
+    const existing = localStorage.getItem(COLLECTOR_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const random =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const collectorId = `tauri-macos:${random}`;
+    localStorage.setItem(COLLECTOR_ID_STORAGE_KEY, collectorId);
+    return collectorId;
+  } catch {
+    return "tauri-macos:unknown";
+  }
+}
+
+function calendarSourceProvider(
+  sourceType: CalendarSourceType,
+): CalendarSourceDescriptor["provider"] {
+  if (sourceType === "mobileMe") return "apple";
+  if (sourceType === "exchange") return "outlook";
+  if (sourceType === "calDAV") return "caldav";
+  if (sourceType === "subscribed") return "ics";
+  if (sourceType === "local" || sourceType === "birthdays") return "local";
+  return "unknown";
+}
+
+function calendarSyncSourceId(sourceId: string): string {
+  return `eventkit:${sourceId}`;
+}
+
+function buildObservationSyncPayload(input: {
+  sources: CalendarSource[];
+  calendarsById: ReadonlyMap<string, Calendar>;
+  events: readonly CalendarEvent[];
+  range: { startsAt: string; endsAt: string };
+}) {
+  const collectorId = loadCollectorId();
+  const sourceDescriptors: CalendarSourceDescriptor[] = input.sources.map((source) => ({
+    id: calendarSyncSourceId(source.id),
+    provider: calendarSourceProvider(source.sourceType),
+    title: source.title,
+    externalSourceId: source.id,
+    syncScope: {
+      adapter: "eventkit",
+      platform: "macos",
+    },
+  }));
+  const sourceIds = new Set(sourceDescriptors.map((source) => source.id));
+  const observations: CalendarObservationInput[] = input.events.map((event) => {
+    const calendar = input.calendarsById.get(event.calendarId);
+    const sourceId = calendar
+      ? calendarSyncSourceId(calendar.sourceId)
+      : calendarSyncSourceId("unknown");
+    if (!sourceIds.has(sourceId)) {
+      sourceDescriptors.push({
+        id: sourceId,
+        provider: "unknown",
+        title: calendar?.title ?? "Calendar",
+        externalSourceId: calendar?.sourceId ?? "unknown",
+        syncScope: {
+          adapter: "eventkit",
+          platform: "macos",
+        },
+      });
+      sourceIds.add(sourceId);
+    }
+    return {
+      sourceId,
+      collectorId,
+      sourceEventId: event.eventIdentifier,
+      iCalUid: event.externalIdentifier,
+      recurrenceInstanceId: event.isRecurring ? event.startsAt : null,
+      calendarId: event.calendarId,
+      calendarTitle: calendar?.title ?? null,
+      title: event.title,
+      notes: event.notes,
+      location: event.location,
+      url: event.url,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      isAllDay: event.isAllDay,
+      isRecurring: event.isRecurring,
+    };
+  });
+  return normalizeCalendarObservationSyncPayload({
+    schemaVersion: 1,
+    collector: {
+      id: collectorId,
+      kind: "tauri-macos",
+      title: "Workspace for macOS",
+    },
+    sources: sourceDescriptors,
+    range: input.range,
+    syncMode: "snapshot",
+    observedAt: new Date().toISOString(),
+    observations,
+  });
+}
+
+async function syncObservationSnapshotBestEffort(input: {
+  sources: CalendarSource[];
+  calendarsById: ReadonlyMap<string, Calendar>;
+  events: readonly CalendarEvent[];
+  range: { startsAt: string; endsAt: string };
+}): Promise<void> {
+  const result = await syncCalendarObservations(buildObservationSyncPayload(input));
+  if (!result.ok) {
+    console.warn("[calendar] observation sync failed", result.error);
+  }
 }
 
 async function runSerializedSync(
@@ -235,7 +360,8 @@ export async function syncCurrentEventKitCalendarProjection(input: {
     startsAt: starts.toISOString(),
     endsAt: ends.toISOString(),
   };
-  const [calendars, events, metadata] = await Promise.all([
+  const [sources, calendars, events, metadata] = await Promise.all([
+    input.calendarsById ? Promise.resolve([] as CalendarSource[]) : calendarListSources(),
     input.calendarsById
       ? Promise.resolve([...input.calendarsById.values()])
       : calendarListCalendars(),
@@ -247,13 +373,23 @@ export async function syncCurrentEventKitCalendarProjection(input: {
   ]);
   const calendarsById = new Map(calendars.map((calendar) => [calendar.id, calendar]));
   const calendarDefaults = input.calendarDefaults ?? loadCalendarDefaultRules();
+  const mergedEvents = mergeCalendarEvents(events, input.extraEvents ?? []);
+  const range = rangeUnion(publishWindow, input.extraRange);
+  if (!input.calendarsById) {
+    await syncObservationSnapshotBestEffort({
+      sources,
+      calendarsById,
+      events: mergedEvents,
+      range,
+    });
+  }
   return publishCalendarProjection({
     calendarsById,
     calendarDefaults,
-    events: mergeCalendarEvents(events, input.extraEvents ?? []),
+    events: mergedEvents,
     metadata,
     productionPolicy: input.productionPolicy,
-    range: rangeUnion(publishWindow, input.extraRange),
+    range,
     reason: input.reason,
     skipIfUnchanged: input.skipIfUnchanged,
   });
