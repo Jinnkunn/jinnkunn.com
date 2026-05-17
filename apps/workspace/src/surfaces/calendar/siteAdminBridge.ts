@@ -6,6 +6,9 @@ import {
   tokenStoreKeyForBase,
 } from "../site-admin/api";
 import type { PublicCalendarPayload } from "./publicProjection";
+import type {
+  CalendarObservationSyncPayload,
+} from "../../../../../lib/shared/calendar-core.ts";
 
 const CONNECTION_STORAGE_KEY = "workspace.site-admin.connection.v1";
 const DEFAULT_BASE_URL = "https://staging.jinkunchen.com";
@@ -65,6 +68,52 @@ export async function syncPublicCalendarProjection(
     baseUrl,
     fileSha:
       typeof sourceVersion?.fileSha === "string" ? sourceVersion.fileSha : "",
+  };
+}
+
+export type CalendarObservationSyncResult =
+  | {
+      ok: true;
+      baseUrl: string;
+      sourcesWritten: number;
+      observationsWritten: number;
+      entitiesWritten: number;
+      staleObservations: number;
+      syncedAt: string;
+    }
+  | {
+      ok: false;
+      baseUrl: string;
+      code: string;
+      error: string;
+    };
+
+export async function syncCalendarObservations(
+  payload: CalendarObservationSyncPayload,
+): Promise<CalendarObservationSyncResult> {
+  const baseUrl = calendarPublishBaseUrl();
+  const result = await calendarSiteAdminRequest(baseUrl, {
+    path: "/api/site-admin/calendar-observations",
+    method: "POST",
+    body: payload,
+  });
+  if (!result.response.ok) {
+    return {
+      ok: false,
+      baseUrl,
+      code: result.response.code,
+      error: `${result.response.code}: ${result.response.error}`,
+    };
+  }
+  const dataRecord = asRecord(result.response.data);
+  return {
+    ok: true,
+    baseUrl,
+    sourcesWritten: Number(dataRecord.sourcesWritten ?? 0),
+    observationsWritten: Number(dataRecord.observationsWritten ?? 0),
+    entitiesWritten: Number(dataRecord.entitiesWritten ?? 0),
+    staleObservations: Number(dataRecord.staleObservations ?? 0),
+    syncedAt: asString(dataRecord.syncedAt) || new Date().toISOString(),
   };
 }
 
