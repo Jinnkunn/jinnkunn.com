@@ -27,7 +27,7 @@
   font: 750 clamp(40px, 8vw, 76px) / 0.95 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
   outline: none;
-  padding: 0 0 18px 58px;
+  padding: 0 0 18px 80px;
 }
 
 .je-blocks {
@@ -40,7 +40,7 @@
   align-items: flex-start;
   border-radius: 10px;
   display: grid;
-  grid-template-columns: 48px auto 1fr;
+  grid-template-columns: 70px auto 1fr;
   min-height: 38px;
   position: relative;
 }
@@ -259,6 +259,21 @@
   z-index: 20;
 }
 
+.je-block-type-menu {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--je-border);
+  border-radius: 16px;
+  box-shadow: var(--je-shadow);
+  left: 72px;
+  max-height: 360px;
+  min-width: 300px;
+  overflow: auto;
+  padding: 8px;
+  position: absolute;
+  top: 32px;
+  z-index: 20;
+}
+
 .je-slash-menu__label {
   color: var(--je-muted);
   font-size: 12px;
@@ -293,6 +308,10 @@
   background: rgba(201, 108, 18, 0.08);
 }
 
+.je-slash-menu__item[aria-selected="true"] {
+  color: var(--je-accent);
+}
+
 .je-slash-menu__icon {
   align-items: center;
   background: rgba(201, 108, 18, 0.1);
@@ -317,17 +336,62 @@
   margin-top: 2px;
 }
 
+.je-inline-toolbar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(44, 42, 38, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(46, 40, 32, 0.16);
+  display: inline-flex;
+  gap: 3px;
+  padding: 5px;
+  position: fixed;
+  transform: translate(-50%, -100%);
+  z-index: 30;
+}
+
+.je-inline-toolbar__button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  color: var(--je-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: 750 12px / 1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  height: 30px;
+  justify-content: center;
+  min-width: 30px;
+  padding: 0 8px;
+}
+
+.je-inline-toolbar__button:hover,
+.je-inline-toolbar__button[aria-pressed="true"] {
+  background: rgba(201, 108, 18, 0.1);
+  color: var(--je-accent);
+}
+
 @media (max-width: 720px) {
   .je-editor {
     padding: 34px 12px 96px;
   }
 
   .je-title {
-    padding-left: 46px;
+    padding-left: 58px;
   }
 
   .je-block {
-    grid-template-columns: 40px auto 1fr;
+    grid-template-columns: 56px auto 1fr;
+  }
+
+  .je-block-type-menu {
+    left: 44px;
+    min-width: min(300px, calc(100vw - 64px));
+  }
+
+  .je-inline-toolbar {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
   }
 
   .je-block[data-indent="1"] {

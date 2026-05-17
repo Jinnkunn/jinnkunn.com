@@ -46,6 +46,16 @@ type SlashState = {
   activeIndex: number;
 };
 
+type BubblePosition = {
+  blockId: string;
+  left: number;
+  top: number;
+};
+
+type BlockTypeMenuState = {
+  blockId: string;
+};
+
 function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockSpec[]): string {
   const spec = blockSpecs.find((candidate) => {
     if (candidate.blockType !== block.type) return false;
@@ -90,6 +100,24 @@ function readTextOffset(element: HTMLElement): number {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return element.textContent?.length || 0;
   return readNodeOffset(element, selection.focusNode, selection.focusOffset);
+}
+
+function readSelectionBubblePosition(element: HTMLElement, blockId: string): BubblePosition | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  if (!element.contains(selection.anchorNode) || !element.contains(selection.focusNode)) return null;
+
+  const range = selection.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  const fallback = range.getClientRects()[0];
+  const box = rect.width > 0 || rect.height > 0 ? rect : fallback;
+  if (!box) return null;
+
+  return {
+    blockId,
+    left: box.left + box.width / 2,
+    top: Math.max(8, box.top - 8),
+  };
 }
 
 function textPointAtOffset(element: HTMLElement, offset: number): { node: Text; offset: number } {
@@ -181,6 +209,42 @@ function textMarkForShortcut(
   return textMarkSpecs.find((spec) => shortcutMatches(event, spec.shortcut))?.mark || null;
 }
 
+function isSameBlockSelection(selection: EditorSelection | null): selection is EditorSelection {
+  return Boolean(selection && selection.anchor.blockId === selection.focus.blockId);
+}
+
+function selectedRange(selection: EditorSelection): { blockId: string; start: number; end: number } {
+  return {
+    blockId: selection.anchor.blockId,
+    start: Math.min(selection.anchor.offset, selection.focus.offset),
+    end: Math.max(selection.anchor.offset, selection.focus.offset),
+  };
+}
+
+function blockMatchesSpec(block: EditorBlock, spec: EditorBlockSpec): boolean {
+  if (block.type !== spec.blockType) return false;
+  if (block.type !== "heading") return true;
+  return (block.level || 1) === spec.level;
+}
+
+function selectionHasMark(block: EditorBlock | null, selection: EditorSelection | null, mark: EditorTextMark): boolean {
+  if (!block || !isSameBlockSelection(selection)) return false;
+  const range = selectedRange(selection);
+  if (range.start === range.end) return false;
+
+  let cursor = 0;
+  let touched = false;
+  for (const span of block.text) {
+    const spanStart = cursor;
+    const spanEnd = cursor + span.text.length;
+    cursor = spanEnd;
+    if (spanEnd <= range.start || spanStart >= range.end) continue;
+    touched = true;
+    if (!span.marks?.includes(mark)) return false;
+  }
+  return touched;
+}
+
 function syncEditableDom(element: HTMLElement, block: EditorBlock) {
   const fragment = document.createDocumentFragment();
   for (const span of block.text) {
@@ -205,6 +269,7 @@ function SlashMenu({
       {commands.length === 0 ? <div className="je-slash-menu__empty">No commands</div> : null}
       {commands.map((command, index) => (
         <button
+          aria-label={command.label}
           aria-selected={slash.activeIndex === index}
           className="je-slash-menu__item"
           key={command.name}
@@ -227,6 +292,86 @@ function SlashMenu({
   );
 }
 
+function InlineToolbar({
+  activeBlock,
+  position,
+  selection,
+  specs,
+  onToggle,
+}: {
+  activeBlock: EditorBlock | null;
+  position: BubblePosition;
+  selection: EditorSelection | null;
+  specs: EditorTextMarkSpec[];
+  onToggle: (mark: EditorTextMark) => void;
+}) {
+  return (
+    <div
+      className="je-inline-toolbar"
+      role="toolbar"
+      aria-label="Inline text styles"
+      style={{
+        left: `${position.left}px`,
+        top: `${position.top}px`,
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {specs.map((spec) => (
+        <button
+          aria-label={spec.label}
+          aria-pressed={selectionHasMark(activeBlock, selection, spec.mark)}
+          className="je-inline-toolbar__button"
+          key={spec.mark}
+          title={`${spec.label} (${spec.shortcut})`}
+          type="button"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            onToggle(spec.mark);
+          }}
+        >
+          {spec.label.slice(0, 1)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BlockTypeMenu({
+  activeBlock,
+  specs,
+  onSelect,
+}: {
+  activeBlock: EditorBlock;
+  specs: EditorBlockSpec[];
+  onSelect: (spec: EditorBlockSpec) => void;
+}) {
+  return (
+    <div className="je-block-type-menu" role="listbox" aria-label="Block types">
+      <div className="je-slash-menu__label">Block type</div>
+      {specs.map((spec) => (
+        <button
+          aria-label={spec.label}
+          aria-selected={blockMatchesSpec(activeBlock, spec)}
+          className="je-slash-menu__item"
+          key={spec.name}
+          role="option"
+          type="button"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            onSelect(spec);
+          }}
+        >
+          <span className="je-slash-menu__icon">{spec.icon || spec.label.slice(0, 1)}</span>
+          <span>
+            <strong>{spec.label}</strong>
+            <small>{spec.description}</small>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function BlockEditor({ initialDocument, readOnly = false, onChange }: BlockEditorProps) {
   const initial = useMemo(() => createEditorHistory(initialDocument || createDocument()), [initialDocument]);
   const [history, setHistory] = useState(initial);
@@ -235,6 +380,8 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     return first ? createCollapsedSelection(first.id, 0) : null;
   });
   const [slash, setSlash] = useState<SlashState | null>(null);
+  const [bubblePosition, setBubblePosition] = useState<BubblePosition | null>(null);
+  const [blockTypeMenu, setBlockTypeMenu] = useState<BlockTypeMenuState | null>(null);
   const blockRefs = useRef(new Map<string, HTMLElement>());
   const pendingFocusRef = useRef<EditorSelection | null>(null);
   const isComposingRef = useRef(false);
@@ -274,6 +421,8 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     setHistory((current) => applyTransaction(current, transaction));
     setSelection(nextSelection);
     setSlash(null);
+    setBubblePosition(null);
+    setBlockTypeMenu(null);
     onChange?.(transaction.after, transaction);
   }
 
@@ -297,6 +446,18 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
     commit(setBlockType(history.document, blockId, command.blockType, command.level, nextText));
   }
 
+  function selectBlockType(block: EditorBlock, spec: EditorBlockSpec) {
+    const text = block.type === "divider" ? undefined : getBlockPlainText(block);
+    commit(setBlockType(history.document, block.id, spec.blockType, spec.level, text));
+  }
+
+  function toggleStoredSelectionMark(mark: EditorTextMark) {
+    if (!isSameBlockSelection(selection)) return;
+    const range = selectedRange(selection);
+    if (range.start === range.end) return;
+    commit(toggleTextMark(history.document, range.blockId, selection.anchor.offset, selection.focus.offset, mark));
+  }
+
   function handleText(block: EditorBlock, text: string, offset: number) {
     const tx = updateBlockText(history.document, block.id, text, offset);
     const updatedBlock = tx.after.blocks.find((item) => item.id === block.id);
@@ -313,6 +474,7 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
 
     const beforeCursor = text.slice(0, offset);
     const slashMatch = /\/([\w-]*)$/.exec(beforeCursor);
+    if (slashMatch) setBlockTypeMenu(null);
     setSlash((current) => {
       if (!slashMatch) return null;
       const query = slashMatch[1];
@@ -322,7 +484,9 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
   }
 
   function handleSelectionChange(element: HTMLElement, blockId: string) {
-    setSelection(readTextSelection(element, blockId));
+    const nextSelection = readTextSelection(element, blockId);
+    setSelection(nextSelection);
+    setBubblePosition(readSelectionBubblePosition(element, blockId));
   }
 
   function toggleSelectionMark(event: React.KeyboardEvent<HTMLElement>, block: EditorBlock, mark: EditorTextMark) {
@@ -366,6 +530,12 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
       return;
     }
 
+    if (event.key === "Escape" && blockTypeMenu) {
+      event.preventDefault();
+      setBlockTypeMenu(null);
+      return;
+    }
+
     const shortcutMark = textMarkForShortcut(event, textMarkSpecs);
     if (shortcutMark) {
       event.preventDefault();
@@ -378,6 +548,7 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
       if (event.key === "Escape") {
         event.preventDefault();
         setSlash(null);
+        setBlockTypeMenu(null);
         return;
       }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -478,6 +649,12 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
           const next = { ...history.document, title: event.target.value };
           setHistory((current) => ({ ...current, document: next }));
         }}
+        onFocus={() => {
+          setSelection(null);
+          setSlash(null);
+          setBubblePosition(null);
+          setBlockTypeMenu(null);
+        }}
       />
       <div className="je-blocks" role="list">
         {history.document.blocks.map((block, index) => {
@@ -502,6 +679,21 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
                   onClick={() => commit(insertBlockAfter(history.document, block.id))}
                 >
                   +
+                </button>
+                <button
+                  aria-expanded={blockTypeMenu?.blockId === block.id}
+                  aria-label="Change block type"
+                  className="je-block__button je-block__type-button"
+                  disabled={readOnly}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setSlash(null);
+                    setBubblePosition(null);
+                    setBlockTypeMenu((current) => (current?.blockId === block.id ? null : { blockId: block.id }));
+                  }}
+                >
+                  {blockSpecs.find((spec) => blockMatchesSpec(block, spec))?.icon || "T"}
                 </button>
                 <button
                   aria-label="Drag block"
@@ -566,10 +758,26 @@ export function BlockEditor({ initialDocument, readOnly = false, onChange }: Blo
                   onActiveIndexChange={(activeIndex) => setSlash({ ...slash, activeIndex })}
                 />
               ) : null}
+              {blockTypeMenu?.blockId === block.id ? (
+                <BlockTypeMenu
+                  activeBlock={block}
+                  specs={blockSpecs}
+                  onSelect={(spec) => selectBlockType(block, spec)}
+                />
+              ) : null}
             </div>
           );
         })}
       </div>
+      {!readOnly && bubblePosition && isSameBlockSelection(selection) ? (
+        <InlineToolbar
+          activeBlock={currentBlock(bubblePosition.blockId)}
+          position={bubblePosition}
+          selection={selection}
+          specs={textMarkSpecs}
+          onToggle={toggleStoredSelectionMark}
+        />
+      ) : null}
     </section>
   );
 }
