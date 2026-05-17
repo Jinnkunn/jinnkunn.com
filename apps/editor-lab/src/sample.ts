@@ -7,7 +7,20 @@ export const sampleDocument: EditorDocument = {
     {
       id: "sample-intro",
       type: "paragraph",
-      text: [{ text: "A standalone block editor line. Type / to open commands, or try #, >, [], and --- shortcuts." }],
+      text: [
+        { text: "A standalone block editor line. " },
+        { text: "Links", marks: [{ type: "link", attrs: { href: "https://jinkunchen.com" } }] },
+        { text: " and " },
+        {
+          text: "icon links",
+          marks: [
+            { type: "link", attrs: { href: "/blog" } },
+            { type: "icon-link" },
+            { type: "background-color", attrs: { color: "yellow" } },
+          ],
+        },
+        { text: " are part of the same mark system." },
+      ],
     },
     {
       id: "sample-heading",
@@ -31,8 +44,23 @@ export const sampleDocument: EditorDocument = {
       type: "callout",
       text: [
         { text: "The Rust/WASM core now owns block behavior; " },
-        { text: "React only renders the surface.", marks: ["highlight"] },
+        { text: "React only renders the surface.", marks: [{ type: "highlight" }] },
       ],
+    },
+    {
+      id: "sample-image",
+      type: "image",
+      attrs: {
+        alt: "Editor canvas",
+        url: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80",
+      },
+      text: [{ text: "Structured blocks use attrs instead of one-off fields." }],
+    },
+    {
+      id: "sample-bookmark",
+      type: "bookmark",
+      attrs: { url: "https://jinkunchen.com" },
+      text: [{ text: "Jinkun Chen" }],
     },
     {
       id: "sample-code",
@@ -49,7 +77,7 @@ export const sampleDocument: EditorDocument = {
       type: "bulleted-list",
       text: [
         { text: "Web, Tauri, iOS WebView, and future native hosts can share " },
-        { text: "one boring core", marks: ["strikethrough"] },
+        { text: "one boring core", marks: [{ type: "strikethrough" }] },
         { text: " one reliable core." },
       ],
     },

@@ -7,7 +7,8 @@ import type {
   EditorCursorPosition,
   EditorDocument,
   EditorSelection,
-  EditorTextMark,
+  EditorTextMarkAttrs,
+  EditorTextMarkType,
   EditorTextMarkSpec,
   EditorTextSpan,
   EditorTransaction,
@@ -143,9 +144,30 @@ export function toggleTextMark(
   blockId: string,
   startOffset: number,
   endOffset: number,
-  mark: EditorTextMark,
+  mark: EditorTextMarkType,
 ): EditorTransaction {
   return callEditorCore("toggleTextMark", { document, blockId, startOffset, endOffset, mark });
+}
+
+export function setTextMark(
+  document: EditorDocument,
+  blockId: string,
+  startOffset: number,
+  endOffset: number,
+  mark: EditorTextMarkType,
+  attrs: EditorTextMarkAttrs = {},
+): EditorTransaction {
+  return callEditorCore("setTextMark", { document, blockId, startOffset, endOffset, mark, attrs });
+}
+
+export function unsetTextMark(
+  document: EditorDocument,
+  blockId: string,
+  startOffset: number,
+  endOffset: number,
+  mark: EditorTextMarkType,
+): EditorTransaction {
+  return callEditorCore("unsetTextMark", { document, blockId, startOffset, endOffset, mark });
 }
 
 export function insertBlockAfter(
@@ -193,4 +215,13 @@ export function setBlockType(
   text?: string,
 ): EditorTransaction {
   return callEditorCore("setBlockType", { document, blockId, blockType, level, text });
+}
+
+export function setBlockAttrs(
+  document: EditorDocument,
+  blockId: string,
+  attrs: Record<string, unknown>,
+  offset?: number,
+): EditorTransaction {
+  return callEditorCore("setBlockAttrs", { document, blockId, attrs, offset });
 }

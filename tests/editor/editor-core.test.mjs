@@ -18,8 +18,10 @@ import {
   mergeWithPrevious,
   moveBlock,
   redo,
+  setBlockAttrs,
   setBlockIndent,
   setBlockType,
+  setTextMark,
   splitBlock,
   toggleTodo,
   toggleTextMark,
@@ -129,7 +131,7 @@ test("editor-core: text marks split, merge, toggle, and roundtrip through markdo
   document = boldTx.after;
   assert.deepEqual(document.blocks[0].text, [
     { text: "Hello " },
-    { text: "world", marks: ["bold"] },
+    { text: "world", marks: [{ type: "bold" }] },
   ]);
   assert.deepEqual(boldTx.selection, {
     anchor: { blockId: "a", offset: 6 },
@@ -141,23 +143,27 @@ test("editor-core: text marks split, merge, toggle, and roundtrip through markdo
 
   document = toggleTextMark(document, "a", 6, 11, "bold").after;
   assert.deepEqual(document.blocks[0].text, [
-    { text: "Hello", marks: ["italic"] },
+    { text: "Hello", marks: [{ type: "italic" }] },
     { text: " world" },
   ]);
 
   const imported = markdownToDocument("*Hello* **world**", "Inline");
   assert.deepEqual(imported.blocks[0].text, [
-    { text: "Hello", marks: ["italic"] },
+    { text: "Hello", marks: [{ type: "italic" }] },
     { text: " " },
-    { text: "world", marks: ["bold"] },
+    { text: "world", marks: [{ type: "bold" }] },
   ]);
 });
 
 test("editor-core: extended block and mark specs are available from wasm", () => {
   assert.ok(listBlockSpecs().some((spec) => spec.blockType === "code-block" && spec.markdownShortcut === "```"));
   assert.ok(listBlockSpecs().some((spec) => spec.blockType === "callout" && spec.placeholder === "Callout"));
+  assert.ok(listBlockSpecs().some((spec) => spec.blockType === "image" && spec.name === "image"));
+  assert.ok(listBlockSpecs().some((spec) => spec.blockType === "bookmark" && spec.name === "bookmark"));
   assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "strikethrough" && spec.shortcut === "mod+shift+x"));
   assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "highlight" && spec.tag === "mark"));
+  assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "icon-link" && spec.kind === "icon-link"));
+  assert.ok(listTextMarkSpecs().some((spec) => spec.mark === "background-color" && spec.values.includes("yellow")));
 });
 
 test("editor-core: extended text marks and block markdown roundtrip", () => {
@@ -173,15 +179,46 @@ test("editor-core: extended text marks and block markdown roundtrip", () => {
 
   const imported = markdownToDocument("==Alpha== ~~Beta~~ Gamma", "Inline");
   assert.deepEqual(imported.blocks[0].text, [
-    { text: "Alpha", marks: ["highlight"] },
+    { text: "Alpha", marks: [{ type: "highlight" }] },
     { text: " " },
-    { text: "Beta", marks: ["strikethrough"] },
+    { text: "Beta", marks: [{ type: "strikethrough" }] },
     { text: " Gamma" },
   ]);
 
   const code = markdownToDocument("```\none\ntwo\n```", "Code");
   assert.equal(code.blocks[0].type, "code-block");
   assert.equal(code.blocks[0].text[0].text, "one\ntwo");
+});
+
+test("editor-core: attributed inline marks serialize links, icon links, and colors", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Dalhousie Yiling gray" })],
+  });
+  document = setTextMark(document, "a", 0, 9, "link", { href: "https://www.dal.ca/" }).after;
+  document = setTextMark(document, "a", 0, 9, "icon-link", {}).after;
+  document = setTextMark(document, "a", 10, 16, "background-color", { color: "yellow" }).after;
+  document = setTextMark(document, "a", 17, 21, "text-color", { color: "gray" }).after;
+
+  assert.equal(
+    documentToMarkdown(document),
+    '<span data-link-style="icon">[Dalhousie](https://www.dal.ca/)</span> <span data-bg="yellow">Yiling</span> <span data-color="gray">gray</span>',
+  );
+
+  const imported = markdownToDocument(
+    '<span data-link-style="icon">[Blog](/blog)</span> <span data-color="gray">muted</span>',
+    "Inline",
+  );
+  assert.deepEqual(imported.blocks[0].text, [
+    {
+      text: "Blog",
+      marks: [
+        { type: "link", attrs: { href: "/blog" } },
+        { type: "icon-link" },
+      ],
+    },
+    { text: " " },
+    { text: "muted", marks: [{ type: "text-color", attrs: { color: "gray" } }] },
+  ]);
 });
 
 test("editor-core: markdown shortcuts produce block type changes", () => {
@@ -191,6 +228,20 @@ test("editor-core: markdown shortcuts produce block type changes", () => {
   assert.equal(applyMarkdownShortcut(createBlock({ text: "---" })).type, "divider");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "```" })).type, "code-block");
   assert.equal(applyMarkdownShortcut(createBlock({ text: "! " })).type, "callout");
+});
+
+test("editor-core: structured block attrs support media-like blocks", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "img", type: "image", text: "Diagram" })],
+  });
+  document = setBlockAttrs(document, "img", { url: "https://example.com/diagram.png", alt: "Diagram" }).after;
+  assert.equal(document.blocks[0].attrs.url, "https://example.com/diagram.png");
+  assert.equal(documentToMarkdown(document), "![Diagram](https://example.com/diagram.png)");
+
+  const imported = markdownToDocument("![Alt](https://example.com/a.png)\n<Embed url=\"https://example.com/embed\" />", "Media");
+  assert.equal(imported.blocks[0].type, "image");
+  assert.equal(imported.blocks[0].attrs.url, "https://example.com/a.png");
+  assert.equal(imported.blocks[1].type, "embed");
 });
 
 test("editor-bridge: memory bridge captures host messages and dispatches client messages", () => {

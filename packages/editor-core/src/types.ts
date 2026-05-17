@@ -7,9 +7,34 @@ export type EditorBlockType =
   | "bulleted-list"
   | "numbered-list"
   | "code-block"
-  | "callout";
+  | "callout"
+  | "image"
+  | "toggle"
+  | "table"
+  | "bookmark"
+  | "embed"
+  | "file"
+  | "page-link"
+  | "raw";
 
-export type EditorTextMark = "bold" | "italic" | "code" | "underline" | "strikethrough" | "highlight";
+export type EditorTextMarkType =
+  | "bold"
+  | "italic"
+  | "code"
+  | "underline"
+  | "strikethrough"
+  | "highlight"
+  | "link"
+  | "icon-link"
+  | "text-color"
+  | "background-color";
+
+export type EditorTextMarkAttrs = Record<string, string>;
+
+export type EditorTextMark = {
+  attrs?: EditorTextMarkAttrs;
+  type: EditorTextMarkType;
+};
 
 export type EditorTextSpan = {
   text: string;
@@ -23,6 +48,7 @@ export type EditorBlock = {
   level?: 1 | 2 | 3;
   indent?: number;
   checked?: boolean;
+  attrs?: Record<string, unknown>;
   children?: EditorBlock[];
 };
 
@@ -51,8 +77,11 @@ export type EditorTransactionKind =
   | "move-block"
   | "set-block-indent"
   | "toggle-text-mark"
+  | "set-text-mark"
+  | "unset-text-mark"
   | "toggle-todo"
   | "set-block-type"
+  | "set-block-attrs"
   | "normalize";
 
 export type EditorTransaction = {
@@ -75,7 +104,15 @@ export type EditorCommandName =
   | "bulleted-list"
   | "numbered-list"
   | "code-block"
-  | "callout";
+  | "callout"
+  | "image"
+  | "toggle"
+  | "table"
+  | "bookmark"
+  | "embed"
+  | "file"
+  | "page-link"
+  | "raw";
 
 export type EditorCommand = {
   name: EditorCommandName;
@@ -91,9 +128,11 @@ export type EditorCommand = {
 export type EditorBlockSpec = EditorCommand;
 
 export type EditorTextMarkSpec = {
-  mark: EditorTextMark;
+  mark: EditorTextMarkType;
   label: string;
   description: string;
+  kind: "toggle" | "link" | "icon-link" | "color";
   shortcut: string;
   tag: string;
+  values?: string[];
 };
