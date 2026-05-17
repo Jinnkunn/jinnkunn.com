@@ -7,7 +7,9 @@
 - **Production D1 is not the editing source.** Both staging *and* production
   full builds dump from staging D1 (`scripts/release/release-cloudflare.mjs` for the
   local path, `.github/workflows/release-from-dispatch.yml` for fallback).
-  Production D1 is only used by the content-only static-shell overlay table.
+  After a production promotion, `release:prod:from-staging` mirrors staging
+  `content_files` into production D1 so production runtime admin/mobile APIs
+  report the same content counts as the promoted site.
 - **We don't delete production D1** — leaving it bound costs $0 and
   removing the binding would break wrangler config without any benefit.
   Just don't trust its contents for anything.
@@ -19,8 +21,9 @@ Production worker has its own binding (`SITE_ADMIN_DB`) pointing at a
 *production* D1 instance. Originally each instance was meant to be
 edited independently; in practice the operator only ever connects the
 workspace app to the staging worker. Production D1 therefore remains a
-non-authoritative content source, but it can store static-shell overlay rows
-for content-only publishes.
+non-authoritative content source, but it is kept as a read-only runtime mirror
+for production admin/mobile reads and can store static-shell overlay rows for
+content-only publishes.
 
 The `2026-04-29` Calendar nav incident exposed the gap:
 
@@ -70,9 +73,10 @@ If we ever:
 - run a "Recover production worker without redeploying" flow that reads
   D1 at runtime,
 
-we'll need to either keep production D1 in sync (add a copy step to the
-promote workflow), or change the binding to share the staging instance.
-Until then: leave it.
+the promote workflow now keeps production D1 in sync by copying staging
+`content_files` after a successful production Worker deploy. If production-only
+editing ever becomes real, revisit this and split "published runtime mirror"
+from "editable source" explicitly.
 
 ## Content-only overlay table
 
@@ -105,6 +109,7 @@ does not shadow the freshly deployed bundle.
 | --- | --- |
 | Show what's edited in staging D1 vs. git | `npm run db:diff:staging` |
 | Same, machine-readable | `npm run db:diff:staging:json` |
+| Mirror staging D1 content into production D1 | `npm run db:copy:staging-to-production` |
 | Force a fresh git snapshot of staging D1 | dispatch `Snapshot staging D1 to git` workflow |
 | Publish content-only staging HTML without Worker deploy | `npm run publish:content:staging` |
 | Publish content-only production HTML without Worker deploy | `npm run publish:content:prod` |
