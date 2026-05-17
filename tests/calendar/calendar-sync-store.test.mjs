@@ -6,6 +6,7 @@ import path from "node:path";
 import { createClient } from "@libsql/client";
 
 import {
+  publishCalendarObservationsToLive,
   readCalendarSyncHealth,
   writeCalendarObservationSync,
 } from "../../lib/server/calendar-sync-store.ts";
@@ -127,4 +128,62 @@ test("calendar-sync-store: snapshot stale deletion is scoped to source", async (
     active.rows.map((row) => row.source_id),
     ["google"],
   );
+});
+
+test("calendar-sync-store: publishes only observation tables to live", async () => {
+  const source = await makeCalendarSyncDb();
+  const target = await makeCalendarSyncDb();
+  await target.execute(
+    "CREATE TABLE content_files (path TEXT PRIMARY KEY, content TEXT NOT NULL)",
+  );
+  await target.execute({
+    sql: "INSERT INTO content_files (path, content) VALUES (?, ?)",
+    args: ["content/home.json", "untouched"],
+  });
+
+  await writeCalendarObservationSync(
+    {
+      collector: { id: "ios", kind: "ios" },
+      sources: [{ id: "icloud", provider: "apple", title: "iCloud" }],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-18T00:00:00Z",
+      },
+      observedAt: "2026-05-17T12:00:00.000Z",
+      observations: [
+        {
+          sourceId: "icloud",
+          sourceEventId: "ios-event",
+          title: "Private event",
+          startsAt: "2026-05-17T14:00:00Z",
+          endsAt: "2026-05-17T15:00:00Z",
+        },
+      ],
+    },
+    source,
+  );
+  await target.execute({
+    sql: `INSERT INTO calendar_sync_sources
+          (id, provider, title, collector_id, sync_scope_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: ["stale", "apple", "Stale", "old", "{}", 1, 1],
+  });
+
+  const result = await publishCalendarObservationsToLive(source, target);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.skipped, false);
+  assert.equal(result.rowsWritten > 0, true);
+
+  const liveHealth = await readCalendarSyncHealth(target);
+  assert.ok(liveHealth);
+  assert.equal(liveHealth.sources.length, 1);
+  assert.equal(liveHealth.sources[0].id, "icloud");
+  assert.equal(liveHealth.entityCount, 1);
+
+  const content = await target.execute({
+    sql: "SELECT content FROM content_files WHERE path = ?",
+    args: ["content/home.json"],
+  });
+  assert.equal(content.rows[0].content, "untouched");
 });

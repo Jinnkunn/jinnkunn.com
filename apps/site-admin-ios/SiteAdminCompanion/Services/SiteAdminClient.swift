@@ -87,6 +87,34 @@ struct SiteAdminClient {
         return payload.health
     }
 
+    func publishCalendarObservationsToLive() async throws -> CalendarObservationLivePublishPayload {
+        try await request(
+            path: "/api/site-admin/calendar-observations/publish-live",
+            method: "POST",
+            body: ["source": "ios"]
+        )
+    }
+
+    static func publicCalendarPreview() async throws -> PublicCalendarPayload {
+        guard let url = URL(string: "\(SiteAdminEnvironment.production.baseURLString)/api/public/calendar") else {
+            throw SiteAdminClientError.invalidBaseURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SiteAdminClientError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SiteAdminClientError.api(
+                "Live calendar preview failed (HTTP \(http.statusCode))."
+            )
+        }
+        return try JSONDecoder().decode(PublicCalendarPayload.self, from: data)
+    }
+
     private func request<T: Decodable>(
         path: String,
         method: String = "GET",

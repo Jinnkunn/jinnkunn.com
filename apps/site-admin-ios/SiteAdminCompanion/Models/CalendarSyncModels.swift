@@ -58,6 +58,21 @@ struct CalendarObservationSyncResult: Decodable {
     let syncedAt: String
 }
 
+struct CalendarObservationLivePublishPayload: Decodable {
+    let rowsWritten: Int
+    let rowsDeleted: Int
+    let tables: [CalendarObservationLivePublishTable]
+    let publishedAt: String
+}
+
+struct CalendarObservationLivePublishTable: Decodable, Identifiable {
+    var id: String { name }
+
+    let name: String
+    let rowsWritten: Int
+    let rowsDeleted: Int
+}
+
 struct CalendarSyncHealthPayload: Decodable {
     let health: CalendarSyncHealth
 }
@@ -85,6 +100,8 @@ struct CalendarDeviceSyncStatus: Codable {
     let message: String
     let recordedAt: String
     let syncedAt: String?
+    let livePublishedAt: String?
+    let liveMessage: String?
     let sourcesWritten: Int?
     let observationsWritten: Int?
     let entitiesWritten: Int?
@@ -93,4 +110,29 @@ struct CalendarDeviceSyncStatus: Codable {
     var isSuccess: Bool {
         state == "succeeded"
     }
+}
+
+struct PublicCalendarPayload: Decodable {
+    let schemaVersion: Int
+    let generatedAt: String
+    let range: CalendarRange
+    let events: [PublicCalendarEvent]
+
+    struct CalendarRange: Decodable {
+        let startsAt: String
+        let endsAt: String
+    }
+}
+
+struct PublicCalendarEvent: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let startsAt: String
+    let endsAt: String
+    let isAllDay: Bool
+    let visibility: String?
+    let colorHex: String?
+    let description: String?
+    let location: String?
+    let url: String?
 }

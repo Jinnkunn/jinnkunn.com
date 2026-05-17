@@ -23,6 +23,17 @@ final class CalendarObservationSyncService {
         return formatter
     }()
 
+    var hasFullCalendarAccess: Bool {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .fullAccess, .authorized:
+            return true
+        case .notDetermined, .restricted, .denied, .writeOnly:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
     func makeSnapshotPayload() async throws -> CalendarObservationSyncPayload {
         try await ensureCalendarAccess()
 

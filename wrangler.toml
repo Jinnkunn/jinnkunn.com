@@ -108,6 +108,14 @@ binding = "SITE_ADMIN_DB"
 database_name = "jinnkunn-content-staging"
 database_id = "adb6f272-f7e6-471a-9c22-b257184b3adf"
 
+[[env.staging.d1_databases]]
+# Calendar-only live mirror. The staging Site Admin API can copy the sanitized
+# observation projection to Live without granting clients a generic production
+# database or deploy capability.
+binding = "SITE_ADMIN_DB_LIVE"
+database_name = "jinnkunn-content"
+database_id = "d48dd516-1a2c-4769-a678-8acab485cf11"
+
 [env.production]
 name = "jinnkunn-site"
 

@@ -48,15 +48,112 @@ function isD1Like(value: unknown): value is D1DatabaseLike {
   );
 }
 
-function tryGetD1Executor(): DbExecutor | null {
+function tryGetD1Executor(bindingName = "SITE_ADMIN_DB"): DbExecutor | null {
   try {
     const { env } = getCloudflareContext();
-    const binding = (env as Record<string, unknown>).SITE_ADMIN_DB;
+    const binding = (env as Record<string, unknown>)[bindingName];
     return isD1Like(binding) ? createD1Executor(binding) : null;
   } catch {
     return null;
   }
 }
+
+type CalendarMirrorTable = {
+  name: string;
+  primaryKey: string;
+  columns: string[];
+  batchSize: number;
+};
+
+const CALENDAR_OBSERVATION_MIRROR_TABLES: CalendarMirrorTable[] = [
+  {
+    name: "calendar_sync_sources",
+    primaryKey: "id",
+    columns: [
+      "id",
+      "provider",
+      "title",
+      "account_key",
+      "external_source_id",
+      "collector_id",
+      "sync_scope_json",
+      "last_synced_at",
+      "created_at",
+      "updated_at",
+    ],
+    batchSize: 10,
+  },
+  {
+    name: "calendar_event_observations",
+    primaryKey: "observation_id",
+    columns: [
+      "observation_id",
+      "entity_id",
+      "source_id",
+      "collector_id",
+      "source_event_id",
+      "ical_uid",
+      "recurrence_instance_id",
+      "starts_at",
+      "ends_at",
+      "last_seen_at",
+      "deleted_at",
+      "body_json",
+      "updated_at",
+    ],
+    batchSize: 7,
+  },
+  {
+    name: "calendar_event_entities",
+    primaryKey: "entity_id",
+    columns: [
+      "entity_id",
+      "dedupe_key",
+      "title",
+      "starts_at",
+      "ends_at",
+      "body_json",
+      "updated_at",
+    ],
+    batchSize: 14,
+  },
+  {
+    name: "calendar_sync_state",
+    primaryKey: "id",
+    columns: [
+      "id",
+      "collector_id",
+      "source_id",
+      "sync_mode",
+      "range_starts_at",
+      "range_ends_at",
+      "event_count",
+      "synced_at",
+      "updated_at",
+    ],
+    batchSize: 11,
+  },
+];
+
+export type CalendarObservationLivePublishResult =
+  | {
+      ok: true;
+      skipped: false;
+      tables: Array<{
+        name: string;
+        rowsWritten: number;
+        rowsDeleted: number;
+      }>;
+      rowsWritten: number;
+      rowsDeleted: number;
+      publishedAt: string;
+    }
+  | {
+      ok: true;
+      skipped: true;
+      reason: "no_source_executor" | "no_target_executor";
+    }
+  | { ok: false; error: string };
 
 function buildSourceUpsertSql(rowCount: number): string {
   const rows = Array.from(
@@ -349,6 +446,143 @@ async function upsertSyncState(
         now,
       ],
     });
+  }
+}
+
+async function readMirrorRows(
+  executor: DbExecutor,
+  table: CalendarMirrorTable,
+): Promise<Record<string, unknown>[]> {
+  const result = await executor.execute({
+    sql: `SELECT ${table.columns.join(", ")}
+          FROM ${table.name}
+          ORDER BY ${table.primaryKey} ASC`,
+  });
+  return result.rows;
+}
+
+function buildMirrorUpsertSql(table: CalendarMirrorTable, rowCount: number): string {
+  const placeholders = Array.from(
+    { length: rowCount },
+    () => `(${Array.from({ length: table.columns.length }, () => "?").join(", ")})`,
+  ).join(", ");
+  const updates = table.columns
+    .filter((column) => column !== table.primaryKey)
+    .map((column) => `${column} = excluded.${column}`)
+    .join(", ");
+  return `INSERT INTO ${table.name}
+          (${table.columns.join(", ")})
+          VALUES ${placeholders}
+          ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}`;
+}
+
+async function upsertMirrorRows(
+  executor: DbExecutor,
+  table: CalendarMirrorTable,
+  rows: Record<string, unknown>[],
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += table.batchSize) {
+    const batch = rows.slice(i, i + table.batchSize);
+    const args = batch.flatMap((row) =>
+      table.columns.map((column) => row[column] ?? null),
+    );
+    await executor.execute({
+      sql: buildMirrorUpsertSql(table, batch.length),
+      args,
+    });
+  }
+}
+
+function buildMirrorDeleteSql(table: CalendarMirrorTable, rowCount: number): string {
+  const placeholders = Array.from({ length: rowCount }, () => "?").join(", ");
+  return `DELETE FROM ${table.name}
+          WHERE ${table.primaryKey} IN (${placeholders})`;
+}
+
+async function pruneMirrorRows(
+  executor: DbExecutor,
+  table: CalendarMirrorTable,
+  activeIds: ReadonlySet<string>,
+): Promise<number> {
+  if (activeIds.size === 0) {
+    const result = await executor.execute({ sql: `DELETE FROM ${table.name}` });
+    return result.rowsAffected ?? 0;
+  }
+
+  const existing = await executor.execute({
+    sql: `SELECT ${table.primaryKey}
+          FROM ${table.name}`,
+  });
+  const staleIds = existing.rows
+    .map((row) => String(row[table.primaryKey] ?? ""))
+    .filter((id) => id && !activeIds.has(id));
+
+  let deleted = 0;
+  for (let i = 0; i < staleIds.length; i += INSERT_BATCH_SIZE) {
+    const batch = staleIds.slice(i, i + INSERT_BATCH_SIZE);
+    const result = await executor.execute({
+      sql: buildMirrorDeleteSql(table, batch.length),
+      args: batch,
+    });
+    deleted += result.rowsAffected ?? 0;
+  }
+  return deleted;
+}
+
+export async function publishCalendarObservationsToLive(
+  sourceExecutor = tryGetD1Executor("SITE_ADMIN_DB"),
+  targetExecutor = tryGetD1Executor("SITE_ADMIN_DB_LIVE"),
+): Promise<CalendarObservationLivePublishResult> {
+  if (!sourceExecutor) {
+    return { ok: true, skipped: true, reason: "no_source_executor" };
+  }
+  if (!targetExecutor) {
+    return { ok: true, skipped: true, reason: "no_target_executor" };
+  }
+
+  try {
+    const tables: Array<{
+      name: string;
+      rowsWritten: number;
+      rowsDeleted: number;
+    }> = [];
+    let rowsWritten = 0;
+    let rowsDeleted = 0;
+
+    for (const table of CALENDAR_OBSERVATION_MIRROR_TABLES) {
+      const rows = await readMirrorRows(sourceExecutor, table);
+      await upsertMirrorRows(targetExecutor, table, rows);
+      const activeIds = new Set(
+        rows
+          .map((row) => String(row[table.primaryKey] ?? ""))
+          .filter((id) => id.length > 0),
+      );
+      const deleted = await pruneMirrorRows(targetExecutor, table, activeIds);
+      tables.push({
+        name: table.name,
+        rowsWritten: rows.length,
+        rowsDeleted: deleted,
+      });
+      rowsWritten += rows.length;
+      rowsDeleted += deleted;
+    }
+
+    return {
+      ok: true,
+      skipped: false,
+      tables,
+      rowsWritten,
+      rowsDeleted,
+      publishedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logWarn({
+      source: "calendar-sync-store",
+      message: "live publish failed",
+      detail: err,
+    });
+    return { ok: false, error: message };
   }
 }
 

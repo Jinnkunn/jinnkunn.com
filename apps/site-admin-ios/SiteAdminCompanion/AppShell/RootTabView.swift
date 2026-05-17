@@ -10,6 +10,11 @@ struct RootTabView: View {
                     Label("Today", systemImage: "circle.grid.2x2.fill")
                 }
 
+            CalendarView()
+                .tabItem {
+                    Label("Calendar", systemImage: "calendar")
+                }
+
             ContentView()
                 .tabItem {
                     Label("Content", systemImage: "doc.text")

@@ -6,7 +6,7 @@ import {
   buildSiteAdminMobileSummary,
   type SiteAdminMobileSummary,
 } from "@/lib/site-admin/mobile-summary";
-import { loadSiteAdminPublicCalendarData } from "@/lib/server/site-admin-calendar-public-service";
+import { getLatestPublicCalendarData } from "@/lib/server/public-calendar-data";
 import { getSiteAdminStatusBackend } from "@/lib/server/site-admin-backend-service";
 import { loadSiteAdminNowData } from "@/lib/server/site-admin-now-service";
 import {
@@ -19,7 +19,7 @@ export async function getSiteAdminMobileSummary(): Promise<SiteAdminMobileSummar
     await Promise.allSettled([
       getSiteAdminStatusBackend(),
       loadSiteAdminNowData(),
-      loadSiteAdminPublicCalendarData(),
+      getLatestPublicCalendarData(),
       listReleaseJobs({ limit: 5 }),
       getReleaseRunnerStatus({ limit: 4 }),
       listPosts({ includeDrafts: true }),
@@ -33,7 +33,7 @@ export async function getSiteAdminMobileSummary(): Promise<SiteAdminMobileSummar
   const now =
     nowOut.status === "fulfilled" ? nowOut.value.data : null;
   const calendar =
-    calendarOut.status === "fulfilled" ? calendarOut.value.data : null;
+    calendarOut.status === "fulfilled" ? calendarOut.value : null;
   const jobs =
     jobsOut.status === "fulfilled" && jobsOut.value.ok ? jobsOut.value.data.jobs : [];
   const runners =
