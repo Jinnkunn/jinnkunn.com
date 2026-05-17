@@ -21,6 +21,7 @@
 		B0000000000000000000000C /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000C /* KeychainTokenStore.swift */; };
 		B0000000000000000000000D /* CalendarSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000F /* CalendarSyncModels.swift */; };
 		B0000000000000000000000E /* CalendarObservationSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* CalendarObservationSyncService.swift */; };
+		B0000000000000000000000F /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* CalendarView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		A0000000000000000000000E /* SiteAdminCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SiteAdminCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A0000000000000000000000F /* CalendarSyncModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSyncModels.swift; sourceTree = "<group>"; };
 		A00000000000000000000010 /* CalendarObservationSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarObservationSyncService.swift; sourceTree = "<group>"; };
+		A00000000000000000000011 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				30000000000000000000000A /* Today */,
+				30000000000000000000000E /* Calendar */,
 				30000000000000000000000B /* Content */,
 				30000000000000000000000C /* Release */,
 				30000000000000000000000D /* Settings */,
@@ -153,6 +156,14 @@
 				A0000000000000000000000A /* SettingsView.swift */,
 			);
 			path = Settings;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000E /* Calendar */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000011 /* CalendarView.swift */,
+			);
+			path = Calendar;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -237,6 +248,7 @@
 				B0000000000000000000000C /* KeychainTokenStore.swift in Sources */,
 				B0000000000000000000000D /* CalendarSyncModels.swift in Sources */,
 				B0000000000000000000000E /* CalendarObservationSyncService.swift in Sources */,
+				B0000000000000000000000F /* CalendarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

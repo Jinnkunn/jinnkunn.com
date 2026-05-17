@@ -24,6 +24,7 @@ type SiteAdminAuditAction =
   | "calendar.public.save"
   | "calendar.public.live.save"
   | "calendar.observations.sync"
+  | "calendar.observations.publish-live"
   | "redirects.delete"
   | "assets.upload"
   | "assets.delete"

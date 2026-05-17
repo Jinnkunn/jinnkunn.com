@@ -48,8 +48,11 @@ test("site-admin-ios: content editing does not expose a Live mode switch", async
 
 test("site-admin-ios: calendar sync uploads EventKit observations to Draft", async () => {
   const appSession = await read("apps/site-admin-ios/SiteAdminCompanion/AppShell/AppSession.swift");
+  const app = await read("apps/site-admin-ios/SiteAdminCompanion/SiteAdminCompanionApp.swift");
+  const rootTab = await read("apps/site-admin-ios/SiteAdminCompanion/AppShell/RootTabView.swift");
   const client = await read("apps/site-admin-ios/SiteAdminCompanion/Services/SiteAdminClient.swift");
   const service = await read("apps/site-admin-ios/SiteAdminCompanion/Services/CalendarObservationSyncService.swift");
+  const calendarView = await read("apps/site-admin-ios/SiteAdminCompanion/Features/Calendar/CalendarView.swift");
   const settings = await read("apps/site-admin-ios/SiteAdminCompanion/Features/Settings/SettingsView.swift");
   const plist = await read("apps/site-admin-ios/SiteAdminCompanion/Info.plist");
 
@@ -58,17 +61,30 @@ test("site-admin-ios: calendar sync uploads EventKit observations to Draft", asy
   assert.match(service, /syncMode: "snapshot"/);
   assert.match(service, /providerName\(for sourceType: EKSourceType\)/);
   assert.match(service, /collectorId = "ios:/);
+  assert.match(service, /hasFullCalendarAccess/);
 
   assert.match(client, /\/api\/site-admin\/calendar-observations/);
+  assert.match(client, /\/api\/site-admin\/calendar-observations\/publish-live/);
+  assert.match(client, /\/api\/public\/calendar/);
   assert.match(client, /func calendarSyncHealth\(\)/);
+  assert.match(client, /func publishCalendarObservationsToLive\(\)/);
+  assert.match(client, /static func publicCalendarPreview\(\)/);
   assert.match(appSession, /func syncCalendarsFromDevice\(\)/);
+  assert.match(appSession, /func syncCalendarsIfNeeded\(reason: String\)/);
+  assert.match(appSession, /calendarAutoSyncCooldownSeconds/);
+  assert.match(appSession, /publishLatestCalendarObservationsToLive/);
+  assert.match(appSession, /refreshPublicCalendarPreview/);
   assert.match(appSession, /func refreshCalendarSyncHealth/);
   assert.match(appSession, /calendarSyncStatusKey/);
   assert.match(appSession, /guard environment\.canEditContent/);
-  assert.match(settings, /Sync iPhone Calendars/);
-  assert.match(settings, /Refresh Sync Status/);
-  assert.match(settings, /Last sync succeeded/);
-  assert.match(settings, /Server merged events/);
+  assert.match(app, /scenePhase/);
+  assert.match(app, /syncCalendarsIfNeeded\(reason: "foreground"\)/);
+  assert.match(rootTab, /CalendarView\(\)/);
+  assert.match(calendarView, /Sync Now/);
+  assert.match(calendarView, /Live Public Calendar/);
+  assert.match(calendarView, /Source Health/);
+  assert.match(settings, /Calendar sync lives in the Calendar tab/);
+  assert.doesNotMatch(settings, /Sync iPhone Calendars/);
 
   assert.match(plist, /NSCalendarsFullAccessUsageDescription/);
 });

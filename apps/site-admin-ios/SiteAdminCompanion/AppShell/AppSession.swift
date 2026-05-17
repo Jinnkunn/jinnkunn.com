@@ -59,12 +59,15 @@ final class AppSession {
     var summary: SiteAdminMobileSummary?
     var releaseDetail: ReleaseJobDetailPayload?
     var calendarSyncResult: CalendarObservationSyncResult?
+    var calendarLivePublishResult: CalendarObservationLivePublishPayload?
     var calendarSyncHealth: CalendarSyncHealth?
     var calendarSyncStatus: CalendarDeviceSyncStatus?
+    var publicCalendarPreview: PublicCalendarPayload?
     var isLoading = false
     var isReleaseDetailLoading = false
     var isCalendarSyncing = false
     var isCalendarHealthLoading = false
+    var isPublicCalendarPreviewLoading = false
     var message: String?
 
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -78,6 +81,7 @@ final class AppSession {
     @ObservationIgnored private let environmentKey = "site-admin-environment"
     @ObservationIgnored private let baseURLKey = "site-admin-base-url"
     @ObservationIgnored private let calendarSyncStatusKey = "site-admin-calendar-sync-status-v1"
+    @ObservationIgnored private let calendarAutoSyncCooldownSeconds: TimeInterval = 30 * 60
     @ObservationIgnored private let isoFormatter = ISO8601DateFormatter()
 
     init() {
@@ -141,6 +145,7 @@ final class AppSession {
             summary = try await client.summary()
             message = nil
             await refreshCalendarSyncHealth(reportErrors: false)
+            await refreshPublicCalendarPreview(reportErrors: false)
             if let jobId = currentReleaseJobId {
                 await refreshReleaseDetail(jobId: jobId, reportErrors: false)
             } else {
@@ -203,7 +208,9 @@ final class AppSession {
         summary = nil
         releaseDetail = nil
         calendarSyncResult = nil
+        calendarLivePublishResult = nil
         calendarSyncHealth = nil
+        publicCalendarPreview = nil
     }
 
     func updateNow(text: String, context: String, location: String) async -> Bool {
@@ -288,6 +295,22 @@ final class AppSession {
     }
 
     func syncCalendarsFromDevice() async {
+        await syncCalendarsFromDevice(trigger: "manual")
+    }
+
+    func syncCalendarsIfNeeded(reason: String) async {
+        guard isSignedIn, environment.canEditContent, !isCalendarSyncing else { return }
+        guard calendarSyncService.hasFullCalendarAccess else { return }
+        if let status = calendarSyncStatus,
+           status.isSuccess,
+           let recordedAt = parseIsoDate(status.recordedAt),
+           Date().timeIntervalSince(recordedAt) < calendarAutoSyncCooldownSeconds {
+            return
+        }
+        await syncCalendarsFromDevice(trigger: reason)
+    }
+
+    private func syncCalendarsFromDevice(trigger: String) async {
         guard environment.canEditContent else {
             message = "Calendar sync writes to Draft. Publish from Release when it is ready for Live."
             return
@@ -303,12 +326,15 @@ final class AppSession {
             let payload = try await calendarSyncService.makeSnapshotPayload()
             let result = try await client.syncCalendarObservations(payload: payload)
             calendarSyncResult = result
+            let live = await publishLatestCalendarObservationsToLive(client: client)
             saveCalendarSyncStatus(
                 CalendarDeviceSyncStatus(
                     state: "succeeded",
                     message: "Synced \(result.observationsWritten) events from \(result.sourcesWritten) sources.",
                     recordedAt: nowIsoString(),
                     syncedAt: result.syncedAt,
+                    livePublishedAt: live.publishedAt,
+                    liveMessage: live.message,
                     sourcesWritten: result.sourcesWritten,
                     observationsWritten: result.observationsWritten,
                     entitiesWritten: result.entitiesWritten,
@@ -316,8 +342,12 @@ final class AppSession {
                 )
             )
             await refreshCalendarSyncHealth(reportErrors: false)
+            await refreshPublicCalendarPreview(reportErrors: false)
             await refresh()
-            message = "Synced \(result.observationsWritten) calendar events from \(result.sourcesWritten) sources."
+            let verb = trigger == "manual" ? "Synced" : "Auto-synced"
+            message = live.publishedAt == nil
+                ? "\(verb) \(result.observationsWritten) calendar events. \(live.message)"
+                : "\(verb) \(result.observationsWritten) calendar events and updated Live."
         } catch {
             clearCurrentTokenIfExpired(error)
             let friendlyMessage = friendlyMessage(for: error)
@@ -327,6 +357,8 @@ final class AppSession {
                     message: friendlyMessage,
                     recordedAt: nowIsoString(),
                     syncedAt: nil,
+                    livePublishedAt: nil,
+                    liveMessage: nil,
                     sourcesWritten: nil,
                     observationsWritten: nil,
                     entitiesWritten: nil,
@@ -334,6 +366,23 @@ final class AppSession {
                 )
             )
             message = friendlyMessage
+        }
+    }
+
+    private func publishLatestCalendarObservationsToLive(
+        client: SiteAdminClient
+    ) async -> (publishedAt: String?, message: String) {
+        do {
+            let liveResult = try await client.publishCalendarObservationsToLive()
+            calendarLivePublishResult = liveResult
+            return (
+                liveResult.publishedAt,
+                "Live updated with \(liveResult.rowsWritten) calendar rows."
+            )
+        } catch {
+            clearCurrentTokenIfExpired(error)
+            let friendly = friendlyMessage(for: error)
+            return (nil, "Live update failed: \(friendly)")
         }
     }
 
@@ -357,6 +406,21 @@ final class AppSession {
             }
         } catch {
             clearCurrentTokenIfExpired(error)
+            if reportErrors {
+                message = friendlyMessage(for: error)
+            }
+        }
+    }
+
+    func refreshPublicCalendarPreview(reportErrors: Bool = true) async {
+        isPublicCalendarPreviewLoading = true
+        defer { isPublicCalendarPreviewLoading = false }
+        do {
+            publicCalendarPreview = try await SiteAdminClient.publicCalendarPreview()
+            if reportErrors {
+                message = nil
+            }
+        } catch {
             if reportErrors {
                 message = friendlyMessage(for: error)
             }
@@ -433,6 +497,21 @@ final class AppSession {
 
     private func nowIsoString() -> String {
         isoFormatter.string(from: Date())
+    }
+
+    func compactDate(_ iso: String?) -> String {
+        guard let iso, !iso.isEmpty else { return "-" }
+        guard let date = parseIsoDate(iso) else { return iso }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    private func parseIsoDate(_ iso: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: iso) {
+            return date
+        }
+        return ISO8601DateFormatter().date(from: iso)
     }
 
     private func loadCalendarSyncStatus() -> CalendarDeviceSyncStatus? {
