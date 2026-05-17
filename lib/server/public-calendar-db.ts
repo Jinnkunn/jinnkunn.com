@@ -139,6 +139,118 @@ export async function readPublicCalendarFromDb(
   }
 }
 
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function numberField(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function decodeObservedEntityRow(
+  row: Record<string, unknown>,
+  index: number,
+): PublicCalendarEvent | null {
+  const raw = row.body_json;
+  if (typeof raw !== "string" || !raw) return null;
+  let parsed: Record<string, unknown>;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    parsed = value as Record<string, unknown>;
+  } catch (err) {
+    logWarn({
+      source: "public-calendar-db",
+      message: "skipping unparseable observed entity row",
+      detail: err,
+      meta: { index },
+    });
+    return null;
+  }
+
+  return {
+    id: stringField(parsed.id) || stringField(row.entity_id),
+    title: "Busy",
+    startsAt: stringField(parsed.startsAt) || stringField(row.starts_at),
+    endsAt: stringField(parsed.endsAt) || stringField(row.ends_at),
+    isAllDay: parsed.isAllDay === true,
+    visibility: "busy",
+    colorHex: "#9B9A97",
+    description: null,
+    location: null,
+    url: null,
+  };
+}
+
+function isoFromUpdatedAt(value: unknown): string {
+  const ms = numberField(value);
+  return ms > 0 ? new Date(ms).toISOString() : "";
+}
+
+export async function readObservedPublicCalendarFromDb(
+  executor = tryGetD1Executor(),
+): Promise<PublicCalendarData | null> {
+  if (!executor) return null;
+  try {
+    const [state, entities] = await Promise.all([
+      executor.execute({
+        sql: `SELECT MAX(synced_at) AS generated_at,
+                     MIN(range_starts_at) AS range_starts_at,
+                     MAX(range_ends_at) AS range_ends_at
+              FROM calendar_sync_state`,
+      }),
+      executor.execute({
+        sql: `SELECT entity_id, starts_at, ends_at, body_json, updated_at
+              FROM calendar_event_entities
+              ORDER BY starts_at ASC`,
+      }),
+    ]);
+    const firstState = state.rows[0] ?? {};
+    if (!entities.rows.length && !stringField(firstState.generated_at)) return null;
+
+    const events = entities.rows
+      .map((row, index) => decodeObservedEntityRow(row, index))
+      .filter((event): event is PublicCalendarEvent => event !== null);
+    const firstEvent = events[0];
+    const lastEvent = events[events.length - 1];
+    const latestUpdatedAt = entities.rows.reduce(
+      (latest, row) => Math.max(latest, numberField(row.updated_at)),
+      0,
+    );
+
+    return normalizePublicCalendarData({
+      schemaVersion: 1,
+      generatedAt:
+        stringField(firstState.generated_at) ||
+        isoFromUpdatedAt(latestUpdatedAt) ||
+        new Date().toISOString(),
+      range: {
+        startsAt:
+          stringField(firstState.range_starts_at) ||
+          firstEvent?.startsAt ||
+          new Date().toISOString(),
+        endsAt:
+          stringField(firstState.range_ends_at) ||
+          lastEvent?.endsAt ||
+          new Date().toISOString(),
+      },
+      events,
+    });
+  } catch (err) {
+    logWarn({
+      source: "public-calendar-db",
+      message: "observed projection read failed",
+      detail: err,
+    });
+    return null;
+  }
+}
+
 function buildBatchUpsertSql(rowCount: number): string {
   const placeholders = Array.from({ length: rowCount }, () => "(?, ?, ?, ?, ?)").join(
     ", ",

@@ -183,6 +183,67 @@ test("public-calendar: runtime data still prefers newer db projection", () => {
   );
 });
 
+test("public-calendar: runtime data supplements missing observed busy events", () => {
+  const sourceData = normalizePublicCalendarData({
+    generatedAt: "2026-05-15T15:09:23.901Z",
+    range: {
+      startsAt: "2026-05-15T03:00:00.000Z",
+      endsAt: "2027-05-15T03:00:00.000Z",
+    },
+    events: [
+      {
+        id: "public-talk",
+        title: "Public talk",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "full",
+        description: "Keep the public detail.",
+        location: "Room 1",
+      },
+    ],
+  });
+  const observedData = normalizePublicCalendarData({
+    generatedAt: "2026-05-15T16:09:23.901Z",
+    range: sourceData.range,
+    events: [
+      {
+        id: "observed-duplicate",
+        title: "Private title",
+        startsAt: "2026-05-15T14:00:00.000Z",
+        endsAt: "2026-05-15T15:00:00.000Z",
+        isAllDay: false,
+        visibility: "busy",
+      },
+      {
+        id: "observed-new",
+        title: "Private phone-only event",
+        startsAt: "2026-05-15T16:00:00.000Z",
+        endsAt: "2026-05-15T17:00:00.000Z",
+        isAllDay: false,
+        visibility: "busy",
+        description: "must not leak",
+      },
+    ],
+  });
+
+  const selected = selectPublicCalendarRuntimeData({
+    dbData: null,
+    sourceData,
+    observedData,
+  });
+
+  assert.deepEqual(
+    selected.events.map((event) => event.id),
+    ["public-talk", "observed-new"],
+  );
+  assert.equal(selected.generatedAt, "2026-05-15T16:09:23.901Z");
+  assert.equal(selected.events[0].title, "Public talk");
+  assert.equal(selected.events[0].description, "Keep the public detail.");
+  assert.equal(selected.events[1].title, "Busy");
+  assert.equal(selected.events[1].description, null);
+});
+
 test("public-calendar: hydration does not replace complete data with stale partial data", () => {
   const currentData = normalizePublicCalendarData({
     generatedAt: "2026-05-15T15:09:23.901Z",

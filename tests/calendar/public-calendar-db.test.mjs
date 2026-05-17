@@ -6,9 +6,11 @@ import path from "node:path";
 import { createClient } from "@libsql/client";
 
 import {
+  readObservedPublicCalendarFromDb,
   readPublicCalendarFromDb,
   writePublicCalendarToDb,
 } from "../../lib/server/public-calendar-db.ts";
+import { writeCalendarObservationSync } from "../../lib/server/calendar-sync-store.ts";
 
 async function makeCalendarDb() {
   const client = createClient({ url: ":memory:" });
@@ -17,6 +19,18 @@ async function makeCalendarDb() {
     "utf8",
   );
   await client.executeMultiple(schema);
+  return client;
+}
+
+async function makeCalendarObservationDb() {
+  const client = createClient({ url: ":memory:" });
+  for (const migration of ["003_calendar_public.sql", "007_calendar_observations.sql"]) {
+    const schema = await readFile(
+      path.join(process.cwd(), "migrations", migration),
+      "utf8",
+    );
+    await client.executeMultiple(schema);
+  }
   return client;
 }
 
@@ -176,6 +190,42 @@ test("public-calendar-db: missing migration returns ok=false with error", async 
   const result = await writePublicCalendarToDb({ events: [] }, client);
   assert.equal(result.ok, false);
   assert.match(result.error ?? "", /no such table/i);
+});
+
+test("public-calendar-db: reads observed entities as private busy projection", async () => {
+  const client = await makeCalendarObservationDb();
+  const result = await writeCalendarObservationSync(
+    {
+      collector: { id: "ios:phone", kind: "ios" },
+      sources: [{ id: "icloud", provider: "apple", title: "iCloud" }],
+      range: {
+        startsAt: "2026-05-17T00:00:00.000Z",
+        endsAt: "2026-05-18T00:00:00.000Z",
+      },
+      observedAt: "2026-05-17T12:00:00.000Z",
+      observations: [
+        {
+          sourceId: "icloud",
+          sourceEventId: "ios-event",
+          title: "Private event",
+          notes: "do not leak",
+          startsAt: "2026-05-17T14:00:00.000Z",
+          endsAt: "2026-05-17T15:00:00.000Z",
+        },
+      ],
+    },
+    client,
+  );
+  assert.equal(result.ok, true);
+
+  const observed = await readObservedPublicCalendarFromDb(client);
+  assert.ok(observed);
+  assert.equal(observed.generatedAt, "2026-05-17T12:00:00.000Z");
+  assert.equal(observed.events.length, 1);
+  assert.match(observed.events[0].id, /^evt_/);
+  assert.equal(observed.events[0].title, "Busy");
+  assert.equal(observed.events[0].visibility, "busy");
+  assert.equal(observed.events[0].description, null);
 });
 
 test("public-calendar-db: no executor returns ok with skipped flag", async () => {

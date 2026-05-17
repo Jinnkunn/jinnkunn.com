@@ -15,6 +15,7 @@ import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import {
   readPublicCalendarEventFromDb,
   readPublicCalendarFromDb,
+  readObservedPublicCalendarFromDb,
 } from "@/lib/server/public-calendar-db";
 
 const CALENDAR_PUBLIC_PATH = path.join(process.cwd(), "content", "calendar-public.json");
@@ -58,11 +59,14 @@ async function readFromSourceStoreOrDisk(): Promise<PublicCalendarData> {
 }
 
 export async function getLatestPublicCalendarData(): Promise<PublicCalendarData> {
-  const [dbData, sourceData] = await Promise.all([
+  const [dbData, sourceData, observedData] = await Promise.all([
     readPublicCalendarFromDb(),
     readFromSourceStoreOrDisk(),
+    readObservedPublicCalendarFromDb(),
   ]);
-  return withDecay(selectPublicCalendarRuntimeData({ dbData, sourceData }));
+  return withDecay(
+    selectPublicCalendarRuntimeData({ dbData, sourceData, observedData }),
+  );
 }
 
 /** Per-id detail lookup. The /calendar/[id] route uses this instead
@@ -87,9 +91,10 @@ export async function getPublicCalendarEventById(
  * passed the time-decay cutoff — the agenda lists drop the past, but
  * a direct link still answers. */
 export async function getLatestPublicCalendarDataWithArchive(): Promise<PublicCalendarData> {
-  const [dbData, sourceData] = await Promise.all([
+  const [dbData, sourceData, observedData] = await Promise.all([
     readPublicCalendarFromDb(),
     readFromSourceStoreOrDisk(),
+    readObservedPublicCalendarFromDb(),
   ]);
-  return selectPublicCalendarRuntimeData({ dbData, sourceData });
+  return selectPublicCalendarRuntimeData({ dbData, sourceData, observedData });
 }
