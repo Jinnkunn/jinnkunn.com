@@ -26,7 +26,7 @@ function issueToken({ login = "jinnkunn", env = "staging", secret = "secret" } =
   return `${header}.${payload}.${signature}`;
 }
 
-function fakeDb() {
+function fakeDb(opts = {}) {
   return {
     prepare(sql) {
       return {
@@ -48,6 +48,9 @@ function fakeDb() {
               }
               if (sql.includes("LIKE 'posts/%'")) return { count: 8 };
               if (sql.includes("LIKE 'pages/%'")) return { count: 12 };
+              if (sql.includes("static_shell_overlays")) {
+                return { count: opts.overlayCount ?? 0 };
+              }
               if (sql.includes("calendar_public_sync_state")) {
                 return {
                   generated_at: "2026-05-17T12:01:00.000Z",
@@ -112,4 +115,24 @@ test("mobile summary direct handler returns compact iOS payload", async () => {
   assert.equal(body.data.summary.content.pages, 12);
   assert.equal(body.data.summary.calendar.eventCount, 4);
   assert.equal(body.data.summary.release.recommendedAction.kind, "noop");
+});
+
+test("mobile summary direct handler recommends release when staging overlay exists", async () => {
+  const token = issueToken();
+  const res = await handleMobileSummaryRequest(
+    new Request("https://staging.jinkunchen.com/api/site-admin/mobile/summary", {
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      NEXTAUTH_SECRET: "secret",
+      SITE_ADMIN_GITHUB_USERS: "jinnkunn",
+      SITE_ADMIN_REPO_BRANCH: "site-admin-staging",
+      SITE_ADMIN_STORAGE: "db",
+      SITE_ADMIN_DB: fakeDb({ overlayCount: 3 }),
+    },
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.data.summary.release.headline, "Release needed");
+  assert.equal(body.data.summary.release.recommendedAction.kind, "smart-release");
 });
