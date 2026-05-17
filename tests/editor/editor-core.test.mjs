@@ -158,6 +158,38 @@ test("editor-core: text marks split, merge, toggle, and roundtrip through markdo
   ]);
 });
 
+test("editor-core: update text preserves marks around local edits", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Hello world" })],
+  });
+  document = toggleTextMark(document, "a", 6, 11, "bold").after;
+
+  document = updateBlockText(document, "a", "Hello woXrld", 9).after;
+  assert.deepEqual(document.blocks[0].text, [
+    { text: "Hello " },
+    { text: "woXrld", marks: [{ type: "bold" }] },
+  ]);
+
+  document = updateBlockText(document, "a", "Hello world", 8).after;
+  assert.deepEqual(document.blocks[0].text, [
+    { text: "Hello " },
+    { text: "world", marks: [{ type: "bold" }] },
+  ]);
+
+  document = setTextMark(document, "a", 6, 11, "link", { href: "/world" }).after;
+  document = updateBlockText(document, "a", "Hello worldly", 13).after;
+  assert.deepEqual(document.blocks[0].text, [
+    { text: "Hello " },
+    {
+      text: "worldly",
+      marks: [
+        { type: "bold" },
+        { type: "link", attrs: { href: "/world" } },
+      ],
+    },
+  ]);
+});
+
 test("editor-core: extended block and mark specs are available from wasm", () => {
   assert.ok(listBlockSpecs().some((spec) => spec.blockType === "code-block" && spec.markdownShortcut === "```"));
   assert.ok(listBlockSpecs().some((spec) => spec.blockType === "callout" && spec.placeholder === "Callout"));

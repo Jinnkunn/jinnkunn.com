@@ -622,6 +622,120 @@ fn block_plain_text(block: &Block) -> String {
     block.text.iter().map(|span| span.text.as_str()).collect()
 }
 
+fn common_prefix_len_utf16(left: &str, right: &str) -> i32 {
+    let mut length = 0;
+    for (left_char, right_char) in left.chars().zip(right.chars()) {
+        if left_char != right_char {
+            break;
+        }
+        length += left_char.len_utf16() as i32;
+    }
+    length
+}
+
+fn common_suffix_len_utf16(left: &str, right: &str, prefix_len: i32) -> i32 {
+    let left_len = utf16_len(left) as i32;
+    let right_len = utf16_len(right) as i32;
+    let mut length = 0;
+    for (left_char, right_char) in left.chars().rev().zip(right.chars().rev()) {
+        if left_char != right_char {
+            break;
+        }
+        let char_len = left_char.len_utf16() as i32;
+        if prefix_len + length + char_len > left_len
+            || prefix_len + length + char_len > right_len
+        {
+            break;
+        }
+        length += char_len;
+    }
+    length
+}
+
+fn marks_at_offset(block: &Block, offset: i32) -> Option<Vec<TextMark>> {
+    let safe_offset = offset.clamp(0, utf16_len(&block_plain_text(block)) as i32);
+    let mut cursor = 0;
+    let mut previous_marks = None;
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if safe_offset == 0 && span_start == 0 {
+            return span.marks.clone();
+        }
+        if safe_offset > span_start && safe_offset <= span_end {
+            return span.marks.clone();
+        }
+        previous_marks = span.marks.clone();
+    }
+    previous_marks
+}
+
+fn update_text_preserving_marks(block: &Block, next_text: &str) -> Vec<TextSpan> {
+    let previous_text = block_plain_text(block);
+    if previous_text == next_text {
+        return block.text.clone();
+    }
+
+    let previous_len = utf16_len(&previous_text) as i32;
+    let next_len = utf16_len(next_text) as i32;
+    let prefix_len = common_prefix_len_utf16(&previous_text, next_text);
+    let suffix_len = common_suffix_len_utf16(&previous_text, next_text, prefix_len);
+    let previous_replace_start = prefix_len;
+    let previous_replace_end = previous_len - suffix_len;
+    let next_replace_end = next_len - suffix_len;
+    let inserted_text = slice_utf16(next_text, prefix_len, next_replace_end);
+    let inserted_marks = marks_at_offset(block, previous_replace_start);
+
+    let mut cursor = 0;
+    let mut inserted = false;
+    let mut next_spans = Vec::new();
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+
+        if span_end < previous_replace_start {
+            next_spans.push(span.clone());
+            continue;
+        }
+
+        if span_start > previous_replace_end {
+            if !inserted {
+                next_spans.push(text_span(inserted_text.clone(), inserted_marks.clone()));
+                inserted = true;
+            }
+            next_spans.push(span.clone());
+            continue;
+        }
+
+        if !inserted {
+            let before_end = (previous_replace_start - span_start)
+                .clamp(0, utf16_len(&span.text) as i32);
+            let before_text = slice_utf16(&span.text, 0, before_end);
+            if !before_text.is_empty() {
+                next_spans.push(text_span(before_text, span.marks.clone()));
+            }
+            next_spans.push(text_span(inserted_text.clone(), inserted_marks.clone()));
+            inserted = true;
+        }
+
+        if span_end > previous_replace_end {
+            let after_start = (previous_replace_end - span_start)
+                .clamp(0, utf16_len(&span.text) as i32);
+            let after_text = slice_utf16(&span.text, after_start, utf16_len(&span.text) as i32);
+            if !after_text.is_empty() {
+                next_spans.push(text_span(after_text, span.marks.clone()));
+            }
+        }
+    }
+
+    if !inserted {
+        next_spans.push(text_span(inserted_text, inserted_marks));
+    }
+    merge_text_spans(next_spans)
+}
+
 fn create_block(input: CreateBlockInput) -> Block {
     let block_type = input.block_type.unwrap_or_default();
     let text = match input.text {
@@ -801,7 +915,7 @@ fn update_block_text(document: Document, block_id: &str, text: String, offset: i
         if block.block_type == BlockType::Divider {
             return None;
         }
-        block.text = vec![text_span(text, None)];
+        block.text = update_text_preserving_marks(block, &text);
         Some(create_collapsed_selection(block_id, offset))
     });
     transaction(TransactionKind::UpdateText, before, after, selection)
