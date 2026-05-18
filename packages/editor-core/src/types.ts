@@ -68,6 +68,24 @@ export type EditorSelection = {
   focus: EditorCursorPosition;
 };
 
+export type EditorTextRange = {
+  blockId: string;
+  start: number;
+  end: number;
+};
+
+export type EditorMarkRange = EditorTextRange & {
+  attrs: EditorTextMarkAttrs | null;
+};
+
+export type EditorSelectionMarkState = {
+  active: boolean;
+  attrs: EditorTextMarkAttrs | null;
+  mixed: boolean;
+};
+
+export type EditorSelectionFormattingSnapshot = Partial<Record<EditorTextMarkType, EditorSelectionMarkState>>;
+
 export type EditorTransactionKind =
   | "insert-block"
   | "insert-fragment"
@@ -128,6 +146,14 @@ export type EditorCommand = {
 };
 
 export type EditorBlockSpec = EditorCommand;
+
+export type EditorCommandSearchInput = Pick<
+  EditorCommand,
+  "name" | "label" | "description" | "blockType" | "level" | "icon" | "markdownShortcut"
+> & {
+  group?: string;
+  slashMenu?: boolean;
+};
 
 export type EditorTextMarkSpec = {
   mark: EditorTextMarkType;

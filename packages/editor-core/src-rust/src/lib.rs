@@ -67,6 +67,20 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "findEditorCommand" => unary::<String, _>(payload, |query| Ok(find_editor_command(&query))),
         "getBlockPlainText" => unary::<Block, _>(payload, |block| Ok(block_plain_text(&block))),
         "getSelectionFocus" => unary::<Selection, _>(payload, |selection| Ok(selection.focus)),
+        "editableMarkRangeAtSelection" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                selection: Selection,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(editable_mark_range_at_selection(
+                    &input.block,
+                    &input.selection,
+                ))
+            })
+        }
         "insertBlockAfter" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -108,6 +122,9 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "isSelectionCollapsed" => {
             unary::<Selection, _>(payload, |selection| Ok(selection.anchor == selection.focus))
         }
+        "isSameBlockSelection" => {
+            unary::<Selection, _>(payload, |selection| Ok(is_same_block_selection(&selection)))
+        }
         "listBlockSpecs" => Ok(json!(block_specs())),
         "listTextMarkSpecs" => Ok(json!(text_mark_specs())),
         "markdownToDocument" => {
@@ -126,6 +143,40 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "mergeWithPrevious" => value2(payload, |document: Document, block_id: String| {
             Ok(merge_with_previous(document, &block_id))
         }),
+        "markRangeAtOffset" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                offset: i32,
+                mark: TextMarkType,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(mark_range_at_offset(&input.block, input.offset, input.mark))
+            })
+        }
+        "markRangesInBlock" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                mark: TextMarkType,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(mark_ranges_in_block(&input.block, input.mark))
+            })
+        }
+        "marksAtOffset" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                offset: i32,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(span_marks_at_offset(&input.block, input.offset).unwrap_or_default())
+            })
+        }
         "moveBlock" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -142,6 +193,88 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "selectionAtBlockEnd" => value2(payload, |document: Document, block_id: String| {
             Ok(selection_at_block_end(&document, &block_id))
         }),
+        "selectedMarkAttrs" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                selection: Selection,
+                mark: TextMarkType,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(selected_mark_attrs(
+                    &input.block,
+                    &input.selection,
+                    input.mark,
+                ))
+            })
+        }
+        "selectedRange" => {
+            unary::<Selection, _>(payload, |selection| Ok(selected_range(&selection)))
+        }
+        "selectionHasMark" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                selection: Selection,
+                mark: TextMarkType,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(selection_has_mark(
+                    &input.block,
+                    &input.selection,
+                    input.mark,
+                ))
+            })
+        }
+        "selectionMarkState" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                selection: Selection,
+                mark: TextMarkType,
+                stored_marks: Option<Vec<TextMark>>,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(selection_mark_state(
+                    &input.block,
+                    &input.selection,
+                    input.mark,
+                    input.stored_marks,
+                ))
+            })
+        }
+        "selectionFormattingSnapshot" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                block: Block,
+                selection: Selection,
+                marks: Vec<TextMarkType>,
+                stored_marks: Option<Vec<TextMark>>,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(selection_formatting_snapshot(
+                    &input.block,
+                    &input.selection,
+                    input.marks,
+                    input.stored_marks,
+                ))
+            })
+        }
+        "searchEditorCommandNames" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                commands: Vec<CommandSearchInput>,
+                query: String,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(search_editor_command_names(input.commands, &input.query))
+            })
+        }
         "setBlockIndent" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -454,6 +587,47 @@ struct Selection {
     focus: Cursor,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextRange {
+    block_id: String,
+    start: i32,
+    end: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MarkRange {
+    block_id: String,
+    start: i32,
+    end: i32,
+    attrs: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SelectionMarkState {
+    active: bool,
+    attrs: Option<BTreeMap<String, String>>,
+    mixed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct SelectionFormattingSnapshotItem {
+    mark: TextMarkType,
+    state: SelectionMarkState,
+}
+
+#[derive(Clone, Debug, Default)]
+struct SelectionMarkAccumulator {
+    touched: bool,
+    marked: i32,
+    unmarked: i32,
+    first_attrs: Option<BTreeMap<String, String>>,
+    saw_first_attrs: bool,
+    attrs_mixed: bool,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum TransactionKind {
@@ -534,6 +708,23 @@ struct Command {
     placeholder: &'static str,
     #[serde(rename = "markdownShortcut", skip_serializing_if = "Option::is_none")]
     markdown_shortcut: Option<&'static str>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandSearchInput {
+    name: String,
+    label: String,
+    description: String,
+    #[serde(rename = "blockType")]
+    block_type: BlockType,
+    level: Option<i32>,
+    icon: Option<String>,
+    #[serde(rename = "markdownShortcut")]
+    markdown_shortcut: Option<String>,
+    group: Option<String>,
+    #[serde(rename = "slashMenu")]
+    slash_menu: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -635,7 +826,10 @@ fn mark_attrs<'a>(
     marks: Option<&'a Vec<TextMark>>,
     mark_type: TextMarkType,
 ) -> Option<&'a BTreeMap<String, String>> {
-    marks?.iter().find(|mark| mark.mark_type == mark_type).map(|mark| &mark.attrs)
+    marks?
+        .iter()
+        .find(|mark| mark.mark_type == mark_type)
+        .map(|mark| &mark.attrs)
 }
 
 fn remove_mark_type(marks: &mut Vec<TextMark>, mark_type: TextMarkType) {
@@ -685,9 +879,7 @@ fn common_suffix_len_utf16(left: &str, right: &str, prefix_len: i32) -> i32 {
             break;
         }
         let char_len = left_char.len_utf16() as i32;
-        if prefix_len + length + char_len > left_len
-            || prefix_len + length + char_len > right_len
-        {
+        if prefix_len + length + char_len > left_len || prefix_len + length + char_len > right_len {
             break;
         }
         length += char_len;
@@ -695,7 +887,7 @@ fn common_suffix_len_utf16(left: &str, right: &str, prefix_len: i32) -> i32 {
     length
 }
 
-fn marks_at_offset(block: &Block, offset: i32) -> Option<Vec<TextMark>> {
+fn span_marks_at_offset(block: &Block, offset: i32) -> Option<Vec<TextMark>> {
     let safe_offset = offset.clamp(0, utf16_len(&block_plain_text(block)) as i32);
     let mut cursor = 0;
     let mut previous_marks = None;
@@ -714,6 +906,340 @@ fn marks_at_offset(block: &Block, offset: i32) -> Option<Vec<TextMark>> {
     previous_marks
 }
 
+fn mark_attrs_owned(
+    marks: Option<&Vec<TextMark>>,
+    mark_type: TextMarkType,
+) -> Option<BTreeMap<String, String>> {
+    mark_attrs(marks, mark_type)
+        .cloned()
+        .and_then(|attrs| (!attrs.is_empty()).then_some(attrs))
+}
+
+fn mark_attrs_equal(
+    left: &Option<BTreeMap<String, String>>,
+    right: &Option<BTreeMap<String, String>>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left == right,
+        (None, None) => true,
+        (Some(left), None) => left.is_empty(),
+        (None, Some(right)) => right.is_empty(),
+    }
+}
+
+fn is_same_block_selection(selection: &Selection) -> bool {
+    selection.anchor.block_id == selection.focus.block_id
+}
+
+fn selected_range(selection: &Selection) -> TextRange {
+    TextRange {
+        block_id: selection.anchor.block_id.clone(),
+        start: selection.anchor.offset.min(selection.focus.offset),
+        end: selection.anchor.offset.max(selection.focus.offset),
+    }
+}
+
+fn mark_ranges_in_block(block: &Block, mark_type: TextMarkType) -> Vec<MarkRange> {
+    let mut ranges: Vec<MarkRange> = Vec::new();
+    let mut cursor = 0;
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if !has_mark_type(span.marks.as_ref(), mark_type) {
+            continue;
+        }
+        let attrs = mark_attrs_owned(span.marks.as_ref(), mark_type);
+        if let Some(previous) = ranges.last_mut() {
+            if previous.end == span_start && mark_attrs_equal(&previous.attrs, &attrs) {
+                previous.end = span_end;
+                continue;
+            }
+        }
+        ranges.push(MarkRange {
+            attrs,
+            block_id: block.id.clone(),
+            end: span_end,
+            start: span_start,
+        });
+    }
+    ranges
+}
+
+fn mark_range_at_offset(block: &Block, offset: i32, mark_type: TextMarkType) -> Option<TextRange> {
+    let safe_offset = offset.clamp(0, utf16_len(&block_plain_text(block)) as i32);
+    mark_ranges_in_block(block, mark_type)
+        .into_iter()
+        .find(|range| {
+            if range.start == range.end {
+                return false;
+            }
+            if safe_offset == 0 {
+                range.start == 0
+            } else {
+                safe_offset > range.start && safe_offset <= range.end
+            }
+        })
+        .map(|range| TextRange {
+            block_id: range.block_id,
+            start: range.start,
+            end: range.end,
+        })
+}
+
+fn editable_mark_range_at_selection(block: &Block, selection: &Selection) -> Option<TextRange> {
+    if !is_same_block_selection(selection) {
+        return None;
+    }
+    let range = selected_range(selection);
+    if range.start != range.end {
+        return Some(range);
+    }
+    mark_range_at_offset(block, range.start, TextMarkType::Link)
+        .or_else(|| mark_range_at_offset(block, range.start, TextMarkType::IconLink))
+}
+
+fn selection_has_mark(block: &Block, selection: &Selection, mark_type: TextMarkType) -> bool {
+    if !is_same_block_selection(selection) {
+        return false;
+    }
+    let range = selected_range(selection);
+    if range.start == range.end {
+        return mark_range_at_offset(block, range.start, mark_type).is_some();
+    }
+
+    let mut cursor = 0;
+    let mut touched = false;
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if span_end <= range.start || span_start >= range.end {
+            continue;
+        }
+        touched = true;
+        if !has_mark_type(span.marks.as_ref(), mark_type) {
+            return false;
+        }
+    }
+    touched
+}
+
+fn selected_mark_attrs(
+    block: &Block,
+    selection: &Selection,
+    mark_type: TextMarkType,
+) -> Option<BTreeMap<String, String>> {
+    if !is_same_block_selection(selection) {
+        return None;
+    }
+    let range = selected_range(selection);
+    if range.start == range.end && mark_range_at_offset(block, range.start, mark_type).is_none() {
+        return None;
+    }
+
+    let mut cursor = 0;
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if range.start == range.end {
+            let outside = if range.start == 0 {
+                span_start != 0
+            } else {
+                range.start <= span_start || range.start > span_end
+            };
+            if outside {
+                continue;
+            }
+        } else if span_end <= range.start || span_start >= range.end {
+            continue;
+        }
+        return mark_attrs_owned(span.marks.as_ref(), mark_type);
+    }
+    None
+}
+
+fn inactive_selection_mark_state() -> SelectionMarkState {
+    SelectionMarkState {
+        active: false,
+        attrs: None,
+        mixed: false,
+    }
+}
+
+fn stored_mark_state(mark: Option<&TextMark>) -> SelectionMarkState {
+    if let Some(mark) = mark {
+        SelectionMarkState {
+            active: true,
+            attrs: (!mark.attrs.is_empty()).then_some(mark.attrs.clone()),
+            mixed: false,
+        }
+    } else {
+        inactive_selection_mark_state()
+    }
+}
+
+fn collapsed_mark_state(
+    block: &Block,
+    selection: &Selection,
+    mark_type: TextMarkType,
+) -> SelectionMarkState {
+    if selection_has_mark(block, selection, mark_type) {
+        SelectionMarkState {
+            active: true,
+            attrs: selected_mark_attrs(block, selection, mark_type),
+            mixed: false,
+        }
+    } else {
+        inactive_selection_mark_state()
+    }
+}
+
+fn span_mark_state(marks: Option<&Vec<TextMark>>, mark_type: TextMarkType) -> SelectionMarkState {
+    stored_mark_state(marks.and_then(|marks| marks.iter().find(|mark| mark.mark_type == mark_type)))
+}
+
+fn record_selection_mark_span(
+    accumulator: &mut SelectionMarkAccumulator,
+    marks: Option<&Vec<TextMark>>,
+    mark_type: TextMarkType,
+) {
+    accumulator.touched = true;
+    let attrs = mark_attrs_owned(marks, mark_type);
+    if !has_mark_type(marks, mark_type) {
+        accumulator.unmarked += 1;
+        return;
+    }
+
+    accumulator.marked += 1;
+    if !accumulator.saw_first_attrs {
+        accumulator.first_attrs = attrs;
+        accumulator.saw_first_attrs = true;
+    } else if !mark_attrs_equal(&accumulator.first_attrs, &attrs) {
+        accumulator.attrs_mixed = true;
+    }
+}
+
+fn selection_mark_accumulator_state(accumulator: SelectionMarkAccumulator) -> SelectionMarkState {
+    if !accumulator.touched || accumulator.marked == 0 {
+        inactive_selection_mark_state()
+    } else if accumulator.unmarked > 0 {
+        SelectionMarkState {
+            active: false,
+            attrs: accumulator.first_attrs,
+            mixed: true,
+        }
+    } else {
+        SelectionMarkState {
+            active: true,
+            attrs: if accumulator.attrs_mixed {
+                None
+            } else {
+                accumulator.first_attrs
+            },
+            mixed: accumulator.attrs_mixed,
+        }
+    }
+}
+
+fn selection_mark_state(
+    block: &Block,
+    selection: &Selection,
+    mark_type: TextMarkType,
+    stored_marks: Option<Vec<TextMark>>,
+) -> SelectionMarkState {
+    if !is_same_block_selection(selection) {
+        return inactive_selection_mark_state();
+    }
+
+    let range = selected_range(selection);
+    if range.start == range.end {
+        if let Some(stored_marks) = stored_marks {
+            return stored_mark_state(stored_marks.iter().find(|mark| mark.mark_type == mark_type));
+        }
+        return collapsed_mark_state(block, selection, mark_type);
+    }
+
+    let mut cursor = 0;
+    let mut accumulator = SelectionMarkAccumulator::default();
+
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if span_end <= range.start || span_start >= range.end {
+            continue;
+        }
+
+        record_selection_mark_span(&mut accumulator, span.marks.as_ref(), mark_type);
+    }
+    selection_mark_accumulator_state(accumulator)
+}
+
+fn selection_formatting_snapshot(
+    block: &Block,
+    selection: &Selection,
+    marks: Vec<TextMarkType>,
+    stored_marks: Option<Vec<TextMark>>,
+) -> Vec<SelectionFormattingSnapshotItem> {
+    if !is_same_block_selection(selection) {
+        return marks
+            .into_iter()
+            .map(|mark| SelectionFormattingSnapshotItem {
+                mark,
+                state: inactive_selection_mark_state(),
+            })
+            .collect();
+    }
+
+    let range = selected_range(selection);
+    if range.start == range.end {
+        return marks
+            .into_iter()
+            .map(|mark| {
+                let state = if let Some(stored_marks) = stored_marks.as_ref() {
+                    stored_mark_state(
+                        stored_marks
+                            .iter()
+                            .find(|stored_mark| stored_mark.mark_type == mark),
+                    )
+                } else {
+                    span_mark_state(span_marks_at_offset(block, range.start).as_ref(), mark)
+                };
+                SelectionFormattingSnapshotItem { mark, state }
+            })
+            .collect();
+    }
+
+    let mut states: Vec<(TextMarkType, SelectionMarkAccumulator)> = marks
+        .into_iter()
+        .map(|mark| (mark, SelectionMarkAccumulator::default()))
+        .collect();
+    let mut cursor = 0;
+
+    for span in &block.text {
+        let span_start = cursor;
+        let span_end = cursor + utf16_len(&span.text) as i32;
+        cursor = span_end;
+        if span_end <= range.start || span_start >= range.end {
+            continue;
+        }
+
+        for (mark, accumulator) in &mut states {
+            record_selection_mark_span(accumulator, span.marks.as_ref(), *mark);
+        }
+    }
+
+    states
+        .into_iter()
+        .map(|(mark, accumulator)| SelectionFormattingSnapshotItem {
+            mark,
+            state: selection_mark_accumulator_state(accumulator),
+        })
+        .collect()
+}
+
 fn update_text_preserving_marks(block: &Block, next_text: &str) -> Vec<TextSpan> {
     let previous_text = block_plain_text(block);
     if previous_text == next_text {
@@ -728,7 +1254,7 @@ fn update_text_preserving_marks(block: &Block, next_text: &str) -> Vec<TextSpan>
     let previous_replace_end = previous_len - suffix_len;
     let next_replace_end = next_len - suffix_len;
     let inserted_text = slice_utf16(next_text, prefix_len, next_replace_end);
-    let inserted_marks = marks_at_offset(block, previous_replace_start);
+    let inserted_marks = span_marks_at_offset(block, previous_replace_start);
 
     let mut cursor = 0;
     let mut inserted = false;
@@ -753,8 +1279,8 @@ fn update_text_preserving_marks(block: &Block, next_text: &str) -> Vec<TextSpan>
         }
 
         if !inserted {
-            let before_end = (previous_replace_start - span_start)
-                .clamp(0, utf16_len(&span.text) as i32);
+            let before_end =
+                (previous_replace_start - span_start).clamp(0, utf16_len(&span.text) as i32);
             let before_text = slice_utf16(&span.text, 0, before_end);
             if !before_text.is_empty() {
                 next_spans.push(text_span(before_text, span.marks.clone()));
@@ -764,8 +1290,8 @@ fn update_text_preserving_marks(block: &Block, next_text: &str) -> Vec<TextSpan>
         }
 
         if span_end > previous_replace_end {
-            let after_start = (previous_replace_end - span_start)
-                .clamp(0, utf16_len(&span.text) as i32);
+            let after_start =
+                (previous_replace_end - span_start).clamp(0, utf16_len(&span.text) as i32);
             let after_text = slice_utf16(&span.text, after_start, utf16_len(&span.text) as i32);
             if !after_text.is_empty() {
                 next_spans.push(text_span(after_text, span.marks.clone()));
@@ -803,10 +1329,7 @@ fn slice_text_spans(block: &Block, start_offset: i32, end_offset: i32) -> Vec<Te
 }
 
 fn spans_plain_text_len(spans: &[TextSpan]) -> i32 {
-    spans
-        .iter()
-        .map(|span| utf16_len(&span.text) as i32)
-        .sum()
+    spans.iter().map(|span| utf16_len(&span.text) as i32).sum()
 }
 
 fn clone_block_with_fresh_ids(mut block: Block) -> Block {
@@ -1253,7 +1776,8 @@ fn insert_document_fragment(
         return transaction(TransactionKind::InsertFragment, before, after, None);
     }
 
-    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id) {
+    let selection = if let Some(index) = after.blocks.iter().position(|block| block.id == block_id)
+    {
         let target = after.blocks[index].clone();
         let target_text_length = utf16_len(&block_plain_text(&target)) as i32;
         let start = start_offset.min(end_offset).clamp(0, target_text_length);
@@ -1288,11 +1812,16 @@ fn insert_document_fragment(
                 .last()
                 .map(|block| utf16_len(&block_plain_text(block)) as i32)
                 .unwrap_or(0);
-            after.blocks.splice(index..index + 1, inserted_blocks.into_iter().map(normalize_block));
+            after.blocks.splice(
+                index..index + 1,
+                inserted_blocks.into_iter().map(normalize_block),
+            );
             Some(create_collapsed_selection(last_id, last_offset))
         } else {
             let first = fragment_blocks.remove(0);
-            let mut last = fragment_blocks.pop().expect("fragment has at least two blocks");
+            let mut last = fragment_blocks
+                .pop()
+                .expect("fragment has at least two blocks");
             let last_id = last.id.clone();
             let last_offset = utf16_len(&block_plain_text(&last)) as i32;
 
@@ -1310,8 +1839,15 @@ fn insert_document_fragment(
         }
     } else {
         let last = fragment_blocks.last().cloned();
-        after.blocks.extend(fragment_blocks.into_iter().map(normalize_block));
-        last.map(|block| create_collapsed_selection(block.id.clone(), utf16_len(&block_plain_text(&block)) as i32))
+        after
+            .blocks
+            .extend(fragment_blocks.into_iter().map(normalize_block));
+        last.map(|block| {
+            create_collapsed_selection(
+                block.id.clone(),
+                utf16_len(&block_plain_text(&block)) as i32,
+            )
+        })
     };
 
     transaction(TransactionKind::InsertFragment, before, after, selection)
@@ -1450,9 +1986,7 @@ fn set_block_attrs(
     let selection = find_block_mut(&mut after.blocks, block_id).map(|block| {
         let mut next_attrs = block.attrs.clone().unwrap_or_default();
         for (key, value) in attrs {
-            if value.is_null()
-                || value.as_str().is_some_and(|value| value.trim().is_empty())
-            {
+            if value.is_null() || value.as_str().is_some_and(|value| value.trim().is_empty()) {
                 next_attrs.remove(&key);
             } else {
                 next_attrs.insert(key, value);
@@ -1613,12 +2147,18 @@ fn inline_markdown(text: &str, marks: Option<&Vec<TextMark>>) -> String {
     }
     if let Some(attrs) = mark_attrs(marks, TextMarkType::TextColor) {
         if let Some(color) = attrs.get("color") {
-            next = format!("<span data-color=\"{}\">{next}</span>", escape_html_attr(color));
+            next = format!(
+                "<span data-color=\"{}\">{next}</span>",
+                escape_html_attr(color)
+            );
         }
     }
     if let Some(attrs) = mark_attrs(marks, TextMarkType::BackgroundColor) {
         if let Some(color) = attrs.get("color") {
-            next = format!("<span data-bg=\"{}\">{next}</span>", escape_html_attr(color));
+            next = format!(
+                "<span data-bg=\"{}\">{next}</span>",
+                escape_html_attr(color)
+            );
         }
     }
     next
@@ -1701,7 +2241,10 @@ fn document_to_markdown(document: &Document) -> String {
                     .join("\n"),
                 BlockType::Bookmark => {
                     let url = attr_string(block, "url").unwrap_or_default();
-                    format!("{prefix}<Bookmark url=\"{}\">{text}</Bookmark>", escape_html_attr(&url))
+                    format!(
+                        "{prefix}<Bookmark url=\"{}\">{text}</Bookmark>",
+                        escape_html_attr(&url)
+                    )
                 }
                 BlockType::Embed => {
                     let url = attr_string(block, "url").unwrap_or_default();
@@ -1788,7 +2331,10 @@ fn parse_image_markdown(input: &str) -> Option<(String, String)> {
     let label_end = input[2..].find("](")? + 2;
     let href_start = label_end + 2;
     let href_end = input[href_start..].find(')')? + href_start;
-    Some((input[2..label_end].to_string(), input[href_start..href_end].to_string()))
+    Some((
+        input[2..label_end].to_string(),
+        input[href_start..href_end].to_string(),
+    ))
 }
 
 fn parse_self_closing_attr(input: &str, tag: &str, attr: &str) -> Option<String> {
@@ -1833,7 +2379,11 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                         }
                         if let Some(color) = attr_value(open, "data-bg") {
                             remove_mark_type(&mut marks, TextMarkType::BackgroundColor);
-                            marks.push(mark_with_attr(TextMarkType::BackgroundColor, "color", color));
+                            marks.push(mark_with_attr(
+                                TextMarkType::BackgroundColor,
+                                "color",
+                                color,
+                            ));
                         }
                         span.marks = normalize_marks(Some(marks));
                     }
@@ -1861,7 +2411,10 @@ fn inline_markdown_to_spans(input: &str) -> Vec<TextSpan> {
                 append_span(
                     &mut spans,
                     input[index + 3..end].to_string(),
-                    Some(vec![text_mark(TextMarkType::Bold), text_mark(TextMarkType::Italic)]),
+                    Some(vec![
+                        text_mark(TextMarkType::Bold),
+                        text_mark(TextMarkType::Italic),
+                    ]),
                 );
                 index = end + 3;
                 continue;
@@ -2435,8 +2988,8 @@ fn text_mark_specs() -> Vec<TextMarkSpec> {
             shortcut: "",
             tag: "span",
             values: Some(vec![
-                "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple",
-                "pink", "red",
+                "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink",
+                "red",
             ]),
         },
         TextMarkSpec {
@@ -2447,24 +3000,181 @@ fn text_mark_specs() -> Vec<TextMarkSpec> {
             shortcut: "",
             tag: "span",
             values: Some(vec![
-                "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple",
-                "pink", "red",
+                "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink",
+                "red",
             ]),
         },
     ]
 }
 
-fn find_editor_command(query: &str) -> Vec<Command> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return block_specs();
+fn block_type_slug(block_type: BlockType) -> &'static str {
+    match block_type {
+        BlockType::Paragraph => "paragraph",
+        BlockType::Heading => "heading",
+        BlockType::Quote => "quote",
+        BlockType::Divider => "divider",
+        BlockType::Todo => "todo",
+        BlockType::BulletedList => "bulleted-list",
+        BlockType::NumberedList => "numbered-list",
+        BlockType::CodeBlock => "code-block",
+        BlockType::Callout => "callout",
+        BlockType::Image => "image",
+        BlockType::Toggle => "toggle",
+        BlockType::Table => "table",
+        BlockType::Bookmark => "bookmark",
+        BlockType::Embed => "embed",
+        BlockType::File => "file",
+        BlockType::PageLink => "page-link",
+        BlockType::Raw => "raw",
     }
-    block_specs()
+}
+
+fn command_to_search_input(command: &Command) -> CommandSearchInput {
+    CommandSearchInput {
+        name: command.name.to_string(),
+        label: command.label.to_string(),
+        description: command.description.to_string(),
+        block_type: command.block_type,
+        level: command.level,
+        icon: Some(command.icon.to_string()),
+        markdown_shortcut: command.markdown_shortcut.map(ToOwned::to_owned),
+        group: None,
+        slash_menu: Some(true),
+    }
+}
+
+fn compact_search_value(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .filter(|character| !matches!(character, ' ' | '\t' | '\n' | '\r' | '_' | '-'))
+        .collect()
+}
+
+fn command_search_aliases(command: &CommandSearchInput) -> Vec<String> {
+    let mut aliases = vec![command.name.clone()];
+    if let Some(level) = command.name.strip_prefix("heading-") {
+        aliases.push(format!("h{level}"));
+    }
+    if command.block_type == BlockType::Heading {
+        if let Some(level) = command.level {
+            aliases.push(format!("h{level}"));
+        }
+    }
+    aliases.push(block_type_slug(command.block_type).to_string());
+    if let Some(icon) = &command.icon {
+        aliases.push(icon.clone());
+    }
+    if let Some(shortcut) = &command.markdown_shortcut {
+        aliases.push(shortcut.clone());
+    }
+    match command.block_type {
+        BlockType::BulletedList => aliases.extend(["bullet".to_string(), "ul".to_string()]),
+        BlockType::NumberedList => aliases.extend(["number".to_string(), "ol".to_string()]),
+        BlockType::Todo => aliases.extend(["task".to_string(), "checkbox".to_string()]),
+        BlockType::CodeBlock => aliases.extend(["codeblock".to_string(), "pre".to_string()]),
+        BlockType::Callout => aliases.extend(["note".to_string(), "notice".to_string()]),
+        _ => {}
+    }
+    aliases.retain(|value| !value.trim().is_empty());
+    aliases
+}
+
+fn command_search_score(command: &CommandSearchInput, query: &str) -> f64 {
+    let normalized = query.trim().to_lowercase();
+    if normalized.is_empty() {
+        return 0.0;
+    }
+    let compact_query = compact_search_value(&normalized);
+    for alias in command_search_aliases(command) {
+        let compact_alias = compact_search_value(&alias);
+        if compact_alias == compact_query {
+            return 0.0;
+        }
+        if compact_alias.starts_with(&compact_query) {
+            return 0.5;
+        }
+    }
+
+    let mut haystacks = vec![
+        command.name.replace('-', " "),
+        command.label.clone(),
+        command.description.clone(),
+        command
+            .group
+            .as_ref()
+            .map_or_else(String::new, ToOwned::to_owned),
+        block_type_slug(command.block_type).replace('-', " "),
+        command
+            .markdown_shortcut
+            .as_ref()
+            .map_or_else(String::new, ToOwned::to_owned),
+    ];
+    haystacks.retain(|value| !value.trim().is_empty());
+
+    let mut best = f64::INFINITY;
+    for value in haystacks {
+        let value = value.to_lowercase();
+        if value == normalized {
+            best = best.min(0.0);
+        } else if value.starts_with(&normalized) {
+            best = best.min(1.0);
+        } else if let Some(index) = value.find(&normalized) {
+            best = best.min(2.0 + index as f64 / 100.0);
+        }
+    }
+    best
+}
+
+fn search_editor_command_names(commands: Vec<CommandSearchInput>, query: &str) -> Vec<String> {
+    let normalized = query.trim();
+    let mut indexed: Vec<(usize, CommandSearchInput)> = commands
         .into_iter()
-        .filter(|command| {
-            command.label.to_lowercase().contains(&needle)
-                || command.description.to_lowercase().contains(&needle)
-                || command.name.contains(&needle)
+        .enumerate()
+        .filter(|(_, command)| command.slash_menu.unwrap_or(true))
+        .collect();
+
+    if normalized.is_empty() {
+        return indexed
+            .into_iter()
+            .map(|(_, command)| command.name)
+            .collect();
+    }
+
+    indexed.retain(|(_, command)| command_search_score(command, normalized).is_finite());
+    indexed.sort_by(|(left_index, left), (right_index, right)| {
+        let left_score = command_search_score(left, normalized);
+        let right_score = command_search_score(right, normalized);
+        left_score
+            .partial_cmp(&right_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.label.cmp(&right.label))
+            .then_with(|| left_index.cmp(right_index))
+    });
+    indexed
+        .into_iter()
+        .map(|(_, command)| command.name)
+        .collect()
+}
+
+fn find_editor_command(query: &str) -> Vec<Command> {
+    let commands = block_specs();
+    if query.trim().is_empty() {
+        return commands;
+    }
+    let names = search_editor_command_names(
+        commands.iter().map(command_to_search_input).collect(),
+        query,
+    );
+    commands
+        .into_iter()
+        .filter_map(|command| {
+            names
+                .iter()
+                .position(|name| name == command.name)
+                .map(|position| (position, command))
         })
+        .collect::<BTreeMap<usize, Command>>()
+        .into_values()
         .collect()
 }
