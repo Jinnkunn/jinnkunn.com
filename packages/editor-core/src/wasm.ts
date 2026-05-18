@@ -1,6 +1,8 @@
 import init, { editor_core_call, type InitInput } from "../pkg/jinnkunn_editor_core.js";
 import type {
   EditorBlock,
+  EditorBlockCommandInput,
+  EditorBlockCommandSource,
   EditorCommandSearchInput,
   EditorBlockSpec,
   EditorBlockType,
@@ -308,6 +310,16 @@ export function setBlockType(
   text?: string,
 ): EditorTransaction {
   return callEditorCore("setBlockType", { document, blockId, blockType, level, text });
+}
+
+export function executeBlockCommand(
+  document: EditorDocument,
+  blockId: string,
+  command: EditorBlockCommandInput,
+  source: EditorBlockCommandSource,
+  slashQuery?: string,
+): EditorTransaction {
+  return callEditorCore("executeBlockCommand", { document, blockId, command, source, slashQuery });
 }
 
 export function setBlockAttrs(

@@ -147,6 +147,10 @@ export type EditorCommand = {
 
 export type EditorBlockSpec = EditorCommand;
 
+export type EditorBlockCommandSource = "slash" | "turn-into";
+
+export type EditorBlockCommandInput = Pick<EditorCommand, "name" | "blockType" | "level">;
+
 export type EditorCommandSearchInput = Pick<
   EditorCommand,
   "name" | "label" | "description" | "blockType" | "level" | "icon" | "markdownShortcut"

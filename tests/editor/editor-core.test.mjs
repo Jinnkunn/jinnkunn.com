@@ -13,6 +13,7 @@ import {
   createEditorHistory,
   documentToMarkdown,
   editableMarkRangeAtSelection,
+  executeBlockCommand,
   findEditorCommand,
   getBlockPlainText,
   insertBlockAfter,
@@ -184,6 +185,52 @@ test("editor-core: command search ranking and aliases live in wasm", () => {
   assert.equal(searchEditorCommandNames(commands, "codeblock")[0], "code-block");
   assert.ok(searchEditorCommandNames(commands, "task").includes("todo"));
   assert.equal(findEditorCommand("h2")[0].name, "heading-2");
+});
+
+test("editor-core: executes block commands for slash and turn-into sources", () => {
+  const heading2 = { name: "heading-2", blockType: "heading", level: 2 };
+  const todo = { name: "todo", blockType: "todo" };
+  const quote = { name: "quote", blockType: "quote" };
+  const paragraph = { name: "paragraph", blockType: "paragraph" };
+
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Hello /h2" })],
+  });
+  let tx = executeBlockCommand(document, "a", heading2, "slash", "h2");
+  assert.equal(tx.kind, "set-block-type");
+  assert.equal(tx.after.blocks[0].type, "heading");
+  assert.equal(tx.after.blocks[0].level, 2);
+  assert.equal(getBlockPlainText(tx.after.blocks[0]), "Hello ");
+  assert.deepEqual(getSelectionFocus(tx.selection), { blockId: "a", offset: 6 });
+
+  document = createDocument({
+    blocks: [createBlock({ id: "empty", text: "/" })],
+  });
+  tx = executeBlockCommand(document, "empty", todo, "slash", "");
+  assert.equal(tx.after.blocks[0].type, "todo");
+  assert.equal(getBlockPlainText(tx.after.blocks[0]), "");
+  assert.equal(tx.after.blocks[0].checked, false);
+
+  document = createDocument({
+    blocks: [createBlock({ id: "turn", text: "Keep me" })],
+  });
+  tx = executeBlockCommand(document, "turn", quote, "turn-into");
+  assert.equal(tx.after.blocks[0].type, "quote");
+  assert.equal(getBlockPlainText(tx.after.blocks[0]), "Keep me");
+
+  document = createDocument({
+    blocks: [createBlock({ id: "divider", type: "divider", text: "" })],
+  });
+  tx = executeBlockCommand(document, "divider", paragraph, "turn-into");
+  assert.equal(tx.after.blocks[0].type, "paragraph");
+  assert.equal(getBlockPlainText(tx.after.blocks[0]), "");
+
+  document = createDocument({
+    blocks: [createBlock({ id: "exists", text: "No change" })],
+  });
+  tx = executeBlockCommand(document, "missing", quote, "turn-into");
+  assert.deepEqual(tx.after, document);
+  assert.equal(tx.selection, undefined);
 });
 
 test("editor-core: block type commands and markdown conversion", () => {

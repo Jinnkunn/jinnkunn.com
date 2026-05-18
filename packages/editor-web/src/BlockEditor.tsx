@@ -10,6 +10,7 @@ import {
   documentToMarkdown,
   deleteBlock,
   editableMarkRangeAtSelection as coreEditableMarkRangeAtSelection,
+  executeBlockCommand,
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
@@ -1947,24 +1948,13 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
 
   function selectCommand(command: EditorBlockExtensionSpec, blockId = slash?.blockId) {
     if (!blockId) return;
-    const block = currentBlock(blockId);
-    let nextText: string | undefined;
-
-    if (slash?.blockId === blockId && block) {
-      const text = getBlockPlainText(block);
-      const slashStart = text.lastIndexOf(`/${slash.query}`);
-      if (slashStart >= 0) {
-        nextText = `${text.slice(0, slashStart)}${text.slice(slashStart + slash.query.length + 1)}`;
-      }
-    }
-
+    const slashQuery = slash?.blockId === blockId ? slash.query : "";
     setRecentCommandNames((current) => [command.name, ...current.filter((name) => name !== command.name)].slice(0, 4));
-    commit(setBlockType(history.document, blockId, command.blockType, command.level, nextText));
+    commit(executeBlockCommand(history.document, blockId, command, "slash", slashQuery));
   }
 
   function selectBlockType(block: EditorBlock, spec: EditorBlockExtensionSpec) {
-    const text = block.type === "divider" ? undefined : getBlockPlainText(block);
-    commit(setBlockType(history.document, block.id, spec.blockType, spec.level, text));
+    commit(executeBlockCommand(history.document, block.id, spec, "turn-into"));
   }
 
   function duplicateBlock(block: EditorBlock) {
