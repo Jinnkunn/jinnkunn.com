@@ -1,11 +1,16 @@
 {
   "current": {
-    "text": "Tuning /now into a lighter daily status.",
-    "context": "Research, writing, and small systems work.",
-    "location": "Halifax",
-    "updatedAt": "2026-05-16T19:16:00-03:00"
+    "text": "Nice weather today, the wind carries trace of my cat.",
+    "context": "天气很好，于是放飞了一些猫毛…",
+    "location": "Dingle Playground",
+    "updatedAt": "2026-05-18T00:25:20.115Z"
   },
   "updates": [
+    {
+      "id": "20260518002520-10becb27",
+      "text": "Nice weather today, the wind carries trace of my cat.",
+      "at": "2026-05-18T00:25:20.115Z"
+    },
     {
       "id": "2026-05-16-now-status-stream",
       "text": "Moved /now from a small page into a tiny status stream.",
