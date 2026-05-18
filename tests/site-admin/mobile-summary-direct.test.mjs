@@ -26,6 +26,10 @@ function issueToken({ login = "jinnkunn", env = "staging", secret = "secret" } =
   return `${header}.${payload}.${signature}`;
 }
 
+function bytes(value) {
+  return Array.from(Buffer.from(value, "utf8"));
+}
+
 function fakeDb(opts = {}) {
   return {
     prepare(sql) {
@@ -34,8 +38,9 @@ function fakeDb(opts = {}) {
           return {
             async first() {
               if (sql.includes("rel_path = ?") && bindings[0] === "now.json") {
+                if (sql.includes("SELECT sha")) return { sha: opts.nowSha ?? "draft-now-sha" };
                 return {
-                  body: JSON.stringify({
+                  body: opts.nowBody ?? JSON.stringify({
                     current: {
                       text: "Testing mobile summary.",
                       context: "iOS",
@@ -117,6 +122,36 @@ test("mobile summary direct handler returns compact iOS payload", async () => {
   assert.equal(body.data.summary.release.recommendedAction.kind, "noop");
 });
 
+test("mobile summary direct handler reads D1 byte-array now bodies", async () => {
+  const token = issueToken();
+  const res = await handleMobileSummaryRequest(
+    new Request("https://staging.jinkunchen.com/api/site-admin/mobile/summary", {
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      NEXTAUTH_SECRET: "secret",
+      SITE_ADMIN_GITHUB_USERS: "jinnkunn",
+      SITE_ADMIN_REPO_BRANCH: "site-admin-staging",
+      SITE_ADMIN_STORAGE: "db",
+      SITE_ADMIN_DB: fakeDb({
+        nowBody: bytes(JSON.stringify({
+          current: {
+            text: "Read from D1 bytes.",
+            context: "Byte body",
+            location: "Halifax",
+            updatedAt: "2026-05-17T13:00:00.000Z",
+          },
+          updates: [{ id: "1", text: "Read from D1 bytes.", at: "2026-05-17T13:00:00.000Z" }],
+        })),
+      }),
+    },
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.data.summary.now.text, "Read from D1 bytes.");
+  assert.equal(body.data.summary.now.context, "Byte body");
+});
+
 test("mobile summary direct handler recommends release when staging overlay exists", async () => {
   const token = issueToken();
   const res = await handleMobileSummaryRequest(
@@ -135,4 +170,26 @@ test("mobile summary direct handler recommends release when staging overlay exis
   const body = await res.json();
   assert.equal(body.data.summary.release.headline, "Release needed");
   assert.equal(body.data.summary.release.recommendedAction.kind, "smart-release");
+});
+
+test("mobile summary direct handler recommends release when Draft Now differs from Live", async () => {
+  const token = issueToken();
+  const res = await handleMobileSummaryRequest(
+    new Request("https://staging.jinkunchen.com/api/site-admin/mobile/summary", {
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      NEXTAUTH_SECRET: "secret",
+      SITE_ADMIN_GITHUB_USERS: "jinnkunn",
+      SITE_ADMIN_REPO_BRANCH: "site-admin-staging",
+      SITE_ADMIN_STORAGE: "db",
+      SITE_ADMIN_DB: fakeDb({ nowSha: "draft-now-sha" }),
+      SITE_ADMIN_DB_LIVE: fakeDb({ nowSha: "live-now-sha" }),
+    },
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.data.summary.release.headline, "Release needed");
+  assert.equal(body.data.summary.release.detail, "Draft Now is newer than Live.");
+  assert.equal(body.data.summary.release.recommendedAction.label, "Publish Now");
 });

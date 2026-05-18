@@ -140,8 +140,8 @@ async function verifyAppToken(request, env) {
   return { ok: true, login };
 }
 
-function db(env) {
-  const candidate = env?.SITE_ADMIN_DB;
+function db(env, bindingName = "SITE_ADMIN_DB") {
+  const candidate = env?.[bindingName];
   return candidate && typeof candidate.prepare === "function" ? candidate : null;
 }
 
@@ -179,6 +179,14 @@ async function bodyToText(value) {
   if (ArrayBuffer.isView(value)) {
     return textDecoder().decode(value);
   }
+  if (Array.isArray(value)) {
+    const bytes = value
+      .map((byte) => Number(byte))
+      .filter((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255);
+    if (bytes.length === value.length) {
+      return textDecoder().decode(Uint8Array.from(bytes));
+    }
+  }
   return "";
 }
 
@@ -208,6 +216,11 @@ async function readNow(database) {
   } catch {
     return normalizeNow(null);
   }
+}
+
+async function nowSha(database) {
+  const row = await first(database, "SELECT sha FROM content_files WHERE rel_path = ? LIMIT 1", "now.json");
+  return str(row?.sha);
 }
 
 async function contentCounts(database) {
@@ -286,8 +299,8 @@ function mapRunner(row) {
   };
 }
 
-async function releaseSummary(database) {
-  const [jobs, runners, overlayCount] = await Promise.all([
+async function releaseSummary(database, liveDatabase) {
+  const [jobs, runners, overlayCount, stagingNowSha, liveNowSha] = await Promise.all([
     all(
       database,
       `SELECT id, action, script, target, status, phase, created_at, updated_at, finished_at, error
@@ -300,11 +313,28 @@ async function releaseSummary(database) {
       `SELECT agent_id, status, current_job_id, last_seen_at
          FROM release_agents
         ORDER BY last_seen_at DESC
-        LIMIT 4`,
+      LIMIT 4`,
     ).then((rows) => rows.map(mapRunner)),
     staticOverlayCount(database),
+    nowSha(database),
+    liveDatabase ? nowSha(liveDatabase) : Promise.resolve(""),
   ]);
   const runningJob = jobs.find((job) => job.status === "queued" || job.status === "running") || null;
+  if (
+    !runningJob &&
+    stagingNowSha &&
+    liveNowSha &&
+    stagingNowSha !== liveNowSha
+  ) {
+    return {
+      headline: "Release needed",
+      detail: "Draft Now is newer than Live.",
+      recommendedAction: { kind: "smart-release", label: "Publish Now", destructive: false },
+      runningJob: null,
+      latestJob: jobs[0] || null,
+      runners,
+    };
+  }
   if (!runningJob && overlayCount > 0) {
     return {
       headline: "Release needed",
@@ -353,12 +383,13 @@ export async function handleMobileSummaryRequest(request, env) {
   if (!database) {
     return json({ ok: false, error: "Server misconfigured: missing SITE_ADMIN_DB", code: "MISCONFIGURED" }, { status: 500 });
   }
+  const liveDatabase = db(env, "SITE_ADMIN_DB_LIVE");
 
   const [now, content, calendar, release, latestContentSha] = await Promise.all([
     readNow(database),
     contentCounts(database),
     calendarSummary(database),
-    releaseSummary(database),
+    releaseSummary(database, liveDatabase),
     contentSha(database),
   ]);
   const envName = inferEnvironment(request.url, env) || "";
