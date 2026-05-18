@@ -84,6 +84,32 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
                 ))
             })
         }
+        "executeTextMarkCommand" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                selection: Selection,
+                command: TextMarkCommandKind,
+                mark: Option<TextMarkType>,
+                attrs: Option<BTreeMap<String, String>>,
+                stored_marks: Option<Vec<TextMark>>,
+                href: Option<String>,
+                icon: Option<Option<String>>,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(execute_text_mark_command(TextMarkCommandInput {
+                    document: input.document,
+                    selection: input.selection,
+                    command: input.command,
+                    mark: input.mark,
+                    attrs: input.attrs,
+                    stored_marks: input.stored_marks,
+                    href: input.href,
+                    icon: input.icon,
+                }))
+            })
+        }
         "findEditorCommand" => unary::<String, _>(payload, |query| Ok(find_editor_command(&query))),
         "getBlockPlainText" => unary::<Block, _>(payload, |block| Ok(block_plain_text(&block))),
         "getSelectionFocus" => unary::<Selection, _>(payload, |selection| Ok(selection.focus)),
@@ -648,6 +674,78 @@ struct SelectionMarkAccumulator {
     attrs_mixed: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredMarks {
+    block_id: String,
+    offset: i32,
+    marks: Vec<TextMark>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextMarkCommandResult {
+    #[serde(rename = "type")]
+    result_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transaction: Option<Transaction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stored_marks: Option<StoredMarks>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum TextMarkCommandKind {
+    Toggle,
+    Set,
+    Unset,
+    ApplyLink,
+}
+
+#[derive(Clone, Debug)]
+struct TextMarkCommandInput {
+    document: Document,
+    selection: Selection,
+    command: TextMarkCommandKind,
+    mark: Option<TextMarkType>,
+    attrs: Option<BTreeMap<String, String>>,
+    stored_marks: Option<Vec<TextMark>>,
+    href: Option<String>,
+    icon: Option<Option<String>>,
+}
+
+fn text_mark_command_transaction(transaction: Transaction) -> TextMarkCommandResult {
+    TextMarkCommandResult {
+        result_type: "transaction",
+        transaction: Some(transaction),
+        stored_marks: None,
+    }
+}
+
+fn text_mark_command_stored_marks(
+    block_id: impl Into<String>,
+    offset: i32,
+    marks: Vec<TextMark>,
+) -> TextMarkCommandResult {
+    TextMarkCommandResult {
+        result_type: "stored-marks",
+        transaction: None,
+        stored_marks: Some(StoredMarks {
+            block_id: block_id.into(),
+            offset,
+            marks: normalize_marks(Some(marks)).unwrap_or_default(),
+        }),
+    }
+}
+
+fn text_mark_command_noop() -> TextMarkCommandResult {
+    TextMarkCommandResult {
+        result_type: "noop",
+        transaction: None,
+        stored_marks: None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum TransactionKind {
@@ -1032,6 +1130,251 @@ fn editable_mark_range_at_selection(block: &Block, selection: &Selection) -> Opt
     }
     mark_range_at_offset(block, range.start, TextMarkType::Link)
         .or_else(|| mark_range_at_offset(block, range.start, TextMarkType::IconLink))
+}
+
+fn selected_text_range_for_marks(
+    block: &Block,
+    selection: &Selection,
+    expand_marks: &[TextMarkType],
+) -> Option<TextRange> {
+    if !is_same_block_selection(selection) {
+        return None;
+    }
+    let range = selected_range(selection);
+    if range.start != range.end {
+        return Some(range);
+    }
+    expand_marks
+        .iter()
+        .find_map(|mark| mark_range_at_offset(block, range.start, *mark))
+}
+
+fn normalized_stored_marks(marks: Vec<TextMark>) -> Vec<TextMark> {
+    normalize_marks(Some(marks)).unwrap_or_default()
+}
+
+fn stored_marks_for_collapsed_selection(
+    block: &Block,
+    selection: &Selection,
+    stored_marks: Option<Vec<TextMark>>,
+) -> Vec<TextMark> {
+    if let Some(stored_marks) = stored_marks {
+        return normalized_stored_marks(stored_marks);
+    }
+    span_marks_at_offset(block, selection.anchor.offset).unwrap_or_default()
+}
+
+fn text_mark_with_attrs(
+    mark_type: TextMarkType,
+    attrs: Option<BTreeMap<String, String>>,
+) -> TextMark {
+    TextMark {
+        mark_type,
+        attrs: clean_mark_attrs(attrs.unwrap_or_default()),
+    }
+}
+
+fn toggle_stored_mark(marks: Vec<TextMark>, mark_type: TextMarkType) -> Vec<TextMark> {
+    let mut marks = normalized_stored_marks(marks);
+    if has_mark_type(Some(&marks), mark_type) {
+        remove_mark_type(&mut marks, mark_type);
+        marks
+    } else {
+        marks.push(text_mark(mark_type));
+        normalized_stored_marks(marks)
+    }
+}
+
+fn set_stored_mark(
+    marks: Vec<TextMark>,
+    mark_type: TextMarkType,
+    attrs: Option<BTreeMap<String, String>>,
+) -> Vec<TextMark> {
+    let mut marks = normalized_stored_marks(marks);
+    remove_mark_type(&mut marks, mark_type);
+    marks.push(text_mark_with_attrs(mark_type, attrs));
+    normalized_stored_marks(marks)
+}
+
+fn unset_stored_mark(marks: Vec<TextMark>, mark_type: TextMarkType) -> Vec<TextMark> {
+    let mut marks = normalized_stored_marks(marks);
+    remove_mark_type(&mut marks, mark_type);
+    marks
+}
+
+fn inline_link_expand_marks(mark_type: TextMarkType) -> Vec<TextMarkType> {
+    if matches!(mark_type, TextMarkType::Link | TextMarkType::IconLink) {
+        vec![mark_type, TextMarkType::Link, TextMarkType::IconLink]
+    } else {
+        Vec::new()
+    }
+}
+
+fn execute_text_mark_command(input: TextMarkCommandInput) -> TextMarkCommandResult {
+    if !is_same_block_selection(&input.selection) {
+        return text_mark_command_noop();
+    }
+
+    let block = match find_block(&input.document, &input.selection.anchor.block_id) {
+        Some(block) => block,
+        None => return text_mark_command_noop(),
+    };
+    if block.block_type == BlockType::Divider {
+        return text_mark_command_noop();
+    }
+
+    let range = selected_range(&input.selection);
+    let safe_offset = range
+        .start
+        .clamp(0, utf16_len(&block_plain_text(block)) as i32);
+
+    match input.command {
+        TextMarkCommandKind::Toggle => {
+            let Some(mark_type) = input.mark else {
+                return text_mark_command_noop();
+            };
+            if range.start == range.end {
+                let marks = stored_marks_for_collapsed_selection(
+                    block,
+                    &input.selection,
+                    input.stored_marks,
+                );
+                return text_mark_command_stored_marks(
+                    range.block_id,
+                    safe_offset,
+                    toggle_stored_mark(marks, mark_type),
+                );
+            }
+            text_mark_command_transaction(toggle_text_mark(
+                input.document,
+                &range.block_id,
+                range.start,
+                range.end,
+                mark_type,
+            ))
+        }
+        TextMarkCommandKind::Set => {
+            let Some(mark_type) = input.mark else {
+                return text_mark_command_noop();
+            };
+            let selected = selected_text_range_for_marks(
+                block,
+                &input.selection,
+                &inline_link_expand_marks(mark_type),
+            );
+            if let Some(selected) = selected {
+                return text_mark_command_transaction(set_text_mark(
+                    input.document,
+                    &selected.block_id,
+                    selected.start,
+                    selected.end,
+                    text_mark_with_attrs(mark_type, input.attrs),
+                ));
+            }
+            if matches!(mark_type, TextMarkType::Link | TextMarkType::IconLink) {
+                return text_mark_command_noop();
+            }
+            let marks =
+                stored_marks_for_collapsed_selection(block, &input.selection, input.stored_marks);
+            text_mark_command_stored_marks(
+                range.block_id,
+                safe_offset,
+                set_stored_mark(marks, mark_type, input.attrs),
+            )
+        }
+        TextMarkCommandKind::Unset => {
+            let Some(mark_type) = input.mark else {
+                return text_mark_command_noop();
+            };
+            let selected = selected_text_range_for_marks(
+                block,
+                &input.selection,
+                &inline_link_expand_marks(mark_type),
+            );
+            if let Some(selected) = selected {
+                return text_mark_command_transaction(unset_text_mark(
+                    input.document,
+                    &selected.block_id,
+                    selected.start,
+                    selected.end,
+                    mark_type,
+                ));
+            }
+            let marks =
+                stored_marks_for_collapsed_selection(block, &input.selection, input.stored_marks);
+            text_mark_command_stored_marks(
+                range.block_id,
+                safe_offset,
+                unset_stored_mark(marks, mark_type),
+            )
+        }
+        TextMarkCommandKind::ApplyLink => {
+            let Some(selected) = selected_text_range_for_marks(
+                block,
+                &input.selection,
+                &[TextMarkType::Link, TextMarkType::IconLink],
+            ) else {
+                return text_mark_command_noop();
+            };
+            let href = input.href.unwrap_or_default().trim().to_string();
+            let before = input.document.clone();
+            let (after_link, link_selection) = if href.is_empty() {
+                apply_text_mark(
+                    input.document,
+                    &selected.block_id,
+                    selected.start,
+                    selected.end,
+                    text_mark(TextMarkType::Link),
+                    true,
+                )
+            } else {
+                let mut attrs = BTreeMap::new();
+                attrs.insert("href".to_string(), href);
+                apply_text_mark(
+                    input.document,
+                    &selected.block_id,
+                    selected.start,
+                    selected.end,
+                    text_mark_with_attrs(TextMarkType::Link, Some(attrs)),
+                    false,
+                )
+            };
+            let (after_icon, icon_selection, kind) = match input.icon.unwrap_or(None) {
+                Some(icon) => {
+                    let mut attrs = BTreeMap::new();
+                    if !icon.trim().is_empty() {
+                        attrs.insert("icon".to_string(), icon.trim().to_string());
+                    }
+                    let (after, selection) = apply_text_mark(
+                        after_link,
+                        &selected.block_id,
+                        selected.start,
+                        selected.end,
+                        text_mark_with_attrs(TextMarkType::IconLink, Some(attrs)),
+                        false,
+                    );
+                    (after, selection, TransactionKind::SetTextMark)
+                }
+                None => {
+                    let (after, selection) = apply_text_mark(
+                        after_link,
+                        &selected.block_id,
+                        selected.start,
+                        selected.end,
+                        text_mark(TextMarkType::IconLink),
+                        true,
+                    );
+                    (after, selection, TransactionKind::UnsetTextMark)
+                }
+            };
+            text_mark_command_transaction(transaction(
+                kind,
+                before,
+                after_icon,
+                icon_selection.or(link_selection),
+            ))
+        }
+    }
 }
 
 fn selection_has_mark(block: &Block, selection: &Selection, mark_type: TextMarkType) -> bool {

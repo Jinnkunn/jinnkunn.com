@@ -11,6 +11,7 @@ import {
   deleteBlock,
   editableMarkRangeAtSelection as coreEditableMarkRangeAtSelection,
   executeBlockCommand,
+  executeTextMarkCommand,
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
@@ -19,7 +20,6 @@ import {
   isSameBlockSelection as coreIsSameBlockSelection,
   markRangeAtOffset as coreMarkRangeAtOffset,
   markdownToDocument,
-  marksAtOffset as coreMarksAtOffset,
   mergeEditorExtensionManifests,
   mergeWithPrevious,
   moveBlock,
@@ -34,7 +34,6 @@ import {
   setTextMark,
   splitBlock,
   toggleTodo,
-  toggleTextMark,
   unsetTextMark,
   undo,
   updateBlockText,
@@ -46,6 +45,7 @@ import {
   type EditorHistory,
   type EditorSelection,
   type EditorSelectionFormattingSnapshot,
+  type EditorTextMarkCommandResult,
   type EditorTextMark,
   type EditorTextMarkAttrs,
   type EditorTextMarkType,
@@ -607,29 +607,6 @@ function selectedRange(selection: EditorSelection): { blockId: string; start: nu
   return coreSelectedRange(selection);
 }
 
-function textMarkFrom(mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}): EditorTextMark {
-  return Object.keys(attrs).length ? { type: mark, attrs } : { type: mark };
-}
-
-function normalizeStoredMarks(marks: EditorTextMark[]): EditorTextMark[] {
-  const next = new Map<EditorTextMarkType, EditorTextMark>();
-  for (const mark of marks) next.set(mark.type, mark);
-  return Array.from(next.values());
-}
-
-function toggleStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType): EditorTextMark[] {
-  const existing = marks.find((item) => item.type === mark);
-  return existing ? marks.filter((item) => item.type !== mark) : normalizeStoredMarks([...marks, { type: mark }]);
-}
-
-function setStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}): EditorTextMark[] {
-  return normalizeStoredMarks([...marks.filter((item) => item.type !== mark), textMarkFrom(mark, attrs)]);
-}
-
-function unsetStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType): EditorTextMark[] {
-  return marks.filter((item) => item.type !== mark);
-}
-
 function isCollapsedSelection(selection: EditorSelection | null): selection is EditorSelection {
   return coreIsCollapsedSelection(selection);
 }
@@ -679,10 +656,6 @@ function selectedMarkAttrs(
   mark: EditorTextMarkType,
 ): EditorTextMarkAttrs | null {
   return block && selection ? coreSelectedMarkAttrs(block, selection, mark) : null;
-}
-
-function marksAtOffset(block: EditorBlock | null, offset: number): EditorTextMark[] {
-  return block ? coreMarksAtOffset(block, offset) : [];
 }
 
 function selectionFormattingSnapshot(
@@ -1667,22 +1640,6 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     return current.blockId === nextSelection.anchor.blockId && current.offset === nextSelection.anchor.offset ? current.marks : null;
   }
 
-  function collapsedMarksForSelection(nextSelection = selection): EditorTextMark[] {
-    if (!isCollapsedSelection(nextSelection)) return [];
-    const explicitMarks = storedMarksForSelection(nextSelection);
-    if (explicitMarks) return explicitMarks;
-    return marksAtOffset(currentBlock(nextSelection.anchor.blockId), nextSelection.anchor.offset);
-  }
-
-  function setCollapsedStoredMarks(marks: EditorTextMark[], nextSelection = selection) {
-    if (!isCollapsedSelection(nextSelection)) return;
-    setStoredMarks({
-      blockId: nextSelection.anchor.blockId,
-      offset: nextSelection.anchor.offset,
-      marks: normalizeStoredMarks(marks),
-    });
-  }
-
   function clearStoredMarks() {
     setStoredMarks(null);
   }
@@ -1980,71 +1937,54 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     commit(moveBlock(history.document, block.id, index + direction));
   }
 
-  function selectedTextRange(expandMark?: EditorTextMarkType): TextRange | undefined {
-    if (!isSameBlockSelection(selection)) return;
-    const range = selectedRange(selection);
-    if (range.start === range.end) {
-      const block = currentBlock(range.blockId);
-      return block && expandMark ? markRangeAtOffset(block, range.start, expandMark) ?? undefined : undefined;
+  function selectionFromTextRange(range: TextRange): EditorSelection {
+    return {
+      anchor: { blockId: range.blockId, offset: range.start },
+      focus: { blockId: range.blockId, offset: range.end },
+    };
+  }
+
+  function handleTextMarkCommandResult(result: EditorTextMarkCommandResult) {
+    if (result.type === "transaction") {
+      commit(result.transaction);
+      return;
     }
-    return range;
+    if (result.type === "stored-marks") {
+      setStoredMarks(result.storedMarks);
+    }
+  }
+
+  function runTextMarkCommand(
+    nextSelection: EditorSelection | null,
+    input: Parameters<typeof executeTextMarkCommand>[2],
+  ) {
+    if (!nextSelection) return;
+    handleTextMarkCommandResult(
+      executeTextMarkCommand(history.document, nextSelection, {
+        storedMarks: storedMarksForSelection(nextSelection),
+        ...input,
+      }),
+    );
   }
 
   function toggleStoredSelectionMark(mark: EditorTextMarkType) {
-    const range = selectedTextRange();
-    if (!range) {
-      if (isCollapsedSelection(selection)) setCollapsedStoredMarks(toggleStoredMark(collapsedMarksForSelection(selection), mark), selection);
-      return;
-    }
-    commit(toggleTextMark(history.document, range.blockId, selection!.anchor.offset, selection!.focus.offset, mark));
+    runTextMarkCommand(selection, { command: "toggle", mark });
   }
 
   function setStoredSelectionMark(mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}) {
-    const range = mark === "link" || mark === "icon-link"
-      ? selectedTextRange(mark) ?? selectedTextRange("link") ?? selectedTextRange("icon-link")
-      : selectedTextRange();
-    if (!range) {
-      if (isCollapsedSelection(selection) && mark !== "link" && mark !== "icon-link") {
-        setCollapsedStoredMarks(setStoredMark(collapsedMarksForSelection(selection), mark, attrs), selection);
-      }
-      return;
-    }
-    commit(setTextMark(history.document, range.blockId, range.start, range.end, mark, attrs));
+    runTextMarkCommand(selection, { attrs, command: "set", mark });
   }
 
   function unsetStoredSelectionMark(mark: EditorTextMarkType) {
-    const range = mark === "link" || mark === "icon-link"
-      ? selectedTextRange(mark) ?? selectedTextRange("link") ?? selectedTextRange("icon-link")
-      : selectedTextRange();
-    if (!range) {
-      if (isCollapsedSelection(selection)) setCollapsedStoredMarks(unsetStoredMark(collapsedMarksForSelection(selection), mark), selection);
-      return;
-    }
-    commit(unsetTextMark(history.document, range.blockId, range.start, range.end, mark));
+    runTextMarkCommand(selection, { command: "unset", mark });
   }
 
   function applyStoredLink(href: string, icon: string | null) {
-    const range = selectedTextRange("link") ?? selectedTextRange("icon-link") ?? selectedTextRange();
-    if (!range) return;
-    const nextHref = href.trim();
-    const linkTx = nextHref
-      ? setTextMark(history.document, range.blockId, range.start, range.end, "link", { href: nextHref })
-      : unsetTextMark(history.document, range.blockId, range.start, range.end, "link");
-    const iconTx = icon === null
-      ? unsetTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link")
-      : setTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link", icon ? { icon } : {});
-    commit({ ...iconTx, before: history.document });
+    runTextMarkCommand(selection, { command: "apply-link", href, icon });
   }
 
   function applyLinkRange(range: TextRange, href: string, icon: string | null) {
-    const nextHref = href.trim();
-    const linkTx = nextHref
-      ? setTextMark(history.document, range.blockId, range.start, range.end, "link", { href: nextHref })
-      : unsetTextMark(history.document, range.blockId, range.start, range.end, "link");
-    const iconTx = icon === null
-      ? unsetTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link")
-      : setTextMark(linkTx.after, range.blockId, range.start, range.end, "icon-link", icon ? { icon } : {});
-    commit({ ...iconTx, before: history.document });
+    runTextMarkCommand(selectionFromTextRange(range), { command: "apply-link", href, icon });
   }
 
   function transactionWithExactMarks(transaction: EditorTransaction, blockId: string, range: TextRange, marks: EditorTextMark[]): EditorTransaction {
@@ -2240,11 +2180,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     setSelectionIfChanged(nextSelection);
     if (nextSelection.anchor.blockId !== nextSelection.focus.blockId) return;
     event.preventDefault();
-    if (nextSelection.anchor.offset === nextSelection.focus.offset) {
-      setCollapsedStoredMarks(toggleStoredMark(collapsedMarksForSelection(nextSelection), mark), nextSelection);
-      return;
-    }
-    commit(toggleTextMark(history.document, block.id, nextSelection.anchor.offset, nextSelection.focus.offset, mark));
+    runTextMarkCommand(nextSelection, { command: "toggle", mark });
   }
 
   function patchBlockAttrs(block: EditorBlock, attrs: Record<string, unknown>) {

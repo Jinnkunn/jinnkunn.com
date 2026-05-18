@@ -13,6 +13,8 @@ import type {
   EditorSelection,
   EditorSelectionFormattingSnapshot,
   EditorSelectionMarkState,
+  EditorTextMarkCommandInput,
+  EditorTextMarkCommandResult,
   EditorTextRange,
   EditorTextMarkAttrs,
   EditorTextMark,
@@ -148,6 +150,14 @@ export function selectionFormattingSnapshot(
   const snapshot: EditorSelectionFormattingSnapshot = {};
   for (const item of items) snapshot[item.mark] = item.state;
   return snapshot;
+}
+
+export function executeTextMarkCommand(
+  document: EditorDocument,
+  selection: EditorSelection,
+  input: EditorTextMarkCommandInput,
+): EditorTextMarkCommandResult {
+  return callEditorCore("executeTextMarkCommand", { document, selection, ...input });
 }
 
 export function clampSelection(document: EditorDocument, selection: EditorSelection): EditorSelection {

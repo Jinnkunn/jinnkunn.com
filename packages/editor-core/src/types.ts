@@ -86,6 +86,28 @@ export type EditorSelectionMarkState = {
 
 export type EditorSelectionFormattingSnapshot = Partial<Record<EditorTextMarkType, EditorSelectionMarkState>>;
 
+export type EditorStoredMarks = {
+  blockId: string;
+  offset: number;
+  marks: EditorTextMark[];
+};
+
+export type EditorTextMarkCommandKind = "toggle" | "set" | "unset" | "apply-link";
+
+export type EditorTextMarkCommandInput = {
+  command: EditorTextMarkCommandKind;
+  mark?: EditorTextMarkType;
+  attrs?: EditorTextMarkAttrs;
+  storedMarks?: EditorTextMark[] | null;
+  href?: string;
+  icon?: string | null;
+};
+
+export type EditorTextMarkCommandResult =
+  | { type: "transaction"; transaction: EditorTransaction }
+  | { type: "stored-marks"; storedMarks: EditorStoredMarks }
+  | { type: "noop" };
+
 export type EditorTransactionKind =
   | "insert-block"
   | "insert-fragment"
