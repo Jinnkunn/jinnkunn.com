@@ -12,15 +12,27 @@ import {
   createDocument,
   createEditorHistory,
   documentToMarkdown,
+  editableMarkRangeAtSelection,
+  findEditorCommand,
   getBlockPlainText,
   insertBlockAfter,
   insertDocumentFragment,
+  isSameBlockSelection,
   listBlockSpecs,
   listTextMarkSpecs,
+  markRangeAtOffset,
+  markRangesInBlock,
+  marksAtOffset,
   markdownToDocument,
   mergeWithPrevious,
   moveBlock,
   redo,
+  searchEditorCommandNames,
+  selectedMarkAttrs,
+  selectedRange,
+  selectionFormattingSnapshot,
+  selectionHasMark,
+  selectionMarkState,
   setBlockAttrs,
   setBlockIndent,
   setBlockType,
@@ -98,6 +110,80 @@ test("editor-core: selection helpers clamp cursor state to document bounds", () 
   assert.equal(isSelectionCollapsed(clamped), true);
   assert.deepEqual(getSelectionFocus(clamped), { blockId: "a", offset: 5 });
   assert.deepEqual(getSelectionFocus(selectionAtBlockEnd(document, "b")), { blockId: "b", offset: 5 });
+});
+
+test("editor-core: selection ranges and mark state are computed in wasm", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Hello world again" }), createBlock({ id: "b", text: "Other" })],
+  });
+  document = setTextMark(document, "a", 0, 5, "bold").after;
+  document = setTextMark(document, "a", 6, 11, "link", { href: "/world" }).after;
+  document = setTextMark(document, "a", 6, 11, "icon-link", { icon: "go" }).after;
+
+  const reverseSelection = {
+    anchor: { blockId: "a", offset: 11 },
+    focus: { blockId: "a", offset: 6 },
+  };
+  assert.equal(isSameBlockSelection(reverseSelection), true);
+  assert.equal(isSameBlockSelection({ ...reverseSelection, focus: { blockId: "b", offset: 0 } }), false);
+  assert.deepEqual(selectedRange(reverseSelection), { blockId: "a", start: 6, end: 11 });
+
+  const block = document.blocks[0];
+  assert.deepEqual(markRangesInBlock(block, "link"), [
+    { blockId: "a", start: 6, end: 11, attrs: { href: "/world" } },
+  ]);
+  assert.deepEqual(markRangeAtOffset(block, 8, "link"), { blockId: "a", start: 6, end: 11 });
+  assert.deepEqual(editableMarkRangeAtSelection(block, createCollapsedSelection("a", 8)), { blockId: "a", start: 6, end: 11 });
+  assert.equal(selectionHasMark(block, reverseSelection, "link"), true);
+  assert.deepEqual(selectedMarkAttrs(block, reverseSelection, "link"), { href: "/world" });
+  assert.deepEqual(marksAtOffset(block, 8), [
+    { type: "link", attrs: { href: "/world" } },
+    { type: "icon-link", attrs: { icon: "go" } },
+  ]);
+  assert.deepEqual(selectionMarkState(block, reverseSelection, "link"), {
+    active: true,
+    attrs: { href: "/world" },
+    mixed: false,
+  });
+  assert.deepEqual(selectionMarkState(block, { anchor: { blockId: "a", offset: 0 }, focus: { blockId: "a", offset: 11 } }, "bold"), {
+    active: false,
+    attrs: null,
+    mixed: true,
+  });
+  assert.deepEqual(selectionMarkState(block, createCollapsedSelection("a", 0), "highlight", [{ type: "highlight" }]), {
+    active: true,
+    attrs: null,
+    mixed: false,
+  });
+  assert.deepEqual(selectionFormattingSnapshot(block, reverseSelection, ["link", "bold", "highlight"]), {
+    link: { active: true, attrs: { href: "/world" }, mixed: false },
+    bold: { active: false, attrs: null, mixed: false },
+    highlight: { active: false, attrs: null, mixed: false },
+  });
+  assert.deepEqual(selectionFormattingSnapshot(block, createCollapsedSelection("a", 0), ["highlight", "bold"], [{ type: "highlight" }]), {
+    highlight: { active: true, attrs: null, mixed: false },
+    bold: { active: false, attrs: null, mixed: false },
+  });
+
+  let adjacentLinks = createDocument({
+    blocks: [createBlock({ id: "links", text: "abcdef" })],
+  });
+  adjacentLinks = setTextMark(adjacentLinks, "links", 0, 3, "link", { href: "/a" }).after;
+  adjacentLinks = setTextMark(adjacentLinks, "links", 3, 6, "link", { href: "/b" }).after;
+  assert.deepEqual(
+    selectionFormattingSnapshot(adjacentLinks.blocks[0], { anchor: { blockId: "links", offset: 0 }, focus: { blockId: "links", offset: 6 } }, ["link"]),
+    {
+      link: { active: true, attrs: null, mixed: true },
+    },
+  );
+});
+
+test("editor-core: command search ranking and aliases live in wasm", () => {
+  const commands = listBlockSpecs();
+  assert.equal(searchEditorCommandNames(commands, "h2")[0], "heading-2");
+  assert.equal(searchEditorCommandNames(commands, "codeblock")[0], "code-block");
+  assert.ok(searchEditorCommandNames(commands, "task").includes("todo"));
+  assert.equal(findEditorCommand("h2")[0].name, "heading-2");
 });
 
 test("editor-core: block type commands and markdown conversion", () => {

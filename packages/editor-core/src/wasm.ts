@@ -1,13 +1,19 @@
 import init, { editor_core_call, type InitInput } from "../pkg/jinnkunn_editor_core.js";
 import type {
   EditorBlock,
+  EditorCommandSearchInput,
   EditorBlockSpec,
   EditorBlockType,
   EditorCommand,
   EditorCursorPosition,
   EditorDocument,
+  EditorMarkRange,
   EditorSelection,
+  EditorSelectionFormattingSnapshot,
+  EditorSelectionMarkState,
+  EditorTextRange,
   EditorTextMarkAttrs,
+  EditorTextMark,
   EditorTextMarkType,
   EditorTextMarkSpec,
   EditorTextSpan,
@@ -78,6 +84,70 @@ export function isSelectionCollapsed(selection: EditorSelection): boolean {
   return callEditorCore("isSelectionCollapsed", selection);
 }
 
+export function isSameBlockSelection(selection: EditorSelection | null): selection is EditorSelection {
+  return Boolean(selection && callEditorCore("isSameBlockSelection", selection));
+}
+
+export function isCollapsedSelection(selection: EditorSelection | null): selection is EditorSelection {
+  return Boolean(selection && isSelectionCollapsed(selection));
+}
+
+export function selectedRange(selection: EditorSelection): EditorTextRange {
+  return callEditorCore("selectedRange", selection);
+}
+
+export function markRangesInBlock(block: EditorBlock, mark: EditorTextMarkType): EditorMarkRange[] {
+  return callEditorCore("markRangesInBlock", { block, mark });
+}
+
+export function markRangeAtOffset(block: EditorBlock, offset: number, mark: EditorTextMarkType): EditorTextRange | null {
+  return callEditorCore("markRangeAtOffset", { block, offset, mark });
+}
+
+export function editableMarkRangeAtSelection(block: EditorBlock, selection: EditorSelection): EditorTextRange | null {
+  return callEditorCore("editableMarkRangeAtSelection", { block, selection });
+}
+
+export function selectionHasMark(block: EditorBlock, selection: EditorSelection, mark: EditorTextMarkType): boolean {
+  return callEditorCore("selectionHasMark", { block, selection, mark });
+}
+
+export function selectedMarkAttrs(
+  block: EditorBlock,
+  selection: EditorSelection,
+  mark: EditorTextMarkType,
+): EditorTextMarkAttrs | null {
+  return callEditorCore("selectedMarkAttrs", { block, selection, mark });
+}
+
+export function marksAtOffset(block: EditorBlock, offset: number): EditorTextMark[] {
+  return callEditorCore("marksAtOffset", { block, offset });
+}
+
+export function selectionMarkState(
+  block: EditorBlock,
+  selection: EditorSelection,
+  mark: EditorTextMarkType,
+  storedMarks: EditorTextMark[] | null = null,
+): EditorSelectionMarkState {
+  return callEditorCore("selectionMarkState", { block, selection, mark, storedMarks });
+}
+
+export function selectionFormattingSnapshot(
+  block: EditorBlock,
+  selection: EditorSelection,
+  marks: EditorTextMarkType[],
+  storedMarks: EditorTextMark[] | null = null,
+): EditorSelectionFormattingSnapshot {
+  const items = callEditorCore<Array<{ mark: EditorTextMarkType; state: EditorSelectionMarkState }>>(
+    "selectionFormattingSnapshot",
+    { block, selection, marks, storedMarks },
+  );
+  const snapshot: EditorSelectionFormattingSnapshot = {};
+  for (const item of items) snapshot[item.mark] = item.state;
+  return snapshot;
+}
+
 export function clampSelection(document: EditorDocument, selection: EditorSelection): EditorSelection {
   return callEditorCore("clampSelection", pair(document, selection));
 }
@@ -108,6 +178,10 @@ export function redo(history: EditorHistory): EditorHistory {
 
 export function findEditorCommand(query: string): EditorCommand[] {
   return callEditorCore("findEditorCommand", query);
+}
+
+export function searchEditorCommandNames(commands: EditorCommandSearchInput[], query: string): string[] {
+  return callEditorCore("searchEditorCommandNames", { commands, query });
 }
 
 export function listBlockSpecs(): EditorBlockSpec[] {

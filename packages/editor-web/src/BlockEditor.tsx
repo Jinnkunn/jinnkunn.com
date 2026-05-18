@@ -9,15 +9,24 @@ import {
   createEditorHistory,
   documentToMarkdown,
   deleteBlock,
+  editableMarkRangeAtSelection as coreEditableMarkRangeAtSelection,
   getSelectionFocus,
   getBlockPlainText,
   insertBlockAfter,
   insertDocumentFragment,
+  isCollapsedSelection as coreIsCollapsedSelection,
+  isSameBlockSelection as coreIsSameBlockSelection,
+  markRangeAtOffset as coreMarkRangeAtOffset,
   markdownToDocument,
+  marksAtOffset as coreMarksAtOffset,
   mergeEditorExtensionManifests,
   mergeWithPrevious,
   moveBlock,
   redo,
+  searchEditorCommandNames,
+  selectedMarkAttrs as coreSelectedMarkAttrs,
+  selectedRange as coreSelectedRange,
+  selectionFormattingSnapshot as coreSelectionFormattingSnapshot,
   setBlockAttrs,
   setBlockIndent,
   setBlockType,
@@ -35,6 +44,7 @@ import {
   type EditorExtensionManifest,
   type EditorHistory,
   type EditorSelection,
+  type EditorSelectionFormattingSnapshot,
   type EditorTextMark,
   type EditorTextMarkAttrs,
   type EditorTextMarkType,
@@ -211,6 +221,7 @@ const GROUP_ORDER: Record<string, number> = {
 };
 
 const EMPTY_SLASH_SECTIONS: SlashSection[] = [];
+const EMPTY_SELECTION_MARK_STATE: SelectionMarkState = { active: false, attrs: null, mixed: false };
 
 function blockPlaceholder(block: EditorBlock, blockSpecs: EditorBlockExtensionSpec[], isFocused: boolean): string {
   if (!isFocused) return "";
@@ -588,22 +599,11 @@ function textMarkForShortcut(
 }
 
 function isSameBlockSelection(selection: EditorSelection | null): selection is EditorSelection {
-  return Boolean(selection && selection.anchor.blockId === selection.focus.blockId);
+  return coreIsSameBlockSelection(selection);
 }
 
 function selectedRange(selection: EditorSelection): { blockId: string; start: number; end: number } {
-  return {
-    blockId: selection.anchor.blockId,
-    start: Math.min(selection.anchor.offset, selection.focus.offset),
-    end: Math.max(selection.anchor.offset, selection.focus.offset),
-  };
-}
-
-function markAttrsEqual(left: EditorTextMarkAttrs | null, right: EditorTextMarkAttrs | null): boolean {
-  const leftEntries = Object.entries(left ?? {});
-  const rightEntries = Object.entries(right ?? {});
-  if (leftEntries.length !== rightEntries.length) return false;
-  return leftEntries.every(([key, value]) => right?.[key] === value);
+  return coreSelectedRange(selection);
 }
 
 function textMarkFrom(mark: EditorTextMarkType, attrs: EditorTextMarkAttrs = {}): EditorTextMark {
@@ -629,27 +629,8 @@ function unsetStoredMark(marks: EditorTextMark[], mark: EditorTextMarkType): Edi
   return marks.filter((item) => item.type !== mark);
 }
 
-function markRangesInBlock(block: EditorBlock, mark: EditorTextMarkType): Array<TextRange & { attrs: EditorTextMarkAttrs | null }> {
-  const ranges: Array<TextRange & { attrs: EditorTextMarkAttrs | null }> = [];
-  let cursor = 0;
-  for (const span of block.text) {
-    const spanStart = cursor;
-    const spanEnd = cursor + span.text.length;
-    cursor = spanEnd;
-    const attrs = markAttrs(span.marks, mark);
-    if (!hasMarkType(span.marks, mark)) continue;
-    const previous = ranges.at(-1);
-    if (previous && previous.end === spanStart && markAttrsEqual(previous.attrs, attrs)) {
-      previous.end = spanEnd;
-    } else {
-      ranges.push({ attrs, blockId: block.id, end: spanEnd, start: spanStart });
-    }
-  }
-  return ranges;
-}
-
 function isCollapsedSelection(selection: EditorSelection | null): selection is EditorSelection {
-  return Boolean(selection && selection.anchor.blockId === selection.focus.blockId && selection.anchor.offset === selection.focus.offset);
+  return coreIsCollapsedSelection(selection);
 }
 
 function commonPrefixLength(left: string, right: string): number {
@@ -675,24 +656,14 @@ function insertedTextRange(previousText: string, nextText: string): TextRange | 
 }
 
 function markRangeAtOffset(block: EditorBlock, offset: number, mark: EditorTextMarkType): TextRange | null {
-  const safeOffset = Math.max(0, Math.min(offset, blockTextLength(block)));
-  return (
-    markRangesInBlock(block, mark).find((range) => {
-      if (range.start === range.end) return false;
-      if (safeOffset === 0) return range.start === 0;
-      return safeOffset > range.start && safeOffset <= range.end;
-    }) ?? null
-  );
+  return coreMarkRangeAtOffset(block, offset, mark);
 }
 
 function editableMarkRangeAtSelection(
   block: EditorBlock | null,
   selection: EditorSelection | null,
 ): TextRange | null {
-  if (!block || !isSameBlockSelection(selection)) return null;
-  const range = selectedRange(selection);
-  if (range.start !== range.end) return range;
-  return markRangeAtOffset(block, range.start, "link") ?? markRangeAtOffset(block, range.start, "icon-link");
+  return block && selection ? coreEditableMarkRangeAtSelection(block, selection) : null;
 }
 
 function blockMatchesSpec(block: EditorBlock, spec: EditorBlockExtensionSpec): boolean {
@@ -701,110 +672,25 @@ function blockMatchesSpec(block: EditorBlock, spec: EditorBlockExtensionSpec): b
   return (block.level || 1) === spec.level;
 }
 
-function selectionHasMark(block: EditorBlock | null, selection: EditorSelection | null, mark: EditorTextMarkType): boolean {
-  if (!block || !isSameBlockSelection(selection)) return false;
-  const range = selectedRange(selection);
-  if (range.start === range.end) return Boolean(markRangeAtOffset(block, range.start, mark));
-
-  let cursor = 0;
-  let touched = false;
-  for (const span of block.text) {
-    const spanStart = cursor;
-    const spanEnd = cursor + span.text.length;
-    cursor = spanEnd;
-    if (spanEnd <= range.start || spanStart >= range.end) continue;
-    touched = true;
-    if (!hasMarkType(span.marks, mark)) return false;
-  }
-  return touched;
-}
-
 function selectedMarkAttrs(
   block: EditorBlock | null,
   selection: EditorSelection | null,
   mark: EditorTextMarkType,
 ): EditorTextMarkAttrs | null {
-  if (!block || !isSameBlockSelection(selection)) return null;
-  const range = selectedRange(selection);
-  if (range.start === range.end) {
-    const markRange = markRangeAtOffset(block, range.start, mark);
-    if (!markRange) return null;
-  }
-  let cursor = 0;
-  for (const span of block.text) {
-    const spanStart = cursor;
-    const spanEnd = cursor + span.text.length;
-    cursor = spanEnd;
-    if (range.start === range.end) {
-      if (range.start === 0 ? spanStart !== 0 : range.start <= spanStart || range.start > spanEnd) continue;
-    } else if (spanEnd <= range.start || spanStart >= range.end) continue;
-    return markAttrs(span.marks, mark);
-  }
-  return null;
+  return block && selection ? coreSelectedMarkAttrs(block, selection, mark) : null;
 }
 
 function marksAtOffset(block: EditorBlock | null, offset: number): EditorTextMark[] {
-  if (!block) return [];
-  let cursor = 0;
-  for (const span of block.text) {
-    const spanStart = cursor;
-    const spanEnd = cursor + span.text.length;
-    cursor = spanEnd;
-    if (offset === 0 ? spanStart === 0 : offset > spanStart && offset <= spanEnd) {
-      return span.marks ? [...span.marks] : [];
-    }
-  }
-  return [];
+  return block ? coreMarksAtOffset(block, offset) : [];
 }
 
-function selectionMarkState(
+function selectionFormattingSnapshot(
   block: EditorBlock | null,
   selection: EditorSelection | null,
-  mark: EditorTextMarkType,
+  marks: EditorTextMarkType[],
   storedMarks: EditorTextMark[] | null = null,
-): SelectionMarkState {
-  if (!block || !isSameBlockSelection(selection)) return { active: false, attrs: null, mixed: false };
-  const range = selectedRange(selection);
-  if (range.start === range.end) {
-    if (storedMarks) {
-      const storedMark = storedMarks.find((item) => item.type === mark);
-      return storedMark
-        ? { active: true, attrs: storedMark.attrs ?? null, mixed: false }
-        : { active: false, attrs: null, mixed: false };
-    }
-    return selectionHasMark(block, selection, mark)
-      ? { active: true, attrs: selectedMarkAttrs(block, selection, mark), mixed: false }
-      : { active: false, attrs: null, mixed: false };
-  }
-
-  let cursor = 0;
-  let touched = false;
-  let marked = 0;
-  let unmarked = 0;
-  let firstAttrs: EditorTextMarkAttrs | null | undefined;
-  let attrsMixed = false;
-
-  for (const span of block.text) {
-    const spanStart = cursor;
-    const spanEnd = cursor + span.text.length;
-    cursor = spanEnd;
-    if (spanEnd <= range.start || spanStart >= range.end) continue;
-
-    touched = true;
-    const attrs = markAttrs(span.marks, mark);
-    if (!hasMarkType(span.marks, mark)) {
-      unmarked += 1;
-      continue;
-    }
-
-    marked += 1;
-    if (firstAttrs === undefined) firstAttrs = attrs;
-    else if (!markAttrsEqual(firstAttrs, attrs)) attrsMixed = true;
-  }
-
-  if (!touched || marked === 0) return { active: false, attrs: null, mixed: false };
-  if (unmarked > 0) return { active: false, attrs: firstAttrs ?? null, mixed: true };
-  return { active: true, attrs: attrsMixed ? null : firstAttrs ?? null, mixed: attrsMixed };
+): EditorSelectionFormattingSnapshot {
+  return block && selection ? coreSelectionFormattingSnapshot(block, selection, marks, storedMarks) : {};
 }
 
 function inlineToolbarBlockSpecs(specs: EditorBlockExtensionSpec[]): EditorBlockExtensionSpec[] {
@@ -846,70 +732,8 @@ function shouldSyncEditableDom(element: HTMLElement, previousBlock: EditorBlock 
   return !isActivePlainTextEdit;
 }
 
-function commandMatchesQuery(command: EditorBlockExtensionSpec, query: string): boolean {
-  return commandSearchScore(command, query) < Number.POSITIVE_INFINITY;
-}
-
-function compactSearchValue(value: string): string {
-  return value.toLowerCase().replace(/[\s_-]+/g, "");
-}
-
-function commandSearchAliases(command: EditorBlockExtensionSpec): string[] {
-  const aliases = [
-    command.name,
-    command.name.replace(/^heading-/, "h"),
-    command.blockType,
-    command.icon,
-    command.markdownShortcut,
-  ];
-  if (command.blockType === "bulleted-list") aliases.push("bullet", "ul");
-  if (command.blockType === "numbered-list") aliases.push("number", "ol");
-  if (command.blockType === "todo") aliases.push("task", "checkbox");
-  if (command.blockType === "code-block") aliases.push("codeblock", "pre");
-  if (command.blockType === "callout") aliases.push("note", "notice");
-  return aliases.filter((value): value is string => Boolean(value));
-}
-
-function commandSearchScore(command: EditorBlockExtensionSpec, query: string): number {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return 0;
-  const compactQuery = compactSearchValue(normalized);
-  for (const alias of commandSearchAliases(command)) {
-    const compactAlias = compactSearchValue(alias);
-    if (compactAlias === compactQuery) return 0;
-    if (compactAlias.startsWith(compactQuery)) return 0.5;
-  }
-  const haystacks = [
-    command.name.replace(/-/g, " "),
-    command.label,
-    command.description,
-    command.group,
-    command.blockType.replace(/-/g, " "),
-    command.markdownShortcut,
-  ]
-    .filter(Boolean)
-    .map((value) => String(value).toLowerCase());
-  let best = Number.POSITIVE_INFINITY;
-  for (const value of haystacks) {
-    if (value === normalized) best = Math.min(best, 0);
-    else if (value.startsWith(normalized)) best = Math.min(best, 1);
-    else {
-      const index = value.indexOf(normalized);
-      if (index >= 0) best = Math.min(best, 2 + index / 100);
-    }
-  }
-  return best;
-}
-
 function commandShortcutLabel(command: EditorBlockExtensionSpec): string {
   return command.markdownShortcut?.trim() || command.name.replace(/-/g, " ");
-}
-
-function compareCommands(left: EditorBlockExtensionSpec, right: EditorBlockExtensionSpec, query: string): number {
-  const leftScore = commandSearchScore(left, query);
-  const rightScore = commandSearchScore(right, query);
-  if (leftScore !== rightScore) return leftScore - rightScore;
-  return left.label.localeCompare(right.label);
 }
 
 function slashSections(
@@ -917,9 +741,10 @@ function slashSections(
   query: string,
   recentCommandNames: string[],
 ): SlashSection[] {
-  const available = commands
-    .filter((command) => command.slashMenu && commandMatchesQuery(command, query))
-    .sort((left, right) => compareCommands(left, right, query));
+  const commandByName = new Map<string, EditorBlockExtensionSpec>(commands.map((command) => [command.name, command]));
+  const available = searchEditorCommandNames(commands, query)
+    .map((name) => commandByName.get(name))
+    .filter((command): command is EditorBlockExtensionSpec => Boolean(command));
   if (query.trim()) {
     return available.length ? [{ group: "Best matches", items: available }] : [];
   }
@@ -1064,13 +889,19 @@ function InlineToolbar({
   const [blockPanelOpen, setBlockPanelOpen] = useState(false);
   const blockTypeSpecs = inlineToolbarBlockSpecs(blockSpecs);
   const currentBlockSpec = activeBlockSpec(activeBlock, blockSpecs);
+  const toolbarMarks = useMemo(() => specs.map((spec) => spec.mark), [specs]);
+  const markStateSnapshot = useMemo(
+    () => selectionFormattingSnapshot(activeBlock, selection, toolbarMarks, storedMarks),
+    [activeBlock, selection, storedMarks, toolbarMarks],
+  );
+  const markStateFor = (mark: EditorTextMarkType): SelectionMarkState => markStateSnapshot[mark] ?? EMPTY_SELECTION_MARK_STATE;
   const linkAttrs = selectedMarkAttrs(activeBlock, selection, "link");
   const iconAttrs = selectedMarkAttrs(activeBlock, selection, "icon-link");
   const [href, setHref] = useState(linkAttrs?.href ?? "");
   const [icon, setIcon] = useState(iconAttrs?.icon ?? "");
   const hrefInputRef = useRef<HTMLInputElement>(null);
   const linkPanelOpen = panel?.mark.kind === "link" || panel?.mark.kind === "icon-link";
-  const panelMarkState = panel ? selectionMarkState(activeBlock, selection, panel.mark.mark, storedMarks) : null;
+  const panelMarkState = panel ? markStateFor(panel.mark.mark) : null;
   const panelSelectedColor = panel?.mark.kind === "color" && panelMarkState?.active && !panelMarkState.mixed
     ? panelMarkState.attrs?.color ?? "default"
     : "default";
@@ -1134,7 +965,7 @@ function InlineToolbar({
         </>
       ) : null}
       {specs.map((spec) => {
-        const markState = selectionMarkState(activeBlock, selection, spec.mark, storedMarks);
+        const markState = markStateFor(spec.mark);
         const currentColor = spec.kind === "color" && markState.active && !markState.mixed ? markState.attrs?.color : undefined;
         const title = currentColor && currentColor !== "default" ? `${spec.label}: ${currentColor}` : spec.label;
         const commonButtonProps = {
