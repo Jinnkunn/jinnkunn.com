@@ -64,6 +64,26 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "documentToMarkdown" => {
             unary::<Document, _>(payload, |document| Ok(document_to_markdown(&document)))
         }
+        "executeBlockCommand" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Input {
+                document: Document,
+                block_id: String,
+                command: BlockCommandInput,
+                source: BlockCommandSource,
+                slash_query: Option<String>,
+            }
+            unary::<Input, _>(payload, |input| {
+                Ok(execute_block_command(
+                    input.document,
+                    &input.block_id,
+                    input.command,
+                    input.source,
+                    input.slash_query.as_deref(),
+                ))
+            })
+        }
         "findEditorCommand" => unary::<String, _>(payload, |query| Ok(find_editor_command(&query))),
         "getBlockPlainText" => unary::<Block, _>(payload, |block| Ok(block_plain_text(&block))),
         "getSelectionFocus" => unary::<Selection, _>(payload, |selection| Ok(selection.focus)),
@@ -708,6 +728,21 @@ struct Command {
     placeholder: &'static str,
     #[serde(rename = "markdownShortcut", skip_serializing_if = "Option::is_none")]
     markdown_shortcut: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum BlockCommandSource {
+    Slash,
+    TurnInto,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BlockCommandInput {
+    #[serde(rename = "blockType")]
+    block_type: BlockType,
+    level: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2037,6 +2072,44 @@ fn set_block_type(
         create_collapsed_selection(block_id, utf16_len(&block_plain_text(block)) as i32)
     });
     transaction(TransactionKind::SetBlockType, before, after, selection)
+}
+
+fn text_without_last_slash_query(text: &str, query: &str) -> String {
+    let pattern = format!("/{query}");
+    if let Some(start) = text.rfind(&pattern) {
+        let end = start + pattern.len();
+        format!("{}{}", &text[..start], &text[end..])
+    } else {
+        text.to_string()
+    }
+}
+
+fn execute_block_command(
+    document: Document,
+    block_id: &str,
+    command: BlockCommandInput,
+    source: BlockCommandSource,
+    slash_query: Option<&str>,
+) -> Transaction {
+    let next_text = find_block(&document, block_id).and_then(|block| match source {
+        BlockCommandSource::Slash => {
+            let query = slash_query.unwrap_or_default();
+            Some(text_without_last_slash_query(
+                &block_plain_text(block),
+                query,
+            ))
+        }
+        BlockCommandSource::TurnInto => {
+            (block.block_type != BlockType::Divider).then(|| block_plain_text(block))
+        }
+    });
+    set_block_type(
+        document,
+        block_id,
+        command.block_type,
+        command.level,
+        next_text,
+    )
 }
 
 fn create_history(document: Document) -> History {
