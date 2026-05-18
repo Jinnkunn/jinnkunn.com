@@ -14,6 +14,7 @@ import {
   documentToMarkdown,
   editableMarkRangeAtSelection,
   executeBlockCommand,
+  executeTextMarkCommand,
   findEditorCommand,
   getBlockPlainText,
   insertBlockAfter,
@@ -231,6 +232,113 @@ test("editor-core: executes block commands for slash and turn-into sources", () 
   tx = executeBlockCommand(document, "missing", quote, "turn-into");
   assert.deepEqual(tx.after, document);
   assert.equal(tx.selection, undefined);
+});
+
+test("editor-core: executes text mark commands for stored marks and ranges", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Hello world" })],
+  });
+  const collapsed = createCollapsedSelection("a", 5);
+  let result = executeTextMarkCommand(document, collapsed, { command: "toggle", mark: "bold" });
+  assert.equal(result.type, "stored-marks");
+  assert.deepEqual(result.storedMarks, {
+    blockId: "a",
+    offset: 5,
+    marks: [{ type: "bold" }],
+  });
+
+  result = executeTextMarkCommand(document, collapsed, {
+    command: "toggle",
+    mark: "bold",
+    storedMarks: result.storedMarks.marks,
+  });
+  assert.equal(result.type, "stored-marks");
+  assert.deepEqual(result.storedMarks.marks, []);
+
+  result = executeTextMarkCommand(document, { anchor: { blockId: "a", offset: 6 }, focus: { blockId: "a", offset: 11 } }, {
+    command: "toggle",
+    mark: "bold",
+  });
+  assert.equal(result.type, "transaction");
+  assert.equal(result.transaction.kind, "toggle-text-mark");
+  assert.deepEqual(result.transaction.after.blocks[0].text, [
+    { text: "Hello " },
+    { text: "world", marks: [{ type: "bold" }] },
+  ]);
+
+  document = result.transaction.after;
+  result = executeTextMarkCommand(document, { anchor: { blockId: "a", offset: 0 }, focus: { blockId: "a", offset: 5 } }, {
+    attrs: { color: " gray " },
+    command: "set",
+    mark: "text-color",
+  });
+  assert.equal(result.type, "transaction");
+  assert.equal(result.transaction.kind, "set-text-mark");
+  assert.deepEqual(result.transaction.after.blocks[0].text[0], {
+    text: "Hello",
+    marks: [{ type: "text-color", attrs: { color: "gray" } }],
+  });
+});
+
+test("editor-core: executes link and icon-link commands as one core operation", () => {
+  let document = createDocument({
+    blocks: [createBlock({ id: "a", text: "Yimen Chen lineage" })],
+  });
+  const nameSelection = { anchor: { blockId: "a", offset: 0 }, focus: { blockId: "a", offset: 10 } };
+  let result = executeTextMarkCommand(document, nameSelection, {
+    command: "apply-link",
+    href: " /chen ",
+    icon: "",
+  });
+  assert.equal(result.type, "transaction");
+  assert.deepEqual(result.transaction.after.blocks[0].text[0], {
+    text: "Yimen Chen",
+    marks: [
+      { type: "link", attrs: { href: "/chen" } },
+      { type: "icon-link" },
+    ],
+  });
+
+  document = result.transaction.after;
+  result = executeTextMarkCommand(document, createCollapsedSelection("a", 2), {
+    command: "apply-link",
+    href: "/chen-updated",
+    icon: "spark",
+  });
+  assert.equal(result.type, "transaction");
+  assert.deepEqual(result.transaction.after.blocks[0].text[0].marks, [
+    { type: "link", attrs: { href: "/chen-updated" } },
+    { type: "icon-link", attrs: { icon: "spark" } },
+  ]);
+
+  document = result.transaction.after;
+  result = executeTextMarkCommand(document, createCollapsedSelection("a", 2), {
+    command: "apply-link",
+    href: "/chen-updated",
+    icon: null,
+  });
+  assert.equal(result.type, "transaction");
+  assert.deepEqual(result.transaction.after.blocks[0].text[0].marks, [
+    { type: "link", attrs: { href: "/chen-updated" } },
+  ]);
+
+  document = result.transaction.after;
+  result = executeTextMarkCommand(document, createCollapsedSelection("a", 2), {
+    command: "apply-link",
+    href: "",
+    icon: null,
+  });
+  assert.equal(result.type, "transaction");
+  assert.deepEqual(result.transaction.after.blocks[0].text, [
+    { text: "Yimen Chen lineage" },
+  ]);
+
+  result = executeTextMarkCommand(document, createCollapsedSelection("a", 17), {
+    command: "apply-link",
+    href: "/outside",
+    icon: null,
+  });
+  assert.deepEqual(result, { type: "noop" });
 });
 
 test("editor-core: block type commands and markdown conversion", () => {
