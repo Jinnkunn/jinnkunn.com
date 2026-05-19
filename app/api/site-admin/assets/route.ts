@@ -18,6 +18,7 @@ import type { ParseResult } from "@/lib/site-admin/request-types";
 export const runtime = "nodejs";
 
 const RATE_LIMIT = { namespace: "site-admin-assets", maxRequests: 20 };
+const ASSET_UPLOAD_BODY_MAX_BYTES = 8 * 1024 * 1024;
 
 type UploadCommand = {
   filename?: string;
@@ -94,7 +95,9 @@ export async function POST(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async (ctx) => {
-      const parsed = await readSiteAdminJsonCommand(req, parseUploadCommand);
+      const parsed = await readSiteAdminJsonCommand(req, parseUploadCommand, {
+        maxBytes: ASSET_UPLOAD_BODY_MAX_BYTES,
+      });
       if (!parsed.ok) return parsed.res;
       const { filename, contentType, base64 } = parsed.value;
 

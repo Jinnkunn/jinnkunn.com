@@ -287,7 +287,9 @@ const DEFAULT_MCP_SETTINGS = Object.freeze({
   allowNotesWrite: true,
   allowTodosWrite: true,
   allowProjectsWrite: true,
+  allowContactsWrite: true,
   allowSiteAdminWrite: true,
+  allowReleaseWrite: false,
   siteAdminWriteTarget: "api",
   siteAdminBaseUrl: "https://staging.jinkunchen.com",
   siteAdminFallbackToLocal: true,
@@ -307,7 +309,9 @@ function normalizeMcpSettings(raw = {}) {
     allowNotesWrite: input.allowNotesWrite !== false,
     allowTodosWrite: input.allowTodosWrite !== false,
     allowProjectsWrite: input.allowProjectsWrite !== false,
+    allowContactsWrite: input.allowContactsWrite !== false,
     allowSiteAdminWrite: input.allowSiteAdminWrite !== false,
+    allowReleaseWrite: input.allowReleaseWrite === true,
     siteAdminWriteTarget,
     siteAdminBaseUrl,
     siteAdminFallbackToLocal: input.siteAdminFallbackToLocal !== false,
@@ -442,6 +446,12 @@ function summarizeConfirmation(tool, preview = {}) {
   switch (tool) {
     case "notes.create_page":
       return `Create note: ${p.title || "Untitled"}`;
+    case "notes.update_page":
+      return `Update note: ${p.title || p.id || "Untitled"}`;
+    case "notes.archive_page":
+      return `Archive note: ${p.title || p.id || "unknown"}`;
+    case "notes.move_page":
+      return `Move note: ${p.title || p.id || "unknown"}`;
     case "notes.append_blocks":
       return `Append ${p.appendedLength || 0} chars to note`;
     case "todos.create":
@@ -450,10 +460,26 @@ function summarizeConfirmation(tool, preview = {}) {
       return `Update todo: ${p.id || "unknown"}`;
     case "todos.complete":
       return `Complete todo: ${p.id || "unknown"}`;
+    case "todos.archive":
+      return `Archive todo: ${p.title || p.id || "unknown"}`;
     case "projects.create":
       return `Create project: ${p.title || "Untitled Project"}`;
+    case "projects.update":
+      return `Update project: ${p.title || p.id || "unknown"}`;
+    case "projects.archive":
+      return `Archive project: ${p.title || p.id || "unknown"}`;
+    case "projects.unarchive":
+      return `Unarchive project: ${p.title || p.id || "unknown"}`;
     case "projects.add_link":
       return `Link ${p.targetType || "item"} to project`;
+    case "projects.remove_link":
+      return `Remove project link: ${p.linkId || p.targetId || "unknown"}`;
+    case "contacts.create":
+      return `Create contact: ${p.displayName || "Untitled Contact"}`;
+    case "contacts.update":
+      return `Update contact: ${p.displayName || p.id || "unknown"}`;
+    case "contacts.archive":
+      return `Archive contact: ${p.displayName || p.id || "unknown"}`;
     case "calendar.create_calendar":
       return `Create calendar: ${p.title || "Untitled"}`;
     case "calendar.update_calendar":
@@ -474,6 +500,46 @@ function summarizeConfirmation(tool, preview = {}) {
       return `Delete site page: /${p.slug || "unknown"}`;
     case "siteAdmin.create_page":
       return `Create site page: /${p.slug || "untitled"}`;
+    case "siteAdmin.update_now":
+      return `Update Now: ${textPreview(p.text || "", 80) || "status"}`;
+    case "siteAdmin.update_now_history":
+      return `Update Now history: ${p.id || "unknown"}`;
+    case "siteAdmin.delete_now_history":
+      return `Delete Now history: ${p.id || "unknown"}`;
+    case "siteAdmin.create_post":
+      return `Create post: /blog/${p.slug || "untitled"}`;
+    case "siteAdmin.update_post":
+      return `Update post: /blog/${p.slug || "unknown"}`;
+    case "siteAdmin.delete_post":
+      return `Delete post: /blog/${p.slug || "unknown"}`;
+    case "siteAdmin.move_post":
+      return `Move post: ${p.fromSlug || "unknown"} -> ${p.toSlug || "unknown"}`;
+    case "siteAdmin.update_component":
+      return `Update component: ${p.name || "unknown"}`;
+    case "siteAdmin.upload_asset":
+      return `Upload asset: ${p.filename || p.sourcePath || "asset"}`;
+    case "siteAdmin.delete_asset":
+      return `Delete asset: ${p.key || "unknown"}`;
+    case "siteAdmin.update_settings":
+      return `Update Site Admin settings: ${p.rowId || "settings"}`;
+    case "siteAdmin.create_nav_item":
+      return `Create navigation item: ${p.label || p.href || "untitled"}`;
+    case "siteAdmin.update_nav_item":
+      return `Update navigation item: ${p.rowId || "unknown"}`;
+    case "siteAdmin.set_route_override":
+      return `Set route override: ${p.pageId || "page"} -> ${p.routePath || "/"}`;
+    case "siteAdmin.set_protected_route":
+      return `Set protected route: ${p.pageId || p.path || "route"}`;
+    case "siteAdmin.smart_release":
+      return "Start Smart Release";
+    case "siteAdmin.start_release_job":
+      return `Start release job: ${p.action || "unknown"}`;
+    case "siteAdmin.cancel_release_job":
+      return `Cancel release job: ${p.id || "unknown"}`;
+    case "siteAdmin.retry_release_job":
+      return `Retry release job: ${p.id || "unknown"}`;
+    case "siteAdmin.publish_calendar_observations_live":
+      return "Publish calendar observations to live";
     default:
       return tool;
   }
@@ -549,11 +615,11 @@ function markConfirmationConsumed(confirmationId) {
   writeConfirmations(entries);
 }
 
-function prepareWrite(tool, capability, args, preview) {
+function prepareWrite(tool, capability, args, preview, options = {}) {
   if (args.dryRun) return dryRunResult(tool, preview);
   assertWritesAllowed(capability);
   const settings = readMcpSettings();
-  if (!settings.requireConfirmationForWrites) return null;
+  if (!options.alwaysConfirm && !settings.requireConfirmationForWrites) return null;
   if (!args.confirmationId) return createOrReusePendingConfirmation(tool, args, preview);
   return consumeApprovedConfirmation(tool, args);
 }
@@ -690,7 +756,9 @@ function getWorkspaceContext(db, args = {}) {
       allowNotesWrite: settings.allowNotesWrite,
       allowTodosWrite: settings.allowTodosWrite,
       allowProjectsWrite: settings.allowProjectsWrite,
+      allowContactsWrite: settings.allowContactsWrite,
       allowSiteAdminWrite: settings.allowSiteAdminWrite,
+      allowReleaseWrite: settings.allowReleaseWrite,
       allowCalendarWrite: settings.allowCalendarWrite,
     },
     counts,
@@ -810,6 +878,166 @@ function appendBlocks(db, args = {}) {
   return { note: noteRow(db, pageId) };
 }
 
+function listNotes(db, args = {}) {
+  const includeArchived = asBool(args.includeArchived, false);
+  const parentProvided = Object.hasOwn(args, "parentId");
+  const parentId = nullableText(args.parentId, 96);
+  const rootOnly = asBool(args.rootOnly, parentProvided && !parentId);
+  const query = cleanText(args.query, 200);
+  const limit = limitValue(args.limit, 80, 300);
+  let sql = `
+    SELECT n.id, n.parent_id, n.title, n.body_mdx, n.icon, n.sort_order,
+           n.archived_at, n.created_at, n.updated_at,
+           (SELECT COUNT(*) FROM notes c
+             WHERE c.parent_id = n.id AND c.archived_at IS NULL) AS child_count
+      FROM notes n
+     WHERE ${includeArchived ? "1 = 1" : "n.archived_at IS NULL"}
+  `;
+  const params = [];
+  if (rootOnly) {
+    sql += " AND n.parent_id IS NULL";
+  } else if (parentProvided) {
+    sql += " AND n.parent_id = ?";
+    params.push(parentId);
+  }
+  if (query) {
+    sql += " AND (n.title LIKE ? ESCAPE '\\' OR n.body_mdx LIKE ? ESCAPE '\\')";
+    const pattern = likePattern(query);
+    params.push(pattern, pattern);
+  }
+  sql += " ORDER BY n.archived_at IS NOT NULL, n.parent_id IS NOT NULL, n.sort_order, n.updated_at DESC LIMIT ?";
+  params.push(limit);
+  return {
+    notes: db.prepare(sql).all(...params).map((row) => ({
+      ...rowToCamel(row),
+      childCount: Number(row.child_count || 0),
+      bodyPreview: textPreview(row.body_mdx || "", 360),
+    })),
+  };
+}
+
+function noteDescendantIds(db, rootId) {
+  const ids = [];
+  const queue = [rootId];
+  while (queue.length) {
+    const id = queue.shift();
+    ids.push(id);
+    const children = db.prepare(`
+      SELECT id
+        FROM notes
+       WHERE parent_id = ? AND archived_at IS NULL
+       ORDER BY sort_order
+    `).all(id).map((row) => row.id);
+    queue.push(...children);
+  }
+  return ids;
+}
+
+function resolveNoteSortOrder(db, parentId, args = {}) {
+  const siblingWhere = parentId
+    ? "archived_at IS NULL AND parent_id = ?"
+    : "archived_at IS NULL AND parent_id IS NULL";
+  const siblingParams = parentId ? [parentId] : [];
+  const beforeId = cleanText(args.beforeId, 96);
+  if (beforeId) {
+    const row = db.prepare("SELECT parent_id, sort_order FROM notes WHERE id = ? AND archived_at IS NULL").get(beforeId);
+    if (row && (row.parent_id || null) === (parentId || null)) return Number(row.sort_order || 0) - 1;
+  }
+  const afterId = cleanText(args.afterId, 96);
+  if (afterId) {
+    const row = db.prepare("SELECT parent_id, sort_order FROM notes WHERE id = ? AND archived_at IS NULL").get(afterId);
+    if (row && (row.parent_id || null) === (parentId || null)) return Number(row.sort_order || 0) + 1;
+  }
+  return maxSortOrder(db, "notes", siblingWhere, siblingParams) + 1;
+}
+
+function updateNote(db, args = {}) {
+  const id = cleanText(args.id || args.pageId, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = noteRow(db, id);
+  if (!existing) throw new Error("note was not found.");
+  const next = {
+    title: Object.hasOwn(args, "title")
+      ? cleanText(args.title || "Untitled", 220) || "Untitled"
+      : existing.title,
+    bodyMdx: Object.hasOwn(args, "bodyMdx")
+      ? cleanText(args.bodyMdx || "", 100_000)
+      : existing.bodyMdx,
+    icon: Object.hasOwn(args, "icon") ? nullableText(args.icon, 80) : existing.icon,
+  };
+  const preview = {
+    id,
+    title: next.title,
+    previousTitle: existing.title,
+    bodyPreview: textPreview(next.bodyMdx, 900),
+  };
+  const confirmation = prepareWrite("notes.update_page", "allowNotesWrite", args, preview);
+  if (confirmation) return confirmation;
+  const updatedAt = nowMs();
+  db.prepare(`
+    UPDATE notes
+       SET title = ?, body_mdx = ?, icon = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(next.title, next.bodyMdx, next.icon, updatedAt, id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "notes.update_page", id, title: next.title });
+  return { note: noteRow(db, id) };
+}
+
+function moveNote(db, args = {}) {
+  const id = cleanText(args.id || args.pageId, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = noteRow(db, id);
+  if (!existing) throw new Error("note was not found.");
+  const parentId = Object.hasOwn(args, "parentId") ? nullableText(args.parentId, 96) : existing.parentId;
+  if (parentId) {
+    const parent = noteRow(db, parentId);
+    if (!parent) throw new Error("MISSING_PARENT: parentId did not match an active note.");
+    if (noteDescendantIds(db, id).includes(parentId)) {
+      throw new Error("INVALID_PARENT: cannot move a note under itself or its descendant.");
+    }
+  }
+  const sortOrder = resolveNoteSortOrder(db, parentId, args);
+  const preview = {
+    id,
+    title: existing.title,
+    previousParentId: existing.parentId,
+    parentId,
+    sortOrder,
+  };
+  const confirmation = prepareWrite("notes.move_page", "allowNotesWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    UPDATE notes
+       SET parent_id = ?, sort_order = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(parentId, sortOrder, nowMs(), id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "notes.move_page", id, parentId, sortOrder });
+  return { note: noteRow(db, id) };
+}
+
+function archiveNote(db, args = {}) {
+  const id = cleanText(args.id || args.pageId, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = noteRow(db, id);
+  if (!existing) throw new Error("note was not found.");
+  const ids = asBool(args.cascade, true) ? noteDescendantIds(db, id) : [id];
+  const childCount = Math.max(0, ids.length - 1);
+  const preview = { id, title: existing.title, archivedCount: ids.length, childCount };
+  const confirmation = prepareWrite("notes.archive_page", "allowNotesWrite", args, preview);
+  if (confirmation) return confirmation;
+  const now = nowMs();
+  db.prepare(`
+    UPDATE notes
+       SET archived_at = ?, updated_at = ?
+     WHERE id IN (${ids.map(() => "?").join(",")}) AND archived_at IS NULL
+  `).run(now, now, ...ids);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "notes.archive_page", id, archivedCount: ids.length });
+  return { archived: ids, archivedCount: ids.length };
+}
+
 function createTodo(db, args = {}) {
   const title = cleanText(args.title || "Untitled", 220) || "Untitled";
   const projectId = nullableText(args.projectId, 96);
@@ -894,6 +1122,58 @@ function completeTodo(db, args = {}) {
   }, "todos.complete");
 }
 
+function listTodos(db, args = {}) {
+  const status = ["open", "completed", "all"].includes(args.status) ? args.status : "open";
+  const includeArchived = asBool(args.includeArchived, false);
+  const projectId = nullableText(args.projectId, 96);
+  const query = cleanText(args.query, 200);
+  const limit = limitValue(args.limit, 80, 300);
+  let sql = `
+    SELECT id, title, notes, project_id, due_at, scheduled_start_at, scheduled_end_at,
+           estimated_minutes, sort_order, completed_at, archived_at, created_at, updated_at
+      FROM todos
+     WHERE ${includeArchived ? "1 = 1" : "archived_at IS NULL"}
+  `;
+  const params = [];
+  if (status === "open") sql += " AND completed_at IS NULL";
+  if (status === "completed") sql += " AND completed_at IS NOT NULL";
+  if (projectId) {
+    sql += " AND project_id = ?";
+    params.push(projectId);
+  }
+  if (query) {
+    sql += " AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')";
+    const pattern = likePattern(query);
+    params.push(pattern, pattern);
+  }
+  sql += `
+     ORDER BY archived_at IS NOT NULL,
+              completed_at IS NOT NULL,
+              COALESCE(scheduled_start_at, due_at, 9223372036854775807),
+              sort_order,
+              updated_at DESC
+     LIMIT ?
+  `;
+  params.push(limit);
+  return { todos: rowsToCamel(db.prepare(sql).all(...params)) };
+}
+
+function archiveTodo(db, args = {}) {
+  const id = cleanText(args.id, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = todoRow(db, id);
+  if (!existing) throw new Error("todo was not found.");
+  const preview = { id, title: existing.title, projectId: existing.projectId };
+  const confirmation = prepareWrite("todos.archive", "allowTodosWrite", args, preview);
+  if (confirmation) return confirmation;
+  const now = nowMs();
+  db.prepare("UPDATE todos SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL")
+    .run(now, now, id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "todos.archive", id, title: existing.title });
+  return { archived: true, id };
+}
+
 function createProject(db, args = {}) {
   const title = cleanText(args.title || "Untitled Project", 180) || "Untitled Project";
   const description = cleanText(args.description, 5_000);
@@ -917,6 +1197,30 @@ function createProject(db, args = {}) {
   return { project: projectRow(db, id) };
 }
 
+function listProjects(db, args = {}) {
+  const status = ["active", "paused", "completed", "all"].includes(args.status) ? args.status : "all";
+  const includeArchived = asBool(args.includeArchived, false);
+  const query = cleanText(args.query, 200);
+  const limit = limitValue(args.limit, 80, 300);
+  let where = `WHERE ${includeArchived ? "1 = 1" : "p.archived_at IS NULL"}`;
+  const params = [];
+  if (status !== "all") {
+    where += " AND p.status = ?";
+    params.push(status);
+  }
+  if (query) {
+    where += " AND (p.title LIKE ? ESCAPE '\\' OR p.description LIKE ? ESCAPE '\\')";
+    const pattern = likePattern(query);
+    params.push(pattern, pattern);
+  }
+  const rows = db.prepare(`
+    ${projectSelectSql(where)}
+     ORDER BY p.archived_at IS NOT NULL, p.pinned_at DESC, p.status, p.sort_order, p.updated_at DESC
+     LIMIT ?
+  `).all(...params, limit);
+  return { projects: rowsToCamel(rows) };
+}
+
 function getProject(db, args = {}) {
   const id = cleanText(args.id, 96);
   if (!id) throw new Error("id is required.");
@@ -936,6 +1240,75 @@ function getProject(db, args = {}) {
      ORDER BY completed_at IS NOT NULL, COALESCE(scheduled_start_at, due_at, 9223372036854775807), sort_order
   `).all(id));
   return { project, links, todos };
+}
+
+function updateProject(db, args = {}) {
+  const id = cleanText(args.id, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = projectRow(db, id);
+  if (!existing || existing.archivedAt) throw new Error("project was not found.");
+  const patch = asObject(args.patch);
+  const status = patch.status === undefined
+    ? existing.status
+    : ["active", "paused", "completed"].includes(patch.status)
+      ? patch.status
+      : "active";
+  const next = {
+    title: patch.title === undefined
+      ? existing.title
+      : cleanText(patch.title || "Untitled Project", 180) || "Untitled Project",
+    description: patch.description === undefined ? existing.description : cleanText(patch.description, 5_000),
+    status,
+    color: patch.color === undefined ? existing.color : nullableText(patch.color, 40),
+    icon: patch.icon === undefined ? existing.icon : nullableText(patch.icon, 80),
+    dueAt: patch.dueAt === undefined ? existing.dueAt : asInt(patch.dueAt, null),
+    pinnedAt: patch.pinned === true
+      ? (existing.pinnedAt || nowMs())
+      : patch.pinned === false
+        ? null
+        : patch.pinnedAt === undefined
+          ? existing.pinnedAt
+          : asInt(patch.pinnedAt, null),
+  };
+  const preview = { id, title: next.title, patch, next };
+  const confirmation = prepareWrite("projects.update", "allowProjectsWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    UPDATE projects
+       SET title = ?, description = ?, status = ?, color = ?, icon = ?, due_at = ?,
+           pinned_at = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(
+    next.title,
+    next.description,
+    next.status,
+    next.color,
+    next.icon,
+    next.dueAt,
+    next.pinnedAt,
+    nowMs(),
+    id,
+  );
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "projects.update", id, patch });
+  return { project: projectRow(db, id) };
+}
+
+function setProjectArchived(db, args = {}, archived) {
+  const id = cleanText(args.id, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = projectRow(db, id);
+  if (!existing) throw new Error("project was not found.");
+  const tool = archived ? "projects.archive" : "projects.unarchive";
+  const preview = { id, title: existing.title, archivedAt: archived ? nowMs() : null };
+  const confirmation = prepareWrite(tool, "allowProjectsWrite", args, preview);
+  if (confirmation) return confirmation;
+  const now = nowMs();
+  db.prepare("UPDATE projects SET archived_at = ?, updated_at = ? WHERE id = ?")
+    .run(archived ? now : null, now, id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool, id, title: existing.title });
+  return { project: projectRow(db, id), archived };
 }
 
 function addProjectLink(db, args = {}) {
@@ -970,6 +1343,41 @@ function addProjectLink(db, args = {}) {
   return { project: getProject(db, { id: projectId }) };
 }
 
+function removeProjectLink(db, args = {}) {
+  const projectId = cleanText(args.projectId, 96);
+  if (!projectId) throw new Error("projectId is required.");
+  if (!existsById(db, "projects", projectId)) {
+    throw new Error("MISSING_PROJECT: projectId did not match an active project.");
+  }
+  const linkId = cleanText(args.linkId || args.id, 96);
+  const targetType = cleanText(args.targetType, 40);
+  const targetId = cleanText(args.targetId || args.url, 2_000);
+  let row = null;
+  if (linkId) {
+    row = db.prepare("SELECT * FROM project_links WHERE id = ? AND project_id = ?").get(linkId, projectId);
+  } else if (targetType && targetId) {
+    row = db.prepare(`
+      SELECT *
+        FROM project_links
+       WHERE project_id = ? AND target_type = ? AND target_id = ?
+    `).get(projectId, targetType, targetId);
+  }
+  if (!row) throw new Error("project link was not found.");
+  const preview = {
+    projectId,
+    linkId: row.id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    label: row.label,
+  };
+  const confirmation = prepareWrite("projects.remove_link", "allowProjectsWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare("DELETE FROM project_links WHERE id = ? AND project_id = ?").run(row.id, projectId);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "projects.remove_link", projectId, linkId: row.id });
+  return { removed: true, linkId: row.id, project: getProject(db, { id: projectId }) };
+}
+
 function contactRow(db, id) {
   const row = db.prepare(`
     SELECT id, display_name, given_name, family_name, company, role,
@@ -978,6 +1386,10 @@ function contactRow(db, id) {
       FROM contacts
      WHERE id = ? AND archived_at IS NULL
   `).get(id);
+  return contactFromRow(row);
+}
+
+function contactFromRow(row) {
   if (!row) return null;
   return {
     ...rowToCamel(row),
@@ -985,6 +1397,206 @@ function contactRow(db, id) {
     phones: JSON.parse(row.phones_json || "[]"),
     tags: JSON.parse(row.tags_json || "[]"),
   };
+}
+
+function normalizeContactJsonList(value, maxItemLength = 400) {
+  if (!Array.isArray(value)) return "[]";
+  const out = value
+    .map((item) => {
+      if (item && typeof item === "object") {
+        const cleaned = {};
+        for (const [key, raw] of Object.entries(item)) {
+          const text = cleanText(raw, maxItemLength);
+          if (text) cleaned[key] = text;
+        }
+        return Object.keys(cleaned).length ? cleaned : null;
+      }
+      return cleanText(item, maxItemLength);
+    })
+    .filter((item) => item && (typeof item !== "string" || item));
+  return JSON.stringify(out.slice(0, 20));
+}
+
+function normalizeBirthdayPart(value, min, max) {
+  const parsed = asInt(value, null);
+  if (parsed === null) return null;
+  if (parsed < min || parsed > max) return null;
+  return parsed;
+}
+
+function buildContactData(args = {}, existing = {}) {
+  const patch = asObject(args.patch);
+  const source = Object.keys(patch).length ? patch : args;
+  const displayName = Object.hasOwn(source, "displayName") || Object.hasOwn(source, "name")
+    ? cleanText(source.displayName || source.name || "Untitled Contact", 220) || "Untitled Contact"
+    : existing.displayName || "Untitled Contact";
+  return {
+    displayName,
+    givenName: Object.hasOwn(source, "givenName") ? nullableText(source.givenName, 160) : existing.givenName || null,
+    familyName: Object.hasOwn(source, "familyName") ? nullableText(source.familyName, 160) : existing.familyName || null,
+    company: Object.hasOwn(source, "company") ? nullableText(source.company, 220) : existing.company || null,
+    role: Object.hasOwn(source, "role") ? nullableText(source.role, 220) : existing.role || null,
+    birthdayMonth: Object.hasOwn(source, "birthdayMonth")
+      ? normalizeBirthdayPart(source.birthdayMonth, 1, 12)
+      : existing.birthdayMonth ?? null,
+    birthdayDay: Object.hasOwn(source, "birthdayDay")
+      ? normalizeBirthdayPart(source.birthdayDay, 1, 31)
+      : existing.birthdayDay ?? null,
+    birthdayYear: Object.hasOwn(source, "birthdayYear")
+      ? normalizeBirthdayPart(source.birthdayYear, 1, 9999)
+      : existing.birthdayYear ?? null,
+    emailsJson: Object.hasOwn(source, "emails")
+      ? normalizeContactJsonList(source.emails)
+      : JSON.stringify(existing.emails || []),
+    phonesJson: Object.hasOwn(source, "phones")
+      ? normalizeContactJsonList(source.phones)
+      : JSON.stringify(existing.phones || []),
+    tagsJson: Object.hasOwn(source, "tags")
+      ? normalizeContactJsonList(source.tags, 80)
+      : JSON.stringify(existing.tags || []),
+    notes: Object.hasOwn(source, "notes") ? cleanText(source.notes, 20_000) : existing.notes || "",
+    nextFollowUpAt: Object.hasOwn(source, "nextFollowUpAt")
+      ? asInt(source.nextFollowUpAt, null)
+      : existing.nextFollowUpAt ?? null,
+    cadenceDays: Object.hasOwn(source, "cadenceDays")
+      ? asInt(source.cadenceDays, null)
+      : existing.cadenceDays ?? null,
+    pinnedAt: source.pinned === true
+      ? (existing.pinnedAt || nowMs())
+      : source.pinned === false
+        ? null
+        : Object.hasOwn(source, "pinnedAt")
+          ? asInt(source.pinnedAt, null)
+          : existing.pinnedAt ?? null,
+  };
+}
+
+function listContacts(db, args = {}) {
+  const includeArchived = asBool(args.includeArchived, false);
+  const query = cleanText(args.query, 200);
+  const tag = cleanText(args.tag, 80);
+  const limit = limitValue(args.limit, 80, 300);
+  let sql = `
+    SELECT id, display_name, given_name, family_name, company, role,
+           birthday_month, birthday_day, birthday_year, emails_json, phones_json, tags_json,
+           notes, next_follow_up_at, cadence_days, pinned_at, archived_at, created_at, updated_at
+      FROM contacts
+     WHERE ${includeArchived ? "1 = 1" : "archived_at IS NULL"}
+  `;
+  const params = [];
+  if (query) {
+    sql += `
+       AND (display_name LIKE ? ESCAPE '\\'
+         OR company LIKE ? ESCAPE '\\'
+         OR role LIKE ? ESCAPE '\\'
+         OR notes LIKE ? ESCAPE '\\')
+    `;
+    const pattern = likePattern(query);
+    params.push(pattern, pattern, pattern, pattern);
+  }
+  if (tag) {
+    sql += " AND tags_json LIKE ? ESCAPE '\\'";
+    params.push(likePattern(tag));
+  }
+  sql += " ORDER BY archived_at IS NOT NULL, pinned_at DESC, updated_at DESC LIMIT ?";
+  params.push(limit);
+  return {
+    contacts: db.prepare(sql).all(...params).map(contactFromRow).filter(Boolean),
+  };
+}
+
+function createContact(db, args = {}) {
+  const now = nowMs();
+  const id = randId("contact");
+  const data = buildContactData(args);
+  const preview = { id, displayName: data.displayName, company: data.company, role: data.role };
+  const confirmation = prepareWrite("contacts.create", "allowContactsWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    INSERT INTO contacts
+      (id, display_name, given_name, family_name, company, role,
+       birthday_month, birthday_day, birthday_year, emails_json, phones_json, tags_json,
+       notes, next_follow_up_at, cadence_days, pinned_at, archived_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+  `).run(
+    id,
+    data.displayName,
+    data.givenName,
+    data.familyName,
+    data.company,
+    data.role,
+    data.birthdayMonth,
+    data.birthdayDay,
+    data.birthdayYear,
+    data.emailsJson,
+    data.phonesJson,
+    data.tagsJson,
+    data.notes,
+    data.nextFollowUpAt,
+    data.cadenceDays,
+    data.pinnedAt,
+    now,
+    now,
+  );
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "contacts.create", id, displayName: data.displayName });
+  return { contact: contactRow(db, id) };
+}
+
+function updateContact(db, args = {}) {
+  const id = cleanText(args.id, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = contactRow(db, id);
+  if (!existing) throw new Error("contact was not found.");
+  const data = buildContactData(args, existing);
+  const preview = { id, displayName: data.displayName, patch: asObject(args.patch) };
+  const confirmation = prepareWrite("contacts.update", "allowContactsWrite", args, preview);
+  if (confirmation) return confirmation;
+  db.prepare(`
+    UPDATE contacts
+       SET display_name = ?, given_name = ?, family_name = ?, company = ?, role = ?,
+           birthday_month = ?, birthday_day = ?, birthday_year = ?,
+           emails_json = ?, phones_json = ?, tags_json = ?, notes = ?,
+           next_follow_up_at = ?, cadence_days = ?, pinned_at = ?, updated_at = ?
+     WHERE id = ? AND archived_at IS NULL
+  `).run(
+    data.displayName,
+    data.givenName,
+    data.familyName,
+    data.company,
+    data.role,
+    data.birthdayMonth,
+    data.birthdayDay,
+    data.birthdayYear,
+    data.emailsJson,
+    data.phonesJson,
+    data.tagsJson,
+    data.notes,
+    data.nextFollowUpAt,
+    data.cadenceDays,
+    data.pinnedAt,
+    nowMs(),
+    id,
+  );
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "contacts.update", id, displayName: data.displayName });
+  return { contact: contactRow(db, id) };
+}
+
+function archiveContact(db, args = {}) {
+  const id = cleanText(args.id, 96);
+  if (!id) throw new Error("id is required.");
+  const existing = contactRow(db, id);
+  if (!existing) throw new Error("contact was not found.");
+  const preview = { id, displayName: existing.displayName };
+  const confirmation = prepareWrite("contacts.archive", "allowContactsWrite", args, preview);
+  if (confirmation) return confirmation;
+  const now = nowMs();
+  db.prepare("UPDATE contacts SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL")
+    .run(now, now, id);
+  markConfirmationConsumed(args.confirmationId);
+  writeAudit({ tool: "contacts.archive", id, displayName: existing.displayName });
+  return { archived: true, id };
 }
 
 function getLocalCalendar(db, id) {
@@ -1642,6 +2254,14 @@ function siteAdminCredentialKey(kind, baseUrl) {
   return `site-admin:${kind}::${normalized}`;
 }
 
+function siteAdminCredentialKeys(kind, baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl).toLowerCase() || "default";
+  return [
+    `site-admin:${kind}::${normalized}`,
+    `${kind}::${normalized}`,
+  ];
+}
+
 function readSecureValue(db, key) {
   try {
     const row = db.prepare("SELECT value FROM secure_values WHERE key = ?").get(key);
@@ -1649,6 +2269,14 @@ function readSecureValue(db, key) {
   } catch {
     return "";
   }
+}
+
+function readSiteAdminCredential(db, kind, baseUrl) {
+  for (const key of siteAdminCredentialKeys(kind, baseUrl)) {
+    const value = readSecureValue(db, key);
+    if (value) return value;
+  }
+  return "";
 }
 
 function resolveSiteAdminApiConfig(db, args = {}) {
@@ -1661,15 +2289,15 @@ function resolveSiteAdminApiConfig(db, args = {}) {
       SITE_ADMIN_STAGING_BASE_URL,
   );
   const authToken = cleanText(args.authToken || process.env.WORKSPACE_MCP_SITE_ADMIN_AUTH_TOKEN, 20_000)
-    || readSecureValue(db, siteAdminCredentialKey("token", baseUrl));
+    || readSiteAdminCredential(db, "token", baseUrl);
   const cfAccessClientId = cleanText(
     args.cfAccessClientId || process.env.WORKSPACE_MCP_SITE_ADMIN_CF_ACCESS_CLIENT_ID,
     2_000,
-  ) || readSecureValue(db, siteAdminCredentialKey("cf-access-id", baseUrl));
+  ) || readSiteAdminCredential(db, "cf-access-id", baseUrl);
   const cfAccessClientSecret = cleanText(
     args.cfAccessClientSecret || process.env.WORKSPACE_MCP_SITE_ADMIN_CF_ACCESS_CLIENT_SECRET,
     20_000,
-  ) || readSecureValue(db, siteAdminCredentialKey("cf-access-secret", baseUrl));
+  ) || readSiteAdminCredential(db, "cf-access-secret", baseUrl);
   return {
     baseUrl,
     authToken,
@@ -1765,6 +2393,33 @@ function siteAdminApiRequestSync(api, method, requestPath, body = null) {
     data: bodyRecord.ok === true ? bodyRecord.data : bodyRecord,
     raw: parsed.body,
   };
+}
+
+function requireSiteAdminApi(db, args = {}) {
+  const { api } = selectSiteAdminPageBackend(db, { ...args, backend: "api" });
+  return api;
+}
+
+function siteAdminApiCall(db, args, method, requestPath, body = null) {
+  const api = requireSiteAdminApi(db, args);
+  const response = siteAdminApiRequestSync(api, method, requestPath, body);
+  return { api, response, data: response.data };
+}
+
+function prepareSiteAdminWrite(tool, args, preview, options = {}) {
+  return prepareWrite(
+    tool,
+    options.capability || "allowSiteAdminWrite",
+    args,
+    preview,
+    { alwaysConfirm: options.alwaysConfirm === true },
+  );
+}
+
+function completeSiteAdminApiWrite(args, audit, suggestion = null) {
+  markConfirmationConsumed(args.confirmationId);
+  if (suggestion) writeContentPublishSuggestion(suggestion.method, suggestion.path);
+  writeAudit(audit);
 }
 
 function remotePageFromApi(row, index = -1) {
@@ -2015,6 +2670,365 @@ function updateSiteAdminHome(db, args = {}) {
     sourceVersion: { fileSha: sha1Hex(source) },
     relPath,
   };
+}
+
+const NOW_FILENAME = "now.json";
+const NOW_STATUS_MAX_LENGTH = 280;
+const NOW_CONTEXT_MAX_LENGTH = 160;
+const NOW_LOCATION_MAX_LENGTH = 120;
+const NOW_UPDATES_MAX_COUNT = 40;
+const NOW_DISPLAY_TIME_ZONE = "America/Halifax";
+const NOW_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function nowFilePath(contentRoot) {
+  return siteContentFilePath(contentRoot, NOW_FILENAME);
+}
+
+function normalizeNowUpdate(item) {
+  const input = asObject(item);
+  const text = cleanText(input.text, NOW_STATUS_MAX_LENGTH);
+  const at = cleanText(input.at, 80);
+  if (!text || !at || Number.isNaN(new Date(at).getTime())) return null;
+  return {
+    id: cleanText(input.id, 120) || `${at.replace(/\D+/g, "").slice(0, 14)}-${sha1Hex(`${at}\n${text}`).slice(0, 8)}`,
+    text,
+    at,
+  };
+}
+
+function normalizeNowData(raw = {}) {
+  const input = asObject(raw);
+  const currentRaw = asObject(input.current);
+  const updates = Array.isArray(input.updates)
+    ? input.updates.map(normalizeNowUpdate).filter(Boolean)
+    : [];
+  const links = Array.isArray(input.links)
+    ? input.links.map((item) => {
+        const row = asObject(item);
+        const label = cleanText(row.label, 120);
+        const href = cleanText(row.href, 1_000);
+        return label && href ? { label, href } : null;
+      }).filter(Boolean)
+    : [];
+  return {
+    current: {
+      text: cleanText(currentRaw.text, NOW_STATUS_MAX_LENGTH),
+      context: cleanText(currentRaw.context, NOW_CONTEXT_MAX_LENGTH) || undefined,
+      location: cleanText(currentRaw.location, NOW_LOCATION_MAX_LENGTH) || undefined,
+      updatedAt: cleanText(currentRaw.updatedAt, 80) || new Date().toISOString(),
+    },
+    updates: sortNowUpdates(updates).slice(0, NOW_UPDATES_MAX_COUNT),
+    links,
+  };
+}
+
+function sortNowUpdates(updates) {
+  return updates
+    .map((item, index) => ({ item, index, atMs: new Date(item.at).getTime() }))
+    .sort((a, b) => {
+      const aTime = Number.isFinite(a.atMs) ? a.atMs : 0;
+      const bTime = Number.isFinite(b.atMs) ? b.atMs : 0;
+      if (aTime !== bTime) return bTime - aTime;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
+}
+
+function readSiteNow(contentRoot) {
+  const filePath = nowFilePath(contentRoot);
+  try {
+    const source = fs.readFileSync(filePath, "utf8");
+    return {
+      data: normalizeNowData(JSON.parse(source)),
+      relPath: NOW_FILENAME,
+      filePath,
+      source,
+      sourceVersion: { fileSha: sha1Hex(source) },
+    };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    const fallback = normalizeNowData({});
+    return {
+      data: fallback,
+      relPath: NOW_FILENAME,
+      filePath,
+      source: "",
+      sourceVersion: { fileSha: "" },
+    };
+  }
+}
+
+function readNowPart(parts, type) {
+  const value = parts.find((part) => part.type === type)?.value || "";
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nowZonedParts(date = new Date(), timeZone = NOW_DISPLAY_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  return {
+    year: readNowPart(parts, "year"),
+    month: readNowPart(parts, "month"),
+    day: readNowPart(parts, "day"),
+    hour: readNowPart(parts, "hour"),
+    minute: readNowPart(parts, "minute"),
+    second: readNowPart(parts, "second"),
+  };
+}
+
+function todayNowDateInput(now = new Date()) {
+  const parts = nowZonedParts(now);
+  return [
+    String(parts.year).padStart(4, "0"),
+    String(parts.month).padStart(2, "0"),
+    String(parts.day).padStart(2, "0"),
+  ].join("-");
+}
+
+function normalizeNowDateInput(value, now = new Date()) {
+  const input = cleanText(value, 40);
+  if (!NOW_DATE_RE.test(input)) return todayNowDateInput(now);
+  const [year, month, day] = input.split("-").map(Number);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    return todayNowDateInput(now);
+  }
+  return input;
+}
+
+function nowOffsetMsForZone(date, timeZone = NOW_DISPLAY_TIME_ZONE) {
+  const parts = nowZonedParts(date, timeZone);
+  const zonedAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return zonedAsUtc - date.getTime();
+}
+
+function nowTimestampForDate(dateInput, preserveTimeFrom = "") {
+  const now = new Date();
+  const date = normalizeNowDateInput(dateInput, now);
+  if (date === todayNowDateInput(now) && !preserveTimeFrom) return now.toISOString();
+  const preserved = preserveTimeFrom ? new Date(preserveTimeFrom) : null;
+  const time = preserved && !Number.isNaN(preserved.getTime())
+    ? nowZonedParts(preserved)
+    : { hour: 12, minute: 0, second: 0 };
+  const [year, month, day] = date.split("-").map(Number);
+  const wallClockUtc = Date.UTC(year, month - 1, day, time.hour, time.minute, time.second, 0);
+  let instant = wallClockUtc;
+  for (let i = 0; i < 3; i += 1) {
+    instant = wallClockUtc - nowOffsetMsForZone(new Date(instant));
+  }
+  return new Date(instant).toISOString();
+}
+
+function makeNowUpdateId(text, at) {
+  const stamp = at.replace(/\D+/g, "").slice(0, 14) || String(Date.now());
+  return `${stamp}-${sha1Hex(`${at}\n${text}`).slice(0, 8)}`;
+}
+
+function updateNowData(existing, args = {}) {
+  const data = normalizeNowData(existing);
+  const text = cleanText(args.text, NOW_STATUS_MAX_LENGTH);
+  if (!text) throw new Error("text is required.");
+  const at = nowTimestampForDate(args.date);
+  return normalizeNowData({
+    ...data,
+    current: {
+      text,
+      context: Object.hasOwn(args, "context")
+        ? cleanText(args.context, NOW_CONTEXT_MAX_LENGTH) || undefined
+        : data.current.context,
+      location: Object.hasOwn(args, "location")
+        ? cleanText(args.location, NOW_LOCATION_MAX_LENGTH) || undefined
+        : data.current.location,
+      updatedAt: at,
+    },
+    updates: [
+      { id: makeNowUpdateId(text, at), text, at },
+      ...data.updates,
+    ],
+  });
+}
+
+function updateNowHistoryData(existing, args = {}) {
+  const id = cleanText(args.id, 120);
+  const text = cleanText(args.text, NOW_STATUS_MAX_LENGTH);
+  if (!id) throw new Error("id is required.");
+  if (!text) throw new Error("text is required.");
+  let found = false;
+  const data = normalizeNowData(existing);
+  const updates = data.updates.map((item) => {
+    if (item.id !== id) return item;
+    found = true;
+    return {
+      ...item,
+      text,
+      at: nowTimestampForDate(args.date, item.at),
+    };
+  });
+  if (!found) throw new Error(`NOW_HISTORY_NOT_FOUND: ${id}`);
+  return normalizeNowData({ ...data, updates });
+}
+
+function deleteNowHistoryData(existing, args = {}) {
+  const id = cleanText(args.id, 120);
+  if (!id) throw new Error("id is required.");
+  const data = normalizeNowData(existing);
+  const updates = data.updates.filter((item) => item.id !== id);
+  if (updates.length === data.updates.length) throw new Error(`NOW_HISTORY_NOT_FOUND: ${id}`);
+  return normalizeNowData({ ...data, updates });
+}
+
+function siteAdminNowGet(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  if (backend.kind === "api") {
+    const response = siteAdminApiRequestSync(backend.api, "GET", "/api/site-admin/now");
+    const data = asObject(response.data);
+    const sourceVersion = asObject(data.sourceVersion);
+    return {
+      backend: "api",
+      baseUrl: backend.api.baseUrl,
+      data: normalizeNowData(data.data),
+      sourceVersion: { fileSha: cleanText(sourceVersion.fileSha, 120) },
+    };
+  }
+  const now = readSiteNow(resolveSiteContentRoot());
+  return {
+    backend: "local",
+    fallbackReason: backend.fallbackReason || "",
+    data: now.data,
+    sourceVersion: now.sourceVersion,
+    relPath: now.relPath,
+    source: now.source,
+  };
+}
+
+function writeSiteNowLocal(args, buildNextData, tool) {
+  const contentRoot = resolveSiteContentRoot();
+  const current = readSiteNow(contentRoot);
+  const expectedFileSha = cleanText(args.expectedFileSha || args.sourceSha || current.sourceVersion.fileSha, 120);
+  if (expectedFileSha && current.sourceVersion.fileSha !== expectedFileSha) {
+    throw new Error(`SOURCE_CONFLICT: expected ${expectedFileSha}, current ${current.sourceVersion.fileSha}.`);
+  }
+  const data = buildNextData(current.data);
+  const source = `${JSON.stringify(data, null, 2)}\n`;
+  writeTextFileAtomic(current.filePath, source);
+  markConfirmationConsumed(args.confirmationId);
+  writeContentPublishSuggestion("POST", "/api/site-admin/now");
+  writeAudit({ tool, backend: "local" });
+  return {
+    backend: "local",
+    data,
+    sourceVersion: { fileSha: sha1Hex(source) },
+    relPath: current.relPath,
+  };
+}
+
+function postSiteNowApi(api, args, body, tool) {
+  const response = siteAdminApiRequestSync(api, "POST", "/api/site-admin/now", body);
+  const data = asObject(response.data);
+  const sourceVersion = asObject(data.sourceVersion);
+  markConfirmationConsumed(args.confirmationId);
+  writeContentPublishSuggestion("POST", "/api/site-admin/now");
+  writeAudit({ tool, backend: "api", baseUrl: api.baseUrl });
+  return {
+    backend: "api",
+    baseUrl: api.baseUrl,
+    data: normalizeNowData(data.data),
+    sourceVersion: { fileSha: cleanText(sourceVersion.fileSha, 120) },
+  };
+}
+
+function updateSiteAdminNow(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  const existing = siteAdminNowGet(db, { ...args, backend: backend.kind });
+  const expectedFileSha = cleanText(args.expectedFileSha || args.sourceSha || existing.sourceVersion?.fileSha, 120);
+  const text = cleanText(args.text, NOW_STATUS_MAX_LENGTH);
+  const preview = {
+    backend: backend.kind,
+    baseUrl: backend.kind === "api" ? backend.api.baseUrl : "",
+    text,
+    context: Object.hasOwn(args, "context") ? cleanText(args.context, NOW_CONTEXT_MAX_LENGTH) : undefined,
+    location: Object.hasOwn(args, "location") ? cleanText(args.location, NOW_LOCATION_MAX_LENGTH) : undefined,
+    date: normalizeNowDateInput(args.date),
+    beforeSha: existing.sourceVersion?.fileSha || "",
+    expectedFileSha,
+  };
+  const confirmation = prepareWrite("siteAdmin.update_now", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  if (backend.kind === "api") {
+    return postSiteNowApi(backend.api, args, {
+      action: "create",
+      text,
+      ...(Object.hasOwn(args, "context") ? { context: preview.context || "" } : {}),
+      ...(Object.hasOwn(args, "location") ? { location: preview.location || "" } : {}),
+      ...(args.date ? { date: cleanText(args.date, 40) } : {}),
+      ...(expectedFileSha ? { expectedFileSha } : {}),
+    }, "siteAdmin.update_now");
+  }
+  return writeSiteNowLocal(args, (data) => updateNowData(data, args), "siteAdmin.update_now");
+}
+
+function updateSiteAdminNowHistory(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  const existing = siteAdminNowGet(db, { ...args, backend: backend.kind });
+  const expectedFileSha = cleanText(args.expectedFileSha || args.sourceSha || existing.sourceVersion?.fileSha, 120);
+  const id = cleanText(args.id, 120);
+  const text = cleanText(args.text, NOW_STATUS_MAX_LENGTH);
+  const preview = {
+    backend: backend.kind,
+    baseUrl: backend.kind === "api" ? backend.api.baseUrl : "",
+    id,
+    text,
+    date: args.date ? normalizeNowDateInput(args.date) : "",
+    expectedFileSha,
+  };
+  const confirmation = prepareWrite("siteAdmin.update_now_history", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  if (backend.kind === "api") {
+    return postSiteNowApi(backend.api, args, {
+      action: "update-history",
+      id,
+      text,
+      ...(args.date ? { date: cleanText(args.date, 40) } : {}),
+      ...(expectedFileSha ? { expectedFileSha } : {}),
+    }, "siteAdmin.update_now_history");
+  }
+  return writeSiteNowLocal(args, (data) => updateNowHistoryData(data, args), "siteAdmin.update_now_history");
+}
+
+function deleteSiteAdminNowHistory(db, args = {}) {
+  const backend = selectSiteAdminPageBackend(db, args);
+  const existing = siteAdminNowGet(db, { ...args, backend: backend.kind });
+  const expectedFileSha = cleanText(args.expectedFileSha || args.sourceSha || existing.sourceVersion?.fileSha, 120);
+  const id = cleanText(args.id, 120);
+  const preview = {
+    backend: backend.kind,
+    baseUrl: backend.kind === "api" ? backend.api.baseUrl : "",
+    id,
+    expectedFileSha,
+  };
+  const confirmation = prepareWrite("siteAdmin.delete_now_history", "allowSiteAdminWrite", args, preview);
+  if (confirmation) return confirmation;
+  if (backend.kind === "api") {
+    return postSiteNowApi(backend.api, args, {
+      action: "delete-history",
+      id,
+      ...(expectedFileSha ? { expectedFileSha } : {}),
+    }, "siteAdmin.delete_now_history");
+  }
+  return writeSiteNowLocal(args, (data) => deleteNowHistoryData(data, args), "siteAdmin.delete_now_history");
 }
 
 function createSiteAdminPage(db, args = {}) {
@@ -2331,6 +3345,476 @@ function deleteSiteAdminPageViaApi(api, args, slug) {
   return { backend: "api", baseUrl: api.baseUrl, deleted: targets, treeUpdated, treeError };
 }
 
+function siteAdminListPosts(db, args = {}) {
+  const limit = limitValue(args.limit, 100, 500);
+  const { api, data } = siteAdminApiCall(db, args, "GET", "/api/site-admin/posts?drafts=1");
+  const posts = Array.isArray(asObject(data).posts) ? asObject(data).posts.slice(0, limit) : [];
+  return { backend: "api", baseUrl: api.baseUrl, count: posts.length, posts };
+}
+
+function siteAdminGetPost(db, args = {}) {
+  const slug = cleanText(args.slug, 260);
+  if (!slug) throw new Error("slug is required.");
+  const { api, data } = siteAdminApiCall(db, args, "GET", `/api/site-admin/posts/${slug}`);
+  return { backend: "api", baseUrl: api.baseUrl, post: data };
+}
+
+function createSiteAdminPost(db, args = {}) {
+  const slug = cleanText(args.slug, 260);
+  const source = asString(args.source);
+  if (!slug) throw new Error("slug is required.");
+  if (!source.trim()) throw new Error("source is required.");
+  const preview = {
+    backend: "api",
+    slug,
+    relPath: `content/blog/${slug}.mdx`,
+    sourcePreview: textPreview(source),
+  };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.create_post", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/posts", { slug, source });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.create_post", backend: "api", baseUrl: api.baseUrl, slug },
+    { method: "POST", path: "/api/site-admin/posts" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, post: data };
+}
+
+function updateSiteAdminPost(db, args = {}) {
+  const slug = cleanText(args.slug, 260);
+  const source = asString(args.source);
+  const version = cleanText(args.version || args.sourceSha || args.expectedSha, 120);
+  if (!slug) throw new Error("slug is required.");
+  if (!source.trim()) throw new Error("source is required.");
+  if (!version) throw new Error("version is required.");
+  const preview = {
+    backend: "api",
+    slug,
+    version,
+    relPath: `content/blog/${slug}.mdx`,
+    sourcePreview: textPreview(source),
+  };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.update_post", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "PATCH", `/api/site-admin/posts/${slug}`, { source, version });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.update_post", backend: "api", baseUrl: api.baseUrl, slug },
+    { method: "PATCH", path: `/api/site-admin/posts/${slug}` },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, post: data };
+}
+
+function deleteSiteAdminPost(db, args = {}) {
+  const slug = cleanText(args.slug, 260);
+  const version = cleanText(args.version || args.sourceSha || args.expectedSha, 120);
+  if (!slug) throw new Error("slug is required.");
+  if (!version) throw new Error("version is required.");
+  const preview = { backend: "api", slug, version, relPath: `content/blog/${slug}.mdx` };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.delete_post", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "DELETE", `/api/site-admin/posts/${slug}`, { version });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.delete_post", backend: "api", baseUrl: api.baseUrl, slug },
+    { method: "DELETE", path: `/api/site-admin/posts/${slug}` },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, deleted: true, result: data };
+}
+
+function moveSiteAdminPost(db, args = {}) {
+  const fromSlug = cleanText(args.fromSlug, 260);
+  const toSlug = cleanText(args.toSlug, 260);
+  const version = cleanText(args.version || args.sourceSha || args.expectedSha, 120);
+  if (!fromSlug) throw new Error("fromSlug is required.");
+  if (!toSlug) throw new Error("toSlug is required.");
+  if (!version) throw new Error("version is required.");
+  const preview = { backend: "api", fromSlug, toSlug, version };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.move_post", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/posts/move", { fromSlug, toSlug, version });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.move_post", backend: "api", baseUrl: api.baseUrl, fromSlug, toSlug },
+    { method: "POST", path: "/api/site-admin/posts/move" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, result: data };
+}
+
+function siteAdminListComponents(db, args = {}) {
+  const { api, data } = siteAdminApiCall(db, args, "GET", "/api/site-admin/components");
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function siteAdminGetComponent(db, args = {}) {
+  const name = cleanText(args.name, 160);
+  if (!name) throw new Error("name is required.");
+  const { api, data } = siteAdminApiCall(db, args, "GET", `/api/site-admin/components/${encodeURIComponent(name)}`);
+  return { backend: "api", baseUrl: api.baseUrl, component: data };
+}
+
+function updateSiteAdminComponent(db, args = {}) {
+  const name = cleanText(args.name, 160);
+  const source = asString(args.source);
+  const version = cleanText(args.version || args.sourceSha || args.expectedSha, 120);
+  if (!name) throw new Error("name is required.");
+  if (!source.trim()) throw new Error("source is required.");
+  if (!version) throw new Error("version is required.");
+  const preview = { backend: "api", name, version, sourcePreview: textPreview(source) };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.update_component", args, preview);
+  if (confirmation) return confirmation;
+  const pathName = `/api/site-admin/components/${encodeURIComponent(name)}`;
+  const { api, data } = siteAdminApiCall(db, args, "PATCH", pathName, { source, version });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.update_component", backend: "api", baseUrl: api.baseUrl, name },
+    { method: "PATCH", path: pathName },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, component: data };
+}
+
+function siteAdminListAssets(db, args = {}) {
+  const { api, data } = siteAdminApiCall(db, args, "GET", "/api/site-admin/assets");
+  const assets = Array.isArray(asObject(data).assets) ? asObject(data).assets : [];
+  return { backend: "api", baseUrl: api.baseUrl, count: assets.length, assets };
+}
+
+const SITE_ADMIN_ASSET_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+
+function inferContentTypeFromFilename(filename) {
+  const ext = path.extname(filename || "").toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".txt" || ext === ".md") return "text/plain";
+  return "application/octet-stream";
+}
+
+function parseAssetDataUrl(value) {
+  const match = /^data:([^;]+);base64,([\s\S]+)$/.exec(cleanText(value, SITE_ADMIN_ASSET_UPLOAD_MAX_BYTES * 2));
+  return match ? { contentType: match[1], base64: match[2].replace(/\s+/g, "") } : null;
+}
+
+function estimateBase64Bytes(base64) {
+  const clean = asString(base64).replace(/\s+/g, "");
+  if (!clean) return 0;
+  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor(clean.length * 3 / 4) - padding);
+}
+
+function prepareAssetUploadPayload(args = {}) {
+  const sourcePath = cleanText(args.sourcePath, 2_000);
+  if (sourcePath) {
+    const absolute = path.resolve(sourcePath);
+    const stat = fs.statSync(absolute);
+    if (!stat.isFile()) throw new Error("sourcePath must point to a file.");
+    if (stat.size > SITE_ADMIN_ASSET_UPLOAD_MAX_BYTES) {
+      throw new Error(`ASSET_TOO_LARGE: uploads are limited to ${SITE_ADMIN_ASSET_UPLOAD_MAX_BYTES} bytes.`);
+    }
+    const filename = cleanText(args.filename, 260) || path.basename(absolute);
+    const contentType = cleanText(args.contentType, 200) || inferContentTypeFromFilename(filename);
+    return {
+      preview: { filename, contentType, bytes: stat.size, sourcePath: absolute },
+      read() {
+        return { filename, contentType, base64: fs.readFileSync(absolute).toString("base64") };
+      },
+    };
+  }
+  const dataUrl = parseAssetDataUrl(args.dataUrl || args.data);
+  const base64 = dataUrl?.base64 || asString(args.base64).replace(/\s+/g, "");
+  const contentType = cleanText(args.contentType, 200) || dataUrl?.contentType || "";
+  if (!base64) throw new Error("base64, dataUrl, data, or sourcePath is required.");
+  if (!contentType) throw new Error("contentType is required.");
+  const bytes = estimateBase64Bytes(base64);
+  if (bytes > SITE_ADMIN_ASSET_UPLOAD_MAX_BYTES) {
+    throw new Error(`ASSET_TOO_LARGE: uploads are limited to ${SITE_ADMIN_ASSET_UPLOAD_MAX_BYTES} bytes.`);
+  }
+  const filename = cleanText(args.filename, 260) || undefined;
+  return {
+    preview: { filename, contentType, bytes },
+    read() {
+      return { ...(filename ? { filename } : {}), contentType, base64 };
+    },
+  };
+}
+
+function uploadSiteAdminAsset(db, args = {}) {
+  const upload = prepareAssetUploadPayload(args);
+  const preview = { backend: "api", ...upload.preview };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.upload_asset", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/assets", upload.read());
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.upload_asset", backend: "api", baseUrl: api.baseUrl, filename: preview.filename, bytes: preview.bytes },
+    { method: "POST", path: "/api/site-admin/assets" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, asset: data };
+}
+
+function deleteSiteAdminAsset(db, args = {}) {
+  const key = cleanText(args.key, 1_000);
+  const version = cleanText(args.version || args.sourceSha || args.expectedSha, 120);
+  if (!key) throw new Error("key is required.");
+  if (!version) throw new Error("version is required.");
+  const preview = { backend: "api", key, version };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.delete_asset", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "DELETE", "/api/site-admin/assets", { key, version });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.delete_asset", backend: "api", baseUrl: api.baseUrl, key },
+    { method: "DELETE", path: "/api/site-admin/assets" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, deleted: true, result: data };
+}
+
+function siteAdminGetConfig(db, args = {}) {
+  const { api, data } = siteAdminApiCall(db, args, "GET", "/api/site-admin/config");
+  return { backend: "api", baseUrl: api.baseUrl, config: data };
+}
+
+function updateSiteAdminSettings(db, args = {}) {
+  const rowId = cleanText(args.rowId, 160);
+  const patch = asObject(args.patch);
+  const expectedSiteConfigSha = cleanText(args.expectedSiteConfigSha || args.expectedConfigSha, 120);
+  if (!rowId) throw new Error("rowId is required.");
+  if (!Object.keys(patch).length) throw new Error("patch is required.");
+  if (!expectedSiteConfigSha) throw new Error("expectedSiteConfigSha is required.");
+  const body = {
+    kind: "settings",
+    rowId,
+    patch,
+    expectedSiteConfigSha,
+    ...(args.allowStaleSiteConfigSha ? { allowStaleSiteConfigSha: true } : {}),
+  };
+  const preview = { backend: "api", rowId, patch, expectedSiteConfigSha };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.update_settings", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/config", body);
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.update_settings", backend: "api", baseUrl: api.baseUrl, rowId },
+    { method: "POST", path: "/api/site-admin/config" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, config: data };
+}
+
+function createSiteAdminNavItem(db, args = {}) {
+  const expectedSiteConfigSha = cleanText(args.expectedSiteConfigSha || args.expectedConfigSha, 120);
+  const input = Object.keys(asObject(args.input)).length
+    ? asObject(args.input)
+    : {
+        label: cleanText(args.label, 180),
+        href: cleanText(args.href, 500),
+        group: cleanText(args.group, 120),
+        ...(args.order !== undefined ? { order: args.order } : {}),
+        ...(args.enabled !== undefined ? { enabled: args.enabled === true } : {}),
+      };
+  if (!expectedSiteConfigSha) throw new Error("expectedSiteConfigSha is required.");
+  const preview = { backend: "api", ...input, expectedSiteConfigSha };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.create_nav_item", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/config", {
+    kind: "nav-create",
+    input,
+    expectedSiteConfigSha,
+  });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.create_nav_item", backend: "api", baseUrl: api.baseUrl, label: input.label, href: input.href },
+    { method: "POST", path: "/api/site-admin/config" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, config: data };
+}
+
+function updateSiteAdminNavItem(db, args = {}) {
+  const rowId = cleanText(args.rowId, 160);
+  const patch = asObject(args.patch);
+  const expectedSiteConfigSha = cleanText(args.expectedSiteConfigSha || args.expectedConfigSha, 120);
+  if (!rowId) throw new Error("rowId is required.");
+  if (!Object.keys(patch).length) throw new Error("patch is required.");
+  if (!expectedSiteConfigSha) throw new Error("expectedSiteConfigSha is required.");
+  const preview = { backend: "api", rowId, patch, expectedSiteConfigSha };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.update_nav_item", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/config", {
+    kind: "nav-update",
+    rowId,
+    patch,
+    expectedSiteConfigSha,
+  });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.update_nav_item", backend: "api", baseUrl: api.baseUrl, rowId },
+    { method: "POST", path: "/api/site-admin/config" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, config: data };
+}
+
+function siteAdminGetRoutes(db, args = {}) {
+  const { api, data } = siteAdminApiCall(db, args, "GET", "/api/site-admin/routes");
+  return { backend: "api", baseUrl: api.baseUrl, routes: data };
+}
+
+function setSiteAdminRouteOverride(db, args = {}) {
+  const pageId = cleanText(args.pageId, 260);
+  const hasRoutePath = Object.hasOwn(args, "routePath") || Object.hasOwn(args, "path");
+  const routePath = cleanText(Object.hasOwn(args, "routePath") ? args.routePath : args.path, 500);
+  const expectedSiteConfigSha = cleanText(args.expectedSiteConfigSha || args.expectedConfigSha, 120);
+  if (!pageId) throw new Error("pageId is required.");
+  if (!hasRoutePath) throw new Error("routePath is required.");
+  if (!expectedSiteConfigSha) throw new Error("expectedSiteConfigSha is required.");
+  const preview = { backend: "api", pageId, routePath, expectedSiteConfigSha };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.set_route_override", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/routes", {
+    kind: "override",
+    pageId,
+    routePath,
+    expectedSiteConfigSha,
+  });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.set_route_override", backend: "api", baseUrl: api.baseUrl, pageId, routePath },
+    { method: "POST", path: "/api/site-admin/routes" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, routes: data };
+}
+
+function setSiteAdminProtectedRoute(db, args = {}) {
+  const pageId = cleanText(args.pageId, 260);
+  const routePath = cleanText(args.path || args.routePath, 500);
+  const auth = cleanText(args.auth, 120);
+  const password = cleanText(args.password, 2_000);
+  const expectedProtectedRoutesSha = cleanText(args.expectedProtectedRoutesSha || args.expectedRoutesSha, 120);
+  if (!routePath) throw new Error("path is required.");
+  if (!auth) throw new Error("auth is required.");
+  if (!expectedProtectedRoutesSha) throw new Error("expectedProtectedRoutesSha is required.");
+  const preview = { backend: "api", pageId, path: routePath, auth, expectedProtectedRoutesSha };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.set_protected_route", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/routes", {
+    kind: "protected",
+    ...(pageId ? { pageId } : {}),
+    path: routePath,
+    auth,
+    ...(password ? { password } : {}),
+    expectedProtectedRoutesSha,
+  });
+  completeSiteAdminApiWrite(
+    args,
+    { tool: "siteAdmin.set_protected_route", backend: "api", baseUrl: api.baseUrl, pageId, path: routePath, auth },
+    { method: "POST", path: "/api/site-admin/routes" },
+  );
+  return { backend: "api", baseUrl: api.baseUrl, routes: data };
+}
+
+function siteAdminListReleaseJobs(db, args = {}) {
+  const limit = limitValue(args.limit, 20, 100);
+  const { api, data } = siteAdminApiCall(db, args, "GET", `/api/site-admin/release-jobs?limit=${limit}`);
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function siteAdminGetReleaseJob(db, args = {}) {
+  const id = cleanText(args.id, 160);
+  if (!id) throw new Error("id is required.");
+  const { api, data } = siteAdminApiCall(db, args, "GET", `/api/site-admin/release-jobs/${encodeURIComponent(id)}`);
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function smartSiteAdminRelease(db, args = {}) {
+  const request = asObject(args.request);
+  const preview = { backend: "api", action: "smart-release", request };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.smart_release", args, preview, {
+    capability: "allowReleaseWrite",
+    alwaysConfirm: true,
+  });
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/release-jobs/smart", { request });
+  completeSiteAdminApiWrite(args, { tool: "siteAdmin.smart_release", backend: "api", baseUrl: api.baseUrl, jobId: asObject(data.job).id });
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+const RELEASE_ACTIONS = new Set([
+  "status",
+  "runner-self-test",
+  "publish-content-staging",
+  "deploy-staging-code",
+  "promote-production-code",
+  "publish-content-production-from-staging",
+  "publish-now-production-from-staging",
+]);
+
+function startSiteAdminReleaseJob(db, args = {}) {
+  const action = cleanText(args.action, 120);
+  if (!RELEASE_ACTIONS.has(action)) {
+    throw new Error(`UNSUPPORTED_RELEASE_ACTION: ${action || "missing"}`);
+  }
+  const request = asObject(args.request);
+  const preview = { backend: "api", action, request };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.start_release_job", args, preview, {
+    capability: "allowReleaseWrite",
+    alwaysConfirm: true,
+  });
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/release-jobs", { action, request });
+  completeSiteAdminApiWrite(args, { tool: "siteAdmin.start_release_job", backend: "api", baseUrl: api.baseUrl, action, jobId: asObject(data.job).id });
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function cancelSiteAdminReleaseJob(db, args = {}) {
+  const id = cleanText(args.id, 160);
+  if (!id) throw new Error("id is required.");
+  const preview = { backend: "api", id };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.cancel_release_job", args, preview, {
+    capability: "allowReleaseWrite",
+    alwaysConfirm: true,
+  });
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", `/api/site-admin/release-jobs/${encodeURIComponent(id)}/cancel`, {});
+  completeSiteAdminApiWrite(args, { tool: "siteAdmin.cancel_release_job", backend: "api", baseUrl: api.baseUrl, id });
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function retrySiteAdminReleaseJob(db, args = {}) {
+  const id = cleanText(args.id, 160);
+  if (!id) throw new Error("id is required.");
+  const preview = { backend: "api", id };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.retry_release_job", args, preview, {
+    capability: "allowReleaseWrite",
+    alwaysConfirm: true,
+  });
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", `/api/site-admin/release-jobs/${encodeURIComponent(id)}/retry`, {});
+  completeSiteAdminApiWrite(args, { tool: "siteAdmin.retry_release_job", backend: "api", baseUrl: api.baseUrl, id });
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function getSiteAdminCalendarSyncHealth(db, args = {}) {
+  const { api, data } = siteAdminApiCall(db, args, "GET", "/api/site-admin/calendar-observations");
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function publishSiteAdminCalendarObservationsLive(db, args = {}) {
+  const preview = { backend: "api", action: "calendar-observations.publish-live" };
+  const confirmation = prepareSiteAdminWrite("siteAdmin.publish_calendar_observations_live", args, preview);
+  if (confirmation) return confirmation;
+  const { api, data } = siteAdminApiCall(db, args, "POST", "/api/site-admin/calendar-observations/publish-live", {});
+  completeSiteAdminApiWrite(args, { tool: "siteAdmin.publish_calendar_observations_live", backend: "api", baseUrl: api.baseUrl });
+  return { backend: "api", baseUrl: api.baseUrl, ...asObject(data) };
+}
+
+function getSiteAdminPublicCalendarLive(db, args = {}) {
+  const api = resolveSiteAdminApiConfig(db, args);
+  const response = siteAdminApiRequestSync(api, "GET", "/api/public/calendar");
+  return { backend: "api", baseUrl: api.baseUrl, calendar: response.data };
+}
+
 function siteAdminReleaseStatus() {
   const result = spawnSync("npm", ["run", "release:status", "--", "--skip-routes"], {
     cwd: ROOT,
@@ -2357,6 +3841,174 @@ function textResult(value) {
   };
 }
 
+const SITE_ADMIN_API_TOOL_PROPERTIES = Object.freeze({
+  baseUrl: { type: "string" },
+  authToken: { type: "string" },
+  cfAccessClientId: { type: "string" },
+  cfAccessClientSecret: { type: "string" },
+});
+
+const SITE_ADMIN_WRITE_TOOL_PROPERTIES = Object.freeze({
+  ...SITE_ADMIN_API_TOOL_PROPERTIES,
+  dryRun: { type: "boolean" },
+  confirmationId: { type: "string" },
+});
+
+const RELEASE_ACTION_SCHEMA = {
+  enum: [
+    "status",
+    "runner-self-test",
+    "publish-content-staging",
+    "deploy-staging-code",
+    "promote-production-code",
+    "publish-content-production-from-staging",
+    "publish-now-production-from-staging",
+  ],
+};
+
+const siteAdminV2ToolSchemas = [
+  {
+    name: "siteAdmin.list_posts",
+    description: "List Site Admin blog posts from the staging API. API-only; does not read local content fallback.",
+    inputSchema: { type: "object", properties: { ...SITE_ADMIN_API_TOOL_PROPERTIES, limit: { type: "number" } } },
+  },
+  {
+    name: "siteAdmin.get_post",
+    description: "Read one Site Admin blog post by slug from the staging API.",
+    inputSchema: { type: "object", required: ["slug"], properties: { ...SITE_ADMIN_API_TOOL_PROPERTIES, slug: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.create_post",
+    description: "Create a Site Admin blog post through the staging API. This suggests a content publish but does not deploy.",
+    inputSchema: { type: "object", required: ["slug", "source"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, slug: { type: "string" }, source: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.update_post",
+    description: "Update a Site Admin blog post through the staging API using version conflict protection.",
+    inputSchema: { type: "object", required: ["slug", "source", "version"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, slug: { type: "string" }, source: { type: "string" }, version: { type: "string" }, sourceSha: { type: "string" }, expectedSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.delete_post",
+    description: "Delete a Site Admin blog post through the staging API using version conflict protection.",
+    inputSchema: { type: "object", required: ["slug", "version"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, slug: { type: "string" }, version: { type: "string" }, sourceSha: { type: "string" }, expectedSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.move_post",
+    description: "Move or rename a Site Admin blog post through the staging API.",
+    inputSchema: { type: "object", required: ["fromSlug", "toSlug", "version"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, fromSlug: { type: "string" }, toSlug: { type: "string" }, version: { type: "string" }, sourceSha: { type: "string" }, expectedSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.list_components",
+    description: "List reusable Site Admin MDX components and usage from the staging API.",
+    inputSchema: { type: "object", properties: SITE_ADMIN_API_TOOL_PROPERTIES },
+  },
+  {
+    name: "siteAdmin.get_component",
+    description: "Read one reusable Site Admin component by name from the staging API.",
+    inputSchema: { type: "object", required: ["name"], properties: { ...SITE_ADMIN_API_TOOL_PROPERTIES, name: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.update_component",
+    description: "Update one reusable Site Admin component through the staging API using version conflict protection.",
+    inputSchema: { type: "object", required: ["name", "source", "version"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, name: { type: "string" }, source: { type: "string" }, version: { type: "string" }, sourceSha: { type: "string" }, expectedSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.list_assets",
+    description: "List Site Admin uploaded assets from the staging API.",
+    inputSchema: { type: "object", properties: SITE_ADMIN_API_TOOL_PROPERTIES },
+  },
+  {
+    name: "siteAdmin.upload_asset",
+    description: "Upload a Site Admin asset through the staging API. Accepts base64, dataUrl, data, or sourcePath; max 5MB.",
+    inputSchema: { type: "object", properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, filename: { type: "string" }, contentType: { type: "string" }, base64: { type: "string" }, dataUrl: { type: "string" }, data: { type: "string" }, sourcePath: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.delete_asset",
+    description: "Delete a Site Admin asset through the staging API using version conflict protection.",
+    inputSchema: { type: "object", required: ["key", "version"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, key: { type: "string" }, version: { type: "string" }, sourceSha: { type: "string" }, expectedSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.get_config",
+    description: "Read Site Admin settings and navigation config from the staging API.",
+    inputSchema: { type: "object", properties: SITE_ADMIN_API_TOOL_PROPERTIES },
+  },
+  {
+    name: "siteAdmin.update_settings",
+    description: "Update Site Admin settings through the staging API using expectedSiteConfigSha conflict protection.",
+    inputSchema: { type: "object", required: ["rowId", "patch", "expectedSiteConfigSha"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, rowId: { type: "string" }, patch: { type: "object" }, expectedSiteConfigSha: { type: "string" }, expectedConfigSha: { type: "string" }, allowStaleSiteConfigSha: { type: "boolean" } } },
+  },
+  {
+    name: "siteAdmin.create_nav_item",
+    description: "Create a Site Admin navigation item through the staging API.",
+    inputSchema: { type: "object", required: ["expectedSiteConfigSha"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, input: { type: "object" }, label: { type: "string" }, href: { type: "string" }, group: { type: "string" }, order: { type: "number" }, enabled: { type: "boolean" }, expectedSiteConfigSha: { type: "string" }, expectedConfigSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.update_nav_item",
+    description: "Update a Site Admin navigation item through the staging API.",
+    inputSchema: { type: "object", required: ["rowId", "patch", "expectedSiteConfigSha"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, rowId: { type: "string" }, patch: { type: "object" }, expectedSiteConfigSha: { type: "string" }, expectedConfigSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.get_routes",
+    description: "Read Site Admin route overrides and protected route settings from the staging API.",
+    inputSchema: { type: "object", properties: SITE_ADMIN_API_TOOL_PROPERTIES },
+  },
+  {
+    name: "siteAdmin.set_route_override",
+    description: "Set one route override through the staging API using expectedSiteConfigSha conflict protection.",
+    inputSchema: { type: "object", required: ["pageId", "routePath", "expectedSiteConfigSha"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, pageId: { type: "string" }, routePath: { type: "string" }, path: { type: "string" }, expectedSiteConfigSha: { type: "string" }, expectedConfigSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.set_protected_route",
+    description: "Set protected route auth through the staging API using expectedProtectedRoutesSha conflict protection.",
+    inputSchema: { type: "object", required: ["path", "auth", "expectedProtectedRoutesSha"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, pageId: { type: "string" }, path: { type: "string" }, routePath: { type: "string" }, auth: { type: "string" }, password: { type: "string" }, expectedProtectedRoutesSha: { type: "string" }, expectedRoutesSha: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.list_release_jobs",
+    description: "List Release Center jobs and runner status through the Site Admin API.",
+    inputSchema: { type: "object", properties: { ...SITE_ADMIN_API_TOOL_PROPERTIES, limit: { type: "number" } } },
+  },
+  {
+    name: "siteAdmin.get_release_job",
+    description: "Read one Release Center job through the Site Admin API.",
+    inputSchema: { type: "object", required: ["id"], properties: { ...SITE_ADMIN_API_TOOL_PROPERTIES, id: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.smart_release",
+    description: "Create a Smart Release job through the Site Admin API. Requires allowReleaseWrite and explicit confirmation.",
+    inputSchema: { type: "object", properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, request: { type: "object" } } },
+  },
+  {
+    name: "siteAdmin.start_release_job",
+    description: "Create a specific allowlisted Release Center job through the Site Admin API. Requires allowReleaseWrite and explicit confirmation.",
+    inputSchema: { type: "object", required: ["action"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, action: RELEASE_ACTION_SCHEMA, request: { type: "object" } } },
+  },
+  {
+    name: "siteAdmin.cancel_release_job",
+    description: "Cancel a Release Center job through the Site Admin API. Requires allowReleaseWrite and explicit confirmation.",
+    inputSchema: { type: "object", required: ["id"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, id: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.retry_release_job",
+    description: "Retry a Release Center job through the Site Admin API. Requires allowReleaseWrite and explicit confirmation.",
+    inputSchema: { type: "object", required: ["id"], properties: { ...SITE_ADMIN_WRITE_TOOL_PROPERTIES, id: { type: "string" } } },
+  },
+  {
+    name: "siteAdmin.get_calendar_sync_health",
+    description: "Read uploaded calendar observation sync health from the Site Admin API.",
+    inputSchema: { type: "object", properties: SITE_ADMIN_API_TOOL_PROPERTIES },
+  },
+  {
+    name: "siteAdmin.publish_calendar_observations_live",
+    description: "Publish uploaded calendar observations to the live public calendar projection through the Site Admin API.",
+    inputSchema: { type: "object", properties: SITE_ADMIN_WRITE_TOOL_PROPERTIES },
+  },
+  {
+    name: "siteAdmin.get_public_calendar_live",
+    description: "Read the runtime public calendar JSON served by the selected site.",
+    inputSchema: { type: "object", properties: { ...SITE_ADMIN_API_TOOL_PROPERTIES } },
+  },
+];
+
 const toolSchemas = [
   {
     name: "workspace.get_context",
@@ -2378,6 +4030,20 @@ const toolSchemas = [
       properties: {
         query: { type: "string" },
         types: { type: "array", items: { enum: ["note", "todo", "project", "contact", "event"] } },
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "notes.list_pages",
+    description: "List local Notes pages, optionally filtered by parent, query, or archive state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        parentId: { type: ["string", "null"] },
+        rootOnly: { type: "boolean" },
+        query: { type: "string" },
+        includeArchived: { type: "boolean" },
         limit: { type: "number" },
       },
     },
@@ -2419,6 +4085,71 @@ const toolSchemas = [
     },
   },
   {
+    name: "notes.update_page",
+    description: "Patch a local Notes page title, body, or icon.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        bodyMdx: { type: "string" },
+        icon: { type: ["string", "null"] },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "notes.move_page",
+    description: "Move a local Notes page under another page or reorder it among siblings.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        parentId: { type: ["string", "null"] },
+        beforeId: { type: "string" },
+        afterId: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "notes.archive_page",
+    description: "Archive a local Notes page. Cascades to child pages by default.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        cascade: { type: "boolean" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "todos.list",
+    description: "List local todos by status, project, query, or archive state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { enum: ["open", "completed", "all"] },
+        projectId: { type: "string" },
+        query: { type: "string" },
+        includeArchived: { type: "boolean" },
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "todos.get",
+    description: "Read one local todo by id.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+  },
+  {
     name: "todos.create",
     description: "Create a local todo.",
     inputSchema: {
@@ -2457,6 +4188,24 @@ const toolSchemas = [
     inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" }, confirmationId: { type: "string" } } },
   },
   {
+    name: "todos.archive",
+    description: "Archive a local todo without deleting it.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" }, confirmationId: { type: "string" } } },
+  },
+  {
+    name: "projects.list",
+    description: "List local projects with open todo counts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { enum: ["active", "paused", "completed", "all"] },
+        query: { type: "string" },
+        includeArchived: { type: "boolean" },
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
     name: "projects.get",
     description: "Read a project, its links, and its todos.",
     inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
@@ -2480,6 +4229,30 @@ const toolSchemas = [
     },
   },
   {
+    name: "projects.update",
+    description: "Patch a local project title, description, status, due date, pin, icon, or color.",
+    inputSchema: {
+      type: "object",
+      required: ["id", "patch"],
+      properties: {
+        id: { type: "string" },
+        patch: { type: "object" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "projects.archive",
+    description: "Archive a local project.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" }, confirmationId: { type: "string" } } },
+  },
+  {
+    name: "projects.unarchive",
+    description: "Restore an archived local project.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" }, confirmationId: { type: "string" } } },
+  },
+  {
     name: "projects.add_link",
     description: "Link a note, contact, calendar event, or URL to a project.",
     inputSchema: {
@@ -2497,9 +4270,86 @@ const toolSchemas = [
     },
   },
   {
+    name: "projects.remove_link",
+    description: "Remove a link from a local project by linkId or by target.",
+    inputSchema: {
+      type: "object",
+      required: ["projectId"],
+      properties: {
+        projectId: { type: "string" },
+        linkId: { type: "string" },
+        id: { type: "string" },
+        targetType: { enum: ["note", "contact", "calendarEvent", "url"] },
+        targetId: { type: "string" },
+        url: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "contacts.list",
+    description: "List local CRM contacts by query, tag, or archive state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        tag: { type: "string" },
+        includeArchived: { type: "boolean" },
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
     name: "contacts.get",
     description: "Read one local contact by id.",
     inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+  },
+  {
+    name: "contacts.create",
+    description: "Create a local CRM contact.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        displayName: { type: "string" },
+        name: { type: "string" },
+        givenName: { type: "string" },
+        familyName: { type: "string" },
+        company: { type: "string" },
+        role: { type: "string" },
+        birthdayMonth: { type: "number" },
+        birthdayDay: { type: "number" },
+        birthdayYear: { type: "number" },
+        emails: { type: "array" },
+        phones: { type: "array" },
+        tags: { type: "array" },
+        notes: { type: "string" },
+        nextFollowUpAt: { type: "number" },
+        cadenceDays: { type: "number" },
+        pinned: { type: "boolean" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "contacts.update",
+    description: "Patch a local CRM contact.",
+    inputSchema: {
+      type: "object",
+      required: ["id", "patch"],
+      properties: {
+        id: { type: "string" },
+        patch: { type: "object" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "contacts.archive",
+    description: "Archive a local CRM contact.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, dryRun: { type: "boolean" }, confirmationId: { type: "string" } } },
   },
   {
     name: "calendar.list_calendars",
@@ -2565,6 +4415,11 @@ const toolSchemas = [
         calendarIds: { type: "array", items: { type: "string" } },
       },
     },
+  },
+  {
+    name: "calendar.get_event",
+    description: "Read one local Workspace calendar event by id. macOS EventKit calendars are not exposed through MCP yet.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
   },
   {
     name: "calendar.create_event",
@@ -2651,6 +4506,73 @@ const toolSchemas = [
         title: { type: "string" },
         bodyMdx: { type: "string" },
         data: { type: "object" },
+        expectedFileSha: { type: "string" },
+        sourceSha: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.get_now",
+    description: "Read the website Now status document. Defaults to staging Site Admin API when credentials are available, with local content fallback.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.update_now",
+    description: "Create a Now status update and make it the current website Now draft.",
+    inputSchema: {
+      type: "object",
+      required: ["text"],
+      properties: {
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
+        text: { type: "string" },
+        context: { type: "string" },
+        location: { type: "string" },
+        date: { type: "string" },
+        expectedFileSha: { type: "string" },
+        sourceSha: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.update_now_history",
+    description: "Edit one historical Now update by id.",
+    inputSchema: {
+      type: "object",
+      required: ["id", "text"],
+      properties: {
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
+        id: { type: "string" },
+        text: { type: "string" },
+        date: { type: "string" },
+        expectedFileSha: { type: "string" },
+        sourceSha: { type: "string" },
+        dryRun: { type: "boolean" },
+        confirmationId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "siteAdmin.delete_now_history",
+    description: "Delete one historical Now update by id.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        backend: { enum: ["api", "local"] },
+        baseUrl: { type: "string" },
+        id: { type: "string" },
         expectedFileSha: { type: "string" },
         sourceSha: { type: "string" },
         dryRun: { type: "boolean" },
@@ -2756,6 +4678,7 @@ const toolSchemas = [
       },
     },
   },
+  ...siteAdminV2ToolSchemas,
 ];
 
 export function workspaceMcpToolCount() {
@@ -2769,26 +4692,58 @@ function callTool(db, name, args = {}) {
       return getWorkspaceContext(db, args);
     case "workspace.search":
       return searchWorkspace(db, args);
+    case "notes.list_pages":
+      return listNotes(db, args);
     case "notes.get_page":
       return { note: noteRow(db, cleanText(args.id, 96)) };
     case "notes.create_page":
       return createNote(db, args);
     case "notes.append_blocks":
       return appendBlocks(db, args);
+    case "notes.update_page":
+      return updateNote(db, args);
+    case "notes.move_page":
+      return moveNote(db, args);
+    case "notes.archive_page":
+      return archiveNote(db, args);
+    case "todos.list":
+      return listTodos(db, args);
+    case "todos.get":
+      return { todo: todoRow(db, cleanText(args.id, 96)) };
     case "todos.create":
       return createTodo(db, args);
     case "todos.update":
       return updateTodo(db, args);
     case "todos.complete":
       return completeTodo(db, args);
+    case "todos.archive":
+      return archiveTodo(db, args);
+    case "projects.list":
+      return listProjects(db, args);
     case "projects.get":
       return getProject(db, args);
     case "projects.create":
       return createProject(db, args);
+    case "projects.update":
+      return updateProject(db, args);
+    case "projects.archive":
+      return setProjectArchived(db, args, true);
+    case "projects.unarchive":
+      return setProjectArchived(db, args, false);
     case "projects.add_link":
       return addProjectLink(db, args);
+    case "projects.remove_link":
+      return removeProjectLink(db, args);
+    case "contacts.list":
+      return listContacts(db, args);
     case "contacts.get":
       return { contact: contactRow(db, cleanText(args.id, 96)) };
+    case "contacts.create":
+      return createContact(db, args);
+    case "contacts.update":
+      return updateContact(db, args);
+    case "contacts.archive":
+      return archiveContact(db, args);
     case "calendar.list_calendars":
       return listLocalCalendars(db, args);
     case "calendar.create_calendar":
@@ -2799,6 +4754,8 @@ function callTool(db, name, args = {}) {
       return deleteLocalCalendar(db, args);
     case "calendar.list_events":
       return listCalendarEvents(db, args);
+    case "calendar.get_event":
+      return { event: localEventRow(getLocalCalendarEvent(db, cleanText(args.id, 96))) };
     case "calendar.create_event":
       return createCalendarEvent(db, args);
     case "calendar.update_event":
@@ -2811,6 +4768,14 @@ function callTool(db, name, args = {}) {
       return siteAdminHomeGet(db, args);
     case "siteAdmin.update_home":
       return updateSiteAdminHome(db, args);
+    case "siteAdmin.get_now":
+      return siteAdminNowGet(db, args);
+    case "siteAdmin.update_now":
+      return updateSiteAdminNow(db, args);
+    case "siteAdmin.update_now_history":
+      return updateSiteAdminNowHistory(db, args);
+    case "siteAdmin.delete_now_history":
+      return deleteSiteAdminNowHistory(db, args);
     case "siteAdmin.list_pages":
       return siteAdminPageList(db, args);
     case "siteAdmin.get_page":
@@ -2821,6 +4786,62 @@ function callTool(db, name, args = {}) {
       return updateSiteAdminPage(db, args);
     case "siteAdmin.delete_page":
       return deleteSiteAdminPage(db, args);
+    case "siteAdmin.list_posts":
+      return siteAdminListPosts(db, args);
+    case "siteAdmin.get_post":
+      return siteAdminGetPost(db, args);
+    case "siteAdmin.create_post":
+      return createSiteAdminPost(db, args);
+    case "siteAdmin.update_post":
+      return updateSiteAdminPost(db, args);
+    case "siteAdmin.delete_post":
+      return deleteSiteAdminPost(db, args);
+    case "siteAdmin.move_post":
+      return moveSiteAdminPost(db, args);
+    case "siteAdmin.list_components":
+      return siteAdminListComponents(db, args);
+    case "siteAdmin.get_component":
+      return siteAdminGetComponent(db, args);
+    case "siteAdmin.update_component":
+      return updateSiteAdminComponent(db, args);
+    case "siteAdmin.list_assets":
+      return siteAdminListAssets(db, args);
+    case "siteAdmin.upload_asset":
+      return uploadSiteAdminAsset(db, args);
+    case "siteAdmin.delete_asset":
+      return deleteSiteAdminAsset(db, args);
+    case "siteAdmin.get_config":
+      return siteAdminGetConfig(db, args);
+    case "siteAdmin.update_settings":
+      return updateSiteAdminSettings(db, args);
+    case "siteAdmin.create_nav_item":
+      return createSiteAdminNavItem(db, args);
+    case "siteAdmin.update_nav_item":
+      return updateSiteAdminNavItem(db, args);
+    case "siteAdmin.get_routes":
+      return siteAdminGetRoutes(db, args);
+    case "siteAdmin.set_route_override":
+      return setSiteAdminRouteOverride(db, args);
+    case "siteAdmin.set_protected_route":
+      return setSiteAdminProtectedRoute(db, args);
+    case "siteAdmin.list_release_jobs":
+      return siteAdminListReleaseJobs(db, args);
+    case "siteAdmin.get_release_job":
+      return siteAdminGetReleaseJob(db, args);
+    case "siteAdmin.smart_release":
+      return smartSiteAdminRelease(db, args);
+    case "siteAdmin.start_release_job":
+      return startSiteAdminReleaseJob(db, args);
+    case "siteAdmin.cancel_release_job":
+      return cancelSiteAdminReleaseJob(db, args);
+    case "siteAdmin.retry_release_job":
+      return retrySiteAdminReleaseJob(db, args);
+    case "siteAdmin.get_calendar_sync_health":
+      return getSiteAdminCalendarSyncHealth(db, args);
+    case "siteAdmin.publish_calendar_observations_live":
+      return publishSiteAdminCalendarObservationsLive(db, args);
+    case "siteAdmin.get_public_calendar_live":
+      return getSiteAdminPublicCalendarLive(db, args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

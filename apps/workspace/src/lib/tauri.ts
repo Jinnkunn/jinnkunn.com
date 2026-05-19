@@ -139,7 +139,9 @@ export interface WorkspaceMcpSettings {
   allowNotesWrite: boolean;
   allowTodosWrite: boolean;
   allowProjectsWrite: boolean;
+  allowContactsWrite: boolean;
   allowSiteAdminWrite: boolean;
+  allowReleaseWrite: boolean;
   siteAdminWriteTarget: WorkspaceMcpSiteAdminWriteTarget;
   siteAdminBaseUrl: string;
   siteAdminFallbackToLocal: boolean;
@@ -161,6 +163,15 @@ export interface WorkspaceMcpStatus {
   recentAuditCount: number;
   pendingConfirmationCount: number;
   contentPublishSuggestion: WorkspaceMcpContentPublishSuggestion | null;
+  siteAdminCredentials: WorkspaceMcpSiteAdminCredentialStatus;
+}
+
+export interface WorkspaceMcpSiteAdminCredentialStatus {
+  baseUrl: string;
+  hasAppToken: boolean;
+  hasCfAccess: boolean;
+  hasAnyCredentials: boolean;
+  checkedKeys: string[];
 }
 
 export interface WorkspaceMcpAuditEntry {

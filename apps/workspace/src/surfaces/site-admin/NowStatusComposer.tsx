@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCcw, SendHorizontal } from "lucide-react";
+import {
+  Check,
+  Pencil,
+  RefreshCcw,
+  SendHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { useSiteAdmin } from "./state";
 import { normalizeString, productionReadOnlyMessage } from "./utils";
@@ -7,6 +14,7 @@ import { normalizeString, productionReadOnlyMessage } from "./utils";
 const STATUS_MAX_LENGTH = 180;
 const CONTEXT_MAX_LENGTH = 180;
 const LOCATION_MAX_LENGTH = 80;
+const DISPLAY_TIME_ZONE = "America/Halifax";
 
 type NowData = {
   current: {
@@ -24,6 +32,12 @@ type NowData = {
     label: string;
     href: string;
   }>;
+};
+
+type HistoryDraft = {
+  id: string;
+  text: string;
+  date: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +108,27 @@ function formatUpdatedAt(value: string | undefined): string {
   }).format(date);
 }
 
+function dateInputFromDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const read = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return [read("year"), read("month"), read("day")].filter(Boolean).join("-");
+}
+
+function todayDateInput(): string {
+  return dateInputFromDate(new Date());
+}
+
+function dateInputFromTimestamp(value: string | undefined): string {
+  if (!value) return todayDateInput();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? todayDateInput() : dateInputFromDate(date);
+}
+
 export function NowStatusComposer() {
   const {
     bumpContentRevision,
@@ -105,8 +140,10 @@ export function NowStatusComposer() {
   const [current, setCurrent] = useState<NowData | null>(null);
   const [fileSha, setFileSha] = useState("");
   const [draftText, setDraftText] = useState("");
+  const [draftDate, setDraftDate] = useState(() => todayDateInput());
   const [context, setContext] = useState("");
   const [location, setLocation] = useState("");
+  const [editingHistory, setEditingHistory] = useState<HistoryDraft | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -128,6 +165,8 @@ export function NowStatusComposer() {
       setFileSha(payload.fileSha);
       setContext(payload.data.current.context || "");
       setLocation(payload.data.current.location || "");
+      setDraftDate(todayDateInput());
+      setEditingHistory(null);
       if (!options.silent) setMessage("success", "Now status loaded.");
     },
     [request, setMessage],
@@ -160,9 +199,11 @@ export function NowStatusComposer() {
     setSaving(true);
     setError("");
     const response = await request("/api/site-admin/now", "POST", {
+      action: "create",
       text,
       context: normalizeString(context),
       location: normalizeString(location),
+      date: draftDate,
       expectedFileSha: fileSha,
     });
     setSaving(false);
@@ -176,11 +217,13 @@ export function NowStatusComposer() {
     setCurrent(payload.data);
     setFileSha(payload.fileSha);
     setDraftText("");
+    setDraftDate(todayDateInput());
     bumpContentRevision();
     setMessage("success", "Now updated. Publish staging when ready.");
   }, [
     bumpContentRevision,
     context,
+    draftDate,
     draftText,
     fileSha,
     location,
@@ -189,7 +232,80 @@ export function NowStatusComposer() {
     setMessage,
   ]);
 
-  const latestUpdates = current?.updates.slice(0, 2) ?? [];
+  const saveHistory = useCallback(async () => {
+    if (productionReadOnly) {
+      setMessage("warn", productionReadOnlyMessage("update Now history"));
+      return;
+    }
+    if (!editingHistory) return;
+    const text = normalizeString(editingHistory.text);
+    if (!text) {
+      setMessage("warn", "History text cannot be empty.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const response = await request("/api/site-admin/now", "POST", {
+      action: "update-history",
+      id: editingHistory.id,
+      text,
+      date: editingHistory.date,
+      expectedFileSha: fileSha,
+    });
+    setSaving(false);
+    if (!response.ok) {
+      const msg = `${response.code}: ${response.error}`;
+      setError(msg);
+      setMessage("error", `Update Now history failed: ${msg}`);
+      return;
+    }
+    const payload = parsePayload(response.data);
+    setCurrent(payload.data);
+    setFileSha(payload.fileSha);
+    setEditingHistory(null);
+    bumpContentRevision();
+    setMessage("success", "Now history updated. Publish staging when ready.");
+  }, [
+    bumpContentRevision,
+    editingHistory,
+    fileSha,
+    productionReadOnly,
+    request,
+    setMessage,
+  ]);
+
+  const deleteHistory = useCallback(
+    async (id: string) => {
+      if (productionReadOnly) {
+        setMessage("warn", productionReadOnlyMessage("delete Now history"));
+        return;
+      }
+      if (!window.confirm("Delete this Now history item?")) return;
+      setSaving(true);
+      setError("");
+      const response = await request("/api/site-admin/now", "POST", {
+        action: "delete-history",
+        id,
+        expectedFileSha: fileSha,
+      });
+      setSaving(false);
+      if (!response.ok) {
+        const msg = `${response.code}: ${response.error}`;
+        setError(msg);
+        setMessage("error", `Delete Now history failed: ${msg}`);
+        return;
+      }
+      const payload = parsePayload(response.data);
+      setCurrent(payload.data);
+      setFileSha(payload.fileSha);
+      setEditingHistory(null);
+      bumpContentRevision();
+      setMessage("success", "Now history deleted. Publish staging when ready.");
+    },
+    [bumpContentRevision, fileSha, productionReadOnly, request, setMessage],
+  );
+
+  const historyUpdates = current?.updates ?? [];
 
   return (
     <section className="now-status-composer" aria-label="Quick Now status">
@@ -231,6 +347,15 @@ export function NowStatusComposer() {
                 void submit();
               }
             }}
+          />
+        </label>
+        <label className="now-status-composer__date-field">
+          <span>Date</span>
+          <input
+            type="date"
+            value={draftDate}
+            disabled={productionReadOnly || saving}
+            onChange={(event) => setDraftDate(event.target.value)}
           />
         </label>
         <button
@@ -280,15 +405,126 @@ export function NowStatusComposer() {
         </div>
       </div>
 
-      {latestUpdates.length > 0 ? (
-        <ol className="now-status-composer__updates" aria-label="Recent Now updates">
-          {latestUpdates.map((item) => (
-            <li key={item.id}>
-              <time dateTime={item.at}>{formatUpdatedAt(item.at)}</time>
-              <span>{item.text}</span>
-            </li>
-          ))}
-        </ol>
+      {historyUpdates.length > 0 ? (
+        <div className="now-status-composer__history">
+          <div className="now-status-composer__history-head">
+            <h3>History</h3>
+            <span>{historyUpdates.length}</span>
+          </div>
+          <ol className="now-status-composer__updates" aria-label="Now history updates">
+            {historyUpdates.map((item) => {
+              const isEditing = editingHistory?.id === item.id;
+              return (
+                <li
+                  className={isEditing ? "now-status-composer__update--editing" : ""}
+                  key={item.id}
+                >
+                  {isEditing ? (
+                    <>
+                      <input
+                        type="date"
+                        value={editingHistory.date}
+                        disabled={saving}
+                        onChange={(event) =>
+                          setEditingHistory({
+                            ...editingHistory,
+                            date: event.target.value,
+                          })
+                        }
+                      />
+                      <input
+                        maxLength={STATUS_MAX_LENGTH}
+                        value={editingHistory.text}
+                        disabled={saving}
+                        onChange={(event) =>
+                          setEditingHistory({
+                            ...editingHistory,
+                            text: event.target.value,
+                          })
+                        }
+                      />
+                      <div className="now-status-composer__update-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={saving}
+                          onClick={() => void saveHistory()}
+                          title="Save history item"
+                        >
+                          <Check
+                            absoluteStrokeWidth
+                            aria-hidden="true"
+                            focusable="false"
+                            size={14}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={saving}
+                          onClick={() => setEditingHistory(null)}
+                          title="Cancel editing"
+                        >
+                          <X
+                            absoluteStrokeWidth
+                            aria-hidden="true"
+                            focusable="false"
+                            size={14}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <time dateTime={item.at}>{formatUpdatedAt(item.at)}</time>
+                      <span>{item.text}</span>
+                      <div className="now-status-composer__update-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={productionReadOnly || saving}
+                          onClick={() =>
+                            setEditingHistory({
+                              id: item.id,
+                              text: item.text,
+                              date: dateInputFromTimestamp(item.at),
+                            })
+                          }
+                          title="Edit history item"
+                        >
+                          <Pencil
+                            absoluteStrokeWidth
+                            aria-hidden="true"
+                            focusable="false"
+                            size={14}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={productionReadOnly || saving}
+                          onClick={() => void deleteHistory(item.id)}
+                          title="Delete history item"
+                        >
+                          <Trash2
+                            absoluteStrokeWidth
+                            aria-hidden="true"
+                            focusable="false"
+                            size={14}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       ) : null}
 
       {error ? <p className="now-status-composer__error">{error}</p> : null}

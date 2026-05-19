@@ -213,26 +213,115 @@ final class AppSession {
         publicCalendarPreview = nil
     }
 
-    func updateNow(text: String, context: String, location: String) async -> Bool {
+    func loadNowDetail() async -> SiteAdminNowPayload? {
+        guard let client else {
+            message = "Invalid Site Admin URL."
+            return nil
+        }
+        do {
+            message = nil
+            return try await client.nowDetail()
+        } catch {
+            clearCurrentTokenIfExpired(error)
+            message = friendlyMessage(for: error)
+            return nil
+        }
+    }
+
+    func updateNow(
+        text: String,
+        context: String,
+        location: String,
+        date: Date,
+        expectedFileSha: String?
+    ) async -> SiteAdminNowPayload? {
         guard environment.canEditContent else {
             message = "Content editing is available only in the Draft workspace."
-            return false
+            return nil
         }
         guard let client else {
             message = "Invalid Site Admin URL."
-            return false
+            return nil
         }
         isLoading = true
         defer { isLoading = false }
         do {
             message = nil
-            try await client.updateNow(text: text, context: context, location: location)
+            let payload = try await client.updateNow(
+                text: text,
+                context: context,
+                location: location,
+                date: date,
+                expectedFileSha: expectedFileSha
+            )
             await refresh()
-            return true
+            return payload
         } catch {
             clearCurrentTokenIfExpired(error)
             message = friendlyMessage(for: error)
-            return false
+            return nil
+        }
+    }
+
+    func updateNowHistory(
+        id: String,
+        text: String,
+        date: Date,
+        expectedFileSha: String?
+    ) async -> SiteAdminNowPayload? {
+        guard environment.canEditContent else {
+            message = "Content editing is available only in the Draft workspace."
+            return nil
+        }
+        guard let client else {
+            message = "Invalid Site Admin URL."
+            return nil
+        }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            message = nil
+            let payload = try await client.updateNowHistory(
+                id: id,
+                text: text,
+                date: date,
+                expectedFileSha: expectedFileSha
+            )
+            await refresh()
+            return payload
+        } catch {
+            clearCurrentTokenIfExpired(error)
+            message = friendlyMessage(for: error)
+            return nil
+        }
+    }
+
+    func deleteNowHistory(
+        id: String,
+        expectedFileSha: String?
+    ) async -> SiteAdminNowPayload? {
+        guard environment.canEditContent else {
+            message = "Content editing is available only in the Draft workspace."
+            return nil
+        }
+        guard let client else {
+            message = "Invalid Site Admin URL."
+            return nil
+        }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            message = nil
+            let payload = try await client.deleteNowHistory(
+                id: id,
+                expectedFileSha: expectedFileSha
+            )
+            await refresh()
+            return payload
+        } catch {
+            clearCurrentTokenIfExpired(error)
+            message = friendlyMessage(for: error)
+            return nil
         }
     }
 

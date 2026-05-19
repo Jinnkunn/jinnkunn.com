@@ -7,6 +7,7 @@ import {
   Database,
   FileClock,
   HardDrive,
+  KeyRound,
   RefreshCcw,
   Settings,
   ShieldCheck,
@@ -48,7 +49,9 @@ const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
   allowNotesWrite: true,
   allowTodosWrite: true,
   allowProjectsWrite: true,
+  allowContactsWrite: true,
   allowSiteAdminWrite: true,
+  allowReleaseWrite: false,
   siteAdminWriteTarget: "api",
   siteAdminBaseUrl: "https://staging.jinkunchen.com",
   siteAdminFallbackToLocal: true,
@@ -99,6 +102,10 @@ function pathLeaf(value: string): string {
 function previewSnippet(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const record = value as Record<string, unknown>;
+  const action = typeof record.action === "string" ? record.action : "";
+  if (action) return action;
+  const slug = typeof record.slug === "string" ? record.slug : "";
+  if (slug) return slug;
   const title = typeof record.title === "string" ? record.title : "";
   if (title) return title;
   const id = typeof record.id === "string" ? record.id : "";
@@ -106,6 +113,24 @@ function previewSnippet(value: unknown): string {
   const pageId = typeof record.pageId === "string" ? record.pageId : "";
   if (pageId) return pageId;
   return "";
+}
+
+function previewMeta(value: unknown): { label: string; value: string }[] {
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  const entries: { label: string; value: string }[] = [];
+  const push = (label: string, raw: unknown) => {
+    if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") return;
+    const value = String(raw).trim();
+    if (!value) return;
+    entries.push({ label, value: value.length > 44 ? `${value.slice(0, 41)}...` : value });
+  };
+  push("target", record.backend);
+  push("api", record.baseUrl);
+  push("action", record.action);
+  push("path", record.path ?? record.routePath ?? record.relPath);
+  push("expected", record.expectedFileSha ?? record.expectedSiteConfigSha ?? record.expectedProtectedRoutesSha);
+  return entries.slice(0, 5);
 }
 
 function previewDetail(value: unknown): string {
@@ -289,11 +314,21 @@ function McpConfirmationsSection({
           {confirmations.map((entry) => {
             const snippet = previewSnippet(entry.preview);
             const detail = previewDetail(entry.preview);
+            const meta = previewMeta(entry.preview);
             return (
               <div className="settings-ai-confirmation-row" key={entry.id}>
                 <span className="settings-ai-confirmation-row__body">
                   <strong>{entry.summary}</strong>
                   <small>{snippet ? `${entry.tool} · ${snippet}` : entry.tool}</small>
+                  {meta.length ? (
+                    <span className="settings-ai-confirmation-row__meta">
+                      {meta.map((item) => (
+                        <span key={`${entry.id}-${item.label}`}>
+                          {item.label}: {item.value}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
                   {detail ? (
                     <pre className="settings-ai-confirmation-row__preview">{detail}</pre>
                   ) : null}
@@ -352,12 +387,20 @@ function McpSettingsPanel({
     ? [status.serverCommand, ...status.serverArgs].join(" ")
     : "npm run workspace:mcp";
   const writable = settings.enabled && settings.writeMode === "local-write";
+  const credentials = status?.siteAdminCredentials;
+  const credentialDetail = credentials
+    ? [
+        credentials.hasAppToken ? "app token" : "",
+        credentials.hasCfAccess ? "CF Access" : "",
+      ].filter(Boolean).join(" + ") || `Missing for ${credentials.baseUrl}`
+    : "Not checked yet";
   const applyProfile = (profile: "read-only" | "daily" | "site") => {
     if (profile === "read-only") {
       onUpdateSettings({
         enabled: true,
         writeMode: "read-only",
         requireConfirmationForWrites: true,
+        allowReleaseWrite: false,
         allowCalendarWrite: false,
       });
       return;
@@ -370,7 +413,9 @@ function McpSettingsPanel({
         allowNotesWrite: true,
         allowTodosWrite: false,
         allowProjectsWrite: false,
+        allowContactsWrite: false,
         allowSiteAdminWrite: true,
+        allowReleaseWrite: false,
         siteAdminWriteTarget: "api",
         siteAdminFallbackToLocal: false,
         allowCalendarWrite: false,
@@ -384,7 +429,9 @@ function McpSettingsPanel({
       allowNotesWrite: true,
       allowTodosWrite: true,
       allowProjectsWrite: true,
+      allowContactsWrite: true,
       allowSiteAdminWrite: true,
+      allowReleaseWrite: false,
       siteAdminWriteTarget: "api",
       siteAdminFallbackToLocal: true,
       allowCalendarWrite: false,
@@ -418,6 +465,15 @@ function McpSettingsPanel({
           <span>
             <strong>{settings.writeMode === "read-only" ? "Read only" : "Local write"}</strong>
             <small>Deploy actions stay hidden</small>
+          </span>
+        </div>
+        <div className="settings-ai-status-card">
+          <span className="settings-ai-status-card__icon" aria-hidden="true">
+            <KeyRound absoluteStrokeWidth size={18} strokeWidth={1.7} />
+          </span>
+          <span>
+            <strong>{credentials?.hasAnyCredentials ? "Site Admin signed in" : "Site Admin credentials"}</strong>
+            <small>{credentialDetail}</small>
           </span>
         </div>
       </div>
@@ -476,6 +532,11 @@ function McpSettingsPanel({
       ) : null}
 
       <div className="settings-ai-permissions">
+        <section className="settings-ai-permission-group">
+          <header>
+            <strong>Global</strong>
+            <small>Server and confirmation behavior</small>
+          </header>
         <McpCapabilityRow
           title="MCP enabled"
           detail="Allow local AI clients to use Workspace tools"
@@ -499,6 +560,12 @@ function McpSettingsPanel({
             onUpdateSettings({ requireConfirmationForWrites })
           }
         />
+        </section>
+        <section className="settings-ai-permission-group">
+          <header>
+            <strong>Workspace</strong>
+            <small>Local private data</small>
+          </header>
         <McpCapabilityRow
           title="Notes writes"
           detail="Create pages and append blocks"
@@ -521,6 +588,19 @@ function McpSettingsPanel({
           onChange={(allowProjectsWrite) => onUpdateSettings({ allowProjectsWrite })}
         />
         <McpCapabilityRow
+          title="Contacts writes"
+          detail="Create and update local CRM contacts"
+          checked={settings.allowContactsWrite}
+          disabled={!writable}
+          onChange={(allowContactsWrite) => onUpdateSettings({ allowContactsWrite })}
+        />
+        </section>
+        <section className="settings-ai-permission-group">
+          <header>
+            <strong>Site Admin</strong>
+            <small>Staging content and public-site config</small>
+          </header>
+        <McpCapabilityRow
           title="Site Admin writes"
           detail={settings.siteAdminWriteTarget === "api"
             ? "Create pages in staging Site Admin, then publish content"
@@ -528,6 +608,13 @@ function McpSettingsPanel({
           checked={settings.allowSiteAdminWrite}
           disabled={!writable}
           onChange={(allowSiteAdminWrite) => onUpdateSettings({ allowSiteAdminWrite })}
+        />
+        <McpCapabilityRow
+          title="Release jobs"
+          detail="Create, cancel, and retry Release Center jobs"
+          checked={settings.allowReleaseWrite}
+          disabled={!writable || !settings.allowSiteAdminWrite}
+          onChange={(allowReleaseWrite) => onUpdateSettings({ allowReleaseWrite })}
         />
         <McpSelectRow
           title="Site Admin target"
@@ -553,6 +640,12 @@ function McpSettingsPanel({
           disabled={!writable || !settings.allowSiteAdminWrite || settings.siteAdminWriteTarget !== "api"}
           onChange={(siteAdminFallbackToLocal) => onUpdateSettings({ siteAdminFallbackToLocal })}
         />
+        </section>
+        <section className="settings-ai-permission-group">
+          <header>
+            <strong>Calendar</strong>
+            <small>Local events and public projection</small>
+          </header>
         <McpCapabilityRow
           title="Calendar writes"
           detail="Create local Workspace calendar events"
@@ -560,6 +653,7 @@ function McpSettingsPanel({
           disabled={!writable}
           onChange={(allowCalendarWrite) => onUpdateSettings({ allowCalendarWrite })}
         />
+        </section>
       </div>
 
       <McpConfirmationsSection

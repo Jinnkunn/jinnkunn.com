@@ -97,6 +97,41 @@ struct NowPostPayload: Decodable {
     let data: SiteAdminMobileSummary.NowInfo?
 }
 
+struct SiteAdminNowPayload: Decodable {
+    let data: SiteAdminNowData
+    let sourceVersion: SiteAdminNowSourceVersion
+}
+
+struct SiteAdminNowSourceVersion: Decodable {
+    let fileSha: String
+}
+
+struct SiteAdminNowData: Decodable {
+    let current: SiteAdminNowCurrent
+    let updates: [SiteAdminNowUpdate]
+    let links: [SiteAdminNowLink]
+}
+
+struct SiteAdminNowCurrent: Decodable {
+    let text: String
+    let context: String?
+    let location: String?
+    let updatedAt: String?
+}
+
+struct SiteAdminNowUpdate: Decodable, Identifiable {
+    let id: String
+    let text: String
+    let at: String
+}
+
+struct SiteAdminNowLink: Decodable, Identifiable {
+    var id: String { href }
+
+    let label: String
+    let href: String
+}
+
 struct ReleaseJobPayload: Decodable {
     let job: ReleaseJob
 }

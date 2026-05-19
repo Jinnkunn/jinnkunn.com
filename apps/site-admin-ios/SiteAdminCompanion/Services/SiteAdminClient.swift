@@ -39,13 +39,68 @@ struct SiteAdminClient {
         return payload.summary
     }
 
-    func updateNow(text: String, context: String, location: String) async throws {
-        let body: [String: String] = [
+    func nowDetail() async throws -> SiteAdminNowPayload {
+        try await request(path: "/api/site-admin/now")
+    }
+
+    func updateNow(
+        text: String,
+        context: String,
+        location: String,
+        date: Date,
+        expectedFileSha: String?
+    ) async throws -> SiteAdminNowPayload {
+        var body: [String: String] = [
+            "action": "create",
             "text": text,
             "context": context,
             "location": location,
+            "date": Self.nowDateString(date),
         ]
-        let _: EmptyPayload = try await request(
+        if let expectedFileSha, !expectedFileSha.isEmpty {
+            body["expectedFileSha"] = expectedFileSha
+        }
+        return try await request(
+            path: "/api/site-admin/now",
+            method: "POST",
+            body: body
+        )
+    }
+
+    func updateNowHistory(
+        id: String,
+        text: String,
+        date: Date,
+        expectedFileSha: String?
+    ) async throws -> SiteAdminNowPayload {
+        var body: [String: String] = [
+            "action": "update-history",
+            "id": id,
+            "text": text,
+            "date": Self.nowDateString(date),
+        ]
+        if let expectedFileSha, !expectedFileSha.isEmpty {
+            body["expectedFileSha"] = expectedFileSha
+        }
+        return try await request(
+            path: "/api/site-admin/now",
+            method: "POST",
+            body: body
+        )
+    }
+
+    func deleteNowHistory(
+        id: String,
+        expectedFileSha: String?
+    ) async throws -> SiteAdminNowPayload {
+        var body: [String: String] = [
+            "action": "delete-history",
+            "id": id,
+        ]
+        if let expectedFileSha, !expectedFileSha.isEmpty {
+            body["expectedFileSha"] = expectedFileSha
+        }
+        return try await request(
             path: "/api/site-admin/now",
             method: "POST",
             body: body
@@ -177,5 +232,14 @@ struct SiteAdminClient {
             method: method,
             bodyData: data
         )
+    }
+
+    private static func nowDateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "America/Halifax")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }

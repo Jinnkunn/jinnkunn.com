@@ -492,6 +492,7 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   const siteConfig = JSON.parse(await read("content/filesystem/site-config.json"));
   const siteOverview = await read("apps/workspace/src/surfaces/site-admin/SiteOverviewCard.tsx");
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
+  const nowComposer = await read("apps/workspace/src/surfaces/site-admin/NowStatusComposer.tsx");
   const syncOnWrite = await read("apps/workspace/src/surfaces/site-admin/sync-on-write.ts");
   const nowApi = await read("app/api/site-admin/now/route.ts");
   const publicNowApi = await read("app/api/public/now/route.ts");
@@ -509,8 +510,13 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   );
   assertIncludes(siteOverview, 'target: "pages:now"', "Site Admin overview Now shortcut");
   assertIncludes(statusPanel, "NowStatusComposer", "Site Admin should expose a quick Now updater");
+  assertIncludes(nowComposer, 'type="date"', "Now composer should allow date-only editing");
+  assertIncludes(nowComposer, '"update-history"', "Now composer should edit history entries");
+  assertIncludes(nowComposer, '"delete-history"', "Now composer should delete history entries");
   assertIncludes(syncOnWrite, '"/api/site-admin/now"', "Now updates should refresh local D1 mirrors");
   assertIncludes(nowApi, "appendSiteAdminNowUpdate", "Now updates should use the source-store API");
+  assertIncludes(nowApi, "updateSiteAdminNowHistory", "Now API should support history edits");
+  assertIncludes(nowApi, "deleteSiteAdminNowHistory", "Now API should support history deletes");
   assertIncludes(nowFeed, "NowFeedClient", "Now page should keep a static shell with client hydration");
   assertIncludes(nowFeedClient, 'fetch("/api/public/now"', "Now page should refresh runtime data without rebuild");
   assertIncludes(publicNowApi, "loadSiteAdminNowData", "Public Now API should read the current source-store data");

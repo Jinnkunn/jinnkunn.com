@@ -1,4 +1,5 @@
 use crate::local_db;
+use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -8,7 +9,7 @@ const SETTINGS_FILENAME: &str = "mcp-settings.json";
 const AUDIT_FILENAME: &str = "mcp-audit.jsonl";
 const CONFIRMATIONS_FILENAME: &str = "mcp-confirmations.json";
 const CONTENT_SUGGESTION_FILENAME: &str = "site-admin-content-publish-suggestion.json";
-const FALLBACK_MCP_TOOL_COUNT: usize = 20;
+const FALLBACK_MCP_TOOL_COUNT: usize = 77;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -26,7 +27,11 @@ pub struct WorkspaceMcpSettings {
     #[serde(default = "default_true")]
     pub allow_projects_write: bool,
     #[serde(default = "default_true")]
+    pub allow_contacts_write: bool,
+    #[serde(default = "default_true")]
     pub allow_site_admin_write: bool,
+    #[serde(default)]
+    pub allow_release_write: bool,
     #[serde(default)]
     pub site_admin_write_target: WorkspaceMcpSiteAdminWriteTarget,
     #[serde(default = "default_site_admin_base_url")]
@@ -75,7 +80,9 @@ impl Default for WorkspaceMcpSettings {
             allow_notes_write: true,
             allow_todos_write: true,
             allow_projects_write: true,
+            allow_contacts_write: true,
             allow_site_admin_write: true,
+            allow_release_write: false,
             site_admin_write_target: WorkspaceMcpSiteAdminWriteTarget::Api,
             site_admin_base_url: default_site_admin_base_url(),
             site_admin_fallback_to_local: true,
@@ -103,6 +110,7 @@ pub struct WorkspaceMcpStatus {
     pub recent_audit_count: usize,
     pub pending_confirmation_count: usize,
     pub content_publish_suggestion: Option<WorkspaceMcpContentPublishSuggestion>,
+    pub site_admin_credentials: WorkspaceMcpSiteAdminCredentialStatus,
 }
 
 #[derive(Debug, Serialize)]
@@ -138,6 +146,16 @@ pub struct WorkspaceMcpContentPublishSuggestion {
     pub method: String,
     pub path: String,
     pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceMcpSiteAdminCredentialStatus {
+    pub base_url: String,
+    pub has_app_token: bool,
+    pub has_cf_access: bool,
+    pub has_any_credentials: bool,
+    pub checked_keys: Vec<String>,
 }
 
 fn app_data_file(app: &tauri::AppHandle, filename: &str) -> Result<PathBuf, String> {
@@ -369,6 +387,79 @@ fn read_content_publish_suggestion_from_path(
     Ok(Some(parsed))
 }
 
+fn normalize_site_admin_base_url(input: &str) -> String {
+    let trimmed = input.trim().trim_end_matches('/').to_ascii_lowercase();
+    if trimmed.is_empty() {
+        default_site_admin_base_url()
+    } else {
+        trimmed
+    }
+}
+
+fn site_admin_credential_keys(kind: &str, base_url: &str) -> Vec<String> {
+    let normalized = normalize_site_admin_base_url(base_url);
+    vec![
+        format!("site-admin:{kind}::{normalized}"),
+        format!("{kind}::{normalized}"),
+    ]
+}
+
+fn secure_value_exists(conn: &rusqlite::Connection, keys: &[String]) -> Result<bool, String> {
+    for key in keys {
+        let value = conn
+            .query_row(
+                "SELECT value FROM secure_values WHERE key = ?",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|err| format!("failed to read MCP credential status: {err}"))?;
+        if value
+            .as_deref()
+            .map(|item| !item.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn site_admin_credential_status(
+    app: &tauri::AppHandle,
+    settings: &WorkspaceMcpSettings,
+) -> WorkspaceMcpSiteAdminCredentialStatus {
+    let base_url = normalize_site_admin_base_url(&settings.site_admin_base_url);
+    let token_keys = site_admin_credential_keys("token", &base_url);
+    let cf_id_keys = site_admin_credential_keys("cf-access-id", &base_url);
+    let cf_secret_keys = site_admin_credential_keys("cf-access-secret", &base_url);
+    let checked_keys = token_keys
+        .iter()
+        .chain(cf_id_keys.iter())
+        .chain(cf_secret_keys.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    let Ok(conn) = local_db::open(app) else {
+        return WorkspaceMcpSiteAdminCredentialStatus {
+            base_url,
+            has_app_token: false,
+            has_cf_access: false,
+            has_any_credentials: false,
+            checked_keys,
+        };
+    };
+    let has_app_token = secure_value_exists(&conn, &token_keys).unwrap_or(false);
+    let has_cf_access = secure_value_exists(&conn, &cf_id_keys).unwrap_or(false)
+        && secure_value_exists(&conn, &cf_secret_keys).unwrap_or(false);
+    WorkspaceMcpSiteAdminCredentialStatus {
+        base_url,
+        has_app_token,
+        has_cf_access,
+        has_any_credentials: has_app_token || has_cf_access,
+        checked_keys,
+    }
+}
+
 #[tauri::command]
 pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus, String> {
     let db_path = local_db::db_path(&app)?;
@@ -388,7 +479,9 @@ pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus,
                 settings.allow_notes_write,
                 settings.allow_todos_write,
                 settings.allow_projects_write,
+                settings.allow_contacts_write,
                 settings.allow_site_admin_write,
+                settings.allow_release_write,
                 settings.allow_calendar_write,
             ]
             .into_iter()
@@ -397,6 +490,7 @@ pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus,
         } else {
             0
         };
+    let site_admin_credentials = site_admin_credential_status(&app, &settings);
     Ok(WorkspaceMcpStatus {
         ready: true,
         db_path: db_path.display().to_string(),
@@ -414,6 +508,7 @@ pub fn workspace_mcp_status(app: tauri::AppHandle) -> Result<WorkspaceMcpStatus,
         content_publish_suggestion: read_content_publish_suggestion_from_path(
             &content_publish_suggestion_path,
         )?,
+        site_admin_credentials,
     })
 }
 

@@ -1,0 +1,380 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{natbib}
+\usepackage{url}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\title{Guarded Agentic Release: Offline Evaluation of Policy-Verified Deployment Agents}
+\author{Jinkun Chen}
+\date{May 18, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Language-model agents can often choose plausible operational commands while still violating deployment policy. This paper studies that gap in the setting of release planning. Guarded Agentic Release is an offline benchmark and verifier design for evaluating whether a deployment agent can recommend release actions while preserving hard blockers, production confirmation, and execution gating. The benchmark contains 60 scenarios derived from a real staging/production release workflow. We compare a deterministic rule baseline, three DeepSeek planner prompts, and an unverified DeepSeek-only condition. The final Batch B3 evaluation shows that a guarded planner can eliminate unsafe allowed execution while an unverified planner misses all required blockers despite high command-selection accuracy. The results support a simple design principle: operational agents should separate planning from authority, using deterministic verification to decide whether a proposed command is blocked, confirmation-gated, or executable.
+\end{abstract}
+
+\section{Introduction}
+
+Language-model agents are increasingly framed as systems that can reason, choose actions, and interact with tools. This framing is useful for software operations: a release assistant can inspect deployment state, explain what changed, and recommend a next action. It is also dangerous. In a deployment workflow, choosing a plausible command is not enough. A command may be correct as a recommendation while still being unsafe to execute because a hard blocker is present. We use hard blocker to mean a deterministic precondition that must stop execution, such as a dirty working tree, a wrong branch, an offline runner, an active release job, a missing static-shell artifact, or an unavailable rollback target. We use confirmation gate to mean a policy requirement that allows a production action to be recommended but prevents automatic execution until a human explicitly confirms it.
+
+This paper studies that distinction through Guarded Agentic Release, an offline benchmark and verifier for release-planning agents. The system separates interpretation from authority. A planner, either a rule baseline or an LLM, emits a raw plan containing an action, script, reason, and evidence. A deterministic verifier then normalizes the plan, enforces deployment policy, inserts blockers, and decides whether execution would be allowed. The benchmark scores this verified output against author-defined offline labels, but never runs release scripts or calls live infrastructure.
+
+The central claim is that release agents should be evaluated on policy correctness, not only command plausibility. Our results show why. In the final 60-scenario Batch B3 evaluation, the unverified DeepSeek-only condition achieves high action accuracy (0.900) and script accuracy (0.933). Yet its blocker recall is 0.000 and its hard-blocker miss rate is 1.000, meaning that it selects commands that look correct while executing through every required safety barrier. By contrast, the guarded condition is not planning-perfect, but its unsafe allowed-execution rate is 0.000. The verifier does not make the planner always correct; it changes unsafe mistakes into blocked, auditable failures.
+
+This work makes three contributions:
+
+\begin{enumerate}
+  \item An offline benchmark with 60 release-agent scenarios, derived from a real staging/production workflow but isolated from live deployment.
+  \item A planner/verifier split that treats production confirmation, hard blockers, and action/script consistency as deterministic policy rather than prompt-only behavior.
+  \item An evaluation showing that high action/script accuracy can coexist with unsafe execution, and that deterministic verification can materially reduce unsafe release plans.
+\end{enumerate}
+
+\section{System Design}
+
+Guarded Agentic Release uses a two-stage design. The planner reads a structured release scenario and emits a raw plan with four fields: \texttt{action}, \texttt{script}, \texttt{reason}, and \texttt{evidence}. The verifier consumes the same scenario plus the raw plan and returns a verified output with \texttt{action}, \texttt{script}, \texttt{reason}, \texttt{blockers}, \texttt{requiresHumanConfirmation}, \texttt{allowedToExecute}, and \texttt{evidence}.
+
+The verifier has four responsibilities. First, it constrains the command vocabulary so planners cannot invent arbitrary release scripts. Second, it enforces hard blockers such as runner unavailability, active jobs, dirty worktrees, non-main production state, authentication failures, static-shell misses, route parity mismatch, and rollback preconditions. Third, it enforces production human confirmation, so production-affecting actions can be recommended but not marked executable without an explicit confirmation gate. Fourth, after Batch B exposed a gap, it enforces action/script consistency: for example, \texttt{promote-production-code} cannot be paired with the staging script \texttt{release:staging}.
+
+The verifier is intentionally small and deterministic. Its behavior can be summarized as follows:
+
+\begin{verbatim}
+verify(scenario, raw_plan):
+  plan = normalize(raw_plan)
+  hard_blockers = []
+
+  if scenario.runner_offline: hard_blockers += runner_offline
+  if scenario.active_job_running: hard_blockers += active_job_running
+  if scenario.auth_failure: hard_blockers += auth_failure
+  if scenario.rollback_requested and not rollback_available:
+      hard_blockers += rollback_unavailable
+  if scenario.target is production and static_shell_missing:
+      hard_blockers += static_shell_missing
+  if git.branch is not main: hard_blockers += non_main_branch
+  if git.dirty and not production_history_only_dirty:
+      hard_blockers += dirty_worktree
+  if route parity failed and a production command is proposed:
+      hard_blockers += route_parity_mismatch
+  if action and script disagree with the closed mapping:
+      hard_blockers += action_script_mismatch
+
+  if hard_blockers is nonempty:
+      return blocked plan with empty script and blocker evidence
+
+  if plan is production-scoped:
+      return plan with production_requires_confirmation
+      and allowedToExecute = false
+
+  return plan with allowedToExecute =
+      action is not blocked and script is nonempty
+\end{verbatim}
+
+The current benchmark replaces live execution with label scoring. It records whether a command would be allowed, but it does not execute any command, deploy to staging or production, call Cloudflare, touch D1, or read live website state. This isolation is a methodological choice: operational behavior can be evaluated repeatedly before any live executor exists.
+
+\section{Benchmark Design}
+
+The benchmark contains 60 release scenarios. The first 30 scenarios form the initial Batch A corpus. The expanded corpus preserves those scenarios and adds 30 composition cases. Each scenario contains structured release state, a target environment, and a gold label with expected action, expected script, required blockers, forbidden scripts, confirmation expectation, and execution allowance.
+
+The scenarios cover current/no-op states, staging metadata gaps, staging code drift, content-only changes, content overlays, production code promotion, production overlay promotion, Now-only production copy, route parity mismatch, missing static-shell coverage, runner availability, active release jobs, authentication failure, dirty worktrees, non-main branches, rollback availability, and combined blockers.
+
+\subsection{Scenario Construction}
+
+The corpus is manually authored but systematically derived from a single release-state fixture. Each scenario mutates a base status object by changing one or more policy-relevant fields: target environment, deployment metadata, content-overlay snapshots, route parity, git branch, dirty files, runner state, active job state, authentication status, rollback request state, and static-shell coverage. The first 30 scenarios enumerate atomic workflow cases from the release runbook. The second 30 scenarios add composition cases in which otherwise plausible staging or production plans are interrupted by runner, job, auth, static-shell, route-parity, branch, dirty-worktree, or rollback blockers.
+
+The corpus is intentionally production-heavy because the research question concerns safe release automation. Table~\ref{tab:scenario-distribution} summarizes the resulting distribution. This is not intended to approximate ordinary day-to-day release frequency. It is a stress-oriented benchmark: high-risk and blocked cases are overrepresented so that blocker recall, confirmation policy, and verifier intervention can be measured directly. The 10 allowed-execution cases serve as green-path checks so that the system can also be penalized for unnecessary blocking.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lr@{\qquad}lr@{}}
+\toprule
+Tag & Count & Tag & Count \\
+\midrule
+Total scenarios & 60 & Original Batch A prefix & 30 \\
+Target production & 53 & Target staging & 7 \\
+Blocked & 33 & Allowed execution & 10 \\
+Human confirmation & 9 & Combined blockers & 6 \\
+Content overlay & 20 & Content change/publish & 23 \\
+Runner or active job & 17 & Route parity & 8 \\
+Static shell & 5 & Rollback & 5 \\
+\bottomrule
+\end{tabular}
+\caption{Scenario distribution in the 60-scenario corpus. Tags are not mutually exclusive.}
+\label{tab:scenario-distribution}
+\end{table}
+
+\subsection{Scenario Label Derivation}
+
+The scenario labels are derived from the release runbook, site-admin status semantics, Cloudflare-oriented failure modes, static-shell mitigation policy, runner/job policy, and rollback policy. They are author-defined offline policy labels, not records of live deployments and not evidence that a deployment command was executed.
+
+This distinction matters most for production actions. A production promotion can be the correct next recommendation while still having \texttt{allowedToExecute=false}, because production-affecting commands require human confirmation. The benchmark therefore distinguishes planning correctness from execution authority.
+
+\section{Experimental Setup}
+
+We evaluate five conditions:
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Condition & Description \\
+\midrule
+\texttt{rule-only} & Deterministic rule planner plus deterministic verifier. \\
+\texttt{deepseek-naive} & Minimal DeepSeek prompt plus deterministic verifier. \\
+\texttt{deepseek-structured} & Schema- and taxonomy-constrained DeepSeek prompt plus deterministic verifier. \\
+\texttt{deepseek-guarded} & Policy-aware DeepSeek prompt plus deterministic verifier. \\
+\texttt{deepseek-only} & Structured DeepSeek planner without the deterministic verifier. \\
+\bottomrule
+\end{tabular}
+\caption{Evaluated planner and verifier conditions.}
+\label{tab:conditions}
+\end{table}
+
+The three DeepSeek prompt profiles differ only in the planner prompt; all verified DeepSeek conditions use the same deterministic verifier. The naive profile asks for a strict JSON object with \texttt{action}, \texttt{script}, \texttt{reason}, and \texttt{evidence}, tells the model not to execute commands, and restricts it to the provided scenario JSON. The structured profile adds the closed action taxonomy, the closed script taxonomy, exact-label instructions, no-op guidance, and a schema-shaped example. The guarded profile adds policy-specific release guidance: rollback precedence, ignoring production-history-only dirty files, static-shell scope, staging-first behavior for missing or stale staging metadata, production promotion when staging is current, and route-parity behavior when a staging overlay is missing.
+
+Each condition is run ten times over the 60-scenario Batch B3 corpus. The DeepSeek conditions use \texttt{deepseek-v4-flash} with JSON-mode prompting. The offline runner uses bounded concurrency of four requests, a 10-second request timeout, and fail-closed provider behavior: if a provider request fails, the planner emits a blocked raw plan rather than an executable command. The final Batch B3 artifacts contain no provider-failure fallbacks. The run artifacts include per-scenario JSON reports, aggregate summaries, CSV/Markdown tables, and failure-analysis reports under \path{output/research/release-agent-benchmark-runs/batch-b3-runs-10-corpus-60-evidence-ci}.
+
+The primary task metrics are next-action accuracy and script accuracy. The safety metrics cover blocker recall, unsafe execution, production-confirmation violations, hard-blocker misses, invalid scripts, and verifier intervention. Following the review concern that a guarded system may become too conservative, the evaluator also reports \texttt{false\_positive\_block\_rate}: among scenarios labeled executable, the fraction whose verified output is not executable. The evaluator additionally includes a first-pass evidence grounding check. It extracts checkable hard-fact claims from the raw planner reason and evidence fields, such as SHAs, branch names, file paths, runner/auth/job/rollback facts, route-parity facts, and known blocker names, then checks whether those claims are supported by the scenario or verifier policy. This produces \texttt{evidence\_groundedness} and \texttt{hallucinated\_evidence\_rate}. Aggregate artifacts also include 95\% confidence-interval fields for each metric. The ten-run setting is still a single-model snapshot rather than a cross-provider stability study, but it reduces the run-to-run fragility of the earlier three-run experiments. The key methodological choice is to separate command selection from execution permission: an agent can select the right-looking command while missing the policy conditions that make it unsafe.
+
+\section{Results}
+
+Table~\ref{tab:batch-b3} reports the final Batch B3 evaluation and is the main quantitative result in the paper. Means are computed over ten runs. Unsafe Max and Failure Max report the worst run. Earlier Batch A, Batch B, and Batch B2 runs are retained as verifier-iteration history rather than main results: Batch A established the initial 30-scenario baseline, Batch B exposed an action/script consistency gap, and Batch B2 confirmed the patched verifier before the ten-run Batch B3 rerun.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}llrrrrrrr@{}}
+\toprule
+Condition & Verified & Action & Script & Blocker & Unsafe & Hard & FP & Fail \\
+ & & & & Recall & Max & Miss & Block & Max \\
+\midrule
+\texttt{rule-only} & yes & 1.000 & 1.000 & 1.000 & 0.000 & 0.000 & 0.000 & 0 \\
+\texttt{deepseek-naive} & yes & 0.683 & 0.683 & 0.813 & 0.133 & 0.188 & 0.000 & 19 \\
+\texttt{deepseek-structured} & yes & 0.897 & 0.930 & 0.977 & 0.000 & 0.023 & 0.220 & 7 \\
+\texttt{deepseek-guarded} & yes & 0.988 & 0.988 & 0.996 & 0.000 & 0.004 & 0.050 & 2 \\
+\texttt{deepseek-only} & no & 0.900 & 0.933 & 0.000 & 0.150 & 1.000 & 0.100 & 46 \\
+\bottomrule
+\end{tabular}
+\caption{Batch B3 results on the full 60-scenario corpus with the patched verifier. FP Block is the false-positive block rate on the 10 executable green-path scenarios.}
+\label{tab:batch-b3}
+\end{table}
+
+Statistical interpretation is intentionally conservative. The benchmark reports descriptive means and 95\% confidence-interval fields over ten runs, but it does not claim population-level significance across model versions, decoding settings, providers, or deployment stacks. The key comparisons are large safety contrasts rather than small ranking differences: for example, \texttt{deepseek-only} has blocker recall 0.000 and hard-blocker miss rate 1.000 in every run, while \texttt{deepseek-guarded} has unsafe allowed execution 0.000 in every run and failure-count mean 0.7 with 95\% interval [0.217, 1.183].
+
+The hard-fact evidence check is deliberately narrower than full explanation verification, but it already separates prompt profiles. Rule-only evidence is fully grounded under this checker. The naive prompt has evidence groundedness 0.656 and hallucinated-evidence rate 0.180, while the structured and guarded prompts score 0.865/0.115 and 0.816/0.175 respectively. The unverified DeepSeek-only condition scores 0.854 groundedness with 0.117 hallucinated-evidence rate. These values should be read as lower-level audit signals rather than as proof that every rationale is semantically correct.
+
+\subsection{RQ1: Planning Correctness}
+
+The deterministic rule baseline scores perfectly on the final 60-scenario corpus, indicating that the gold labels are internally consistent with the current rule implementation. Prompt structure has a large effect on planning. The naive DeepSeek condition reaches only 0.683 action accuracy and 0.683 script accuracy, often emitting plausible but invalid command names. The structured prompt improves action accuracy to 0.897 and script accuracy to 0.930 while eliminating invalid scripts. The guarded prompt improves further to 0.988 action and script accuracy.
+
+These results support a closed-interface design. Before an agent can safely interact with deployment tooling, it should choose from a fixed action and script vocabulary. Free-form operational language is too easy to confuse with executable intent.
+
+\subsection{RQ2: Safety Compliance}
+
+Planning correctness does not imply safety compliance. The unverified \texttt{deepseek-only} condition is strong on command selection, with 0.900 action accuracy and 0.933 script accuracy, but its safety scores collapse: blocker recall is 0.000, hard-blocker miss rate is 1.000, unsafe allowed execution reaches 0.150 in the worst run, and production confirmation violation reaches 0.167 in the worst run.
+
+This is the central empirical signal. A release agent can recommend the right command-shaped action while still being unsafe to execute. For deployment agents, command accuracy is not a substitute for blocker recall, confirmation policy, and execution gating.
+
+\subsection{RQ3: Verifier Effectiveness}
+
+The verifier changes model output from a suggested command into a policy-checked plan. In Batch B3, \texttt{deepseek-guarded} averages 0.7 failures per run, with a worst run of two failures, but its unsafe allowed-execution rate is 0.000. The remaining failures are informative. On \texttt{content-overlay-covered-production-code-behind}, the planner sometimes emits the production action \texttt{promote-production-code} with the staging script \texttt{release:staging}. The patched verifier blocks this as \texttt{action\_script\_mismatch}. On \texttt{saved-content-staging-overlay-stale}, the planner sometimes confuses a staging content publish with a production-scoped recommendation; the verifier again prevents automatic production execution.
+
+This illustrates the value of deterministic verification. The verifier does not make the planner correct; it prevents an inconsistent plan from becoming executable. The failure remains visible in the audit trail, but the execution gate stays closed.
+
+The Batch B to Batch B2 transition is the clearest example of verifier iteration, and Batch B3 shows the patched behavior over more repetitions. In Batch B, the same action/script inconsistency could be treated as executable because the verifier checked production scripts and confirmation policy but did not yet check whether an action's semantics matched its script. Batch B2 adds \texttt{action\_script\_mismatch} as a hard blocker. The planner still occasionally makes the mistake in Batch B3, so the scenario remains a planning failure, but the verified system no longer allows execution. This is the intended maintenance model: safety policy can be patched deterministically without retraining or trusting the prompt to remember every edge case.
+
+\subsection{RQ4: Observability and Recoverability}
+
+The benchmark is replayable by design. Each run writes a complete JSON report with scenario inputs, raw planner outputs, verified outputs, metrics, and failure labels. Aggregate artifacts include \texttt{summary.json}, \texttt{summary.csv}, \texttt{summary.md}, and \texttt{failure-analysis.md}. A failure can be traced from an aggregate metric to a condition, run, scenario, expected label, raw model output, verified output, missing blockers, and safety classification.
+
+This audit trail supports recoverability analysis without live infrastructure. For example, failures can be grouped by invalid command vocabulary, missing production confirmation, hard-blocker misses, environment confusion, action/script mismatch, rollback behavior, or conservative over-blocking. These categories guide whether to adjust prompts, expand verifier policy, or add new corpus scenarios.
+
+\section{Failure Analysis}
+
+The guarded failures are small but useful because they show the difference between planner correctness and execution safety. In \texttt{content-overlay-covered-production-code-behind}, the gold label recommends production code promotion and production confirmation. A guarded DeepSeek run instead pairs the production action \texttt{promote-production-code} with the staging script \texttt{release:staging}. The verifier converts this inconsistency into a blocked output with \texttt{action\_script\_mismatch}; the benchmark records a planning failure, but not an unsafe execution.
+
+Batch B3 produces 719 failures across 50 reports. The top categories are ignored blockers, wrong scripts, missing human confirmation, unsafe allowed execution, staging/production confusion, and unsafe production commands.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Category & Count \\
+\midrule
+Ignored blocker & 523 \\
+Wrong script & 279 \\
+Missing human confirmation & 203 \\
+Unsafe allowed execution & 164 \\
+Staging/production confusion & 154 \\
+Unsafe production command & 89 \\
+Over-blocking & 65 \\
+Label mismatch & 40 \\
+Wrong rollback behavior & 20 \\
+Action/script mismatch & 5 \\
+\bottomrule
+\end{tabular}
+\caption{Batch B3 failure categories across all reports.}
+\label{tab:failures}
+\end{table}
+
+Unsafe failures dominate the unverified condition. Although \texttt{deepseek-only} often selects plausible actions and scripts, it misses required blockers and confirmation policy. Missing production-confirmation, runner-offline, active-job, or static-shell blockers changes the semantics of a plan: a correct command without its guard condition is an unsafe execution recommendation.
+
+Interface failures are most visible in the naive condition. The model invents shell-like deployment commands or imprecise publish commands instead of selecting from the closed release vocabulary. Structured prompting eliminates invalid scripts, but it does not remove all missed blockers or confirmation failures.
+
+Action/script mismatch is the key verifier iteration. In the pre-patch Batch B diagnostic run, \texttt{promote-production-code} paired with \texttt{release:staging} could be treated as executable. Batch B2 and Batch B3 block the same inconsistency with \texttt{action\_script\_mismatch}. The result counts as a planning failure, but not as unsafe execution. This is the intended behavior for a guarded operational assistant.
+
+\section{Related Work}
+
+Guarded Agentic Release builds on work on LLM agents and tool use. ReAct introduced a reasoning-and-acting pattern in which models interleave natural-language reasoning with environment actions \citep{yao2023react}. Toolformer showed that models can learn to use external tools \citep{schick2023toolformer}. Surveys of LLM-based autonomous agents organize this space around planning, memory, tool use, and reflection \citep{wang2023surveyagents}. AgentBench evaluates LLMs as agents across interactive environments, motivating agent-specific benchmarks rather than static question answering alone \citep{liu2023agentbench}.
+
+Software-agent benchmarks evaluate models on realistic engineering tasks. SWE-bench measures whether models can resolve real GitHub issues \citep{jimenez2023swebench}, while SWE-agent shows that the agent-computer interface strongly affects software-engineering performance \citep{yang2024sweagent}. CodeAct explores executable code actions as an agent action space \citep{wang2024codeact}. Guarded Agentic Release shares the focus on realistic developer workflows, but its success criteria target release-policy safety rather than issue resolution.
+
+Operations-focused work is closer to this setting. OpsEval evaluates LLMs on IT operations tasks \citep{liu2023opseval}. AIOpsLab proposes an environment for autonomous cloud agents with fault injection and operational workflows \citep{shetty2024aiopslab}. Recent NetOps/AIOps surveys emphasize evidence traces, permission boundaries, constrained autonomy, checks, and rollback mechanisms \citep{bilal2026netopsaiops}. This paper takes a narrower but more policy-specific slice: release decisions for a staging/production workflow with content overlays, static-shell checks, runner state, and production confirmation.
+
+Several works study safety risks for tool-using agents. ToolEmu evaluates LM agents in an emulated sandbox to identify risky tool-use behavior without live side effects \citep{ruan2023toolemu}. Guarded Agentic Release is complementary rather than identical. ToolEmu is primarily exploratory: it uses an LM-emulated environment to surface possible risky behaviors. This benchmark is protective: it assumes that some deployment constraints are already known and asks whether a deterministic verifier can enforce them even when the planner is wrong. In short, ToolEmu helps discover unknown risks, while Guarded Agentic Release enforces known constraints. AgentDojo evaluates prompt-injection attacks and defenses for tool-using agents \citep{debenedetti2024agentdojo}. Testing Language Model Agents Safely in the Wild studies live agent testing with monitors that can stop and log unsafe behavior \citep{naihin2023safewild}. These works support the decision to evaluate release behavior offline before considering live execution.
+
+General guardrail and safety work further motivates policy layers. Safeguarding surveys organize mitigation strategies for LLM risks \citep{dong2024safeguarding}. Constitutional AI uses explicit principles to shape model behavior \citep{bai2022constitutional}, while verification-and-validation surveys argue that LLM safety requires techniques beyond task accuracy \citep{huang2023llmsafetyvv}. Guarded Agentic Release follows this direction but makes the safety boundary deterministic: prompts can improve planner quality, but blockers, confirmation, and execution allowance are enforced outside the model.
+
+The verifier is also related to runtime enforcement. Schneider's security automata formalize policies enforceable by monitoring executions \citep{schneider2000enforceable}. Edit automata broaden enforcement from stopping actions to suppressing or inserting actions \citep{ligatti2003editautomata}. In reinforcement learning, shielding constrains an agent's actions before unsafe behavior occurs \citep{alshiekh2017shielding}. Our verifier is not a live runtime monitor because the benchmark does not execute commands, but the mapping is direct: normalization corresponds to suppressing or modifying malformed actions, hard blockers correspond to halting unsafe actions, and confirmation gating corresponds to inserting an additional authorization step before production execution. This places the paper's safety argument outside prompt engineering alone: prompts improve planning, but policy enforcement remains a separate mechanism.
+
+\section{Discussion}
+
+The results support a guarded-autonomy design for deployment agents. The planner is useful for interpreting structured release state and producing a rationale, but it should not be the final authority on execution. A deterministic verifier can encode policies that are too brittle or too important to leave to language-model interpretation: production confirmation, dirty worktree blocking, branch requirements, runner availability, static-shell coverage, rollback preconditions, and action/script consistency.
+
+The design also keeps research deploy-safe. Because the benchmark uses fixture states and command labels, it can evaluate release-agent behavior without touching live infrastructure. This makes it suitable for iterative prompt and verifier development before any live executor is introduced.
+
+The Batch B to Batch B2 iteration is a useful example, and the ten-run Batch B3 rerun confirms the resulting safety behavior. The pre-patch verifier missed a subtle inconsistency between production action semantics and staging script syntax. The patched verifier added \texttt{action\_script\_mismatch} as a hard blocker. The planner still makes the mistake, but the verified system no longer allows it to execute. This is exactly the distinction the benchmark is meant to reveal.
+
+The verifier should therefore be understood as policy-complete only with respect to the enumerated deployment policy, not semantically complete for all release risk. This is a policy-bounded completeness claim: the verifier covers constraints that can be named and checked in structured state, including branch, dirty tree, runner, job, auth, route parity, static-shell, rollback, confirmation, and action/script consistency. It does not prove that a planner's natural-language rationale is correct, that the benchmark label is universally valid for every organization, or that all future deployment risks have been anticipated. Its advantage is maintainability: when a new hard constraint is discovered, it can be added to the verifier and corpus as a deterministic rule rather than left as a prompt convention.
+
+\section{Limitations}
+
+This is an early offline study. The corpus contains 60 scenarios and comes from one personal infrastructure workflow. The labels reflect the current release policy and may not generalize to other deployment stacks. The production-heavy distribution is deliberate for this safety study, but it should be expanded with more staging-only and ordinary green-path cases before claiming broad operational representativeness.
+
+Batch B3 uses ten runs per condition. This is enough to make the main safety contrast less dependent on a single lucky sample, but it is not enough to estimate stability across model versions, decoding settings, providers, or deployment stacks. The artifacts report confidence-interval fields, and the guarded failure-count interval is narrower than in the earlier three-run experiments, but a stronger follow-up should repeat the experiment across model snapshots and providers and add a non-parametric comparison for key safety metrics such as unsafe allowed execution, hard-blocker miss rate, false-positive block rate, and hallucinated-evidence rate.
+
+The evidence-grounding check is still shallow. It validates checkable hard facts, but it does not prove that every rationale sentence is semantically entailed by scenario state. For example, a sentence can use only supported SHAs and still draw the wrong release conclusion. A future version should add a richer evidence-grounding metric over structured fact references, relation claims, and rationale entailment. Until then, the evidence field should be treated as audit support rather than a fully validated explanation.
+
+The study does not include a user study. This is intentional for the current phase. The core question is whether automatic safety constraints reduce unsafe release plans in a reproducible offline benchmark. A later user study could evaluate operator trust, workload, and confirmation UX, but the first publishable result can stand on offline correctness and safety metrics.
+
+\section{Conclusion}
+
+Deployment agents should not be evaluated only on command plausibility. In Guarded Agentic Release, an unverified LLM planner can appear competent on action and script selection while missing every required blocker. A deterministic verifier changes the safety profile: it cannot guarantee perfect planning, but it can prevent unsafe execution recommendations and preserve an audit trail. The broader lesson is simple: for operational agents, autonomy should be bounded by explicit policy verification before any live action is allowed.
+
+\appendix
+
+\section{Scenario Coverage}
+\label{app:scenario-coverage}
+
+The 60-scenario corpus is a research-only fixture set. The first 30 scenarios are the Batch A prefix and the second 30 scenarios are expanded composition cases. The expanded cases do not mainly add happy paths; they combine otherwise plausible release plans with runner, active-job, auth, release-job, static-shell, route-parity, branch, dirty-worktree, and rollback blockers. This design is deliberate because the benchmark's main question is safety under operational constraints.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}llr@{}}
+\toprule
+Group & Tag & Count \\
+\midrule
+Corpus split & \texttt{batch-a} & 30 \\
+Corpus split & \texttt{expanded-v4} & 30 \\
+Decision shape & \texttt{noop} & 8 \\
+Decision shape & \texttt{staging-action} & 14 \\
+Decision shape & \texttt{production-action} & 9 \\
+Decision shape & \texttt{blocked} & 33 \\
+Decision shape & \texttt{allowed-execution} & 10 \\
+Release surface & \texttt{content-overlay} & 20 \\
+Release surface & \texttt{rollback} & 5 \\
+Hard blockers & \texttt{runner} or \texttt{active-job} & 17 \\
+Hard blockers & \texttt{static-shell} & 5 \\
+Hard blockers & \texttt{route-parity} & 8 \\
+Hard blockers & \texttt{branch-policy} or \texttt{dirty-worktree} & 10 \\
+\bottomrule
+\end{tabular}
+\caption{Additional scenario coverage summary. Tags are not mutually exclusive.}
+\label{tab:appendix-coverage}
+\end{table}
+
+Only 10 scenarios are immediately executable under the offline policy model. This does not mean the remaining cases are erroneous: production-affecting recommendations can be correct while still requiring human confirmation, and blocked cases are intentionally overrepresented to measure blocker recall.
+
+\section{Prompt Profiles}
+\label{app:prompt-profiles}
+
+All DeepSeek conditions use the same raw planner output shape: \texttt{action}, \texttt{script}, \texttt{reason}, and \texttt{evidence}. The prompt profiles differ in how much structure and policy context they provide.
+
+\begin{description}
+  \item[\texttt{naive}] Requests strict JSON, forbids command execution, and instructs the model to use only the provided scenario JSON. It does not provide the full release taxonomy beyond the required output fields.
+  \item[\texttt{structured}] Adds the closed action vocabulary, closed script vocabulary, exact-label instructions, no-op guidance, and a schema-shaped example.
+  \item[\texttt{guarded}] Adds policy-specific release guidance: rollback precedence, production-history-only dirty-file treatment, static-shell scope, staging-first behavior for missing or stale staging metadata, production promotion when staging is current, and route-parity behavior when staging overlay data is missing.
+\end{description}
+
+The \texttt{deepseek-only} condition uses the structured planner without the deterministic verifier. This isolates the effect of removing policy verification while keeping the planner interface relatively disciplined.
+
+\section{Artifacts and Reproducibility}
+\label{app:artifacts}
+
+The Batch B3 artifacts are stored under:
+
+\begin{verbatim}
+output/research/release-agent-benchmark-runs/
+  batch-b3-runs-10-corpus-60-evidence-ci/
+\end{verbatim}
+
+The directory contains per-condition, per-run JSON reports, \texttt{summary.json}, \texttt{summary.csv}, \texttt{summary.md}, and \texttt{failure-analysis.md}. The paper PDF is generated under \path{output/research/paper/guarded-agentic-release.pdf}. These output directories are research artifacts and are not production inputs.
+
+The main offline experiment was run with:
+
+\begin{verbatim}
+npm run benchmark:release-agent:experiments -- \
+  --conditions=rule-only,deepseek-naive,deepseek-structured,\
+deepseek-guarded,deepseek-only \
+  --runs=10 \
+  --concurrency=4 \
+  --request-timeout-ms=10000 \
+  --max-retries=0 \
+  --output-dir=output/research/release-agent-benchmark-runs/\
+batch-b3-runs-10-corpus-60-evidence-ci \
+  --json --compact
+\end{verbatim}
+
+The failure analysis and manuscript checks are reproduced with:
+
+\begin{verbatim}
+npm run benchmark:release-agent:analyze -- \
+  --run-dir=output/research/release-agent-benchmark-runs/\
+batch-b3-runs-10-corpus-60-evidence-ci \
+  --json --compact
+npm run paper:research:check
+npm run paper:research:pdf
+node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
+  --test 'tests/research/**/*.test.mjs'
+\end{verbatim}
+
+The benchmark is offline by construction: it does not execute release scripts, deploy to staging or production, call Cloudflare, touch D1, or read live website state.
+
+\section{Verifier Policy Details}
+\label{app:verifier-policy}
+
+The verifier enforces four policy classes. First, vocabulary normalization maps malformed or unknown action/script values away from executable authority. Second, hard blockers clear the script and force \texttt{allowedToExecute=false}. The current hard blockers include runner offline, active job running, auth failure, unavailable rollback, non-main branch, dirty worktree except production-history-only dirty state, production static-shell miss, route parity mismatch for production commands, and action/script mismatch. Third, production-scoped commands are confirmation-gated: they may be correct recommendations, but they receive \texttt{production\_requires\_confirmation} and are not executable automatically. Fourth, provider failures fail closed. If the DeepSeek request times out or fails, the planner emits a blocked raw plan with empty script rather than an executable command.
+
+These rules are intentionally narrower than general release intelligence. They enforce explicit deployment policy, not semantic truth over every possible operational state. This is why the benchmark reports both planning metrics and safety metrics: a planner can be wrong while the verified output remains non-executable and auditable.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

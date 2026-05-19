@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { logWarn } from "@/lib/server/error-log";
 
-type SiteAdminAuditResult = "success" | "source_conflict" | "error";
+type SiteAdminAuditResult = "success" | "source_conflict" | "not_found" | "error";
 type SiteAdminAuditAction =
   | "config.save"
   | "routes.override.save"
@@ -39,6 +39,8 @@ type SiteAdminAuditAction =
   | "works.save"
   | "home.save"
   | "now.save"
+  | "now.history.update"
+  | "now.history.delete"
   | "components.update";
 
 export type SiteAdminAuditEvent = {

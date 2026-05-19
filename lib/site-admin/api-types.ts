@@ -303,6 +303,28 @@ export type SiteAdminNowData = {
   links: SiteAdminNowLink[];
 };
 
+export type SiteAdminNowPostCommand =
+  | {
+      action?: "create";
+      text: string;
+      context?: string;
+      location?: string;
+      date?: string;
+      expectedFileSha?: string;
+    }
+  | {
+      action: "update-history";
+      id: string;
+      text: string;
+      date?: string;
+      expectedFileSha?: string;
+    }
+  | {
+      action: "delete-history";
+      id: string;
+      expectedFileSha?: string;
+    };
+
 export type SiteAdminNowGetPayload = {
   ok: true;
   data: SiteAdminNowData;

@@ -36,14 +36,28 @@ test("site-admin-ios: content editing does not expose a Live mode switch", async
   const appSession = await read("apps/site-admin-ios/SiteAdminCompanion/AppShell/AppSession.swift");
   const contentView = await read("apps/site-admin-ios/SiteAdminCompanion/Features/Content/ContentView.swift");
   const todayView = await read("apps/site-admin-ios/SiteAdminCompanion/Features/Today/TodayView.swift");
+  const nowSheet = await read("apps/site-admin-ios/SiteAdminCompanion/Features/Today/NowQuickUpdateSheet.swift");
+  const client = await read("apps/site-admin-ios/SiteAdminCompanion/Services/SiteAdminClient.swift");
+  const models = await read("apps/site-admin-ios/SiteAdminCompanion/Models/SiteAdminModels.swift");
 
   assert.match(appSession, /var canEditContent: Bool/);
   assert.match(appSession, /guard environment\.canEditContent/);
+  assert.match(appSession, /func loadNowDetail\(\)/);
+  assert.match(appSession, /func updateNowHistory\(/);
+  assert.match(appSession, /func deleteNowHistory\(/);
   assert.doesNotMatch(contentView, /Live is read-only/);
   assert.doesNotMatch(contentView, /SiteAdminEnvironmentPicker/);
   assert.doesNotMatch(todayView, /Live is read-only/);
   assert.doesNotMatch(todayView, /Switch to Draft/);
   assert.match(todayView, /Publish Draft to Live/);
+  assert.match(nowSheet, /DatePicker/);
+  assert.match(nowSheet, /History/);
+  assert.match(nowSheet, /NowHistoryEditSheet/);
+  assert.match(client, /func nowDetail\(\)/);
+  assert.match(client, /"update-history"/);
+  assert.match(client, /"delete-history"/);
+  assert.match(models, /struct SiteAdminNowPayload/);
+  assert.match(models, /struct SiteAdminNowUpdate: Decodable, Identifiable/);
 });
 
 test("site-admin-ios: calendar sync uploads EventKit observations to Draft", async () => {

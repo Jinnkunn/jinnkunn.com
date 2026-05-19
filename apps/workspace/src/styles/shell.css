@@ -915,7 +915,7 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .settings-ai-status-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1086,7 +1086,37 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .settings-ai-permissions {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+}
+
+.settings-ai-permission-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.settings-ai-permission-group > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.settings-ai-permission-group > header strong {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-ai-permission-group > header small {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-ai-capability-row {
@@ -1193,6 +1223,25 @@ body[data-window-focused="true"] .sidebar-surface {
 .settings-ai-confirmation-row__actions .btn {
   min-height: 26px;
   padding: 0 9px;
+}
+
+.settings-ai-confirmation-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.settings-ai-confirmation-row__meta span {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--fill-secondary) 78%, transparent);
+  font-size: 10.5px;
+  font-weight: 650;
 }
 
 .settings-ai-confirmation-row__preview {

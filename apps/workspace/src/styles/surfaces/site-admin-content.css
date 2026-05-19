@@ -4386,18 +4386,25 @@
 }
 
 .now-status-composer__main-field,
+.now-status-composer__date-field,
 .now-status-composer__meta label {
   display: grid;
   gap: 5px;
 }
 
 .now-status-composer__main-field > span,
+.now-status-composer__date-field > span,
 .now-status-composer__meta label > span {
   color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.now-status-composer__date-field {
+  flex: 0 0 142px;
+  min-width: 128px;
 }
 
 .now-status-composer textarea,
@@ -4468,7 +4475,7 @@
 
 .now-status-composer__updates {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4476,8 +4483,10 @@
 
 .now-status-composer__updates li {
   display: grid;
-  grid-template-columns: minmax(84px, auto) 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(94px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
   color: var(--color-text-secondary);
   font-size: 12.5px;
 }
@@ -4485,6 +4494,54 @@
 .now-status-composer__updates time {
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.now-status-composer__history {
+  display: grid;
+  gap: 7px;
+}
+
+.now-status-composer__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.now-status-composer__history-head h3 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.now-status-composer__history-head span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.now-status-composer__update-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.now-status-composer__update-actions .btn {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.now-status-composer__updates input {
+  height: 32px;
+}
+
+.now-status-composer__update--editing {
+  grid-template-columns: 142px minmax(0, 1fr) auto;
 }
 
 .now-status-composer__error {
@@ -4499,6 +4556,10 @@
     display: grid;
   }
 
+  .now-status-composer__date-field {
+    min-width: 0;
+  }
+
   .now-status-composer__submit,
   .now-status-composer__stamp {
     width: 100%;
@@ -4506,5 +4567,15 @@
 
   .now-status-composer__stamp {
     justify-content: space-between;
+  }
+
+  .now-status-composer__updates li,
+  .now-status-composer__update--editing {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .now-status-composer__updates time,
+  .now-status-composer__update--editing input[type="date"] {
+    grid-column: 1 / -1;
   }
 }
