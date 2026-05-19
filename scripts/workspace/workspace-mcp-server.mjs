@@ -2249,11 +2249,6 @@ function normalizeBaseUrl(value) {
   return cleanText(value, 500).replace(/\/+$/, "");
 }
 
-function siteAdminCredentialKey(kind, baseUrl) {
-  const normalized = normalizeBaseUrl(baseUrl).toLowerCase() || "default";
-  return `site-admin:${kind}::${normalized}`;
-}
-
 function siteAdminCredentialKeys(kind, baseUrl) {
   const normalized = normalizeBaseUrl(baseUrl).toLowerCase() || "default";
   return [
