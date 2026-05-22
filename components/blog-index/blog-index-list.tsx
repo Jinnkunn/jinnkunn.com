@@ -56,11 +56,6 @@ export function BlogIndexList({ entries }: { entries: BlogPostIndexItem[] }) {
                     <span className="date">{entry.dateText}</span>
                   </div>
                 )}
-                {entry.description && (
-                  <div className="notion-property notion-property__text notion-collection-list__item-property notion-semantic-string">
-                    {entry.description}
-                  </div>
-                )}
               </div>
             </div>
           );
