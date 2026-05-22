@@ -527,7 +527,10 @@ function notionColorFromClassName(className: string, prefix: "color" | "bg"): Md
   return match ? (match[1] as MdxBlockColor) : "";
 }
 
-function legacyInlineHtmlToMarkdown(input: string): string {
+function legacyInlineHtmlToMarkdown(
+  input: string,
+  options: { preserveHardBreaks?: boolean } = {},
+): string {
   let text = normalizeInlineBoundaryWhitespace(input).replace(LEGACY_HEADING_ANCHOR_RE, "");
   text = text.replace(/<br\s*\/?>/gi, "\n");
   text = text.replace(/<span\b([^>]*)\/>/gi, "");
@@ -582,8 +585,12 @@ function legacyInlineHtmlToMarkdown(input: string): string {
     }
     return "";
   });
+  const decoded = decodeHtmlEntities(text);
+  if (options.preserveHardBreaks) {
+    return decoded.replace(/\n[ \t]*/g, "\n").trim();
+  }
   // Trim spaces/tabs around line breaks in one pass instead of two.
-  return decodeHtmlEntities(text).replace(/[ \t]*\n[ \t]*/g, "\n").trim();
+  return decoded.replace(/[ \t]*\n[ \t]*/g, "\n").trim();
 }
 
 function parseLegacyHeading(paragraph: string): MdxBlock | null {
@@ -1163,7 +1170,9 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       }
       pushBlock(
         makeBlock("quote", {
-          text: legacyInlineHtmlToMarkdown(quoteLines.join("\n")),
+          text: legacyInlineHtmlToMarkdown(quoteLines.join("\n"), {
+            preserveHardBreaks: true,
+          }),
         }),
       );
       continue;

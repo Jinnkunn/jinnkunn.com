@@ -51,6 +51,11 @@ const value = 1;
     expect(serializeMdxBlocks(parseMdxBlocks(source))).toBe(source);
   });
 
+  it("preserves markdown hard breaks inside quote blocks", () => {
+    const source = "> first line  \n> second line  \n> third line\n";
+    expect(serializeMdxBlocks(parseMdxBlocks(source))).toBe(source);
+  });
+
   it("normalizes spaces at inline color boundaries", () => {
     const source =
       '<span data-color="gray">focuses on </span>**Explainable AI**<span data-color="gray">, and </span>**Visualization**\n';
