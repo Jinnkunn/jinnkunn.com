@@ -1,0 +1,211 @@
+---
+title: 'When an AI Agent Says "I," Who Are We Trusting?'
+date: 2026-04-26
+description: Personified AI agents can make users lose track of who is deciding, who is authorizing, and who is responsible.
+tags:
+  - ai-agents
+  - governance
+  - hci
+draft: false
+---
+
+Sometimes the thing that changes a product is not a new capability, but a very small word.
+
+"I."
+
+When an AI agent says:
+
+> I remember you didn't like that approach last time, so I tried something different.
+
+It feels natural. Helpful, even. But hidden inside that sentence is a much larger question:
+
+**Who is this "I"?**
+
+Is it the model? The product? The platform? The company behind it? A designed persona? A delegate acting on behalf of the user?
+
+And if this agent sends an email, edits code, rejects a request, recommends a financial decision, or takes action across apps, whose action is that?
+
+This is the problem I think of as **identity subject attribution** in personified AI agents.
+
+Put simply:
+
+> When an AI agent is designed like a person, who do users think is acting?
+
+## We Don't Really Treat It Like a Tool
+
+Traditional software usually does not create this kind of confusion.
+
+Excel does not say, "I'm worried your budget is too risky."  
+A browser does not say, "I remember you were stressed last time."  
+A search engine does not say, "I'll stay with you until we figure this out."
+
+But modern AI agents are different.
+
+They can have names, voices, avatars, memory, preferences, personalities, and continuity over time. They can make suggestions, explain themselves, call tools, use external systems, and act across applications.
+
+At some point, they stop feeling like buttons or menus.
+
+They start feeling like a "someone."
+
+This is not because users are irrational. It is because humans naturally respond to social cues. If a system behaves like a social actor for long enough, people will begin to attribute some form of agency to it.
+
+The problem is that the system may feel like a unified subject, while in reality it is a bundle of model behavior, product design, platform policy, organizational incentives, and user authorization.
+
+## Who Does the Agent Represent?
+
+The hardest question is not whether the agent is intelligent.
+
+The harder question is:
+
+> Who is the agent understood to represent?
+
+Sometimes, the agent is understood as representing the user.
+
+People say:
+
+> This is my AI assistant.  
+> It knows my preferences.  
+> It handles things for me.
+
+In that frame, the agent's goals begin to look like the user's goals. Its actions begin to look like authorized user actions.
+
+But that can be misleading. The agent may misunderstand preferences, lack context, overgeneralize from memory, or take action before the user understands the consequences.
+
+Sometimes, the agent is understood as representing the platform.
+
+People say:
+
+> ChatGPT said this was fine.  
+> Claude suggested this.  
+> Copilot changed my code.
+
+Here, the platform's authority gets transferred into the agent's output. The smoother and more confident the response sounds, the easier it becomes to mistake fluency for reliability.
+
+And sometimes, the agent is treated as an independent subject.
+
+People begin to say:
+
+> It wants to do this.  
+> It understands me.  
+> It betrayed me.  
+> It decided on its own.
+
+At that point, users are attributing agency, intention, autonomy, and sometimes even moral status to a system that cannot actually bear responsibility in the way a person can.
+
+That is where attribution starts to break down.
+
+## The Real Risk Is Drift
+
+The most dangerous part is not a one-time misunderstanding.
+
+It is the slow drift that happens over repeated interaction.
+
+At first, the user thinks:
+
+> This is a tool.
+
+Then:
+
+> This is an assistant.
+
+Then:
+
+> It understands me.
+
+Then:
+
+> It can handle things for me.
+
+This shift rarely happens all at once. It happens through many small successful interactions: the agent remembers something useful, makes a good suggestion, completes a task, anticipates a need.
+
+Each success makes it easier for the user to hand over a little more judgment.
+
+Eventually, the user may still feel "in control," but they are no longer carefully checking, approving, or understanding the boundaries of action.
+
+They stop distinguishing between:
+
+- what I decided
+- what the agent suggested
+- what the agent prepared
+- what the agent already executed
+
+This is **attribution drift**.
+
+And it is one of the central governance problems for personal agents.
+
+## Why "Allow / Deny" Is Not Enough
+
+A lot of AI governance still looks like a permission prompt:
+
+> Allow this agent to access your email?  
+> Allow this agent to send this message?  
+> Allow this agent to make this change?
+
+That matters, but it is not enough.
+
+In a personified agent experience, the user is not facing a neutral permission system. They are interacting with something that may feel familiar, helpful, loyal, and context-aware.
+
+If the user already sees the agent as a trusted delegate, then "Allow" can become a ritual rather than a meaningful act of understanding.
+
+This is why an **approval-centered runtime** matters.
+
+Its purpose is not only to prevent bad actions. It is to keep re-anchoring the user as the final subject of authority.
+
+A healthy agent system should clearly separate:
+
+> Agent suggested.  
+> Agent prepared.  
+> User approved.  
+> System executed.
+
+Those states should not be collapsed into a vague sentence like:
+
+> I took care of it for you.
+
+Approval is not just a button. It is a governance boundary.
+
+## Good Agent Design Is Not Just "Make It More Human"
+
+Many companies will naturally push agents toward stronger personification.
+
+Warmer tone. Better memory. More emotional continuity. More proactive behavior. More companionship.
+
+This can improve engagement. It can also make the product feel more useful.
+
+But there is a design danger here:
+
+**The more human the agent feels, the easier it becomes to blur subject boundaries.**
+
+The more it seems to "understand me," the easier it is to forget that it is not me.  
+The more it seems to be "on my side," the easier it is to overlook the platform, model, data, and product incentives behind it.  
+The more it seems responsible, the easier it is to forget that it is not actually a legal or moral subject.
+
+So the real challenge for agent UX is not simply:
+
+> How do we make AI feel more human?
+
+It is:
+
+> How do we make it natural enough to collaborate with, but transparent enough that users do not mistake it for an autonomous subject?
+
+## A Better Design Principle
+
+I would summarize the principle this way:
+
+**An AI agent may have an "I" as an interface, but it must not hide the responsibility structure behind that "I."**
+
+It can have a name, but the name should not obscure platform responsibility.  
+It can have memory, but memory should be inspectable, editable, and revocable.  
+It can make suggestions, but suggestion, approval, and execution must remain distinct.  
+It can act on behalf of the user, but delegation must have boundaries, logs, and reversibility.  
+It can build trust, but the goal should be calibrated trust, not maximum dependence.
+
+The problem with personified agents is not that they make AI feel human.
+
+The real problem is that once AI begins to act like a subject, users may lose track of who is deciding, who is authorizing, and who is responsible.
+
+That may become one of the defining governance problems of the agent era.
+
+Not because AI has become a person.
+
+But because people, in relationship with it, may start treating it as someone.
