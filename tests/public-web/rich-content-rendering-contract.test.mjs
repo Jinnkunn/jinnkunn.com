@@ -51,6 +51,7 @@ test("rich-content-rendering-contract: public CSS keeps quote, divider, icon-lin
   );
   assertIncludes(notionBlocksCss, "text-decoration-color: var(--ds-link-underline)", "icon link underline");
   assertIncludes(postsCss, ".page__blog-post .mdx-post__meta", "blog meta strip CSS");
+  assertIncludes(postsCss, "--mdx-post-block-gap", "blog block rhythm token");
   assertIncludes(postsCss, "--mdx-post-reading-icon", "reading icon CSS mask");
   assertIncludes(newsCss, ".news-block__divider", "news divider CSS");
   assertIncludes(newsCss, ".news-entry__body hr", "inline news divider CSS");
