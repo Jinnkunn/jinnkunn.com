@@ -1,23 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-21T03:10:37.234Z",
+  "generatedAt": "2026-05-22T15:00:21.424Z",
   "range": {
-    "startsAt": "2026-05-21T03:00:00.000Z",
-    "endsAt": "2027-05-21T03:00:00.000Z"
+    "startsAt": "2026-05-22T03:00:00.000Z",
+    "endsAt": "2027-05-22T03:00:00.000Z"
   },
   "events": [
-    {
-      "id": "475C59E1-CD8B-4174-9749-D5799BE5CC12",
-      "colorHex": "#9B9A97",
-      "title": "Busy",
-      "startsAt": "2026-05-21T16:00:00.000Z",
-      "endsAt": "2026-05-21T16:30:00.000Z",
-      "isAllDay": false,
-      "visibility": "busy",
-      "description": null,
-      "location": null,
-      "url": null
-    },
     {
       "id": "A81AABDB-6BB6-4AD6-B2F8-815F8A5ACDB3/RID=801151200",
       "colorHex": "#9B9A97",
