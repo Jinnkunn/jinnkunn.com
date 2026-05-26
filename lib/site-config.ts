@@ -94,6 +94,7 @@ function asNavItems(x: unknown): NavItem[] | undefined {
   const out: NavItem[] = [];
   for (const it of x) {
     if (!isObject(it)) continue;
+    if (it.enabled === false) continue;
     const href = asString(it.href);
     const label = asString(it.label);
     if (!href || !label) continue;

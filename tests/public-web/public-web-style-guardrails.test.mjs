@@ -490,6 +490,7 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   const nowData = JSON.parse(await read("content/now.json"));
   const pageTree = JSON.parse(await read("content/page-tree.json"));
   const siteConfig = JSON.parse(await read("content/filesystem/site-config.json"));
+  const siteConfigSource = await read("lib/site-config.ts");
   const siteOverview = await read("apps/workspace/src/surfaces/site-admin/SiteOverviewCard.tsx");
   const statusPanel = await read("apps/workspace/src/surfaces/site-admin/StatusPanel.tsx");
   const nowComposer = await read("apps/workspace/src/surfaces/site-admin/NowStatusComposer.tsx");
@@ -504,10 +505,10 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   assert.ok(nowData.current?.text, "Now status should have a current text");
   assert.ok(Array.isArray(nowData.updates) && nowData.updates.length > 0, "Now status should have updates");
   assert.ok(pageTree.slugs.includes("now"), "Now page should appear in Site Admin page order");
-  assert.ok(
-    siteConfig.nav.top.some((item) => item.href === "/now" && item.label === "Now"),
-    "Now page should be linked from public top navigation",
-  );
+  const nowNavItem = siteConfig.nav.top.find((item) => item.href === "/now" && item.label === "Now");
+  assert.ok(nowNavItem, "Now nav row should remain content-managed");
+  assert.equal(nowNavItem.enabled, false, "Now nav row should be temporarily hidden from public navigation");
+  assertIncludes(siteConfigSource, "it.enabled === false", "Public nav should skip disabled nav rows");
   assertIncludes(siteOverview, 'target: "pages:now"', "Site Admin overview Now shortcut");
   assertIncludes(statusPanel, "NowStatusComposer", "Site Admin should expose a quick Now updater");
   assertIncludes(nowComposer, 'type="date"', "Now composer should allow date-only editing");
