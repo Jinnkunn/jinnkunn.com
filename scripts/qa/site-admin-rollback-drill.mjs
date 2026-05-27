@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 
 import { asString, parseArgs } from "../_lib/cli.mjs";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 function normalizeEnvName(value) {
   const raw = asString(value).toLowerCase();
@@ -59,29 +60,14 @@ function run(cmd, args, options = {}) {
   return String(result.stdout || "").trim();
 }
 
-function firstGithubUserFromCsv(raw) {
-  return String(raw || "")
-    .split(",")
-    .map((it) => it.trim().toLowerCase())
-    .filter(Boolean)[0] || "";
-}
-
 async function buildAutoSiteAdminCookie() {
   const secret = asString(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "");
-  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS || "");
-  if (!secret || !login) return "";
-  const { encode } = await import("next-auth/jwt");
-  const token = await encode({
+  const auth = await createNextAuthSessionCookie({
     secret,
-    token: {
-      sub: `rollback-drill-${login}`,
-      login,
-      name: login,
-    },
     maxAge: 60 * 30,
+    subjectPrefix: "rollback-drill",
   });
-  if (!token) return "";
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  return auth.ok ? auth.cookie : "";
 }
 
 async function requestJson({ method, url, cookie }) {

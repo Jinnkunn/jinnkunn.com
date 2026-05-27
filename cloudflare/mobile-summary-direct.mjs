@@ -20,11 +20,25 @@ function normalizeLogin(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeEmail(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw && raw.includes("@") ? raw : "";
+}
+
 function allowedUsers(env) {
   const out = new Set();
   for (const part of String(env?.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
     const login = normalizeLogin(part.replace(/^@+/, ""));
     if (login) out.add(login);
+  }
+  return out;
+}
+
+function allowedEmails(env) {
+  const out = new Set();
+  for (const part of String(env?.SITE_ADMIN_EMAILS || "").split(/[,\n]/)) {
+    const email = normalizeEmail(part);
+    if (email) out.add(email);
   }
   return out;
 }
@@ -125,8 +139,12 @@ async function verifyAppToken(request, env) {
   if (payload?.iss !== TOKEN_ISSUER || payload?.aud !== TOKEN_AUDIENCE) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
-  const login = normalizeLogin(payload.sub);
-  if (!login || !allowedUsers(env).has(login)) {
+  const subject = String(payload.sub || "").trim();
+  const login = normalizeLogin(subject);
+  const email = normalizeEmail(subject);
+  const allowed =
+    (login && allowedUsers(env).has(login)) || (email && allowedEmails(env).has(email));
+  if (!allowed) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
   const expectedEnv = inferEnvironment(request.url, env);
@@ -137,7 +155,7 @@ async function verifyAppToken(request, env) {
   if (!Number.isFinite(payload.exp) || payload.exp <= now) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
-  return { ok: true, login };
+  return { ok: true, login: email || login };
 }
 
 function db(env, bindingName = "SITE_ADMIN_DB") {

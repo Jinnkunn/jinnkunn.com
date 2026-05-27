@@ -155,8 +155,9 @@ export function deriveReadinessState(payload: SiteAdminStatusPayload | null): Re
   if (!env.hasNextAuthSecret) parts.push("Missing NEXTAUTH_SECRET");
   else okParts.push("Auth secret");
 
-  if (env.githubAllowlistCount <= 0) parts.push("Empty GitHub allowlist");
-  else okParts.push("GitHub allowlist");
+  const adminAllowlistCount = env.githubAllowlistCount + env.adminEmailAllowlistCount;
+  if (adminAllowlistCount <= 0) parts.push("Empty admin allowlist");
+  else okParts.push("Admin allowlist");
 
   if (!(env.hasDeployTarget || env.hasDeployHookUrl)) parts.push("Missing deploy target");
   else okParts.push("Deploy target");

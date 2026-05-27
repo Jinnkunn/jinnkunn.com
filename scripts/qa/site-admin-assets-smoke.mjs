@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import { encode } from "next-auth/jwt";
-
 import { asBool, asString, parseArgs } from "../_lib/cli.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
@@ -17,14 +16,6 @@ function normalizeEnvName(value) {
 
 function normalizeOrigin(value) {
   return asString(value).replace(/\/+$/, "");
-}
-
-function firstGithubUserFromCsv(raw) {
-  const users = String(raw || "")
-    .split(/[,\n]/)
-    .map((item) => item.trim().replace(/^@+/, "").toLowerCase())
-    .filter(Boolean);
-  return users[0] || "";
 }
 
 function unwrapApiData(raw) {
@@ -42,18 +33,12 @@ function assertCondition(condition, message, details = {}) {
 
 async function buildAutoSiteAdminCookie() {
   const secret = asString(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "");
-  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS || "");
-  if (!secret || !login) return "";
-  const token = await encode({
+  const auth = await createNextAuthSessionCookie({
     secret,
-    token: {
-      sub: `asset-smoke-${login}`,
-      login,
-      name: login,
-    },
     maxAge: 60 * 30,
+    subjectPrefix: "asset-smoke",
   });
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  return auth.ok ? auth.cookie : "";
 }
 
 async function requestJson({ method, url, cookie, body }) {

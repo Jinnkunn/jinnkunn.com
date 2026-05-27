@@ -65,10 +65,18 @@ npm run provision:admin
 
 ### 2) Env Vars (Runtime + Admin)
 
-Required for `/site-admin` GitHub login:
+Required for `/site-admin` login:
+- `NEXTAUTH_SECRET` (or `AUTH_SECRET`)
+- `SITE_ADMIN_EMAILS` (comma-separated admin emails, e.g. `i@jinkunchen.com`)
+
+The preferred auth provider is the first-party OIDC service at `auth.jinnkunn.com`:
+- `JINNKUNN_AUTH_ISSUER` (defaults to `https://auth.jinnkunn.com`)
+- `JINNKUNN_AUTH_CLIENT_ID` (defaults to `jinkunchen-site-admin`)
+- `JINNKUNN_AUTH_CLIENT_SECRET` (optional; leave unset for a public PKCE client)
+
+Optional GitHub OAuth fallback:
 - `GITHUB_ID`
 - `GITHUB_SECRET`
-- `NEXTAUTH_SECRET` (or `AUTH_SECRET`)
 - `SITE_ADMIN_GITHUB_USERS` (comma-separated GitHub usernames, e.g. `jinnkunn,@someone`)
 
 Required for Flags SDK:

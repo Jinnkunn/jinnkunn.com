@@ -50,6 +50,7 @@ export type SiteAdminStatusPayload = {
     hasNextAuthSecret: boolean;
     hasFlagsSecret: boolean;
     githubAllowlistCount: number;
+    adminEmailAllowlistCount: number;
     contentGithubAllowlistCount: number;
   };
   build: {

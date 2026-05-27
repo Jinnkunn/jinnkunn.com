@@ -13,7 +13,7 @@
 //   node scripts/qa/smoke-deployed.mjs --env=production
 //
 // Env vars consumed:
-//   NEXTAUTH_SECRET, SITE_ADMIN_GITHUB_USERS  — used to mint a synthetic
+//   NEXTAUTH_SECRET, SITE_ADMIN_EMAILS/SITE_ADMIN_GITHUB_USERS — used to mint a synthetic
 //     staging session cookie (staging-gate is on for non-public routes).
 //     If either is missing, the staging-gated routes are skipped with a
 //     warning rather than failing — production has no gate so its routes
@@ -21,9 +21,8 @@
 //
 // Exits 0 on success, non-zero with details on any failure.
 
-import { encode } from "next-auth/jwt";
-
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const ENVIRONMENTS = new Set(["staging", "production"]);
 const RETRY_DELAY_MS = 6000;
@@ -59,34 +58,16 @@ const ROUTES = [
   { path: "/calendar", contains: "Jinkun" },
 ];
 
-function normalizeGithubLogin(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^@+/, "")
-    .toLowerCase();
-}
-
-function firstAllowedGithubUser() {
-  const raw = String(process.env.SITE_ADMIN_GITHUB_USERS || "");
-  for (const part of raw.split(/[,\n]/)) {
-    const login = normalizeGithubLogin(part);
-    if (login) return login;
-  }
-  return "";
-}
-
 async function maybeMintStagingCookie() {
   const secret = String(
     process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "",
   ).trim();
-  const login = firstAllowedGithubUser();
-  if (!secret || !login) return "";
-  const token = await encode({
-    token: { sub: `smoke-${login}`, login, name: login },
+  const auth = await createNextAuthSessionCookie({
     secret,
     maxAge: 5 * 60,
+    subjectPrefix: "smoke",
   });
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  return auth.ok ? auth.cookie : "";
 }
 
 async function fetchOnce(url, headers) {
@@ -136,7 +117,7 @@ async function main() {
 
   if (env === "staging" && !cookie) {
     console.log(
-      "[smoke-deployed] no synthetic cookie (NEXTAUTH_SECRET / SITE_ADMIN_GITHUB_USERS missing); checking response status only on gated routes",
+      "[smoke-deployed] no synthetic cookie (NEXTAUTH_SECRET / admin allowlist missing); checking response status only on gated routes",
     );
   }
 

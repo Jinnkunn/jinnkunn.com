@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 // End-to-end smoke against the Posts/Pages/Assets CRUD endpoints.
-// Reuses the same next-auth cookie-minting pattern as site-admin-write-smoke.mjs
-// so it only needs the NEXTAUTH_SECRET + SITE_ADMIN_GITHUB_USERS already in .env.
+// Reuses the same next-auth cookie-minting pattern as site-admin-write-smoke.mjs.
 //
 // Usage:
 //   npm run smoke:site-admin:content                # against http://127.0.0.1:3000
 //   BASE_URL=https://staging.jinkunchen.com npm run smoke:site-admin:content
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 loadProjectEnv({ override: false });
 
@@ -18,31 +18,15 @@ function asString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function firstGithubUserFromCsv(raw) {
-  const users = String(raw || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  return users[0] || "";
-}
-
 async function buildAutoSiteAdminCookie() {
   const secret = asString(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "");
-  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS || "");
-  if (!secret || !login) return "";
   try {
-    const { encode } = await import("next-auth/jwt");
-    const token = await encode({
+    const auth = await createNextAuthSessionCookie({
       secret,
-      token: {
-        sub: `content-smoke-${login}`,
-        login,
-        name: login,
-      },
       maxAge: 60 * 30,
+      subjectPrefix: "content-smoke",
     });
-    if (!token) return "";
-    return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+    return auth.ok ? auth.cookie : "";
   } catch (err) {
     throw new Error(`failed to mint cookie: ${String(err)}`);
   }
@@ -130,7 +114,7 @@ async function run() {
   const cookie = await buildAutoSiteAdminCookie();
   if (!cookie) {
     console.error(
-      "[content-smoke] NEXTAUTH_SECRET + SITE_ADMIN_GITHUB_USERS are required to mint a dev cookie.",
+      "[content-smoke] NEXTAUTH_SECRET plus SITE_ADMIN_EMAILS or SITE_ADMIN_GITHUB_USERS are required to mint a dev cookie.",
     );
     console.error(
       "[content-smoke] Set them in .env (or .env.local) and re-run.",

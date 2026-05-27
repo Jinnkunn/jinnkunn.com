@@ -31,11 +31,25 @@ export function normalizeGithubLogin(value) {
   return String(value || "").trim().replace(/^@+/, "").toLowerCase();
 }
 
+export function normalizeAdminEmail(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw && raw.includes("@") ? raw : "";
+}
+
 export function parseAllowedGithubUsers(raw) {
   const out = new Set();
   for (const part of String(raw || "").split(/[,\n]/)) {
     const login = normalizeGithubLogin(part);
     if (login) out.add(login);
+  }
+  return out;
+}
+
+export function parseAllowedAdminEmails(raw) {
+  const out = new Set();
+  for (const part of String(raw || "").split(/[,\n]/)) {
+    const email = normalizeAdminEmail(part);
+    if (email) out.add(email);
   }
   return out;
 }
@@ -143,13 +157,15 @@ export async function isStagingStaticShellAuthorized(request, env) {
   const secret = String(env?.NEXTAUTH_SECRET || env?.AUTH_SECRET || "").trim();
   if (!secret) return false;
 
-  const allowed = parseAllowedGithubUsers(env?.SITE_ADMIN_GITHUB_USERS || "");
-  if (!allowed.size) return false;
+  const allowedGithub = parseAllowedGithubUsers(env?.SITE_ADMIN_GITHUB_USERS || "");
+  const allowedEmails = parseAllowedAdminEmails(env?.SITE_ADMIN_EMAILS || "");
+  if (!allowedGithub.size && !allowedEmails.size) return false;
 
   const token = readSessionCookie(request.headers.get("cookie") || "");
   if (!token) return false;
 
   const payload = await decryptNextAuthPayload(token, secret);
   const login = normalizeGithubLogin(payload?.login || "");
-  return Boolean(login && allowed.has(login));
+  const email = normalizeAdminEmail(payload?.email || "");
+  return Boolean((login && allowedGithub.has(login)) || (email && allowedEmails.has(email)));
 }

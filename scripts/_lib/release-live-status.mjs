@@ -3,10 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { encode } from "next-auth/jwt";
-
 import { readActiveDeployment } from "./cloudflare-api.mjs";
 import { effectiveCodeSha } from "./deploy-metadata.mjs";
+import { createNextAuthSessionCookie } from "./site-admin-auth-cookie.mjs";
 
 export const DEFAULT_RELEASE_ROUTES = ["/", "/news", "/blog", "/calendar"];
 export const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
@@ -326,45 +325,17 @@ function normalizeOrigin(env) {
   return origin;
 }
 
-function normalizeGithubLogin(value) {
-  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
-}
-
-function firstAllowedGithubUser() {
-  for (const part of String(process.env.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
-    const login = normalizeGithubLogin(part);
-    if (login) return login;
-  }
-  return "";
-}
-
 async function createStagingRouteAuth() {
-  const secret = readEnv("NEXTAUTH_SECRET") || readEnv("AUTH_SECRET");
-  const login = firstAllowedGithubUser();
-  if (!secret || !login) {
-    return {
-      cookie: "",
-      login,
-      ok: false,
-      reason: !secret
-        ? "NEXTAUTH_SECRET/AUTH_SECRET is missing."
-        : "SITE_ADMIN_GITHUB_USERS has no allowed login.",
-    };
-  }
-  const token = await encode({
-    secret,
-    token: {
-      sub: `release-status-${login}`,
-      login,
-      name: login,
-    },
+  const auth = await createNextAuthSessionCookie({
+    secret: readEnv("NEXTAUTH_SECRET") || readEnv("AUTH_SECRET"),
     maxAge: 5 * 60,
+    subjectPrefix: "release-status",
   });
   return {
-    cookie: `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`,
-    login,
-    ok: true,
-    reason: "",
+    cookie: auth.cookie,
+    login: auth.identity?.value || "",
+    ok: auth.ok,
+    reason: auth.reason,
   };
 }
 

@@ -54,6 +54,8 @@ MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 # lives here rather than in `wrangler secret put`. GITHUB_ID /
 # GITHUB_SECRET are secrets set separately per-environment.
 NEXTAUTH_URL = "https://staging.jinkunchen.com"
+JINNKUNN_AUTH_ISSUER = "https://auth.jinnkunn.com"
+JINNKUNN_AUTH_CLIENT_ID = "jinkunchen-site-admin"
 
 # Require a signed-in site admin for every route on staging (except
 # the login page and `/api/auth/*` OAuth callbacks). Replaces the
@@ -126,6 +128,8 @@ MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
 # NextAuth callback base URL (see staging section above).
 NEXTAUTH_URL = "https://jinkunchen.com"
+JINNKUNN_AUTH_ISSUER = "https://auth.jinnkunn.com"
+JINNKUNN_AUTH_CLIENT_ID = "jinkunchen-site-admin"
 
 # Auth mode: legacy (see staging section above for rationale). CF Access
 # config retained dormant for future re-enable.

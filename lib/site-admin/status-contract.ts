@@ -331,6 +331,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
     hasNextAuthSecret: toBooleanOrNull(value.env.hasNextAuthSecret),
     hasFlagsSecret: toBooleanOrNull(value.env.hasFlagsSecret),
     githubAllowlistCount: toNumberOrNull(value.env.githubAllowlistCount),
+    adminEmailAllowlistCount: toNumberOrNull(value.env.adminEmailAllowlistCount ?? 0),
     contentGithubAllowlistCount: toNumberOrNull(value.env.contentGithubAllowlistCount),
   };
   if (
@@ -342,6 +343,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
     env.hasNextAuthSecret === null ||
     env.hasFlagsSecret === null ||
     env.githubAllowlistCount === null ||
+    env.adminEmailAllowlistCount === null ||
     env.contentGithubAllowlistCount === null
   ) {
     return null;
@@ -429,6 +431,7 @@ function parseSiteAdminStatusPayload(value: unknown): SiteAdminStatusPayload | n
       hasNextAuthSecret: env.hasNextAuthSecret,
       hasFlagsSecret: env.hasFlagsSecret,
       githubAllowlistCount: env.githubAllowlistCount,
+      adminEmailAllowlistCount: env.adminEmailAllowlistCount,
       contentGithubAllowlistCount: env.contentGithubAllowlistCount,
     },
     build,

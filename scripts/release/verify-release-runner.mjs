@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { firstAllowedSiteAdminIdentity } from "../_lib/site-admin-auth-cookie.mjs";
 
 const DEFAULT_SITE_ADMIN_ORIGIN = "https://staging.jinkunchen.com";
 const DEFAULT_RUNNER_URL = "https://release-runner.jinkunchen.com";
@@ -36,14 +37,6 @@ function normalizeOrigin(value, fallback) {
   return String(value || fallback || "").trim().replace(/\/+$/, "");
 }
 
-function firstAllowedGithubUser() {
-  for (const part of String(process.env.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
-    const login = String(part || "").trim().replace(/^@+/, "").toLowerCase();
-    if (login) return login;
-  }
-  return "";
-}
-
 function base64UrlEncode(input) {
   return Buffer.from(input).toString("base64url");
 }
@@ -55,9 +48,9 @@ function createSiteAdminToken() {
       process.env.AUTH_SECRET ||
       "",
   ).trim();
-  const login = firstAllowedGithubUser();
+  const identity = firstAllowedSiteAdminIdentity();
   assert(secret, "SITE_ADMIN_APP_TOKEN_SECRET/NEXTAUTH_SECRET is required");
-  assert(login, "SITE_ADMIN_GITHUB_USERS must include at least one login");
+  assert(identity, "SITE_ADMIN_EMAILS or SITE_ADMIN_GITHUB_USERS must include at least one identity");
   const now = Math.floor(Date.now() / 1000);
   const header = base64UrlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = base64UrlEncode(
@@ -66,7 +59,7 @@ function createSiteAdminToken() {
       exp: now + 10 * 60,
       iat: now,
       iss: "site-admin",
-      sub: login,
+      sub: identity.value,
     }),
   );
   const signature = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");

@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { encode } from "next-auth/jwt";
-
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const ENVIRONMENTS = new Set(["staging", "production", "both"]);
 
@@ -75,28 +74,12 @@ async function checkStagingLoginRedirect({ name, url }) {
   console.log(`[verify-cloudflare] ${name}: ${response.status}`);
 }
 
-function normalizeGithubLogin(value) {
-  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
-}
-
-function firstAllowedGithubUser() {
-  for (const part of String(process.env.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
-    const login = normalizeGithubLogin(part);
-    if (login) return login;
-  }
-  return "";
-}
-
 async function createStagingSessionCookie() {
-  const secret = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
-  const login = firstAllowedGithubUser();
-  if (!secret || !login) return "";
-  const token = await encode({
-    token: { sub: `verify-${login}`, login, name: login },
-    secret,
+  const result = await createNextAuthSessionCookie({
     maxAge: 5 * 60,
+    subjectPrefix: "verify",
   });
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  return result.cookie;
 }
 
 async function checkAuthenticatedStaticShell({ name, url, contains }) {

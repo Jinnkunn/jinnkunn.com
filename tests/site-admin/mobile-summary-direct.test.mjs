@@ -8,13 +8,14 @@ function base64Url(input) {
   return Buffer.from(input).toString("base64url");
 }
 
-function issueToken({ login = "jinnkunn", env = "staging", secret = "secret" } = {}) {
+function issueToken({ subject = "jinnkunn", login, env = "staging", secret = "secret" } = {}) {
+  const tokenSubject = login || subject;
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = base64Url(JSON.stringify({
     iss: "site-admin",
     aud: "site-admin-app",
-    sub: login,
+    sub: tokenSubject,
     env,
     iat: now,
     exp: now + 300,
@@ -120,6 +121,26 @@ test("mobile summary direct handler returns compact iOS payload", async () => {
   assert.equal(body.data.summary.content.pages, 12);
   assert.equal(body.data.summary.calendar.eventCount, 4);
   assert.equal(body.data.summary.release.recommendedAction.kind, "noop");
+});
+
+test("mobile summary direct handler accepts email app tokens", async () => {
+  const token = issueToken({ subject: "I@JINKUNCHEN.COM" });
+  const res = await handleMobileSummaryRequest(
+    new Request("https://staging.jinkunchen.com/api/site-admin/mobile/summary", {
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      NEXTAUTH_SECRET: "secret",
+      SITE_ADMIN_EMAILS: "i@jinkunchen.com",
+      SITE_ADMIN_REPO_BRANCH: "site-admin-staging",
+      SITE_ADMIN_STORAGE: "db",
+      SITE_ADMIN_DB: fakeDb(),
+    },
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.data.summary.now.text, "Testing mobile summary.");
 });
 
 test("mobile summary direct handler reads D1 byte-array now bodies", async () => {

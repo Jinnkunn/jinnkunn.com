@@ -6,11 +6,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { encode } from "next-auth/jwt";
-
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { readActiveDeployment } from "../_lib/cloudflare-api.mjs";
 import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -492,28 +491,14 @@ function normalizeOrigin(env) {
   ).replace(/\/+$/, "");
 }
 
-function firstAllowedGithubUser() {
-  return String(process.env.SITE_ADMIN_GITHUB_USERS || "")
-    .split(/[,\n]/)
-    .map((part) => part.trim().replace(/^@+/, "").toLowerCase())
-    .find(Boolean) || "";
-}
-
 async function stagingCookieIfNeeded(env) {
   if (env !== "staging") return "";
-  const secret = readEnv("NEXTAUTH_SECRET") || readEnv("AUTH_SECRET");
-  const login = firstAllowedGithubUser();
-  if (!secret || !login) return "";
-  const token = await encode({
-    secret,
-    token: {
-      sub: `content-publish-${login}`,
-      login,
-      name: login,
-    },
+  const auth = await createNextAuthSessionCookie({
+    secret: readEnv("NEXTAUTH_SECRET") || readEnv("AUTH_SECRET"),
     maxAge: 5 * 60,
+    subjectPrefix: "content-publish",
   });
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  return auth.cookie;
 }
 
 async function fetchLiveBuildId(env) {

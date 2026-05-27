@@ -24,7 +24,7 @@ import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
-import { parseAllowedAdminUsers } from "@/lib/site-admin-auth";
+import { parseAllowedAdminEmails, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
@@ -423,6 +423,7 @@ function buildPreflight(input: {
 
 export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResponsePayload> {
   const allow = parseAllowedAdminUsers();
+  const allowEmails = parseAllowedAdminEmails();
   const allowContent = parseAllowedContentUsers();
 
   const syncMeta = getSyncMeta();
@@ -622,6 +623,7 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
       hasNextAuthSecret: Boolean((process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim()),
       hasFlagsSecret: true,
       githubAllowlistCount: allow.size,
+      adminEmailAllowlistCount: allowEmails.size,
       contentGithubAllowlistCount: allowContent.size,
     },
     build: {

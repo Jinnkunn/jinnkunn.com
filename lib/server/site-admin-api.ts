@@ -3,9 +3,11 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  getSiteAdminGithubLogin,
+  getSiteAdminSessionIdentity,
+  hasAdminAllowlist,
+  isAllowedAdminActor,
+  isAllowedAdminSessionIdentity,
   parseAllowedAdminEmails,
-  parseAllowedAdminUsers,
   parseAllowedServiceTokens,
   parseSiteAdminAuthMode,
 } from "@/lib/site-admin-auth";
@@ -115,7 +117,7 @@ export async function requireSiteAdminContext(
   opts?: RequireSiteAdminOptions,
 ): Promise<RequireSiteAdminContextResult> {
   const mode = parseSiteAdminAuthMode();
-  const allow = parseAllowedAdminUsers();
+  const hasAllowlist = hasAdminAllowlist();
 
   // 1. Cloudflare Access (preferred when configured). Verifies the
   //    `Cf-Access-Jwt-Assertion` header against the team's JWKS and checks
@@ -150,7 +152,7 @@ export async function requireSiteAdminContext(
 
   // 2. Legacy: GitHub allowlist for bearer tokens / NextAuth cookies.
   if (opts?.requireAllowlist) {
-    if (!allow.size) {
+    if (!hasAllowlist) {
       return {
         ok: false,
         res: apiError("Admin allowlist not configured", {
@@ -161,7 +163,7 @@ export async function requireSiteAdminContext(
     }
   }
 
-  if (!allow.size) {
+  if (!hasAllowlist) {
     return { ok: false, res: apiError("Unauthorized", { status: 401, code: "UNAUTHORIZED" }) };
   }
 
@@ -187,17 +189,17 @@ export async function requireSiteAdminContext(
     const verified = verifySiteAdminAppToken(bearerToken, {
       environment: inferSiteAdminAppTokenEnvironment(req.url),
     });
-    if (!verified.ok || !allow.has(verified.login)) {
+    if (!verified.ok || !isAllowedAdminActor(verified.login)) {
       return { ok: false, res: apiError("Unauthorized", { status: 401, code: "UNAUTHORIZED" }) };
     }
     return { ok: true, value: { login: verified.login } };
   }
 
-  const login = await getSiteAdminGithubLogin(req);
-  if (!login || !allow.has(login)) {
+  const identity = await getSiteAdminSessionIdentity(req);
+  if (!identity || !isAllowedAdminSessionIdentity(identity)) {
     return { ok: false, res: apiError("Unauthorized", { status: 401, code: "UNAUTHORIZED" }) };
   }
-  return { ok: true, value: { login } };
+  return { ok: true, value: { login: identity.actor } };
 }
 
 type WithSiteAdminOptions = RequireSiteAdminOptions & {

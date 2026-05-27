@@ -19,6 +19,7 @@ import { chromium } from "playwright-core";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { stopProcessTree } from "../_lib/process-tree.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "output", "ui-snapshots");
@@ -38,7 +39,7 @@ const DEFAULT_TARGETS = [
 const DEFAULT_THEMES = ["light", "dark"];
 const SCRIPT_NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
-const FALLBACK_ADMIN_LOGIN = "jinnkunn";
+const FALLBACK_ADMIN_EMAIL = "i@jinkunchen.com";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -101,18 +102,11 @@ function startNext(port) {
       PORT: String(port),
       NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
       NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
-      SITE_ADMIN_GITHUB_USERS: process.env.SITE_ADMIN_GITHUB_USERS || FALLBACK_ADMIN_LOGIN,
+      SITE_ADMIN_EMAILS: process.env.SITE_ADMIN_EMAILS || FALLBACK_ADMIN_EMAIL,
+      SITE_ADMIN_GITHUB_USERS: process.env.SITE_ADMIN_GITHUB_USERS || "",
     },
   });
   return child;
-}
-
-function firstGithubUserFromCsv(raw) {
-  const users = String(raw || "")
-    .split(/[,\n]/)
-    .map((item) => item.trim().replace(/^@+/, "").toLowerCase())
-    .filter(Boolean);
-  return users[0] || FALLBACK_ADMIN_LOGIN;
 }
 
 function safeNameFromPath(p) {
@@ -196,17 +190,19 @@ async function launchBrowser() {
 }
 
 async function createSnapshotAdminToken() {
-  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS);
-  const { encode } = await import("next-auth/jwt");
-  return await encode({
+  const auth = await createNextAuthSessionCookie({
     secret: SCRIPT_NEXTAUTH_SECRET,
-    token: {
-      sub: `ui-snapshot-${login}`,
-      login,
-      name: login,
-    },
     maxAge: 60 * 30,
+    env: {
+      ...process.env,
+      SITE_ADMIN_EMAILS: process.env.SITE_ADMIN_EMAILS || FALLBACK_ADMIN_EMAIL,
+    },
+    subjectPrefix: "ui-snapshot",
   });
+  if (!auth.ok) throw new Error(`failed to mint snapshot auth token: ${auth.reason}`);
+  const token = auth.cookie.match(/(?:^|; )__Secure-next-auth\.session-token=([^;]+)/)?.[1] || "";
+  if (!token) throw new Error("failed to parse snapshot auth token");
+  return token;
 }
 
 async function main() {

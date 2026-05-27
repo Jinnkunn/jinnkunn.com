@@ -3,17 +3,33 @@ import { getToken } from "next-auth/jwt";
 
 import { normalizeGithubUser, parseGithubUserCsv } from "@/lib/shared/github-users";
 
-export function parseAllowedAdminUsers(): Set<string> {
-  const raw = process.env.SITE_ADMIN_GITHUB_USERS || "";
+export type SiteAdminSessionIdentity = {
+  actor: string;
+  login: string;
+  email: string;
+  subject: string;
+};
+
+export function normalizeAdminEmail(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw && raw.includes("@") ? raw : "";
+}
+
+function normalizeAdminSubject(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+export function parseAllowedAdminUsers(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const raw = env.SITE_ADMIN_GITHUB_USERS || "";
   return new Set(parseGithubUserCsv(raw));
 }
 
-export function parseAllowedAdminEmails(): Set<string> {
-  const raw = process.env.SITE_ADMIN_EMAILS || "";
+export function parseAllowedAdminEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const raw = env.SITE_ADMIN_EMAILS || "";
   const out = new Set<string>();
   for (const part of raw.split(/[,\n]/)) {
-    const normalized = part.trim().toLowerCase();
-    if (normalized && normalized.includes("@")) out.add(normalized);
+    const normalized = normalizeAdminEmail(part);
+    if (normalized) out.add(normalized);
   }
   return out;
 }
@@ -29,6 +45,34 @@ export function parseAllowedServiceTokens(): Set<string> {
     if (normalized) out.add(normalized);
   }
   return out;
+}
+
+export function hasAdminAllowlist(env: NodeJS.ProcessEnv = process.env): boolean {
+  return parseAllowedAdminUsers(env).size > 0 || parseAllowedAdminEmails(env).size > 0;
+}
+
+export function isAllowedAdminActor(
+  value: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const login = normalizeGithubUser(value);
+  const email = normalizeAdminEmail(value);
+  const allowedUsers = parseAllowedAdminUsers(env);
+  const allowedEmails = parseAllowedAdminEmails(env);
+  return Boolean((login && allowedUsers.has(login)) || (email && allowedEmails.has(email)));
+}
+
+export function isAllowedAdminSessionIdentity(
+  identity: SiteAdminSessionIdentity | null,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (!identity) return false;
+  const allowedUsers = parseAllowedAdminUsers(env);
+  const allowedEmails = parseAllowedAdminEmails(env);
+  return Boolean(
+    (identity.login && allowedUsers.has(identity.login)) ||
+      (identity.email && allowedEmails.has(identity.email)),
+  );
 }
 
 export type SiteAdminAuthMode = "legacy" | "cf-access" | "both";
@@ -50,6 +94,21 @@ export async function getSiteAdminGithubLogin(req: NextRequest): Promise<string 
   return login || null;
 }
 
+export async function getSiteAdminSessionIdentity(
+  req: NextRequest,
+): Promise<SiteAdminSessionIdentity | null> {
+  const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "";
+  if (!secret) return null;
+  const token = await getToken({ req, secret }).catch(() => null);
+  if (!token || typeof token !== "object") return null;
+  const record = token as Record<string, unknown>;
+  const login = normalizeGithubUser(record.login);
+  const email = normalizeAdminEmail(record.email);
+  const subject = normalizeAdminSubject(record.authSubject || record.sub);
+  const actor = email || login || subject;
+  return actor ? { actor, login, email, subject } : null;
+}
+
 export async function isSiteAdminAuthorized(req: NextRequest): Promise<boolean> {
   // NOTE: middleware (Edge runtime) imports this module. We intentionally
   // do NOT call the Cloudflare Access verifier here — it relies on
@@ -58,9 +117,7 @@ export async function isSiteAdminAuthorized(req: NextRequest): Promise<boolean> 
   // only blocks the browser UI routes (`/site-admin/*`), which are fine to
   // gate behind the legacy NextAuth cookie; the CF Access verification for
   // actual admin API calls happens in the API route guard.
-  const allow = parseAllowedAdminUsers();
-  if (!allow.size) return false;
-  const login = await getSiteAdminGithubLogin(req);
-  if (!login) return false;
-  return allow.has(login);
+  if (!hasAdminAllowlist()) return false;
+  const identity = await getSiteAdminSessionIdentity(req);
+  return isAllowedAdminSessionIdentity(identity);
 }

@@ -2,9 +2,8 @@
 
 import fs from "node:fs/promises";
 
-import { encode } from "next-auth/jwt";
-
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const DEFAULT_ROUTES = [
   { path: "/", contains: "Hi there!" },
@@ -85,18 +84,6 @@ function normalizeOrigin(value) {
   return origin.replace(/\/+$/, "");
 }
 
-function normalizeGithubLogin(value) {
-  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
-}
-
-function firstAllowedGithubUser() {
-  for (const part of String(process.env.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
-    const login = normalizeGithubLogin(part);
-    if (login) return login;
-  }
-  return "";
-}
-
 function assert(condition, message, details = {}) {
   if (condition) return;
   const suffix = Object.keys(details).length
@@ -137,21 +124,12 @@ function requireSourceVersion(value, label) {
 }
 
 async function createSessionCookie() {
-  const secret = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
-  const login = firstAllowedGithubUser();
-  assert(secret, "NEXTAUTH_SECRET or AUTH_SECRET is required");
-  assert(login, "SITE_ADMIN_GITHUB_USERS must include at least one GitHub login");
-
-  const token = await encode({
-    secret,
-    token: {
-      sub: `staging-authenticated-qa-${login}`,
-      login,
-      name: login,
-    },
+  const auth = await createNextAuthSessionCookie({
     maxAge: 5 * 60,
+    subjectPrefix: "staging-authenticated-qa",
   });
-  return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+  assert(auth.ok, auth.reason);
+  return auth.cookie;
 }
 
 async function checkStaticRoute({

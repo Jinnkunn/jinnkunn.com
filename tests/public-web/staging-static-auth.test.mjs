@@ -4,6 +4,7 @@ import { encode } from "next-auth/jwt";
 
 import {
   isStagingStaticShellAuthorized,
+  parseAllowedAdminEmails,
   parseAllowedGithubUsers,
   readSessionCookie,
 } from "../../cloudflare/staging-static-auth.mjs";
@@ -13,6 +14,15 @@ const SECRET = "test-secret-with-enough-entropy-for-nextauth";
 async function makeCookie(login, maxAge = 60) {
   const token = await encode({
     token: { login },
+    secret: SECRET,
+    maxAge,
+  });
+  return `__Secure-next-auth.session-token=${encodeURIComponent(token)}`;
+}
+
+async function makeEmailCookie(email, maxAge = 60) {
+  const token = await encode({
+    token: { email },
     secret: SECRET,
     maxAge,
   });
@@ -30,6 +40,15 @@ test("staging static auth accepts a valid allowed NextAuth session", async () =>
   const ok = await isStagingStaticShellAuthorized(req(cookie), {
     NEXTAUTH_SECRET: SECRET,
     SITE_ADMIN_GITHUB_USERS: "other, @jinnkunn",
+  });
+  assert.equal(ok, true);
+});
+
+test("staging static auth accepts an allowed OIDC email session", async () => {
+  const cookie = await makeEmailCookie("I@JINKUNCHEN.COM");
+  const ok = await isStagingStaticShellAuthorized(req(cookie), {
+    NEXTAUTH_SECRET: SECRET,
+    SITE_ADMIN_EMAILS: "i@jinkunchen.com",
   });
   assert.equal(ok, true);
 });
@@ -78,5 +97,11 @@ test("parseAllowedGithubUsers normalizes case, commas, newlines, and @ prefixes"
   assert.deepEqual([...parseAllowedGithubUsers(" @Jinnkunn,\nOther ")], [
     "jinnkunn",
     "other",
+  ]);
+});
+
+test("parseAllowedAdminEmails normalizes admin email allowlist entries", () => {
+  assert.deepEqual([...parseAllowedAdminEmails(" I@JINKUNCHEN.COM,\nnot-email ")], [
+    "i@jinkunchen.com",
   ]);
 });

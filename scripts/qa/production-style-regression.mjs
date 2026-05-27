@@ -12,6 +12,7 @@ import {
 } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
@@ -229,35 +230,17 @@ function normalizeOrigin(origin) {
   return String(origin || "").trim().replace(/\/+$/, "");
 }
 
-function normalizeGithubLogin(value) {
-  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
-}
-
-function firstAllowedGithubUser() {
-  for (const part of String(process.env.SITE_ADMIN_GITHUB_USERS || "").split(/[,\n]/)) {
-    const login = normalizeGithubLogin(part);
-    if (login) return login;
-  }
-  return "";
-}
-
 async function createCandidateAuthCookies(candidateOrigin) {
   loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
   const secret = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
-  const login = firstAllowedGithubUser();
   assert(secret, "NEXTAUTH_SECRET or AUTH_SECRET is required for candidate auth");
-  assert(login, "SITE_ADMIN_GITHUB_USERS must include a login for candidate auth");
-
-  const { encode } = await import("next-auth/jwt");
-  const token = await encode({
+  const auth = await createNextAuthSessionCookie({
     secret,
-    token: {
-      sub: `production-style-${login}`,
-      login,
-      name: login,
-    },
     maxAge: 5 * 60,
+    subjectPrefix: "production-style",
   });
+  assert(auth.ok, auth.reason);
+  const token = auth.cookie.match(/__Secure-next-auth\.session-token=([^;]+)/)?.[1] || "";
   const secure = normalizeOrigin(candidateOrigin).startsWith("https://");
   return ["__Secure-next-auth.session-token", "next-auth.session-token"].map((name) => ({
     name,

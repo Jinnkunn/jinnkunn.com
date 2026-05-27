@@ -27,6 +27,7 @@ function makeValidPayload(overrides = {}) {
       hasNextAuthSecret: true,
       hasFlagsSecret: true,
       githubAllowlistCount: 2,
+      adminEmailAllowlistCount: 1,
       contentGithubAllowlistCount: 3,
     },
     build: {

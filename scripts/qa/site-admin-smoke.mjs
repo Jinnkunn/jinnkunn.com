@@ -2,6 +2,7 @@
 
 import { parseArgs } from "../_lib/cli.mjs";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 function fail(message) {
   console.error(`[site-admin-smoke] FAIL: ${message}`);
@@ -20,34 +21,13 @@ async function fetchJson(url, cookie) {
   return { res, raw };
 }
 
-function firstGithubUserFromCsv(raw) {
-  const users = String(raw || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  return users[0] || "";
-}
-
 async function buildAutoSiteAdminCookie() {
-  const secret = String(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "").trim();
-  if (!secret) return "";
-
-  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS || "");
-  if (!login) return "";
-
   try {
-    const { encode } = await import("next-auth/jwt");
-    const token = await encode({
-      secret,
-      token: {
-        sub: `smoke-${login}`,
-        login,
-        name: login,
-      },
+    const auth = await createNextAuthSessionCookie({
       maxAge: 60 * 30,
+      subjectPrefix: "smoke",
     });
-    if (!token) return "";
-    return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+    return auth.cookie;
   } catch {
     return "";
   }
@@ -82,11 +62,11 @@ async function main() {
     cookie = await buildAutoSiteAdminCookie();
     if (!cookie) {
       fail(
-        "missing --cookie (or SITE_ADMIN_COOKIE), and auto-cookie is unavailable (check NEXTAUTH_SECRET + SITE_ADMIN_GITHUB_USERS).",
+        "missing --cookie (or SITE_ADMIN_COOKIE), and auto-cookie is unavailable (check NEXTAUTH_SECRET + SITE_ADMIN_EMAILS/SITE_ADMIN_GITHUB_USERS).",
       );
       return;
     }
-    ok("auto-generated site-admin cookie from NEXTAUTH_SECRET + SITE_ADMIN_GITHUB_USERS");
+    ok("auto-generated site-admin cookie from NEXTAUTH_SECRET + admin allowlist");
   }
 
   const statusUrl = `${baseUrl.replace(/\/+$/, "")}/api/site-admin/status`;

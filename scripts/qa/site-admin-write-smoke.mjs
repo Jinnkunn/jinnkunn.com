@@ -2,6 +2,7 @@
 
 import { asBool, asString, parseArgs } from "../_lib/cli.mjs";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 function normalizeEnvName(value) {
   const raw = asString(value).toLowerCase();
@@ -19,31 +20,15 @@ function unwrapApiData(raw) {
   return "data" in raw ? raw.data : raw;
 }
 
-function firstGithubUserFromCsv(raw) {
-  const users = String(raw || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  return users[0] || "";
-}
-
 async function buildAutoSiteAdminCookie() {
   const secret = asString(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "");
-  const login = firstGithubUserFromCsv(process.env.SITE_ADMIN_GITHUB_USERS || "");
-  if (!secret || !login) return "";
   try {
-    const { encode } = await import("next-auth/jwt");
-    const token = await encode({
+    const auth = await createNextAuthSessionCookie({
       secret,
-      token: {
-        sub: `write-smoke-${login}`,
-        login,
-        name: login,
-      },
       maxAge: 60 * 30,
+      subjectPrefix: "write-smoke",
     });
-    if (!token) return "";
-    return `__Secure-next-auth.session-token=${token}; next-auth.session-token=${token}`;
+    return auth.ok ? auth.cookie : "";
   } catch {
     return "";
   }
