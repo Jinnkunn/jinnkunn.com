@@ -1,0 +1,248 @@
+.shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(36px, 7vh, 72px) 0 clamp(48px, 9vh, 96px);
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.heroCopy {
+  max-width: 720px;
+}
+
+.eyebrow,
+.cardLabel {
+  margin: 0;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 10px 0 0;
+  color: var(--ds-text-primary);
+  font-size: clamp(40px, 7vw, 74px);
+  line-height: 0.96;
+  letter-spacing: -0.02em;
+}
+
+.description {
+  margin: 16px 0 0;
+  max-width: 62ch;
+  color: var(--ds-text-muted);
+  font-size: clamp(16px, 2vw, 19px);
+  line-height: 1.55;
+}
+
+.description strong {
+  color: var(--ds-text-primary);
+  font-weight: 680;
+}
+
+.heroActions,
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.footerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.card,
+.wideCard {
+  min-width: 0;
+  padding: 18px;
+}
+
+.card {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wideCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cardHeader {
+  min-height: 26px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statusPill,
+.muted {
+  white-space: nowrap;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.statusPill {
+  padding: 4px 8px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-soft);
+}
+
+.statusPill[data-state="smart-release"],
+.statusPill[data-state="watch-release"] {
+  color: var(--ds-warning-text);
+  border-color: var(--ds-warning-border);
+  background: var(--ds-warning-bg);
+}
+
+.statusPill[data-state="noop"] {
+  color: var(--ds-success-text);
+  border-color: var(--ds-success-border);
+  background: var(--ds-success-bg);
+}
+
+.cardTitle {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: 22px;
+  line-height: 1.16;
+  letter-spacing: -0.01em;
+}
+
+.cardText {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.cardMeta {
+  margin-top: auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+}
+
+.cardMeta strong {
+  min-width: 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ds-text-secondary);
+  font-weight: 650;
+  text-align: right;
+}
+
+.linkRow {
+  margin-top: auto;
+}
+
+.linkRow a {
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--ds-link-underline);
+  text-underline-offset: 4px;
+}
+
+.linkRow a:hover {
+  color: var(--ds-text-primary);
+  text-decoration-color: var(--ds-link-underline-hover);
+}
+
+.kvGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.kvGrid div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.kvGrid dt {
+  margin: 0 0 6px;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.kvGrid dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ds-text-primary);
+  font-size: 14px;
+  font-weight: 680;
+}
+
+@media (max-width: 980px) {
+  .summaryGrid,
+  .footerGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kvGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .shell {
+    width: min(100% - 28px, 1180px);
+    padding-top: 28px;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .heroActions {
+    width: 100%;
+  }
+
+  .heroActions :global(.ds-button) {
+    flex: 1 1 auto;
+  }
+
+  .summaryGrid,
+  .footerGrid,
+  .kvGrid {
+    grid-template-columns: 1fr;
+  }
+}

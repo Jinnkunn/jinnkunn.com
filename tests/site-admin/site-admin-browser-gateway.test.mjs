@@ -6,7 +6,18 @@ test("site-admin browser gateway route exists and is auth gated", () => {
   const source = fs.readFileSync("app/site-admin/page.tsx", "utf8");
   assert.match(source, /getSiteAdminSessionIdentity/);
   assert.match(source, /isAllowedAdminSessionIdentity/);
+  assert.match(source, /getSiteAdminMobileSummary/);
   assert.ok(source.includes("/api/auth/signin"));
+});
+
+test("site-admin browser gateway renders a dashboard instead of a placeholder", () => {
+  const source = fs.readFileSync("app/site-admin/page.tsx", "utf8");
+  assert.ok(source.includes("Dashboard"));
+  assert.ok(source.includes("Release"));
+  assert.ok(source.includes("Content"));
+  assert.ok(source.includes("Calendar"));
+  assert.ok(source.includes("Now"));
+  assert.ok(!source.includes("The browser gateway is signed in"));
 });
 
 test("legacy site-admin login route redirects to the gateway", () => {
