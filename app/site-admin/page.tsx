@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { NextRequest } from "next/server";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { SpecialStatePage } from "@/components/special-state-page";
@@ -21,7 +21,9 @@ export const metadata: Metadata = {
 
 async function readAuthorizedIdentity() {
   const requestHeaders = await headers();
+  const requestCookies = await cookies();
   const req = {
+    cookies: { getAll: () => requestCookies.getAll() },
     headers: new Headers({ cookie: requestHeaders.get("cookie") || "" }),
   } as unknown as NextRequest;
   const identity = await getSiteAdminSessionIdentity(req);
