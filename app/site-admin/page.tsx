@@ -21,7 +21,9 @@ export const metadata: Metadata = {
 
 async function readAuthorizedIdentity() {
   const requestHeaders = await headers();
-  const req = { headers: requestHeaders } as unknown as NextRequest;
+  const req = {
+    headers: new Headers({ cookie: requestHeaders.get("cookie") || "" }),
+  } as unknown as NextRequest;
   const identity = await getSiteAdminSessionIdentity(req);
   return isAllowedAdminSessionIdentity(identity) ? identity : null;
 }
