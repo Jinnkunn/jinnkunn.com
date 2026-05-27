@@ -116,10 +116,9 @@ export async function middleware(req: NextRequest) {
   const pathname = normalizePathname(req.nextUrl.pathname || "/");
   if (isBypassedPath(pathname)) return NextResponse.next();
 
-  // The browser /site-admin pages were removed in 2026-05; the Tauri
-  // workspace app is the only admin UI now and its authenticated calls
-  // hit `/api/site-admin/*` directly (auth handled inside each route via
-  // withSiteAdminContext, not the edge middleware).
+  // `/site-admin` is now a lightweight browser gateway, not the full
+  // workspace UI. The Tauri/iOS apps remain the primary admin surfaces,
+  // while authenticated API calls hit `/api/site-admin/*` directly.
 
   // On staging: anything that reaches this point (not bypassed) is a
   // public page we still want to hide. Gate it behind the same NextAuth
