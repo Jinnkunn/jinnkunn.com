@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Site Admin",
-  description: "Authenticated Site Admin gateway",
+  description: "Site Admin dashboard",
   robots: { index: false, follow: false },
 };
 

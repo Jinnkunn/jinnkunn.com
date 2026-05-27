@@ -18,6 +18,7 @@ test("site-admin browser gateway renders a dashboard instead of a placeholder", 
   assert.ok(source.includes("Calendar"));
   assert.ok(source.includes("Now"));
   assert.ok(!source.includes("The browser gateway is signed in"));
+  assert.ok(!source.includes("Authenticated Site Admin gateway"));
 });
 
 test("legacy site-admin login route redirects to the gateway", () => {
