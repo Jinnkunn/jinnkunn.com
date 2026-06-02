@@ -459,6 +459,7 @@ test("public-web-style-guardrails: data-page embed blocks read from components, 
 
 test("public-web-style-guardrails: public calendar toolbar uses shared control primitives", async () => {
   const calendarView = await read("components/calendar/public-calendar-view.tsx");
+  const calendarClient = await read("components/calendar/public-calendar-client.tsx");
   const calendarCss = await read("app/(classic)/calendar.css");
   const designSystemCss = await read("app/design-system.css");
 
@@ -479,6 +480,15 @@ test("public-web-style-guardrails: public calendar toolbar uses shared control p
     "public-calendar__view-switch--audience ds-control-group",
     "Calendar featured/all scope control",
   );
+  assertIncludes(calendarView, 'audience = "all"', "Calendar defaults to all public events");
+  assertIncludes(
+    calendarClient,
+    'params.get(SCOPE_QUERY_KEY) === "featured" ? "featured" : "all"',
+    "Calendar URL scope defaults to all unless Featured is explicit",
+  );
+  assertExcludes(calendarView, "Last updated", "Calendar does not expose internal refresh copy");
+  assertExcludes(calendarView, "Calendar data is older", "Calendar does not expose stale sync copy");
+  assertExcludes(calendarCss, "public-calendar__sync-note", "Calendar removed public sync-note chrome");
   assertIncludes(calendarCss, "--ds-control-toolbar-columns", "Calendar toolbar DS variables");
   assertIncludes(calendarCss, "--ds-select-pill-bg", "Calendar select DS variables");
   assertIncludes(designSystemCss, ".ds-control-toolbar", "Design system calendar control primitive");

@@ -17,7 +17,6 @@ import {
   addCalendarDays,
   buildAgendaGroups,
   buildDayIndex,
-  countPublicCalendarHiddenBusyEvents,
   decoratePublicCalendarEvent,
   eventsForDay,
   eventsForDayKey,
@@ -25,7 +24,6 @@ import {
   formatDay,
   formatToolbarTitle,
   isSameZonedMonth,
-  isPublicCalendarDataStale,
   isWeekend,
   keyForDate,
   monthGridDays,
@@ -148,7 +146,7 @@ export function PublicCalendarView({
   anchorIso,
   currentDateIso,
   agendaDays = 30,
-  audience = "featured",
+  audience = "all",
   onViewChange,
   onAnchorChange,
   onAgendaDaysChange,
@@ -262,25 +260,7 @@ export function PublicCalendarView({
     [decoratedEvents, agendaDays, currentDate, anchor, timeZone],
   );
 
-  const lastUpdatedLabel = useMemo(
-    () =>
-      formatInTimeZone(data.generatedAt, timeZone, {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-    [data.generatedAt, timeZone],
-  );
   const timeZoneLabel = calendarTimeZoneLabel(timeZone);
-  const calendarDataIsStale = useMemo(
-    () => isPublicCalendarDataStale(data.generatedAt, currentDate ?? new Date()),
-    [data.generatedAt, currentDate],
-  );
-  const hiddenBusyCount = useMemo(
-    () => countPublicCalendarHiddenBusyEvents(data.events, audience),
-    [data.events, audience],
-  );
 
   const selectedEvent = useMemo(
     () => decoratedEvents.find((event) => event.id === expandedEventId) ?? null,
@@ -524,59 +504,6 @@ export function PublicCalendarView({
             >
               Clear
             </button>
-          ) : null}
-        </div>
-      ) : null}
-      <p
-        className="public-calendar__sync-note"
-        data-stale={calendarDataIsStale ? "true" : "false"}
-      >
-        Last updated {lastUpdatedLabel}. Times shown in{" "}
-        {timeZoneLabel}.{" "}
-        {audience === "featured" ? (
-          <>
-            Showing visitor-facing events ({decoratedEvents.length} of{" "}
-            {data.events.length}).
-          </>
-        ) : (
-          <>Showing all public events.</>
-        )}
-        {selectedTagSet.size > 0 ? (
-          <>
-            {" "}Filtered by{" "}
-            {Array.from(selectedTagSet)
-              .map((t) => `#${t}`)
-              .join(", ")}{" "}
-            ({decoratedEvents.length} of {data.events.length} events).
-          </>
-        ) : null}
-      </p>
-      {calendarDataIsStale || hiddenBusyCount > 0 ? (
-        <div className="public-calendar__status-hints" aria-live="polite">
-          {calendarDataIsStale ? (
-            <p className="public-calendar__stale-hint">
-              Calendar data is older than 24 hours. Sync from iOS or macOS to
-              refresh recent changes.
-            </p>
-          ) : null}
-          {hiddenBusyCount > 0 ? (
-            <p className="public-calendar__scope-hint">
-              Featured hides {hiddenBusyCount} Busy{" "}
-              {hiddenBusyCount === 1 ? "event" : "events"} for privacy.
-              {onAudienceChange ? (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    className="public-calendar__scope-action"
-                    onClick={() => onAudienceChange("all")}
-                  >
-                    Show all events
-                  </button>
-                  .
-                </>
-              ) : null}
-            </p>
           ) : null}
         </div>
       ) : null}

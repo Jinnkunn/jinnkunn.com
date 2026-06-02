@@ -8,7 +8,6 @@ import {
   type PublicCalendarEventAnchor,
   type PublicCalendarViewMode,
 } from "@/components/calendar/public-calendar-view";
-import { isPublicCalendarDataStale } from "@/components/calendar/public-calendar-model";
 import {
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
   normalizePublicCalendarData,
@@ -51,15 +50,15 @@ function writeTagsToLocation(tags: readonly string[]): void {
 }
 
 function readAudienceFromLocation(): PublicCalendarAudienceMode {
-  if (typeof window === "undefined") return "featured";
+  if (typeof window === "undefined") return "all";
   const params = new URLSearchParams(window.location.search);
-  return params.get(SCOPE_QUERY_KEY) === "all" ? "all" : "featured";
+  return params.get(SCOPE_QUERY_KEY) === "featured" ? "featured" : "all";
 }
 
 function writeAudienceToLocation(audience: PublicCalendarAudienceMode): void {
   if (typeof window === "undefined") return;
   const params = new URLSearchParams(window.location.search);
-  if (audience === "all") params.set(SCOPE_QUERY_KEY, "all");
+  if (audience === "featured") params.set(SCOPE_QUERY_KEY, "featured");
   else params.delete(SCOPE_QUERY_KEY);
   const next = params.toString();
   const target =
@@ -109,16 +108,6 @@ function readResponseTimestampIso(response: Response): string {
   );
 }
 
-type SyncStatus = "idle" | "syncing" | "ok" | "stale" | "failed";
-
-const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
-  idle: "",
-  syncing: "Syncing…",
-  ok: "Loaded",
-  stale: "Calendar stale",
-  failed: "Could not refresh",
-};
-
 type SelectedCalendarEvent = {
   id: string;
   anchor: PublicCalendarEventAnchor | null;
@@ -147,8 +136,6 @@ export function PublicCalendarClient({
   const [timeZone, setTimeZone] = useState<string>(() =>
     readTimeZoneFromLocation(),
   );
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   // Hydrate tag filter from URL. The lazy initializer reads location
   // synchronously on first render so we don't need a pre-paint effect
   // that would then cascade into another render cycle (which the
@@ -232,7 +219,6 @@ export function PublicCalendarClient({
     let cancelled = false;
 
     async function refresh() {
-      if (!cancelled) setSyncStatus("syncing");
       try {
         const res = await fetch("/api/public/calendar", {
           headers: { accept: "application/json" },
@@ -242,7 +228,6 @@ export function PublicCalendarClient({
         if (!res.ok) {
           if (!cancelled) {
             setCurrentDateIso(servedAtIso);
-            setSyncStatus("failed");
           }
           return;
         }
@@ -255,17 +240,10 @@ export function PublicCalendarClient({
           }),
         );
         setCurrentDateIso(servedAtIso);
-        setSyncStatus(
-          isPublicCalendarDataStale(next.generatedAt, new Date(servedAtIso))
-            ? "stale"
-            : "ok",
-        );
-        setLastSyncedAt(servedAtIso);
       } catch {
         // Keep the static fallback visible if the dynamic endpoint is unavailable.
         if (!cancelled) {
           setCurrentDateIso(normalizePublicCalendarServedAt(null));
-          setSyncStatus("failed");
         }
       }
     }
@@ -304,29 +282,6 @@ export function PublicCalendarClient({
           setSelectedEvent(null);
         }}
       />
-      {syncStatus !== "idle" ? (
-        <p
-          className="public-calendar__sync-status"
-          data-status={syncStatus}
-          role="status"
-          aria-live="polite"
-        >
-          <span className="public-calendar__sync-status-dot" aria-hidden="true" />
-          {SYNC_STATUS_LABEL[syncStatus]}
-          {syncStatus === "ok" && lastSyncedAt
-            ? ` · ${new Date(lastSyncedAt).toLocaleTimeString("en", {
-                hour: "numeric",
-                minute: "2-digit",
-              })}`
-            : null}
-          {syncStatus === "stale"
-            ? ` · ${new Date(data.generatedAt).toLocaleDateString("en", {
-                month: "short",
-                day: "numeric",
-              })}`
-            : null}
-        </p>
-      ) : null}
     </div>
   );
 }
