@@ -8,6 +8,7 @@ import {
   type PublicCalendarEventAnchor,
   type PublicCalendarViewMode,
 } from "@/components/calendar/public-calendar-view";
+import { isPublicCalendarDataStale } from "@/components/calendar/public-calendar-model";
 import {
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
   normalizePublicCalendarData,
@@ -108,12 +109,13 @@ function readResponseTimestampIso(response: Response): string {
   );
 }
 
-type SyncStatus = "idle" | "syncing" | "ok" | "failed";
+type SyncStatus = "idle" | "syncing" | "ok" | "stale" | "failed";
 
 const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
   idle: "",
   syncing: "Syncing…",
-  ok: "Up to date",
+  ok: "Loaded",
+  stale: "Calendar stale",
   failed: "Could not refresh",
 };
 
@@ -253,7 +255,11 @@ export function PublicCalendarClient({
           }),
         );
         setCurrentDateIso(servedAtIso);
-        setSyncStatus("ok");
+        setSyncStatus(
+          isPublicCalendarDataStale(next.generatedAt, new Date(servedAtIso))
+            ? "stale"
+            : "ok",
+        );
         setLastSyncedAt(servedAtIso);
       } catch {
         // Keep the static fallback visible if the dynamic endpoint is unavailable.
@@ -311,6 +317,12 @@ export function PublicCalendarClient({
             ? ` · ${new Date(lastSyncedAt).toLocaleTimeString("en", {
                 hour: "numeric",
                 minute: "2-digit",
+              })}`
+            : null}
+          {syncStatus === "stale"
+            ? ` · ${new Date(data.generatedAt).toLocaleDateString("en", {
+                month: "short",
+                day: "numeric",
               })}`
             : null}
         </p>

@@ -338,6 +338,49 @@
   line-height: 1.4;
 }
 
+.public-calendar__sync-note[data-stale="true"] {
+  color: var(--ds-warning-text);
+}
+
+.public-calendar__status-hints {
+  display: grid;
+  gap: 6px;
+  margin: -4px 0 0;
+}
+
+.public-calendar__stale-hint,
+.public-calendar__scope-hint {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.public-calendar__stale-hint {
+  color: var(--ds-warning-text);
+}
+
+.public-calendar__scope-action {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ds-text-primary) 25%, transparent);
+  text-underline-offset: 0.14em;
+}
+
+.public-calendar__scope-action:hover,
+.public-calendar__scope-action:focus-visible {
+  color: var(--ds-accent-text);
+  outline: none;
+  text-decoration-color: currentColor;
+}
+
 .public-calendar__detail-layer {
   position: fixed;
   inset: 0;
@@ -554,6 +597,12 @@
   color: var(--ds-success-text);
   border-color: var(--ds-success-border);
   background: var(--ds-success-bg);
+}
+
+.public-calendar__sync-status[data-status="stale"] {
+  color: var(--ds-warning-text);
+  border-color: var(--ds-warning-border);
+  background: var(--ds-warning-bg);
 }
 
 .public-calendar__sync-status[data-status="failed"] {

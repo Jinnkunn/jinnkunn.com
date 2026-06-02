@@ -5,10 +5,12 @@ import {
   addCalendarDays,
   buildAgendaGroups,
   buildDayIndex,
+  countPublicCalendarHiddenBusyEvents,
   decoratePublicCalendarEvent,
   eventsForDayKey,
   filterPublicCalendarAudience,
   formatToolbarTitle,
+  isPublicCalendarDataStale,
   keyForDate,
   monthGridDays,
   startOfCalendarDay,
@@ -188,5 +190,24 @@ test("public-calendar-view-model: featured audience hides busy and all-only even
   assert.deepEqual(
     filterPublicCalendarAudience(data.events, "all").map((event) => event.id),
     ["busy", "deadline", "talk"],
+  );
+  assert.equal(countPublicCalendarHiddenBusyEvents(data.events, "featured"), 1);
+  assert.equal(countPublicCalendarHiddenBusyEvents(data.events, "all"), 0);
+});
+
+test("public-calendar-view-model: stale status follows generated timestamp, not fetch time", () => {
+  assert.equal(
+    isPublicCalendarDataStale(
+      "2026-05-24T04:18:47.934Z",
+      new Date("2026-06-02T18:00:00.000Z"),
+    ),
+    true,
+  );
+  assert.equal(
+    isPublicCalendarDataStale(
+      "2026-06-02T16:30:00.000Z",
+      new Date("2026-06-02T18:00:00.000Z"),
+    ),
+    false,
   );
 });

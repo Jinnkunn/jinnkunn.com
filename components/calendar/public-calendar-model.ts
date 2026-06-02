@@ -16,6 +16,8 @@ import { extractEventTags } from "../../lib/shared/calendar-tags.ts";
 export type PublicCalendarViewMode = "month" | "week" | "day" | "agenda";
 export type PublicCalendarAudienceMode = "featured" | "all";
 
+export const PUBLIC_CALENDAR_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
 export const PUBLIC_CALENDAR_VIEW_LABELS: Array<{
   value: PublicCalendarViewMode;
   label: string;
@@ -76,6 +78,28 @@ export function filterPublicCalendarAudience(
 ): PublicCalendarEvent[] {
   if (audience === "all") return [...events];
   return events.filter(isFeaturedPublicCalendarEvent);
+}
+
+export function countPublicCalendarHiddenBusyEvents(
+  events: readonly PublicCalendarEvent[],
+  audience: PublicCalendarAudienceMode,
+): number {
+  if (audience !== "featured") return 0;
+  return events.reduce(
+    (count, event) => count + (event.visibility === "busy" ? 1 : 0),
+    0,
+  );
+}
+
+export function isPublicCalendarDataStale(
+  generatedAt: string,
+  now: Date = new Date(),
+  staleAfterMs = PUBLIC_CALENDAR_STALE_AFTER_MS,
+): boolean {
+  const generatedAtMs = Date.parse(generatedAt);
+  const nowMs = now.getTime();
+  if (!Number.isFinite(generatedAtMs) || !Number.isFinite(nowMs)) return false;
+  return nowMs - generatedAtMs > staleAfterMs;
 }
 
 export type DecoratedPublicCalendarEvent = PublicCalendarEvent & {
