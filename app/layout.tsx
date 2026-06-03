@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { designViewportThemeColors } from "@/lib/design-system/tokens";
 import { getDesignThemeInitScript } from "@/lib/design-system/theme";
 import {
@@ -31,7 +33,12 @@ export default function RootLayout({
   const gaId = normalizeGoogleAnalyticsId(cfg.integrations?.googleAnalyticsId) || "";
   const gaInitScript = buildGoogleAnalyticsInitScript(gaId);
   return (
-    <html lang={cfg.lang || "en"} dir="ltr" data-theme="light" className="theme-light">
+    <html
+      lang={cfg.lang || "en"}
+      dir="ltr"
+      data-theme="light"
+      className={`theme-light ${GeistSans.variable} ${GeistMono.variable}`}
+    >
       <body>
         <Script id="design-theme-init" strategy="beforeInteractive">
           {getDesignThemeInitScript()}

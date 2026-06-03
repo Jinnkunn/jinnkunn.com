@@ -40,3 +40,27 @@ html[data-theme],
   --secondary-font: var(--ds-font-body);
   --navbar-shadow: none;
 }
+
+/* Display polish for the Geist grotesk. A modern grotesk reads tighter and
+ * more confident at large sizes, so page/hero titles get negative tracking
+ * and a touch more weight, and in-content headings get a lighter tightening.
+ * Only tracking + weight change here — font-size and line-height stay exactly
+ * on the classic style contract (16px/24px body, locked title sizes), so the
+ * production-style and classic-style gates remain green. */
+.super-root .notion-header__title {
+  font-weight: var(--ds-weight-display);
+  letter-spacing: var(--ds-tracking-display);
+}
+
+.super-root .notion-root :is(h1, h2, h3),
+.super-root .notion-heading,
+.super-root .notion-heading__content {
+  letter-spacing: var(--ds-tracking-tight);
+}
+
+/* Wordmark in the navbar — same tightening keeps the brand lockup in step
+ * with the new headings. */
+.super-root .notion-navbar__title,
+.super-root .super-navbar__logo-text {
+  letter-spacing: var(--ds-tracking-tight);
+}
