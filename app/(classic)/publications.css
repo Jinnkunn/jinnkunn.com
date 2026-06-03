@@ -2,6 +2,8 @@
 
 .publication-year {
   display: contents;
+  /* Aligned figures so stacked year markers (2026 / 2025 …) line up. */
+  font-variant-numeric: tabular-nums;
 }
 
 .publication-toggle .notion-toggle__summary {
