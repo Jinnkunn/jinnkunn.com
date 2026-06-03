@@ -50,12 +50,22 @@ html[data-theme],
 .super-root .notion-header__title {
   font-weight: var(--ds-weight-display);
   letter-spacing: var(--ds-tracking-display);
+  text-wrap: balance;
 }
 
 .super-root .notion-root :is(h1, h2, h3),
 .super-root .notion-heading,
 .super-root .notion-heading__content {
   letter-spacing: var(--ds-tracking-tight);
+  text-wrap: balance;
+}
+
+/* Body prose: let the browser even out line lengths and avoid a lone
+ * orphan word on the last line. Affects line breaking only — font-size,
+ * line-height and color stay exactly on the classic contract. */
+.super-root .notion-text__content,
+.super-root .mdx-post__body p {
+  text-wrap: pretty;
 }
 
 /* Wordmark in the navbar — same tightening keeps the brand lockup in step
