@@ -56,9 +56,9 @@ function isRedirectStatus(status) {
   return status === 301 || status === 302 || status === 307 || status === 308;
 }
 
-function cloneStaticRequest(original, targetUrl) {
+function cloneStaticRequest(original, targetUrl, method = original.method) {
   return new Request(targetUrl.toString(), {
-    method: original.method,
+    method,
     headers: original.headers,
     redirect: "manual",
   });
@@ -153,7 +153,7 @@ async function loadStaticProtectionPolicy(request, env) {
       const policyUrl = new URL(request.url);
       policyUrl.pathname = "/__static/protected-routes-policy.json";
       policyUrl.search = "";
-      const res = await env.ASSETS.fetch(cloneStaticRequest(request, policyUrl));
+      const res = await env.ASSETS.fetch(cloneStaticRequest(request, policyUrl, "GET"));
       if (!res || !res.ok) return null;
       return res.json().catch(() => null);
     })();
@@ -180,13 +180,13 @@ async function fetchStaticAssetWithRedirects(request, env, assetPath) {
   originUrl.search = "";
 
   let currentUrl = originUrl;
-  let response = await env.ASSETS.fetch(cloneStaticRequest(request, currentUrl));
+  let response = await env.ASSETS.fetch(cloneStaticRequest(request, currentUrl, "GET"));
 
   for (let i = 0; i < 2 && response && isRedirectStatus(response.status); i += 1) {
     const location = response.headers.get("location");
     if (!location) break;
     currentUrl = new URL(location, currentUrl);
-    response = await env.ASSETS.fetch(cloneStaticRequest(request, currentUrl));
+    response = await env.ASSETS.fetch(cloneStaticRequest(request, currentUrl, "GET"));
   }
   return response;
 }
@@ -223,7 +223,7 @@ async function tryServeStaticShell(request, env) {
     const headers = new Headers(res.headers);
     headers.set("x-static-shell", "1");
     headers.set("x-static-shell-path", assetPath);
-    return new Response(res.body, {
+    return new Response(request.method === "HEAD" ? null : res.body, {
       status: res.status,
       statusText: res.statusText,
       headers,

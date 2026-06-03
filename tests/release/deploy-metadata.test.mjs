@@ -99,6 +99,8 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(worker, /x-static-overlay/);
   assert.match(worker, /fetchStaticOverlay/);
   assert.match(worker, /STATIC_SHELL_OVERLAY/);
+  assert.match(worker, /cloneStaticRequest\(request, currentUrl, "GET"\)/);
+  assert.match(worker, /request\.method === "HEAD" \? null : res\.body/);
   assert.match(wrangler, /STATIC_SHELL_OVERLAY = "1"/);
 });
 
