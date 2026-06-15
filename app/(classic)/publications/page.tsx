@@ -10,7 +10,7 @@ import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildPublicationsStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 // Read the publications data from the components file (the page MDX
 // only embeds `<PublicationsBlock />`; entries live in the dedicated

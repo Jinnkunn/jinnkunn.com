@@ -4,7 +4,7 @@ import { buildHomeStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
 import { loadSiteAdminHomeData } from "@/lib/server/site-admin-home-service";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 export default async function Home() {
   const cfg = getSiteConfig();

@@ -23,7 +23,7 @@ test("public posts and pages read through ContentStore wrappers", async () => {
   assert.doesNotMatch(publicationsPage, /node:fs|readFile|process\.cwd\(\)/);
 });
 
-test("content-managed public routes render dynamically", async () => {
+test("content-managed public routes can prerender static shells", async () => {
   const routes = [
     "app/(classic)/page.tsx",
     "app/(classic)/blog/page.tsx",
@@ -35,8 +35,8 @@ test("content-managed public routes render dynamically", async () => {
   const files = await Promise.all(routes.map(source));
   for (let index = 0; index < routes.length; index += 1) {
     const file = files[index];
-    assert.match(file, /export const dynamic = "force-dynamic"/, routes[index]);
-    assert.doesNotMatch(file, /export const dynamic = "force-static"/, routes[index]);
+    assert.match(file, /export const dynamic = "force-static"/, routes[index]);
+    assert.doesNotMatch(file, /export const dynamic = "force-dynamic"/, routes[index]);
   }
 });
 

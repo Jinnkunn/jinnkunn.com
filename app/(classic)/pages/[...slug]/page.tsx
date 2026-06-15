@@ -6,8 +6,8 @@ import { getPageEntry, getPageSlugs, readPageSource } from "@/lib/pages/index";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 
-export const dynamic = "force-dynamic";
-export const dynamicParams = true;
+export const dynamic = "force-static";
+export const dynamicParams = false;
 
 // Catch-all so hierarchical page slugs (e.g. "docs/intro") render under
 // /pages/docs/intro. Single-segment slugs ("about") still work — the
