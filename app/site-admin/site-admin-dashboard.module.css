@@ -175,9 +175,25 @@
   text-underline-offset: 4px;
 }
 
-.linkRow a:hover {
+.linkRow a:hover,
+.linkRow button:hover {
   color: var(--ds-text-primary);
   text-decoration-color: var(--ds-link-underline-hover);
+}
+
+.linkRow button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--ds-link-underline);
+  text-underline-offset: 4px;
+  cursor: pointer;
 }
 
 .kvGrid {
@@ -211,6 +227,301 @@
   font-weight: 680;
 }
 
+.adminTabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+}
+
+.adminTab,
+.segmented button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-soft);
+  color: var(--ds-text-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.adminTab[data-active="true"],
+.segmented button[data-active="true"] {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-hairline);
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.68fr) minmax(0, 1.6fr) minmax(260px, 0.82fr);
+  gap: 14px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.sidePanel,
+.editorPanel,
+.createPanel,
+.formPanel,
+.historyPanel {
+  min-width: 0;
+  padding: 18px;
+}
+
+.sidePanel,
+.createPanel,
+.formPanel,
+.historyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editorPanel {
+  display: flex;
+  min-height: 680px;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.panelTitle {
+  margin: 6px 0 0;
+  color: var(--ds-text-primary);
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.panelActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segmented button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.itemButton {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-md);
+  background: transparent;
+  color: var(--ds-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.itemButton:hover,
+.itemButton[data-active="true"] {
+  border-color: var(--ds-border-subtle);
+  background: var(--ds-surface-soft);
+}
+
+.itemButton[data-active="true"] {
+  box-shadow: inset 3px 0 0 var(--ds-accent);
+}
+
+.itemButton span,
+.itemButton small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemButton span {
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.itemButton small {
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.codeEditor,
+.createEditor,
+.largeEditor,
+.nowEditor,
+.historyEditor,
+.textField {
+  width: 100%;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-primary);
+  font: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.codeEditor,
+.createEditor,
+.largeEditor {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.58;
+  tab-size: 2;
+}
+
+.codeEditor {
+  min-height: 520px;
+  flex: 1;
+  padding: 16px;
+}
+
+.createEditor {
+  min-height: 260px;
+  padding: 13px;
+}
+
+.largeEditor {
+  min-height: 620px;
+  padding: 16px;
+}
+
+.nowEditor,
+.historyEditor {
+  resize: vertical;
+  min-height: 112px;
+  padding: 12px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.historyEditor {
+  min-height: 92px;
+}
+
+.textField {
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.fieldLabel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.editorHint {
+  margin: 0;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.emptyEditor {
+  margin: auto;
+  max-width: 420px;
+  text-align: center;
+}
+
+.nowGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 14px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.historyList {
+  display: flex;
+  max-height: 700px;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.historyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.historyItem p {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.historyItem small {
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.historyActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.historyActions .textField {
+  max-width: 180px;
+}
+
 @media (max-width: 980px) {
   .summaryGrid,
   .footerGrid {
@@ -219,6 +530,15 @@
 
   .kvGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspaceGrid,
+  .nowGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .editorPanel {
+    min-height: 560px;
   }
 }
 
@@ -242,7 +562,22 @@
 
   .summaryGrid,
   .footerGrid,
-  .kvGrid {
+  .kvGrid,
+  .fieldGrid {
     grid-template-columns: 1fr;
+  }
+
+  .panelHeader {
+    flex-direction: column;
+  }
+
+  .panelActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .codeEditor,
+  .largeEditor {
+    min-height: 420px;
   }
 }

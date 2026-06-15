@@ -11,12 +11,17 @@ test("site-admin browser gateway route exists and is auth gated", () => {
 });
 
 test("site-admin browser gateway renders a dashboard instead of a placeholder", () => {
-  const source = fs.readFileSync("app/site-admin/page.tsx", "utf8");
+  const pageSource = fs.readFileSync("app/site-admin/page.tsx", "utf8");
+  const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  assert.ok(pageSource.includes("SiteAdminWebConsole"));
   assert.ok(source.includes("Dashboard"));
   assert.ok(source.includes("Release"));
   assert.ok(source.includes("Content"));
   assert.ok(source.includes("Calendar"));
   assert.ok(source.includes("Now"));
+  assert.ok(source.includes("New content"));
+  assert.ok(source.includes("Save Home"));
+  assert.ok(source.includes("Publish draft"));
   assert.ok(!source.includes("The browser gateway is signed in"));
   assert.ok(!source.includes("Authenticated Site Admin gateway"));
 });
