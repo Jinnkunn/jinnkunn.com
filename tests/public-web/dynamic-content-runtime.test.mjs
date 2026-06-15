@@ -48,3 +48,15 @@ test("Cloudflare worker bypasses static shell for runtime content routes", async
   assert.match(worker, /pathname\.startsWith\("\/pages\/"\)/);
   assert.match(worker, /if \(isRuntimeContentRoute\(pathname\)\) return true/);
 });
+
+test("Cloudflare build patches OpenNext runtime manifest dynamic require", async () => {
+  const [pkg, patcher] = await Promise.all([
+    source("package.json").then((text) => JSON.parse(text)),
+    source("scripts/build/patch-opennext-runtime-manifests.mjs"),
+  ]);
+
+  assert.match(pkg.scripts["build:cf"], /patch-opennext-runtime-manifests\.mjs/);
+  assert.match(patcher, /middleware-manifest\.json/);
+  assert.match(patcher, /open-next-runtime-manifest-guard/);
+  assert.match(patcher, /Dynamic require of/);
+});

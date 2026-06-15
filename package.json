@@ -7,7 +7,7 @@
     "prebuild": "node scripts/build/prebuild.mjs",
     "build": "next build --webpack",
     "analyze": "ANALYZE=1 next build --webpack",
-    "build:cf": "npm run build && node scripts/build/export-classic-css-assets.mjs && opennextjs-cloudflare build && node scripts/build/export-classic-css-assets.mjs && node scripts/build/export-static-shell-assets.mjs",
+    "build:cf": "npm run build && node scripts/build/export-classic-css-assets.mjs && opennextjs-cloudflare build && node scripts/build/patch-opennext-runtime-manifests.mjs && node scripts/build/export-classic-css-assets.mjs && node scripts/build/export-static-shell-assets.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.mjs'",
