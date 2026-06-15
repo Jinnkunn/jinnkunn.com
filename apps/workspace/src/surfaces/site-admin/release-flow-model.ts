@@ -160,11 +160,11 @@ export function normalizeStatusPayload(value: unknown): StatusPayload | null {
 export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
   if (!input.isStaging) {
     return {
-      detail: "Production is inspect-only. Switch to Staging to release.",
+      detail: "Live is inspect-only. Switch to Draft to publish.",
       disabled: true,
       kind: "blocked",
       label: "Blocked",
-      reason: "Open the Staging profile first.",
+      reason: "Open the Draft profile first.",
       script: "",
       tone: "blocked",
     };
@@ -182,11 +182,11 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
   }
   if (!input.ready) {
     return {
-      detail: "Sign in to the staging profile before releasing.",
+      detail: "Sign in to the Draft profile before publishing.",
       disabled: true,
       kind: "blocked",
       label: "Connect",
-      reason: "Staging connection is not ready.",
+      reason: "Draft connection is not ready.",
       script: "",
       tone: "blocked",
     };
@@ -210,11 +210,11 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
     source?.pendingDeploy === true;
   if (stagingBehind) {
     return {
-      detail: "Staging code is behind local HEAD. Deploy staging before content or production.",
+      detail: "Draft preview code is behind local HEAD. Update Draft before publishing Live.",
       disabled: false,
       kind: "deploy-staging-code",
-      label: "Deploy Staging",
-      reason: "Staging code behind local HEAD.",
+      label: "Update Draft Preview",
+      reason: "Draft preview is behind the latest code.",
       script: RELEASE_STAGING_SCRIPT,
       tone: "warn",
     };
@@ -223,15 +223,15 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
     return {
       detail:
         input.target === "production"
-          ? "Saved website content changed. Publish staging first, then copy the verified overlay to production."
-          : "Saved website content changed. Publish the staging static overlay only.",
+          ? "Saved website content changed. Publish Draft preview first, then copy the verified content to Live."
+          : "Saved website content changed. Publish the Draft preview only.",
       disabled: false,
       kind: "publish-content-staging",
-      label: "Publish Staging Content",
+      label: "Publish Draft Preview",
       reason:
         input.target === "production"
-          ? "Content changed; staging is the first step."
-          : "Content changed, publish staging overlay.",
+          ? "Content changed; Draft preview is the first step."
+          : "Content changed; update Draft preview.",
       script: PUBLISH_CONTENT_STAGING_SCRIPT,
       tone: "warn",
     };
@@ -242,23 +242,23 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
   if (input.target === "staging") {
     return {
       detail: stagingOverlayDiffers || !input.productionAlreadyCurrent
-        ? "Staging is current. Switch the target to Staging to Production when you want production to match."
-        : "Staging is current.",
+        ? "Draft is current. Switch the target to Live site when public pages should match."
+        : "Draft is current.",
       disabled: false,
       kind: "noop",
-      label: "Staging Current",
-      reason: "No staging release work is needed.",
+      label: "Draft Current",
+      reason: "No Draft publish work is needed.",
       script: "",
       tone: "ok",
     };
   }
   if (input.readyToPromote) {
     return {
-      detail: "Production code differs from the verified staging candidate.",
+      detail: "Live code differs from the verified Draft preview.",
       disabled: false,
       kind: "promote-production-code",
-      label: "Promote Production",
-      reason: "Production code behind staging.",
+      label: "Update Live Site",
+      reason: "Live site is behind Draft preview.",
       script: RELEASE_PROD_FROM_STAGING_SCRIPT,
       tone: "warn",
     };
@@ -266,31 +266,31 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
   if (stagingOverlayDiffers) {
     if (!input.productionCodeMatchesStaging) {
       return {
-        detail: "Production must run the same Worker code before copying the staging overlay.",
+        detail: "Live must run the same Worker code before copying the verified Draft content.",
         disabled: false,
         kind: "promote-production-code",
-        label: "Promote Production",
-        reason: "Production code must match staging before content copy.",
+        label: "Update Live Site",
+        reason: "Live code must match Draft before content copy.",
         script: RELEASE_PROD_FROM_STAGING_SCRIPT,
         tone: "warn",
       };
     }
     return {
-      detail: "Staging content is verified. Copy the exact same overlay to production.",
+      detail: "Draft content is verified. Copy the exact same content to Live.",
       disabled: false,
       kind: "publish-content-production-from-staging",
-      label: "Publish Same Content to Production",
-      reason: "Staging overlay verified; production content is behind.",
+      label: "Publish Draft to Live",
+      reason: "Draft content is verified; Live content is behind.",
       script: PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT,
       tone: "warn",
     };
   }
   if (input.productionAlreadyCurrent) {
     return {
-      detail: "Production code and content overlays match staging.",
+      detail: "Live code and content match Draft.",
       disabled: false,
       kind: "noop",
-      label: "Current",
+      label: "Live Current",
       reason: "No release work is needed.",
       script: "",
       tone: "ok",
@@ -373,14 +373,14 @@ export function releaseWorkflowRecovery(
     actionsUrl: RELEASE_FROM_DISPATCH_ACTIONS_URL,
     command: RELEASE_STAGING_COMMAND,
     copyLabel: "Copy local release command",
-    detail: `Staging needs a local publish for ${target}.`,
+    detail: `Draft needs a local publish for ${target}.`,
     fallbackLabel: "GitHub dispatch fallback",
     kind: "local-cloudflare",
     label: "Local Cloudflare release",
     openLabel: "Open GitHub fallback",
     script: RELEASE_STAGING_SCRIPT,
     waitText:
-      "Use Smart Release for routine publishing. It picks content overlay, Deploy Staging (`npm run release:staging`), production promotion, or no-op. Use GitHub Actions only as a fallback.",
+      "Use Smart Release for routine publishing. It picks Draft content, Draft code, Live publishing, or no-op. Use GitHub Actions only as a fallback.",
   };
 }
 
@@ -399,11 +399,11 @@ export function nextActionLabel(
   productionReadOnly: boolean,
 ): string {
   if (!data) return "Refresh status.";
-  if (productionReadOnly) return "Production is read-only here. Promote separately.";
+  if (productionReadOnly) return "Live is read-only here. Publish from Draft.";
   if (data.source?.deployableVersionReady === false) {
     return releaseWorkflowRecovery(data.source).waitText;
   }
-  if (data.source?.pendingDeploy === true) return "Publish the ready staging candidate.";
+  if (data.source?.pendingDeploy === true) return "Publish the ready Draft candidate.";
   if (data.source?.deployableVersionReady === true) return "No publish action needed.";
   if (sourceStoreKind(data.source) === "db") {
     return "No branch diff is available for D1 source; use the candidate readiness signal.";
@@ -438,12 +438,12 @@ export function deriveReleaseFlow(
     stage = "production-read-only";
     publishLabel = label;
     statusTone = "muted";
-    disabledReason = "Production is read-only in Workspace.";
+    disabledReason = "Live is read-only in Workspace.";
   } else if (candidateBlocked) {
     stage = "candidate-stale";
     publishLabel = "Recheck";
     statusTone = "blocked";
-    disabledReason = "Rebuild the staging Worker candidate before publishing.";
+    disabledReason = "Rebuild the Draft Worker candidate before publishing.";
   } else if (pendingDeploy === true) {
     stage = "pending-deploy";
     publishLabel = label;

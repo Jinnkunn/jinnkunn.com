@@ -552,7 +552,7 @@ function parsePromotePreview(raw: unknown): PromotePreview {
       return {
         ok: false,
         code: "INVALID_PREVIEW",
-        detail: "preview missing staging snapshot",
+        detail: "preview missing Draft snapshot",
       };
     }
     return {
@@ -617,12 +617,12 @@ function releaseChecks(
       ? [
           {
             detail: localDirty
-              ? `${localSource.dirty_file_count} local file${localSource.dirty_file_count === 1 ? "" : "s"} must be committed before production promotion.`
+              ? `${localSource.dirty_file_count} local file${localSource.dirty_file_count === 1 ? "" : "s"} must be committed before Live publishing.`
               : localMismatch
-                ? `Staging is ${shortSha(stagingCodeSha)}, but local release source is ${shortSha(localSha)}. Deploy staging first.`
+                ? `Draft preview is ${shortSha(stagingCodeSha)}, but local release source is ${shortSha(localSha)}. Update Draft first.`
                 : productionHistoryOnlyDirty
-                  ? "Only the production version history audit log changed; release jobs can continue."
-                : "Local release source matches staging.",
+                  ? "Only the Live version history audit log changed; release jobs can continue."
+                : "Local release source matches Draft.",
             label: "Local source",
             tone: localDirty || localMismatch ? "blocked" : productionHistoryOnlyDirty ? "warn" : "ok",
             value: localDirty ? "Dirty" : localMismatch ? "Mismatch" : productionHistoryOnlyDirty ? "History log" : shortSha(localSha),
@@ -631,22 +631,22 @@ function releaseChecks(
       : []),
     {
       detail: isStaging
-        ? "Connected to the staging candidate."
-        : "Switch to Staging before deploying or promoting.",
+        ? "Connected to the Draft workspace."
+        : "Switch to Draft before publishing.",
       label: "Profile",
       tone: isStaging ? "ok" : "blocked",
-      value: isStaging ? "Staging" : "Not staging",
+      value: isStaging ? "Draft" : "Not Draft",
     },
     {
       detail:
         previewReady && preview.stagingMatchesMain
-          ? "Live staging matches the release source."
+          ? "Draft preview matches the release source."
           : previewReady
-            ? "Staging runtime and active deployment disagree."
-            : "Load staging preflight to compare both environments.",
-      label: "Staging preflight",
+            ? "Draft runtime and active deployment disagree."
+            : "Load preflight to compare Draft and Live.",
+      label: "Draft preflight",
       tone: previewReady && preview.stagingMatchesMain ? "ok" : "blocked",
-      value: previewReady && preview.stagingMatchesMain ? "Matched" : "Needs staging",
+      value: previewReady && preview.stagingMatchesMain ? "Matched" : "Needs Draft",
     },
     {
       detail:
@@ -659,14 +659,14 @@ function releaseChecks(
     {
       detail:
         pendingDeploy === true
-          ? "Deploy staging first, then promote the verified candidate."
-          : "Staging appears current for this source.",
-      label: "Staging deploy",
+          ? "Update Draft first, then publish the verified candidate to Live."
+          : "Draft appears current for this source.",
+      label: "Draft deploy",
       tone: pendingDeploy === true ? "blocked" : "ok",
       value: pendingDeploy === true ? "Pending" : "Current",
     },
     {
-      detail: codeSha ? "Code SHA reported by staging." : "Status did not include a code SHA.",
+      detail: codeSha ? "Code SHA reported by Draft preview." : "Status did not include a code SHA.",
       label: "Code SHA",
       tone: codeSha ? "ok" : "warn",
       value: shortSha(codeSha),
@@ -682,21 +682,21 @@ function releaseChecks(
     {
       detail: previewReady
         ? productionDifferent
-          ? "Production differs from the verified staging candidate."
-          : "Production already runs the same active snapshot."
-        : preview?.detail || "Load staging preflight.",
-      label: "Production delta",
+          ? "Live differs from the verified Draft candidate."
+          : "Live already runs the same active snapshot."
+        : preview?.detail || "Load preflight.",
+      label: "Live delta",
       tone: previewReady ? (productionDifferent ? "warn" : "ok") : "muted",
       value: previewReady ? (productionDifferent ? "Differs" : "Current") : "Unknown",
     },
     {
       detail: !previewReady
-        ? "Load staging preflight."
+        ? "Load preflight."
         : preview.contentDelta.error
           ? `Could not compute content delta: ${preview.contentDelta.error}`
           : preview.contentDelta.changedRows === 0
-            ? "No staging D1 edits since production deploy."
-            : `${preview.contentDelta.changedRows} content file${preview.contentDelta.changedRows === 1 ? "" : "s"} will land on production.`,
+            ? "No Draft edits since the last Live publish."
+            : `${preview.contentDelta.changedRows} content file${preview.contentDelta.changedRows === 1 ? "" : "s"} will land on Live.`,
       label: "Content delta",
       tone: !previewReady
         ? "muted"
@@ -735,17 +735,17 @@ function scriptLabel(script: string): string {
   if (script === "release:status:json" || script === "release:status:staging:json") return "Checking release status";
   if (script === "verify:release-runner") return "Runner self-test";
   if (script === "release:site") return "Smart Release";
-  if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing content";
-  if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing production content";
-  if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) return "Publishing production content from staging";
-  if (script === PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT) return "Publishing Now to live";
-  if (script === PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT) return "Rolling back staging content";
-  if (script === PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT) return "Rolling back production content";
-  if (script === PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT) return "Clearing staging content overlay";
-  if (script === PUBLISH_CONTENT_PROD_CLEAR_SCRIPT) return "Clearing production content overlay";
-  if (script === RELEASE_STAGING_SCRIPT) return "Deploying staging";
-  if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "Promoting production";
-  if (script.startsWith("rollback:production")) return "Rolling back production";
+  if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "Publishing Draft preview";
+  if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "Publishing Live content";
+  if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) return "Publishing Draft to Live";
+  if (script === PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT) return "Publishing Now to Live";
+  if (script === PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT) return "Rolling back Draft content";
+  if (script === PUBLISH_CONTENT_PROD_ROLLBACK_SCRIPT) return "Rolling back Live content";
+  if (script === PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT) return "Clearing Draft overlay";
+  if (script === PUBLISH_CONTENT_PROD_CLEAR_SCRIPT) return "Clearing Live overlay";
+  if (script === RELEASE_STAGING_SCRIPT) return "Updating Draft preview";
+  if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "Updating Live site";
+  if (script.startsWith("rollback:production")) return "Rolling back Live";
   return script || "Release job";
 }
 
@@ -955,8 +955,8 @@ function actionForState({
   if (!isStaging) {
     return {
       stage: "switch-profile" as ReleaseStage,
-      label: "Switch to Staging",
-      detail: "Production is inspect-only. Start releases from Staging.",
+      label: "Switch to Draft",
+      detail: "Live is inspect-only. Start publishing from Draft.",
       disabled: false,
       kind: "switch" as const,
     };
@@ -973,8 +973,8 @@ function actionForState({
   if (!ready) {
     return {
       stage: "failed" as ReleaseStage,
-      label: "Connect to Staging",
-      detail: "Sign in to the staging profile before releasing.",
+      label: "Connect to Draft",
+      detail: "Sign in to the Draft workspace before publishing.",
       disabled: true,
       kind: "none" as const,
     };
@@ -983,7 +983,7 @@ function actionForState({
     return {
       stage: "failed" as ReleaseStage,
       label: "Commit Changes",
-      detail: "Production promotion requires a clean local release source.",
+      detail: "Live publishing requires a clean local release source.",
       disabled: true,
       kind: "none" as const,
     };
@@ -996,10 +996,10 @@ function actionForState({
   ) {
     return {
       stage: "needs-staging" as ReleaseStage,
-      label: "Deploy Staging",
+      label: "Update Draft Preview",
       detail: localStagingMismatch
-        ? "Staging is behind the local release source. Deploy staging first."
-        : "Build and deploy the committed release source to staging.",
+        ? "Draft preview is behind the local release source. Update Draft first."
+        : "Build and deploy the committed release source to Draft preview.",
       disabled: false,
       kind: "staging" as const,
     };
@@ -1007,8 +1007,8 @@ function actionForState({
   if (readyToPromote) {
     return {
       stage: "ready" as ReleaseStage,
-      label: "Promote Production",
-      detail: "Production will receive the verified staging candidate.",
+      label: "Update Live Site",
+      detail: "Live will receive the verified Draft candidate.",
       disabled: false,
       kind: "promote" as const,
     };
@@ -1017,7 +1017,7 @@ function actionForState({
     return {
       stage: "current" as ReleaseStage,
       label: "Refresh Status",
-      detail: "Production already matches staging.",
+      detail: "Live already matches Draft.",
       disabled: false,
       kind: "refresh" as const,
     };
@@ -1025,7 +1025,7 @@ function actionForState({
   return {
     stage: "checking" as ReleaseStage,
     label: "Run Preflight",
-    detail: "Refresh staging and production comparison.",
+    detail: "Refresh Draft and Live comparison.",
     disabled: false,
     kind: "preflight" as const,
   };
@@ -1188,20 +1188,20 @@ export function ReleasePanel() {
     job?.status !== "running"
       ? productionCodeMatchesStaging
         ? {
-            detail: "The staging step finished. Copy the verified staging content overlay to production.",
+            detail: "The Draft preview is verified. Copy the same content to Live.",
             disabled: false,
             kind: "publish-content-production-from-staging",
-            label: "Publish Same Content to Production",
-            reason: "Staging content is verified; production is next.",
+            label: "Publish Draft to Live",
+            reason: "Draft content is verified; Live is next.",
             script: PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT,
             tone: "warn",
           }
         : {
-            detail: "The staging step finished. Promote the verified staging Worker before copying content.",
+            detail: "The Draft preview is verified. Update Live code before copying content.",
             disabled: false,
             kind: "promote-production-code",
-            label: "Promote Production",
-            reason: "Staging is verified; production is next.",
+            label: "Update Live Site",
+            reason: "Draft is verified; Live is next.",
             script: RELEASE_PROD_FROM_STAGING_SCRIPT,
             tone: "warn",
           }
@@ -1750,10 +1750,10 @@ export function ReleasePanel() {
           kind: "running",
           info:
             script === RELEASE_STAGING_SCRIPT
-              ? "Deploying staging locally…"
+              ? "Updating Draft preview locally…"
               : script.startsWith("publish:content")
                 ? `${scriptLabel(script)}…`
-                : "Promoting production locally…",
+                : "Updating Live locally…",
         });
       } catch (err) {
         setMessage("error", `Release job failed to start: ${String(err)}`);
@@ -1765,7 +1765,7 @@ export function ReleasePanel() {
   const startRollback = useCallback(async () => {
     if (!rollbackCandidate?.version_id) return;
     if (!isTauriRuntime()) {
-      setMessage("warn", "Production rollback is available in the Tauri app.");
+      setMessage("warn", "Live rollback is available in the Tauri app.");
       return;
     }
     setJobLog([]);
@@ -1775,7 +1775,7 @@ export function ReleasePanel() {
       setRollbackCandidate(null);
       dispatchReleaseState({
         kind: "running",
-        info: `Rolling production back to ${rollbackCandidate.version_id.slice(0, 8)}…`,
+        info: `Rolling Live back to ${rollbackCandidate.version_id.slice(0, 8)}…`,
       });
     } catch (err) {
       setMessage("error", `Rollback failed to start: ${String(err)}`);
@@ -1902,9 +1902,12 @@ export function ReleasePanel() {
     <section className="surface-card release-panel release-center">
       <header className="release-center__hero" data-stage={primaryAction.stage}>
         <div className="release-center__hero-copy">
-          <span>Release Center</span>
-          <h1>Smart Release</h1>
-          <p>{smartPlan.reason} {smartPlan.detail}</p>
+          <span>Site publishing</span>
+          <h1>Draft to Live</h1>
+          <p>
+            Draft is where edits land first. Live changes only after the verified Draft
+            preview is published. {smartPlan.reason} {smartPlan.detail}
+          </p>
           <div className="release-center__controls">
             <ReleaseTargetControl
               disabled={job?.status === "running"}
@@ -1974,10 +1977,10 @@ export function ReleasePanel() {
       {!isStaging ? (
         <div className="release-panel__notice" role="status">
           <div>
-            <strong>Production promotion starts from Staging</strong>
+            <strong>Publishing starts from Draft</strong>
             <span>
-              Production remains inspect-only. Switch to Staging, deploy the candidate,
-              then promote the verified build.
+              Live remains inspect-only here. Switch to Draft, update the preview,
+              then publish the verified result to Live.
             </span>
           </div>
           {stagingProfile ? (
@@ -1986,7 +1989,7 @@ export function ReleasePanel() {
               type="button"
               onClick={() => switchProfile(stagingProfile.id)}
             >
-              Switch to Staging
+              Switch to Draft
             </button>
           ) : null}
         </div>
@@ -2017,7 +2020,7 @@ export function ReleasePanel() {
       />
 
       <details className="release-panel__commands release-center__diagnostics">
-        <summary>Diagnostics / Runner</summary>
+        <summary>Details / Diagnostics</summary>
         <Suspense
           fallback={
             <div className="release-center__empty">Loading runner diagnostics…</div>
@@ -2111,7 +2114,7 @@ export function ReleasePanel() {
       </details>
 
       <details className="release-panel__commands release-center__history">
-        <summary>Release History</summary>
+        <summary>Publish History</summary>
         <Suspense fallback={<div className="release-center__empty">Loading history…</div>}>
           <ReleaseHistoryPanel
             entries={history}
@@ -2129,9 +2132,9 @@ export function ReleasePanel() {
         <div className="release-center__advanced-runner">
           <div>
             <h2>Runner Override</h2>
-            <p>
-              Daily releases use the Mac mini runner through the Site Admin API.
-              Switch to this Mac only when recovering a local desktop release.
+          <p>
+            Daily releases use the Mac mini runner through the Site Admin API.
+            Switch to this Mac only when recovering a local desktop release.
             </p>
           </div>
           <ReleaseRunnerControl
@@ -2143,19 +2146,19 @@ export function ReleasePanel() {
         </div>
         <div className="release-panel__commands-grid">
           <div>
-            <h2>Staging Content</h2>
+            <h2>Draft Content</h2>
             <pre>{PUBLISH_CONTENT_STAGING_COMMAND}</pre>
           </div>
           <div>
-            <h2>Staging Content Rollback</h2>
+            <h2>Draft Content Rollback</h2>
             <pre>{PUBLISH_CONTENT_STAGING_ROLLBACK_COMMAND}</pre>
           </div>
           <div>
-            <h2>Staging Overlay Clear</h2>
+            <h2>Draft Overlay Clear</h2>
             <pre>{PUBLISH_CONTENT_STAGING_CLEAR_COMMAND}</pre>
           </div>
           <div>
-            <h2>Staging Code</h2>
+            <h2>Draft Code</h2>
             <pre>{RELEASE_STAGING_COMMAND}</pre>
           </div>
           <div>
@@ -2163,35 +2166,35 @@ export function ReleasePanel() {
             <pre>{PREFLIGHT_COMMAND}</pre>
           </div>
           <div>
-            <h2>Production Promotion</h2>
+            <h2>Live Code</h2>
             <pre>{productionCommandFor(status, preview)}</pre>
           </div>
           <div>
-            <h2>Production Content From Staging</h2>
+            <h2>Live Content From Draft</h2>
             <pre>{PUBLISH_CONTENT_PROD_FROM_STAGING_COMMAND}</pre>
           </div>
           <div>
-            <h2>Production Now From Staging</h2>
+            <h2>Live Now From Draft</h2>
             <pre>{PUBLISH_NOW_PROD_FROM_STAGING_COMMAND}</pre>
           </div>
           <div>
-            <h2>Production Content Rollback</h2>
+            <h2>Live Content Rollback</h2>
             <pre>{PUBLISH_CONTENT_PROD_ROLLBACK_COMMAND}</pre>
           </div>
           <div>
-            <h2>Production Overlay Clear</h2>
+            <h2>Live Overlay Clear</h2>
             <pre>{PUBLISH_CONTENT_PROD_CLEAR_COMMAND}</pre>
           </div>
         </div>
         <details className="release-center__danger-zone">
           <summary>Dangerous recovery commands</summary>
           <p>
-            These bypass the normal staging-first Smart Release path. Use only
+            These bypass the normal Draft-first Smart Release path. Use only
             when recovering a broken release.
           </p>
           <div className="release-panel__commands-grid">
             <div>
-              <h2>Production Content Direct</h2>
+              <h2>Live Content Direct</h2>
               <pre>{PUBLISH_CONTENT_PROD_COMMAND}</pre>
             </div>
             <div>
@@ -2213,12 +2216,12 @@ export function ReleasePanel() {
             type="button"
             onClick={() =>
               void copyText(
-                "production promotion command",
+                "Live publish command",
                 productionCommandFor(status, preview),
               )
             }
           >
-            Copy Promote Command
+            Copy Live Command
           </button>
           <button
             className="btn btn--secondary"
@@ -2233,7 +2236,7 @@ export function ReleasePanel() {
             disabled={job?.status === "running"}
             onClick={() => void startRelease(PUBLISH_CONTENT_STAGING_ROLLBACK_SCRIPT)}
           >
-            Rollback Staging Content
+            Rollback Draft Content
           </button>
           <button
             className="btn btn--secondary"
@@ -2241,7 +2244,7 @@ export function ReleasePanel() {
             disabled={job?.status === "running"}
             onClick={() => void startRelease(PUBLISH_CONTENT_STAGING_CLEAR_SCRIPT)}
           >
-            Clear Staging Overlay
+            Clear Draft Overlay
           </button>
         </div>
       </details>
@@ -2276,33 +2279,33 @@ function ReleaseStepper({
   const steps = [
     {
       key: "source",
-      label: "Source",
+      label: "Draft saved",
       state: plan.kind === "blocked" && plan.label === "Commit changes" ? "blocked" : "ok",
-      detail: liveStatus?.checkedAt ? `Checked ${formatRelativeTime(Date.parse(liveStatus.checkedAt))}` : "Local source",
+      detail: liveStatus?.checkedAt ? `Checked ${formatRelativeTime(Date.parse(liveStatus.checkedAt))}` : "Editing source",
     },
     {
       key: "staging",
-      label: "Staging",
+      label: "Draft preview",
       state:
         plan.kind === "deploy-staging-code" || plan.kind === "publish-content-staging"
           ? "active"
           : "ok",
       detail:
         plan.kind === "deploy-staging-code"
-          ? "Deploy code"
+          ? "Update code"
           : plan.kind === "publish-content-staging"
             ? "Publish content"
             : "Current",
     },
     {
       key: "verify",
-      label: "Verify",
+      label: "Review",
       state: preview?.ok === true ? "ok" : "muted",
       detail: preview?.ok === true ? "Preflight loaded" : "Waiting",
     },
     {
       key: "production",
-      label: "Production",
+      label: "Live site",
       state:
         plan.kind === "promote-production-code" ||
         plan.kind === "publish-content-production-from-staging" ||
@@ -2313,7 +2316,7 @@ function ReleaseStepper({
             : "muted",
       detail:
         plan.kind === "promote-production-code"
-          ? "Promote code"
+          ? "Update code"
           : plan.kind === "publish-content-production-from-staging"
             ? "Copy content"
             : plan.kind === "publish-now-production-from-staging"
@@ -2324,7 +2327,7 @@ function ReleaseStepper({
     },
     {
       key: "routes",
-      label: "Routes",
+      label: "Route check",
       state: routeParity
         ? routeParity.ok
           ? routeParity.skippedCount
@@ -2375,16 +2378,84 @@ function ReleaseRoutineSummary({
   const runnerOnline = Boolean(
     runner && runnerStatus && runnerStatus.observedAt - runner.lastSeenAt < 30_000,
   );
+  const draftNeedsUpdate =
+    plan.kind === "deploy-staging-code" || plan.kind === "publish-content-staging";
+  const liveNeedsUpdate =
+    plan.kind === "promote-production-code" ||
+    plan.kind === "publish-content-production-from-staging" ||
+    plan.kind === "publish-now-production-from-staging";
   const items = [
+    {
+      detail:
+        job?.status === "running"
+          ? job.phase
+          : draftNeedsUpdate
+            ? plan.kind === "deploy-staging-code"
+              ? "Latest code is not in the Draft preview yet"
+              : "Saved content is waiting in Draft"
+            : blockingCount > 0
+              ? "Resolve blockers before updating Draft"
+              : "Draft preview is ready",
+      key: "draft",
+      label: "Draft",
+      tone:
+        blockingCount > 0
+          ? "blocked"
+          : draftNeedsUpdate || job?.status === "running"
+            ? "warn"
+            : "ok",
+      value:
+        job?.status === "running"
+          ? "Working"
+          : draftNeedsUpdate
+            ? "Needs update"
+            : "Ready",
+    },
+    {
+      detail:
+        releaseTarget === "staging"
+          ? "This run updates Draft preview only"
+          : liveNeedsUpdate
+            ? plan.detail
+            : plan.kind === "noop"
+              ? "Live already matches the verified Draft"
+              : "Live waits for a verified Draft preview",
+      key: "live",
+      label: "Live",
+      tone:
+        releaseTarget === "staging"
+          ? "muted"
+          : liveNeedsUpdate
+            ? "warn"
+            : plan.kind === "noop"
+              ? "ok"
+              : "muted",
+      value:
+        releaseTarget === "staging"
+          ? "Not targeted"
+          : liveNeedsUpdate
+            ? "Needs update"
+            : plan.kind === "noop"
+              ? "Current"
+              : "Waiting",
+    },
     {
       detail:
         plan.kind === "noop"
           ? "Nothing to run"
           : job?.status === "running"
-            ? job.phase
-            : plan.reason,
+            ? `${scriptLabel(job.script)} via ${
+                releaseExecutionMode === "remote" ? "Mac mini" : "This Mac"
+              }`
+            : `${plan.reason} ${
+                releaseExecutionMode === "remote"
+                  ? runnerOnline
+                    ? "Mac mini is online."
+                    : "Mac mini can pick it up by fallback polling."
+                  : "Local recovery runner selected."
+              }`,
       key: "next",
-      label: "Next",
+      label: "Next step",
       tone:
         plan.kind === "blocked"
           ? "blocked"
@@ -2392,38 +2463,6 @@ function ReleaseRoutineSummary({
             ? "ok"
             : "warn",
       value: job?.status === "running" ? "Running" : plan.label,
-    },
-    {
-      detail:
-        releaseExecutionMode === "remote"
-          ? runnerOnline
-            ? "Mac mini heartbeat is fresh"
-            : "Runner will also be picked up by fallback polling"
-          : "Local recovery path",
-      key: "runner",
-      label: "Runner",
-      tone:
-        releaseExecutionMode === "remote"
-          ? runnerOnline
-            ? "ok"
-            : "warn"
-          : "muted",
-      value: releaseExecutionMode === "remote" ? "Mac mini" : "This Mac",
-    },
-    {
-      detail:
-        blockingCount > 0
-          ? "Open blockers are listed below"
-          : releaseTarget === "production"
-            ? "Staging-first production path"
-            : "Staging-only target",
-      key: "gates",
-      label: "Gates",
-      tone: blockingCount > 0 ? "blocked" : "ok",
-      value:
-        blockingCount > 0
-          ? `${blockingCount} blocker${blockingCount === 1 ? "" : "s"}`
-          : "Clear",
     },
   ];
 
@@ -2485,9 +2524,9 @@ function ReleaseBuildCacheNotice({
         data-tone="ok"
         aria-label="Build cache reused"
       >
-        <strong>Staging build reused</strong>
+        <strong>Draft build reused</strong>
         <span>
-          Production restored {restored}; code and content matched
+          Live restored {restored}; code and content matched
           {summary.expectedContentSha ? ` (${shortSha(summary.expectedContentSha)})` : ""}.
         </span>
       </section>
@@ -2502,7 +2541,7 @@ function ReleaseBuildCacheNotice({
       >
         <strong>Build cache ready</strong>
         <span>
-          Staging stored reusable artifacts for content {shortSha(summary.storedContentSha)}.
+          Draft stored reusable artifacts for content {shortSha(summary.storedContentSha)}.
         </span>
       </section>
     );
@@ -2515,7 +2554,7 @@ function ReleaseBuildCacheNotice({
         aria-label="Build cache missed"
       >
         <strong>Build cache missed</strong>
-        <span>{summary.reason || "Production rebuilt because no matching staging artifact was available."}</span>
+        <span>{summary.reason || "Live rebuilt because no matching Draft artifact was available."}</span>
       </section>
     );
   }
@@ -2544,21 +2583,20 @@ function ReleaseEnvironmentNotice({
   const overlayDiffers = Boolean(stagingSnapshot) && stagingSnapshot !== productionSnapshot;
   if (pendingProductionContinuation) {
     return (
-      <section className="release-center__notice" data-tone="warn" aria-label="Production continuation">
-        <strong>Production is next</strong>
+      <section className="release-center__notice" data-tone="warn" aria-label="Live continuation">
+        <strong>Live is next</strong>
         <span>
-          The staging step finished. Use the top Smart Release action to move production to
-          the same verified candidate.
+          Draft preview is verified. Use the top action to publish the same candidate to Live.
         </span>
       </section>
     );
   }
   if (releaseTarget === "staging" && preview?.ok === true && preview.productionDifferent) {
     return (
-      <section className="release-center__notice" data-tone="muted" aria-label="Staging-only release target">
-        <strong>Staging only selected</strong>
+      <section className="release-center__notice" data-tone="muted" aria-label="Draft-only release target">
+        <strong>Draft preview only</strong>
         <span>
-          Staging can be current while production still differs. Switch to Staging to Production
+          Draft can be current while Live still differs. Switch to Live site
           when public pages should match.
         </span>
       </section>
@@ -2567,10 +2605,10 @@ function ReleaseEnvironmentNotice({
   if (releaseTarget === "production" && contentChanged) {
     return (
       <section className="release-center__notice" data-tone="warn" aria-label="Content release route">
-        <strong>Content release is two step</strong>
+        <strong>Content publishes in two steps</strong>
         <span>
-          Smart Release publishes the staging overlay first. When staging is verified, the same
-          top action copies that content to production.
+          The first click updates Draft preview. After you verify it, the same
+          top action publishes that exact content to Live.
         </span>
       </section>
     );
@@ -2579,13 +2617,13 @@ function ReleaseEnvironmentNotice({
     const stagingCode = shortSha(preview.staging.codeSha);
     const productionCode = preview.production ? shortSha(preview.production.codeSha) : "none";
     const detail = !productionCodeMatchesStaging
-      ? `Staging is ${stagingCode}; production is ${productionCode}. Public pages can differ until production is promoted.`
+      ? `Draft is ${stagingCode}; Live is ${productionCode}. Public pages can differ until Live is updated.`
       : overlayDiffers
-        ? `Worker code matches, but production content overlay is behind staging. Copy the verified staging overlay next.`
-        : "Production still differs from staging. Refresh if a release just finished.";
+        ? `Worker code matches, but Live content is behind Draft. Publish the verified Draft content next.`
+        : "Live still differs from Draft. Refresh if a release just finished.";
     return (
-      <section className="release-center__notice" data-tone="warn" aria-label="Production behind staging">
-        <strong>Production behind staging</strong>
+      <section className="release-center__notice" data-tone="warn" aria-label="Live behind Draft">
+        <strong>Live behind Draft</strong>
         <span>{detail} Next: {plan.label}.</span>
       </section>
     );
@@ -2656,8 +2694,8 @@ function ReleaseFlowMap({
     <section className="release-center__route" aria-label="Release route">
       <header>
         <div>
-          <h2>Release Flow</h2>
-          <p>Local HEAD, staging Worker, and production Worker compared by code, content, and overlay.</p>
+          <h2>Draft / Live route</h2>
+          <p>Technical comparison between the release source, Draft preview, and Live site.</p>
         </div>
         <strong data-tone={productionAlreadyCurrent ? "ok" : productionTone}>
           {productionAlreadyCurrent ? "Current" : "Review"}
@@ -2665,7 +2703,7 @@ function ReleaseFlowMap({
       </header>
       <div className="release-center__route-path">
         <ReleaseNode
-          label="Local HEAD"
+          label="Release source"
           title={sourceTitle}
           detail={sourceDetail}
           tone={sourceTone}
@@ -2678,9 +2716,9 @@ function ReleaseFlowMap({
         <span className="release-center__route-arrow" aria-hidden="true" />
         <ReleaseNode
           current={isStaging}
-          label="Staging Worker"
+          label="Draft preview"
           title={preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}
-          detail={preview?.ok ? "Active candidate" : "Load preflight"}
+          detail={preview?.ok ? "Active preview" : "Load preflight"}
           tone={stagingTone}
           metrics={[
             ["Code", shortSha(stagingCode)],
@@ -2690,7 +2728,7 @@ function ReleaseFlowMap({
         />
         <span className="release-center__route-arrow" aria-hidden="true" />
         <ReleaseNode
-          label="Production Worker"
+          label="Live site"
           title={
             preview?.ok
               ? preview.production
@@ -2700,9 +2738,9 @@ function ReleaseFlowMap({
           }
           detail={
             productionAlreadyCurrent
-              ? "Matches staging"
+              ? "Matches Draft"
               : preview?.ok
-                ? "Behind staging"
+                ? "Behind Draft"
                 : "Read from preflight"
           }
           tone={productionTone}
@@ -2766,11 +2804,11 @@ function ContentOverlayStatusPanel({
     normalizeString(liveStatus?.overlays?.production?.status?.snapshotSha) ||
     overlaySnapshotFromEntry(productionContent);
   return (
-    <section className="release-center__content-status" aria-label="Code and content publish status">
+    <section className="release-center__content-status" aria-label="Draft and Live technical status">
       <header>
         <div>
-          <h2>Code vs Content</h2>
-          <p>Current code versions and static overlay snapshots for each environment.</p>
+          <h2>Technical Status</h2>
+          <p>Code versions and static content snapshots behind Draft and Live.</p>
         </div>
         {contentSuggestion ? (
           <strong data-tone="warn">
@@ -2791,26 +2829,26 @@ function ContentOverlayStatusPanel({
           <small>{localSource?.branch || "local release source"}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Staging Code</span>
+          <span>Draft Code</span>
           <strong>
             {preview?.ok ? shortSha(preview.staging.codeSha) : shortSha(status?.source?.codeSha)}
           </strong>
           <small>{preview?.ok ? shortId(preview.staging.versionId) : candidateLabel(status?.source)}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Production Code</span>
+          <span>Live Code</span>
           <strong>
             {preview?.ok && preview.production ? shortSha(preview.production.codeSha) : "-"}
           </strong>
           <small>{preview?.ok && preview.production ? shortId(preview.production.versionId) : "load preflight"}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Staging Overlay</span>
+          <span>Draft Snapshot</span>
           <strong>{shortSha(stagingSnapshot)}</strong>
           <small>{stagingContent?.recorded_at || "not published in this app"}</small>
         </div>
         <div className="release-center__content-cell">
-          <span>Production Overlay</span>
+          <span>Live Snapshot</span>
           <strong>{shortSha(productionSnapshot)}</strong>
           <small>{productionContent?.recorded_at || "not published in this app"}</small>
         </div>
@@ -2821,11 +2859,11 @@ function ContentOverlayStatusPanel({
 
 function contentPreviewActionLabel(action: string): string {
   if (action === "noop") return "Current";
-  if (action === "publish-overlay") return "Publish staging";
-  if (action === "copy-staging-overlay") return "Copy to production";
-  if (action === "deploy-code-first") return "Deploy code first";
-  if (action === "promote-code-first") return "Promote code first";
-  if (action === "wait-for-staging-overlay") return "Waiting for staging";
+  if (action === "publish-overlay") return "Publish Draft";
+  if (action === "copy-staging-overlay") return "Copy to Live";
+  if (action === "deploy-code-first") return "Update Draft code first";
+  if (action === "promote-code-first") return "Update Live code first";
+  if (action === "wait-for-staging-overlay") return "Waiting for Draft";
   return action || "Unknown";
 }
 
@@ -2857,8 +2895,8 @@ function ContentDiffPreviewPanel({
     <section className="release-center__content-preview" aria-label="Content publish preview">
       <header>
         <div>
-          <h2>Content Preview</h2>
-          <p>Files and overlays that Smart Release will move through staging and production.</p>
+          <h2>Draft Changes</h2>
+          <p>Content files that will move from Draft preview to Live.</p>
         </div>
         <strong data-tone={files.length || contentDelta?.changedRows ? "warn" : "ok"}>
           {files.length || contentDelta?.changedRows
@@ -2869,7 +2907,7 @@ function ContentDiffPreviewPanel({
       {preview ? (
         <div className="release-center__content-preview-grid">
           <div data-tone={stagingTone}>
-            <span>Staging</span>
+            <span>Draft preview</span>
             <strong>{contentPreviewActionLabel(preview.staging.action)}</strong>
             <small>
               input {shortSha(preview.contentInputSha)} · overlay{" "}
@@ -2877,7 +2915,7 @@ function ContentDiffPreviewPanel({
             </small>
           </div>
           <div data-tone={productionTone}>
-            <span>Production</span>
+            <span>Live site</span>
             <strong>{contentPreviewActionLabel(preview.production.action)}</strong>
             <small>
               staging {shortSha(preview.production.stagingOverlaySnapshotSha)} · prod{" "}
@@ -2904,7 +2942,7 @@ function ContentDiffPreviewPanel({
               {file.updatedAtMs ? <time>{formatRelativeTime(file.updatedAtMs)}</time> : null}
             </li>
           ))}
-          {contentDelta?.truncated ? <li>More production content rows are hidden.</li> : null}
+          {contentDelta?.truncated ? <li>More Live content rows are hidden.</li> : null}
         </ul>
       ) : null}
     </section>
@@ -2932,11 +2970,11 @@ function RouteParityPanel({
         <div>
           <h2>Route Parity</h2>
           <p>
-            Live staging and production route hashes, including static shell headers.
+            Draft and Live route hashes, including static shell headers.
             {auth?.stagingAuthenticated
-              ? ` Staging checked as ${auth.login || "an allowed user"}.`
+              ? ` Draft checked as ${auth.login || "an allowed user"}.`
               : auth?.reason
-                ? ` Staging auth unavailable: ${auth.reason}`
+                ? ` Draft auth unavailable: ${auth.reason}`
                 : ""}
           </p>
         </div>
@@ -2974,12 +3012,12 @@ function RouteParityPanel({
             >
               <strong>{route.path}</strong>
               <span>
-                stg {route.staging.status} shell {route.staging.staticShell || "-"}
+                draft {route.staging.status} shell {route.staging.staticShell || "-"}
               </span>
-              <span>prod {route.production.status} shell {route.production.staticShell || "-"}</span>
+              <span>live {route.production.status} shell {route.production.staticShell || "-"}</span>
               <small>
                 {route.skipped
-                  ? route.reason || "Gated staging route"
+                  ? route.reason || "Gated Draft route"
                   : `${route.staging.hash.slice(0, 7)} / ${route.production.hash.slice(0, 7)}`}
               </small>
             </div>
@@ -3090,12 +3128,12 @@ function RollbackConfirmPanel({
   onConfirm: () => void;
 }) {
   return (
-    <section className="release-center__confirm" data-tone="blocked" aria-label="Confirm production rollback">
+    <section className="release-center__confirm" data-tone="blocked" aria-label="Confirm Live rollback">
       <div>
-        <span>Production rollback</span>
+        <span>Live rollback</span>
         <h2>Rollback to {shortId(entry.version_id)}?</h2>
         <p>
-          This runs a local Cloudflare rollback and then verifies production against
+          This runs a local Cloudflare rollback and then verifies Live against
           the selected version.
         </p>
       </div>
@@ -3105,7 +3143,7 @@ function RollbackConfirmPanel({
           Cancel
         </button>
         <button className="btn btn--danger" type="button" onClick={onConfirm}>
-          Rollback production
+          Rollback Live
         </button>
       </div>
     </section>

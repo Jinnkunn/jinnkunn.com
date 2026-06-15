@@ -18,7 +18,7 @@ export function ReleaseTargetControl({
         type="button"
         onClick={() => onChange("staging")}
       >
-        Staging only
+        Draft preview
       </button>
       <button
         aria-pressed={value === "production"}
@@ -26,7 +26,7 @@ export function ReleaseTargetControl({
         type="button"
         onClick={() => onChange("production")}
       >
-        Staging to Production
+        Live site
       </button>
     </div>
   );

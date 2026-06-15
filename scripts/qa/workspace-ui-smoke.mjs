@@ -192,18 +192,18 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Smart Release",
-    "Release panel smart release primary action",
+    "Draft to Live",
+    "Release panel Draft to Live primary action",
+  );
+  assertIncludes(
+    read("apps/workspace/src/surfaces/site-admin/ReleaseControls.tsx"),
+    "Live site",
+    "Release panel explicit Live target",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Staging to Production",
-    "Release panel explicit production target",
-  );
-  assertIncludes(
-    read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Production behind staging",
-    "Release panel explains production drift",
+    "Live behind Draft",
+    "Release panel explains Live drift",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
@@ -252,8 +252,8 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/ReleasePanel.tsx"),
-    "Code vs Content",
-    "Release panel code/content overlay status",
+    "Technical Status",
+    "Release panel Draft/Live technical status",
   );
   assertIncludes(
     read("apps/workspace/src/surfaces/site-admin/publish-suggestion.ts"),
