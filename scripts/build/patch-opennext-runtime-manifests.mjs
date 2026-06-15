@@ -10,8 +10,13 @@ const targetFiles = [
   path.join(serverRoot, "index.mjs"),
   path.join(serverRoot, "handler.mjs"),
 ];
+const middlewareMethodTargetFiles = [
+  path.join(serverRoot, "handler.mjs"),
+  path.join(serverRoot, "node_modules", "next", "dist", "server", "next-server.js"),
+];
 
 const guardMarker = "open-next-runtime-manifest-guard";
+const getMiddlewareManifestMethodMarker = "open-next-runtime-get-middleware-manifest-guard";
 
 async function readMiddlewareManifestLiteral() {
   const raw = await readFile(manifestPath, "utf8");
@@ -63,6 +68,55 @@ function applyGuard(source, manifestLiteral, fileLabel) {
   );
 }
 
+function applyMiddlewareManifestMethodGuard(source, fileLabel) {
+  if (source.includes(getMiddlewareManifestMethodMarker)) {
+    return { source, changed: false };
+  }
+
+  if (!source.includes("require(this.middlewareManifestPath)")) {
+    return { source, changed: false };
+  }
+
+  const replacements = [
+    {
+      from: `getMiddlewareManifest(){return this.minimalMode?null:require(this.middlewareManifestPath)}`,
+      to:
+        `getMiddlewareManifest(){` +
+        `/* ${getMiddlewareManifestMethodMarker}: OpenNext Cloudflare cannot dynamically require this manifest. */` +
+        `return null}`,
+    },
+    {
+      from:
+        `getMiddlewareManifest() {\n` +
+        `        if (this.minimalMode) {\n` +
+        `            return null;\n` +
+        `        } else {\n` +
+        `            const manifest = require(this.middlewareManifestPath);\n` +
+        `            return manifest;\n` +
+        `        }\n` +
+        `    }`,
+      to:
+        `getMiddlewareManifest() {\n` +
+        `        // ${getMiddlewareManifestMethodMarker}: OpenNext Cloudflare cannot dynamically require this manifest.\n` +
+        `        return null;\n` +
+        `    }`,
+    },
+  ];
+
+  for (const replacement of replacements) {
+    if (source.includes(replacement.from)) {
+      return {
+        source: source.replace(replacement.from, replacement.to),
+        changed: true,
+      };
+    }
+  }
+
+  throw new Error(
+    `Found unsafe middleware manifest require in ${fileLabel}, but the method shape was not recognized.`,
+  );
+}
+
 async function main() {
   const manifestLiteral = await readMiddlewareManifestLiteral();
   const results = [];
@@ -75,6 +129,28 @@ async function main() {
     }
     results.push({
       file: path.relative(root, file),
+      patch: "dynamic-require-stub",
+      changed: patched.changed,
+    });
+  }
+
+  for (const file of middlewareMethodTargetFiles) {
+    let source;
+    try {
+      source = await readFile(file, "utf8");
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    const patched = applyMiddlewareManifestMethodGuard(source, path.relative(root, file));
+    if (patched.changed) {
+      await writeFile(file, patched.source);
+    }
+    results.push({
+      file: path.relative(root, file),
+      patch: "get-middleware-manifest",
       changed: patched.changed,
     });
   }

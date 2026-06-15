@@ -58,5 +58,7 @@ test("Cloudflare build patches OpenNext runtime manifest dynamic require", async
   assert.match(pkg.scripts["build:cf"], /patch-opennext-runtime-manifests\.mjs/);
   assert.match(patcher, /middleware-manifest\.json/);
   assert.match(patcher, /open-next-runtime-manifest-guard/);
+  assert.match(patcher, /open-next-runtime-get-middleware-manifest-guard/);
+  assert.match(patcher, /require\(this\.middlewareManifestPath\)/);
   assert.match(patcher, /Dynamic require of/);
 });
