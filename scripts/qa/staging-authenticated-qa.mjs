@@ -159,8 +159,6 @@ async function checkStaticRoute({
       staticShell,
       staticPath,
     });
-  } else {
-    assert(staticShell === "1", "route did not use static shell", { path, staticShell, staticPath });
   }
   if (contains) {
     assert(text.includes(contains), "route content check failed", { path, contains });

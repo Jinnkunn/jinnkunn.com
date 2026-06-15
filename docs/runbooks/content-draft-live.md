@@ -24,6 +24,18 @@ npm run publish:content:prod:from-staging
 
 This path should not create git commits and should not dirty the repository. It builds any temporary static shell overlay from an ignored release snapshot under `.cache/release`.
 
+## Runtime Content Reads
+
+CMS-managed public routes read from the active content store at request time:
+
+- `/`
+- `/blog` and `/blog/*`
+- `/publications`
+- direct page routes such as `/news`, `/works`, `/teaching`, `/bio`, `/connect`
+- `/pages/*`
+
+On Cloudflare, those routes bypass the static shell so stale overlay HTML cannot hide a newer D1 Draft/Live row. The static shell remains available for routes that are intentionally static or client-hydrated, such as `/calendar`, `/now`, and `/sitemap`.
+
 ## Code Release Flow
 
 Use code release only when code, styles, components, build config, or runtime behavior changed:

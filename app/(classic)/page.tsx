@@ -1,20 +1,14 @@
-import homeData from "@/content/home.json";
 import { HomeView } from "@/components/home/home-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
 import { buildHomeStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
-import { normalizeHomeData } from "@/lib/site-admin/home-normalize";
-import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
+import { loadSiteAdminHomeData } from "@/lib/server/site-admin-home-service";
 
-export const dynamic = "force-static";
-
-function readData(): SiteAdminHomeData {
-  return normalizeHomeData(homeData);
-}
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const cfg = getSiteConfig();
-  const data = readData();
+  const { data } = await loadSiteAdminHomeData();
   const jsonLd = buildHomeStructuredData(cfg);
   return (
     <>

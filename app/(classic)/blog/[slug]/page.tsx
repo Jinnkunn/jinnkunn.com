@@ -8,8 +8,8 @@ import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogPostStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
 
-export const dynamic = "force-static";
-export const dynamicParams = false;
+export const dynamic = "force-dynamic";
+export const dynamicParams = true;
 
 export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
   const slugs = await getPostSlugs();

@@ -82,10 +82,10 @@ async function createStagingSessionCookie() {
   return result.cookie;
 }
 
-async function checkAuthenticatedStaticShell({ name, url, contains }) {
+async function checkAuthenticatedPublicRoute({ name, url, contains }) {
   const cookie = await createStagingSessionCookie();
   if (!cookie) {
-    console.log(`[verify-cloudflare] ${name}: skipped authenticated static-shell check`);
+    console.log(`[verify-cloudflare] ${name}: skipped authenticated route check`);
     return;
   }
   const response = await fetch(url, {
@@ -99,7 +99,7 @@ async function checkAuthenticatedStaticShell({ name, url, contains }) {
       throw new Error(`${name} synthetic session was not accepted by staging`);
     }
     console.log(
-      `[verify-cloudflare] ${name}: skipped authenticated static-shell check (synthetic session not accepted)`,
+      `[verify-cloudflare] ${name}: skipped authenticated route check (synthetic session not accepted)`,
     );
     return;
   }
@@ -108,28 +108,18 @@ async function checkAuthenticatedStaticShell({ name, url, contains }) {
     url,
     status: response.status,
   });
-  assert(
-    response.headers.get("x-static-shell") === "1",
-    `${name} did not use static shell`,
-    {
-      url,
-      status: response.status,
-      staticShell: response.headers.get("x-static-shell"),
-      staticPath: response.headers.get("x-static-shell-path"),
-    },
-  );
   if (contains) {
-    assert(text.includes(contains), `${name} static shell content drifted`, {
+    assert(text.includes(contains), `${name} route content drifted`, {
       url,
       contains,
     });
   }
   console.log(
-    `[verify-cloudflare] ${name}: ${response.status} ${response.headers.get("x-static-shell-path")}`,
+    `[verify-cloudflare] ${name}: ${response.status} x-static-shell=${response.headers.get("x-static-shell") || ""}`,
   );
 }
 
-async function checkPublicStaticShell({ name, url, contains }) {
+async function checkPublicRoute({ name, url, contains }) {
   const response = await fetch(url, { redirect: "manual", cache: "no-store" });
   const text = await response.text();
   assert(response.status === 200, `${name} returned wrong status`, {
@@ -137,24 +127,14 @@ async function checkPublicStaticShell({ name, url, contains }) {
     status: response.status,
     expectedStatus: 200,
   });
-  assert(
-    response.headers.get("x-static-shell") === "1",
-    `${name} did not use static shell`,
-    {
-      url,
-      status: response.status,
-      staticShell: response.headers.get("x-static-shell"),
-      staticPath: response.headers.get("x-static-shell-path"),
-    },
-  );
   if (contains) {
-    assert(text.includes(contains), `${name} static shell content drifted`, {
+    assert(text.includes(contains), `${name} route content drifted`, {
       url,
       contains,
     });
   }
   console.log(
-    `[verify-cloudflare] ${name}: ${response.status} ${response.headers.get("x-static-shell-path")}`,
+    `[verify-cloudflare] ${name}: ${response.status} x-static-shell=${response.headers.get("x-static-shell") || ""}`,
   );
 }
 
@@ -197,42 +177,42 @@ async function verifyStaging() {
     url: `${origin}/api/site-admin/status`,
     expectedStatus: 401,
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /",
     url: `${origin}/`,
     contains: "Hi there!",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /blog",
     url: `${origin}/blog`,
     contains: "Blog",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /news",
     url: `${origin}/news`,
     contains: "News",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /publications",
     url: `${origin}/publications`,
     contains: "Publications",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /works",
     url: `${origin}/works`,
     contains: "Works",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /teaching",
     url: `${origin}/teaching`,
     contains: "Teaching",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /bio",
     url: `${origin}/bio`,
     contains: "BIO",
   });
-  await checkAuthenticatedStaticShell({
+  await checkAuthenticatedPublicRoute({
     name: "staging authenticated /connect",
     url: `${origin}/connect`,
     contains: "Connect",
@@ -248,42 +228,42 @@ async function verifyProduction(expectedVersion) {
   const origin = String(
     process.env.SITE_ADMIN_BASE_URL_PRODUCTION || "https://jinkunchen.com",
   ).replace(/\/+$/, "");
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /",
     url: `${origin}/`,
     contains: "Hi there!",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /blog",
     url: `${origin}/blog`,
     contains: "Blog",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /news",
     url: `${origin}/news`,
     contains: "News",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /publications",
     url: `${origin}/publications`,
     contains: "Publications",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /works",
     url: `${origin}/works`,
     contains: "Works",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /teaching",
     url: `${origin}/teaching`,
     contains: "Teaching",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /bio",
     url: `${origin}/bio`,
     contains: "BIO",
   });
-  await checkPublicStaticShell({
+  await checkPublicRoute({
     name: "production /connect",
     url: `${origin}/connect`,
     contains: "Connect",

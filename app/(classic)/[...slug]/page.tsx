@@ -6,8 +6,8 @@ import { getPageEntry, getPageSlugs, readPageSource } from "@/lib/pages/index";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 
-export const dynamic = "force-static";
-export const dynamicParams = false;
+export const dynamic = "force-dynamic";
+export const dynamicParams = true;
 
 // Slugs whose route lives at a sibling page.tsx (currently only
 // /publications, which keeps a custom route so it can emit JSON-LD).

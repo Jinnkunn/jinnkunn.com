@@ -28,9 +28,21 @@ function hasLikelyFileExtension(pathname) {
   return last.includes(".");
 }
 
+function isRuntimeContentRoute(pathname) {
+  if (pathname === "/") return true;
+  if (pathname === "/blog" || pathname.startsWith("/blog/")) return true;
+  if (pathname === "/publications") return true;
+  if (pathname.startsWith("/pages/")) return true;
+  if (pathname === "/calendar" || pathname === "/now" || pathname === "/sitemap") {
+    return false;
+  }
+  if (pathname.startsWith("/calendar/")) return true;
+  return !hasLikelyFileExtension(pathname);
+}
+
 function shouldBypassStatic(pathname) {
   if (!pathname) return true;
-  if (pathname === "/") return false;
+  if (isRuntimeContentRoute(pathname)) return true;
   if (pathname === "/blog/list" || pathname.startsWith("/blog/list/")) return true;
   if (/^\/[0-9a-f]{32}$/i.test(pathname)) return true;
   for (const prefix of BYPASS_PREFIXES) {

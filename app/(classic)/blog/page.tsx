@@ -7,7 +7,7 @@ import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogIndexStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 const BLOG_TITLE = "Blog";
 const BLOG_INTRO_LINKS: Array<{ label: string; href: string }> = [

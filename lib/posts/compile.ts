@@ -11,9 +11,8 @@ import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import type { MDXComponents } from "mdx/types";
 
-// Runtime MDX compile. We evaluate MDX each render so Tauri-driven edits land
-// without a rebuild. Posts are force-static so the work happens once per
-// deploy, plus on-demand in dev.
+// Runtime MDX compile. We evaluate MDX during server render so Site Admin edits
+// stored in D1 can land without a full site rebuild.
 export async function compilePostMdx(source: string): Promise<{
   Content: (props: { components?: MDXComponents }) => ReactElement;
 }> {
