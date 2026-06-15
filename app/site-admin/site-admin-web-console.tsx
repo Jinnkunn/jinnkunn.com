@@ -447,7 +447,6 @@ export function SiteAdminWebConsole({
 
   useEffect(() => {
     void refreshAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function selectContent(nextKind: EditableKind, id: string) {
