@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import {
@@ -55,4 +56,19 @@ test("site-admin mdx preview renderer detects Cloudflare codegen failures", () =
     true,
   );
   assert.equal(isMdxRuntimeCodeGenerationError(new Error("ordinary MDX syntax error")), false);
+});
+
+test("site-admin generic mdx preview endpoint uses the static renderer", () => {
+  const source = fs.readFileSync("app/api/site-admin/preview/mdx/route.ts", "utf8");
+  assert.ok(source.includes("renderMdxPreviewHtml"));
+  assert.ok(source.includes("site-admin-mdx-preview"));
+  assert.ok(source.includes("MAX_SOURCE_LENGTH"));
+  assert.ok(source.includes('renderer: "static-mdx-preview"'));
+});
+
+test("site-admin markdown editor requests the generic mdx preview endpoint", () => {
+  const source = fs.readFileSync("app/site-admin/site-admin-markdown-editor.tsx", "utf8");
+  assert.ok(source.includes('fetch("/api/site-admin/preview/mdx"'));
+  assert.ok(source.includes("dangerouslySetInnerHTML"));
+  assert.ok(source.includes("Rendering preview"));
 });

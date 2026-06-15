@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import styles from "./site-admin-dashboard.module.css";
 
@@ -84,78 +84,6 @@ function insertBlock(textarea: HTMLTextAreaElement, block: string) {
   return replaceSelection(textarea, insert, insert.length);
 }
 
-function stripFrontmatter(source: string) {
-  const match = /^---\n[\s\S]*?\n---\n?/.exec(source);
-  return match ? source.slice(match[0].length) : source;
-}
-
-function renderInline(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g);
-  return parts.map((part, index) => {
-    if (/^\*\*[^*]+\*\*$/.test(part)) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
-    }
-    if (/^`[^`]+`$/.test(part)) {
-      return <code key={index}>{part.slice(1, -1)}</code>;
-    }
-    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
-    if (link) {
-      return (
-        <a key={index} href={link[2]} target="_blank" rel="noreferrer">
-          {link[1]}
-        </a>
-      );
-    }
-    return part;
-  });
-}
-
-function MarkdownPreview({ source }: { source: string }) {
-  const blocks = useMemo(() => {
-    const body = stripFrontmatter(source).trim();
-    if (!body) return [];
-    return body.split(/\n{2,}/).map((block) => block.trim());
-  }, [source]);
-
-  if (blocks.length === 0) {
-    return <p className={styles.previewEmpty}>Nothing to preview yet.</p>;
-  }
-
-  return (
-    <div className={styles.markdownPreview}>
-      {blocks.map((block, index) => {
-        if (/^```/.test(block)) {
-          const code = block.replace(/^```[a-zA-Z0-9_-]*\n?/, "").replace(/\n?```$/, "");
-          return <pre key={index}>{code}</pre>;
-        }
-        if (/^---+$/.test(block)) {
-          return <hr key={index} />;
-        }
-        const heading = /^(#{1,3})\s+(.+)$/.exec(block);
-        if (heading) {
-          const level = heading[1].length;
-          if (level === 1) return <h1 key={index}>{renderInline(heading[2])}</h1>;
-          if (level === 2) return <h2 key={index}>{renderInline(heading[2])}</h2>;
-          return <h3 key={index}>{renderInline(heading[2])}</h3>;
-        }
-        if (block.startsWith("> ")) {
-          return <blockquote key={index}>{renderInline(block.replace(/^>\s?/gm, ""))}</blockquote>;
-        }
-        if (/^- /.test(block)) {
-          return (
-            <ul key={index}>
-              {block.split("\n").map((line, itemIndex) => (
-                <li key={itemIndex}>{renderInline(line.replace(/^- /, ""))}</li>
-              ))}
-            </ul>
-          );
-        }
-        return <p key={index}>{renderInline(block)}</p>;
-      })}
-    </div>
-  );
-}
-
 const markdownActions: MarkdownAction[] = [
   {
     label: "B",
@@ -219,7 +147,42 @@ export function SiteAdminMarkdownEditor({
   disabled = false,
 }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewRequestIdRef = useRef(0);
   const [mode, setMode] = useState<"source" | "preview">("source");
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  async function renderPreview() {
+    const requestId = previewRequestIdRef.current + 1;
+    previewRequestIdRef.current = requestId;
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const response = await fetch("/api/site-admin/preview/mdx", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ source: value }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `${response.status} ${response.statusText}`);
+      }
+      if (previewRequestIdRef.current !== requestId) return;
+      setPreviewHtml(String(payload?.data?.html || payload?.html || ""));
+    } catch (error: unknown) {
+      if (previewRequestIdRef.current !== requestId) return;
+      setPreviewHtml("");
+      setPreviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (previewRequestIdRef.current === requestId) setPreviewLoading(false);
+    }
+  }
 
   function applyAction(action: MarkdownAction) {
     const textarea = textareaRef.current;
@@ -251,7 +214,10 @@ export function SiteAdminMarkdownEditor({
               key={nextMode}
               type="button"
               data-active={mode === nextMode}
-              onClick={() => setMode(nextMode)}
+              onClick={() => {
+                setMode(nextMode);
+                if (nextMode === "preview") void renderPreview();
+              }}
             >
               {nextMode === "source" ? "Source" : "Preview"}
             </button>
@@ -273,7 +239,18 @@ export function SiteAdminMarkdownEditor({
         />
       ) : (
         <div className={styles.markdownPreviewShell} style={{ minHeight }}>
-          <MarkdownPreview source={value} />
+          {previewLoading ? (
+            <p className={styles.previewEmpty}>Rendering preview…</p>
+          ) : previewError ? (
+            <p className={styles.previewEmpty}>Preview unavailable: {previewError}</p>
+          ) : previewHtml.trim() ? (
+            <div
+              className={styles.markdownPreview}
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+            />
+          ) : (
+            <p className={styles.previewEmpty}>Nothing to preview yet.</p>
+          )}
         </div>
       )}
     </div>
