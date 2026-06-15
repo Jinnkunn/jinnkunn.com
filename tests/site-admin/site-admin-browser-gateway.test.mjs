@@ -28,6 +28,13 @@ test("site-admin browser gateway renders a dashboard instead of a placeholder", 
   assert.ok(!source.includes("Authenticated Site Admin gateway"));
 });
 
+test("site-admin browser console keeps form controls inside panels", () => {
+  const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
+  assert.match(css, /\.shell,\n\.shell \* \{\n  box-sizing: border-box;/);
+  assert.match(css, /@media \(max-width: 1180px\)/);
+  assert.match(css, /\.workspaceGrid[\s\S]*grid-template-columns: 1fr;/);
+});
+
 test("legacy site-admin login route redirects to the gateway", () => {
   const source = fs.readFileSync("app/site-admin/login/route.ts", "utf8");
   assert.ok(source.includes('new URL("/site-admin"'));
