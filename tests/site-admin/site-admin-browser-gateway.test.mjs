@@ -35,6 +35,18 @@ test("site-admin browser console keeps form controls inside panels", () => {
   assert.match(css, /\.workspaceGrid[\s\S]*grid-template-columns: 1fr;/);
 });
 
+test("site-admin browser console uses the lightweight MDX editor", () => {
+  const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  const editor = fs.readFileSync("app/site-admin/site-admin-markdown-editor.tsx", "utf8");
+  assert.ok(source.includes("SiteAdminMarkdownEditor"));
+  assert.ok(source.includes("sourceForNewContent"));
+  assert.ok(source.includes("setCreateTitle"));
+  assert.ok(source.includes("setCreateDescription"));
+  assert.ok(editor.includes("Source"));
+  assert.ok(editor.includes("Preview"));
+  assert.ok(editor.includes("markdownActions"));
+});
+
 test("legacy site-admin login route redirects to the gateway", () => {
   const source = fs.readFileSync("app/site-admin/login/route.ts", "utf8");
   assert.ok(source.includes('new URL("/site-admin"'));

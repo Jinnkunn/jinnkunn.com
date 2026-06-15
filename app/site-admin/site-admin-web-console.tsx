@@ -12,6 +12,7 @@ import type {
   SiteAdminNowUpdate,
 } from "@/lib/site-admin/api-types";
 import type { SiteAdminMobileSummary } from "@/lib/site-admin/mobile-summary";
+import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import styles from "./site-admin-dashboard.module.css";
 
 type ApiErrorPayload = {
@@ -145,24 +146,7 @@ type HomePostPayload = {
 
 type Area = "overview" | "content" | "home" | "now";
 
-const DEFAULT_PAGE_SOURCE = `---
-title: Untitled Page
-description: ""
-draft: true
----
-
-Write the page here.
-`;
-
-const DEFAULT_POST_SOURCE = `---
-title: Untitled Post
-date: ${todayInHalifax()}
-description: ""
-draft: true
----
-
-Write the post here.
-`;
+const DEFAULT_CREATE_BODY = "Write the post here.";
 
 function todayInHalifax(): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -207,6 +191,34 @@ function formatWhen(value: string | undefined) {
 
 function shortSha(value: string | undefined) {
   return String(value || "").slice(0, 7) || "n/a";
+}
+
+function frontmatterString(value: string) {
+  return JSON.stringify(value.trim());
+}
+
+function sourceForNewContent(input: {
+  kind: "posts" | "pages";
+  title: string;
+  description: string;
+  date: string;
+  body: string;
+}) {
+  const title = input.title.trim() || (input.kind === "posts" ? "Untitled Post" : "Untitled Page");
+  const description = input.description.trim();
+  const body = input.body.trim() || (input.kind === "posts" ? "Write the post here." : "Write the page here.");
+  const lines = [
+    "---",
+    `title: ${frontmatterString(title)}`,
+    ...(input.kind === "posts" ? [`date: ${input.date || todayInHalifax()}`] : []),
+    `description: ${frontmatterString(description)}`,
+    "draft: true",
+    "---",
+    "",
+    body,
+    "",
+  ];
+  return lines.join("\n");
 }
 
 function encodePathSegments(value: string) {
@@ -372,7 +384,10 @@ export function SiteAdminWebConsole({
   const [sourceDraft, setSourceDraft] = useState("");
   const [createKind, setCreateKind] = useState<"posts" | "pages">("posts");
   const [createSlug, setCreateSlug] = useState("");
-  const [createSource, setCreateSource] = useState(DEFAULT_POST_SOURCE);
+  const [createTitle, setCreateTitle] = useState("Untitled Post");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createDate, setCreateDate] = useState(todayInHalifax());
+  const [createBody, setCreateBody] = useState(DEFAULT_CREATE_BODY);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -528,12 +543,21 @@ export function SiteAdminWebConsole({
     try {
       await writeJson<CreatePayload>(`/api/site-admin/${createKind}`, "POST", {
         slug,
-        source: createSource,
+        source: sourceForNewContent({
+          kind: createKind,
+          title: createTitle,
+          description: createDescription,
+          date: createDate,
+          body: createBody,
+        }),
       });
       await refreshLists();
       await selectContent(createKind, slug);
       setCreateSlug("");
-      setCreateSource(createKind === "posts" ? DEFAULT_POST_SOURCE : DEFAULT_PAGE_SOURCE);
+      setCreateTitle(createKind === "posts" ? "Untitled Post" : "Untitled Page");
+      setCreateDescription("");
+      setCreateDate(todayInHalifax());
+      setCreateBody(createKind === "posts" ? "Write the post here." : "Write the page here.");
       setNotice(`${slug} created.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -915,11 +939,13 @@ export function SiteAdminWebConsole({
                     </Button>
                   </div>
                 </div>
-                <textarea
-                  className={styles.codeEditor}
+                <SiteAdminMarkdownEditor
+                  label={`${selected.title} MDX source`}
                   value={sourceDraft}
-                  onChange={(event) => setSourceDraft(event.target.value)}
-                  spellCheck={false}
+                  onChange={setSourceDraft}
+                  minHeight={520}
+                  size="large"
+                  disabled={saving}
                 />
                 <p className={styles.editorHint}>
                   Version {shortSha(selected.version)}. Saves use optimistic conflict
@@ -947,7 +973,8 @@ export function SiteAdminWebConsole({
                   data-active={createKind === value}
                   onClick={() => {
                     setCreateKind(value);
-                    setCreateSource(value === "posts" ? DEFAULT_POST_SOURCE : DEFAULT_PAGE_SOURCE);
+                    setCreateTitle(value === "posts" ? "Untitled Post" : "Untitled Page");
+                    setCreateBody(value === "posts" ? "Write the post here." : "Write the page here.");
                   }}
                 >
                   {titleForKind(value)}
@@ -963,11 +990,41 @@ export function SiteAdminWebConsole({
                 placeholder={createKind === "posts" ? "new-post-slug" : "new-page"}
               />
             </label>
-            <textarea
-              className={styles.createEditor}
-              value={createSource}
-              onChange={(event) => setCreateSource(event.target.value)}
-              spellCheck={false}
+            <label className={styles.fieldLabel}>
+              Title
+              <input
+                className={styles.textField}
+                value={createTitle}
+                onChange={(event) => setCreateTitle(event.target.value)}
+              />
+            </label>
+            {createKind === "posts" ? (
+              <label className={styles.fieldLabel}>
+                Date
+                <input
+                  className={styles.textField}
+                  type="date"
+                  value={createDate}
+                  onChange={(event) => setCreateDate(event.target.value)}
+                />
+              </label>
+            ) : null}
+            <label className={styles.fieldLabel}>
+              Description
+              <input
+                className={styles.textField}
+                value={createDescription}
+                onChange={(event) => setCreateDescription(event.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            <SiteAdminMarkdownEditor
+              label="New content body"
+              value={createBody}
+              onChange={setCreateBody}
+              minHeight={260}
+              size="compact"
+              disabled={saving}
             />
             <Button
               onClick={() => void createContent()}
@@ -1005,11 +1062,13 @@ export function SiteAdminWebConsole({
           </label>
           <label className={styles.fieldLabel}>
             Body MDX
-            <textarea
-              className={styles.largeEditor}
+            <SiteAdminMarkdownEditor
+              label="Home body MDX"
               value={homeBody}
-              onChange={(event) => setHomeBody(event.target.value)}
-              spellCheck={false}
+              onChange={setHomeBody}
+              minHeight={620}
+              size="large"
+              disabled={saving}
             />
           </label>
           <p className={styles.editorHint}>
