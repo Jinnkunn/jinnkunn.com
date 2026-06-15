@@ -40,13 +40,12 @@ test("content-managed public routes render dynamically", async () => {
   }
 });
 
-test("Cloudflare worker bypasses static shell for runtime content routes", async () => {
+test("Cloudflare worker lets public content routes use static shell first", async () => {
   const worker = await source("cloudflare/worker-entry.mjs");
-  assert.match(worker, /function isRuntimeContentRoute/);
-  assert.match(worker, /pathname === "\/"/);
-  assert.match(worker, /pathname === "\/blog" \|\| pathname\.startsWith\("\/blog\/"\)/);
-  assert.match(worker, /pathname\.startsWith\("\/pages\/"\)/);
-  assert.match(worker, /if \(isRuntimeContentRoute\(pathname\)\) return true/);
+  assert.match(worker, /async function tryServeStaticShell/);
+  assert.match(worker, /staticAssetPathForRoute\(pathname\)/);
+  assert.doesNotMatch(worker, /function isRuntimeContentRoute/);
+  assert.doesNotMatch(worker, /if \(isRuntimeContentRoute\(pathname\)\) return true/);
 });
 
 test("Cloudflare build patches OpenNext runtime manifest dynamic require", async () => {
