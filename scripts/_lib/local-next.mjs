@@ -4,6 +4,16 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
 const DEFAULT_NEXTAUTH_SECRET = "codex-design-system-qa-secret";
+const EMPTY_MIDDLEWARE_MANIFEST = `${JSON.stringify(
+  {
+    version: 3,
+    middleware: {},
+    functions: {},
+    sortedMiddleware: [],
+  },
+  null,
+  2,
+)}\n`;
 
 export function hasNextBuild(root = process.cwd()) {
   return fs.existsSync(path.join(root, ".next", "BUILD_ID"));
@@ -38,7 +48,28 @@ export async function findAvailablePort(preferredPort) {
   });
 }
 
-export function startNextServer({ root = process.cwd(), port }) {
+export function maskMiddlewareManifestForLocalNext(root = process.cwd()) {
+  const manifestPath = path.join(root, ".next", "server", "middleware-manifest.json");
+  if (!fs.existsSync(manifestPath)) return () => {};
+
+  const original = fs.readFileSync(manifestPath, "utf8");
+  fs.writeFileSync(manifestPath, EMPTY_MIDDLEWARE_MANIFEST);
+
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    fs.writeFileSync(manifestPath, original);
+  };
+}
+
+export function startNextServer({ root = process.cwd(), port, disableMiddleware } = {}) {
+  const shouldDisableMiddleware =
+    disableMiddleware ?? process.env.NEXT_LOCAL_QA_DISABLE_MIDDLEWARE !== "0";
+  const restoreMiddlewareManifest = shouldDisableMiddleware
+    ? maskMiddlewareManifestForLocalNext(root)
+    : () => {};
+
   const child = spawn("npm", ["run", "start", "--", "-p", String(port)], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
@@ -58,6 +89,15 @@ export function startNextServer({ root = process.cwd(), port }) {
     logs = `${logs}${String(chunk)}`.slice(-40_000);
   });
   child.getLogs = () => logs;
+
+  const originalKill = child.kill.bind(child);
+  child.kill = (...args) => {
+    restoreMiddlewareManifest();
+    return originalKill(...args);
+  };
+  child.once("exit", restoreMiddlewareManifest);
+  child.once("error", restoreMiddlewareManifest);
+
   return child;
 }
 
