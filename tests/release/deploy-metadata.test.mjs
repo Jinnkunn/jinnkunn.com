@@ -64,6 +64,10 @@ test("release script uses a clean snapshot for dirty staging releases", async ()
     "utf8",
   );
   assert.match(script, /prepareCleanReleaseSnapshot/);
+  assert.match(script, /dumpStagingD1Content/);
+  assert.match(script, /staging-d1-snapshot/);
+  assert.match(script, /--sync-content-to-git/);
+  assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
   assert.match(script, /ALLOW_D1_BUILD_CACHE/);
   assert.match(script, /RELEASE_REUSE_STAGING_BUILD/);
@@ -81,6 +85,10 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
     fs.readFile(path.join(process.cwd(), "wrangler.toml"), "utf8"),
   ]);
   assert.match(script, /fetchLiveBuildId/);
+  assert.match(script, /prepareContentPublishSnapshot/);
+  assert.match(script, /staging-d1-snapshot/);
+  assert.match(script, /--sync-content-to-git/);
+  assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /hashContentInput/);
   assert.match(script, /contentInputSha/);
   assert.match(script, /RUNTIME_CONTENT_INPUT_REL_PATHS/);
@@ -122,6 +130,8 @@ test("smart release CLI and package scripts expose content production copy", asy
   assert.match(packageJson, /"release:site"/);
   assert.match(packageJson, /"release:status"/);
   assert.match(packageJson, /"publish:content:prod:from-staging"/);
+  assert.match(packageJson, /"release:staging:sync-git"/);
+  assert.match(packageJson, /"publish:content:staging:sync-git"/);
 });
 
 test("full Cloudflare release clears stale content overlays after code deploy", async () => {

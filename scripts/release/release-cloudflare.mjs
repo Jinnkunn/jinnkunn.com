@@ -62,10 +62,11 @@ function parseArgs(argv = process.argv.slice(2)) {
     // (env var, .env file, wrangler config) and you want to retest from
     // scratch.
     noCache: argv.includes("--no-cache"),
-    // Staging releases auto-commit `content/*` after the D1 dump. Pass
-    // --no-auto-commit-content to fall back to the old "print a hint and
-    // leave the working tree dirty" behavior.
-    autoCommitContent: !argv.includes("--no-auto-commit-content"),
+    // Content is no longer auto-committed during normal code releases.
+    // Use these only for the explicit "backup D1 content into git" recovery
+    // path; routine Site Admin edits should stay in D1 Draft/Live.
+    syncContentToGit: argv.includes("--sync-content-to-git"),
+    autoCommitContent: argv.includes("--auto-commit-content"),
   };
 }
 
@@ -260,6 +261,22 @@ function prepareCleanReleaseSnapshot({ repoRoot, sha }) {
   return snapshotRoot;
 }
 
+function dumpStagingD1Content({ targetRoot, label }) {
+  const target = path.join(targetRoot, "content");
+  console.log(`[release-cloudflare] syncing staging D1 content into ${path.relative(ROOT, target) || "content"}`);
+  run(
+    "node",
+    [
+      "scripts/content/dump-content-from-db.mjs",
+      "--remote",
+      "--env=staging",
+      "--quiet",
+      `--target=${target}`,
+    ],
+    { label, cwd: ROOT },
+  );
+}
+
 function hashReleaseContent(root) {
   const contentRoot = path.join(root, "content");
   if (!fs.existsSync(contentRoot)) return "";
@@ -433,12 +450,10 @@ async function main() {
   if (!process.env.SITE_ADMIN_DB_ENV) process.env.SITE_ADMIN_DB_ENV = "staging";
   if (!process.env.SITE_ADMIN_DB_LOCATION) process.env.SITE_ADMIN_DB_LOCATION = "remote";
 
-  // The staging release rewrites `content/*` from D1 inside the prebuild
-  // step. If the operator has uncommitted edits there (mid-experiment
-  // file edit, hand-fixed bug), the dump silently overwrites them. Refuse
-  // to start a release when the working tree has dirty content/ paths —
-  // they should commit, stash, or pass `--allow-dirty-content` first.
-  if (args.env === "staging" && !args.skipBuild && !args.dryRun) {
+  // Legacy sync-to-git mode rewrites root `content/*` from D1. Keep the old
+  // guard there so it cannot silently clobber hand edits. The default path
+  // builds from a throwaway snapshot, so root content changes are ignored.
+  if (args.env === "staging" && !args.skipBuild && !args.dryRun && args.syncContentToGit) {
     const dirty = gitValue([
       "status",
       "--porcelain",
@@ -464,20 +479,11 @@ async function main() {
   let contentDriftFromGit = null;
   let contentAutoCommit = null;
 
-  if (args.env === "staging" && !args.skipBuild && !args.dryRun) {
-    console.log(
-      "[release-cloudflare] syncing content/ from staging D1 before choosing release source",
-    );
-    run(
-      "node",
-      [
-        "scripts/content/dump-content-from-db.mjs",
-        "--remote",
-        "--env=staging",
-        "--quiet",
-      ],
-      { label: "dump staging D1 to root content/", cwd: ROOT },
-    );
+  if (args.env === "staging" && !args.skipBuild && !args.dryRun && args.syncContentToGit) {
+    dumpStagingD1Content({
+      targetRoot: ROOT,
+      label: "dump staging D1 to root content/",
+    });
     const syncGit = readGitState();
     const dirtyContent = syncGit.dirtyFiles.filter((file) => file.startsWith("content/"));
     if (dirtyContent.length > 0) {
@@ -499,7 +505,11 @@ async function main() {
 
   let git = readGitState();
   const stagingDirtyGuard =
-    args.env === "staging" ? evaluateStagingDirtyGuard(git) : null;
+    args.env === "staging" && args.syncContentToGit
+      ? evaluateStagingDirtyGuard(git)
+      : args.env === "staging"
+        ? { ok: true, reasons: [] }
+        : null;
   const productionGuard = args.env === "production" ? evaluateProductionGuard(git) : null;
   const expectedProductionVersionFromShell =
     readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
@@ -540,9 +550,11 @@ async function main() {
     return;
   }
 
+  const useD1ContentSnapshot =
+    args.env === "staging" && !args.skipBuild && !args.syncContentToGit;
   const useCleanSnapshot =
     args.env === "staging" &&
-    git.dirty &&
+    (useD1ContentSnapshot || git.dirty) &&
     readEnv("ALLOW_DIRTY_STAGING") !== "1";
   const releaseRoot = useCleanSnapshot
     ? prepareCleanReleaseSnapshot({ repoRoot: ROOT, sha: git.sha })
@@ -551,6 +563,12 @@ async function main() {
     console.log(
       `[release-cloudflare] working tree has ${git.dirtyFileCount} dirty file${git.dirtyFileCount === 1 ? "" : "s"}; building committed HEAD from ${path.relative(ROOT, releaseRoot)}`,
     );
+  }
+  if (useD1ContentSnapshot) {
+    dumpStagingD1Content({
+      targetRoot: releaseRoot,
+      label: "dump staging D1 to release snapshot content/",
+    });
   }
 
   const checksRun = [];
@@ -655,7 +673,7 @@ async function main() {
   // content/generated/classic-css-assets.json). Commit that before upload
   // so the Worker version metadata points at the same SHA the operator sees
   // locally after the release.
-  if (args.env === "staging" && !args.skipBuild) {
+  if (args.env === "staging" && !args.skipBuild && releaseRoot === ROOT) {
     try {
       const status = gitValue(["status", "--porcelain", "--", "content"]);
       if (status) {
@@ -681,7 +699,7 @@ async function main() {
           }
         } else {
           console.log(
-            `[release-cloudflare] content/ now differs from git after build (${files.length} file${files.length === 1 ? "" : "s"}). Commit to keep main synced:`,
+            `[release-cloudflare] content/ now differs from git after build (${files.length} file${files.length === 1 ? "" : "s"}). This is no longer part of normal content publishing; use --sync-content-to-git for an explicit backup:`,
           );
           console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
           console.log(`  git commit -m "chore(content): sync from D1 staging"`);
@@ -878,18 +896,16 @@ async function main() {
     }
   }
 
-  if (args.env === "staging" && !args.skipBuild && releaseRoot !== ROOT) {
-    console.log("[release-cloudflare] syncing root content/ from staging D1 after snapshot build");
-    run(
-      "node",
-      [
-        "scripts/content/dump-content-from-db.mjs",
-        "--remote",
-        "--env=staging",
-        "--quiet",
-      ],
-      { label: "dump staging D1 to root content/", cwd: ROOT },
-    );
+  if (
+    args.env === "staging" &&
+    !args.skipBuild &&
+    args.syncContentToGit &&
+    releaseRoot !== ROOT
+  ) {
+    dumpStagingD1Content({
+      targetRoot: ROOT,
+      label: "dump staging D1 to root content/",
+    });
   }
 
   const finalReport = {
@@ -908,6 +924,11 @@ async function main() {
     verified: verifies,
     contentDriftFromGit,
     contentAutoCommit,
+    contentSourceMode: useD1ContentSnapshot
+      ? "staging-d1-snapshot"
+      : args.syncContentToGit
+        ? "staging-d1-git-sync"
+        : "git",
     rolledBack,
     rollbackTarget: args.env === "production" ? rollbackTarget : null,
     overlayClear,

@@ -14,7 +14,6 @@ import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs"
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
 const WRANGLER_TOML = path.join(ROOT, "wrangler.toml");
-const STATIC_ROOT = path.join(ROOT, ".open-next", "assets", "__static");
 const ENVIRONMENTS = new Set(["staging", "production"]);
 const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/now.json"]);
 const RELEASE_HISTORY_PATH = path.join(
@@ -34,7 +33,11 @@ function parseArgs(argv = process.argv.slice(2)) {
     dryRun: argv.includes("--dry-run"),
     skipBuild: argv.includes("--skip-build"),
     skipVerify: argv.includes("--skip-verify"),
-    autoCommitContent: !argv.includes("--no-auto-commit-content"),
+    // Normal content publish treats staging D1 as Draft and never turns that
+    // draft into git commits. Use these flags only for explicit backup /
+    // recovery workflows.
+    syncContentToGit: argv.includes("--sync-content-to-git"),
+    autoCommitContent: argv.includes("--auto-commit-content"),
     rollback: argv.includes("--rollback"),
     clear: argv.includes("--clear"),
     fromStaging: argv.includes("--from-staging"),
@@ -59,6 +62,10 @@ function run(command, args, options = {}) {
     throw new Error(`${label} failed${output ? `\n${output}` : ""}`);
   }
   return output;
+}
+
+function staticRootFor(root = ROOT) {
+  return path.join(root, ".open-next", "assets", "__static");
 }
 
 function logPhase(message) {
@@ -288,6 +295,36 @@ function assertContentOnlyClean(git) {
   );
 }
 
+function prepareContentPublishSnapshot({ repoRoot, sha }) {
+  const shortSha = sha.slice(0, 12);
+  const snapshotRoot = path.join(
+    repoRoot,
+    ".cache",
+    "release",
+    "content-publish",
+    shortSha,
+  );
+  const archivePath = `${snapshotRoot}.tar`;
+  fs.rmSync(snapshotRoot, { recursive: true, force: true });
+  fs.mkdirSync(snapshotRoot, { recursive: true });
+  fs.mkdirSync(path.dirname(archivePath), { recursive: true });
+  run("git", ["archive", "--format=tar", "-o", archivePath, sha], {
+    label: "git archive HEAD",
+    cwd: repoRoot,
+  });
+  run("tar", ["-xf", archivePath, "-C", snapshotRoot], {
+    label: "tar extract content publish snapshot",
+    cwd: repoRoot,
+  });
+  fs.rmSync(archivePath, { force: true });
+  const nodeModules = path.join(repoRoot, "node_modules");
+  const snapshotNodeModules = path.join(snapshotRoot, "node_modules");
+  if (fs.existsSync(nodeModules) && !fs.existsSync(snapshotNodeModules)) {
+    fs.symlinkSync(nodeModules, snapshotNodeModules, "dir");
+  }
+  return snapshotRoot;
+}
+
 function hashContentInput(root = ROOT) {
   const contentRoot = path.join(root, "content");
   if (!fs.existsSync(contentRoot)) return "";
@@ -391,8 +428,9 @@ async function assertTargetWorkerAcceptsContentOnly({ env, git }) {
   );
 }
 
-function syncStagingD1ToContent() {
-  logPhase("dumping staging D1 content to content/");
+function syncStagingD1ToContent(targetRoot = ROOT) {
+  const target = path.join(targetRoot, "content");
+  logPhase(`dumping staging D1 content to ${path.relative(ROOT, target) || "content/"}`);
   run(
     "node",
     [
@@ -400,28 +438,32 @@ function syncStagingD1ToContent() {
       "--remote",
       "--env=staging",
       "--quiet",
+      `--target=${target}`,
     ],
-    { label: "dump staging D1 to content/" },
+    { label: "dump staging D1 to content/", cwd: ROOT },
   );
 }
 
-function buildStaticShells({ nextBuildId }) {
+function buildStaticShells({ nextBuildId, root = ROOT }) {
   logPhase(`running Next build with live build id ${nextBuildId}`);
   run("npm", ["run", "build"], {
     label: "build",
+    cwd: root,
     env: { NEXT_BUILD_ID: nextBuildId },
   });
   logPhase("exporting classic CSS assets");
   run("node", ["scripts/build/export-classic-css-assets.mjs"], {
     label: "export classic CSS assets",
+    cwd: root,
   });
   logPhase("exporting static shell assets");
   run("node", ["scripts/build/export-static-shell-assets.mjs"], {
     label: "export static shell assets",
+    cwd: root,
   });
 }
 
-function walkStaticOverlayFiles(root = STATIC_ROOT) {
+function walkStaticOverlayFiles(root = staticRootFor(ROOT)) {
   const out = [];
   const stack = [root];
   while (stack.length > 0) {
@@ -440,7 +482,7 @@ function walkStaticOverlayFiles(root = STATIC_ROOT) {
       }
       if (!entry.isFile()) continue;
       if (!/\.(html|json)$/.test(entry.name)) continue;
-      const rel = path.relative(STATIC_ROOT, abs).replace(/\\/g, "/");
+      const rel = path.relative(root, abs).replace(/\\/g, "/");
       out.push({
         abs,
         assetPath: `/__static/${rel}`,
@@ -1308,10 +1350,21 @@ async function main() {
     return;
   }
 
-  if (args.env === "staging") syncStagingD1ToContent();
-
   let git = readGitState();
   assertContentOnlyClean(git);
+  const useD1Snapshot = args.env === "staging" && !args.syncContentToGit;
+  const releaseRoot = useD1Snapshot
+    ? prepareContentPublishSnapshot({ repoRoot: ROOT, sha: git.sha })
+    : ROOT;
+  if (args.env === "staging") syncStagingD1ToContent(releaseRoot);
+  if (useD1Snapshot) {
+    logPhase(
+      `using D1 Draft snapshot at ${path.relative(ROOT, releaseRoot)}; git content files are left untouched`,
+    );
+  }
+  if (args.env === "staging" && args.syncContentToGit) {
+    git = readGitState();
+  }
   let contentAutoCommit = null;
   if (git.dirty && args.autoCommitContent && !args.dryRun) {
     contentAutoCommit = autoCommitContent(git);
@@ -1319,7 +1372,7 @@ async function main() {
   }
   assertContentOnlyClean(git);
 
-  const contentInputSha = hashContentInput();
+  const contentInputSha = hashContentInput(releaseRoot);
   const targetWorker = await assertTargetWorkerAcceptsContentOnly({ env: args.env, git });
   const liveBuildId = args.skipBuild ? "" : await fetchLiveBuildId(args.env);
   const currentStatus = await readOverlayStatus(args.env);
@@ -1358,8 +1411,8 @@ async function main() {
     );
     return;
   }
-  if (!args.skipBuild) buildStaticShells({ nextBuildId: liveBuildId });
-  const files = walkStaticOverlayFiles();
+  if (!args.skipBuild) buildStaticShells({ nextBuildId: liveBuildId, root: releaseRoot });
+  const files = walkStaticOverlayFiles(staticRootFor(releaseRoot));
   if (files.length === 0) throw new Error("No static shell files found to publish.");
 
   const snapshotSha = overlaySnapshot(files);
@@ -1409,6 +1462,11 @@ async function main() {
         dryRun: args.dryRun,
         source: git,
         contentAutoCommit,
+        contentSourceMode: useD1Snapshot
+          ? "staging-d1-snapshot"
+          : args.syncContentToGit
+            ? "staging-d1-git-sync"
+            : "git",
         contentInputSha,
         workerCodeSha: targetWorker.workerCodeSha,
         liveBuildId,
