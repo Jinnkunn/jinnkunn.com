@@ -558,7 +558,7 @@ export function SiteAdminWebConsole({
     setSaving(true);
     setError("");
     setNotice("");
-  try {
+    try {
       await writeJson<HomePostPayload>("/api/site-admin/home", "POST", {
         data: {
           ...home.data,
@@ -682,7 +682,6 @@ export function SiteAdminWebConsole({
         </div>
       </section>
 
-      {summaryError ? <StatusNotice tone="warning">{summaryError}</StatusNotice> : null}
       {notice ? <StatusNotice tone="success">{notice}</StatusNotice> : null}
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
 
@@ -712,18 +711,25 @@ export function SiteAdminWebConsole({
               <div className={styles.cardHeader}>
                 <p className={styles.cardLabel}>Release</p>
                 <span className={styles.statusPill} data-state={release?.recommendedAction.kind}>
-                  {release?.recommendedAction.label || "Refresh"}
+                  {release?.recommendedAction.label || (summaryError ? "Unavailable" : "Refresh")}
                 </span>
               </div>
               <h2 className={styles.cardTitle}>
-                {release?.headline || "Status unavailable"}
+                {release?.headline ||
+                  (summaryError ? "Release status unavailable" : "Status unavailable")}
               </h2>
               <p className={styles.cardText}>
-                {release?.detail || "Refresh release status."}
+                {release?.detail ||
+                  (summaryError
+                    ? `Could not load release summary: ${summaryError}. Content editing is still available.`
+                    : "Refresh release status.")}
               </p>
               <div className={styles.cardMeta}>
                 <span>Runner</span>
-                <strong>{release?.runners?.[0]?.status || "Not seen"}</strong>
+                <strong>
+                  {release?.runners?.[0]?.status ||
+                    (summaryError ? "Unavailable" : "Not seen")}
+                </strong>
               </div>
             </Card>
 

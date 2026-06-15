@@ -22,6 +22,8 @@ test("site-admin browser gateway renders a dashboard instead of a placeholder", 
   assert.ok(source.includes("New content"));
   assert.ok(source.includes("Save Home"));
   assert.ok(source.includes("Publish draft"));
+  assert.ok(source.includes("Release status unavailable"));
+  assert.ok(!source.includes('{summaryError ? <StatusNotice tone="warning">'));
   assert.ok(!source.includes("The browser gateway is signed in"));
   assert.ok(!source.includes("Authenticated Site Admin gateway"));
 });
