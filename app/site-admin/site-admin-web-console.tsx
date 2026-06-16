@@ -120,13 +120,42 @@ type EditableDetailPayload = {
   name?: string;
   href?: string;
   title?: string;
+  dateIso?: string;
   dateText?: string;
+  description?: string | null;
   updatedIso?: string;
   draft?: boolean;
   version: string;
   source: string;
+  body?: string;
+  frontmatter?: EditableFrontmatterPayload;
+  frontmatterKeys?: string[];
   definition?: ComponentDefinition;
   summary?: ComponentSummary;
+};
+
+type EditableFrontmatterPayload = {
+  title?: string;
+  description?: string;
+  date?: string;
+  updated?: string;
+  draft?: boolean;
+  tags?: string[];
+  cover?: string;
+  ogImage?: string;
+};
+
+type EditableContentForm = {
+  title: string;
+  description: string;
+  date: string;
+  updated: string;
+  draft: boolean;
+  tags: string;
+  cover: string;
+  ogImage: string;
+  body: string;
+  frontmatterKeys: string[];
 };
 
 type CreatePayload = {
@@ -147,6 +176,19 @@ type HomePostPayload = {
 type Area = "overview" | "content" | "home" | "now";
 
 const DEFAULT_CREATE_BODY = "Write the post here.";
+
+const EMPTY_CONTENT_FORM: EditableContentForm = {
+  title: "",
+  description: "",
+  date: "",
+  updated: "",
+  draft: false,
+  tags: "",
+  cover: "",
+  ogImage: "",
+  body: "",
+  frontmatterKeys: [],
+};
 
 function todayInHalifax(): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -197,6 +239,22 @@ function frontmatterString(value: string) {
   return JSON.stringify(value.trim());
 }
 
+function frontmatterLine(key: string, value: string) {
+  const trimmed = value.trim();
+  return trimmed ? [`${key}: ${frontmatterString(trimmed)}`] : [];
+}
+
+function tagArrayFromText(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function tagTextFromArray(value: string[] | undefined) {
+  return (value || []).join(", ");
+}
+
 function sourceForNewContent(input: {
   kind: "posts" | "pages";
   title: string;
@@ -219,6 +277,58 @@ function sourceForNewContent(input: {
     "",
   ];
   return lines.join("\n");
+}
+
+function sourceForEditedContent(kind: EditableKind, form: EditableContentForm) {
+  if (kind === "components") return form.body;
+  const title = form.title.trim() || (kind === "posts" ? "Untitled Post" : "Untitled Page");
+  const tags = tagArrayFromText(form.tags);
+  const hasKey = (key: string) => form.frontmatterKeys.includes(key);
+  const lines = [
+    "---",
+    `title: ${frontmatterString(title)}`,
+    ...(kind === "posts" ? [`date: ${form.date || todayInHalifax()}`] : []),
+    ...(hasKey("description") || form.description.trim()
+      ? [`description: ${frontmatterString(form.description)}`]
+      : []),
+    ...(kind === "pages" && (hasKey("updated") || form.updated) && form.updated
+      ? [`updated: ${form.updated}`]
+      : []),
+    ...(kind === "posts" && (hasKey("tags") || tags.length > 0) && tags.length > 0
+      ? ["tags:", ...tags.map((tag) => `  - ${frontmatterString(tag)}`)]
+      : []),
+    ...(hasKey("cover") || form.cover.trim() ? frontmatterLine("cover", form.cover) : []),
+    ...(hasKey("ogImage") || form.ogImage.trim() ? frontmatterLine("ogImage", form.ogImage) : []),
+    ...(hasKey("draft") || form.draft ? [`draft: ${form.draft ? "true" : "false"}`] : []),
+    "---",
+    "",
+    form.body.trimEnd(),
+    "",
+  ];
+  return lines.join("\n");
+}
+
+function formFromEditablePayload(
+  kind: EditableKind,
+  id: string,
+  payload: EditableDetailPayload,
+): EditableContentForm {
+  if (kind === "components") {
+    return { ...EMPTY_CONTENT_FORM, title: payload.title || id, body: payload.source || "" };
+  }
+  const frontmatter = payload.frontmatter || {};
+  return {
+    title: frontmatter.title || payload.title || id,
+    description: frontmatter.description || payload.description || "",
+    date: frontmatter.date || payload.dateIso || todayInHalifax(),
+    updated: frontmatter.updated || (payload.updatedIso ? dateInputFromIso(payload.updatedIso) : ""),
+    draft: Boolean(frontmatter.draft ?? payload.draft),
+    tags: tagTextFromArray(frontmatter.tags),
+    cover: frontmatter.cover || "",
+    ogImage: frontmatter.ogImage || "",
+    body: payload.body ?? payload.source ?? "",
+    frontmatterKeys: payload.frontmatterKeys || [],
+  };
 }
 
 function encodePathSegments(value: string) {
@@ -382,6 +492,9 @@ export function SiteAdminWebConsole({
   const [kind, setKind] = useState<EditableKind>("posts");
   const [selected, setSelected] = useState<EditableDetail | null>(null);
   const [sourceDraft, setSourceDraft] = useState("");
+  const [contentForm, setContentForm] =
+    useState<EditableContentForm>(EMPTY_CONTENT_FORM);
+  const [contentFormBaseline, setContentFormBaseline] = useState("");
   const [createKind, setCreateKind] = useState<"posts" | "pages">("posts");
   const [createSlug, setCreateSlug] = useState("");
   const [createTitle, setCreateTitle] = useState("Untitled Post");
@@ -390,12 +503,25 @@ export function SiteAdminWebConsole({
   const [createBody, setCreateBody] = useState(DEFAULT_CREATE_BODY);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [releaseSaving, setReleaseSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   const currentItems = useMemo(
     () => contentItems({ kind, pages, posts, components }),
     [kind, pages, posts, components],
+  );
+  const selectedIsStructured = selected?.kind === "posts" || selected?.kind === "pages";
+  const selectedSourceDraft = selected
+    ? selectedIsStructured
+      ? sourceForEditedContent(selected.kind, contentForm)
+      : sourceDraft
+    : "";
+  const selectedDirty = Boolean(
+    selected &&
+      (selectedIsStructured
+        ? selectedSourceDraft !== contentFormBaseline
+        : selectedSourceDraft !== selected.source),
   );
 
   async function refreshAll() {
@@ -476,6 +602,13 @@ export function SiteAdminWebConsole({
       setKind(nextKind);
       setSelected(next);
       setSourceDraft(next.source);
+      const form = formFromEditablePayload(nextKind, id, detail);
+      setContentForm(form);
+      setContentFormBaseline(
+        nextKind === "posts" || nextKind === "pages"
+          ? sourceForEditedContent(nextKind, form)
+          : next.source,
+      );
       setArea("content");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -491,7 +624,7 @@ export function SiteAdminWebConsole({
     setNotice("");
     try {
       await writeJson<MutationPayload>(endpointFor(selected.kind, selected.id), "PATCH", {
-        source: sourceDraft,
+        source: selectedSourceDraft,
         version: selected.version,
       });
       const detail = await readJson<EditableDetailPayload>(
@@ -500,6 +633,13 @@ export function SiteAdminWebConsole({
       const next = toEditableDetail(selected.kind, selected.id, detail);
       setSelected(next);
       setSourceDraft(next.source);
+      const form = formFromEditablePayload(selected.kind, selected.id, detail);
+      setContentForm(form);
+      setContentFormBaseline(
+        selected.kind === "posts" || selected.kind === "pages"
+          ? sourceForEditedContent(selected.kind, form)
+          : next.source,
+      );
       await refreshLists();
       setNotice(`${next.title} saved.`);
     } catch (err) {
@@ -522,6 +662,8 @@ export function SiteAdminWebConsole({
       });
       setSelected(null);
       setSourceDraft("");
+      setContentForm(EMPTY_CONTENT_FORM);
+      setContentFormBaseline("");
       await refreshLists();
       setNotice(`${selected.title} deleted.`);
     } catch (err) {
@@ -575,6 +717,31 @@ export function SiteAdminWebConsole({
     setPages(nextPages);
     setPosts(nextPosts);
     setComponents(nextComponents);
+  }
+
+  async function runSmartRelease() {
+    setReleaseSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await writeJson<{ job?: { id?: string } }>(
+        "/api/site-admin/release-jobs/smart",
+        "POST",
+        {
+          request: {
+            source: "site-admin-web-console",
+            area,
+          },
+        },
+      );
+      const jobId = payload.job?.id ? ` (${payload.job.id})` : "";
+      setNotice(`Release job created${jobId}.`);
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReleaseSaving(false);
+    }
   }
 
   async function saveHome() {
@@ -878,6 +1045,8 @@ export function SiteAdminWebConsole({
                     setKind(value);
                     setSelected(null);
                     setSourceDraft("");
+                    setContentForm(EMPTY_CONTENT_FORM);
+                    setContentFormBaseline("");
                   }}
                 >
                   {titleForKind(value)}
@@ -933,20 +1102,196 @@ export function SiteAdminWebConsole({
                       onClick={() => void saveSelectedContent()}
                       tone="accent"
                       size="sm"
-                      disabled={saving || sourceDraft === selected.source}
+                      disabled={saving || !selectedDirty}
                     >
                       {saving ? "Saving" : "Save"}
                     </Button>
                   </div>
                 </div>
-                <SiteAdminMarkdownEditor
-                  label={`${selected.title} MDX source`}
-                  value={sourceDraft}
-                  onChange={setSourceDraft}
-                  minHeight={520}
-                  size="large"
-                  disabled={saving}
-                />
+                <div className={styles.editorStatusBar}>
+                  <span className={styles.statusPill} data-state={selectedDirty ? "smart-release" : "noop"}>
+                    {selectedDirty ? "Unsaved changes" : "Saved draft"}
+                  </span>
+                  {selectedIsStructured ? (
+                    <span className={styles.statusPill} data-state={contentForm.draft ? "smart-release" : "noop"}>
+                      {contentForm.draft ? "Draft" : "Public"}
+                    </span>
+                  ) : null}
+                  <span className={styles.editorHint}>
+                    {release?.headline || "Release status unavailable"}
+                  </span>
+                  <div className={styles.editorStatusActions}>
+                    {release?.recommendedAction.kind === "watch-release" ? (
+                      <Button href="/api/site-admin/release-jobs" variant="subtle" size="sm">
+                        View release
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => void runSmartRelease()}
+                        variant={release?.recommendedAction.kind === "noop" ? "subtle" : "solid"}
+                        tone={release?.recommendedAction.kind === "noop" ? "neutral" : "accent"}
+                        size="sm"
+                        disabled={
+                          releaseSaving ||
+                          selectedDirty ||
+                          release?.recommendedAction.kind === "noop" ||
+                          !release?.recommendedAction
+                        }
+                      >
+                        {releaseSaving
+                          ? "Starting"
+                          : release?.recommendedAction.kind === "noop"
+                            ? "Live current"
+                            : "Publish draft"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {selectedIsStructured ? (
+                  <>
+                    <div className={styles.editorMetaGrid}>
+                      <label className={styles.fieldLabel}>
+                        Title
+                        <input
+                          className={styles.textField}
+                          value={contentForm.title}
+                          onChange={(event) =>
+                            setContentForm((current) => ({
+                              ...current,
+                              title: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      {selected.kind === "posts" ? (
+                        <label className={styles.fieldLabel}>
+                          Date
+                          <input
+                            className={styles.textField}
+                            type="date"
+                            value={contentForm.date}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                date: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      ) : (
+                        <label className={styles.fieldLabel}>
+                          Updated
+                          <input
+                            className={styles.textField}
+                            type="date"
+                            value={contentForm.updated}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                updated: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      )}
+                      <label className={styles.checkField}>
+                        <input
+                          type="checkbox"
+                          checked={contentForm.draft}
+                          onChange={(event) =>
+                            setContentForm((current) => ({
+                              ...current,
+                              draft: event.target.checked,
+                            }))
+                          }
+                        />
+                        Draft
+                      </label>
+                    </div>
+                    <label className={styles.fieldLabel}>
+                      Description
+                      <input
+                        className={styles.textField}
+                        value={contentForm.description}
+                        onChange={(event) =>
+                          setContentForm((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional"
+                      />
+                    </label>
+                    {selected.kind === "posts" ? (
+                      <div className={styles.editorMetaGrid}>
+                        <label className={styles.fieldLabel}>
+                          Tags
+                          <input
+                            className={styles.textField}
+                            value={contentForm.tags}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                tags: event.target.value,
+                              }))
+                            }
+                            placeholder="Comma separated"
+                          />
+                        </label>
+                        <label className={styles.fieldLabel}>
+                          Cover
+                          <input
+                            className={styles.textField}
+                            value={contentForm.cover}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                cover: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </label>
+                        <label className={styles.fieldLabel}>
+                          OG image
+                          <input
+                            className={styles.textField}
+                            value={contentForm.ogImage}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                ogImage: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                    <SiteAdminMarkdownEditor
+                      label={`${selected.title} body`}
+                      value={contentForm.body}
+                      onChange={(body) =>
+                        setContentForm((current) => ({
+                          ...current,
+                          body,
+                        }))
+                      }
+                      minHeight={480}
+                      size="large"
+                      disabled={saving}
+                    />
+                  </>
+                ) : (
+                  <SiteAdminMarkdownEditor
+                    label={`${selected.title} MDX source`}
+                    value={sourceDraft}
+                    onChange={setSourceDraft}
+                    minHeight={520}
+                    size="large"
+                    disabled={saving}
+                  />
+                )}
                 <p className={styles.editorHint}>
                   Version {shortSha(selected.version)}. Saves use optimistic conflict
                   protection; reload if another client changed this file.

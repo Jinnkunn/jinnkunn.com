@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import matter from "gray-matter";
 
 import {
   apiError,
@@ -14,6 +15,7 @@ import {
   readPost,
   updatePost,
 } from "@/lib/posts/store";
+import { parsePostFile } from "@/lib/posts/meta";
 import { isValidSlug } from "@/lib/posts/slug";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 
@@ -85,6 +87,8 @@ export async function GET(
       const detail = await readPost(resolved.slug);
       if (!detail)
         return apiError("post not found", { status: 404, code: "NOT_FOUND" });
+      const parsed = parsePostFile(resolved.slug, detail.source);
+      const frontmatterKeys = Object.keys(matter(detail.source).data);
       return apiPayloadOk({
         slug: detail.entry.slug,
         href: detail.entry.href,
@@ -98,6 +102,9 @@ export async function GET(
         readingMinutes: detail.entry.readingMinutes,
         version: detail.version,
         source: detail.source,
+        frontmatter: parsed.frontmatter,
+        frontmatterKeys,
+        body: parsed.body,
       });
     },
     { rateLimit: RATE_LIMIT },

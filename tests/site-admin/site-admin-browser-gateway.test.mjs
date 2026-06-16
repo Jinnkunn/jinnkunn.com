@@ -42,9 +42,22 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("sourceForNewContent"));
   assert.ok(source.includes("setCreateTitle"));
   assert.ok(source.includes("setCreateDescription"));
+  assert.ok(source.includes("sourceForEditedContent"));
+  assert.ok(source.includes("frontmatterKeys"));
+  assert.ok(source.includes("editorMetaGrid"));
+  assert.ok(source.includes("/api/site-admin/release-jobs/smart"));
   assert.ok(editor.includes("Source"));
   assert.ok(editor.includes("Preview"));
   assert.ok(editor.includes("markdownActions"));
+});
+
+test("site-admin content detail APIs expose structured editor fields", () => {
+  const postRoute = fs.readFileSync("app/api/site-admin/posts/[slug]/route.ts", "utf8");
+  const pageRoute = fs.readFileSync("app/api/site-admin/pages/[...slug]/route.ts", "utf8");
+  for (const source of [postRoute, pageRoute]) {
+    assert.ok(source.includes("frontmatterKeys"));
+    assert.ok(source.includes("body: parsed.body"));
+  }
 });
 
 test("legacy site-admin login route redirects to the gateway", () => {
