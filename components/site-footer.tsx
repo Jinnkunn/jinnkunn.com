@@ -3,7 +3,7 @@ import { NavItem } from "@/components/ui/nav-item";
 
 export default function SiteFooter() {
   return (
-    <footer className="super-footer stack no-links">
+    <footer className="super-footer stack no-links no-footnote">
       <div className="super-footer__content">
         <NavItem href="/" className="notion-link super-footer__logo">
           <div className="super-footer__logo-image">
@@ -94,10 +94,6 @@ export default function SiteFooter() {
             </svg>
           </a>
         </div>
-
-        <p className="super-footer__footnote site-footer__signature">
-          Halifax time / research, teaching, notes.
-        </p>
       </div>
     </footer>
   );

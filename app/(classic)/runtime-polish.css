@@ -39,7 +39,6 @@
 /* Footer: a quiet close to the public surface, with the same tactile hover
  * language as the navbar rather than the raw Super defaults. */
 .super-root .super-footer {
-  border-top: 1px solid var(--ds-border-subtle);
   box-shadow: none;
 }
 
@@ -74,14 +73,6 @@
   background: var(--ds-interactive-hover);
   opacity: 1;
   transform: translateY(-1px);
-}
-
-.super-root .site-footer__signature {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--ds-text-sm);
-  line-height: var(--ds-leading-body);
-  opacity: 1;
 }
 
 /* Blog post template extras (keep v1 clean, but add functional TOC + prev/next). */
