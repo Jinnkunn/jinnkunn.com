@@ -243,6 +243,22 @@ function shortSha(value: string | undefined) {
   return String(value || "").slice(0, 7) || "n/a";
 }
 
+function isUnauthorizedMessage(value: string) {
+  return /\b(401|unauthorized)\b/i.test(value);
+}
+
+function slugFromTitle(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/['"]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "untitled"
+  );
+}
+
 function frontmatterString(value: string) {
   return JSON.stringify(value.trim());
 }
@@ -534,6 +550,7 @@ export function SiteAdminWebConsole({
   const [contentFormBaseline, setContentFormBaseline] = useState("");
   const [slugDraft, setSlugDraft] = useState("");
   const [localAutosaveAt, setLocalAutosaveAt] = useState("");
+  const [contentSavedAt, setContentSavedAt] = useState("");
   const [localDraftSnapshot, setLocalDraftSnapshot] =
     useState<LocalDraftSnapshot | null>(null);
   const [createKind, setCreateKind] = useState<"posts" | "pages">("posts");
@@ -547,12 +564,15 @@ export function SiteAdminWebConsole({
   const [releaseSaving, setReleaseSaving] = useState(false);
   const [releaseWatchUntil, setReleaseWatchUntil] = useState(0);
   const [notice, setNotice] = useState("");
+  const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
 
   const currentItems = useMemo(
     () => contentItems({ kind, pages, posts, components }),
     [kind, pages, posts, components],
   );
+  const release = summary?.release;
+  const source = summary?.source;
   const selectedIsStructured = selected?.kind === "posts" || selected?.kind === "pages";
   const selectedSourceDraft = selected
     ? selectedIsStructured
@@ -571,10 +591,63 @@ export function SiteAdminWebConsole({
       slugDraft.trim() &&
       slugDraft.trim() !== selected.id,
   );
+  const releaseActionKind = release?.recommendedAction.kind;
+  const releaseNeedsPublish = releaseActionKind === "smart-release";
+  const releaseIsRunning = releaseActionKind === "watch-release";
+  const releaseUnavailable = releaseActionKind === "refresh" || !release?.recommendedAction;
+  const draftStatusState = saving
+    ? "saving"
+    : selectedDirty
+      ? "smart-release"
+      : "noop";
+  const draftStatusLabel = saving
+    ? "Saving draft"
+    : selectedDirty
+      ? "Unsaved edits"
+      : contentSavedAt
+        ? "Saved to Draft"
+        : "Saved draft";
+  const liveStatusState = selectedDirty
+    ? "blocked"
+    : releaseIsRunning
+      ? "saving"
+      : releaseNeedsPublish
+        ? "smart-release"
+        : releaseActionKind === "noop"
+          ? "noop"
+          : "blocked";
+  const liveStatusLabel = selectedDirty
+    ? "Save before publishing"
+    : releaseIsRunning
+      ? "Release running"
+      : releaseNeedsPublish
+        ? "Ready to publish"
+        : releaseActionKind === "noop"
+          ? "Live current"
+          : "Release unavailable";
+  const editorStatusHint = selectedDirty
+    ? localAutosaveAt
+      ? `Local recovery saved ${formatWhen(localAutosaveAt)}. Save to Draft before publishing.`
+      : "Unsaved edits are only in this browser until saved to Draft."
+    : releaseNeedsPublish
+      ? release?.detail || "Saved Draft is ahead of the live site."
+      : contentSavedAt
+        ? `Saved to Draft ${formatWhen(contentSavedAt)}. ${release?.detail || ""}`.trim()
+        : release?.headline || "Release status unavailable";
+  const publishButtonLabel = releaseSaving
+    ? "Starting"
+    : selectedDirty
+      ? "Save first"
+      : releaseActionKind === "noop"
+        ? "Live current"
+        : releaseUnavailable
+          ? "Refresh status"
+          : "Publish draft";
 
   async function refreshAll() {
     setLoading(true);
     setError("");
+    setWarning("");
     const results = await Promise.allSettled([
       readJson<SummaryPayload>("/api/site-admin/mobile/summary"),
       readJson<HomePayload>("/api/site-admin/home"),
@@ -583,7 +656,7 @@ export function SiteAdminWebConsole({
       readJson<PostsPayload>("/api/site-admin/posts?drafts=1"),
       readJson<ComponentsPayload>("/api/site-admin/components"),
     ]);
-    const failures: string[] = [];
+    const failures: { scope: string; message: string }[] = [];
     const [summaryResult, homeResult, nowResult, pagesResult, postsResult, componentsResult] =
       results;
 
@@ -599,7 +672,7 @@ export function SiteAdminWebConsole({
       setHomeTitle(homeResult.value.data.title || "");
       setHomeBody(homeResult.value.data.bodyMdx || "");
     } else {
-      failures.push(`Home: ${homeResult.reason?.message || "failed"}`);
+      failures.push({ scope: "Home", message: homeResult.reason?.message || "failed" });
     }
 
     if (nowResult.status === "fulfilled") {
@@ -609,28 +682,54 @@ export function SiteAdminWebConsole({
       setNowLocation(nowResult.value.data.current.location || "");
       setNowDate(dateInputFromIso(nowResult.value.data.current.updatedAt));
     } else {
-      failures.push(`Now: ${nowResult.reason?.message || "failed"}`);
+      failures.push({ scope: "Now", message: nowResult.reason?.message || "failed" });
     }
 
     if (pagesResult.status === "fulfilled") {
       setPages(pagesResult.value);
     } else {
-      failures.push(`Pages: ${pagesResult.reason?.message || "failed"}`);
+      failures.push({ scope: "Pages", message: pagesResult.reason?.message || "failed" });
     }
 
     if (postsResult.status === "fulfilled") {
       setPosts(postsResult.value);
     } else {
-      failures.push(`Posts: ${postsResult.reason?.message || "failed"}`);
+      failures.push({ scope: "Posts", message: postsResult.reason?.message || "failed" });
     }
 
     if (componentsResult.status === "fulfilled") {
       setComponents(componentsResult.value);
     } else {
-      failures.push(`Components: ${componentsResult.reason?.message || "failed"}`);
+      failures.push({
+        scope: "Components",
+        message: componentsResult.reason?.message || "failed",
+      });
     }
 
-    if (failures.length > 0) setError(failures.join(" · "));
+    if (failures.length > 0) {
+      const authFailures = failures.filter((failure) =>
+        isUnauthorizedMessage(failure.message),
+      );
+      const blockingFailures = failures.filter(
+        (failure) => !isUnauthorizedMessage(failure.message),
+      );
+      if (authFailures.length > 0) {
+        setWarning(
+          authFailures.length === failures.length
+            ? "Your browser session is signed in, but admin API access needs a fresh sign-in. Refresh the session if content does not load."
+            : `Some admin data needs a fresh sign-in: ${authFailures
+                .map((failure) => failure.scope)
+                .join(", ")}.`,
+        );
+      }
+      if (blockingFailures.length > 0) {
+        setError(
+          blockingFailures
+            .map((failure) => `${failure.scope}: ${failure.message}`)
+            .join(" · "),
+        );
+      }
+    }
     setLoading(false);
   }
 
@@ -694,6 +793,7 @@ export function SiteAdminWebConsole({
   async function selectContent(nextKind: EditableKind, id: string) {
     setLoading(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       const detail = await readJson<EditableDetailPayload>(
@@ -713,6 +813,7 @@ export function SiteAdminWebConsole({
           : next.source;
       setContentFormBaseline(baseline);
       setLocalAutosaveAt("");
+      setContentSavedAt("");
       const localDraft = readLocalDraft(nextKind, id);
       setLocalDraftSnapshot(
         localDraft && localDraft.source !== baseline ? localDraft : null,
@@ -729,6 +830,7 @@ export function SiteAdminWebConsole({
     if (!selected) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       await writeJson<MutationPayload>(endpointFor(selected.kind, selected.id), "PATCH", {
@@ -751,8 +853,10 @@ export function SiteAdminWebConsole({
       );
       clearLocalDraft(selected.kind, selected.id);
       setLocalAutosaveAt("");
+      setContentSavedAt(new Date().toISOString());
       setLocalDraftSnapshot(null);
       await refreshLists();
+      await refreshSummaryOnly();
       setNotice(`${next.title} saved.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -767,6 +871,7 @@ export function SiteAdminWebConsole({
     if (!confirmed) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       await writeJson<{ ok: true }>(endpointFor(selected.kind, selected.id), "DELETE", {
@@ -780,8 +885,10 @@ export function SiteAdminWebConsole({
       setSlugDraft("");
       clearLocalDraft(selected.kind, selected.id);
       setLocalAutosaveAt("");
+      setContentSavedAt("");
       setLocalDraftSnapshot(null);
       await refreshLists();
+      await refreshSummaryOnly();
       setNotice(`${selected.title} deleted.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -802,6 +909,7 @@ export function SiteAdminWebConsole({
     if (!confirmed) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       const endpoint =
@@ -819,6 +927,7 @@ export function SiteAdminWebConsole({
       );
       await refreshLists();
       await selectContent(selected.kind, moved.toSlug || toSlug);
+      await refreshSummaryOnly();
       setNotice(`${selected.title} renamed.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -852,6 +961,7 @@ export function SiteAdminWebConsole({
     setContentFormBaseline("");
     setSlugDraft("");
     setLocalAutosaveAt("");
+    setContentSavedAt("");
     setLocalDraftSnapshot(null);
     setCreateKind(resolvedKind);
     setCreateSlug("");
@@ -862,13 +972,14 @@ export function SiteAdminWebConsole({
   }
 
   async function createContent() {
-    const slug = createSlug.trim();
+    const slug = createSlug.trim() || slugFromTitle(createTitle);
     if (!slug) {
       setError("Slug is required.");
       return;
     }
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       await writeJson<CreatePayload>(`/api/site-admin/${createKind}`, "POST", {
@@ -883,6 +994,8 @@ export function SiteAdminWebConsole({
       });
       await refreshLists();
       await selectContent(createKind, slug);
+      setContentSavedAt(new Date().toISOString());
+      await refreshSummaryOnly();
       setCreateSlug("");
       setCreateTitle(createKind === "posts" ? "Untitled Post" : "Untitled Page");
       setCreateDescription("");
@@ -910,6 +1023,7 @@ export function SiteAdminWebConsole({
   async function runSmartRelease() {
     setReleaseSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       const payload = await writeJson<{ job?: { id?: string } }>(
@@ -937,6 +1051,7 @@ export function SiteAdminWebConsole({
     if (!home) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       await writeJson<HomePostPayload>("/api/site-admin/home", "POST", {
@@ -962,6 +1077,7 @@ export function SiteAdminWebConsole({
     if (!now) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       const next = await writeJson<NowPayload>("/api/site-admin/now", "POST", {
@@ -992,6 +1108,7 @@ export function SiteAdminWebConsole({
     if (!now || !editingHistoryId) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       const next = await writeJson<NowPayload>("/api/site-admin/now", "POST", {
@@ -1018,6 +1135,7 @@ export function SiteAdminWebConsole({
     if (!confirmed) return;
     setSaving(true);
     setError("");
+    setWarning("");
     setNotice("");
     try {
       const next = await writeJson<NowPayload>("/api/site-admin/now", "POST", {
@@ -1035,11 +1153,10 @@ export function SiteAdminWebConsole({
     }
   }
 
-  const release = summary?.release;
-  const source = summary?.source;
+  const resolvedCreateSlug = createSlug.trim() || slugFromTitle(createTitle);
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} data-area={area}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Site Admin</p>
@@ -1063,6 +1180,7 @@ export function SiteAdminWebConsole({
       </section>
 
       {notice ? <StatusNotice tone="success">{notice}</StatusNotice> : null}
+      {warning ? <StatusNotice tone="warning">{warning}</StatusNotice> : null}
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
 
       <nav className={styles.adminTabs} aria-label="Site Admin sections">
@@ -1216,7 +1334,7 @@ export function SiteAdminWebConsole({
       ) : null}
 
       {area === "content" ? (
-        <section className={styles.workspaceGrid}>
+        <section className={`${styles.workspaceGrid} ${styles.contentWorkspace}`}>
           <Card className={styles.sidePanel}>
             <div className={styles.panelHeader}>
               <div>
@@ -1273,7 +1391,7 @@ export function SiteAdminWebConsole({
           </Card>
 
           {contentMode === "create" ? (
-            <Card className={styles.createPanel}>
+            <Card className={`${styles.editorPanel} ${styles.createPanel}`}>
               <div className={styles.panelHeader}>
                 <div>
                   <p className={styles.cardLabel}>New content</p>
@@ -1306,15 +1424,6 @@ export function SiteAdminWebConsole({
                 ))}
               </div>
               <label className={styles.fieldLabel}>
-                Slug
-                <input
-                  className={styles.textField}
-                  value={createSlug}
-                  onChange={(event) => setCreateSlug(event.target.value)}
-                  placeholder={createKind === "posts" ? "new-post-slug" : "new-page"}
-                />
-              </label>
-              <label className={styles.fieldLabel}>
                 Title
                 <input
                   className={styles.textField}
@@ -1322,38 +1431,61 @@ export function SiteAdminWebConsole({
                   onChange={(event) => setCreateTitle(event.target.value)}
                 />
               </label>
-              {createKind === "posts" ? (
-                <label className={styles.fieldLabel}>
-                  Date
-                  <input
-                    className={styles.textField}
-                    type="date"
-                    value={createDate}
-                    onChange={(event) => setCreateDate(event.target.value)}
-                  />
-                </label>
-              ) : null}
-              <label className={styles.fieldLabel}>
-                Description
-                <input
-                  className={styles.textField}
-                  value={createDescription}
-                  onChange={(event) => setCreateDescription(event.target.value)}
-                  placeholder="Optional"
+              <details className={styles.editorDetails}>
+                <summary>
+                  <span>Metadata</span>
+                  <small>
+                    {resolvedCreateSlug}
+                    {createKind === "posts" ? ` · ${createDate}` : ""}
+                    {createDescription.trim() ? " · Description set" : ""}
+                  </small>
+                </summary>
+                <div className={styles.editorDetailsBody}>
+                  <label className={styles.fieldLabel}>
+                    Slug
+                    <input
+                      className={styles.textField}
+                      value={createSlug}
+                      onChange={(event) => setCreateSlug(event.target.value)}
+                      placeholder={resolvedCreateSlug}
+                    />
+                  </label>
+                  {createKind === "posts" ? (
+                    <label className={styles.fieldLabel}>
+                      Date
+                      <input
+                        className={styles.textField}
+                        type="date"
+                        value={createDate}
+                        onChange={(event) => setCreateDate(event.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  <label className={styles.fieldLabel}>
+                    Description
+                    <input
+                      className={styles.textField}
+                      value={createDescription}
+                      onChange={(event) => setCreateDescription(event.target.value)}
+                      placeholder="Optional"
+                    />
+                  </label>
+                </div>
+              </details>
+              <div className={styles.createEditorShell}>
+                <SiteAdminMarkdownEditor
+                  label="New content body"
+                  value={createBody}
+                  onChange={setCreateBody}
+                  minHeight={460}
+                  size="large"
+                  disabled={saving}
                 />
-              </label>
-              <SiteAdminMarkdownEditor
-                label="New content body"
-                value={createBody}
-                onChange={setCreateBody}
-                minHeight={420}
-                size="large"
-                disabled={saving}
-              />
+              </div>
               <Button
                 onClick={() => void createContent()}
                 tone="accent"
-                disabled={saving || !createSlug.trim()}
+                disabled={saving || !resolvedCreateSlug}
               >
                 Create {createKind === "posts" ? "post" : "page"}
               </Button>
@@ -1394,18 +1526,19 @@ export function SiteAdminWebConsole({
                   </div>
                 </div>
                 <div className={styles.editorStatusBar}>
-                  <span className={styles.statusPill} data-state={selectedDirty ? "smart-release" : "noop"}>
-                    {selectedDirty ? "Unsaved changes" : "Saved draft"}
+                  <span className={styles.statusPill} data-state={draftStatusState}>
+                    {draftStatusLabel}
                   </span>
                   {selectedIsStructured ? (
                     <span className={styles.statusPill} data-state={contentForm.draft ? "smart-release" : "noop"}>
                       {contentForm.draft ? "Draft" : "Public"}
                     </span>
                   ) : null}
+                  <span className={styles.statusPill} data-state={liveStatusState}>
+                    {liveStatusLabel}
+                  </span>
                   <span className={styles.editorHint}>
-                    {localAutosaveAt
-                      ? `Local autosaved ${formatWhen(localAutosaveAt)}`
-                      : release?.headline || "Release status unavailable"}
+                    {editorStatusHint}
                   </span>
                   <div className={styles.editorStatusActions}>
                     {localDraftSnapshot ? (
@@ -1432,42 +1565,18 @@ export function SiteAdminWebConsole({
                           releaseSaving ||
                           selectedDirty ||
                           release?.recommendedAction.kind === "noop" ||
+                          release?.recommendedAction.kind === "refresh" ||
                           !release?.recommendedAction
                         }
                       >
-                        {releaseSaving
-                          ? "Starting"
-                          : release?.recommendedAction.kind === "noop"
-                            ? "Live current"
-                            : "Publish draft"}
+                        {publishButtonLabel}
                       </Button>
                     )}
                   </div>
                 </div>
-                {isDeleteSupported(selected.kind) ? (
-                  <div className={styles.slugMoveRow}>
-                    <label className={styles.fieldLabel}>
-                      Slug
-                      <input
-                        className={styles.textField}
-                        value={slugDraft}
-                        onChange={(event) => setSlugDraft(event.target.value)}
-                        spellCheck={false}
-                      />
-                    </label>
-                    <Button
-                      onClick={() => void moveSelectedContent()}
-                      variant="subtle"
-                      size="sm"
-                      disabled={saving || selectedDirty || !slugDirty}
-                    >
-                      Rename
-                    </Button>
-                  </div>
-                ) : null}
                 {selectedIsStructured ? (
                   <>
-                    <div className={styles.editorMetaGrid}>
+                    <div className={styles.editorPrimaryGrid}>
                       <label className={styles.fieldLabel}>
                         Title
                         <input
@@ -1526,90 +1635,126 @@ export function SiteAdminWebConsole({
                         Draft
                       </label>
                     </div>
-                    <label className={styles.fieldLabel}>
-                      Description
-                      <input
-                        className={styles.textField}
-                        value={contentForm.description}
-                        onChange={(event) =>
+                    <details className={styles.editorDetails}>
+                      <summary>
+                        <span>Metadata</span>
+                        <small>
+                          {slugDraft || selected.id}
+                          {contentForm.description.trim() ? " · Description set" : ""}
+                        </small>
+                      </summary>
+                      <div className={styles.editorDetailsBody}>
+                        {isDeleteSupported(selected.kind) ? (
+                          <div className={styles.slugMoveRow}>
+                            <label className={styles.fieldLabel}>
+                              Slug
+                              <input
+                                className={styles.textField}
+                                value={slugDraft}
+                                onChange={(event) => setSlugDraft(event.target.value)}
+                                spellCheck={false}
+                              />
+                            </label>
+                            <Button
+                              onClick={() => void moveSelectedContent()}
+                              variant="subtle"
+                              size="sm"
+                              disabled={saving || selectedDirty || !slugDirty}
+                            >
+                              Rename
+                            </Button>
+                          </div>
+                        ) : null}
+                        <label className={styles.fieldLabel}>
+                          Description
+                          <input
+                            className={styles.textField}
+                            value={contentForm.description}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                description: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </label>
+                        {selected.kind === "posts" ? (
+                          <div className={styles.editorMetaGrid}>
+                            <label className={styles.fieldLabel}>
+                              Tags
+                              <input
+                                className={styles.textField}
+                                value={contentForm.tags}
+                                onChange={(event) =>
+                                  setContentForm((current) => ({
+                                    ...current,
+                                    tags: event.target.value,
+                                  }))
+                                }
+                                placeholder="Comma separated"
+                              />
+                            </label>
+                            <label className={styles.fieldLabel}>
+                              Cover
+                              <input
+                                className={styles.textField}
+                                value={contentForm.cover}
+                                onChange={(event) =>
+                                  setContentForm((current) => ({
+                                    ...current,
+                                    cover: event.target.value,
+                                  }))
+                                }
+                                placeholder="Optional"
+                              />
+                            </label>
+                            <label className={styles.fieldLabel}>
+                              OG image
+                              <input
+                                className={styles.textField}
+                                value={contentForm.ogImage}
+                                onChange={(event) =>
+                                  setContentForm((current) => ({
+                                    ...current,
+                                    ogImage: event.target.value,
+                                  }))
+                                }
+                                placeholder="Optional"
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                      </div>
+                    </details>
+                    <div className={styles.editorBodyShell}>
+                      <SiteAdminMarkdownEditor
+                        label={`${selected.title} body`}
+                        value={contentForm.body}
+                        onChange={(body) =>
                           setContentForm((current) => ({
                             ...current,
-                            description: event.target.value,
+                            body,
                           }))
                         }
-                        placeholder="Optional"
+                        minHeight={560}
+                        size="large"
+                        disabled={saving}
+                        previewLayout="split"
                       />
-                    </label>
-                    {selected.kind === "posts" ? (
-                      <div className={styles.editorMetaGrid}>
-                        <label className={styles.fieldLabel}>
-                          Tags
-                          <input
-                            className={styles.textField}
-                            value={contentForm.tags}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                tags: event.target.value,
-                              }))
-                            }
-                            placeholder="Comma separated"
-                          />
-                        </label>
-                        <label className={styles.fieldLabel}>
-                          Cover
-                          <input
-                            className={styles.textField}
-                            value={contentForm.cover}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                cover: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
-                        </label>
-                        <label className={styles.fieldLabel}>
-                          OG image
-                          <input
-                            className={styles.textField}
-                            value={contentForm.ogImage}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                ogImage: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
-                        </label>
-                      </div>
-                    ) : null}
-                    <SiteAdminMarkdownEditor
-                      label={`${selected.title} body`}
-                      value={contentForm.body}
-                      onChange={(body) =>
-                        setContentForm((current) => ({
-                          ...current,
-                          body,
-                        }))
-                      }
-                      minHeight={480}
-                      size="large"
-                      disabled={saving}
-                      previewLayout="split"
-                    />
+                    </div>
                   </>
                 ) : (
-                  <SiteAdminMarkdownEditor
-                    label={`${selected.title} MDX source`}
-                    value={sourceDraft}
-                    onChange={setSourceDraft}
-                    minHeight={520}
-                    size="large"
-                    disabled={saving}
-                  />
+                  <div className={styles.editorBodyShell}>
+                    <SiteAdminMarkdownEditor
+                      label={`${selected.title} MDX source`}
+                      value={sourceDraft}
+                      onChange={setSourceDraft}
+                      minHeight={560}
+                      size="large"
+                      disabled={saving}
+                    />
+                  </div>
                 )}
                 <p className={styles.editorHint}>
                   Version {shortSha(selected.version)}. Saves use optimistic conflict

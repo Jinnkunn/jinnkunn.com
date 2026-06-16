@@ -13,6 +13,10 @@
   --scrollbar-width: 0px;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Global text selection highlight: warm-neutral to match link accent styling. */
 ::selection {
   background: var(--ds-selection-bg);
