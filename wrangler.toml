@@ -75,7 +75,7 @@ SITE_ADMIN_AUTH_MODE = "legacy"
 CF_ACCESS_TEAM_DOMAIN = "jinnkunn.cloudflareaccess.com"
 CF_ACCESS_AUD = "f30a77b414f5f37b27d6d3ec1acc4fddfff100810c7a1bd9933fe073f3a65cb2"
 SITE_ADMIN_EMAILS = "i@jinkunchen.com"
-SITE_ADMIN_SERVICE_TOKENS = "REDACTED_ROTATED_SERVICE_TOKEN"
+SITE_ADMIN_SERVICE_TOKENS = "682ef52d971b67212c9a62f87dfdead8.access"
 
 # Production-promotion endpoint config. The "Promote to Production"
 # button on the Tauri workspace lives on the staging worker, so it
@@ -139,7 +139,7 @@ STATIC_SHELL_OVERLAY = "1"
 CF_ACCESS_TEAM_DOMAIN = "jinnkunn.cloudflareaccess.com"
 CF_ACCESS_AUD = "7ea9df639c8025187658f2020e826a5db0dccd56366f209f7b5f02860802d383"
 SITE_ADMIN_EMAILS = "i@jinkunchen.com"
-SITE_ADMIN_SERVICE_TOKENS = "REDACTED_ROTATED_SERVICE_TOKEN"
+SITE_ADMIN_SERVICE_TOKENS = "682ef52d971b67212c9a62f87dfdead8.access"
 
 [[env.production.r2_buckets]]
 binding = "SITE_ASSETS"
