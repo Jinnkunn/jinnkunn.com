@@ -4,6 +4,10 @@
   padding: clamp(36px, 7vh, 72px) 0 clamp(48px, 9vh, 96px);
 }
 
+.shell[data-area="content"] {
+  width: min(1520px, calc(100% - 40px));
+}
+
 .shell,
 .shell * {
   box-sizing: border-box;
@@ -266,8 +270,8 @@
 
 .workspaceGrid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.68fr) minmax(360px, 1.6fr) minmax(280px, 0.82fr);
-  gap: 14px;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 18px;
   margin-top: 18px;
   align-items: start;
 }
@@ -293,9 +297,13 @@
 
 .editorPanel {
   display: flex;
-  min-height: 680px;
+  min-height: 720px;
   flex-direction: column;
   gap: 14px;
+}
+
+.createPanel {
+  max-width: 680px;
 }
 
 .panelHeader {
@@ -527,7 +535,7 @@
 
 .markdownSplit {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(520px, 1.1fr) minmax(360px, 0.9fr);
   min-width: 0;
 }
 
@@ -823,6 +831,17 @@
   max-width: 180px;
 }
 
+@media (max-width: 1380px) {
+  .markdownSplit {
+    grid-template-columns: 1fr;
+  }
+
+  .markdownSplit .markdownTextarea {
+    border-right: 0;
+    border-bottom: 1px solid var(--ds-border-subtle);
+  }
+}
+
 @media (max-width: 1180px) {
   .summaryGrid,
   .footerGrid {
@@ -847,14 +866,6 @@
     min-height: 560px;
   }
 
-  .markdownSplit {
-    grid-template-columns: 1fr;
-  }
-
-  .markdownSplit .markdownTextarea {
-    border-right: 0;
-    border-bottom: 1px solid var(--ds-border-subtle);
-  }
 }
 
 @media (max-width: 700px) {

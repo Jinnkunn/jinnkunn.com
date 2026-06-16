@@ -31,6 +31,11 @@ test("site-admin browser gateway renders a dashboard instead of a placeholder", 
 test("site-admin browser console keeps form controls inside panels", () => {
   const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
   assert.match(css, /\.shell,\n\.shell \* \{\n  box-sizing: border-box;/);
+  assert.match(css, /\.shell\[data-area="content"\]/);
+  assert.match(
+    css,
+    /\.workspaceGrid[\s\S]*grid-template-columns: minmax\(260px, 320px\) minmax\(0, 1fr\);/,
+  );
   assert.match(css, /@media \(max-width: 1180px\)/);
   assert.match(css, /\.workspaceGrid[\s\S]*grid-template-columns: 1fr;/);
 });
@@ -49,6 +54,7 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("moveSelectedContent"));
   assert.ok(source.includes("localDraftKey"));
   assert.ok(source.includes("releaseWatchUntil"));
+  assert.ok(source.includes("beginCreate"));
   assert.ok(source.includes('previewLayout="split"'));
   assert.ok(editor.includes("Source"));
   assert.ok(editor.includes("Preview"));

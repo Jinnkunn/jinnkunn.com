@@ -839,6 +839,23 @@ export function SiteAdminWebConsole({
     setNotice("Local autosave restored.");
   }
 
+  function beginCreate(nextKind?: "posts" | "pages") {
+    const resolvedKind = nextKind ?? (kind === "pages" ? "pages" : "posts");
+    setSelected(null);
+    setSourceDraft("");
+    setContentForm(EMPTY_CONTENT_FORM);
+    setContentFormBaseline("");
+    setSlugDraft("");
+    setLocalAutosaveAt("");
+    setLocalDraftSnapshot(null);
+    setCreateKind(resolvedKind);
+    setCreateSlug("");
+    setCreateTitle(resolvedKind === "posts" ? "Untitled Post" : "Untitled Page");
+    setCreateDescription("");
+    setCreateDate(todayInHalifax());
+    setCreateBody(resolvedKind === "posts" ? "Write the post here." : "Write the page here.");
+  }
+
   async function createContent() {
     const slug = createSlug.trim();
     if (!slug) {
@@ -1017,7 +1034,7 @@ export function SiteAdminWebConsole({
   const source = summary?.source;
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} data-area={area}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Site Admin</p>
@@ -1201,6 +1218,13 @@ export function SiteAdminWebConsole({
                 <p className={styles.cardLabel}>Content</p>
                 <h2 className={styles.panelTitle}>{titleForKind(kind)}</h2>
               </div>
+              <Button
+                onClick={() => beginCreate(kind === "pages" ? "pages" : "posts")}
+                variant="subtle"
+                size="sm"
+              >
+                New
+              </Button>
             </div>
             <div className={styles.segmented} role="group" aria-label="Content type">
               {(["posts", "pages", "components"] as EditableKind[]).map((value) => (
@@ -1242,9 +1266,8 @@ export function SiteAdminWebConsole({
             </div>
           </Card>
 
-          <Card className={styles.editorPanel}>
-            {selected ? (
-              <>
+          {selected ? (
+            <Card className={styles.editorPanel}>
                 <div className={styles.panelHeader}>
                   <div>
                     <p className={styles.cardLabel}>{titleForKind(selected.kind)}</p>
@@ -1500,19 +1523,9 @@ export function SiteAdminWebConsole({
                   Version {shortSha(selected.version)}. Saves use optimistic conflict
                   protection; reload if another client changed this file.
                 </p>
-              </>
-            ) : (
-              <div className={styles.emptyEditor}>
-                <p className={styles.cardLabel}>Editor</p>
-                <h2 className={styles.panelTitle}>Select an item</h2>
-                <p className={styles.cardText}>
-                  Choose a post, page, or component from the list to edit raw MDX.
-                </p>
-              </div>
-            )}
-          </Card>
-
-          <Card className={styles.createPanel}>
+            </Card>
+          ) : (
+            <Card className={styles.createPanel}>
             <p className={styles.cardLabel}>New content</p>
             <div className={styles.segmented} role="group" aria-label="New content type">
               {(["posts", "pages"] as const).map((value) => (
@@ -1582,7 +1595,8 @@ export function SiteAdminWebConsole({
             >
               Create {createKind === "posts" ? "post" : "page"}
             </Button>
-          </Card>
+            </Card>
+          )}
         </section>
       ) : null}
 
