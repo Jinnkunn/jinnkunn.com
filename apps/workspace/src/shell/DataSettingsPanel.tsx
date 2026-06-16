@@ -135,7 +135,7 @@ export function DataSettingsPanel({
       <div className="settings-data-note">
         <ShieldCheck absoluteStrokeWidth size={16} strokeWidth={1.8} />
         <span>
-          Backups include local notes, todos, projects, contacts, settings, and debug-mode secure values stored in
+          Backups include workspace calendars, site-admin sync data, settings, and debug-mode secure values stored in
           workspace.db.
         </span>
       </div>

@@ -2,7 +2,7 @@
 //!
 //! Surface logic lives in per-domain modules:
 //! - `calendar` (EventKit + publish rules)
-//! - `local_calendar`, `notes`, `todos`, `contacts` — local-first surfaces
+//! - `local_calendar` — workspace-owned calendar events
 //! - `sync`, `outbox` — D1 mirror + offline write queue
 //!
 //! Shell concerns split out for readability:
@@ -11,53 +11,21 @@
 //! - `desktop_shell` — tray, menubar, hotkey, traffic-lights, vibrancy
 
 mod calendar;
-mod contacts;
 mod desktop_shell;
 mod local_calendar;
 mod local_db;
 mod mcp;
-mod notes;
 mod outbox;
-mod projects;
 mod secrets;
 mod site_admin;
 mod sync;
-mod todos;
 
 #[cfg_attr(
     any(target_os = "ios", target_os = "android"),
     tauri::mobile_entry_point
 )]
 pub fn run() {
-    let builder = tauri::Builder::default()
-        // Custom URI scheme so the BlocksEditor can render `note-asset://`
-        // URLs that point at the local notes-assets dir. The `notes_save_asset`
-        // command writes files there; this handler reads them back. Path
-        // validation lives in `notes::resolve_asset_path` to keep the
-        // traversal-prevention rules co-located with the writer.
-        .register_uri_scheme_protocol("note-asset", |ctx, request| {
-            let app = ctx.app_handle();
-            let raw_path = request.uri().path();
-            let name = raw_path.trim_start_matches('/');
-            let Some(file_path) = notes::resolve_asset_path(app, name) else {
-                return tauri::http::Response::builder()
-                    .status(404)
-                    .body(b"not found".to_vec())
-                    .unwrap_or_else(|_| tauri::http::Response::new(b"error".to_vec()));
-            };
-            match std::fs::read(&file_path) {
-                Ok(bytes) => tauri::http::Response::builder()
-                    .status(200)
-                    .header("Content-Type", notes::asset_content_type(&file_path))
-                    .header("Cache-Control", "public, max-age=31536000, immutable")
-                    .body(bytes)
-                    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new())),
-                Err(_) => tauri::http::Response::builder()
-                    .status(500)
-                    .body(b"read error".to_vec())
-                    .unwrap_or_else(|_| tauri::http::Response::new(b"error".to_vec())),
-            }
-        });
+    let builder = tauri::Builder::default();
 
     let builder = desktop_shell::install_desktop_shell_plugins(builder)
         // Native OS notifications. Used by the JS side to fire
@@ -121,49 +89,6 @@ pub fn run() {
             local_calendar::local_calendar_update_event,
             local_calendar::local_calendar_archive_event,
             local_calendar::local_calendar_unarchive_event,
-            notes::notes_list,
-            notes::notes_list_archived,
-            notes::notes_get,
-            notes::notes_create,
-            notes::notes_update,
-            notes::notes_move,
-            notes::notes_archive,
-            notes::notes_unarchive,
-            notes::notes_search,
-            notes::notes_save_asset,
-            projects::projects_list,
-            projects::projects_get,
-            projects::projects_create,
-            projects::projects_update,
-            projects::projects_archive,
-            projects::projects_unarchive,
-            projects::projects_move,
-            projects::project_links_list,
-            projects::project_links_create,
-            projects::project_links_delete,
-            todos::todos_list,
-            todos::todos_list_by_project,
-            todos::todos_list_by_note_source,
-            todos::todos_list_window,
-            todos::todos_create,
-            todos::todos_update,
-            todos::todos_archive,
-            todos::todos_clear_completed,
-            contacts::contacts_list,
-            contacts::contacts_list_archived,
-            contacts::contacts_get,
-            contacts::contacts_create,
-            contacts::contacts_update,
-            contacts::contacts_archive,
-            contacts::contacts_unarchive,
-            contacts::contacts_search,
-            contacts::contacts_upcoming_birthdays,
-            contacts::contact_interactions_list,
-            contacts::contact_interactions_create,
-            contacts::contact_interactions_update,
-            contacts::contact_interactions_delete,
-            contacts::contacts_derive_calendar_interactions,
-            contacts::contacts_list_backlinks,
             // Phase 5a — local SQLite mirror of D1 content_files. Sync
             // pulls the delta on demand; the read commands serve the
             // editor without a network round-trip.

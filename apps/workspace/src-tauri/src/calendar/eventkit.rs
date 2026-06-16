@@ -22,6 +22,7 @@ use objc2_foundation::{
     NSArray, NSDate, NSError, NSNotification, NSNotificationCenter, NSString, NSURL,
 };
 use tokio::sync::oneshot;
+use tokio::time::{timeout, Duration};
 
 use crate::calendar::types::{
     Calendar, CalendarAuthorizationStatus, CalendarEvent, CalendarSource, CalendarSourceType,
@@ -34,6 +35,31 @@ use crate::calendar::types::{
 // Apple Calendar.app's authoring surface where the operator gets a
 // proper RRULE editor.
 const MAX_RECURRENCE_COUNT: u32 = 200;
+
+struct PendingEventStore(usize);
+
+impl PendingEventStore {
+    fn keep_alive(store: Retained<EKEventStore>) -> Self {
+        Self(Retained::into_raw(store) as usize)
+    }
+}
+
+impl Drop for PendingEventStore {
+    fn drop(&mut self) {
+        if self.0 == 0 {
+            return;
+        }
+        let store_ptr = self.0 as *mut EKEventStore;
+        self.0 = 0;
+        // SAFETY: `store_ptr` came from `Retained::into_raw` in
+        // `keep_alive`, so reconstructing the Retained here releases
+        // exactly the +1 retain we intentionally held across the async
+        // authorization callback.
+        unsafe {
+            drop(Retained::from_raw(store_ptr));
+        }
+    }
+}
 
 fn map_authorization_status(raw: EKAuthorizationStatus) -> CalendarAuthorizationStatus {
     // EKAuthorizationStatus is a struct-wrapped NSInteger, so we pattern
@@ -62,11 +88,16 @@ pub fn authorization_status() -> CalendarAuthorizationStatus {
 /// status. The completion block fires on a background queue, so we
 /// bridge it through a oneshot channel into the async runtime.
 pub async fn request_access() -> Result<CalendarAuthorizationStatus, String> {
+    match authorization_status() {
+        CalendarAuthorizationStatus::NotDetermined => {}
+        status => return Ok(status),
+    }
+
     // `Retained<EKEventStore>` is `!Send`, so we must finish all objc
     // interaction *before* the first `.await` — otherwise the resulting
     // future is `!Send` and Tauri rejects it. We dispatch the request
-    // inside a non-async scope and only carry the channel receiver out.
-    let rx = {
+    // inside a non-async scope and carry only Send state across await.
+    let (rx, _pending_store) = {
         let (tx, rx) = oneshot::channel::<Result<bool, String>>();
 
         // SAFETY: `EKEventStore::new()` is alloc+init with no arguments —
@@ -99,17 +130,20 @@ pub async fn request_access() -> Result<CalendarAuthorizationStatus, String> {
 
         // SAFETY: the API expects a `*mut DynBlock<...>`. RcBlock derefs
         // to DynBlock, and EventKit's `_Block_copy` retains its own
-        // reference, so dropping `block`/`store` at the end of this
-        // scope is safe — EventKit kept what it needs.
+        // reference. We keep the EKEventStore alive until the oneshot
+        // resolves; EventKit documentation recommends long-lived stores,
+        // and releasing it immediately can prevent the prompt callback
+        // from ever arriving on some macOS builds.
         unsafe {
             store.requestFullAccessToEventsWithCompletion(&*block as *const _ as *mut _);
         }
 
-        rx
+        (rx, PendingEventStore::keep_alive(store))
     };
 
-    let granted = rx
+    let granted = timeout(Duration::from_secs(8), rx)
         .await
+        .map_err(|_| "Calendar access request timed out".to_string())?
         .map_err(|_| "Calendar access request was cancelled".to_string())??;
 
     if !granted {

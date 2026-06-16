@@ -1,17 +1,12 @@
 {
   "description": "Tauri IPC command manifest. Keep in sync with src/lib.rs generate_handler and TS module APIs.",
   "generatedFrom": "apps/workspace/src-tauri/src/lib.rs",
-  "commandCount": 102,
+  "commandCount": 59,
   "groupMetadata": {
     "calendar": {
       "purpose": "EventKit account, calendar, event, and public publish-rule bridge.",
       "rustModule": "apps/workspace/src-tauri/src/calendar",
       "tsApi": "apps/workspace/src/surfaces/calendar/api.ts"
-    },
-    "contacts": {
-      "purpose": "Local-first personal CRM contacts, interactions, birthdays, and backlinks.",
-      "rustModule": "apps/workspace/src-tauri/src/contacts.rs",
-      "tsApi": "apps/workspace/src/modules/contacts/api.ts"
     },
     "desktop_shell": {
       "purpose": "Native shell integration: menus, tray, windows, context menus, and external URLs.",
@@ -33,20 +28,10 @@
       "rustModule": "apps/workspace/src-tauri/src/mcp.rs",
       "tsApi": "apps/workspace/src/lib/tauri.ts"
     },
-    "notes": {
-      "purpose": "Local-first notes tree, search, archive, and asset storage.",
-      "rustModule": "apps/workspace/src-tauri/src/notes.rs",
-      "tsApi": "apps/workspace/src/modules/notes/api.ts"
-    },
     "outbox": {
       "purpose": "Offline write queue for Site Admin sync recovery.",
       "rustModule": "apps/workspace/src-tauri/src/outbox.rs",
       "tsApi": "apps/workspace/src/modules/site-admin/tauri.ts"
-    },
-    "projects": {
-      "purpose": "Local-first project context, ordering, archive, and linked resources.",
-      "rustModule": "apps/workspace/src-tauri/src/projects.rs",
-      "tsApi": "apps/workspace/src/modules/projects/api.ts"
     },
     "secrets": {
       "purpose": "Credential storage bridge with debug local-db backend and production secure backend.",
@@ -62,11 +47,6 @@
       "purpose": "D1 content mirror pull plus local file reads and sync status.",
       "rustModule": "apps/workspace/src-tauri/src/sync.rs",
       "tsApi": "apps/workspace/src/modules/site-admin/tauri.ts"
-    },
-    "todos": {
-      "purpose": "Local-first todos, project/note associations, scheduling, and completion.",
-      "rustModule": "apps/workspace/src-tauri/src/todos.rs",
-      "tsApi": "apps/workspace/src/modules/todos/api.ts"
     }
   },
   "groups": {
@@ -79,23 +59,6 @@
       "calendar_publish_rules_load",
       "calendar_publish_rules_save",
       "calendar_request_access"
-    ],
-    "contacts": [
-      "contact_interactions_create",
-      "contact_interactions_delete",
-      "contact_interactions_list",
-      "contact_interactions_update",
-      "contacts_archive",
-      "contacts_create",
-      "contacts_derive_calendar_interactions",
-      "contacts_get",
-      "contacts_list",
-      "contacts_list_archived",
-      "contacts_list_backlinks",
-      "contacts_search",
-      "contacts_unarchive",
-      "contacts_upcoming_birthdays",
-      "contacts_update"
     ],
     "desktop_shell": [
       "debug_set_traffic_lights",
@@ -134,36 +97,12 @@
       "workspace_mcp_settings_update",
       "workspace_mcp_status"
     ],
-    "notes": [
-      "notes_archive",
-      "notes_create",
-      "notes_get",
-      "notes_list",
-      "notes_list_archived",
-      "notes_move",
-      "notes_save_asset",
-      "notes_search",
-      "notes_unarchive",
-      "notes_update"
-    ],
     "outbox": [
       "outbox_drain",
       "outbox_enqueue",
       "outbox_list",
       "outbox_remove",
       "outbox_status"
-    ],
-    "projects": [
-      "project_links_create",
-      "project_links_delete",
-      "project_links_list",
-      "projects_archive",
-      "projects_create",
-      "projects_get",
-      "projects_list",
-      "projects_move",
-      "projects_unarchive",
-      "projects_update"
     ],
     "secrets": [
       "secure_store_backend",
@@ -187,16 +126,6 @@
       "local_list_files",
       "local_sync_status",
       "sync_pull"
-    ],
-    "todos": [
-      "todos_archive",
-      "todos_clear_completed",
-      "todos_create",
-      "todos_list",
-      "todos_list_by_note_source",
-      "todos_list_by_project",
-      "todos_list_window",
-      "todos_update"
     ]
   }
 }

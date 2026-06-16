@@ -241,9 +241,9 @@
    * The app chrome is split into an independent macOS titlebar and an
    * integrated two-column sidebar below it. */
   --workspace-titlebar-height: 42px;
-  --workspace-sidebar-width: 244px;
+  --workspace-sidebar-width: 224px;
   --workspace-shell-gap: 0px;
-  --workspace-sidebar-rail-width: 44px;
+  --workspace-sidebar-rail-width: 40px;
   --workspace-sidebar-collapsed-width: var(--workspace-sidebar-rail-width);
   --workspace-sidebar-top-overlap: 0px;
   --workspace-traffic-light-strip-height: var(--workspace-titlebar-height);

@@ -1,11 +1,7 @@
 import { WorkspaceIcon } from "../surfaces/icons";
 import type { SurfaceDefinition } from "../surfaces/types";
 import { CALENDAR_MODULE } from "./calendar";
-import { CONTACTS_MODULE } from "./contacts";
-import { NOTES_MODULE } from "./notes";
-import { PROJECTS_MODULE } from "./projects";
 import { SITE_ADMIN_MODULE } from "./site-admin";
-import { TODOS_MODULE } from "./todos";
 import type {
   DashboardActionContribution,
   WorkspaceCommandContribution,
@@ -18,7 +14,7 @@ function WorkspaceSurfacePlaceholder() {
 
 export const WORKSPACE_CORE_SURFACE: SurfaceDefinition = {
   id: "workspace",
-  title: "Workspace",
+  title: "Site Console",
   description: "Home",
   icon: <WorkspaceIcon />,
   Component: WorkspaceSurfacePlaceholder,
@@ -27,10 +23,6 @@ export const WORKSPACE_CORE_SURFACE: SurfaceDefinition = {
 export const WORKSPACE_MODULES: readonly WorkspaceModuleDefinition[] = [
   SITE_ADMIN_MODULE,
   CALENDAR_MODULE,
-  NOTES_MODULE,
-  TODOS_MODULE,
-  PROJECTS_MODULE,
-  CONTACTS_MODULE,
 ];
 
 export const MODULE_SURFACES: readonly SurfaceDefinition[] = WORKSPACE_MODULES.map(
@@ -77,9 +69,8 @@ export interface ModuleEnablementResolution {
 
 /** Reconcile a persisted enabled-modules list against the current
  * module registry. Used at app boot so net-new first-party modules
- * (e.g. Contacts when it first ships) appear without forcing the user
- * into Settings, while still respecting prior "I disabled this" choices
- * for previously-known modules.
+ * appear without forcing the user into Settings, while still respecting
+ * prior "I disabled this" choices for previously-known modules.
  *
  * Inputs:
  *   - `persisted`: the saved `enabled` list, or `null` on first install.

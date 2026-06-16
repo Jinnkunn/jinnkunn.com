@@ -479,10 +479,12 @@ test("tauri-ui-engineering: workspace surfaces use adaptive app primitives", asy
   assert.match(styles, /\.sidebar-context-pane,[\s\S]*\.sidebar-footer\s*\{[\s\S]*display: none;/);
 });
 
-test("tauri-ui-engineering: Notes is a local surface using the shared editor runtime", async () => {
-  // Surface registration moved into per-module manifests; surfaces/registry.tsx
-  // is now a thin re-export of `ALL_WORKSPACE_SURFACES` from modules/registry.
-  const registry = await read("apps/workspace/src/modules/notes/index.tsx");
+test("tauri-ui-engineering: retired Notes source stays isolated from the slim Tauri shell", async () => {
+  // The Notes implementation remains in-tree for historical data and
+  // future restoration experiments, but the slim Tauri shell must not
+  // register it as a surface or native IPC module.
+  const notesModule = await read("apps/workspace/src/modules/notes/index.tsx");
+  const centralRegistry = await read("apps/workspace/src/modules/registry.tsx");
   const app = await read("apps/workspace/src/App.tsx");
   const surfaceNavContext = await read(
     "apps/workspace/src/shell/surface-nav-context.tsx",
@@ -511,9 +513,11 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   const localDb = await read("apps/workspace/src-tauri/src/local_db.rs");
   const styles = await readWorkspaceCssBundle();
 
-  assert.match(registry, /id: "notes"/);
-  assert.match(registry, /NotesSurface/);
-  assert.match(registry, /NotesIcon/);
+  assert.match(notesModule, /id: "notes"/);
+  assert.match(notesModule, /NotesSurface/);
+  assert.match(notesModule, /NotesIcon/);
+  assert.doesNotMatch(centralRegistry, /NOTES_MODULE/);
+  assert.doesNotMatch(centralRegistry, /from "\.\/notes"/);
   assert.match(notesSurface, /WorkspaceEditorRuntimeProvider/);
   assert.match(notesSurface, /BlocksEditor/);
   assert.match(notesSurface, /notes-editor__title workspace-editor-title-input/);
@@ -598,9 +602,9 @@ test("tauri-ui-engineering: Notes is a local surface using the shared editor run
   assert.match(tauriWrappers, /export function notesList/);
   assert.match(tauriWrappers, /export function notesMove/);
   assert.match(tauriWrappers, /export function notesSearch/);
-  assert.match(tauriEntrypoint, /mod notes;/);
-  assert.match(tauriEntrypoint, /notes::notes_list/);
-  assert.match(tauriEntrypoint, /notes::notes_archive/);
+  assert.doesNotMatch(tauriEntrypoint, /mod notes;/);
+  assert.doesNotMatch(tauriEntrypoint, /notes::notes_list/);
+  assert.doesNotMatch(tauriEntrypoint, /notes::notes_archive/);
   assert.match(localDb, /CREATE TABLE IF NOT EXISTS notes/);
   assert.match(localDb, /idx_notes_parent_order/);
   assert.match(notesRs, /cannot move a note inside one of its descendants/);
@@ -722,7 +726,7 @@ test("tauri-ui-engineering: notes and recent icons use the shared icon system", 
   assert.match(notesTree, /NoteIconGlyph/);
   assert.match(iconPicker, /isNoteIconToken/);
   assert.match(sidebar, /Clock3/);
-  assert.match(commandPalette, /NOTE_ICON_INBOX/);
+  assert.doesNotMatch(commandPalette, /NOTE_ICON_INBOX/);
   assert.match(localDb, /notes_icon_tokens_v1/);
   assert.match(blockEditor, /type BlockEditorCommandIcon = string \| LucideIcon/);
   assert.match(blockEditor, /absoluteStrokeWidth/);

@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import {
   cachedResource,
+  invalidateCachedResource,
   invalidateCachedResourcePrefix,
 } from "../../modules/resourceCache";
 import type {
@@ -20,7 +21,10 @@ import type {
 
 /** Read the current authorization without prompting. Returns
  * `notDetermined` on first launch, before `requestAccess` is called. */
-export function calendarAuthorizationStatus(): Promise<CalendarAuthorizationStatus> {
+export function calendarAuthorizationStatus(options?: {
+  force?: boolean;
+}): Promise<CalendarAuthorizationStatus> {
+  if (options?.force) invalidateCachedResource("calendar:auth");
   return cachedResource("calendar:auth", () =>
     invoke("calendar_authorization_status"),
   );

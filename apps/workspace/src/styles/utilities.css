@@ -93,7 +93,7 @@ details.surface-details[open] > summary {
  * ------------------------------------------------------------------ */
 @media (max-width: 1120px) {
   :root {
-    --workspace-sidebar-width: 288px;
+    --workspace-sidebar-width: 244px;
   }
 
   .app-body > main {
@@ -132,9 +132,9 @@ details.surface-details[open] > summary {
 
 @media (max-width: 1000px) {
   :root {
-    --workspace-sidebar-width: 260px;
-    --workspace-sidebar-rail-width: 64px;
-    --workspace-sidebar-depth-step: 14px;
+    --workspace-sidebar-width: 228px;
+    --workspace-sidebar-rail-width: 48px;
+    --workspace-sidebar-depth-step: 12px;
     --workspace-sidebar-depth-max: 48px;
   }
 

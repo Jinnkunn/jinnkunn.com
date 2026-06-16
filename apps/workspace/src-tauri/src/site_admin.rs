@@ -967,11 +967,7 @@ fn parse_release_jsonl_history(root: &Path, entries: &mut Vec<SiteAdminReleaseHi
             deployment_id: value_string(value.get("deploymentId")),
             sha: value_string(value.get("sha")),
             branch: value_string(value.get("branch")),
-            note: if failure.is_empty() {
-                note
-            } else {
-                failure
-            },
+            note: if failure.is_empty() { note } else { failure },
             overlay_snapshot_sha: value_string(value.get("overlaySnapshotSha")),
             overlay_backup_snapshot_id: value_string(value.get("overlayBackupSnapshotId")),
             overlay_rollback_snapshot_id: value_string(value.get("overlayRollbackSnapshotId")),

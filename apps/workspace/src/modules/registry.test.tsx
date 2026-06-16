@@ -16,18 +16,10 @@ describe("workspace module registry", () => {
       "workspace",
       "site-admin",
       "calendar",
-      "notes",
-      "todos",
-      "projects",
-      "contacts",
     ]);
     expect(WORKSPACE_MODULES.map((module) => module.id)).toEqual([
       "site-admin",
       "calendar",
-      "notes",
-      "todos",
-      "projects",
-      "contacts",
     ]);
   });
 
@@ -37,18 +29,12 @@ describe("workspace module registry", () => {
       "site-admin:home",
       "site-admin:components",
       "calendar:open",
-      "todos:open",
-      "projects:open",
-      "contacts:open",
     ]);
     expect(getCommandActions().map((action) => action.id)).toEqual([
       "quick:site-status",
       "quick:home-editor",
       "quick:shared-content",
       "quick:site-links",
-      "quick:todos",
-      "quick:projects",
-      "quick:contacts",
     ]);
   });
 
@@ -56,22 +42,15 @@ describe("workspace module registry", () => {
     expect(getDefaultEnabledModuleIds()).toEqual([
       "site-admin",
       "calendar",
-      "notes",
-      "todos",
-      "projects",
-      "contacts",
     ]);
-    expect(getEnabledModuleSurfaces(["notes", "todos"]).map((surface) => surface.id)).toEqual([
+    expect(getEnabledModuleSurfaces(["calendar", "todos"]).map((surface) => surface.id)).toEqual([
       "workspace",
-      "notes",
-      "todos",
+      "calendar",
     ]);
-    expect(getDashboardActions(["todos"]).map((action) => action.id)).toEqual([
-      "todos:open",
+    expect(getDashboardActions(["calendar"]).map((action) => action.id)).toEqual([
+      "calendar:open",
     ]);
-    expect(getCommandActions(["todos"]).map((action) => action.id)).toEqual([
-      "quick:todos",
-    ]);
+    expect(getCommandActions(["calendar"]).map((action) => action.id)).toEqual([]);
   });
 
   it("reconciles fresh installs by handing out the registry defaults", () => {
@@ -79,35 +58,24 @@ describe("workspace module registry", () => {
     expect(result.enabled).toEqual([
       "site-admin",
       "calendar",
-      "notes",
-      "todos",
-      "projects",
-      "contacts",
     ]);
     expect(result.knownModuleIds).toEqual([
       "site-admin",
       "calendar",
-      "notes",
-      "todos",
-      "projects",
-      "contacts",
     ]);
   });
 
   it("reconcile preserves prior opt-outs for modules already known", () => {
-    // User had every module known and disabled "todos" + "contacts"
-    // explicitly in a previous session.
+    // User had every historical module known. The slim workbench drops
+    // non-core ids even if they were previously enabled.
     const result = reconcileEnabledModules(
       ["site-admin", "calendar", "notes", "projects"],
       ["site-admin", "calendar", "notes", "todos", "projects", "contacts"],
     );
-    expect(result.enabled).toEqual(["site-admin", "calendar", "notes", "projects"]);
+    expect(result.enabled).toEqual(["site-admin", "calendar"]);
   });
 
-  it("reconcile auto-enables newly-added enabled-by-default modules", () => {
-    // Old install: user had calendar/notes/todos but had never seen
-    // projects/contacts (they shipped after their last save). The
-    // migration should append them because they are enabled by default.
+  it("reconcile does not re-enable retired modules from old installs", () => {
     const result = reconcileEnabledModules(
       ["site-admin", "calendar", "notes", "todos"],
       ["site-admin", "calendar", "notes", "todos"],
@@ -115,13 +83,8 @@ describe("workspace module registry", () => {
     expect(result.enabled).toEqual([
       "site-admin",
       "calendar",
-      "notes",
-      "todos",
-      "projects",
-      "contacts",
     ]);
-    expect(result.knownModuleIds).toContain("projects");
-    expect(result.knownModuleIds).toContain("contacts");
+    expect(result.knownModuleIds).toEqual(["site-admin", "calendar"]);
   });
 
   it("reconcile drops persisted ids that no longer match a real module", () => {

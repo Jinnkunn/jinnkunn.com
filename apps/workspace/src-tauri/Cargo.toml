@@ -42,10 +42,10 @@ tauri-plugin-notification = "2"
 # even when it's hidden in the menubar tray. Mirrors the Spotlight /
 # Raycast pattern.
 tauri-plugin-global-shortcut = "2"
-# `sync` is only feature we need — the EventKit access-request callback
-# fires on a background queue, and tokio::sync::oneshot is the cleanest
-# way to bridge that into our `async` Tauri command.
-tokio = { version = "1", features = ["sync"] }
+# `sync` bridges the EventKit access-request callback into async Tauri
+# commands; `time` lets us fail fast if macOS never calls the completion
+# block for an already-authorized-but-stale TCC state.
+tokio = { version = "1", features = ["sync", "time"] }
 # Local SQLite mirror of the D1 content_files / content_files_history
 # tables (Phase 5a — read cache; 5b will reuse for write outbox).
 # `bundled` compiles SQLite from source so we don't take a system-libsqlite

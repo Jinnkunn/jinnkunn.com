@@ -20,13 +20,13 @@ pub struct WorkspaceMcpSettings {
     pub write_mode: WorkspaceMcpWriteMode,
     #[serde(default = "default_true")]
     pub require_confirmation_for_writes: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub allow_notes_write: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub allow_todos_write: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub allow_projects_write: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub allow_contacts_write: bool,
     #[serde(default = "default_true")]
     pub allow_site_admin_write: bool,
@@ -77,10 +77,10 @@ impl Default for WorkspaceMcpSettings {
             enabled: true,
             write_mode: WorkspaceMcpWriteMode::LocalWrite,
             require_confirmation_for_writes: true,
-            allow_notes_write: true,
-            allow_todos_write: true,
-            allow_projects_write: true,
-            allow_contacts_write: true,
+            allow_notes_write: false,
+            allow_todos_write: false,
+            allow_projects_write: false,
+            allow_contacts_write: false,
             allow_site_admin_write: true,
             allow_release_write: false,
             site_admin_write_target: WorkspaceMcpSiteAdminWriteTarget::Api,
@@ -376,14 +376,13 @@ fn read_content_publish_suggestion_from_path(
             path.display()
         )
     })?;
-    let parsed = serde_json::from_str::<WorkspaceMcpContentPublishSuggestion>(&raw).map_err(
-        |err| {
+    let parsed =
+        serde_json::from_str::<WorkspaceMcpContentPublishSuggestion>(&raw).map_err(|err| {
             format!(
                 "failed to parse MCP content publish suggestion {}: {err}",
                 path.display()
             )
-        },
-    )?;
+        })?;
     Ok(Some(parsed))
 }
 
@@ -585,9 +584,7 @@ pub fn workspace_mcp_content_publish_suggestion_get(
 }
 
 #[tauri::command]
-pub fn workspace_mcp_content_publish_suggestion_clear(
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+pub fn workspace_mcp_content_publish_suggestion_clear(app: tauri::AppHandle) -> Result<(), String> {
     let path = content_publish_suggestion_path(&app)?;
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),

@@ -24,10 +24,9 @@
   z-index: 0;
   pointer-events: none;
   background:
-    linear-gradient(125deg, transparent 0 18%, var(--ambient-cool) 38%, transparent 68%),
-    linear-gradient(232deg, transparent 0 20%, var(--ambient-warm) 46%, transparent 76%),
-    linear-gradient(16deg, transparent 0 36%, var(--ambient-fresh) 62%, transparent 88%);
-  opacity: 0.72;
+    linear-gradient(145deg, transparent 0 22%, var(--ambient-cool) 44%, transparent 76%),
+    linear-gradient(24deg, transparent 0 42%, var(--ambient-fresh) 70%, transparent 96%);
+  opacity: 0.42;
 }
 
 :root[data-theme="dark"] .app-shell {
@@ -37,7 +36,7 @@
 }
 
 :root[data-theme="dark"] .app-shell::before {
-  opacity: 0.62;
+  opacity: 0.34;
 }
 
 .app-body {
@@ -623,7 +622,7 @@ body[data-window-focused="true"] .sidebar-surface {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 52px;
+  padding: 46px;
   background: rgba(15, 15, 15, 0.12);
 }
 
@@ -636,32 +635,22 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .settings-window {
   display: grid;
-  grid-template-columns: 230px minmax(420px, 760px);
-  width: min(1120px, 88vw);
-  height: min(760px, 78vh);
+  grid-template-columns: 178px minmax(420px, 660px);
+  width: min(860px, 88vw);
+  height: min(640px, 78vh);
   overflow: hidden;
   border: 0;
-  border-radius: var(--radius-xl);
-  background:
-    linear-gradient(180deg, var(--surface-highlight), transparent 34%),
-    radial-gradient(
-      circle at 1px 1px,
-      color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
-      transparent 0.72px
-    ),
-    color-mix(in srgb, var(--color-bg-popover) 94%, transparent);
-  background-size: auto, 3px 3px, auto;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg-popover) 94%, transparent);
   box-shadow: var(--shadow-floating);
 }
 
 .settings-window__sidebar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 28px 10px 14px;
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 42%),
-    color-mix(in srgb, var(--color-bg-window) 64%, transparent);
+  gap: 5px;
+  padding: 24px 8px 12px;
+  background: color-mix(in srgb, var(--color-bg-window) 64%, transparent);
   box-shadow: inset -1px 0 0 var(--hairline);
 }
 
@@ -678,8 +667,8 @@ body[data-window-focused="true"] .sidebar-surface {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
-  padding: 0 10px;
+  min-height: 27px;
+  padding: 0 9px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -691,22 +680,18 @@ body[data-window-focused="true"] .sidebar-surface {
 }
 
 .settings-window__nav-item[aria-current="page"] {
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 62%),
-    var(--fill-secondary);
+  background: var(--fill-secondary);
   color: var(--color-text-primary);
   font-weight: 600;
-  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
+  box-shadow: none;
 }
 
 .settings-window__main {
   position: relative;
   min-width: 0;
   overflow: hidden auto;
-  padding: 40px 48px;
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 28%),
-    color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
+  padding: 34px 40px;
+  background: color-mix(in srgb, var(--color-bg-surface) 78%, transparent);
 }
 
 .settings-window__close {
@@ -772,8 +757,8 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .settings-window__section {
   display: grid;
-  gap: 18px;
-  max-width: 720px;
+  gap: 16px;
+  max-width: 620px;
 }
 
 .settings-window__section-head {
@@ -794,8 +779,8 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .settings-window__section-head h1 {
   color: var(--color-text-primary);
-  font-size: var(--font-size-display);
-  font-weight: 680;
+  font-size: 24px;
+  font-weight: 660;
   letter-spacing: 0;
 }
 
@@ -807,7 +792,7 @@ body[data-window-focused="true"] .sidebar-surface {
 
 .settings-modules-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .settings-module-row {
@@ -816,12 +801,10 @@ body[data-window-focused="true"] .sidebar-surface {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 9px 10px;
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 62%),
-    var(--fill-tertiary);
-  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: var(--fill-tertiary);
+  box-shadow: inset 0 0 0 1px var(--surface-edge);
 }
 
 .settings-module-row__icon {
@@ -832,10 +815,8 @@ body[data-window-focused="true"] .sidebar-surface {
   height: 28px;
   border-radius: 7px;
   color: color-mix(in srgb, var(--color-accent) 84%, var(--color-text-secondary));
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 58%),
-    color-mix(in srgb, var(--color-accent) 12%, var(--fill-tertiary));
-  box-shadow: inset 0 1px 0 var(--surface-highlight-soft);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--fill-tertiary));
+  box-shadow: none;
 }
 
 .settings-module-row__body {
