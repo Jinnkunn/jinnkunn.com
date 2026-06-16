@@ -181,6 +181,7 @@ type HomePostPayload = {
 };
 
 type Area = "overview" | "content" | "home" | "now";
+type ContentMode = "browse" | "edit" | "create";
 
 const DEFAULT_CREATE_BODY = "Write the post here.";
 
@@ -525,6 +526,7 @@ export function SiteAdminWebConsole({
   const [posts, setPosts] = useState<PostsPayload | null>(null);
   const [components, setComponents] = useState<ComponentsPayload | null>(null);
   const [kind, setKind] = useState<EditableKind>("posts");
+  const [contentMode, setContentMode] = useState<ContentMode>("browse");
   const [selected, setSelected] = useState<EditableDetail | null>(null);
   const [sourceDraft, setSourceDraft] = useState("");
   const [contentForm, setContentForm] =
@@ -699,6 +701,7 @@ export function SiteAdminWebConsole({
       );
       const next = toEditableDetail(nextKind, id, detail);
       setKind(nextKind);
+      setContentMode("edit");
       setSelected(next);
       setSourceDraft(next.source);
       setSlugDraft(id);
@@ -769,6 +772,7 @@ export function SiteAdminWebConsole({
       await writeJson<{ ok: true }>(endpointFor(selected.kind, selected.id), "DELETE", {
         version: selected.version,
       });
+      setContentMode("browse");
       setSelected(null);
       setSourceDraft("");
       setContentForm(EMPTY_CONTENT_FORM);
@@ -841,6 +845,7 @@ export function SiteAdminWebConsole({
 
   function beginCreate(nextKind?: "posts" | "pages") {
     const resolvedKind = nextKind ?? (kind === "pages" ? "pages" : "posts");
+    setContentMode("create");
     setSelected(null);
     setSourceDraft("");
     setContentForm(EMPTY_CONTENT_FORM);
@@ -1234,6 +1239,7 @@ export function SiteAdminWebConsole({
                   data-active={kind === value}
                   onClick={() => {
                     setKind(value);
+                    setContentMode("browse");
                     setSelected(null);
                     setSourceDraft("");
                     setContentForm(EMPTY_CONTENT_FORM);
@@ -1266,7 +1272,93 @@ export function SiteAdminWebConsole({
             </div>
           </Card>
 
-          {selected ? (
+          {contentMode === "create" ? (
+            <Card className={styles.createPanel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <p className={styles.cardLabel}>New content</p>
+                  <h2 className={styles.panelTitle}>
+                    {createKind === "posts" ? "New post" : "New page"}
+                  </h2>
+                </div>
+                <Button
+                  onClick={() => setContentMode(selected ? "edit" : "browse")}
+                  variant="subtle"
+                  size="sm"
+                >
+                  Cancel
+                </Button>
+              </div>
+              <div className={styles.segmented} role="group" aria-label="New content type">
+                {(["posts", "pages"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    data-active={createKind === value}
+                    onClick={() => {
+                      setCreateKind(value);
+                      setCreateTitle(value === "posts" ? "Untitled Post" : "Untitled Page");
+                      setCreateBody(value === "posts" ? "Write the post here." : "Write the page here.");
+                    }}
+                  >
+                    {titleForKind(value)}
+                  </button>
+                ))}
+              </div>
+              <label className={styles.fieldLabel}>
+                Slug
+                <input
+                  className={styles.textField}
+                  value={createSlug}
+                  onChange={(event) => setCreateSlug(event.target.value)}
+                  placeholder={createKind === "posts" ? "new-post-slug" : "new-page"}
+                />
+              </label>
+              <label className={styles.fieldLabel}>
+                Title
+                <input
+                  className={styles.textField}
+                  value={createTitle}
+                  onChange={(event) => setCreateTitle(event.target.value)}
+                />
+              </label>
+              {createKind === "posts" ? (
+                <label className={styles.fieldLabel}>
+                  Date
+                  <input
+                    className={styles.textField}
+                    type="date"
+                    value={createDate}
+                    onChange={(event) => setCreateDate(event.target.value)}
+                  />
+                </label>
+              ) : null}
+              <label className={styles.fieldLabel}>
+                Description
+                <input
+                  className={styles.textField}
+                  value={createDescription}
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                  placeholder="Optional"
+                />
+              </label>
+              <SiteAdminMarkdownEditor
+                label="New content body"
+                value={createBody}
+                onChange={setCreateBody}
+                minHeight={420}
+                size="large"
+                disabled={saving}
+              />
+              <Button
+                onClick={() => void createContent()}
+                tone="accent"
+                disabled={saving || !createSlug.trim()}
+              >
+                Create {createKind === "posts" ? "post" : "page"}
+              </Button>
+            </Card>
+          ) : selected ? (
             <Card className={styles.editorPanel}>
                 <div className={styles.panelHeader}>
                   <div>
@@ -1525,76 +1617,23 @@ export function SiteAdminWebConsole({
                 </p>
             </Card>
           ) : (
-            <Card className={styles.createPanel}>
-            <p className={styles.cardLabel}>New content</p>
-            <div className={styles.segmented} role="group" aria-label="New content type">
-              {(["posts", "pages"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  data-active={createKind === value}
-                  onClick={() => {
-                    setCreateKind(value);
-                    setCreateTitle(value === "posts" ? "Untitled Post" : "Untitled Page");
-                    setCreateBody(value === "posts" ? "Write the post here." : "Write the page here.");
-                  }}
-                >
-                  {titleForKind(value)}
-                </button>
-              ))}
-            </div>
-            <label className={styles.fieldLabel}>
-              Slug
-              <input
-                className={styles.textField}
-                value={createSlug}
-                onChange={(event) => setCreateSlug(event.target.value)}
-                placeholder={createKind === "posts" ? "new-post-slug" : "new-page"}
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              Title
-              <input
-                className={styles.textField}
-                value={createTitle}
-                onChange={(event) => setCreateTitle(event.target.value)}
-              />
-            </label>
-            {createKind === "posts" ? (
-              <label className={styles.fieldLabel}>
-                Date
-                <input
-                  className={styles.textField}
-                  type="date"
-                  value={createDate}
-                  onChange={(event) => setCreateDate(event.target.value)}
-                />
-              </label>
-            ) : null}
-            <label className={styles.fieldLabel}>
-              Description
-              <input
-                className={styles.textField}
-                value={createDescription}
-                onChange={(event) => setCreateDescription(event.target.value)}
-                placeholder="Optional"
-              />
-            </label>
-            <SiteAdminMarkdownEditor
-              label="New content body"
-              value={createBody}
-              onChange={setCreateBody}
-              minHeight={260}
-              size="compact"
-              disabled={saving}
-            />
-            <Button
-              onClick={() => void createContent()}
-              tone="accent"
-              disabled={saving || !createSlug.trim()}
-            >
-              Create {createKind === "posts" ? "post" : "page"}
-            </Button>
+            <Card className={styles.editorPanel}>
+              <div className={styles.emptyEditor}>
+                <p className={styles.cardLabel}>Editor</p>
+                <h2 className={styles.panelTitle}>Select content</h2>
+                <p className={styles.cardText}>
+                  Choose an item from the list, or create a new post/page from the same workspace.
+                </p>
+                <div className={styles.emptyEditorActions}>
+                  <Button
+                    onClick={() => beginCreate(kind === "pages" ? "pages" : "posts")}
+                    tone="accent"
+                    size="sm"
+                  >
+                    New {kind === "pages" ? "page" : "post"}
+                  </Button>
+                </div>
+              </div>
             </Card>
           )}
         </section>

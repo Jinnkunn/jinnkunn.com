@@ -303,7 +303,7 @@
 }
 
 .createPanel {
-  max-width: 680px;
+  min-height: 720px;
 }
 
 .panelHeader {
@@ -778,6 +778,12 @@
   margin: auto;
   max-width: 420px;
   text-align: center;
+}
+
+.emptyEditorActions {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
 }
 
 .nowGrid {

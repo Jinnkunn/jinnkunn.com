@@ -55,6 +55,11 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("localDraftKey"));
   assert.ok(source.includes("releaseWatchUntil"));
   assert.ok(source.includes("beginCreate"));
+  assert.ok(source.includes('type ContentMode = "browse" | "edit" | "create"'));
+  assert.ok(source.includes('setContentMode("browse")'));
+  assert.ok(source.includes('setContentMode("edit")'));
+  assert.ok(source.includes('setContentMode("create")'));
+  assert.ok(source.includes("Select content"));
   assert.ok(source.includes('previewLayout="split"'));
   assert.ok(editor.includes("Source"));
   assert.ok(editor.includes("Preview"));
