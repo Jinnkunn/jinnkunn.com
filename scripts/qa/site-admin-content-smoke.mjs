@@ -126,6 +126,8 @@ async function run() {
 
   const postsSlug = makeSampleSlug("smoke-post");
   const pagesSlug = makeSampleSlug("smoke-page");
+  const movedPostsSlug = `${postsSlug}-renamed`;
+  const movedPagesSlug = `${pagesSlug}-renamed`;
 
   try {
     // ---- Posts ---------------------------------------------------------
@@ -203,12 +205,31 @@ async function run() {
     );
     console.log(`   conflict correctly rejected (409 SOURCE_CONFLICT)`);
 
-    describe(`DELETE /api/site-admin/posts/${postsSlug}`);
+    describe("POST /api/site-admin/posts/move");
+    const movePost = await requestJson({
+      method: "POST",
+      url: `${baseUrl}/api/site-admin/posts/move`,
+      cookie,
+      body: {
+        fromSlug: postsSlug,
+        toSlug: movedPostsSlug,
+        version: patchedPost.version,
+      },
+    });
+    assert(
+      movePost.ok && movePost.json?.ok === true,
+      `move post failed: body=${movePost.text}`,
+    );
+    const movedPost = unwrap(movePost.json);
+    assert(movedPost.toSlug === movedPostsSlug, "move post returned wrong slug");
+    console.log(`   renamed: ${postsSlug} -> ${movedPostsSlug}`);
+
+    describe(`DELETE /api/site-admin/posts/${movedPostsSlug}`);
     const deletePost = await requestJson({
       method: "DELETE",
-      url: `${baseUrl}/api/site-admin/posts/${postsSlug}`,
+      url: `${baseUrl}/api/site-admin/posts/${movedPostsSlug}`,
       cookie,
-      body: { version: patchedPost.version },
+      body: { version: movedPost.version },
     });
     assert(deletePost.ok, `delete post failed: body=${deletePost.text}`);
     console.log(`   deleted`);
@@ -236,12 +257,31 @@ async function run() {
     });
     assert(readPage.ok && readPage.json?.ok === true, "read page failed");
 
-    describe(`DELETE /api/site-admin/pages/${pagesSlug}`);
+    describe("POST /api/site-admin/pages/move");
+    const movePage = await requestJson({
+      method: "POST",
+      url: `${baseUrl}/api/site-admin/pages/move`,
+      cookie,
+      body: {
+        fromSlug: pagesSlug,
+        toSlug: movedPagesSlug,
+        version: createdPage.version,
+      },
+    });
+    assert(
+      movePage.ok && movePage.json?.ok === true,
+      `move page failed: body=${movePage.text}`,
+    );
+    const movedPage = unwrap(movePage.json);
+    assert(movedPage.toSlug === movedPagesSlug, "move page returned wrong slug");
+    console.log(`   renamed: ${pagesSlug} -> ${movedPagesSlug}`);
+
+    describe(`DELETE /api/site-admin/pages/${movedPagesSlug}`);
     const deletePage = await requestJson({
       method: "DELETE",
-      url: `${baseUrl}/api/site-admin/pages/${pagesSlug}`,
+      url: `${baseUrl}/api/site-admin/pages/${movedPagesSlug}`,
       cookie,
-      body: { version: createdPage.version },
+      body: { version: movedPage.version },
     });
     assert(deletePage.ok, `delete page failed: body=${deletePage.text}`);
     console.log(`   deleted`);

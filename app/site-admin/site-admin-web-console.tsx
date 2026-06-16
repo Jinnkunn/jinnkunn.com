@@ -158,6 +158,13 @@ type EditableContentForm = {
   frontmatterKeys: string[];
 };
 
+type LocalDraftSnapshot = {
+  key: string;
+  source: string;
+  form?: EditableContentForm;
+  savedAt: string;
+};
+
 type CreatePayload = {
   slug: string;
   href?: string;
@@ -350,6 +357,34 @@ function titleForKind(kind: EditableKind) {
   return "Components";
 }
 
+function localDraftKey(kind: EditableKind, id: string) {
+  return `site-admin-content-draft:${kind}:${id}`;
+}
+
+function readLocalDraft(kind: EditableKind, id: string): LocalDraftSnapshot | null {
+  if (typeof window === "undefined") return null;
+  const key = localDraftKey(kind, id);
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LocalDraftSnapshot>;
+    if (typeof parsed.source !== "string" || typeof parsed.savedAt !== "string") return null;
+    return {
+      key,
+      source: parsed.source,
+      form: parsed.form,
+      savedAt: parsed.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearLocalDraft(kind: EditableKind, id: string) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(localDraftKey(kind, id));
+}
+
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -495,6 +530,10 @@ export function SiteAdminWebConsole({
   const [contentForm, setContentForm] =
     useState<EditableContentForm>(EMPTY_CONTENT_FORM);
   const [contentFormBaseline, setContentFormBaseline] = useState("");
+  const [slugDraft, setSlugDraft] = useState("");
+  const [localAutosaveAt, setLocalAutosaveAt] = useState("");
+  const [localDraftSnapshot, setLocalDraftSnapshot] =
+    useState<LocalDraftSnapshot | null>(null);
   const [createKind, setCreateKind] = useState<"posts" | "pages">("posts");
   const [createSlug, setCreateSlug] = useState("");
   const [createTitle, setCreateTitle] = useState("Untitled Post");
@@ -504,6 +543,7 @@ export function SiteAdminWebConsole({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [releaseSaving, setReleaseSaving] = useState(false);
+  const [releaseWatchUntil, setReleaseWatchUntil] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -522,6 +562,12 @@ export function SiteAdminWebConsole({
       (selectedIsStructured
         ? selectedSourceDraft !== contentFormBaseline
         : selectedSourceDraft !== selected.source),
+  );
+  const slugDirty = Boolean(
+    selected &&
+      (selected.kind === "posts" || selected.kind === "pages") &&
+      slugDraft.trim() &&
+      slugDraft.trim() !== selected.id,
   );
 
   async function refreshAll() {
@@ -590,6 +636,59 @@ export function SiteAdminWebConsole({
     void refreshAll();
   }, []);
 
+  useEffect(() => {
+    if (!selected || !selectedDirty) return;
+    const key = localDraftKey(selected.kind, selected.id);
+    const source = selectedSourceDraft;
+    const form = selectedIsStructured ? contentForm : undefined;
+    const timer = window.setTimeout(() => {
+      const savedAt = new Date().toISOString();
+      window.sessionStorage.setItem(
+        key,
+        JSON.stringify({
+          source,
+          form,
+          savedAt,
+        }),
+      );
+      setLocalAutosaveAt(savedAt);
+      setLocalDraftSnapshot(null);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [
+    contentForm,
+    selected,
+    selectedDirty,
+    selectedIsStructured,
+    selectedSourceDraft,
+  ]);
+
+  useEffect(() => {
+    if (!releaseWatchUntil) return;
+    if (Date.now() >= releaseWatchUntil) {
+      setReleaseWatchUntil(0);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void refreshSummaryOnly();
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [releaseWatchUntil, summary?.release.recommendedAction.kind]);
+
+  async function refreshSummaryOnly() {
+    try {
+      const next = await readJson<SummaryPayload>("/api/site-admin/mobile/summary");
+      setSummary(next.summary);
+      setSummaryError("");
+      const action = next.summary.release.recommendedAction.kind;
+      if (action === "noop" || action === "smart-release") {
+        setReleaseWatchUntil(0);
+      }
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function selectContent(nextKind: EditableKind, id: string) {
     setLoading(true);
     setError("");
@@ -602,12 +701,18 @@ export function SiteAdminWebConsole({
       setKind(nextKind);
       setSelected(next);
       setSourceDraft(next.source);
+      setSlugDraft(id);
       const form = formFromEditablePayload(nextKind, id, detail);
       setContentForm(form);
-      setContentFormBaseline(
+      const baseline =
         nextKind === "posts" || nextKind === "pages"
           ? sourceForEditedContent(nextKind, form)
-          : next.source,
+          : next.source;
+      setContentFormBaseline(baseline);
+      setLocalAutosaveAt("");
+      const localDraft = readLocalDraft(nextKind, id);
+      setLocalDraftSnapshot(
+        localDraft && localDraft.source !== baseline ? localDraft : null,
       );
       setArea("content");
     } catch (err) {
@@ -633,6 +738,7 @@ export function SiteAdminWebConsole({
       const next = toEditableDetail(selected.kind, selected.id, detail);
       setSelected(next);
       setSourceDraft(next.source);
+      setSlugDraft(next.id);
       const form = formFromEditablePayload(selected.kind, selected.id, detail);
       setContentForm(form);
       setContentFormBaseline(
@@ -640,6 +746,9 @@ export function SiteAdminWebConsole({
           ? sourceForEditedContent(selected.kind, form)
           : next.source,
       );
+      clearLocalDraft(selected.kind, selected.id);
+      setLocalAutosaveAt("");
+      setLocalDraftSnapshot(null);
       await refreshLists();
       setNotice(`${next.title} saved.`);
     } catch (err) {
@@ -664,6 +773,10 @@ export function SiteAdminWebConsole({
       setSourceDraft("");
       setContentForm(EMPTY_CONTENT_FORM);
       setContentFormBaseline("");
+      setSlugDraft("");
+      clearLocalDraft(selected.kind, selected.id);
+      setLocalAutosaveAt("");
+      setLocalDraftSnapshot(null);
       await refreshLists();
       setNotice(`${selected.title} deleted.`);
     } catch (err) {
@@ -671,6 +784,59 @@ export function SiteAdminWebConsole({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function moveSelectedContent() {
+    if (!selected || !isDeleteSupported(selected.kind)) return;
+    const toSlug = slugDraft.trim();
+    if (!toSlug || toSlug === selected.id) return;
+    if (selectedDirty) {
+      setError("Save content changes before renaming the slug.");
+      return;
+    }
+    const confirmed = window.confirm(`Rename ${selected.id} to ${toSlug}?`);
+    if (!confirmed) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const endpoint =
+        selected.kind === "posts"
+          ? "/api/site-admin/posts/move"
+          : "/api/site-admin/pages/move";
+      const moved = await writeJson<{ toSlug?: string; version?: string }>(
+        endpoint,
+        "POST",
+        {
+          fromSlug: selected.id,
+          toSlug,
+          version: selected.version,
+        },
+      );
+      await refreshLists();
+      await selectContent(selected.kind, moved.toSlug || toSlug);
+      setNotice(`${selected.title} renamed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function restoreLocalDraft() {
+    if (!selected || !localDraftSnapshot) return;
+    if (selected.kind === "posts" || selected.kind === "pages") {
+      if (!localDraftSnapshot.form) {
+        setError("This local autosave cannot be restored into the structured editor.");
+        return;
+      }
+      setContentForm(localDraftSnapshot.form);
+    } else {
+      setSourceDraft(localDraftSnapshot.source);
+    }
+    setLocalAutosaveAt(localDraftSnapshot.savedAt);
+    setLocalDraftSnapshot(null);
+    setNotice("Local autosave restored.");
   }
 
   async function createContent() {
@@ -736,6 +902,7 @@ export function SiteAdminWebConsole({
       );
       const jobId = payload.job?.id ? ` (${payload.job.id})` : "";
       setNotice(`Release job created${jobId}.`);
+      setReleaseWatchUntil(Date.now() + 3 * 60 * 1000);
       await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1047,6 +1214,9 @@ export function SiteAdminWebConsole({
                     setSourceDraft("");
                     setContentForm(EMPTY_CONTENT_FORM);
                     setContentFormBaseline("");
+                    setSlugDraft("");
+                    setLocalAutosaveAt("");
+                    setLocalDraftSnapshot(null);
                   }}
                 >
                   {titleForKind(value)}
@@ -1118,9 +1288,21 @@ export function SiteAdminWebConsole({
                     </span>
                   ) : null}
                   <span className={styles.editorHint}>
-                    {release?.headline || "Release status unavailable"}
+                    {localAutosaveAt
+                      ? `Local autosaved ${formatWhen(localAutosaveAt)}`
+                      : release?.headline || "Release status unavailable"}
                   </span>
                   <div className={styles.editorStatusActions}>
+                    {localDraftSnapshot ? (
+                      <Button
+                        onClick={restoreLocalDraft}
+                        variant="subtle"
+                        tone="warning"
+                        size="sm"
+                      >
+                        Restore local draft
+                      </Button>
+                    ) : null}
                     {release?.recommendedAction.kind === "watch-release" ? (
                       <Button href="/api/site-admin/release-jobs" variant="subtle" size="sm">
                         View release
@@ -1147,6 +1329,27 @@ export function SiteAdminWebConsole({
                     )}
                   </div>
                 </div>
+                {isDeleteSupported(selected.kind) ? (
+                  <div className={styles.slugMoveRow}>
+                    <label className={styles.fieldLabel}>
+                      Slug
+                      <input
+                        className={styles.textField}
+                        value={slugDraft}
+                        onChange={(event) => setSlugDraft(event.target.value)}
+                        spellCheck={false}
+                      />
+                    </label>
+                    <Button
+                      onClick={() => void moveSelectedContent()}
+                      variant="subtle"
+                      size="sm"
+                      disabled={saving || selectedDirty || !slugDirty}
+                    >
+                      Rename
+                    </Button>
+                  </div>
+                ) : null}
                 {selectedIsStructured ? (
                   <>
                     <div className={styles.editorMetaGrid}>
@@ -1280,6 +1483,7 @@ export function SiteAdminWebConsole({
                       minHeight={480}
                       size="large"
                       disabled={saving}
+                      previewLayout="split"
                     />
                   </>
                 ) : (

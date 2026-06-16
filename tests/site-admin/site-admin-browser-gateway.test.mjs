@@ -46,8 +46,14 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("frontmatterKeys"));
   assert.ok(source.includes("editorMetaGrid"));
   assert.ok(source.includes("/api/site-admin/release-jobs/smart"));
+  assert.ok(source.includes("moveSelectedContent"));
+  assert.ok(source.includes("localDraftKey"));
+  assert.ok(source.includes("releaseWatchUntil"));
+  assert.ok(source.includes('previewLayout="split"'));
   assert.ok(editor.includes("Source"));
   assert.ok(editor.includes("Preview"));
+  assert.ok(editor.includes("Refresh preview"));
+  assert.ok(editor.includes('data-layout={previewLayout}'));
   assert.ok(editor.includes("markdownActions"));
 });
 

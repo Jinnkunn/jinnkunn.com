@@ -525,6 +525,20 @@
   padding: 16px;
 }
 
+.markdownSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.markdownSplit .markdownTextarea {
+  border-right: 1px solid var(--ds-border-subtle);
+}
+
+.markdownEditor[data-layout="split"] .markdownPreviewShell {
+  border-left: 0;
+}
+
 .markdownPreviewShell {
   overflow: auto;
   padding: 18px;
@@ -708,6 +722,14 @@
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.slugMoveRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
 }
 
 .editorMetaGrid {
@@ -824,6 +846,15 @@
   .editorPanel {
     min-height: 560px;
   }
+
+  .markdownSplit {
+    grid-template-columns: 1fr;
+  }
+
+  .markdownSplit .markdownTextarea {
+    border-right: 0;
+    border-bottom: 1px solid var(--ds-border-subtle);
+  }
 }
 
 @media (max-width: 700px) {
@@ -848,7 +879,8 @@
   .footerGrid,
   .kvGrid,
   .fieldGrid,
-  .editorMetaGrid {
+  .editorMetaGrid,
+  .slugMoveRow {
     grid-template-columns: 1fr;
   }
 

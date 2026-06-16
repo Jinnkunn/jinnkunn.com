@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import styles from "./site-admin-dashboard.module.css";
 
 type MarkdownEditorSize = "regular" | "compact" | "large";
+type MarkdownPreviewLayout = "tabs" | "split";
 
 type MarkdownEditorProps = {
   label?: string;
@@ -14,6 +15,7 @@ type MarkdownEditorProps = {
   placeholder?: string;
   size?: MarkdownEditorSize;
   disabled?: boolean;
+  previewLayout?: MarkdownPreviewLayout;
 };
 
 type MarkdownAction = {
@@ -145,6 +147,7 @@ export function SiteAdminMarkdownEditor({
   placeholder,
   size = "regular",
   disabled = false,
+  previewLayout = "tabs",
 }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRequestIdRef = useRef(0);
@@ -153,7 +156,9 @@ export function SiteAdminMarkdownEditor({
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  async function renderPreview() {
+  const isSplitPreview = previewLayout === "split";
+
+  const renderPreview = useCallback(async () => {
     const requestId = previewRequestIdRef.current + 1;
     previewRequestIdRef.current = requestId;
     setPreviewLoading(true);
@@ -182,7 +187,15 @@ export function SiteAdminMarkdownEditor({
     } finally {
       if (previewRequestIdRef.current === requestId) setPreviewLoading(false);
     }
-  }
+  }, [value]);
+
+  useEffect(() => {
+    if (!isSplitPreview) return;
+    const timer = window.setTimeout(() => {
+      void renderPreview();
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [isSplitPreview, renderPreview]);
 
   function applyAction(action: MarkdownAction) {
     const textarea = textareaRef.current;
@@ -191,8 +204,27 @@ export function SiteAdminMarkdownEditor({
     if (next !== null) onChange(next);
   }
 
+  function renderPreviewPane() {
+    return (
+      <div className={styles.markdownPreviewShell} style={{ minHeight }}>
+        {previewLoading ? (
+          <p className={styles.previewEmpty}>Rendering preview…</p>
+        ) : previewError ? (
+          <p className={styles.previewEmpty}>Preview unavailable: {previewError}</p>
+        ) : previewHtml.trim() ? (
+          <div
+            className={styles.markdownPreview}
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+          />
+        ) : (
+          <p className={styles.previewEmpty}>Nothing to preview yet.</p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.markdownEditor} data-size={size}>
+    <div className={styles.markdownEditor} data-size={size} data-layout={previewLayout}>
       <div className={styles.markdownToolbar} role="toolbar" aria-label={`${label} toolbar`}>
         <div className={styles.markdownToolbarGroup}>
           {markdownActions.map((action) => (
@@ -202,30 +234,51 @@ export function SiteAdminMarkdownEditor({
               title={action.title}
               aria-label={action.title}
               onClick={() => applyAction(action)}
-              disabled={disabled || mode === "preview"}
+              disabled={disabled || (!isSplitPreview && mode === "preview")}
             >
               {action.label}
             </button>
           ))}
         </div>
         <div className={styles.markdownToolbarGroup}>
-          {(["source", "preview"] as const).map((nextMode) => (
-            <button
-              key={nextMode}
-              type="button"
-              data-active={mode === nextMode}
-              onClick={() => {
-                setMode(nextMode);
-                if (nextMode === "preview") void renderPreview();
-              }}
-            >
-              {nextMode === "source" ? "Source" : "Preview"}
+          {isSplitPreview ? (
+            <button type="button" onClick={() => void renderPreview()} disabled={previewLoading}>
+              {previewLoading ? "Previewing" : "Refresh preview"}
             </button>
-          ))}
+          ) : (
+            (["source", "preview"] as const).map((nextMode) => (
+              <button
+                key={nextMode}
+                type="button"
+                data-active={mode === nextMode}
+                onClick={() => {
+                  setMode(nextMode);
+                  if (nextMode === "preview") void renderPreview();
+                }}
+              >
+                {nextMode === "source" ? "Source" : "Preview"}
+              </button>
+            ))
+          )}
         </div>
       </div>
 
-      {mode === "source" ? (
+      {isSplitPreview ? (
+        <div className={styles.markdownSplit}>
+          <textarea
+            ref={textareaRef}
+            className={styles.markdownTextarea}
+            aria-label={label}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={placeholder}
+            spellCheck={false}
+            disabled={disabled}
+            style={{ minHeight }}
+          />
+          {renderPreviewPane()}
+        </div>
+      ) : mode === "source" ? (
         <textarea
           ref={textareaRef}
           className={styles.markdownTextarea}
@@ -238,20 +291,7 @@ export function SiteAdminMarkdownEditor({
           style={{ minHeight }}
         />
       ) : (
-        <div className={styles.markdownPreviewShell} style={{ minHeight }}>
-          {previewLoading ? (
-            <p className={styles.previewEmpty}>Rendering preview…</p>
-          ) : previewError ? (
-            <p className={styles.previewEmpty}>Preview unavailable: {previewError}</p>
-          ) : previewHtml.trim() ? (
-            <div
-              className={styles.markdownPreview}
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
-          ) : (
-            <p className={styles.previewEmpty}>Nothing to preview yet.</p>
-          )}
-        </div>
+        renderPreviewPane()
       )}
     </div>
   );
