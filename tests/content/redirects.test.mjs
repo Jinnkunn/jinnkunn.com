@@ -5,6 +5,7 @@ import path from "node:path";
 import os from "node:os";
 
 import { createLocalContentStore } from "../../lib/server/content-store.ts";
+import { deleteRedirectFromStore } from "../../lib/redirects.ts";
 
 // Import from the pure shape file so the test doesn't drag in the
 // content-store-resolver (which expects Next.js env config). The shape
@@ -98,6 +99,54 @@ test("appendRedirect persists the rename to redirects.json", async () => {
     assert.ok(after);
     const parsed = JSON.parse(after.content);
     assert.deepEqual(parsed.pages, { "old-bio": "bio" });
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("deleteRedirectFromStore removes redirects.json when the last redirect is deleted", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "redirects-test-"));
+  try {
+    const store = createLocalContentStore({ rootDir: tmp });
+    await store.writeFile(
+      "redirects.json",
+      JSON.stringify({ pages: {}, posts: { old: "new" } }, null, 2) + "\n",
+      { ifMatch: null },
+    );
+
+    await deleteRedirectFromStore(store, "posts", "old");
+
+    assert.equal(await store.readFile("redirects.json"), null);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("deleteRedirectFromStore keeps redirects.json when other redirects remain", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "redirects-test-"));
+  try {
+    const store = createLocalContentStore({ rootDir: tmp });
+    await store.writeFile(
+      "redirects.json",
+      JSON.stringify(
+        {
+          pages: { "old-page": "new-page" },
+          posts: { old: "new" },
+        },
+        null,
+        2,
+      ) + "\n",
+      { ifMatch: null },
+    );
+
+    await deleteRedirectFromStore(store, "posts", "old");
+
+    const after = await store.readFile("redirects.json");
+    assert.ok(after);
+    assert.deepEqual(JSON.parse(after.content), {
+      pages: { "old-page": "new-page" },
+      posts: {},
+    });
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }

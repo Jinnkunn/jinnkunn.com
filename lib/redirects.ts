@@ -18,15 +18,15 @@ import {
   ContentStoreConflictError,
   ContentStoreNotFoundError,
   type ContentStore,
-} from "@/lib/server/content-store";
-import { getContentStore } from "@/lib/server/content-store-resolver";
+} from "./server/content-store.ts";
+import { getContentStore } from "./server/content-store-resolver.ts";
 import {
   buildNextRedirects,
   emptyRedirectsTable,
   normalizeRedirectsTable,
   type RedirectKind,
   type RedirectsTable,
-} from "./redirects-shape";
+} from "./redirects-shape.ts";
 
 export {
   buildNextRedirects,
@@ -70,24 +70,34 @@ export async function deleteRedirect(
 ): Promise<void> {
   if (!fromSlug) return;
   const store = await getContentStore();
+  await deleteRedirectFromStore(store, kind, fromSlug);
+}
+
+export async function deleteRedirectFromStore(
+  store: ContentStore,
+  kind: RedirectKind,
+  fromSlug: string,
+): Promise<void> {
+  if (!fromSlug) return;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const { table, sha } = await readRedirectsFile(store);
     if (!table[kind][fromSlug]) return; // nothing to do
     delete table[kind][fromSlug];
-    const next = JSON.stringify(
-      {
-        pages: sortedRecord(table.pages),
-        posts: sortedRecord(table.posts),
-      },
-      null,
-      2,
-    );
     try {
-      await store.writeFile(REDIRECTS_REL, `${next}\n`, { ifMatch: sha });
+      if (isRedirectsTableEmpty(table)) {
+        if (sha) await store.deleteFile(REDIRECTS_REL, { ifMatch: sha });
+      } else {
+        await store.writeFile(REDIRECTS_REL, serializeRedirectsTable(table), {
+          ifMatch: sha,
+        });
+      }
       return;
     } catch (err) {
       if (err instanceof ContentStoreConflictError && attempt === 0) {
         continue;
+      }
+      if (err instanceof ContentStoreNotFoundError) {
+        return;
       }
       throw err;
     }
@@ -119,16 +129,9 @@ export async function appendRedirect(
     }
     // Don't redirect a slug to itself or to a slug that points back.
     if (sub[toSlug] === fromSlug) delete sub[toSlug];
-    const next = JSON.stringify(
-      {
-        pages: sortedRecord(table.pages),
-        posts: sortedRecord(table.posts),
-      },
-      null,
-      2,
-    );
+    const next = serializeRedirectsTable(table);
     try {
-      await store.writeFile(REDIRECTS_REL, `${next}\n`, { ifMatch: sha });
+      await store.writeFile(REDIRECTS_REL, next, { ifMatch: sha });
       return;
     } catch (err) {
       if (err instanceof ContentStoreConflictError && attempt === 0) {
@@ -136,12 +139,27 @@ export async function appendRedirect(
       }
       // Not-found on a fresh repo — first write needs ifMatch: null.
       if (err instanceof ContentStoreNotFoundError && attempt === 0) {
-        await store.writeFile(REDIRECTS_REL, `${next}\n`, { ifMatch: null });
+        await store.writeFile(REDIRECTS_REL, next, { ifMatch: null });
         return;
       }
       throw err;
     }
   }
+}
+
+function isRedirectsTableEmpty(table: RedirectsTable): boolean {
+  return Object.keys(table.pages).length === 0 && Object.keys(table.posts).length === 0;
+}
+
+function serializeRedirectsTable(table: RedirectsTable): string {
+  return `${JSON.stringify(
+    {
+      pages: sortedRecord(table.pages),
+      posts: sortedRecord(table.posts),
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 function sortedRecord(obj: Record<string, string>): Record<string, string> {
@@ -150,4 +168,3 @@ function sortedRecord(obj: Record<string, string>): Record<string, string> {
   for (const k of keys) out[k] = obj[k];
   return out;
 }
-

@@ -234,6 +234,19 @@ async function run() {
     assert(deletePost.ok, `delete post failed: body=${deletePost.text}`);
     console.log(`   deleted`);
 
+    describe("DELETE /api/site-admin/redirects (post smoke redirect)");
+    const deletePostRedirect = await requestJson({
+      method: "DELETE",
+      url: `${baseUrl}/api/site-admin/redirects`,
+      cookie,
+      body: { kind: "posts", fromSlug: postsSlug },
+    });
+    assert(
+      deletePostRedirect.ok && deletePostRedirect.json?.ok === true,
+      `delete post redirect failed: body=${deletePostRedirect.text}`,
+    );
+    console.log(`   redirect removed`);
+
     // ---- Pages ---------------------------------------------------------
     describe("POST /api/site-admin/pages (create)");
     const createPage = await requestJson({
@@ -285,6 +298,19 @@ async function run() {
     });
     assert(deletePage.ok, `delete page failed: body=${deletePage.text}`);
     console.log(`   deleted`);
+
+    describe("DELETE /api/site-admin/redirects (page smoke redirect)");
+    const deletePageRedirect = await requestJson({
+      method: "DELETE",
+      url: `${baseUrl}/api/site-admin/redirects`,
+      cookie,
+      body: { kind: "pages", fromSlug: pagesSlug },
+    });
+    assert(
+      deletePageRedirect.ok && deletePageRedirect.json?.ok === true,
+      `delete page redirect failed: body=${deletePageRedirect.text}`,
+    );
+    console.log(`   redirect removed`);
 
     // ---- Assets --------------------------------------------------------
     describe("POST /api/site-admin/assets (upload 1x1 PNG)");
