@@ -19,8 +19,69 @@
 }
 
 /* Touch feedback: Notion list rows have hover on desktop; add :active for mobile. */
+.super-root .notion-collection-list__item {
+  border-radius: var(--ds-radius-sm);
+  transition:
+    background-color var(--ds-duration-fast) var(--ds-ease-standard),
+    transform var(--ds-duration-fast) var(--ds-ease-standard);
+}
+
 .notion-collection-list__item:active {
   background-color: var(--color-ui-hover-bg);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .super-root .notion-collection-list__item:hover {
+    transform: translateX(1px);
+  }
+}
+
+/* Footer: a quiet close to the public surface, with the same tactile hover
+ * language as the navbar rather than the raw Super defaults. */
+.super-root .super-footer {
+  border-top: 1px solid var(--ds-border-subtle);
+  box-shadow: none;
+}
+
+.super-root .super-footer__content {
+  gap: var(--ds-space-2);
+}
+
+.super-root .super-footer__logo {
+  margin-bottom: var(--ds-space-2);
+}
+
+.super-root .super-footer__icons {
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-2);
+}
+
+.super-root .super-footer__icons a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--ds-radius-sm);
+  opacity: 0.72;
+  transition:
+    background-color var(--ds-duration-fast) var(--ds-ease-standard),
+    opacity var(--ds-duration-fast) var(--ds-ease-standard),
+    transform var(--ds-duration-fast) var(--ds-ease-standard);
+}
+
+.super-root .super-footer__icons a:hover {
+  background: var(--ds-interactive-hover);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.super-root .site-footer__signature {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-body);
+  opacity: 1;
 }
 
 /* Blog post template extras (keep v1 clean, but add functional TOC + prev/next). */
@@ -43,6 +104,16 @@
   /* Keep any hover-driven effects subtle for users that prefer reduced motion. */
   a[class="notion-link link"] {
     transition: none !important;
+  }
+
+  .super-root .notion-collection-list__item,
+  .super-root .super-footer__icons a {
+    transition: none !important;
+  }
+
+  .super-root .notion-collection-list__item:hover,
+  .super-root .super-footer__icons a:hover {
+    transform: none;
   }
 }
 

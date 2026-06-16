@@ -64,6 +64,7 @@
   --ds-shadow-overlay: 0 24px 60px rgba(15, 15, 15, 0.14);
   --ds-duration-fast: 140ms;
   --ds-duration-normal: 180ms;
+  --ds-ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root,
