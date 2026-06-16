@@ -6,6 +6,10 @@ import protectedRoutesData from "@/content/generated/protected-routes.json";
 import routesData from "@/content/generated/routes.json";
 import routesManifestData from "@/content/generated/routes-manifest.json";
 import { buildParentByPageIdMap, pickProtectedRule } from "@/lib/routes/strategy";
+import {
+  computeProtectedRouteCookie,
+  timingSafeEqualHex,
+} from "@/lib/shared/protected-route-cookie";
 
 type ProtectedRoute = {
   id: string;
@@ -175,7 +179,20 @@ export async function middleware(req: NextRequest) {
 
   const cookieName = `site_auth_${match.id}`;
   const cookie = req.cookies.get(cookieName)?.value ?? "";
-  if (cookie && cookie === match.token) return NextResponse.next();
+  // The cookie is an HMAC capability over the route id keyed by a server-only
+  // secret — never the stored verifier. A value committed to the content
+  // bundle therefore can't be replayed as a cookie. `computeProtectedRouteCookie`
+  // returns "" when no secret is configured, and `timingSafeEqualHex` rejects
+  // empty inputs, so a missing secret fails closed.
+  if (cookie) {
+    const cookieSecret =
+      process.env.SITE_PROTECTED_ROUTE_SECRET ||
+      process.env.NEXTAUTH_SECRET ||
+      process.env.AUTH_SECRET ||
+      "";
+    const expected = await computeProtectedRouteCookie(match.id, cookieSecret);
+    if (timingSafeEqualHex(cookie, expected)) return NextResponse.next();
+  }
 
   const url = req.nextUrl.clone();
   url.pathname = "/auth";

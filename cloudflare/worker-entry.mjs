@@ -160,16 +160,26 @@ async function loadStaticProtectionPolicy(request, env) {
   return staticProtectionPolicyPromise;
 }
 
+function resolveProtectedRouteSecret(env) {
+  return (
+    env?.SITE_PROTECTED_ROUTE_SECRET ||
+    env?.NEXTAUTH_SECRET ||
+    env?.AUTH_SECRET ||
+    ""
+  );
+}
+
 async function shouldDeferProtectedRouteToOpenNext(request, env, pathname) {
   const policy = await loadStaticProtectionPolicy(request, env);
   if (!policy) return true;
   const rule = pickStaticProtectedRule(pathname, policy);
   if (!rule) return false;
-  return !isStaticProtectionSatisfied(
+  return !(await isStaticProtectionSatisfied(
     rule,
     request.headers.get("cookie") || "",
     parseCookieHeader,
-  );
+    resolveProtectedRouteSecret(env),
+  ));
 }
 
 async function fetchStaticAssetWithRedirects(request, env, assetPath) {

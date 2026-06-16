@@ -60,6 +60,23 @@ SITE_ADMIN_AUTH_MODE=cf-access   # accept ONLY CF Access (NextAuth ignored)
 SITE_ADMIN_AUTH_MODE=legacy      # skip CF Access path entirely
 ```
 
+### Fail-closed when CF Access is expected but unconfigured
+
+In `both`/`cf-access`, if `CF_ACCESS_TEAM_DOMAIN`/`CF_ACCESS_AUD` are unset the
+guard logs a throttled warning and (in `both`) falls back to the legacy
+session/bearer path. Once a deployment is genuinely behind CF Access, set:
+
+```
+SITE_ADMIN_REQUIRE_CF_ACCESS=1   # hard-fail (500) instead of silently downgrading
+```
+
+so a missing/typo'd CF Access env can't quietly re-open the weaker auth path.
+
+> Recovery: `SITE_ADMIN_REQUIRE_CF_ACCESS=1` makes `both` hard-fail **all** admin
+> API calls (including the desktop HMAC-bearer and NextAuth flows) while CF env
+> is missing. If that locks you out, set `SITE_ADMIN_AUTH_MODE=legacy` to restore
+> the bearer/session path, fix the CF env, then re-enable.
+
 ### Required CF Access env (staging and prod)
 
 ```

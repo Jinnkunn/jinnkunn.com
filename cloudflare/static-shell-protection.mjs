@@ -1,3 +1,8 @@
+import {
+  computeProtectedRouteCookie,
+  timingSafeEqualHex,
+} from "./protected-route-cookie.mjs";
+
 export function normalizeStaticPathname(pathname) {
   const raw = String(pathname || "").trim();
   if (!raw || raw === "/") return "/";
@@ -130,10 +135,18 @@ export function pickStaticProtectedRule(pathname, policy) {
   return byPage || findProtectedByPath(pathname, normalized.rules);
 }
 
-export function isStaticProtectionSatisfied(rule, cookieHeader, parseCookieHeader) {
+export async function isStaticProtectionSatisfied(rule, cookieHeader, parseCookieHeader, secret) {
   if (!rule) return true;
+  // Only `password` rules can be satisfied by a cookie on the static path;
+  // `github` rules always defer to the OpenNext runtime, which runs the full
+  // session check.
   if (rule.auth !== "password") return false;
-  if (!rule.token) return false;
   const cookies = parseCookieHeader(cookieHeader);
-  return cookies.get(`site_auth_${rule.id}`) === rule.token;
+  const provided = cookies.get(`site_auth_${rule.id}`) || "";
+  if (!provided) return false;
+  // The cookie is an HMAC capability keyed by a server-only secret — never the
+  // stored verifier. Recompute and compare in constant time. A missing secret
+  // yields "" and fails closed (deferring to OpenNext, which gates it).
+  const expected = await computeProtectedRouteCookie(rule.id, secret);
+  return timingSafeEqualHex(provided, expected);
 }

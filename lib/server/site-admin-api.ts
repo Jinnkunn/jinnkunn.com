@@ -29,6 +29,35 @@ import {
 } from "@/lib/server/api-response";
 import { checkRateLimit, requestIpFromHeaders } from "@/lib/server/rate-limit";
 import { runWithSiteAdminActor } from "@/lib/server/site-admin-actor-context";
+import { logWarn } from "@/lib/server/error-log";
+
+/**
+ * When truthy, a request that reaches the admin guard in a CF-Access-aware mode
+ * (`both`/`cf-access`) MUST find Cloudflare Access configured. Otherwise the
+ * guard hard-fails instead of silently downgrading to the weaker session/bearer
+ * path. Set this in any environment that is actually deployed behind CF Access.
+ */
+function isCfAccessRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = String(env.SITE_ADMIN_REQUIRE_CF_ACCESS || "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+// Throttle (not once-forever): the error-log ring is small, so a single warning
+// would age out and hide an ongoing silent downgrade. Re-emit at most once a
+// minute so the signal stays visible while the misconfiguration persists.
+const CF_ACCESS_WARN_INTERVAL_MS = 60 * 1000;
+let lastCfAccessWarnAtMs = 0;
+function warnCfAccessConfigMissing(mode: string): void {
+  const now = Date.now();
+  if (now - lastCfAccessWarnAtMs < CF_ACCESS_WARN_INTERVAL_MS) return;
+  lastCfAccessWarnAtMs = now;
+  logWarn({
+    source: "site-admin-auth",
+    message:
+      "SITE_ADMIN_AUTH_MODE expects Cloudflare Access but CF_ACCESS_TEAM_DOMAIN/CF_ACCESS_AUD are unset; falling back to session/bearer auth",
+    meta: { mode },
+  });
+}
 
 type RequireSiteAdminOptions = {
   requireAllowlist?: boolean;
@@ -144,6 +173,22 @@ export async function requireSiteAdminContext(
           return { ok: true, value: { login: identity.subject } };
         }
       }
+    } else {
+      // CF Access is expected for this mode but isn't configured. Don't quietly
+      // serve admin APIs on the weaker session/bearer path — fail closed when
+      // the operator has declared CF Access mandatory, and always make the
+      // downgrade observable otherwise (a misconfigured CF_ACCESS_* env should
+      // never read as "auth is fine").
+      if (isCfAccessRequired()) {
+        return {
+          ok: false,
+          res: apiError("Cloudflare Access required but not configured", {
+            status: 500,
+            code: "CF_ACCESS_CONFIG_MISSING",
+          }),
+        };
+      }
+      warnCfAccessConfigMissing(mode);
     }
     if (mode === "cf-access") {
       return { ok: false, res: apiError("Unauthorized", { status: 401, code: "UNAUTHORIZED" }) };

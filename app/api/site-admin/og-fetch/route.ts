@@ -6,6 +6,7 @@ import {
   readSiteAdminJsonCommand,
   withSiteAdminContext,
 } from "@/lib/server/site-admin-api";
+import { assertPublicUrl, isBlockedHost } from "@/lib/server/ssrf-guard";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 
 export const runtime = "nodejs";
@@ -15,6 +16,8 @@ const FETCH_TIMEOUT_MS = 8000;
 const MAX_BYTES = 512 * 1024;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 256;
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 interface CachedOg {
   expires: number;
@@ -63,21 +66,9 @@ function parseCommand(body: Record<string, unknown>): ParseResult<OgCommand> {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return { ok: false, error: "only http(s) urls are supported", status: 400 };
   }
-  // Basic SSRF guard: refuse loopback / link-local / private hostnames. We
-  // only inspect the literal hostname; DNS rebinding is out of scope for
-  // this admin-only endpoint.
-  const hostname = parsed.hostname.toLowerCase();
-  if (
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost") ||
-    hostname === "0.0.0.0" ||
-    hostname.startsWith("127.") ||
-    hostname.startsWith("10.") ||
-    hostname.startsWith("169.254.") ||
-    /^192\.168\./.test(hostname) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-    hostname === "::1"
-  ) {
+  // Fast synchronous reject for obvious internal targets; the authoritative
+  // check (including DNS + per-redirect-hop re-validation) runs in the handler.
+  if (isBlockedHost(parsed.hostname)) {
     return { ok: false, error: "refusing to fetch internal address", status: 400 };
   }
   return { ok: true, value: { url: parsed.toString() } };
@@ -134,17 +125,43 @@ export async function POST(req: NextRequest) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
       try {
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "user-agent":
-              "Mozilla/5.0 (compatible; jinnkunn-bookmark/1.0; +https://jinnkunn.com)",
-            accept: "text/html,application/xhtml+xml",
-          },
-          redirect: "follow",
-          signal: controller.signal,
-        });
+        // Follow redirects manually so every hop is re-validated against the
+        // SSRF guard. `redirect: "follow"` would let an allowed origin bounce
+        // us to an internal address (cloud metadata, loopback, …) after the
+        // single up-front host check.
+        const fetchHeaders = {
+          "user-agent":
+            "Mozilla/5.0 (compatible; jinnkunn-bookmark/1.0; +https://jinnkunn.com)",
+          accept: "text/html,application/xhtml+xml",
+        };
+        let response: Response | null = null;
+        let currentUrl = url;
+        for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+          const check = await assertPublicUrl(currentUrl);
+          if (!check.ok) {
+            clearTimeout(timer);
+            return apiError(check.error, { status: 400, code: "OG_BLOCKED" });
+          }
+          response = await fetch(check.url, {
+            method: "GET",
+            headers: fetchHeaders,
+            redirect: "manual",
+            signal: controller.signal,
+          });
+          if (!REDIRECT_STATUSES.has(response.status)) break;
+          const location = response.headers.get("location");
+          if (!location) break;
+          await response.body?.cancel().catch(() => {});
+          currentUrl = new URL(location, check.url).toString();
+          response = null;
+        }
         clearTimeout(timer);
+        if (!response) {
+          return apiError("too many redirects", {
+            status: 502,
+            code: "OG_FETCH_FAILED",
+          });
+        }
         if (!response.ok) {
           return apiError(`fetch failed: ${response.status}`, {
             status: 502,

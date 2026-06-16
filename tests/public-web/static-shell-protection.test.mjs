@@ -7,6 +7,7 @@ import {
   pickStaticProtectedRule,
 } from "../../cloudflare/static-shell-protection.mjs";
 import { parseCookieHeader } from "../../cloudflare/staging-static-auth.mjs";
+import { computeProtectedRouteCookie } from "../../cloudflare/protected-route-cookie.mjs";
 
 const POLICY = {
   rules: [
@@ -53,14 +54,47 @@ test("static shell protection matches pageId protected routes", () => {
   assert.equal(rule?.id, "page-rule");
 });
 
-test("static shell protection allows password rule only with matching cookie", () => {
+test("static shell protection allows password rule only with the HMAC cookie", async () => {
+  const secret = "test-protected-route-secret";
   const rule = pickStaticProtectedRule("/private-page", POLICY);
+  const cookie = await computeProtectedRouteCookie(rule.id, secret);
+  assert.ok(cookie);
   assert.equal(
-    isStaticProtectionSatisfied(rule, "site_auth_page-rule=page-token", parseCookieHeader),
+    await isStaticProtectionSatisfied(
+      rule,
+      `site_auth_page-rule=${cookie}`,
+      parseCookieHeader,
+      secret,
+    ),
     true,
   );
+  // The stored verifier (rule.token) must NOT be replayable as a cookie.
   assert.equal(
-    isStaticProtectionSatisfied(rule, "site_auth_page-rule=wrong", parseCookieHeader),
+    await isStaticProtectionSatisfied(
+      rule,
+      `site_auth_page-rule=${rule.token}`,
+      parseCookieHeader,
+      secret,
+    ),
+    false,
+  );
+  assert.equal(
+    await isStaticProtectionSatisfied(
+      rule,
+      "site_auth_page-rule=wrong",
+      parseCookieHeader,
+      secret,
+    ),
+    false,
+  );
+  // No secret configured -> fail closed even with an otherwise-valid cookie.
+  assert.equal(
+    await isStaticProtectionSatisfied(
+      rule,
+      `site_auth_page-rule=${cookie}`,
+      parseCookieHeader,
+      "",
+    ),
     false,
   );
 });

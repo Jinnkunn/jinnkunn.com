@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
+import { hashProtectedRoutePassword } from "./protected-route-password.ts";
 import { localContentOverridesEnabled } from "./local-content-overrides.ts";
 import { getCurrentSiteAdminActor } from "./site-admin-actor-context.ts";
 import {
@@ -1011,7 +1012,10 @@ function upsertProtectedRoute(
   const token =
     auth === "password"
       ? input.password
-        ? sha256Hex(`${secret}\n${input.password}`)
+        ? // New/changed passwords use a salted memory-hard KDF (scrypt). The
+          // verifier carries its own random salt, so `secret` (the public
+          // path/pageId) is no longer used as the salt.
+          hashProtectedRoutePassword(input.password)
         : previousPasswordToken
       : sha256Hex(`${secret}\n__github__`);
 
