@@ -30,12 +30,17 @@ test("site-admin browser gateway renders a dashboard instead of a placeholder", 
 
 test("site-admin browser console keeps form controls inside panels", () => {
   const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
+  const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  assert.match(css, /\.shell \{\n  width: min\(1180px, calc\(100% - 40px\)\);/);
   assert.match(css, /\.shell,\n\.shell \* \{\n  box-sizing: border-box;/);
-  assert.match(css, /\.shell\[data-area="content"\]/);
+  assert.doesNotMatch(css, /\.shell\[data-area="content"\]/);
+  assert.doesNotMatch(source, /data-area=\{area\}/);
   assert.match(
     css,
     /\.workspaceGrid[\s\S]*grid-template-columns: minmax\(260px, 320px\) minmax\(0, 1fr\);/,
   );
+  assert.match(css, /container-type: inline-size;/);
+  assert.match(css, /@container \(max-width: 980px\)/);
   assert.match(css, /@media \(max-width: 1180px\)/);
   assert.match(css, /\.workspaceGrid[\s\S]*grid-template-columns: 1fr;/);
 });

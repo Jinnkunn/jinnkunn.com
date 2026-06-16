@@ -1039,7 +1039,7 @@ export function SiteAdminWebConsole({
   const source = summary?.source;
 
   return (
-    <main className={styles.shell} data-area={area}>
+    <main className={styles.shell}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Site Admin</p>
