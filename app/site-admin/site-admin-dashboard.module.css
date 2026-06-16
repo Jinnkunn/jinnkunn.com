@@ -1,11 +1,7 @@
 .shell {
-  width: min(1180px, calc(100% - 40px));
+  width: min(1480px, calc(100% - 40px));
   margin: 0 auto;
   padding: clamp(36px, 7vh, 72px) 0 clamp(48px, 9vh, 96px);
-}
-
-.shell[data-area="content"] {
-  width: min(1520px, calc(100% - 40px));
 }
 
 .shell,
@@ -126,6 +122,18 @@
   color: var(--ds-warning-text);
   border-color: var(--ds-warning-border);
   background: var(--ds-warning-bg);
+}
+
+.statusPill[data-state="saving"] {
+  color: var(--ds-info-text);
+  border-color: var(--ds-info-border);
+  background: var(--ds-info-bg);
+}
+
+.statusPill[data-state="blocked"] {
+  color: var(--ds-text-muted);
+  border-color: var(--ds-border-subtle);
+  background: var(--ds-surface-elevated);
 }
 
 .statusPill[data-state="noop"] {
@@ -276,6 +284,10 @@
   align-items: start;
 }
 
+.contentWorkspace {
+  grid-template-columns: minmax(260px, 320px) minmax(720px, 1fr);
+}
+
 .sidePanel,
 .editorPanel,
 .createPanel,
@@ -296,14 +308,16 @@
 }
 
 .editorPanel {
+  container-type: inline-size;
   display: flex;
-  min-height: 720px;
+  min-height: 760px;
   flex-direction: column;
   gap: 14px;
 }
 
 .createPanel {
-  min-height: 720px;
+  container-type: inline-size;
+  min-height: 760px;
 }
 
 .panelHeader {
@@ -469,9 +483,9 @@
 
 .markdownToolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   padding: 8px;
   border-bottom: 1px solid var(--ds-border-subtle);
   background: var(--ds-surface-soft);
@@ -481,11 +495,24 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   flex-wrap: wrap;
+  flex: 1 1 auto;
 }
 
-.markdownToolbar button {
+.markdownToolbarCluster {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-elevated);
+}
+
+.markdownToolButton,
+.markdownModeButton {
   min-height: 28px;
   padding: 0 8px;
   border: 1px solid transparent;
@@ -498,14 +525,24 @@
   cursor: pointer;
 }
 
-.markdownToolbar button:hover:not(:disabled),
-.markdownToolbar button[data-active="true"] {
+.markdownToolButton {
+  min-width: 30px;
+}
+
+.markdownModeButton {
+  min-width: 64px;
+}
+
+.markdownToolButton:hover:not(:disabled),
+.markdownModeButton:hover:not(:disabled),
+.markdownModeButton[data-active="true"] {
   border-color: var(--ds-border-subtle);
-  background: var(--ds-surface-elevated);
+  background: var(--ds-surface-soft);
   color: var(--ds-text-primary);
 }
 
-.markdownToolbar button:disabled {
+.markdownToolButton:disabled,
+.markdownModeButton:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -535,7 +572,7 @@
 
 .markdownSplit {
   display: grid;
-  grid-template-columns: minmax(520px, 1.1fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(380px, 1.08fr) minmax(360px, 0.92fr);
   min-width: 0;
 }
 
@@ -554,7 +591,7 @@
 }
 
 .markdownPreview {
-  max-width: 74ch;
+  max-width: 78ch;
   color: var(--ds-text-primary);
 }
 
@@ -709,6 +746,17 @@
   gap: 12px;
 }
 
+.createEditorShell {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.createEditorShell .markdownEditor {
+  flex: 1;
+}
+
 .editorStatusBar {
   display: flex;
   min-width: 0;
@@ -740,11 +788,77 @@
   align-items: end;
 }
 
+.editorPrimaryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(170px, 0.45fr) minmax(110px, 0.28fr);
+  gap: 12px;
+  align-items: end;
+}
+
 .editorMetaGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(150px, 0.55fr) minmax(110px, 0.35fr);
   gap: 12px;
   align-items: end;
+}
+
+.editorDetails {
+  min-width: 0;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+  overflow: hidden;
+}
+
+.editorDetails summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.editorDetails summary::marker {
+  color: var(--ds-text-faint);
+}
+
+.editorDetails summary small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.editorDetails[open] summary {
+  border-bottom: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-elevated);
+}
+
+.editorDetailsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.editorBodyShell {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.editorBodyShell .markdownEditor {
+  flex: 1;
 }
 
 .checkField {
@@ -777,7 +891,16 @@
 .emptyEditor {
   margin: auto;
   max-width: 420px;
+  padding: 28px;
   text-align: center;
+}
+
+.emptyEditor .panelTitle {
+  margin-top: 10px;
+}
+
+.emptyEditor .cardText {
+  margin-top: 10px;
 }
 
 .emptyEditorActions {
@@ -837,7 +960,7 @@
   max-width: 180px;
 }
 
-@media (max-width: 1380px) {
+@container (max-width: 980px) {
   .markdownSplit {
     grid-template-columns: 1fr;
   }
@@ -859,6 +982,7 @@
   }
 
   .workspaceGrid,
+  .contentWorkspace,
   .nowGrid {
     grid-template-columns: 1fr;
   }
@@ -896,6 +1020,7 @@
   .footerGrid,
   .kvGrid,
   .fieldGrid,
+  .editorPrimaryGrid,
   .editorMetaGrid,
   .slugMoveRow {
     grid-template-columns: 1fr;

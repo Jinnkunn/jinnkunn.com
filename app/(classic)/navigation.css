@@ -14,6 +14,102 @@
   --mobile-menu-bg: var(--ds-nav-surface);
 }
 
+/* Nav interaction layer: keep the Super/Notion calm, but make location and
+ * affordance easier to read without adding client-side route state. */
+.super-navbar .super-navbar__item,
+.super-navbar .super-navbar__list,
+.super-navbar .super-navbar__button,
+.super-navbar .super-navbar__list-item,
+.super-navbar .ds-theme-toggle {
+  transition:
+    background-color var(--ds-duration-fast) var(--ds-ease-standard),
+    color var(--ds-duration-fast) var(--ds-ease-standard),
+    opacity var(--ds-duration-fast) var(--ds-ease-standard),
+    transform var(--ds-duration-fast) var(--ds-ease-standard);
+}
+
+.super-navbar .super-navbar__item,
+.super-navbar .super-navbar__list {
+  position: relative;
+}
+
+.super-navbar .super-navbar__item::after,
+.super-navbar .super-navbar__list::after {
+  content: "";
+  position: absolute;
+  left: var(--ds-space-3);
+  right: var(--ds-space-3);
+  bottom: var(--ds-space-2);
+  height: 1px;
+  border-radius: var(--ds-radius-pill);
+  background: currentColor;
+  opacity: 0;
+  transform: scaleX(0.62);
+  transform-origin: center;
+  transition:
+    opacity var(--ds-duration-fast) var(--ds-ease-standard),
+    transform var(--ds-duration-fast) var(--ds-ease-standard);
+}
+
+.super-navbar .super-navbar__item:hover,
+.super-navbar .super-navbar__list:hover,
+.super-navbar .super-navbar__button:hover,
+.super-navbar .super-navbar__list-item:hover,
+.super-navbar .ds-theme-toggle:hover {
+  background: var(--ds-interactive-hover);
+}
+
+.super-navbar .super-navbar__item:active,
+.super-navbar .super-navbar__list:active,
+.super-navbar .super-navbar__button:active,
+.super-navbar .super-navbar__list-item:active,
+.super-navbar .ds-theme-toggle:active {
+  transform: translateY(1px);
+}
+
+.super-root:has(.page__index) .super-navbar__item[href="/"],
+.super-root:has(.page__blog) .super-navbar__list,
+.super-root:has(.page__blog-post) .super-navbar__list,
+.super-root:has(.page__calendar) .super-navbar__item[href="/calendar"],
+.super-root:has(.page__calendar-event) .super-navbar__item[href="/calendar"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/news"]) .super-navbar__item[href="/news"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/publications"]) .super-navbar__item[href="/publications"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/works"]) .super-navbar__item[href="/works"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__list,
+.super-root:has(.super-navbar__breadcrumbs a[href="/teaching"]) .super-navbar__list,
+.super-root:has(.super-navbar__breadcrumbs a[href="/bio"]) .super-navbar__list,
+.super-root:has(.super-navbar__breadcrumbs a[href="/notice"]) .super-navbar__list {
+  color: var(--ds-text-primary);
+  opacity: 1;
+}
+
+.super-root:has(.page__index) .super-navbar__item[href="/"]::after,
+.super-root:has(.page__blog) .super-navbar__list::after,
+.super-root:has(.page__blog-post) .super-navbar__list::after,
+.super-root:has(.page__calendar) .super-navbar__item[href="/calendar"]::after,
+.super-root:has(.page__calendar-event) .super-navbar__item[href="/calendar"]::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/news"]) .super-navbar__item[href="/news"]::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/publications"]) .super-navbar__item[href="/publications"]::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/works"]) .super-navbar__item[href="/works"]::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__list::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/teaching"]) .super-navbar__list::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/bio"]) .super-navbar__list::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/notice"]) .super-navbar__list::after {
+  opacity: 0.55;
+  transform: scaleX(1);
+}
+
+.super-root:has(.page__blog) .super-navbar__list-item[href="/blog"],
+.super-root:has(.page__blog-post) .super-navbar__list-item[href="/blog"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__list-item[href="/blog"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/teaching"]) .super-navbar__list-item[href="/teaching"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/bio"]) .super-navbar__list-item[href="/bio"],
+.super-root:has(.super-navbar__breadcrumbs a[href="/notice"]) .super-navbar__list-item[href="/notice"] {
+  background: var(--ds-interactive-hover);
+  color: var(--ds-text-primary);
+  opacity: 1;
+}
+
 /* Server-rendered nav menus are always present in the DOM; hide them until JS enhances. */
 #mobile-menu[hidden] {
   display: none !important;
@@ -336,6 +432,16 @@
     opacity: 1 !important;
   }
 
+  .super-navbar .super-navbar__item,
+  .super-navbar .super-navbar__list,
+  .super-navbar .super-navbar__button,
+  .super-navbar .super-navbar__list-item,
+  .super-navbar .ds-theme-toggle,
+  .super-navbar .super-navbar__item::after,
+  .super-navbar .super-navbar__list::after {
+    transition: none !important;
+  }
+
   .super-navbar__menu-backdrop {
     transition: none !important;
   }
@@ -379,7 +485,6 @@ html {
   background: transparent;
   color: var(--navbar-text-color);
   opacity: 0.7;
-  transition: opacity 200ms ease-in-out, background-color 120ms ease;
 }
 
 .super-navbar .ds-theme-toggle:hover {

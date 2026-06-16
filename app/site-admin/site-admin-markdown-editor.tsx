@@ -19,9 +19,15 @@ type MarkdownEditorProps = {
 };
 
 type MarkdownAction = {
+  id: string;
   label: string;
   title: string;
   run: (textarea: HTMLTextAreaElement) => string | null;
+};
+
+type MarkdownActionGroup = {
+  label: string;
+  actions: MarkdownAction[];
 };
 
 function selectedRange(textarea: HTMLTextAreaElement) {
@@ -86,56 +92,81 @@ function insertBlock(textarea: HTMLTextAreaElement, block: string) {
   return replaceSelection(textarea, insert, insert.length);
 }
 
-const markdownActions: MarkdownAction[] = [
+const markdownActionGroups: MarkdownActionGroup[] = [
   {
-    label: "B",
-    title: "Bold",
-    run: (textarea) => wrapSelection(textarea, "**", "**", "bold text"),
+    label: "Inline formatting",
+    actions: [
+      {
+        id: "bold",
+        label: "B",
+        title: "Bold",
+        run: (textarea) => wrapSelection(textarea, "**", "**", "bold text"),
+      },
+      {
+        id: "italic",
+        label: "I",
+        title: "Italic",
+        run: (textarea) => wrapSelection(textarea, "*", "*", "italic text"),
+      },
+      {
+        id: "inline-code",
+        label: "`",
+        title: "Inline code",
+        run: (textarea) => wrapSelection(textarea, "`", "`", "code"),
+      },
+      {
+        id: "link",
+        label: "Link",
+        title: "Link",
+        run: (textarea) => wrapSelection(textarea, "[", "](https://)", "link text"),
+      },
+    ],
   },
   {
-    label: "I",
-    title: "Italic",
-    run: (textarea) => wrapSelection(textarea, "*", "*", "italic text"),
+    label: "Block formatting",
+    actions: [
+      {
+        id: "heading-2",
+        label: "H2",
+        title: "Heading 2",
+        run: (textarea) => linePrefixSelection(textarea, "## ", "Heading"),
+      },
+      {
+        id: "heading-3",
+        label: "H3",
+        title: "Heading 3",
+        run: (textarea) => linePrefixSelection(textarea, "### ", "Heading"),
+      },
+      {
+        id: "bullet-list",
+        label: "UL",
+        title: "Bullet list",
+        run: (textarea) => linePrefixSelection(textarea, "- ", "List item"),
+      },
+      {
+        id: "quote",
+        label: ">",
+        title: "Quote",
+        run: (textarea) => linePrefixSelection(textarea, "> ", "Quote"),
+      },
+    ],
   },
   {
-    label: "`",
-    title: "Inline code",
-    run: (textarea) => wrapSelection(textarea, "`", "`", "code"),
-  },
-  {
-    label: "H2",
-    title: "Heading 2",
-    run: (textarea) => linePrefixSelection(textarea, "## ", "Heading"),
-  },
-  {
-    label: "H3",
-    title: "Heading 3",
-    run: (textarea) => linePrefixSelection(textarea, "### ", "Heading"),
-  },
-  {
-    label: "List",
-    title: "Bullet list",
-    run: (textarea) => linePrefixSelection(textarea, "- ", "List item"),
-  },
-  {
-    label: ">",
-    title: "Quote",
-    run: (textarea) => linePrefixSelection(textarea, "> ", "Quote"),
-  },
-  {
-    label: "Link",
-    title: "Link",
-    run: (textarea) => wrapSelection(textarea, "[", "](https://)", "link text"),
-  },
-  {
-    label: "HR",
-    title: "Divider",
-    run: (textarea) => insertBlock(textarea, "---\n\n"),
-  },
-  {
-    label: "{}",
-    title: "Code block",
-    run: (textarea) => insertBlock(textarea, "```\ncode\n```\n\n"),
+    label: "Insert blocks",
+    actions: [
+      {
+        id: "divider",
+        label: "HR",
+        title: "Divider",
+        run: (textarea) => insertBlock(textarea, "---\n\n"),
+      },
+      {
+        id: "code-block",
+        label: "{}",
+        title: "Code block",
+        run: (textarea) => insertBlock(textarea, "```\ncode\n```\n\n"),
+      },
+    ],
   },
 ];
 
@@ -226,30 +257,47 @@ export function SiteAdminMarkdownEditor({
   return (
     <div className={styles.markdownEditor} data-size={size} data-layout={previewLayout}>
       <div className={styles.markdownToolbar} role="toolbar" aria-label={`${label} toolbar`}>
-        <div className={styles.markdownToolbarGroup}>
-          {markdownActions.map((action) => (
-            <button
-              key={action.title}
-              type="button"
-              title={action.title}
-              aria-label={action.title}
-              onClick={() => applyAction(action)}
-              disabled={disabled || (!isSplitPreview && mode === "preview")}
+        <div className={styles.markdownToolbarGroup} aria-label="Formatting tools">
+          {markdownActionGroups.map((group) => (
+            <div
+              key={group.label}
+              className={styles.markdownToolbarCluster}
+              role="group"
+              aria-label={group.label}
             >
-              {action.label}
-            </button>
+              {group.actions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={styles.markdownToolButton}
+                  title={action.title}
+                  aria-label={action.title}
+                  onClick={() => applyAction(action)}
+                  disabled={disabled || (!isSplitPreview && mode === "preview")}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
-        <div className={styles.markdownToolbarGroup}>
+        <div className={styles.markdownToolbarCluster} role="group" aria-label="Editor view">
           {isSplitPreview ? (
-            <button type="button" onClick={() => void renderPreview()} disabled={previewLoading}>
-              {previewLoading ? "Previewing" : "Refresh preview"}
+            <button
+              type="button"
+              className={styles.markdownModeButton}
+              onClick={() => void renderPreview()}
+              disabled={previewLoading}
+              title="Refresh preview"
+            >
+              {previewLoading ? "Previewing" : "Refresh"}
             </button>
           ) : (
             (["source", "preview"] as const).map((nextMode) => (
               <button
                 key={nextMode}
                 type="button"
+                className={styles.markdownModeButton}
                 data-active={mode === nextMode}
                 onClick={() => {
                   setMode(nextMode);
