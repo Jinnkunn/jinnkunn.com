@@ -34,7 +34,6 @@ export interface TodayDigest {
   /** Next event in the user's primary calendar, or null when none. */
   nextEvent: { title: string; startMs: number } | null;
   todayEventCount: number;
-  todayTodoCount: number;
 }
 
 export interface TrayMenuInputs {
@@ -120,24 +119,10 @@ export function computeTrayMenu(
       enabled: false,
     });
   }
-  if (
-    inputs.todayDigest.todayEventCount > 0 ||
-    inputs.todayDigest.todayTodoCount > 0
-  ) {
-    const parts: string[] = [];
-    if (inputs.todayDigest.todayEventCount > 0) {
-      parts.push(
-        `${inputs.todayDigest.todayEventCount} event${inputs.todayDigest.todayEventCount === 1 ? "" : "s"}`,
-      );
-    }
-    if (inputs.todayDigest.todayTodoCount > 0) {
-      parts.push(
-        `${inputs.todayDigest.todayTodoCount} todo${inputs.todayDigest.todayTodoCount === 1 ? "" : "s"} due`,
-      );
-    }
+  if (inputs.todayDigest.todayEventCount > 0) {
     digestRows.push({
       id: "tray:today-counts",
-      label: `Today: ${parts.join(" · ")}`,
+      label: `Today: ${inputs.todayDigest.todayEventCount} event${inputs.todayDigest.todayEventCount === 1 ? "" : "s"}`,
       enabled: false,
     });
   }
@@ -151,9 +136,6 @@ export function computeTrayMenu(
     id: inputs.windowVisible ? "tray:hide-window" : "tray:show-window",
     label: inputs.windowVisible ? "Hide Workspace" : "Open Workspace",
   });
-
-  // ── Quick capture ────────────────────────────────────────────────
-  items.push({ id: "tray:quick-capture-todo", label: "New todo…" });
 
   // ── Recents submenu (only when there's something to show) ───────
   const recents = buildRecentsSubmenu(inputs.recentItems, inputs.enabledSurfaceIds);

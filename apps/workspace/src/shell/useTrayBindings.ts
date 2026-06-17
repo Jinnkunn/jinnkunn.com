@@ -17,7 +17,6 @@ const EMPTY_OUTBOX: OutboxStatus = {
 const EMPTY_DIGEST: TodayDigest = {
   nextEvent: null,
   todayEventCount: 0,
-  todayTodoCount: 0,
 };
 
 const IDLE_RELEASE: ReleaseState = { kind: "idle" };
@@ -27,9 +26,8 @@ const IDLE_RELEASE: ReleaseState = { kind: "idle" };
 export const RELEASE_STATE_EVENT = "workspace:release-state";
 /** Tray "Retry now" → drainNow handshake. SiteAdminTopBar listens. */
 export const OUTBOX_RETRY_EVENT = "workspace:outbox:retry";
-/** Tray "New todo…" → todos-surface focus handshake. Dispatched after
- * `selectSurface("todos")` so the surface can react if it's already
- * mounted. */
+/** Legacy event kept so retired todo source files still typecheck while
+ * the slim workbench leaves the Todos module unregistered. */
 export const QUICK_CAPTURE_TODO_EVENT = "workspace:quick-capture:todo";
 
 function isTauri(): boolean {
@@ -154,11 +152,10 @@ export function useTrayBindings(args: TrayBindingsArgs): TrayBindingsResult {
     };
   }, []);
 
-  // ── Today digest: todos due today (local SQLite) + next calendar
-  //    event (EventKit, when permission is granted). One pull every
-  //    60 s — the tray-only consumer doesn't need higher fidelity, and
-  //    the EventKit `calendar://changed` channel still drives the main
-  //    UI's freshness.
+  // ── Today digest: next calendar event (EventKit, when permission is
+  //    granted). One pull every 60 s — the tray-only consumer doesn't
+  //    need higher fidelity, and the EventKit `calendar://changed`
+  //    channel still drives the main UI's freshness.
   useEffect(() => {
     if (!isTauri()) return;
     let cancelled = false;
@@ -168,25 +165,6 @@ export function useTrayBindings(args: TrayBindingsArgs): TrayBindingsResult {
       startsAt: string;
       isAllDay?: boolean;
     }
-
-    const pullTodos = async (): Promise<number> => {
-      try {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(startOfDay);
-        endOfDay.setHours(23, 59, 59, 999);
-        const { invoke } = await import("@tauri-apps/api/core");
-        const rows = await invoke<unknown[]>("todos_list_window", {
-          params: {
-            starts_at: startOfDay.getTime(),
-            ends_at: endOfDay.getTime(),
-          },
-        });
-        return rows.length;
-      } catch {
-        return 0;
-      }
-    };
 
     const pullCalendar = async (): Promise<{
       nextEvent: TodayDigest["nextEvent"];
@@ -231,10 +209,9 @@ export function useTrayBindings(args: TrayBindingsArgs): TrayBindingsResult {
     };
 
     const pull = async () => {
-      const [todoCount, cal] = await Promise.all([pullTodos(), pullCalendar()]);
+      const cal = await pullCalendar();
       if (cancelled) return;
       setTodayDigest({
-        todayTodoCount: todoCount,
         todayEventCount: cal.eventCount,
         nextEvent: cal.nextEvent,
       });
@@ -271,18 +248,6 @@ export function useTrayBindings(args: TrayBindingsArgs): TrayBindingsResult {
           return;
         case "tray:outbox-retry":
           window.dispatchEvent(new CustomEvent(OUTBOX_RETRY_EVENT));
-          return;
-        case "tray:quick-capture-todo":
-          // Bring window forward and route to todos surface, then ping
-          // the surface so it can focus its compose row even if it was
-          // already mounted (in which case `selectSurface` is a no-op
-          // for state but the input wouldn't grab focus on its own).
-          onSelectSurface("todos");
-          window.setTimeout(
-            () =>
-              window.dispatchEvent(new CustomEvent(QUICK_CAPTURE_TODO_EVENT)),
-            0,
-          );
           return;
         case "tray:open-deploy":
           // Site-admin → release panel. The release nav item id is the

@@ -15,7 +15,7 @@ export const CALENDAR_MODULE: WorkspaceModuleDefinition = {
   surface: {
     id: "calendar",
     title: "Calendar",
-    description: "Events",
+    description: "Sync",
     icon: <CalendarIcon />,
     Component: CalendarSurface,
   },
@@ -23,7 +23,7 @@ export const CALENDAR_MODULE: WorkspaceModuleDefinition = {
     {
       id: "calendar:open",
       description: "Events",
-      label: "Calendar",
+      label: "Open Calendar",
       surfaceId: "calendar",
     },
   ],

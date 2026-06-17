@@ -46,10 +46,10 @@ const DEFAULT_MCP_SETTINGS: WorkspaceMcpSettings = {
   enabled: true,
   writeMode: "local-write",
   requireConfirmationForWrites: true,
-  allowNotesWrite: true,
-  allowTodosWrite: true,
-  allowProjectsWrite: true,
-  allowContactsWrite: true,
+  allowNotesWrite: false,
+  allowTodosWrite: false,
+  allowProjectsWrite: false,
+  allowContactsWrite: false,
   allowSiteAdminWrite: true,
   allowReleaseWrite: false,
   siteAdminWriteTarget: "api",
@@ -187,8 +187,8 @@ function ModulesSettingsPanel({
       <div className="settings-window__section-head">
         <SettingsIconLarge />
         <div>
-          <h1 id="settings-window-title">Modules</h1>
-          <p>{enabledModuleIds.length} enabled</p>
+          <h1 id="settings-window-title">Tools</h1>
+          <p>{enabledModuleIds.length} active</p>
         </div>
       </div>
       <div className="settings-modules-list">
@@ -410,7 +410,7 @@ function McpSettingsPanel({
         enabled: true,
         writeMode: "local-write",
         requireConfirmationForWrites: true,
-        allowNotesWrite: true,
+        allowNotesWrite: false,
         allowTodosWrite: false,
         allowProjectsWrite: false,
         allowContactsWrite: false,
@@ -426,15 +426,15 @@ function McpSettingsPanel({
       enabled: true,
       writeMode: "local-write",
       requireConfirmationForWrites: true,
-      allowNotesWrite: true,
-      allowTodosWrite: true,
-      allowProjectsWrite: true,
-      allowContactsWrite: true,
+      allowNotesWrite: false,
+      allowTodosWrite: false,
+      allowProjectsWrite: false,
+      allowContactsWrite: false,
       allowSiteAdminWrite: true,
       allowReleaseWrite: false,
       siteAdminWriteTarget: "api",
       siteAdminFallbackToLocal: true,
-      allowCalendarWrite: false,
+      allowCalendarWrite: true,
     });
   };
 
@@ -493,8 +493,8 @@ function McpSettingsPanel({
 
       <div className="settings-ai-profile-strip" aria-label="AI permission profiles">
         <button type="button" onClick={() => applyProfile("daily")}>
-          <strong>Daily AI</strong>
-          <small>Local writes with confirmation</small>
+          <strong>Site and calendar</strong>
+          <small>Workspace writes with confirmation</small>
         </button>
         <button type="button" onClick={() => applyProfile("site")}>
           <strong>Site editing</strong>
@@ -559,40 +559,6 @@ function McpSettingsPanel({
           onChange={(requireConfirmationForWrites) =>
             onUpdateSettings({ requireConfirmationForWrites })
           }
-        />
-        </section>
-        <section className="settings-ai-permission-group">
-          <header>
-            <strong>Workspace</strong>
-            <small>Local private data</small>
-          </header>
-        <McpCapabilityRow
-          title="Notes writes"
-          detail="Create pages and append blocks"
-          checked={settings.allowNotesWrite}
-          disabled={!writable}
-          onChange={(allowNotesWrite) => onUpdateSettings({ allowNotesWrite })}
-        />
-        <McpCapabilityRow
-          title="Todos writes"
-          detail="Create, update, and complete local tasks"
-          checked={settings.allowTodosWrite}
-          disabled={!writable}
-          onChange={(allowTodosWrite) => onUpdateSettings({ allowTodosWrite })}
-        />
-        <McpCapabilityRow
-          title="Projects writes"
-          detail="Create projects and add project links"
-          checked={settings.allowProjectsWrite}
-          disabled={!writable}
-          onChange={(allowProjectsWrite) => onUpdateSettings({ allowProjectsWrite })}
-        />
-        <McpCapabilityRow
-          title="Contacts writes"
-          detail="Create and update local CRM contacts"
-          checked={settings.allowContactsWrite}
-          disabled={!writable}
-          onChange={(allowContactsWrite) => onUpdateSettings({ allowContactsWrite })}
         />
         </section>
         <section className="settings-ai-permission-group">
@@ -866,9 +832,8 @@ export function SettingsWindow({
 
   const navItems = useMemo(
     () => [
-      { id: "modules" as const, label: "Modules", icon: <Settings absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
+      { id: "modules" as const, label: "Tools", icon: <Settings absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
       { id: "data" as const, label: "Data", icon: <HardDrive absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
-      { id: "ai" as const, label: "AI Access", icon: <Bot absoluteStrokeWidth size={14} strokeWidth={1.7} /> },
     ],
     [],
   );

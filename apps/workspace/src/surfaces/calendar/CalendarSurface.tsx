@@ -97,30 +97,6 @@ import {
 import { WeekView } from "./WeekView";
 import type { CalendarTimeSlotSelection } from "./TimeGrid";
 import {
-  todosListWindow,
-  todosCreate,
-  todosArchive,
-  todosUpdate,
-  type TodoRow,
-  type TodosUpdateParams,
-} from "../../modules/todos/api";
-import {
-  TODO_SCHEDULE_PRESETS,
-  clearTodoPlanningUpdateParams,
-  dateAndTimeInputToTimestamp,
-  dateInputToTimestamp,
-  dateInputValue,
-  dateTimeInputToTimestamp,
-  dateTimeInputValue,
-  estimateInputToMinutes,
-  timeInputValue,
-  todoPresetUpdateParams,
-  todoScheduleAtUpdateParams,
-  todoSchedulePresetLabel,
-  type TodoSchedulePreset,
-} from "../../modules/todos/planning";
-import { todoNavId } from "../todos/nav";
-import {
   LOCAL_CALENDAR_SOURCE,
   LOCAL_CALENDAR_SOURCE_ID,
   isLocalEventId,
@@ -153,11 +129,6 @@ import {
   saveCalendarProductionSyncPolicy,
   type CalendarProductionSyncPolicy,
 } from "./productionSyncPolicy";
-import {
-  formatTodoOverlayError,
-  formatTodoPlanningMeta,
-  sortCalendarTodos,
-} from "./calendarTodos";
 import {
   type CalendarPublishState,
   type CalendarSyncHealth,
@@ -192,7 +163,6 @@ const DEFAULT_WORKSPACE_CALENDAR_COLOR = "#0a84ff";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type PublishState = CalendarPublishState;
-type TodoUpdatePatch = Omit<TodosUpdateParams, "id">;
 type EventComposerDraft = {
   anchor: Date;
   endsAt?: Date;
@@ -201,6 +171,10 @@ type EventComposerDraft = {
 
 function isAuthorized(status: CalendarAuthorizationStatus): boolean {
   return status === "fullAccess" || status === "writeOnly";
+}
+
+function canAttemptNativeCalendar(status: CalendarAuthorizationStatus): boolean {
+  return status === "notDetermined" || isAuthorized(status);
 }
 
 function loadCalendarTimeZone(): string {
@@ -230,7 +204,7 @@ function closeContainingActionMenu(start: HTMLElement | null) {
  * navigation anchor. Each rendered view (Day / Week / Month / Agenda)
  * is a thin presentation component over the same event list. */
 export function CalendarSurface() {
-  const { selectWorkspaceNavItem, setContextAccessory } = useSurfaceNav();
+  const { setContextAccessory } = useSurfaceNav();
   const [timeZone, setTimeZoneState] = useState<string>(() =>
     loadCalendarTimeZone(),
   );
@@ -242,6 +216,7 @@ export function CalendarSurface() {
   );
 
   const [auth, setAuth] = useState<CalendarAuthorizationStatus>("notDetermined");
+  const [requestingAccess, setRequestingAccess] = useState(false);
   // Opt-out of the EventKit gate. When the user clicks "Skip — use
   // workspace calendar only" on the permission prompt, we set this
   // flag so the surface renders even with `notDetermined`/`denied`
@@ -306,13 +281,7 @@ export function CalendarSurface() {
   );
   const [localEventUndo, setLocalEventUndo] =
     useState<LocalCalendarEventRow | null>(null);
-  // Todos overlaid on the timeline (Day / Week views) and folded into
-  // the Agenda list. Loaded once at mount + after every toggle so the
-  // overlay stays in sync without subscribing to a Tauri event we
-  // haven't built yet.
-  const [todos, setTodos] = useState<TodoRow[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
   const [composerDraft, setComposerDraft] = useState<EventComposerDraft | null>(
     null,
   );
@@ -324,8 +293,6 @@ export function CalendarSurface() {
     );
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
-  const [todoTrayExpanded, setTodoTrayExpanded] = useState(false);
-  const [todoMessage, setTodoMessage] = useState<string | null>(null);
   const [publishMetadata, setPublishMetadata] =
     useState<CalendarPublishMetadataStore>(() => emptyMetadataStore());
   const [rulesLoaded, setRulesLoaded] = useState(false);
@@ -361,7 +328,6 @@ export function CalendarSurface() {
     ) => {
       setSettingsPanelOpen(false);
       setSelectedEvent(null);
-      setSelectedTodoId(null);
       setComposerDraft({
         anchor: new Date(nextAnchor),
         endsAt: endsAt ? new Date(endsAt) : undefined,
@@ -405,7 +371,7 @@ export function CalendarSurface() {
   // Read authorization status (no prompt) on mount.
   useEffect(() => {
     let cancelled = false;
-    void calendarAuthorizationStatus()
+    void calendarAuthorizationStatus({ force: true })
       .then((s) => {
         if (!cancelled) setAuth(s);
       })
@@ -476,6 +442,11 @@ export function CalendarSurface() {
         calendarIds: [],
       });
       setEvents(evs);
+      if (src.length > 0 || cal.length > 0) {
+        setAuth((current) =>
+          current === "notDetermined" ? "fullAccess" : current,
+        );
+      }
       setEventKitLoadedAt(Date.now());
       setLoadState("ready");
     } catch (err) {
@@ -493,31 +464,11 @@ export function CalendarSurface() {
   }, [range]);
 
   useEffect(() => {
-    if (!isAuthorized(auth)) return;
+    if (localOnlyMode || !canAttemptNativeCalendar(auth)) return;
     // Initial EventKit hydration is an async external sync; loadAll awaits
     // native APIs before committing state.
     void loadAll();
-  }, [auth, loadAll]);
-
-  // Todos and local-first calendars live in workspace.db. They now use
-  // the shared resource loader so stale data stays visible while each
-  // range refresh is in flight, matching Todos / Projects / Contacts.
-  const calendarTodosResource = useWorkspaceResource<TodoRow[]>({
-    initialData: [],
-    source: "local",
-    getSummary: (rows) => `${rows.length} tasks`,
-    hasData: (rows) => rows.length > 0,
-    load: useCallback(async () => {
-      const next = await todosListWindow({
-        startsAt: new Date(range.startsAt).getTime(),
-        endsAt: new Date(range.endsAt).getTime(),
-      });
-      return sortCalendarTodos(next);
-    }, [range.endsAt, range.startsAt]),
-    onSuccess: useCallback((next: TodoRow[]) => {
-      setTodos(next);
-    }, []),
-  });
+  }, [auth, loadAll, localOnlyMode]);
 
   const localCalendarsResource = useWorkspaceResource<LocalCalendarRow[]>({
     initialData: [],
@@ -584,7 +535,6 @@ export function CalendarSurface() {
         setCalendarChangeRevision((revision) => revision + 1);
       }
       setComposerDraft(null);
-      setSelectedTodoId(null);
       setSelectedEvent(saved);
     },
     [upsertLocalEvent],
@@ -723,7 +673,6 @@ export function CalendarSurface() {
     try {
       const row = await localCalendarUnarchiveEvent(localEventUndo.eventIdentifier);
       upsertLocalEvent(row);
-      setSelectedTodoId(null);
       setSelectedEvent(row);
       setLocalEventUndo(null);
     } catch (error) {
@@ -731,112 +680,17 @@ export function CalendarSurface() {
     }
   }, [localEventUndo, upsertLocalEvent]);
 
-  const upsertTodo = useCallback((row: TodoRow) => {
-    setTodos((prev) =>
-      sortCalendarTodos([
-        ...prev.filter((todo) => todo.id !== row.id),
-        row,
-      ]),
-    );
-  }, []);
-
-  const selectedTodo = useMemo(
-    () => todos.find((todo) => todo.id === selectedTodoId) ?? null,
-    [selectedTodoId, todos],
-  );
-
-  const handleTodoSelect = useCallback((todo: TodoRow) => {
-    setComposerDraft(null);
-    setSettingsPanelOpen(false);
-    setSelectedEvent(null);
-    setSelectedTodoId(todo.id);
-  }, []);
-
   const handleEventSelect = useCallback((event: CalendarEvent) => {
     setComposerDraft(null);
     setSettingsPanelOpen(false);
-    setSelectedTodoId(null);
     setSelectedEvent(event);
   }, []);
-
-  const updateTodo = useCallback(
-    async (
-      todo: TodoRow,
-      patch: TodoUpdatePatch,
-      failureLabel = "update todo",
-    ) => {
-      setTodoMessage(null);
-      try {
-        const updated = await todosUpdate({ id: todo.id, ...patch });
-        upsertTodo(updated);
-      } catch (error) {
-        setTodoMessage(`Failed to ${failureLabel}: ${formatTodoOverlayError(error)}`);
-      }
-    },
-    [upsertTodo],
-  );
-
-  const handleTodoToggle = useCallback(
-    (id: string, completed: boolean) => {
-      // Optimistic update so the chip flips immediately; the reconcile
-      // step replaces with the server-canonical row (sets completedAt
-      // timestamp / clears it on uncheck).
-      const optimisticAt = completed ? Date.now() : null;
-      setTodos((prev) =>
-        prev.map((t) =>
-          t.id === id ? { ...t, completedAt: optimisticAt } : t,
-        ),
-      );
-      void todosUpdate({ id, completed })
-        .then((updated) => {
-          upsertTodo(updated);
-        })
-        .catch((error) => {
-          setTodoMessage(`Failed to update todo: ${formatTodoOverlayError(error)}`);
-          // Roll back the optimistic toggle if the backend rejected.
-          setTodos((prev) =>
-            prev.map((t) =>
-              t.id === id
-                ? { ...t, completedAt: completed ? null : optimisticAt }
-                : t,
-            ),
-          );
-        });
-    },
-    [upsertTodo],
-  );
-
-  const applyTodoPreset = useCallback(
-    (todo: TodoRow, preset: TodoSchedulePreset) =>
-      updateTodo(todo, todoPresetUpdateParams(preset), "schedule todo"),
-    [updateTodo],
-  );
-
-  const clearTodoPlanning = useCallback(
-    (todo: TodoRow) =>
-      updateTodo(todo, clearTodoPlanningUpdateParams(), "clear todo schedule"),
-    [updateTodo],
-  );
-
-  const scheduleTodoAt = useCallback(
-    (
-      todo: TodoRow,
-      scheduledStartAt: number,
-      estimatedMinutes: number | null,
-    ) =>
-      updateTodo(
-        todo,
-        todoScheduleAtUpdateParams(scheduledStartAt, estimatedMinutes),
-        "schedule todo",
-      ),
-    [updateTodo],
-  );
 
   // Re-subscribe to EventKit changes whenever loadAll's identity
   // changes (i.e. when range changes); the listener captures the
   // current range via its closure.
   useEffect(() => {
-    if (!isAuthorized(auth)) return;
+    if (localOnlyMode || !canAttemptNativeCalendar(auth)) return;
     let active = true;
     let unlisten: (() => void) | null = null;
     void onCalendarChanged(() => {
@@ -855,7 +709,7 @@ export function CalendarSurface() {
       active = false;
       unlisten?.();
     };
-  }, [auth, loadAll]);
+  }, [auth, loadAll, localOnlyMode]);
 
   // Cmd+N (macOS) / Ctrl+N opens the event composer — matches the
   // Apple Calendar keyboard convention. Skipped when a dialog is
@@ -1028,7 +882,7 @@ export function CalendarSurface() {
       setSearchEventsLoading(false);
       return;
     }
-    if (!isAuthorized(auth)) return;
+    if (!canAttemptNativeCalendar(auth)) return;
     let cancelled = false;
     const debounce = window.setTimeout(async () => {
       const startsAt = new Date(anchor.getTime() - 180 * 86_400_000).toISOString();
@@ -1099,16 +953,14 @@ export function CalendarSurface() {
     eventKitLoadedAt ?? 0,
     localCalendarsResource.lastLoadedAt ?? 0,
     localEventsResource.lastLoadedAt ?? 0,
-    calendarTodosResource.lastLoadedAt ?? 0,
   );
   const calendarHealth = deriveWorkspaceDataHealth({
     error:
       !localOnlyMode && loadState === "error"
         ? errorMessage
-        : localEventsResource.error || calendarTodosResource.error,
+        : localEventsResource.error,
     hasData:
       visibleEvents.length > 0 ||
-      todos.length > 0 ||
       mergedCalendars.length > 0,
     hasLoaded:
       localOnlyMode
@@ -1120,8 +972,7 @@ export function CalendarSurface() {
     loading:
       (!localOnlyMode && loadState === "loading") ||
       localCalendarsResource.loading ||
-      localEventsResource.loading ||
-      calendarTodosResource.loading,
+      localEventsResource.loading,
     source: localOnlyMode ? "local" : "mixed",
     summary: `${visibleEvents.length} events`,
     updatedAt: calendarHealthUpdatedAt > 0 ? calendarHealthUpdatedAt : null,
@@ -1273,75 +1124,6 @@ export function CalendarSurface() {
     });
   }, []);
 
-  const createTodoFromEvent = useCallback(
-    async (event: CalendarEvent) => {
-      setTodoMessage(null);
-      const startsAt = new Date(event.startsAt).getTime();
-      const endsAt = new Date(event.endsAt).getTime();
-      const durationMinutes =
-        Number.isFinite(startsAt) && Number.isFinite(endsAt) && endsAt > startsAt
-          ? Math.max(15, Math.round((endsAt - startsAt) / 60_000))
-          : null;
-      try {
-        const row = await todosCreate({
-          dueAt: event.isAllDay ? startsAt : null,
-          estimatedMinutes: event.isAllDay ? null : durationMinutes,
-          notes: event.location ? `From calendar: ${event.location}` : "From calendar",
-          scheduledEndAt: event.isAllDay ? null : endsAt,
-          scheduledStartAt: event.isAllDay ? null : startsAt,
-          title: event.title || "Calendar event",
-        });
-        upsertTodo(row);
-        setTodoMessage("Todo created from event.");
-      } catch (error) {
-        setTodoMessage(`Failed to create todo: ${formatTodoOverlayError(error)}`);
-      }
-    },
-    [upsertTodo],
-  );
-
-  const createTodoFromSlot = useCallback(
-    async (selection: CalendarTimeSlotSelection) => {
-      setTodoMessage(null);
-      const startsAt = selection.startsAt.getTime();
-      const endsAt = selection.endsAt?.getTime() ?? null;
-      const estimatedMinutes =
-        endsAt !== null && endsAt > startsAt
-          ? Math.max(15, Math.round((endsAt - startsAt) / 60_000))
-          : 30;
-      try {
-        const row = await todosCreate({
-          estimatedMinutes,
-          scheduledEndAt: endsAt,
-          scheduledStartAt: startsAt,
-          title: "New todo",
-        });
-        upsertTodo(row);
-        setSelectedEvent(null);
-        setComposerDraft(null);
-        setSelectedTodoId(row.id);
-      } catch (error) {
-        setTodoMessage(`Failed to create todo: ${formatTodoOverlayError(error)}`);
-      }
-    },
-    [upsertTodo],
-  );
-
-  const archiveCalendarTodo = useCallback(
-    async (todo: TodoRow) => {
-      setTodoMessage(null);
-      setTodos((prev) => prev.filter((row) => row.id !== todo.id));
-      if (selectedTodoId === todo.id) setSelectedTodoId(null);
-      try {
-        await todosArchive(todo.id);
-      } catch (error) {
-        upsertTodo(todo);
-        setTodoMessage(`Failed to archive todo: ${formatTodoOverlayError(error)}`);
-      }
-    },
-    [selectedTodoId, upsertTodo],
-  );
-
   const handleEventContextMenu = useCallback(
     (event: CalendarEvent) => {
       const calendar = calendarsById.get(event.calendarId);
@@ -1358,10 +1140,6 @@ export function CalendarSurface() {
         {
           label: "Open details",
           run: () => handleEventSelect(event),
-        },
-        {
-          label: "Create todo from event",
-          run: () => void createTodoFromEvent(event),
         },
         {
           label: "Copy title and time",
@@ -1388,7 +1166,6 @@ export function CalendarSurface() {
     [
       archiveLocalEvent,
       calendarsById,
-      createTodoFromEvent,
       handleEventSelect,
       setCalendarVisible,
       showOnlyCalendar,
@@ -1414,10 +1191,6 @@ export function CalendarSurface() {
               selection.endsAt,
             ),
         },
-        {
-          label: "New todo here",
-          run: () => void createTodoFromSlot(selection),
-        },
         CONTEXT_MENU_SEPARATOR,
         {
           label: "Copy date/time",
@@ -1426,61 +1199,14 @@ export function CalendarSurface() {
       ] as Parameters<typeof showContextMenuWithActions>[0];
       showContextMenuWithActions(entries);
     },
-    [createTodoFromSlot, openEventComposer, timeZone],
-  );
-
-  const handleTodoContextMenu = useCallback(
-    (todo: TodoRow) => {
-      const completed = todo.completedAt !== null;
-      const entries = [
-        {
-          label: "Open details",
-          run: () => handleTodoSelect(todo),
-        },
-        {
-          label: completed ? "Mark open" : "Mark done",
-          run: () => handleTodoToggle(todo.id, !completed),
-        },
-        CONTEXT_MENU_SEPARATOR,
-        ...TODO_SCHEDULE_PRESETS.map((preset) => ({
-          label: todoSchedulePresetLabel(preset),
-          run: () => applyTodoPreset(todo, preset),
-        })),
-        {
-          label: "Clear schedule",
-          run: () => clearTodoPlanning(todo),
-        },
-        CONTEXT_MENU_SEPARATOR,
-        {
-          label: "Open in Todos",
-          run: () => selectWorkspaceNavItem("todos", todoNavId(todo.id)),
-        },
-        {
-          label: "Copy title",
-          run: () => copyTextToClipboard(todo.title || "(Untitled)"),
-        },
-        {
-          label: "Archive todo",
-          run: () => void archiveCalendarTodo(todo),
-        },
-      ] as Parameters<typeof showContextMenuWithActions>[0];
-      showContextMenuWithActions(entries);
-    },
-    [
-      applyTodoPreset,
-      archiveCalendarTodo,
-      clearTodoPlanning,
-      handleTodoSelect,
-      handleTodoToggle,
-      selectWorkspaceNavItem,
-    ],
+    [openEventComposer, timeZone],
   );
 
   const refreshCalendarAccounts = useCallback(async () => {
-    if (!isAuthorized(auth)) {
-      const nextAuth = await calendarAuthorizationStatus();
+    if (!canAttemptNativeCalendar(auth)) {
+      const nextAuth = await calendarAuthorizationStatus({ force: true });
       setAuth(nextAuth);
-      if (!isAuthorized(nextAuth)) {
+      if (!canAttemptNativeCalendar(nextAuth)) {
         setLocalCalendarMessage("Calendar access is not granted yet.");
         return;
       }
@@ -1547,12 +1273,21 @@ export function CalendarSurface() {
   }, [setContextAccessory, sourceSidebar]);
 
   const requestAccess = async () => {
+    if (requestingAccess) return;
+    setRequestingAccess(true);
     setErrorMessage(null);
     try {
+      const current = await calendarAuthorizationStatus({ force: true });
+      if (current !== "notDetermined") {
+        setAuth(current);
+        return;
+      }
       const next = await calendarRequestAccess();
       setAuth(next);
     } catch (err) {
       setErrorMessage(String(err));
+    } finally {
+      setRequestingAccess(false);
     }
   };
 
@@ -1702,12 +1437,25 @@ export function CalendarSurface() {
     setLocalOnlyMode(true);
   }, []);
 
-  if (auth === "notDetermined" && !localOnlyMode) {
+  const needsNativeCalendarGrant =
+    auth === "notDetermined" &&
+    !localOnlyMode &&
+    (loadState === "error" ||
+      (loadState === "ready" &&
+        sources.length === 0 &&
+        calendars.length === 0 &&
+        events.length === 0));
+
+  if (needsNativeCalendarGrant) {
     return (
       <PermissionGate
         onRequest={requestAccess}
         onSkip={enableLocalOnlyMode}
-        error={errorMessage}
+        error={
+          errorMessage ??
+          "macOS has not granted Calendar access to this app build yet."
+        }
+        requesting={requestingAccess}
       />
     );
   }
@@ -1828,7 +1576,6 @@ export function CalendarSurface() {
                       if (next) {
                         setComposerDraft(null);
                         setSelectedEvent(null);
-                        setSelectedTodoId(null);
                       }
                       return next;
                     });
@@ -1851,7 +1598,6 @@ export function CalendarSurface() {
                     setSettingsPanelOpen(true);
                     setComposerDraft(null);
                     setSelectedEvent(null);
-                    setSelectedTodoId(null);
                   }}
                   aria-pressed={settingsPanelOpen && calendarSettingsTab === "publish"}
                   title={
@@ -1874,19 +1620,6 @@ export function CalendarSurface() {
       <div
         className="panel-shell__body calendar-surface-body"
       >
-        <CalendarTodoTray
-          anchor={anchor}
-          expanded={todoTrayExpanded}
-          todos={todos}
-          message={todoMessage}
-          onClear={clearTodoPlanning}
-          onPreset={applyTodoPreset}
-          onScheduleAt={scheduleTodoAt}
-          onToggleExpanded={() => setTodoTrayExpanded((expanded) => !expanded)}
-          onTodoSelect={handleTodoSelect}
-          onTodoContextMenu={handleTodoContextMenu}
-          onTodoToggle={handleTodoToggle}
-        />
         {localEventUndo ? (
           <CalendarUndoToast
             event={localEventUndo}
@@ -2000,27 +1733,6 @@ export function CalendarSurface() {
                 onMetadataChange={updateSelectedMetadata}
                 onPublish={() => void syncCalendarProjection("manual")}
               />
-            ) : selectedTodo ? (
-              <CalendarTodoInspector
-                key={selectedTodo.id}
-                todo={selectedTodo}
-                onClear={() => void clearTodoPlanning(selectedTodo)}
-                onClose={() => setSelectedTodoId(null)}
-                onPreset={(preset) => void applyTodoPreset(selectedTodo, preset)}
-                onToggle={(completed) =>
-                  handleTodoToggle(selectedTodo.id, completed)
-                }
-                onUpdate={(patch, failureLabel) =>
-                  void updateTodo(selectedTodo, patch, failureLabel)
-                }
-                onScheduleAt={(scheduledStartAt, estimatedMinutes) =>
-                  void scheduleTodoAt(
-                    selectedTodo,
-                    scheduledStartAt,
-                    estimatedMinutes,
-                  )
-                }
-              />
             ) : null}
         >
           <ViewPane
@@ -2028,7 +1740,6 @@ export function CalendarSurface() {
             anchor={anchor}
             events={visibleEvents}
             calendarsById={calendarsById}
-            todos={todos}
             loadState={localOnlyMode ? "ready" : loadState}
             errorMessage={localOnlyMode ? null : errorMessage}
             getDisclosure={getDisclosure}
@@ -2039,9 +1750,6 @@ export function CalendarSurface() {
               openEventComposer(startsAt, point, endsAt)
             }
             onSlotContextMenu={handleSlotContextMenu}
-            onTodoSelect={handleTodoSelect}
-            onTodoContextMenu={handleTodoContextMenu}
-            onTodoToggle={handleTodoToggle}
           />
         </WorkspaceSplitView>
         {composerDraft ? (
@@ -2096,400 +1804,11 @@ function CalendarUndoToast({
   );
 }
 
-function CalendarTodoTray({
-  anchor,
-  expanded,
-  todos,
-  message,
-  onClear,
-  onPreset,
-  onScheduleAt,
-  onToggleExpanded,
-  onTodoSelect,
-  onTodoContextMenu,
-  onTodoToggle,
-}: {
-  anchor: Date;
-  expanded: boolean;
-  todos: TodoRow[];
-  message: string | null;
-  onClear: (todo: TodoRow) => void;
-  onPreset: (todo: TodoRow, preset: TodoSchedulePreset) => void;
-  onScheduleAt: (
-    todo: TodoRow,
-    scheduledStartAt: number,
-    estimatedMinutes: number | null,
-  ) => void;
-  onToggleExpanded: () => void;
-  onTodoSelect: (todo: TodoRow) => void;
-  onTodoContextMenu: (todo: TodoRow) => void;
-  onTodoToggle: (id: string, completed: boolean) => void;
-}) {
-  const unscheduled = useMemo(
-    () =>
-      sortCalendarTodos(
-        todos.filter(
-          (todo) =>
-            todo.archivedAt === null &&
-            todo.completedAt === null &&
-            todo.scheduledStartAt === null,
-        ),
-      ),
-    [todos],
-  );
-  const visible = unscheduled.slice(0, 6);
-  return (
-    <section
-      className="calendar-todo-tray"
-      aria-label="Unscheduled todos"
-      data-empty={unscheduled.length === 0 ? "true" : undefined}
-      data-expanded={expanded ? "true" : undefined}
-    >
-      <div className="calendar-todo-tray__header">
-        <div>
-          <strong>Unscheduled Todos</strong>
-          <span>{unscheduled.length} unscheduled</span>
-        </div>
-        <div className="calendar-todo-tray__header-actions">
-          {unscheduled.length > visible.length ? (
-            <span className="calendar-todo-tray__overflow">
-              +{unscheduled.length - visible.length} more in Todos
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className="calendar-todo-tray__toggle"
-            aria-expanded={expanded}
-            onClick={onToggleExpanded}
-          >
-            {expanded ? "Hide" : "Plan"}
-          </button>
-        </div>
-      </div>
-      {message ? (
-        <p className="calendar-todo-tray__message" role="status">
-          {message}
-        </p>
-      ) : null}
-      {!expanded ? null : visible.length === 0 ? (
-        <p className="calendar-todo-tray__empty">
-          Nothing to schedule.
-        </p>
-      ) : (
-        <ul className="calendar-todo-tray__list" role="list">
-          {visible.map((todo) => (
-            <CalendarTodoTrayItem
-              anchor={anchor}
-              key={todo.id}
-              todo={todo}
-              onClear={onClear}
-              onPreset={onPreset}
-              onScheduleAt={onScheduleAt}
-              onTodoSelect={onTodoSelect}
-              onTodoContextMenu={onTodoContextMenu}
-              onTodoToggle={onTodoToggle}
-            />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function CalendarTodoTrayItem({
-  anchor,
-  todo,
-  onClear,
-  onPreset,
-  onScheduleAt,
-  onTodoSelect,
-  onTodoContextMenu,
-  onTodoToggle,
-}: {
-  anchor: Date;
-  todo: TodoRow;
-  onClear: (todo: TodoRow) => void;
-  onPreset: (todo: TodoRow, preset: TodoSchedulePreset) => void;
-  onScheduleAt: (
-    todo: TodoRow,
-    scheduledStartAt: number,
-    estimatedMinutes: number | null,
-  ) => void;
-  onTodoSelect: (todo: TodoRow) => void;
-  onTodoContextMenu: (todo: TodoRow) => void;
-  onTodoToggle: (id: string, completed: boolean) => void;
-}) {
-  const [dateValue, setDateValue] = useState(() =>
-    dateInputValue(todo.dueAt ?? anchor.getTime()),
-  );
-  const [timeValue, setTimeValue] = useState(() =>
-    timeInputValue(todo.scheduledStartAt) || "09:00",
-  );
-  const [durationValue, setDurationValue] = useState(() =>
-    String(todo.estimatedMinutes ?? 30),
-  );
-
-  const scheduleExact = () => {
-    const scheduledStartAt = dateAndTimeInputToTimestamp(dateValue, timeValue);
-    if (scheduledStartAt === null) return;
-    onScheduleAt(
-      todo,
-      scheduledStartAt,
-      estimateInputToMinutes(durationValue) ?? 30,
-    );
-  };
-
-  return (
-    <li
-      className="calendar-todo-tray__item"
-      onContextMenu={(event) => {
-        event.preventDefault();
-        onTodoContextMenu(todo);
-      }}
-    >
-      <button
-        type="button"
-        className="calendar-todo-tray__check"
-        aria-label="Mark done"
-        onClick={() => onTodoToggle(todo.id, true)}
-      >
-        <span aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className="calendar-todo-tray__body"
-        onClick={() => onTodoSelect(todo)}
-      >
-        <strong>{todo.title || "(Untitled)"}</strong>
-        <span>{formatTodoPlanningMeta(todo)}</span>
-      </button>
-      <div className="calendar-todo-tray__quick" aria-label="Quick schedule">
-        {TODO_SCHEDULE_PRESETS.map((preset) => (
-          <button
-            type="button"
-            key={preset}
-            onClick={() => onPreset(todo, preset)}
-          >
-            {todoSchedulePresetLabel(preset)}
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={todo.dueAt === null}
-          onClick={() => onClear(todo)}
-        >
-          Clear
-        </button>
-      </div>
-      <form
-        className="calendar-todo-tray__schedule"
-        onSubmit={(event) => {
-          event.preventDefault();
-          scheduleExact();
-        }}
-      >
-        <input
-          aria-label="Schedule date"
-          type="date"
-          value={dateValue}
-          onChange={(event) => setDateValue(event.currentTarget.value)}
-        />
-        <input
-          aria-label="Schedule time"
-          type="time"
-          value={timeValue}
-          onChange={(event) => setTimeValue(event.currentTarget.value)}
-        />
-        <input
-          aria-label="Duration minutes"
-          min="1"
-          max="1440"
-          type="number"
-          value={durationValue}
-          onChange={(event) => setDurationValue(event.currentTarget.value)}
-        />
-        <button type="submit">Block</button>
-      </form>
-    </li>
-  );
-}
-
-function CalendarTodoInspector({
-  todo,
-  onClear,
-  onClose,
-  onPreset,
-  onScheduleAt,
-  onToggle,
-  onUpdate,
-}: {
-  todo: TodoRow;
-  onClear: () => void;
-  onClose: () => void;
-  onPreset: (preset: TodoSchedulePreset) => void;
-  onScheduleAt: (scheduledStartAt: number, estimatedMinutes: number | null) => void;
-  onToggle: (completed: boolean) => void;
-  onUpdate: (patch: TodoUpdatePatch, failureLabel?: string) => void;
-}) {
-  const [titleDraft, setTitleDraft] = useState(todo.title);
-  const [notesDraft, setNotesDraft] = useState(todo.notes);
-
-  const commitTitle = () => {
-    const next = titleDraft.trim();
-    if (!next || next === todo.title) {
-      setTitleDraft(todo.title);
-      return;
-    }
-    onUpdate({ title: next }, "rename todo");
-  };
-
-  const commitNotes = () => {
-    if (notesDraft === todo.notes) return;
-    onUpdate({ notes: notesDraft }, "update todo notes");
-  };
-
-  const updateScheduledTime = (value: string) => {
-    const scheduledStartAt = dateTimeInputToTimestamp(value);
-    if (scheduledStartAt === null) {
-      onUpdate(
-        {
-          scheduledEndAt: null,
-          scheduledStartAt: null,
-        },
-        "update todo schedule",
-      );
-      return;
-    }
-    onScheduleAt(scheduledStartAt, todo.estimatedMinutes);
-  };
-
-  const updateEstimate = (value: string) => {
-    const estimatedMinutes = estimateInputToMinutes(value);
-    onUpdate(
-      {
-        estimatedMinutes,
-        scheduledEndAt:
-          todo.scheduledStartAt === null || estimatedMinutes === null
-            ? null
-            : todo.scheduledStartAt + estimatedMinutes * 60_000,
-      },
-      "update todo estimate",
-    );
-  };
-
-  return (
-    <WorkspaceInspector
-      className="calendar-inspector calendar-todo-inspector"
-      label="Todo"
-      style={{
-        border: 0,
-        borderRadius: 0,
-        padding: "14px",
-      }}
-    >
-      <WorkspaceInspectorHeader
-        heading={todo.title || "(Untitled)"}
-        kicker="Todo"
-        actions={
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Close
-          </button>
-        }
-      />
-      <div className="workspace-inspector__body">
-        <WorkspaceInspectorSection heading="Task">
-          <WorkspaceTextField
-            label="Title"
-            value={titleDraft}
-            onBlur={commitTitle}
-            onChange={(event) => setTitleDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-              if (event.key === "Escape") {
-                setTitleDraft(todo.title);
-                event.currentTarget.blur();
-              }
-            }}
-          />
-          <WorkspaceTextareaField
-            label="Notes"
-            rows={4}
-            value={notesDraft}
-            onBlur={commitNotes}
-            onChange={(event) => setNotesDraft(event.currentTarget.value)}
-          />
-          <WorkspaceCheckboxField
-            checked={todo.completedAt !== null}
-            onChange={(event) => onToggle(event.currentTarget.checked)}
-          >
-            Completed
-          </WorkspaceCheckboxField>
-        </WorkspaceInspectorSection>
-        <WorkspaceInspectorSection heading="Planning">
-          <div className="calendar-todo-inspector__quick">
-            {TODO_SCHEDULE_PRESETS.map((preset) => (
-              <button
-                type="button"
-                className="btn btn--ghost"
-                key={preset}
-                onClick={() => onPreset(preset)}
-              >
-                {todoSchedulePresetLabel(preset)}
-              </button>
-            ))}
-            <button type="button" className="btn btn--ghost" onClick={onClear}>
-              Clear
-            </button>
-          </div>
-          <WorkspaceTextField
-            label="Due date"
-            type="date"
-            value={dateInputValue(todo.dueAt)}
-            onChange={(event) =>
-              onUpdate(
-                { dueAt: dateInputToTimestamp(event.currentTarget.value) },
-                "update todo due date",
-              )
-            }
-          />
-          <WorkspaceTextField
-            label="Scheduled time"
-            type="datetime-local"
-            value={dateTimeInputValue(todo.scheduledStartAt)}
-            onChange={(event) => updateScheduledTime(event.currentTarget.value)}
-          />
-          <WorkspaceTextField
-            label="Estimate minutes"
-            min="1"
-            max="1440"
-            type="number"
-            value={todo.estimatedMinutes ?? ""}
-            onChange={(event) => updateEstimate(event.currentTarget.value)}
-          />
-        </WorkspaceInspectorSection>
-        <WorkspaceInspectorSection heading="Status">
-          <dl className="workspace-inspector__meta">
-            <div>
-              <dt>Planning</dt>
-              <dd>{formatTodoPlanningMeta(todo)}</dd>
-            </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>{formatDateTime(new Date(todo.updatedAt).toISOString())}</dd>
-            </div>
-          </dl>
-        </WorkspaceInspectorSection>
-      </div>
-    </WorkspaceInspector>
-  );
-}
-
 function ViewPane({
   view,
   anchor,
   events,
   calendarsById,
-  todos,
   loadState,
   errorMessage,
   getDisclosure,
@@ -2498,15 +1817,11 @@ function ViewPane({
   onEventContextMenu,
   onSlotCreate,
   onSlotContextMenu,
-  onTodoSelect,
-  onTodoContextMenu,
-  onTodoToggle,
 }: {
   view: ViewKind;
   anchor: Date;
   events: CalendarEvent[];
   calendarsById: Map<string, Calendar>;
-  todos: TodoRow[];
   loadState: LoadState;
   errorMessage: string | null;
   getDisclosure: EventDisclosureResolver;
@@ -2515,9 +1830,6 @@ function ViewPane({
   onEventContextMenu: (event: CalendarEvent) => void;
   onSlotCreate: (selection: CalendarTimeSlotSelection) => void;
   onSlotContextMenu: (selection: CalendarTimeSlotSelection) => void;
-  onTodoSelect: (todo: TodoRow) => void;
-  onTodoContextMenu: (todo: TodoRow) => void;
-  onTodoToggle: (id: string, completed: boolean) => void;
 }) {
   if (loadState === "error" && events.length === 0) {
     return (
@@ -2555,16 +1867,12 @@ function ViewPane({
           day={anchor}
           events={events}
           calendarsById={calendarsById}
-          todos={todos}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onEventSelect={onEventSelect}
           onEventContextMenu={onEventContextMenu}
           onSlotCreate={onSlotCreate}
           onSlotContextMenu={onSlotContextMenu}
-          onTodoSelect={onTodoSelect}
-          onTodoContextMenu={onTodoContextMenu}
-          onTodoToggle={onTodoToggle}
         />
       );
     case "week":
@@ -2573,16 +1881,12 @@ function ViewPane({
           anchor={anchor}
           events={events}
           calendarsById={calendarsById}
-          todos={todos}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onEventSelect={onEventSelect}
           onEventContextMenu={onEventContextMenu}
           onSlotCreate={onSlotCreate}
           onSlotContextMenu={onSlotContextMenu}
-          onTodoSelect={onTodoSelect}
-          onTodoContextMenu={onTodoContextMenu}
-          onTodoToggle={onTodoToggle}
         />
       );
     case "month":
@@ -2604,15 +1908,11 @@ function ViewPane({
         <AgendaView
           events={events}
           calendarsById={calendarsById}
-          todos={todos}
           rangeLabel={formatViewTitle("agenda", anchor, timeZone)}
           getDisclosure={getDisclosure}
           timeZone={timeZone}
           onEventSelect={onEventSelect}
           onEventContextMenu={onEventContextMenu}
-          onTodoSelect={onTodoSelect}
-          onTodoContextMenu={onTodoContextMenu}
-          onTodoToggle={onTodoToggle}
         />
       );
     }
@@ -3046,13 +2346,19 @@ function PermissionGate({
   onRequest,
   onSkip,
   error,
+  requesting,
 }: {
   onRequest: () => void;
   onSkip: () => void;
   error: string | null;
+  requesting: boolean;
 }) {
   return (
-    <section className="surface-card" aria-labelledby="calendar-gate-title">
+    <section
+      className="surface-card"
+      aria-busy={requesting}
+      aria-labelledby="calendar-gate-title"
+    >
       <header>
         <h1
           id="calendar-gate-title"
@@ -3065,8 +2371,13 @@ function PermissionGate({
         </p>
       </header>
       <div className="mt-3 flex gap-2">
-        <button type="button" className="btn btn--primary" onClick={onRequest}>
-          Allow access
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={requesting}
+          onClick={onRequest}
+        >
+          {requesting ? "Waiting for macOS..." : "Allow access"}
         </button>
         <button type="button" className="btn" onClick={onSkip}>
           Use Workspace only

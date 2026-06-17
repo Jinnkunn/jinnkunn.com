@@ -4,16 +4,16 @@
 .workspace-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: min(1160px, 100%);
+  gap: 14px;
+  width: min(1040px, 100%);
 }
 
 .workspace-dashboard__hero {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 18px;
-  padding: 4px 2px 14px;
+  gap: 16px;
+  padding: 2px 2px 12px;
   box-shadow: inset 0 -1px 0 var(--hairline);
 }
 
@@ -25,10 +25,10 @@
 .workspace-dashboard__hero h1 {
   color: var(--color-text-primary);
   font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 690;
   letter-spacing: 0;
-  line-height: 1.05;
+  line-height: 1.08;
 }
 
 .workspace-dashboard__hero p:not(.workspace-dashboard__eyebrow) {
@@ -40,7 +40,7 @@
 .workspace-dashboard__eyebrow {
   color: var(--color-accent-strong);
   font-size: 10.5px;
-  font-weight: 750;
+  font-weight: 720;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -50,10 +50,10 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 32px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 11px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--fill-secondary);
   color: var(--color-text-primary);
   cursor: pointer;
@@ -84,9 +84,9 @@
 
 .workspace-dashboard__layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(278px, 340px);
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
   align-items: start;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -113,35 +113,16 @@
   min-width: 0;
   padding: 12px;
   border: 0;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 44%),
-    radial-gradient(
-      circle at 1px 1px,
-      color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
-      transparent 0.72px
-    ),
-    color-mix(in srgb, var(--color-bg-surface) 68%, transparent);
-  background-size: auto, 3px 3px, auto;
-  box-shadow:
-    inset 0 1px 0 var(--surface-highlight-soft),
-    0 0 0 1px var(--surface-edge),
-    0 10px 28px color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
+  box-shadow: inset 0 0 0 1px var(--surface-edge);
 }
 
 @supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
   .workspace-dashboard__panel {
-    background:
-      linear-gradient(180deg, var(--surface-highlight-soft), transparent 44%),
-      radial-gradient(
-        circle at 1px 1px,
-        color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0 0.45px,
-        transparent 0.72px
-      ),
-      color-mix(in srgb, var(--color-bg-surface-translucent) 78%, transparent);
-    background-size: auto, 3px 3px, auto;
-    backdrop-filter: saturate(140%) blur(18px);
-    -webkit-backdrop-filter: saturate(140%) blur(18px);
+    background: color-mix(in srgb, var(--color-bg-surface-translucent) 82%, transparent);
+    backdrop-filter: saturate(130%) blur(16px);
+    -webkit-backdrop-filter: saturate(130%) blur(16px);
   }
 }
 
@@ -186,6 +167,119 @@
   text-underline-offset: 3px;
 }
 
+.workspace-dashboard__panel--tools {
+  gap: 10px;
+}
+
+.workspace-dashboard__tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspace-dashboard__tool-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fill-tertiary) 76%, transparent);
+  box-shadow: inset 0 0 0 1px var(--surface-edge);
+}
+
+.workspace-dashboard__tool-main {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    background-color 120ms var(--ease-out),
+    transform 80ms var(--ease-out);
+}
+
+.workspace-dashboard__tool-main:hover,
+.workspace-dashboard__tool-main:focus-visible {
+  outline: none;
+  background: var(--fill-secondary);
+}
+
+.workspace-dashboard__tool-main:active {
+  transform: scale(0.992);
+}
+
+.workspace-dashboard__tool-main .workspace-dashboard__icon {
+  width: 30px;
+  height: 30px;
+}
+
+.workspace-dashboard__tool-main > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workspace-dashboard__tool-main strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 690;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-dashboard__tool-main small {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-dashboard__tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.workspace-dashboard__tool-actions button {
+  min-height: 24px;
+  max-width: 100%;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fill-quaternary) 78%, transparent);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-dashboard__tool-actions button:hover,
+.workspace-dashboard__tool-actions button:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-accent) 11%, var(--fill-tertiary));
+  color: var(--color-accent-strong);
+}
+
 .workspace-dashboard__action-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -197,7 +291,7 @@
   width: 100%;
   min-width: 0;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 7px;
   background: color-mix(in srgb, var(--fill-tertiary) 72%, transparent);
   color: var(--color-text-primary);
   cursor: pointer;
@@ -310,7 +404,7 @@
   margin: 0;
   padding: 12px var(--space-sm);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 7px;
   background: var(--fill-quaternary);
   color: var(--color-text-muted);
   font-size: var(--font-size-small);
@@ -318,9 +412,8 @@
 }
 
 .workspace-dashboard__panel--today {
-  gap: 12px;
-  min-height: 180px;
-  padding: 13px;
+  gap: 10px;
+  min-height: 168px;
 }
 
 .workspace-dashboard__next {
@@ -328,12 +421,10 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  padding: 14px 16px 14px 18px;
+  padding: 12px 14px 12px 17px;
   border: 0;
-  border-radius: 13px;
-  background:
-    linear-gradient(180deg, var(--surface-highlight-soft), transparent 50%),
-    color-mix(in srgb, var(--fill-secondary) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fill-secondary) 72%, transparent);
   color: var(--color-text-primary);
   cursor: pointer;
   font: inherit;
@@ -349,8 +440,8 @@
 
 .workspace-dashboard__next::before {
   position: absolute;
-  top: 13px;
-  bottom: 13px;
+  top: 12px;
+  bottom: 12px;
   left: 8px;
   width: 3px;
   border-radius: 999px;
@@ -391,8 +482,8 @@
 .workspace-dashboard__next strong {
   overflow: hidden;
   color: var(--color-text-primary);
-  font-size: 19px;
-  font-weight: 720;
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -411,7 +502,7 @@
 .workspace-dashboard__today-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -449,7 +540,7 @@
   min-width: 0;
   padding: 8px 9px;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 7px;
   background: color-mix(in srgb, var(--fill-tertiary) 72%, transparent);
   color: var(--color-text-primary);
   cursor: pointer;
@@ -587,7 +678,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .workspace-dashboard__action-grid {
+  .workspace-dashboard__action-grid,
+  .workspace-dashboard__tool-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -599,10 +691,11 @@
   }
 
   .workspace-dashboard__hero h1 {
-    font-size: 30px;
+    font-size: 25px;
   }
 
   .workspace-dashboard__action-grid,
+  .workspace-dashboard__tool-grid,
   .workspace-dashboard__today-grid {
     grid-template-columns: minmax(0, 1fr);
   }

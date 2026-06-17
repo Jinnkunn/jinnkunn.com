@@ -7,6 +7,8 @@ use crate::calendar::types::{
     Calendar, CalendarAuthorizationStatus, CalendarEvent, CalendarSource, CreateEventRequest,
     FetchEventsRequest,
 };
+#[cfg(all(target_os = "macos", debug_assertions))]
+use std::io::Write;
 
 #[cfg(target_os = "macos")]
 use crate::calendar::eventkit;
@@ -14,11 +16,29 @@ use crate::calendar::eventkit;
 #[cfg(not(target_os = "macos"))]
 const UNSUPPORTED: &str = "Calendar is only available on macOS in this build";
 
+#[cfg(all(target_os = "macos", debug_assertions))]
+fn debug_log(message: impl AsRef<str>) {
+    let message = message.as_ref();
+    eprintln!("{message}");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/tmp/jinnkunn-calendar-debug.log")
+    {
+        let _ = writeln!(file, "{message}");
+    }
+}
+
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+fn debug_log(_message: impl AsRef<str>) {}
+
 #[tauri::command]
 pub fn calendar_authorization_status() -> Result<CalendarAuthorizationStatus, String> {
     #[cfg(target_os = "macos")]
     {
-        Ok(eventkit::authorization_status())
+        let status = eventkit::authorization_status();
+        debug_log(format!("[calendar] authorization_status -> {status:?}"));
+        Ok(status)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -30,7 +50,9 @@ pub fn calendar_authorization_status() -> Result<CalendarAuthorizationStatus, St
 pub async fn calendar_request_access() -> Result<CalendarAuthorizationStatus, String> {
     #[cfg(target_os = "macos")]
     {
-        eventkit::request_access().await
+        let status = eventkit::request_access().await;
+        debug_log(format!("[calendar] request_access -> {status:?}"));
+        status
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -42,7 +64,12 @@ pub async fn calendar_request_access() -> Result<CalendarAuthorizationStatus, St
 pub fn calendar_list_sources() -> Result<Vec<CalendarSource>, String> {
     #[cfg(target_os = "macos")]
     {
-        eventkit::list_sources()
+        let sources = eventkit::list_sources();
+        match &sources {
+            Ok(rows) => debug_log(format!("[calendar] list_sources -> {} rows", rows.len())),
+            Err(error) => debug_log(format!("[calendar] list_sources -> error: {error}")),
+        }
+        sources
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -54,7 +81,12 @@ pub fn calendar_list_sources() -> Result<Vec<CalendarSource>, String> {
 pub fn calendar_list_calendars(source_id: Option<String>) -> Result<Vec<Calendar>, String> {
     #[cfg(target_os = "macos")]
     {
-        eventkit::list_calendars(source_id.as_deref())
+        let calendars = eventkit::list_calendars(source_id.as_deref());
+        match &calendars {
+            Ok(rows) => debug_log(format!("[calendar] list_calendars -> {} rows", rows.len())),
+            Err(error) => debug_log(format!("[calendar] list_calendars -> error: {error}")),
+        }
+        calendars
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -67,7 +99,12 @@ pub fn calendar_list_calendars(source_id: Option<String>) -> Result<Vec<Calendar
 pub fn calendar_fetch_events(request: FetchEventsRequest) -> Result<Vec<CalendarEvent>, String> {
     #[cfg(target_os = "macos")]
     {
-        eventkit::fetch_events(&request)
+        let events = eventkit::fetch_events(&request);
+        match &events {
+            Ok(rows) => debug_log(format!("[calendar] fetch_events -> {} rows", rows.len())),
+            Err(error) => debug_log(format!("[calendar] fetch_events -> error: {error}")),
+        }
+        events
     }
     #[cfg(not(target_os = "macos"))]
     {

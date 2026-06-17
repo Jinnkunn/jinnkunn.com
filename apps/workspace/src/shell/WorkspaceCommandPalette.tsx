@@ -2,55 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getCommandActions } from "../modules/registry";
 import {
-  notesCreate,
-  notesList,
-  notesSearch,
-  notesUpdate,
-  type NoteSearchResult,
-} from "../modules/notes/api";
-import {
-  contactsCreate,
-  contactsSearch,
-  type ContactSearchResult,
-} from "../modules/contacts/api";
-import {
-  LOCAL_CALENDAR_SOURCE_TITLE,
-  localCalendarCreateCalendar,
-  localCalendarCreateEvent,
   localCalendarFetchEvents,
-  localCalendarListCalendars,
   type LocalCalendarEventRow,
 } from "../modules/calendar/localCalendarApi";
-import {
-  projectsCreate,
-  projectsList,
-  type ProjectRow,
-} from "../modules/projects/api";
-import {
-  NOTE_ICON_INBOX,
-  NOTES_INBOX_TITLE,
-  findNoteByTitle,
-  hasQuickNotePrefix,
-  noteRowFromDetail,
-  parseQuickNoteInput,
-} from "../modules/notes/workflow";
-import { todosCreate, todosList, type TodoRow } from "../modules/todos/api";
-import {
-  hasQuickTodoPrefix,
-  parseQuickTodoInput,
-  type QuickTodoDraft,
-} from "../modules/todos/quickCapture";
-import {
-  TODOS_INBOX_NAV_ID,
-  TODOS_SCHEDULED_NAV_ID,
-  TODOS_TODAY_NAV_ID,
-  TODOS_UNSCHEDULED_NAV_ID,
-  TODOS_UPCOMING_NAV_ID,
-  todoNavId,
-} from "../surfaces/todos/nav";
-import { noteNavId } from "../surfaces/notes/tree";
-import { projectNavId } from "../surfaces/projects/nav";
-import { contactNavId } from "../surfaces/contacts/nav";
 import type { SidebarFavorite } from "./favorites";
 import type { SidebarRecentItem } from "./recent";
 import type { SurfaceDefinition, SurfaceNavItem } from "../surfaces/types";
@@ -65,23 +19,15 @@ interface WorkspaceCommand {
 }
 
 interface WorkspaceSearchResults {
-  contacts: ContactSearchResult[];
   events: LocalCalendarEventRow[];
   loading: boolean;
-  notes: NoteSearchResult[];
-  projects: ProjectRow[];
   query: string;
-  todos: TodoRow[];
 }
 
 const EMPTY_SEARCH_RESULTS: WorkspaceSearchResults = {
-  contacts: [],
   events: [],
   loading: false,
-  notes: [],
-  projects: [],
   query: "",
-  todos: [],
 };
 
 interface WorkspaceCommandPaletteProps {
@@ -213,20 +159,20 @@ export function WorkspaceCommandPalette({
     };
 
     items.push({
-      group: "Workspace",
+      group: "Console",
       hint: activeSurfaceId === "workspace" ? "current" : "home",
       id: "workspace:dashboard",
-      label: "Open Workspace Dashboard",
-      keywords: "workspace dashboard command center home overview launch",
+      label: "Open Site Console",
+      keywords: "site console workspace dashboard command center home overview launch",
       run: onOpenWorkspaceDashboard,
     });
 
     if (eventCount > 0) {
       items.push({
-        group: "Workspace",
+        group: "Console",
         hint: `${eventCount} events`,
         id: "workspace:clear-activity",
-        label: "Clear Workspace Activity",
+        label: "Clear Activity",
         keywords: "workspace activity notifications events clear reset",
         run: onClearWorkspaceEvents,
       });
@@ -234,10 +180,10 @@ export function WorkspaceCommandPalette({
 
     if (canGoBack) {
       items.push({
-        group: "Workspace",
+        group: "Console",
         hint: "⌘[",
         id: "workspace:go-back",
-        label: "Back to Previous Place",
+        label: "Go Back",
         keywords: "back previous history return go back",
         run: onGoBack,
       });
@@ -291,7 +237,7 @@ export function WorkspaceCommandPalette({
     for (const surface of surfaces) {
       if (surface.disabled) continue;
       items.push({
-        group: "Surfaces",
+        group: "Tools",
         hint: surface.id === activeSurfaceId ? "current" : undefined,
         id: `surface:${surface.id}`,
         label: `Open ${surface.title}`,
@@ -355,7 +301,9 @@ export function WorkspaceCommandPalette({
   useEffect(() => {
     const q = query.trim();
     const normalized = q.toLowerCase();
-    if (!open || normalized.length < 2 || hasAnyQuickCapturePrefix(query)) {
+    const calendarSurface = findSurface(surfaces, "calendar");
+    if (!open || normalized.length < 2 || !calendarSurface || calendarSurface.disabled) {
+      setSearchResults(EMPTY_SEARCH_RESULTS);
       return;
     }
 
@@ -369,390 +317,65 @@ export function WorkspaceCommandPalette({
       const today = startOfLocalDay(new Date());
       const startsAt = addLocalDays(today, -14).toISOString();
       const endsAt = addLocalDays(today, 90).toISOString();
-      void Promise.allSettled([
-        notesSearch(q),
-        todosList(),
-        projectsList(),
-        contactsSearch(q),
-        localCalendarFetchEvents({
-          calendarIds: [],
-          endsAt,
-          startsAt,
-        }),
-      ]).then(([notesResult, todosResult, projectsResult, contactsResult, eventsResult]) => {
-        if (cancelled) return;
-        const todos = settledValue(todosResult, []).filter((todo) =>
-          todo.archivedAt === null &&
-          (matchesSearchText(todo.title, normalized) ||
-            matchesSearchText(todo.notes, normalized)),
-        );
-        const projects = settledValue(projectsResult, []).filter((project) =>
-          project.archivedAt === null &&
-          (matchesSearchText(project.title, normalized) ||
-            matchesSearchText(project.description, normalized)),
-        );
-        const events = settledValue(eventsResult, []).filter((event) =>
-          matchesSearchText(event.title, normalized) ||
-          matchesSearchText(event.location, normalized) ||
-          matchesSearchText(event.notes, normalized),
-        );
-        setSearchResults({
-          contacts: settledValue(contactsResult, []).slice(0, 6),
-          events: events.slice(0, 6),
-          loading: false,
-          notes: settledValue(notesResult, []).slice(0, 6),
-          projects: projects.slice(0, 6),
-          query: normalized,
-          todos: todos.slice(0, 6),
+      void localCalendarFetchEvents({
+        calendarIds: [],
+        endsAt,
+        startsAt,
+      })
+        .then((rows) => {
+          if (cancelled) return;
+          const events = rows.filter((event) =>
+            matchesSearchText(event.title, normalized) ||
+            matchesSearchText(event.location, normalized) ||
+            matchesSearchText(event.notes, normalized),
+          );
+          setSearchResults({
+            events: events.slice(0, 6),
+            loading: false,
+            query: normalized,
+          });
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSearchResults({
+              events: [],
+              loading: false,
+              query: normalized,
+            });
+          }
         });
-      });
     }, 140);
 
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [open, query]);
+  }, [open, query, surfaces]);
 
   const searchCommands = useMemo<WorkspaceCommand[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q || searchResults.query !== q || hasAnyQuickCapturePrefix(query)) {
-      return [];
-    }
+    if (!q || searchResults.query !== q) return [];
 
-    const items: WorkspaceCommand[] = [];
-    const notesSurface = findSurface(surfaces, "notes");
-    const todosSurface = findSurface(surfaces, "todos");
-    const projectsSurface = findSurface(surfaces, "projects");
-    const contactsSurface = findSurface(surfaces, "contacts");
     const calendarSurface = findSurface(surfaces, "calendar");
+    if (!calendarSurface || calendarSurface.disabled) return [];
 
-    if (notesSurface && !notesSurface.disabled) {
-      for (const note of searchResults.notes) {
-        const itemId = noteNavId(note.id);
-        items.push({
-          group: "Search Results",
-          hint: `Note${note.excerpt ? ` / ${compactHint(note.excerpt)}` : ""}`,
-          id: `search:note:${note.id}`,
-          keywords: `note notes ${note.title} ${note.excerpt}`,
-          label: note.title || "Untitled note",
-          run: () => {
-            onRecordRecent({
-              itemId,
-              label: note.title || "Untitled note",
-              surfaceId: "notes",
-              surfaceTitle: notesSurface.title,
-            });
-            onSelectNavItem("notes", itemId);
-          },
-        });
-      }
-    }
-
-    if (todosSurface && !todosSurface.disabled) {
-      for (const todo of searchResults.todos) {
-        const itemId = todoNavId(todo.id);
-        items.push({
-          group: "Search Results",
-          hint: todoSearchHint(todo),
-          id: `search:todo:${todo.id}`,
-          keywords: `todo task ${todo.title} ${todo.notes}`,
-          label: todo.title || "Untitled todo",
-          run: () => {
-            onRecordRecent({
-              itemId,
-              label: todo.title || "Untitled todo",
-              surfaceId: "todos",
-              surfaceTitle: todosSurface.title,
-            });
-            onSelectNavItem("todos", itemId);
-          },
-        });
-      }
-    }
-
-    if (projectsSurface && !projectsSurface.disabled) {
-      for (const project of searchResults.projects) {
-        const itemId = projectNavId(project.id);
-        items.push({
-          group: "Search Results",
-          hint: projectSearchHint(project),
-          id: `search:project:${project.id}`,
-          keywords: `project ${project.title} ${project.description}`,
-          label: project.title || "Untitled project",
-          run: () => {
-            onRecordRecent({
-              itemId,
-              label: project.title || "Untitled project",
-              surfaceId: "projects",
-              surfaceTitle: projectsSurface.title,
-            });
-            onSelectNavItem("projects", itemId);
-          },
-        });
-      }
-    }
-
-    if (contactsSurface && !contactsSurface.disabled) {
-      for (const contact of searchResults.contacts) {
-        const itemId = contactNavId(contact.id);
-        items.push({
-          group: "Search Results",
-          hint: `Contact${contact.company ? ` / ${contact.company}` : ""}`,
-          id: `search:contact:${contact.id}`,
-          keywords: `contact person crm ${contact.displayName} ${contact.company ?? ""} ${contact.excerpt}`,
-          label: contact.displayName || "Untitled contact",
-          run: () => {
-            onRecordRecent({
-              itemId,
-              label: contact.displayName || "Untitled contact",
-              surfaceId: "contacts",
-              surfaceTitle: contactsSurface.title,
-            });
-            onSelectNavItem("contacts", itemId);
-          },
-        });
-      }
-    }
-
-    if (calendarSurface && !calendarSurface.disabled) {
-      for (const event of searchResults.events) {
-        items.push({
-          group: "Search Results",
-          hint: eventSearchHint(event),
-          id: `search:event:${event.eventIdentifier}:${event.startsAt}`,
-          keywords: `calendar event ${event.title} ${event.location ?? ""} ${event.notes ?? ""}`,
-          label: event.title || "Untitled event",
-          run: () => onSelectSurface("calendar"),
-        });
-      }
-    }
-
-    return items;
-  }, [
-    onRecordRecent,
-    onSelectNavItem,
-    onSelectSurface,
-    query,
-    searchResults,
-    surfaces,
-  ]);
-
-  const quickTodoDraft = useMemo(
-    () => parseQuickTodoInput(query),
-    [query],
-  );
-  const quickNoteDraft = useMemo(
-    () => parseQuickNoteInput(query),
-    [query],
-  );
-  const quickProjectDraft = useMemo(
-    () => parseQuickProjectInput(query),
-    [query],
-  );
-  const quickContactDraft = useMemo(
-    () => parseQuickContactInput(query),
-    [query],
-  );
-  const quickEventDraft = useMemo(
-    () => parseQuickEventInput(query),
-    [query],
-  );
+    return searchResults.events.map((event) => ({
+      group: "Search Results",
+      hint: eventSearchHint(event),
+      id: `search:event:${event.eventIdentifier}:${event.startsAt}`,
+      keywords: `calendar event ${event.title} ${event.location ?? ""} ${event.notes ?? ""}`,
+      label: event.title || "Untitled event",
+      run: () => onSelectSurface("calendar"),
+    }));
+  }, [onSelectSurface, query, searchResults, surfaces]);
 
   const filtered = useMemo<WorkspaceCommand[]>(() => {
-    const todoSurface = findSurface(surfaces, "todos");
-    const notesSurface = findSurface(surfaces, "notes");
-    const projectsSurface = findSurface(surfaces, "projects");
-    const contactsSurface = findSurface(surfaces, "contacts");
-    const calendarSurface = findSurface(surfaces, "calendar");
-    const shouldOfferQuickTodo =
-      quickTodoDraft &&
-      todoSurface &&
-      !todoSurface.disabled &&
-      !hasQuickNotePrefix(query) &&
-      !hasQuickProjectPrefix(query) &&
-      !hasQuickContactPrefix(query) &&
-      !hasQuickEventPrefix(query) &&
-      (hasQuickTodoPrefix(query) || baseFiltered.length === 0);
-    const shouldOfferQuickNote =
-      quickNoteDraft &&
-      notesSurface &&
-      !notesSurface.disabled &&
-      hasQuickNotePrefix(query);
-    const shouldOfferQuickProject =
-      quickProjectDraft &&
-      projectsSurface &&
-      !projectsSurface.disabled &&
-      hasQuickProjectPrefix(query);
-    const shouldOfferQuickContact =
-      quickContactDraft &&
-      contactsSurface &&
-      !contactsSurface.disabled &&
-      hasQuickContactPrefix(query);
-    const shouldOfferQuickEvent =
-      quickEventDraft &&
-      calendarSurface &&
-      !calendarSurface.disabled &&
-      hasQuickEventPrefix(query);
-    const quickCommands: WorkspaceCommand[] = [];
-    if (shouldOfferQuickNote) {
-      quickCommands.push({
-        group: "Quick Capture",
-        hint: quickNoteDraft.preview,
-        id: "quick-capture:note",
-        keywords: `note notes quick capture inbox create ${query}`,
-        label: `Create note · ${quickNoteDraft.title}`,
-        run: async () => {
-          const rows = await notesList();
-          let inbox = findNoteByTitle(rows, NOTES_INBOX_TITLE, null);
-          if (!inbox) {
-            const createdInbox = await notesCreate({
-              title: NOTES_INBOX_TITLE,
-            });
-            const inboxDetail = await notesUpdate({
-              icon: NOTE_ICON_INBOX,
-              id: createdInbox.note.id,
-            });
-            inbox = noteRowFromDetail(inboxDetail);
-          }
-          const created = await notesCreate({
-            parentId: inbox.id,
-            title: quickNoteDraft.title,
-          });
-          const detail = await notesUpdate({
-            bodyMdx: quickNoteDraft.bodyMdx,
-            id: created.note.id,
-          });
-          const itemId = noteNavId(detail.id);
-          onRecordRecent({
-            itemId,
-            label: detail.title,
-            surfaceId: "notes",
-            surfaceTitle: notesSurface.title,
-          });
-          onSelectNavItem("notes", itemId);
-        },
-      });
-    }
-    if (shouldOfferQuickTodo) {
-      quickCommands.push({
-        group: "Quick Capture",
-        hint: quickTodoDraft.preview,
-        id: "quick-capture:todo",
-        keywords: `todo task quick capture create ${query}`,
-        label: `Create todo · ${quickTodoDraft.title}`,
-        run: async () => {
-          const projectToken = extractProjectToken(quickTodoDraft.title);
-          const project = projectToken.query
-            ? await findProjectByToken(projectToken.query)
-            : null;
-          const row = await todosCreate({
-            dueAt: quickTodoDraft.dueAt,
-            estimatedMinutes: quickTodoDraft.estimatedMinutes,
-            projectId: project?.id ?? null,
-            scheduledEndAt: quickTodoDraft.scheduledEndAt,
-            scheduledStartAt: quickTodoDraft.scheduledStartAt,
-            title: projectToken.title,
-          });
-          const navItemId = todoNavId(row.id);
-          onRecordRecent({
-            itemId: navItemId,
-            label: row.title || quickTodoNavLabel(navItemForQuickTodo(row)),
-            surfaceId: "todos",
-            surfaceTitle: todoSurface.title,
-          });
-          onSelectNavItem("todos", navItemId);
-        },
-      });
-    }
-    if (shouldOfferQuickProject) {
-      quickCommands.push({
-        group: "Quick Capture",
-        hint: quickProjectDraft.preview,
-        id: "quick-capture:project",
-        keywords: `project quick capture create ${query}`,
-        label: `Create project · ${quickProjectDraft.title}`,
-        run: async () => {
-          const row = await projectsCreate({
-            dueAt: quickProjectDraft.dueAt,
-            title: quickProjectDraft.title,
-          });
-          const itemId = projectNavId(row.id);
-          onRecordRecent({
-            itemId,
-            label: row.title,
-            surfaceId: "projects",
-            surfaceTitle: projectsSurface.title,
-          });
-          onSelectNavItem("projects", itemId);
-        },
-      });
-    }
-    if (shouldOfferQuickContact) {
-      quickCommands.push({
-        group: "Quick Capture",
-        hint: quickContactDraft.preview,
-        id: "quick-capture:contact",
-        keywords: `contact person crm quick capture create ${query}`,
-        label: `Create contact · ${quickContactDraft.displayName}`,
-        run: async () => {
-          const row = await contactsCreate({
-            company: quickContactDraft.company,
-            displayName: quickContactDraft.displayName,
-          });
-          const itemId = contactNavId(row.id);
-          onRecordRecent({
-            itemId,
-            label: row.displayName,
-            surfaceId: "contacts",
-            surfaceTitle: contactsSurface.title,
-          });
-          onSelectNavItem("contacts", itemId);
-        },
-      });
-    }
-    if (shouldOfferQuickEvent) {
-      quickCommands.push({
-        group: "Quick Capture",
-        hint: quickEventDraft.preview,
-        id: "quick-capture:event",
-        keywords: `calendar event quick capture create ${query}`,
-        label: `Create event · ${quickEventDraft.title}`,
-        run: async () => {
-          const calendar = await ensureWorkspaceCalendar();
-          await localCalendarCreateEvent({
-            calendarId: calendar.id,
-            endsAt: quickEventDraft.endsAt.toISOString(),
-            isAllDay: quickEventDraft.isAllDay,
-            startsAt: quickEventDraft.startsAt.toISOString(),
-            title: quickEventDraft.title,
-          });
-          onSelectSurface("calendar");
-        },
-      });
-    }
-
     const searchIds = new Set(searchCommands.map((command) => command.id));
-    const merged = [
-      ...quickCommands,
+    return [
       ...searchCommands,
       ...baseFiltered.filter((command) => !searchIds.has(command.id)),
     ];
-    return merged;
-  }, [
-    baseFiltered,
-    onRecordRecent,
-    onSelectNavItem,
-    onSelectSurface,
-    query,
-    quickContactDraft,
-    quickEventDraft,
-    quickNoteDraft,
-    quickProjectDraft,
-    quickTodoDraft,
-    searchCommands,
-    surfaces,
-  ]);
+  }, [baseFiltered, searchCommands]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -822,11 +445,11 @@ export function WorkspaceCommandPalette({
         onKeyDown={onKeyDown}
       >
         <div className="command-palette__input-wrap">
-          <span className="command-palette__scope">Workspace</span>
+          <span className="command-palette__scope">Console</span>
           <input
             ref={inputRef}
             className="command-palette__input"
-            placeholder="Search workspace, or create with note: / + / project: / event:"
+            placeholder="Search site or calendar"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             spellCheck={false}
@@ -852,7 +475,7 @@ export function WorkspaceCommandPalette({
                 ? "Searching..."
                 : "No matches."}
             </p>
-            <span>{'Try "home", "project: thesis", "contact: Ada @ Lab", or "+ write report tomorrow 3pm".'}</span>
+            <span>{'Try "status", "home", "calendar", or an event title.'}</span>
           </div>
         ) : (
           <ul
@@ -901,36 +524,6 @@ export function WorkspaceCommandPalette({
   );
 }
 
-function navItemForQuickTodo(todo: TodoRow): string {
-  if (todo.scheduledStartAt === null && todo.dueAt === null) return TODOS_INBOX_NAV_ID;
-  const timestamp = todo.scheduledStartAt ?? todo.dueAt;
-  if (timestamp !== null) {
-    const today = startOfLocalDay(new Date());
-    const tomorrow = addLocalDays(today, 1).getTime();
-    const upcomingEnd = addLocalDays(today, 15).getTime();
-    if (timestamp < tomorrow) return TODOS_TODAY_NAV_ID;
-    if (timestamp < upcomingEnd) return TODOS_UPCOMING_NAV_ID;
-  }
-  if (todo.scheduledStartAt !== null) return TODOS_SCHEDULED_NAV_ID;
-  return TODOS_UNSCHEDULED_NAV_ID;
-}
-
-function quickTodoNavLabel(navItemId: string): string {
-  switch (navItemId) {
-    case TODOS_INBOX_NAV_ID:
-      return "Inbox";
-    case TODOS_SCHEDULED_NAV_ID:
-      return "Scheduled";
-    case TODOS_UNSCHEDULED_NAV_ID:
-      return "Unscheduled";
-    case TODOS_UPCOMING_NAV_ID:
-      return "Upcoming";
-    case TODOS_TODAY_NAV_ID:
-    default:
-      return "Today";
-  }
-}
-
 function formatCommandError(error: unknown): string {
   const message = String(error);
   if (
@@ -938,7 +531,7 @@ function formatCommandError(error: unknown): string {
     message.includes("__TAURI_INTERNALS__") ||
     message.includes("is not a function")
   ) {
-    return "Workspace data is available in the desktop app.";
+    return "Desktop data is available in the app.";
   }
   return `Command failed: ${message}`;
 }
@@ -953,202 +546,12 @@ function addLocalDays(date: Date, days: number): Date {
   return out;
 }
 
-interface QuickProjectDraft {
-  dueAt: number | null;
-  preview: string;
-  title: string;
-}
-
-interface QuickContactDraft {
-  company: string | null;
-  displayName: string;
-  preview: string;
-}
-
-interface QuickEventDraft {
-  endsAt: Date;
-  isAllDay: boolean;
-  preview: string;
-  startsAt: Date;
-  title: string;
-}
-
-function hasAnyQuickCapturePrefix(input: string): boolean {
-  return (
-    hasQuickNotePrefix(input) ||
-    hasQuickTodoPrefix(input) ||
-    hasQuickProjectPrefix(input) ||
-    hasQuickContactPrefix(input) ||
-    hasQuickEventPrefix(input)
-  );
-}
-
-function hasQuickProjectPrefix(input: string): boolean {
-  return /^\s*(?:project:?|proj:?|new project:?|项目[:：]?|專案[:：]?)/i.test(input);
-}
-
-function hasQuickContactPrefix(input: string): boolean {
-  return /^\s*(?:contact:?|person:?|crm:?|new contact:?|联系人[:：]?|聯絡人[:：]?)/i.test(input);
-}
-
-function hasQuickEventPrefix(input: string): boolean {
-  return /^\s*(?:event:?|calendar:?|cal:?|new event:?|日程[:：]?|事件[:：]?)/i.test(input);
-}
-
-function parseQuickProjectInput(input: string): QuickProjectDraft | null {
-  const normalized = input.replace(
-    /^\s*(?:project:?|proj:?|new project:?|项目[:：]?|專案[:：]?)\s*/i,
-    "",
-  ).trim();
-  if (!normalized) return null;
-  const draft = parseQuickTodoInput(`todo: ${normalized}`);
-  if (!draft) return null;
-  const dueAt = draft.scheduledStartAt ?? draft.dueAt;
-  return {
-    dueAt,
-    preview: dueAt === null ? "active project" : `due ${formatDateTime(dueAt)}`,
-    title: draft.title,
-  };
-}
-
-function parseQuickContactInput(input: string): QuickContactDraft | null {
-  const normalized = input.replace(
-    /^\s*(?:contact:?|person:?|crm:?|new contact:?|联系人[:：]?|聯絡人[:：]?)\s*/i,
-    "",
-  ).trim();
-  if (!normalized) return null;
-  const [rawName, rawCompany] = normalized.split(/\s+@\s+/, 2);
-  const displayName = normalizeCaptureTitle(rawName);
-  if (!displayName) return null;
-  const company = rawCompany ? normalizeCaptureTitle(rawCompany) || null : null;
-  return {
-    company,
-    displayName,
-    preview: company ? `at ${company}` : "new contact",
-  };
-}
-
-function parseQuickEventInput(input: string): QuickEventDraft | null {
-  const normalized = input.replace(
-    /^\s*(?:event:?|calendar:?|cal:?|new event:?|日程[:：]?|事件[:：]?)\s*/i,
-    "",
-  ).trim();
-  if (!normalized) return null;
-  const draft = parseQuickTodoInput(`todo: ${normalized}`);
-  if (!draft) return null;
-
-  const startsAt = eventStartFromDraft(draft);
-  const explicitEnd =
-    draft.scheduledEndAt !== null && draft.scheduledEndAt > startsAt.getTime()
-      ? new Date(draft.scheduledEndAt)
-      : null;
-  const endsAt =
-    explicitEnd ??
-    new Date(
-      startsAt.getTime() + (draft.estimatedMinutes ?? 30) * 60_000,
-    );
-  return {
-    endsAt,
-    isAllDay: false,
-    preview: formatDateTime(startsAt.getTime()),
-    startsAt,
-    title: draft.title,
-  };
-}
-
-function eventStartFromDraft(
-  draft: Pick<QuickTodoDraft, "dueAt" | "scheduledStartAt">,
-): Date {
-  if (draft.scheduledStartAt !== null) return new Date(draft.scheduledStartAt);
-  if (draft.dueAt !== null) {
-    const date = new Date(draft.dueAt);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 9, 0, 0, 0);
-  }
-  return nextHalfHour(new Date());
-}
-
-function nextHalfHour(now: Date): Date {
-  const out = new Date(now);
-  out.setSeconds(0, 0);
-  out.setMinutes(Math.ceil((out.getMinutes() + 1) / 30) * 30);
-  return out;
-}
-
-function normalizeCaptureTitle(input: string): string {
-  return input.replace(/\s+/g, " ").trim();
-}
-
-function extractProjectToken(title: string): {
-  query: string | null;
-  title: string;
-} {
-  const match = title.match(/(?:^|\s)#([^\s#]+)/);
-  if (!match) return { query: null, title };
-  const nextTitle = normalizeCaptureTitle(title.replace(match[0], " "));
-  return {
-    query: match[1] ?? null,
-    title: nextTitle || title,
-  };
-}
-
-async function findProjectByToken(token: string): Promise<ProjectRow | null> {
-  const normalized = normalizeSearchText(token);
-  if (!normalized) return null;
-  const rows = await projectsList();
-  return (
-    rows.find((project) => {
-      const title = normalizeSearchText(project.title);
-      return title === normalized || slugifySearchText(title) === normalized;
-    }) ?? null
-  );
-}
-
-async function ensureWorkspaceCalendar() {
-  const calendars = await localCalendarListCalendars();
-  return (
-    calendars[0] ??
-    localCalendarCreateCalendar({
-      colorHex: "#d16a00",
-      title: LOCAL_CALENDAR_SOURCE_TITLE,
-    })
-  );
-}
-
-function settledValue<T>(
-  result: PromiseSettledResult<T>,
-  fallback: T,
-): T {
-  return result.status === "fulfilled" ? result.value : fallback;
-}
-
 function matchesSearchText(value: string | null | undefined, query: string): boolean {
   return normalizeSearchText(value ?? "").includes(query);
 }
 
 function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function slugifySearchText(value: string): string {
-  return value.replace(/\s+/g, "-");
-}
-
-function compactHint(value: string): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > 54 ? `${normalized.slice(0, 52)}...` : normalized;
-}
-
-function todoSearchHint(todo: TodoRow): string {
-  const timestamp = todo.scheduledStartAt ?? todo.dueAt;
-  if (timestamp === null) return "Todo / Inbox";
-  const kind = todo.scheduledStartAt === null ? "Due" : "Scheduled";
-  return `Todo / ${kind} ${formatDateTime(timestamp)}`;
-}
-
-function projectSearchHint(project: ProjectRow): string {
-  const status = project.status[0].toUpperCase() + project.status.slice(1);
-  const due = project.dueAt === null ? "" : ` / due ${formatDate(project.dueAt)}`;
-  return `Project / ${status}${due}`;
 }
 
 function eventSearchHint(event: LocalCalendarEventRow): string {
