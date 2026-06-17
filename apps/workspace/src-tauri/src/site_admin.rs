@@ -154,6 +154,36 @@ fn normalize_path(input: &str) -> String {
     }
 }
 
+/// One pooled HTTP client for all site-admin calls. A per-call client meant no
+/// connection reuse and — worse — NO timeout, so a hung edge would await
+/// forever. `redirect::none` keeps a 30x from bouncing our credentials to an
+/// attacker-controlled Location.
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("failed to build shared site-admin HTTP client")
+    })
+}
+
+/// Only the production/staging site (over https) and a local dev server may
+/// receive the Site Admin bearer token / Cloudflare Access secret. This stops
+/// a mis-set or attacker-influenced base_url from exfiltrating credentials.
+fn is_trusted_admin_host(url: &reqwest::Url) -> bool {
+    // host_str() returns IPv6 literals bracketed ("[::1]") and may carry a
+    // valid FQDN trailing dot ("jinkunchen.com."); normalize both before
+    // matching so legitimate local-dev / FQDN forms aren't wrongly refused.
+    let host = url.host_str().unwrap_or("").trim_end_matches('.');
+    if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
+        return matches!(url.scheme(), "http" | "https");
+    }
+    url.scheme() == "https" && (host == "jinkunchen.com" || host.ends_with(".jinkunchen.com"))
+}
+
 #[tauri::command]
 pub async fn site_admin_http_request(
     request: SiteAdminHttpRequest,
@@ -206,16 +236,25 @@ pub async fn site_admin_http_request(
         }
     }
 
-    let client = reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .map_err(|e| format!("Failed to initialize HTTP client: {}", e))?;
+    let parsed_url = reqwest::Url::parse(&url).map_err(|_| format!("Invalid url: {}", url))?;
+    // If this request carries credentials, they must only go to a trusted host.
+    let attaches_credentials = headers.contains_key(AUTHORIZATION)
+        || headers.contains_key(COOKIE)
+        || headers.contains_key("cf-access-client-secret");
+    if attaches_credentials && !is_trusted_admin_host(&parsed_url) {
+        return Err(format!(
+            "refusing to send Site Admin credentials to untrusted host: {}",
+            parsed_url.host_str().unwrap_or("(none)")
+        ));
+    }
 
-    let mut req = client.request(
-        reqwest::Method::from_bytes(method.as_bytes())
-            .map_err(|_| format!("Unsupported method: {}", method))?,
-        &url,
-    );
+    let mut req = http_client()
+        .request(
+            reqwest::Method::from_bytes(method.as_bytes())
+                .map_err(|_| format!("Unsupported method: {}", method))?,
+            parsed_url,
+        )
+        .headers(headers);
 
     if method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
         req = req.json(&request.body.unwrap_or_else(|| json!({})));
@@ -302,11 +341,8 @@ fn resolve_release_repo_root() -> Result<PathBuf, String> {
         }
     }
 
-    let personal_default = PathBuf::from("/Users/jinnkunn/Desktop/jinnkunn.com");
-    if package_json_looks_like_repo_root(&personal_default) {
-        return Ok(personal_default);
-    }
-
+    // No hardcoded personal-machine fallback: fail loudly so the release tools
+    // never run against an unexpected checkout on another machine.
     Err(
         "Could not find jinnkunn.com repo root. Set SITE_ADMIN_LOCAL_RELEASE_ROOT to the checkout path."
             .to_string(),

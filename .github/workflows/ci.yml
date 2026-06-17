@@ -160,9 +160,10 @@ jobs:
   workspace-quality:
     # Tauri workspace lives in apps/workspace with its own package.json +
     # tsconfig. The root `build` job's `next build` doesn't typecheck it,
-    # so TS errors there can slip past CI. This job closes that gap.
+    # so TS errors there can slip past CI. This job closes that gap and runs
+    # the Rust backend unit tests (sync/outbox/local_db/notes/etc.).
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -185,3 +186,25 @@ jobs:
       - name: Test (workspace)
         working-directory: apps/workspace
         run: npm test
+
+      - name: Install Tauri system deps (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libayatana-appindicator3-dev \
+            patchelf
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust (workspace)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/workspace/src-tauri
+
+      - name: Cargo Test (workspace backend)
+        working-directory: apps/workspace/src-tauri
+        run: cargo test --lib

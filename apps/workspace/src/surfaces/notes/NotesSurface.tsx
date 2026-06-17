@@ -351,6 +351,10 @@ export function NotesSurface() {
   const lastSavedKeyRef = useRef("");
   const pendingSaveRef = useRef<PendingNotePayload | null>(null);
   const savingRef = useRef(false);
+  // Holds the latest `flushSave` so it can re-arm itself after an in-flight
+  // save finishes (a keystroke that landed mid-save would otherwise be
+  // stranded until the next debounce/blur).
+  const flushSaveRef = useRef<(() => Promise<void>) | null>(null);
   const selectedNoteRef = useRef<NoteDetail | null>(null);
   const createInFlightRef = useRef(false);
   const createNoteRef = useRef<(parentId: string | null) => void>(() => {});
@@ -667,6 +671,7 @@ export function NotesSurface() {
     if (selectedNoteRef.current?.id === pending.noteId) {
       setSaveState("saving");
     }
+    let succeeded = false;
     try {
       const updated = await notesUpdate({
         bodyMdx: pending.bodyMdx,
@@ -703,6 +708,7 @@ export function NotesSurface() {
           setSaveState("saved");
         }
       }
+      succeeded = true;
     } catch (error) {
       if (pendingSaveRef.current === null) pendingSaveRef.current = pending;
       if (selectedNoteRef.current?.id === pending.noteId) {
@@ -711,8 +717,17 @@ export function NotesSurface() {
       setMessage({ kind: "error", text: `Save note failed: ${String(error)}` });
     } finally {
       savingRef.current = false;
+      // Re-arm ONLY after a SUCCESSFUL save that left a freshly-queued payload
+      // (a keystroke that landed mid-save). Gating on success is essential: the
+      // catch block restores the failed payload, so re-arming on error would
+      // spin into an unbounded, toast-spamming retry loop. On error the payload
+      // instead waits for the next debounce/blur to retry.
+      if (succeeded && pendingSaveRef.current !== null) {
+        void flushSaveRef.current?.();
+      }
     }
   }, []);
+  flushSaveRef.current = flushSave;
 
   const createTodoFromNote = useCallback(async () => {
     if (!selectedNote || creatingTodos) return;

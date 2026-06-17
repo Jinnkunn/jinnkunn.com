@@ -418,10 +418,9 @@ pub async fn notes_list(app: tauri::AppHandle) -> Result<Vec<NoteRow>, String> {
     Ok(rows)
 }
 
-#[tauri::command]
-pub async fn notes_get(app: tauri::AppHandle, id: String) -> Result<Option<NoteDetail>, String> {
-    let conn = local_db::open(&app)?;
-    let id = normalize_id(&id)?;
+/// Synchronous note read against an existing connection. Lets callers that
+/// already hold a connection (notes_update) avoid opening additional ones.
+fn fetch_note_detail(conn: &Connection, id: &str) -> Result<Option<NoteDetail>, String> {
     conn.query_row(
         "SELECT id, parent_id, title, body_mdx, icon, sort_order, archived_at, created_at, updated_at
            FROM notes
@@ -446,6 +445,13 @@ pub async fn notes_get(app: tauri::AppHandle, id: String) -> Result<Option<NoteD
 }
 
 #[tauri::command]
+pub async fn notes_get(app: tauri::AppHandle, id: String) -> Result<Option<NoteDetail>, String> {
+    let conn = local_db::open(&app)?;
+    let id = normalize_id(&id)?;
+    fetch_note_detail(&conn, &id)
+}
+
+#[tauri::command]
 pub async fn notes_create(
     app: tauri::AppHandle,
     params: NoteCreateParams,
@@ -467,16 +473,27 @@ pub async fn notes_create(
         target_parent = after_parent;
         sort_order = after_sort + 1;
     }
-    shift_siblings_from(&conn, target_parent.as_deref(), sort_order)?;
     let id = new_note_id();
     let now = now_unix_ms();
-    conn.execute(
-        "INSERT INTO notes
-            (id, parent_id, title, body_mdx, icon, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, '', NULL, ?, ?, ?)",
-        params![id, target_parent, title, sort_order, now, now],
-    )
-    .map_err(|err| format!("notes_create: insert failed: {err}"))?;
+    // Atomic: the sibling shift and the insert must commit together, or a
+    // mid-sequence failure leaves siblings shifted with no note inserted
+    // (gapped sort_order). unchecked_transaction so the existing `&conn`
+    // helpers keep working inside the transaction.
+    {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|err| format!("notes_create: begin transaction failed: {err}"))?;
+        shift_siblings_from(&conn, target_parent.as_deref(), sort_order)?;
+        conn.execute(
+            "INSERT INTO notes
+                (id, parent_id, title, body_mdx, icon, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, '', NULL, ?, ?, ?)",
+            params![id, target_parent, title, sort_order, now, now],
+        )
+        .map_err(|err| format!("notes_create: insert failed: {err}"))?;
+        tx.commit()
+            .map_err(|err| format!("notes_create: commit failed: {err}"))?;
+    }
     let note = conn
         .query_row(
             "SELECT id, parent_id, title, body_mdx, icon, sort_order, archived_at, created_at, updated_at
@@ -516,9 +533,10 @@ pub async fn notes_update(
 ) -> Result<NoteDetail, String> {
     let conn = local_db::open(&app)?;
     let id = normalize_id(&params.id)?;
-    let existing = notes_get(app.clone(), id.clone())
-        .await?
-        .ok_or_else(|| "note was not found".to_string())?;
+    // Reuse this one connection for the read, write, and re-read instead of
+    // opening a fresh connection per notes_get call (was 3 connections/save).
+    let existing =
+        fetch_note_detail(&conn, &id)?.ok_or_else(|| "note was not found".to_string())?;
     let title = params
         .title
         .map(Some)
@@ -530,6 +548,9 @@ pub async fn notes_update(
         .as_ref()
         .map(|next| next != &existing.body_mdx)
         .unwrap_or(false);
+    // Capture before `existing.body_mdx` is moved below — needed so removing
+    // the last mention still triggers the DELETE side of the mention sync.
+    let old_body_had_mention = existing.body_mdx.contains('@');
     let body_mdx = params.body_mdx.unwrap_or(existing.body_mdx);
     let icon = match params.icon {
         Some(next) => normalize_icon(next),
@@ -548,13 +569,16 @@ pub async fn notes_update(
     // title-only updates. Errors here are non-fatal — the note write
     // is the user's primary intent and mention rows can re-sync on
     // the next save.
-    if body_changed {
+    // Re-scan mentions when the body changed AND either the new OR the old
+    // body has an `@`. The old-body check is essential: sync_note_mentions is
+    // the only path that DELETEs stale mention rows, so removing the LAST
+    // mention (new body has no `@`) must still run to purge the backlink.
+    if body_changed && (body_mdx.contains('@') || old_body_had_mention) {
         if let Err(err) = crate::contacts::sync_note_mentions(&conn, &id, &body_mdx) {
             eprintln!("[notes_update] mention sync failed: {err}");
         }
     }
-    notes_get(app, id)
-        .await?
+    fetch_note_detail(&conn, &id)?
         .ok_or_else(|| "notes_update: updated note disappeared".to_string())
 }
 
@@ -608,25 +632,35 @@ pub async fn notes_move(
             target_row.1 + 1
         };
     }
-    shift_siblings_from(&conn, insert_parent.as_deref(), insert_sort)?;
     let now = now_unix_ms();
-    conn.execute(
-        "UPDATE notes
-            SET parent_id = ?, sort_order = ?, updated_at = ?
-          WHERE id = ? AND archived_at IS NULL",
-        params![insert_parent, insert_sort, now, id],
-    )
-    .map_err(|err| format!("notes_move: update failed: {err}"))?;
-    compact_sibling_order(&conn, old_parent.as_deref())?;
-    let new_parent: Option<String> = conn
-        .query_row(
-            "SELECT parent_id FROM notes WHERE id = ?",
-            params![id],
-            |row| row.get(0),
+    // Atomic: the shift, the move-update, and both sibling compactions must
+    // commit together so a mid-sequence failure can't leave a scrambled tree.
+    let new_parent: Option<String>;
+    {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|err| format!("notes_move: begin transaction failed: {err}"))?;
+        shift_siblings_from(&conn, insert_parent.as_deref(), insert_sort)?;
+        conn.execute(
+            "UPDATE notes
+                SET parent_id = ?, sort_order = ?, updated_at = ?
+              WHERE id = ? AND archived_at IS NULL",
+            params![insert_parent, insert_sort, now, id],
         )
-        .map_err(|err| format!("notes_move: failed to read new parent: {err}"))?;
-    if new_parent != old_parent {
-        compact_sibling_order(&conn, new_parent.as_deref())?;
+        .map_err(|err| format!("notes_move: update failed: {err}"))?;
+        compact_sibling_order(&conn, old_parent.as_deref())?;
+        new_parent = conn
+            .query_row(
+                "SELECT parent_id FROM notes WHERE id = ?",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|err| format!("notes_move: failed to read new parent: {err}"))?;
+        if new_parent != old_parent {
+            compact_sibling_order(&conn, new_parent.as_deref())?;
+        }
+        tx.commit()
+            .map_err(|err| format!("notes_move: commit failed: {err}"))?;
     }
     let mut updated = list_in_parent(&conn, old_parent.as_deref())?;
     if new_parent != old_parent {

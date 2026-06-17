@@ -393,6 +393,17 @@ function confirmationHash(tool, args = {}) {
     .digest("hex");
 }
 
+// A pending/approved confirmation older than this is treated as expired, so a
+// stale approval can't be consumed days later against a write the operator no
+// longer remembers requesting.
+const CONFIRMATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isConfirmationExpired(entry) {
+  const requested = Date.parse(entry?.requestedAt || "");
+  if (Number.isNaN(requested)) return true;
+  return Date.now() - requested > CONFIRMATION_TTL_MS;
+}
+
 function readConfirmations() {
   const file = resolveWorkspaceMcpConfirmationsPath();
   try {
@@ -563,7 +574,13 @@ function createOrReusePendingConfirmation(tool, args, preview) {
   const existing = entries
     .slice()
     .reverse()
-    .find((entry) => entry.status === "pending" && entry.tool === tool && entry.argsHash === hash);
+    .find(
+      (entry) =>
+        entry.status === "pending" &&
+        entry.tool === tool &&
+        entry.argsHash === hash &&
+        !isConfirmationExpired(entry),
+    );
   if (existing) return pendingConfirmationResult(tool, existing);
   const entry = {
     id: randId("mcpconf"),
@@ -591,6 +608,9 @@ function consumeApprovedConfirmation(tool, args = {}) {
   if (entry.tool !== tool) throw new Error("CONFIRMATION_MISMATCH: confirmation was created for a different tool.");
   if (entry.argsHash !== confirmationHash(tool, args)) {
     throw new Error("CONFIRMATION_MISMATCH: tool arguments changed after approval.");
+  }
+  if (isConfirmationExpired(entry)) {
+    throw new Error("CONFIRMATION_EXPIRED: this approval is too old; request and approve the write again.");
   }
   if (entry.status === "rejected") {
     throw new Error("CONFIRMATION_REJECTED: this write was rejected in Workspace Settings.");

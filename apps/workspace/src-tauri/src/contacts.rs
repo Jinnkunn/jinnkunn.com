@@ -379,10 +379,23 @@ const CONTACT_COLUMNS: &str = "id, display_name, given_name, family_name, compan
     emails_json, phones_json, tags_json, notes, next_follow_up_at, cadence_days,
     pinned_at, archived_at, created_at, updated_at";
 
+// Like `row_from_sql` but also reads the trailing aggregated last-interaction
+// column (index 19), so the list queries resolve last_interaction_at in one
+// statement instead of an N+1 per-row lookup.
+fn row_with_last_interaction(row: &rusqlite::Row<'_>) -> rusqlite::Result<ContactRow> {
+    let mut contact = row_from_sql(row)?;
+    contact.last_interaction_at = row.get(19)?;
+    Ok(contact)
+}
+
+const LAST_INTERACTION_SUBQUERY: &str =
+    "(SELECT MAX(occurred_at) FROM contact_interactions ci WHERE ci.contact_id = contacts.id)";
+
 fn list_contacts(conn: &Connection) -> Result<Vec<ContactRow>, String> {
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {CONTACT_COLUMNS}
+            "SELECT {CONTACT_COLUMNS},
+                    {LAST_INTERACTION_SUBQUERY} AS last_interaction_at
                FROM contacts
               WHERE archived_at IS NULL
               ORDER BY pinned_at IS NULL, pinned_at DESC,
@@ -390,38 +403,29 @@ fn list_contacts(conn: &Connection) -> Result<Vec<ContactRow>, String> {
         ))
         .map_err(|err| format!("contacts list prepare: {err}"))?;
     let rows = stmt
-        .query_map([], row_from_sql)
+        .query_map([], row_with_last_interaction)
         .map_err(|err| format!("contacts list query: {err}"))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| format!("contacts list collect: {err}"))?;
-    let mut out = Vec::with_capacity(rows.len());
-    for mut row in rows {
-        row.last_interaction_at = last_interaction_at(conn, &row.id)?;
-        out.push(row);
-    }
-    Ok(out)
+    Ok(rows)
 }
 
 fn list_archived_contacts(conn: &Connection) -> Result<Vec<ContactRow>, String> {
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {CONTACT_COLUMNS}
+            "SELECT {CONTACT_COLUMNS},
+                    {LAST_INTERACTION_SUBQUERY} AS last_interaction_at
                FROM contacts
               WHERE archived_at IS NOT NULL
               ORDER BY archived_at DESC, LOWER(display_name), created_at"
         ))
         .map_err(|err| format!("contacts archived list prepare: {err}"))?;
     let rows = stmt
-        .query_map([], row_from_sql)
+        .query_map([], row_with_last_interaction)
         .map_err(|err| format!("contacts archived list query: {err}"))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| format!("contacts archived list collect: {err}"))?;
-    let mut out = Vec::with_capacity(rows.len());
-    for mut row in rows {
-        row.last_interaction_at = last_interaction_at(conn, &row.id)?;
-        out.push(row);
-    }
-    Ok(out)
+    Ok(rows)
 }
 
 fn get_contact(conn: &Connection, id: &str) -> Result<Option<ContactRow>, String> {
@@ -1403,14 +1407,15 @@ fn build_email_index(
 /// We use the unique-ish `source` slot (`calendar:<eventId>:<contactId>`)
 /// as the dedupe key so re-running the sweep is idempotent.
 fn interaction_source_exists(conn: &Connection, source: &str) -> Result<bool, String> {
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM contact_interactions WHERE source = ?",
-            params![source],
-            |row| row.get(0),
-        )
-        .map_err(|err| format!("derive source-exists check: {err}"))?;
-    Ok(count > 0)
+    // EXISTS short-circuits on the first matching row (backed by
+    // idx_contact_interactions_source) instead of counting all of them.
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM contact_interactions WHERE source = ? LIMIT 1)",
+        params![source],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|exists| exists != 0)
+    .map_err(|err| format!("derive source-exists check: {err}"))
 }
 
 #[cfg(target_os = "macos")]

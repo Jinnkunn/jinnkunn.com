@@ -277,8 +277,10 @@ pub struct LocalFileRow {
     /// don't accidentally render binary bytes as text — they should
     /// fall back to `body_hex` for those.
     pub body_text: Option<String>,
-    /// Lowercase hex of the raw body. Always present so binary files
-    /// (images, PDFs, etc.) can still be retrieved client-side.
+    /// Lowercase hex of the raw body. Populated for binary rows (and for a
+    /// non-UTF-8 "text" row) so images/PDFs can be retrieved client-side.
+    /// EMPTY for normal text rows — those carry `body_text` instead, so the
+    /// (often large) hex isn't computed for every text open.
     pub body_hex: String,
 }
 
@@ -308,10 +310,17 @@ pub async fn local_get_file(
     );
     match row {
         Ok((rel_path, bytes, is_binary, sha, size, updated_at, updated_by)) => {
-            let body_text = if is_binary {
-                None
+            // For text opens the caller reads body_text, so skip the (often
+            // large) hex encoding and avoid the extra clone. Binary rows still
+            // get hex; a non-UTF-8 "text" row falls back to hex so nothing is
+            // silently dropped.
+            let (body_text, body_hex) = if is_binary {
+                (None, hex::encode(&bytes))
             } else {
-                String::from_utf8(bytes.clone()).ok()
+                match String::from_utf8(bytes) {
+                    Ok(text) => (Some(text), String::new()),
+                    Err(err) => (None, hex::encode(err.into_bytes())),
+                }
             };
             Ok(Some(LocalFileRow {
                 rel_path,
@@ -321,7 +330,7 @@ pub async fn local_get_file(
                 updated_at,
                 updated_by,
                 body_text,
-                body_hex: hex::encode(&bytes),
+                body_hex,
             }))
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),

@@ -194,19 +194,32 @@ fn read_settings_from_path(path: &PathBuf) -> Result<WorkspaceMcpSettings, Strin
         .map_err(|err| format!("failed to parse MCP settings {}: {err}", path.display()))
 }
 
-fn write_settings_to_path(path: &PathBuf, settings: &WorkspaceMcpSettings) -> Result<(), String> {
+/// Write `contents` to `path` atomically (unique tmp file + rename) so a
+/// concurrent reader (e.g. the MCP server appending a confirmation) or a crash
+/// mid-write can't observe or leave a truncated JSON file.
+fn write_json_atomically(path: &PathBuf, contents: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| {
-            format!(
-                "failed to create MCP settings dir {}: {err}",
-                parent.display()
-            )
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create dir {}: {err}", parent.display()))?;
     }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    // pid keeps the tmp name unique even if two writers hit the same nanosecond.
+    let tmp = path.with_extension(format!("tmp.{}.{nonce}", std::process::id()));
+    std::fs::write(&tmp, contents)
+        .map_err(|err| format!("failed to write {}: {err}", tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(|err| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("failed to finalize {}: {err}", path.display())
+    })
+}
+
+fn write_settings_to_path(path: &PathBuf, settings: &WorkspaceMcpSettings) -> Result<(), String> {
     let raw = serde_json::to_string_pretty(settings)
         .map_err(|err| format!("failed to serialize MCP settings: {err}"))?;
-    std::fs::write(path, format!("{raw}\n"))
-        .map_err(|err| format!("failed to write MCP settings {}: {err}", path.display()))
+    write_json_atomically(path, &format!("{raw}\n"))
 }
 
 fn value_string(value: &Value, key: &str) -> Option<String> {
@@ -303,22 +316,9 @@ fn write_confirmations_to_path(
     path: &PathBuf,
     confirmations: &[WorkspaceMcpConfirmation],
 ) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| {
-            format!(
-                "failed to create MCP confirmations dir {}: {err}",
-                parent.display()
-            )
-        })?;
-    }
     let raw = serde_json::to_string_pretty(confirmations)
         .map_err(|err| format!("failed to serialize MCP confirmations: {err}"))?;
-    std::fs::write(path, format!("{raw}\n")).map_err(|err| {
-        format!(
-            "failed to write MCP confirmations {}: {err}",
-            path.display()
-        )
-    })
+    write_json_atomically(path, &format!("{raw}\n"))
 }
 
 fn workspace_mcp_script_path() -> Option<PathBuf> {

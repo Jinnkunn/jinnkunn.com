@@ -404,6 +404,16 @@ export function MdxDocumentEditor<TForm>({
           setMessage(info.category === "read_only" ? "warn" : "error", info.banner);
           return;
         }
+        if (response.status === 202) {
+          // Offline: the write was queued, NOT confirmed. Keep the draft and
+          // dirty state so the content stays recoverable, and don't claim
+          // "created" or navigate away.
+          setMessage(
+            "warn",
+            `You're offline — this ${adapter.titleNoun} is queued and will sync when you reconnect.`,
+          );
+          return;
+        }
         setLastSavedSource(nextSource);
         clearDraft();
         setMessage(
@@ -443,6 +453,16 @@ export function MdxDocumentEditor<TForm>({
             ? "warn"
             : "error",
           info.banner,
+        );
+        return;
+      }
+      if (response.status === 202) {
+        // Offline: queued, NOT confirmed saved. Keep the draft + dirty state so
+        // the edit stays recoverable, and don't bump the optimistic version,
+        // claim success, or navigate away.
+        setMessage(
+          "warn",
+          `You're offline — ${adapter.titleNoun} changes are queued and will sync when you reconnect.`,
         );
         return;
       }
@@ -543,6 +563,13 @@ export function MdxDocumentEditor<TForm>({
       });
       setError(info.detail);
       setMessage(info.category === "read_only" ? "warn" : "error", info.banner);
+      return;
+    }
+    if (response.status === 202) {
+      setMessage(
+        "warn",
+        `You're offline — this ${adapter.titleNoun} delete is queued and will run when you reconnect.`,
+      );
       return;
     }
     clearDraft();

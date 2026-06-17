@@ -25,6 +25,11 @@ const OUTBOX_HTTP_TIMEOUT_SECS: u64 = 30;
 // offline window. Anything still queued after this cap stays queued
 // for the next focus-driven drain.
 const OUTBOX_DRAIN_MAX_ENTRIES: u32 = 64;
+// After this many failed replays an entry is quarantined: the drain stops
+// re-POSTing it (so a poison 4xx can't occupy a drain slot every focus,
+// forever). It stays in the table — visible/discardable in the UI — and a
+// fresh edit of the same doc coalesces it away with attempts reset to 0.
+const OUTBOX_MAX_ATTEMPTS: i64 = 5;
 
 #[derive(Debug, Deserialize)]
 pub struct OutboxEnqueueParams {
@@ -107,6 +112,18 @@ pub async fn outbox_enqueue(
     };
 
     let conn = local_db::open(&app)?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|err| format!("outbox_enqueue: begin transaction failed: {err}"))?;
+    // Coalesce: a newer write to the same endpoint supersedes any still-queued
+    // one. Otherwise two offline saves of one doc pile up and the older body
+    // replays first with a stale optimistic-concurrency version, sticking as a
+    // permanently-failing entry.
+    conn.execute(
+        "DELETE FROM write_outbox WHERE base_url = ? AND path = ? AND method = ?",
+        params![base_url, normalized_path, method_upper],
+    )
+    .map_err(|err| format!("outbox_enqueue: coalesce delete failed: {err}"))?;
     conn.execute(
         r#"INSERT INTO write_outbox
              (base_url, path, method, body_json, enqueued_at)
@@ -120,8 +137,11 @@ pub async fn outbox_enqueue(
         ],
     )
     .map_err(|err| format!("outbox_enqueue: insert failed: {err}"))?;
+    let id = conn.last_insert_rowid();
+    tx.commit()
+        .map_err(|err| format!("outbox_enqueue: commit failed: {err}"))?;
 
-    Ok(conn.last_insert_rowid())
+    Ok(id)
 }
 
 /// Returns counts for the SyncStatusPill badge. Cheap (two scalar
@@ -262,12 +282,13 @@ pub async fn outbox_drain(
             .prepare(
                 r#"SELECT id, base_url, path, method, body_json
                      FROM write_outbox
+                    WHERE attempts < ?
                     ORDER BY id ASC
                     LIMIT ?"#,
             )
             .map_err(|err| format!("outbox_drain: prepare failed: {err}"))?;
         let rows: Result<Vec<_>, _> = stmt
-            .query_map(params![OUTBOX_DRAIN_MAX_ENTRIES], |row| {
+            .query_map(params![OUTBOX_MAX_ATTEMPTS, OUTBOX_DRAIN_MAX_ENTRIES], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,

@@ -491,6 +491,11 @@ function parseAttrs(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const match of raw.matchAll(ATTR_RE)) {
     const name = match[1];
+    // NOTE: values are taken verbatim. Decoding entities here (to fix a literal
+    // &quot; showing in the editor) breaks the parse->serialize round-trip,
+    // because escapeAttr only re-encodes " — `&amp;` would collapse to `&`
+    // permanently. Fixing that needs the symmetric escape/unescape contract
+    // tracked as the editor escape-contract refactor; left verbatim until then.
     out[name] = match[2] ?? match[3] ?? match[4] ?? "";
   }
   return out;
@@ -676,9 +681,41 @@ function teachingLinksToInlineMarkdown(
   return iconLinksToInlineMarkdown(items, separator);
 }
 
+// A literal `|` inside a cell is escaped as `\|` (and `\` as `\\`) on
+// serialize, so cells must be split on UNescaped pipes only and then
+// unescaped — otherwise a pipe typed into a cell splits/drops the cell.
+function splitUnescapedPipes(value: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i];
+    if (ch === "\\" && i + 1 < value.length) {
+      cur += ch + value[i + 1];
+      i += 1;
+      continue;
+    }
+    if (ch === "|") {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function unescapeTableCell(value: string): string {
+  return value.replace(/\\([\\|])/g, "$1");
+}
+
+export function escapeTableCell(value: string): string {
+  return value.replace(/([\\|])/g, "\\$1");
+}
+
 function parseTableCells(line: string): string[] {
   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  return trimmed.split("|").map((cell) => cell.trim());
+  return splitUnescapedPipes(trimmed).map((cell) => unescapeTableCell(cell.trim()));
 }
 
 function parseTableAlign(divider: string): ("left" | "center" | "right")[] {
@@ -750,15 +787,20 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
       continue;
     }
 
-    if (trimmedLine.startsWith("```")) {
-      const language = trimmedLine.replace(/^```/, "").trim();
+    const fenceOpen = /^(`{3,})(.*)$/.exec(trimmedLine);
+    if (fenceOpen) {
+      const fence = fenceOpen[1];
+      const language = fenceOpen[2].trim();
       const bodyLines: string[] = [];
       index += 1;
-      while (index < lines.length && (lines[index] ?? "").trim() !== "```") {
+      // CommonMark: close only on a fence of >= the opening length, so a code
+      // body that itself contains a ``` line survives the round-trip.
+      const closeFence = new RegExp(`^\`{${fence.length},}$`);
+      while (index < lines.length && !closeFence.test((lines[index] ?? "").trim())) {
         bodyLines.push(lines[index] ?? "");
         index += 1;
       }
-      if ((lines[index] ?? "").trim() === "```") index += 1;
+      if (index < lines.length) index += 1;
       pushBlock(makeBlock("code", { language, text: bodyLines.join("\n") }));
       continue;
     }
@@ -1534,7 +1576,12 @@ function serializeBlock(block: MdxBlock, depth: number): string {
   }
   if (block.type === "code") {
     if (!block.text.trim()) return "";
-    return `\`\`\`${(block.language ?? "").trim()}\n${block.text.replace(/\n+$/, "")}\n\`\`\``;
+    const body = block.text.replace(/\n+$/, "");
+    // Pick a fence longer than the longest backtick run in the body so code
+    // containing ``` survives the round-trip (CommonMark fenced code).
+    const longestRun = (body.match(/`+/g) ?? []).reduce((m, r) => Math.max(m, r.length), 0);
+    const fence = "`".repeat(Math.max(3, longestRun + 1));
+    return `${fence}${(block.language ?? "").trim()}\n${body}\n${fence}`;
   }
   if (block.type === "raw") {
     return block.text.trim();
@@ -1646,7 +1693,7 @@ function serializeBlock(block: MdxBlock, depth: number): string {
     }
     const lines: string[] = [];
     data.rows.forEach((row, idx) => {
-      const cells = row.slice(0, colCount);
+      const cells = row.slice(0, colCount).map(escapeTableCell);
       while (cells.length < colCount) cells.push("");
       lines.push(`| ${cells.join(" | ")} |`);
       if (idx === 0) {

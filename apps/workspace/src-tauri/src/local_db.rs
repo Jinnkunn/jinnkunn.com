@@ -21,6 +21,12 @@ use tauri::Manager;
 
 const DB_FILENAME: &str = "workspace.db";
 
+/// Current local schema version. `ensure_migrated` skips the (idempotent but
+/// non-trivial) migration batch when the DB is already at this version, so the
+/// ~35 DDL statements aren't re-parsed on every per-call connection open.
+/// IMPORTANT: bump this whenever `run_migrations` changes.
+const SCHEMA_VERSION: i32 = 2;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceBackupInfo {
@@ -115,13 +121,46 @@ pub fn open(app: &tauri::AppHandle) -> Result<Connection, String> {
     let path = db_path(app)?;
     let conn = Connection::open(&path)
         .map_err(|err| format!("failed to open local DB at {}: {err}", path.display()))?;
+    configure_connection(&conn)?;
+    ensure_migrated(&conn)?;
+    Ok(conn)
+}
+
+/// Per-connection pragmas. Must run on every open: `busy_timeout` and
+/// `synchronous` are per-connection, and re-asserting WAL is a cheap no-op.
+fn configure_connection(conn: &Connection) -> Result<(), String> {
     // Foreign keys aren't strictly needed today, but enabling them now
     // means a future history-tracking schema change won't silently let
     // orphan rows accumulate.
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(|err| format!("failed to enable FK pragma: {err}"))?;
-    run_migrations(&conn)?;
-    Ok(conn)
+    // rusqlite's default busy_timeout is 0 -> a writer that meets a concurrent
+    // reader/writer on another connection returns SQLITE_BUSY immediately and
+    // the command's write is lost. Block-and-retry for up to 5s instead.
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|err| format!("failed to set busy_timeout: {err}"))?;
+    // WAL lets readers and a single writer proceed concurrently across the
+    // per-call connections; NORMAL is the safe+fast durability pairing for WAL.
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|err| format!("failed to enable WAL journal mode: {err}"))?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|err| format!("failed to set synchronous pragma: {err}"))?;
+    Ok(())
+}
+
+/// Run the schema migration batch only when the DB hasn't reached
+/// `SCHEMA_VERSION` yet, then record the new version.
+fn ensure_migrated(conn: &Connection) -> Result<(), String> {
+    let version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|err| format!("failed to read schema version: {err}"))?;
+    if version >= SCHEMA_VERSION {
+        return Ok(());
+    }
+    run_migrations(conn)?;
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(|err| format!("failed to record schema version: {err}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -280,6 +319,20 @@ fn create_backup_at(
         .map_err(|err| format!("failed to create backup {}: {err}", destination.display()))?;
     drop(conn);
 
+    // Backups can be copied off-machine (cloud sync, AirDrop, …). Strip the
+    // locally-stored Site Admin credentials from the copy and VACUUM so the
+    // freed pages can't be carved out — a leaked backup must not expose tokens.
+    let backup_conn = Connection::open(destination).map_err(|err| {
+        format!(
+            "failed to open backup to scrub secrets {}: {err}",
+            destination.display()
+        )
+    })?;
+    backup_conn
+        .execute_batch("DELETE FROM secure_values; VACUUM;")
+        .map_err(|err| format!("failed to scrub secrets from backup: {err}"))?;
+    drop(backup_conn);
+
     let metadata = fs::metadata(&destination).map_err(|err| {
         format!(
             "failed to inspect backup {} after creation: {err}",
@@ -320,6 +373,12 @@ pub fn workspace_backup_restore(
             "workspace-before-restore-{}.db",
             Utc::now().format("%Y%m%d-%H%M%S")
         ));
+        // Checkpoint the live WAL into the main db file first so this plain
+        // file copy captures all committed data (WAL can hold commits not yet
+        // folded into the .db).
+        if let Ok(conn) = Connection::open(&target) {
+            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        }
         fs::copy(&target, &rollback).map_err(|err| {
             format!(
                 "failed to create rollback backup {}: {err}",
@@ -330,6 +389,14 @@ pub fn workspace_backup_restore(
     } else {
         None
     };
+
+    // Remove the OLD database's hot-journal/WAL siblings BEFORE overwriting the
+    // file, so SQLite can never pair the freshly-restored db with a stale
+    // journal (which it would replay onto the restore, corrupting it). The
+    // restored backup is a single self-contained .db.
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let _ = fs::remove_file(db_sidecar(&target, suffix));
+    }
 
     fs::copy(&source, &target).map_err(|err| {
         format!(
@@ -349,6 +416,14 @@ pub fn workspace_backup_restore(
         restored_at_ms: Utc::now().timestamp_millis(),
         restart_required: true,
     })
+}
+
+/// SQLite sidecar path (`workspace.db-wal`, `-shm`, `-journal`): the suffix is
+/// appended to the FULL filename, not the extension.
+fn db_sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    PathBuf::from(name)
 }
 
 fn normalized_user_path(value: String) -> Result<PathBuf, String> {
@@ -652,6 +727,9 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
             ON contact_interactions (contact_id, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_contact_interactions_global_recent
             ON contact_interactions (occurred_at DESC);
+        -- Supports the calendar-derive dedupe `WHERE source = ?` existence check.
+        CREATE INDEX IF NOT EXISTS idx_contact_interactions_source
+            ON contact_interactions (source);
 
         -- Trigram FTS5 index for the contacts search box. Same tokenizer
         -- choice as notes_fts so CJK substring queries work the same way.
@@ -881,4 +959,41 @@ pub fn write_sync_state_int(conn: &Connection, key: &str, value: i64) -> Result<
     )
     .map_err(|err| format!("failed to write sync_state[{key}]: {err}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_migrations_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        // Re-running must not error (CREATE ... IF NOT EXISTS).
+        run_migrations(&conn).unwrap();
+    }
+
+    #[test]
+    fn ensure_migrated_gates_on_user_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        configure_connection(&conn).unwrap();
+        ensure_migrated(&conn).unwrap();
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        // Second pass is a no-op and must not error.
+        ensure_migrated(&conn).unwrap();
+
+        for table in ["content_files", "secure_values", "sync_state"] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    params![table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "expected table {table} to exist");
+        }
+    }
 }
