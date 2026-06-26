@@ -98,6 +98,23 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(editor.includes("markdownModeButton"));
 });
 
+test("site-admin browser console treats data pages as managed collections", () => {
+  const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
+
+  assert.ok(source.includes("findManagedComponentInBody"));
+  assert.ok(source.includes("Managed collection"));
+  assert.ok(source.includes("Edit {selectedManagedComponent.label} entries"));
+  assert.ok(source.includes("News entries"));
+  assert.ok(source.includes("parseNewsComponentDraft"));
+  assert.ok(source.includes("serializeNewsComponentDraft"));
+  assert.ok(source.includes("Advanced component source"));
+  assert.ok(source.includes("Managed ·"));
+  assert.ok(css.includes(".managedPagePanel"));
+  assert.ok(css.includes(".newsEntryCard"));
+  assert.ok(css.includes(".newsDividerRow"));
+});
+
 test("site-admin content detail APIs expose structured editor fields", () => {
   const postRoute = fs.readFileSync("app/api/site-admin/posts/[slug]/route.ts", "utf8");
   const pageRoute = fs.readFileSync("app/api/site-admin/pages/[...slug]/route.ts", "utf8");

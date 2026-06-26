@@ -11,6 +11,10 @@ import type {
   SiteAdminNowData,
   SiteAdminNowUpdate,
 } from "@/lib/site-admin/api-types";
+import {
+  SITE_COMPONENT_DEFINITIONS,
+  type SiteComponentName,
+} from "@/lib/site-admin/component-registry";
 import type { SiteAdminMobileSummary } from "@/lib/site-admin/mobile-summary";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import styles from "./site-admin-dashboard.module.css";
@@ -66,16 +70,18 @@ type PostListItem = {
 };
 
 type ComponentDefinition = {
-  name: string;
+  name: SiteComponentName;
   label: string;
   description: string;
   primaryRoute?: string;
   entryLabel?: string;
+  embedTag?: string;
 };
 
 type ComponentSummary = {
   count?: number;
   entryLabel?: string;
+  rows?: { title: string; detail?: string; href?: string }[];
 };
 
 type PagesPayload = {
@@ -184,6 +190,27 @@ type Area = "overview" | "content" | "home" | "now";
 type ContentMode = "browse" | "edit" | "create";
 
 const DEFAULT_CREATE_BODY = "Write the post here.";
+const COMPONENT_DEFINITIONS =
+  SITE_COMPONENT_DEFINITIONS as readonly ComponentDefinition[];
+
+type NewsDraftEntry = {
+  id: string;
+  type: "entry";
+  date: string;
+  body: string;
+};
+
+type NewsDraftDivider = {
+  id: string;
+  type: "divider";
+};
+
+type NewsDraftItem = NewsDraftEntry | NewsDraftDivider;
+
+type NewsComponentDraft = {
+  frontmatter: string;
+  items: NewsDraftItem[];
+};
 
 const EMPTY_CONTENT_FORM: EditableContentForm = {
   title: "",
@@ -277,6 +304,134 @@ function tagArrayFromText(value: string) {
 
 function tagTextFromArray(value: string[] | undefined) {
   return (value || []).join(", ");
+}
+
+function componentDefinitionsFromPayload(
+  payload: ComponentsPayload | null,
+): readonly ComponentDefinition[] {
+  return payload?.components?.length ? payload.components : COMPONENT_DEFINITIONS;
+}
+
+function componentSummaryFor(
+  componentsPayload: ComponentsPayload | null,
+  name: SiteComponentName,
+): ComponentSummary | undefined {
+  return componentsPayload?.summaries?.[name];
+}
+
+function findManagedComponentInBody(
+  body: string,
+  definitions: readonly ComponentDefinition[],
+): ComponentDefinition | null {
+  const source = String(body || "");
+  return (
+    definitions.find((definition) => {
+      if (!definition.embedTag) return false;
+      return new RegExp(`<${definition.embedTag}\\b`).test(source);
+    }) ?? null
+  );
+}
+
+function findManagedComponentForPage(
+  page: PageListItem,
+  definitions: readonly ComponentDefinition[],
+): ComponentDefinition | null {
+  return (
+    definitions.find((definition) => {
+      const route = definition.primaryRoute || `/${definition.name}`;
+      return page.href === route || page.slug === definition.name;
+    }) ?? null
+  );
+}
+
+function managedComponentMeta(
+  definition: ComponentDefinition,
+  summary: ComponentSummary | undefined,
+) {
+  return `Managed · ${summary?.count ?? 0} ${
+    summary?.entryLabel || definition.entryLabel || "entries"
+  }`;
+}
+
+const NEWS_ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})/g;
+const NEWS_ENTRY_RE = /<NewsEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
+
+function parseNewsAttrs(raw: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  for (const match of String(raw || "").matchAll(NEWS_ATTR_RE)) {
+    attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
+  }
+  return attrs;
+}
+
+function newsFrontmatterFromSource(source: string): { frontmatter: string; body: string } {
+  const normalized = String(source || "").replace(/\r\n/g, "\n");
+  const match = normalized.match(/^---\n[\s\S]*?\n---\n*/);
+  if (!match) {
+    return {
+      frontmatter: ['---', 'title: "News"', '---'].join("\n"),
+      body: normalized.trim(),
+    };
+  }
+  return {
+    frontmatter: match[0].trimEnd(),
+    body: normalized.slice(match[0].length),
+  };
+}
+
+function parseNewsDividerItems(segment: string, prefix: string): NewsDraftDivider[] {
+  return String(segment || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line, index) => ({ line: line.trim(), index }))
+    .filter(({ line }) => line === "---" || line === "***" || /^<hr\s*\/?>$/i.test(line))
+    .map(({ index }) => ({ id: `${prefix}-divider-${index}`, type: "divider" as const }));
+}
+
+function parseNewsComponentDraft(source: string): NewsComponentDraft {
+  const { frontmatter, body } = newsFrontmatterFromSource(source);
+  const items: NewsDraftItem[] = [];
+  let cursor = 0;
+  let entryIndex = 0;
+  let match: RegExpExecArray | null;
+  NEWS_ENTRY_RE.lastIndex = 0;
+  while ((match = NEWS_ENTRY_RE.exec(body)) !== null) {
+    items.push(...parseNewsDividerItems(body.slice(cursor, match.index), `before-${entryIndex}`));
+    const attrs = parseNewsAttrs(match[1] ?? "");
+    items.push({
+      id: `entry-${entryIndex}`,
+      type: "entry",
+      date: /^\d{4}-\d{2}-\d{2}$/.test(attrs.date || "") ? attrs.date : todayInHalifax(),
+      body: (match[2] ?? "").trim(),
+    });
+    entryIndex += 1;
+    cursor = NEWS_ENTRY_RE.lastIndex;
+  }
+  items.push(...parseNewsDividerItems(body.slice(cursor), "after"));
+  return { frontmatter, items };
+}
+
+function serializeNewsComponentDraft(draft: NewsComponentDraft): string {
+  const body = draft.items
+    .map((item) => {
+      if (item.type === "divider") return "---";
+      const date = item.date || todayInHalifax();
+      return [`<NewsEntry date="${date}">`, "", item.body.trimEnd(), "", "</NewsEntry>"].join(
+        "\n",
+      );
+    })
+    .join("\n\n");
+  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
+}
+
+function moveNewsItem(items: NewsDraftItem[], index: number, direction: -1 | 1) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= items.length) return items;
+  const next = [...items];
+  const [item] = next.splice(index, 1);
+  if (!item) return items;
+  next.splice(nextIndex, 0, item);
+  return next;
 }
 
 function sourceForNewContent(input: {
@@ -478,11 +633,18 @@ function contentItems(input: {
   components: ComponentsPayload | null;
 }): EditableSummary[] {
   if (input.kind === "pages") {
+    const definitions = componentDefinitionsFromPayload(input.components);
     return (input.pages?.pages || []).map((item) => ({
       id: item.slug,
       title: item.title || item.slug,
       href: item.href,
-      meta: item.updatedIso ? formatWhen(item.updatedIso) : `${item.wordCount ?? 0} words`,
+      meta: (() => {
+        const managed = findManagedComponentForPage(item, definitions);
+        if (managed) {
+          return managedComponentMeta(managed, componentSummaryFor(input.components, managed.name));
+        }
+        return item.updatedIso ? formatWhen(item.updatedIso) : `${item.wordCount ?? 0} words`;
+      })(),
       draft: item.draft,
       version: item.version,
     }));
@@ -497,8 +659,8 @@ function contentItems(input: {
       version: item.version,
     }));
   }
-  return (input.components?.components || []).map((item) => {
-    const summary = input.components?.summaries?.[item.name];
+  return componentDefinitionsFromPayload(input.components).map((item) => {
+    const summary = componentSummaryFor(input.components, item.name);
     return {
       id: item.name,
       title: item.label || item.name,
@@ -570,6 +732,22 @@ export function SiteAdminWebConsole({
   const currentItems = useMemo(
     () => contentItems({ kind, pages, posts, components }),
     [kind, pages, posts, components],
+  );
+  const componentDefinitions = useMemo(
+    () => componentDefinitionsFromPayload(components),
+    [components],
+  );
+  const selectedManagedComponent = useMemo(() => {
+    if (!selected || selected.kind !== "pages") return null;
+    return findManagedComponentInBody(contentForm.body, componentDefinitions);
+  }, [componentDefinitions, contentForm.body, selected]);
+  const selectedManagedSummary = selectedManagedComponent
+    ? componentSummaryFor(components, selectedManagedComponent.name)
+    : undefined;
+  const selectedIsNewsComponent = selected?.kind === "components" && selected.id === "news";
+  const selectedNewsDraft = useMemo(
+    () => (selectedIsNewsComponent ? parseNewsComponentDraft(sourceDraft) : null),
+    [selectedIsNewsComponent, sourceDraft],
   );
   const release = summary?.release;
   const source = summary?.source;
@@ -1153,6 +1331,70 @@ export function SiteAdminWebConsole({
     }
   }
 
+  function updateNewsDraft(
+    updater: (draft: NewsComponentDraft) => NewsComponentDraft,
+  ) {
+    const base = parseNewsComponentDraft(sourceDraft);
+    setSourceDraft(serializeNewsComponentDraft(updater(base)));
+  }
+
+  function addNewsEntry() {
+    updateNewsDraft((draft) => ({
+      ...draft,
+      items: [
+        {
+          id: `entry-new-${Date.now()}`,
+          type: "entry",
+          date: todayInHalifax(),
+          body: "New update.",
+        },
+        ...draft.items,
+      ],
+    }));
+  }
+
+  function addNewsDivider() {
+    updateNewsDraft((draft) => ({
+      ...draft,
+      items: [
+        {
+          id: `divider-new-${Date.now()}`,
+          type: "divider",
+        },
+        ...draft.items,
+      ],
+    }));
+  }
+
+  function updateNewsItem(index: number, patch: Partial<NewsDraftEntry>) {
+    updateNewsDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) => {
+        if (itemIndex !== index || item.type !== "entry") return item;
+        return { ...item, ...patch };
+      }),
+    }));
+  }
+
+  function deleteNewsItem(index: number) {
+    updateNewsDraft((draft) => ({
+      ...draft,
+      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  function moveSelectedNewsItem(index: number, direction: -1 | 1) {
+    updateNewsDraft((draft) => ({
+      ...draft,
+      items: moveNewsItem(draft.items, index, direction),
+    }));
+  }
+
+  async function selectManagedComponent(definition: ComponentDefinition) {
+    setKind("components");
+    await selectContent("components", definition.name);
+  }
+
   const resolvedCreateSlug = createSlug.trim() || slugFromTitle(createTitle);
 
   return (
@@ -1727,34 +1969,238 @@ export function SiteAdminWebConsole({
                         ) : null}
                       </div>
                     </details>
-                    <div className={styles.editorBodyShell}>
-                      <SiteAdminMarkdownEditor
-                        label={`${selected.title} body`}
-                        value={contentForm.body}
-                        onChange={(body) =>
-                          setContentForm((current) => ({
-                            ...current,
-                            body,
-                          }))
-                        }
-                        minHeight={560}
-                        size="large"
-                        disabled={saving}
-                        previewLayout="split"
-                      />
-                    </div>
+                    {selectedManagedComponent ? (
+                      <>
+                        <div className={styles.managedPagePanel}>
+                          <div>
+                            <p className={styles.cardLabel}>Managed collection</p>
+                            <h3>{selectedManagedComponent.label} entries</h3>
+                            <p>
+                              This page renders the reusable{" "}
+                              <code>{`<${selectedManagedComponent.embedTag || selectedManagedComponent.name} />`}</code>{" "}
+                              block. Edit the entries in Components; keep this page for title,
+                              route, metadata, and advanced layout changes.
+                            </p>
+                          </div>
+                          <div className={styles.managedPageMeta}>
+                            <span>
+                              {selectedManagedSummary?.count ?? 0}{" "}
+                              {selectedManagedSummary?.entryLabel ||
+                                selectedManagedComponent.entryLabel ||
+                                "entries"}
+                            </span>
+                            <Button
+                              onClick={() => void selectManagedComponent(selectedManagedComponent)}
+                              tone="accent"
+                              size="sm"
+                            >
+                              Edit {selectedManagedComponent.label} entries
+                            </Button>
+                          </div>
+                          {selectedManagedSummary?.rows?.length ? (
+                            <div className={styles.managedPreviewList}>
+                              {selectedManagedSummary.rows.slice(0, 4).map((row, index) => (
+                                <div key={`${row.title}-${index}`}>
+                                  <strong>{row.title}</strong>
+                                  {row.detail ? <small>{row.detail}</small> : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                        <details className={styles.editorDetails}>
+                          <summary>
+                            <span>Advanced page source</span>
+                            <small>{selectedManagedComponent.embedTag}</small>
+                          </summary>
+                          <div className={styles.editorDetailsBody}>
+                            <div className={styles.editorBodyShell}>
+                              <SiteAdminMarkdownEditor
+                                label={`${selected.title} body`}
+                                value={contentForm.body}
+                                onChange={(body) =>
+                                  setContentForm((current) => ({
+                                    ...current,
+                                    body,
+                                  }))
+                                }
+                                minHeight={320}
+                                size="large"
+                                disabled={saving}
+                                previewLayout="split"
+                              />
+                            </div>
+                          </div>
+                        </details>
+                      </>
+                    ) : (
+                      <div className={styles.editorBodyShell}>
+                        <SiteAdminMarkdownEditor
+                          label={`${selected.title} body`}
+                          value={contentForm.body}
+                          onChange={(body) =>
+                            setContentForm((current) => ({
+                              ...current,
+                              body,
+                            }))
+                          }
+                          minHeight={560}
+                          size="large"
+                          disabled={saving}
+                          previewLayout="split"
+                        />
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <div className={styles.editorBodyShell}>
-                    <SiteAdminMarkdownEditor
-                      label={`${selected.title} MDX source`}
-                      value={sourceDraft}
-                      onChange={setSourceDraft}
-                      minHeight={560}
-                      size="large"
-                      disabled={saving}
-                    />
-                  </div>
+                  <>
+                    {selectedIsNewsComponent && selectedNewsDraft ? (
+                      <div className={styles.newsEditor}>
+                        <div className={styles.newsEditorHeader}>
+                          <div>
+                            <p className={styles.cardLabel}>Structured entries</p>
+                            <h3>News entries</h3>
+                            <p>
+                              Edit each dated update directly. The underlying MDX
+                              remains compatible with <code>&lt;NewsEntry /&gt;</code>.
+                            </p>
+                          </div>
+                          <div className={styles.panelActions}>
+                            <Button onClick={addNewsEntry} tone="accent" size="sm">
+                              Add item
+                            </Button>
+                            <Button onClick={addNewsDivider} variant="subtle" size="sm">
+                              Add divider
+                            </Button>
+                          </div>
+                        </div>
+                        <div className={styles.newsEntryList}>
+                          {selectedNewsDraft.items.length === 0 ? (
+                            <div className={styles.emptyEditor}>
+                              <p className={styles.cardLabel}>Empty</p>
+                              <h2 className={styles.panelTitle}>No news yet</h2>
+                              <p className={styles.cardText}>
+                                Add the first dated update to populate the public News page.
+                              </p>
+                            </div>
+                          ) : null}
+                          {selectedNewsDraft.items.map((item, index) =>
+                            item.type === "divider" ? (
+                              <div key={item.id} className={styles.newsDividerRow}>
+                                <span>Divider</span>
+                                <div className={styles.historyActions}>
+                                  <Button
+                                    onClick={() => moveSelectedNewsItem(index, -1)}
+                                    variant="subtle"
+                                    size="sm"
+                                    disabled={index === 0}
+                                  >
+                                    Up
+                                  </Button>
+                                  <Button
+                                    onClick={() => moveSelectedNewsItem(index, 1)}
+                                    variant="subtle"
+                                    size="sm"
+                                    disabled={index === selectedNewsDraft.items.length - 1}
+                                  >
+                                    Down
+                                  </Button>
+                                  <Button
+                                    onClick={() => deleteNewsItem(index)}
+                                    variant="subtle"
+                                    tone="danger"
+                                    size="sm"
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div key={item.id} className={styles.newsEntryCard}>
+                                <div className={styles.newsEntryHeader}>
+                                  <label className={styles.fieldLabel}>
+                                    Date
+                                    <input
+                                      className={styles.textField}
+                                      type="date"
+                                      value={item.date}
+                                      onChange={(event) =>
+                                        updateNewsItem(index, { date: event.target.value })
+                                      }
+                                    />
+                                  </label>
+                                  <div className={styles.historyActions}>
+                                    <Button
+                                      onClick={() => moveSelectedNewsItem(index, -1)}
+                                      variant="subtle"
+                                      size="sm"
+                                      disabled={index === 0}
+                                    >
+                                      Up
+                                    </Button>
+                                    <Button
+                                      onClick={() => moveSelectedNewsItem(index, 1)}
+                                      variant="subtle"
+                                      size="sm"
+                                      disabled={index === selectedNewsDraft.items.length - 1}
+                                    >
+                                      Down
+                                    </Button>
+                                    <Button
+                                      onClick={() => deleteNewsItem(index)}
+                                      variant="subtle"
+                                      tone="danger"
+                                      size="sm"
+                                    >
+                                      Delete
+                                    </Button>
+                                  </div>
+                                </div>
+                                <label className={styles.fieldLabel}>
+                                  Body
+                                  <textarea
+                                    className={styles.newsEntryBody}
+                                    value={item.body}
+                                    onChange={(event) =>
+                                      updateNewsItem(index, { body: event.target.value })
+                                    }
+                                    disabled={saving}
+                                  />
+                                </label>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                        <details className={styles.editorDetails}>
+                          <summary>
+                            <span>Advanced component source</span>
+                            <small>{selected.id}.mdx</small>
+                          </summary>
+                          <div className={styles.editorDetailsBody}>
+                            <SiteAdminMarkdownEditor
+                              label={`${selected.title} MDX source`}
+                              value={sourceDraft}
+                              onChange={setSourceDraft}
+                              minHeight={420}
+                              size="large"
+                              disabled={saving}
+                            />
+                          </div>
+                        </details>
+                      </div>
+                    ) : (
+                      <div className={styles.editorBodyShell}>
+                        <SiteAdminMarkdownEditor
+                          label={`${selected.title} MDX source`}
+                          value={sourceDraft}
+                          onChange={setSourceDraft}
+                          minHeight={560}
+                          size="large"
+                          disabled={saving}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
                 <p className={styles.editorHint}>
                   Version {shortSha(selected.version)}. Saves use optimistic conflict
