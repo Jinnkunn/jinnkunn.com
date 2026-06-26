@@ -303,7 +303,6 @@ export function WorkspaceCommandPalette({
     const normalized = q.toLowerCase();
     const calendarSurface = findSurface(surfaces, "calendar");
     if (!open || normalized.length < 2 || !calendarSurface || calendarSurface.disabled) {
-      setSearchResults(EMPTY_SEARCH_RESULTS);
       return;
     }
 
@@ -354,7 +353,7 @@ export function WorkspaceCommandPalette({
 
   const searchCommands = useMemo<WorkspaceCommand[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q || searchResults.query !== q) return [];
+    if (q.length < 2 || searchResults.query !== q) return [];
 
     const calendarSurface = findSurface(surfaces, "calendar");
     if (!calendarSurface || calendarSurface.disabled) return [];
