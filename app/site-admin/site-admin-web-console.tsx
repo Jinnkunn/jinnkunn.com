@@ -6,6 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusNotice } from "@/components/ui/status-notice";
+import {
+  parsePublicationsEntries,
+  parseTeachingEntries,
+  parseWorksEntries,
+  type TeachingComponentEntry,
+  type WorksComponentEntry,
+} from "@/lib/components/parse";
+import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
 import type {
   SiteAdminHomeData,
   SiteAdminNowData,
@@ -13,6 +21,7 @@ import type {
 } from "@/lib/site-admin/api-types";
 import {
   SITE_COMPONENT_DEFINITIONS,
+  isSiteComponentName,
   type SiteComponentName,
 } from "@/lib/site-admin/component-registry";
 import type { SiteAdminMobileSummary } from "@/lib/site-admin/mobile-summary";
@@ -186,7 +195,7 @@ type HomePostPayload = {
   sourceVersion: SourceVersion;
 };
 
-type Area = "overview" | "content" | "home" | "now";
+type Area = "dashboard" | "content" | "collections" | "release" | "home" | "now";
 type ContentMode = "browse" | "edit" | "create";
 
 const DEFAULT_CREATE_BODY = "Write the post here.";
@@ -210,6 +219,33 @@ type NewsDraftItem = NewsDraftEntry | NewsDraftDivider;
 type NewsComponentDraft = {
   frontmatter: string;
   items: NewsDraftItem[];
+};
+
+type TeachingDraftEntry = TeachingComponentEntry & {
+  id: string;
+};
+
+type TeachingComponentDraft = {
+  frontmatter: string;
+  items: TeachingDraftEntry[];
+};
+
+type WorksDraftEntry = WorksComponentEntry & {
+  id: string;
+};
+
+type WorksComponentDraft = {
+  frontmatter: string;
+  items: WorksDraftEntry[];
+};
+
+type PublicationDraftEntry = PublicationStructuredEntry & {
+  id: string;
+};
+
+type PublicationsComponentDraft = {
+  frontmatter: string;
+  items: PublicationDraftEntry[];
 };
 
 const EMPTY_CONTENT_FORM: EditableContentForm = {
@@ -364,12 +400,15 @@ function parseNewsAttrs(raw: string): Record<string, string> {
   return attrs;
 }
 
-function newsFrontmatterFromSource(source: string): { frontmatter: string; body: string } {
+function componentFrontmatterFromSource(
+  source: string,
+  fallbackTitle: string,
+): { frontmatter: string; body: string } {
   const normalized = String(source || "").replace(/\r\n/g, "\n");
   const match = normalized.match(/^---\n[\s\S]*?\n---\n*/);
   if (!match) {
     return {
-      frontmatter: ['---', 'title: "News"', '---'].join("\n"),
+      frontmatter: ["---", `title: ${frontmatterString(fallbackTitle)}`, "---"].join("\n"),
       body: normalized.trim(),
     };
   }
@@ -377,6 +416,10 @@ function newsFrontmatterFromSource(source: string): { frontmatter: string; body:
     frontmatter: match[0].trimEnd(),
     body: normalized.slice(match[0].length),
   };
+}
+
+function newsFrontmatterFromSource(source: string): { frontmatter: string; body: string } {
+  return componentFrontmatterFromSource(source, "News");
 }
 
 function parseNewsDividerItems(segment: string, prefix: string): NewsDraftDivider[] {
@@ -424,7 +467,116 @@ function serializeNewsComponentDraft(draft: NewsComponentDraft): string {
   return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
 }
 
+function jsxAttr(name: string, value: string | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const escaped = trimmed
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `${name}="${escaped}"`;
+}
+
+function compactAttrs(attrs: string[]) {
+  return attrs.filter(Boolean).join(" ");
+}
+
+function jsonDataAttr(value: unknown) {
+  return JSON.stringify(value).replace(/'/g, "\\u0027");
+}
+
+function parseTeachingComponentDraft(source: string): TeachingComponentDraft {
+  const { frontmatter } = componentFrontmatterFromSource(source, "Teaching");
+  return {
+    frontmatter,
+    items: parseTeachingEntries(source).map((entry, index) => ({
+      id: `teaching-${index}`,
+      ...entry,
+    })),
+  };
+}
+
+function serializeTeachingComponentDraft(draft: TeachingComponentDraft): string {
+  const body = draft.items
+    .map((entry) => {
+      const attrs = compactAttrs([
+        jsxAttr("term", entry.term),
+        jsxAttr("period", entry.period),
+        jsxAttr("role", entry.role),
+        jsxAttr("courseCode", entry.courseCode),
+        jsxAttr("courseName", entry.courseName),
+        jsxAttr("courseUrl", entry.courseUrl),
+        jsxAttr("instructor", entry.instructor),
+      ]);
+      return `<TeachingEntry ${attrs} />`;
+    })
+    .join("\n\n");
+  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
+}
+
+function parseWorksComponentDraft(source: string): WorksComponentDraft {
+  const { frontmatter } = componentFrontmatterFromSource(source, "Works");
+  return {
+    frontmatter,
+    items: parseWorksEntries(source).map((entry, index) => ({
+      id: `works-${index}`,
+      ...entry,
+    })),
+  };
+}
+
+function serializeWorksComponentDraft(draft: WorksComponentDraft): string {
+  const body = draft.items
+    .map((entry) => {
+      const attrs = compactAttrs([
+        jsxAttr("category", entry.category),
+        jsxAttr("role", entry.role),
+        jsxAttr("affiliation", entry.affiliation),
+        jsxAttr("affiliationUrl", entry.affiliationUrl),
+        jsxAttr("location", entry.location),
+        jsxAttr("period", entry.period),
+      ]);
+      return [`<WorksEntry ${attrs}>`, "", String(entry.body || "").trimEnd(), "", "</WorksEntry>"].join(
+        "\n",
+      );
+    })
+    .join("\n\n");
+  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
+}
+
+function parsePublicationsComponentDraft(source: string): PublicationsComponentDraft {
+  const { frontmatter } = componentFrontmatterFromSource(source, "Publications");
+  return {
+    frontmatter,
+    items: parsePublicationsEntries(source).map((entry, index) => ({
+      id: `publication-${index}`,
+      ...entry,
+    })),
+  };
+}
+
+function serializePublicationsComponentDraft(draft: PublicationsComponentDraft): string {
+  const body = draft.items
+    .map((entry) => {
+      const { id: _id, ...data } = entry;
+      return `<PublicationsEntry data='${jsonDataAttr(data)}' />`;
+    })
+    .join("\n\n");
+  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
+}
+
 function moveNewsItem(items: NewsDraftItem[], index: number, direction: -1 | 1) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= items.length) return items;
+  const next = [...items];
+  const [item] = next.splice(index, 1);
+  if (!item) return items;
+  next.splice(nextIndex, 0, item);
+  return next;
+}
+
+function moveDraftEntry<T>(items: T[], index: number, direction: -1 | 1) {
   const nextIndex = index + direction;
   if (nextIndex < 0 || nextIndex >= items.length) return items;
   const next = [...items];
@@ -684,7 +836,7 @@ export function SiteAdminWebConsole({
   initialSummary: SiteAdminMobileSummary | null;
   initialSummaryError: string;
 }) {
-  const [area, setArea] = useState<Area>("overview");
+  const [area, setArea] = useState<Area>("dashboard");
   const [summary, setSummary] = useState<SiteAdminMobileSummary | null>(
     initialSummary,
   );
@@ -705,6 +857,7 @@ export function SiteAdminWebConsole({
   const [components, setComponents] = useState<ComponentsPayload | null>(null);
   const [kind, setKind] = useState<EditableKind>("posts");
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
+  const [contentSearch, setContentSearch] = useState("");
   const [selected, setSelected] = useState<EditableDetail | null>(null);
   const [sourceDraft, setSourceDraft] = useState("");
   const [contentForm, setContentForm] =
@@ -733,6 +886,15 @@ export function SiteAdminWebConsole({
     () => contentItems({ kind, pages, posts, components }),
     [kind, pages, posts, components],
   );
+  const visibleItems = useMemo(() => {
+    const query = contentSearch.trim().toLowerCase();
+    if (!query) return currentItems;
+    return currentItems.filter((item) =>
+      [item.title, item.id, item.meta].some((value) =>
+        String(value || "").toLowerCase().includes(query),
+      ),
+    );
+  }, [contentSearch, currentItems]);
   const componentDefinitions = useMemo(
     () => componentDefinitionsFromPayload(components),
     [components],
@@ -744,13 +906,59 @@ export function SiteAdminWebConsole({
   const selectedManagedSummary = selectedManagedComponent
     ? componentSummaryFor(components, selectedManagedComponent.name)
     : undefined;
-  const selectedIsNewsComponent = selected?.kind === "components" && selected.id === "news";
+  const selectedComponentName =
+    selected?.kind === "components" && isSiteComponentName(selected.id)
+      ? selected.id
+      : null;
+  const selectedIsNewsComponent = selectedComponentName === "news";
   const selectedNewsDraft = useMemo(
     () => (selectedIsNewsComponent ? parseNewsComponentDraft(sourceDraft) : null),
     [selectedIsNewsComponent, sourceDraft],
   );
+  const selectedTeachingDraft = useMemo(
+    () =>
+      selectedComponentName === "teaching"
+        ? parseTeachingComponentDraft(sourceDraft)
+        : null,
+    [selectedComponentName, sourceDraft],
+  );
+  const selectedWorksDraft = useMemo(
+    () => (selectedComponentName === "works" ? parseWorksComponentDraft(sourceDraft) : null),
+    [selectedComponentName, sourceDraft],
+  );
+  const selectedPublicationsDraft = useMemo(
+    () =>
+      selectedComponentName === "publications"
+        ? parsePublicationsComponentDraft(sourceDraft)
+        : null,
+    [selectedComponentName, sourceDraft],
+  );
   const release = summary?.release;
   const source = summary?.source;
+  const areaTitle =
+    area === "dashboard"
+      ? "Dashboard"
+      : area === "content"
+        ? "Content"
+        : area === "collections"
+          ? "Collections"
+          : area === "release"
+            ? "Release"
+            : area === "home"
+              ? "Home"
+              : "Now";
+  const areaDescription =
+    area === "content"
+      ? "Edit draft content with a stable writing surface, metadata inspector, and clear publish status."
+      : area === "collections"
+        ? "Manage structured sections such as News, Publications, Teaching, and Works without touching raw MDX shortcodes."
+        : area === "release"
+          ? "Review draft versus live state, start the recommended release action, and inspect recovery tools only when needed."
+          : area === "home"
+            ? "Edit the landing page draft."
+            : area === "now"
+              ? "Update the lightweight Now status and manage recent history."
+              : "Manage draft website content, review release state, and keep the public surface in sync.";
   const selectedIsStructured = selected?.kind === "posts" || selected?.kind === "pages";
   const selectedSourceDraft = selected
     ? selectedIsStructured
@@ -1133,14 +1341,6 @@ export function SiteAdminWebConsole({
   function beginCreate(nextKind?: "posts" | "pages") {
     const resolvedKind = nextKind ?? (kind === "pages" ? "pages" : "posts");
     setContentMode("create");
-    setSelected(null);
-    setSourceDraft("");
-    setContentForm(EMPTY_CONTENT_FORM);
-    setContentFormBaseline("");
-    setSlugDraft("");
-    setLocalAutosaveAt("");
-    setContentSavedAt("");
-    setLocalDraftSnapshot(null);
     setCreateKind(resolvedKind);
     setCreateSlug("");
     setCreateTitle(resolvedKind === "posts" ? "Untitled Post" : "Untitled Page");
@@ -1390,6 +1590,529 @@ export function SiteAdminWebConsole({
     }));
   }
 
+  function updateTeachingDraft(
+    updater: (draft: TeachingComponentDraft) => TeachingComponentDraft,
+  ) {
+    const base = parseTeachingComponentDraft(sourceDraft);
+    setSourceDraft(serializeTeachingComponentDraft(updater(base)));
+  }
+
+  function addTeachingEntry() {
+    updateTeachingDraft((draft) => ({
+      ...draft,
+      items: [
+        {
+          id: `teaching-new-${Date.now()}`,
+          term: "New term",
+          period: "",
+          role: "",
+          courseCode: "",
+          courseName: "",
+        },
+        ...draft.items,
+      ],
+    }));
+  }
+
+  function updateTeachingItem(index: number, patch: Partial<TeachingDraftEntry>) {
+    updateTeachingDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ),
+    }));
+  }
+
+  function deleteTeachingItem(index: number) {
+    updateTeachingDraft((draft) => ({
+      ...draft,
+      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  function moveSelectedTeachingItem(index: number, direction: -1 | 1) {
+    updateTeachingDraft((draft) => ({
+      ...draft,
+      items: moveDraftEntry(draft.items, index, direction),
+    }));
+  }
+
+  function updateWorksDraft(updater: (draft: WorksComponentDraft) => WorksComponentDraft) {
+    const base = parseWorksComponentDraft(sourceDraft);
+    setSourceDraft(serializeWorksComponentDraft(updater(base)));
+  }
+
+  function addWorksEntry() {
+    updateWorksDraft((draft) => ({
+      ...draft,
+      items: [
+        {
+          id: `works-new-${Date.now()}`,
+          category: "recent",
+          role: "New role",
+          affiliation: "",
+          location: "",
+          period: "",
+          body: "",
+        },
+        ...draft.items,
+      ],
+    }));
+  }
+
+  function updateWorksItem(index: number, patch: Partial<WorksDraftEntry>) {
+    updateWorksDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ),
+    }));
+  }
+
+  function deleteWorksItem(index: number) {
+    updateWorksDraft((draft) => ({
+      ...draft,
+      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  function moveSelectedWorksItem(index: number, direction: -1 | 1) {
+    updateWorksDraft((draft) => ({
+      ...draft,
+      items: moveDraftEntry(draft.items, index, direction),
+    }));
+  }
+
+  function updatePublicationsDraft(
+    updater: (draft: PublicationsComponentDraft) => PublicationsComponentDraft,
+  ) {
+    const base = parsePublicationsComponentDraft(sourceDraft);
+    setSourceDraft(serializePublicationsComponentDraft(updater(base)));
+  }
+
+  function addPublicationEntry() {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: [
+        {
+          id: `publication-new-${Date.now()}`,
+          title: "Untitled publication",
+          year: new Date().getFullYear().toString(),
+          url: "",
+          labels: [],
+        },
+        ...draft.items,
+      ],
+    }));
+  }
+
+  function updatePublicationItem(index: number, patch: Partial<PublicationDraftEntry>) {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ),
+    }));
+  }
+
+  function updatePublicationListField(
+    index: number,
+    field: "labels" | "highlights" | "externalUrls",
+    value: string,
+  ) {
+    updatePublicationItem(index, {
+      [field]: value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    } as Partial<PublicationDraftEntry>);
+  }
+
+  function deletePublicationItem(index: number) {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  function moveSelectedPublicationItem(index: number, direction: -1 | 1) {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: moveDraftEntry(draft.items, index, direction),
+    }));
+  }
+
+  function renderComponentItemActions(input: {
+    index: number;
+    count: number;
+    onMove: (direction: -1 | 1) => void;
+    onDelete: () => void;
+  }) {
+    return (
+      <div className={styles.historyActions}>
+        <Button
+          onClick={() => input.onMove(-1)}
+          variant="subtle"
+          size="sm"
+          disabled={input.index === 0}
+        >
+          Up
+        </Button>
+        <Button
+          onClick={() => input.onMove(1)}
+          variant="subtle"
+          size="sm"
+          disabled={input.index === input.count - 1}
+        >
+          Down
+        </Button>
+        <Button onClick={input.onDelete} variant="subtle" tone="danger" size="sm">
+          Delete
+        </Button>
+      </div>
+    );
+  }
+
+  function renderAdvancedComponentSource() {
+    if (!selected) return null;
+    return (
+      <details className={styles.editorDetails}>
+        <summary>
+          <span>Advanced component source</span>
+          <small>{selected.id}.mdx</small>
+        </summary>
+        <div className={styles.editorDetailsBody}>
+          <SiteAdminMarkdownEditor
+            label={`${selected.title} MDX source`}
+            value={sourceDraft}
+            onChange={setSourceDraft}
+            minHeight={420}
+            size="large"
+            disabled={saving}
+          />
+        </div>
+      </details>
+    );
+  }
+
+  function renderTeachingEditor(draft: TeachingComponentDraft) {
+    return (
+      <div className={styles.newsEditor}>
+        <div className={styles.newsEditorHeader}>
+          <div>
+            <p className={styles.cardLabel}>Structured entries</p>
+            <h3>Teaching rows</h3>
+            <p>Edit course rows directly. The MDX source remains available under Advanced.</p>
+          </div>
+          <Button onClick={addTeachingEntry} tone="accent" size="sm">
+            Add row
+          </Button>
+        </div>
+        <div className={styles.newsEntryList}>
+          {draft.items.map((item, index) => (
+            <div key={item.id} className={styles.newsEntryCard}>
+              <div className={styles.newsEntryHeader}>
+                <strong>{item.courseCode || item.courseName || item.term || "Untitled course"}</strong>
+                {renderComponentItemActions({
+                  index,
+                  count: draft.items.length,
+                  onMove: (direction) => moveSelectedTeachingItem(index, direction),
+                  onDelete: () => deleteTeachingItem(index),
+                })}
+              </div>
+              <div className={styles.componentEntryGrid}>
+                <label className={styles.fieldLabel}>
+                  Term
+                  <input
+                    className={styles.textField}
+                    value={item.term}
+                    onChange={(event) => updateTeachingItem(index, { term: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Period
+                  <input
+                    className={styles.textField}
+                    value={item.period}
+                    onChange={(event) => updateTeachingItem(index, { period: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Role
+                  <input
+                    className={styles.textField}
+                    value={item.role}
+                    onChange={(event) => updateTeachingItem(index, { role: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Course code
+                  <input
+                    className={styles.textField}
+                    value={item.courseCode}
+                    onChange={(event) =>
+                      updateTeachingItem(index, { courseCode: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Course name
+                  <input
+                    className={styles.textField}
+                    value={item.courseName}
+                    onChange={(event) =>
+                      updateTeachingItem(index, { courseName: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Instructor
+                  <input
+                    className={styles.textField}
+                    value={item.instructor || ""}
+                    onChange={(event) =>
+                      updateTeachingItem(index, { instructor: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Course URL
+                  <input
+                    className={styles.textField}
+                    value={item.courseUrl || ""}
+                    onChange={(event) =>
+                      updateTeachingItem(index, { courseUrl: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        {renderAdvancedComponentSource()}
+      </div>
+    );
+  }
+
+  function renderWorksEditor(draft: WorksComponentDraft) {
+    return (
+      <div className={styles.newsEditor}>
+        <div className={styles.newsEditorHeader}>
+          <div>
+            <p className={styles.cardLabel}>Structured entries</p>
+            <h3>Work rows</h3>
+            <p>Edit roles, affiliations, periods, and body text without touching MDX tags.</p>
+          </div>
+          <Button onClick={addWorksEntry} tone="accent" size="sm">
+            Add row
+          </Button>
+        </div>
+        <div className={styles.newsEntryList}>
+          {draft.items.map((item, index) => (
+            <div key={item.id} className={styles.newsEntryCard}>
+              <div className={styles.newsEntryHeader}>
+                <strong>{item.role || item.affiliation || "Untitled work"}</strong>
+                {renderComponentItemActions({
+                  index,
+                  count: draft.items.length,
+                  onMove: (direction) => moveSelectedWorksItem(index, direction),
+                  onDelete: () => deleteWorksItem(index),
+                })}
+              </div>
+              <div className={styles.componentEntryGrid}>
+                <label className={styles.fieldLabel}>
+                  Category
+                  <select
+                    className={styles.textField}
+                    value={item.category}
+                    onChange={(event) =>
+                      updateWorksItem(index, {
+                        category: event.target.value === "passed" ? "passed" : "recent",
+                      })
+                    }
+                  >
+                    <option value="recent">Recent</option>
+                    <option value="passed">Past</option>
+                  </select>
+                </label>
+                <label className={styles.fieldLabel}>
+                  Role
+                  <input
+                    className={styles.textField}
+                    value={item.role}
+                    onChange={(event) => updateWorksItem(index, { role: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Affiliation
+                  <input
+                    className={styles.textField}
+                    value={item.affiliation || ""}
+                    onChange={(event) =>
+                      updateWorksItem(index, { affiliation: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Affiliation URL
+                  <input
+                    className={styles.textField}
+                    value={item.affiliationUrl || ""}
+                    onChange={(event) =>
+                      updateWorksItem(index, { affiliationUrl: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Location
+                  <input
+                    className={styles.textField}
+                    value={item.location || ""}
+                    onChange={(event) => updateWorksItem(index, { location: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Period
+                  <input
+                    className={styles.textField}
+                    value={item.period}
+                    onChange={(event) => updateWorksItem(index, { period: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label className={styles.fieldLabel}>
+                Body
+                <textarea
+                  className={styles.newsEntryBody}
+                  value={item.body}
+                  onChange={(event) => updateWorksItem(index, { body: event.target.value })}
+                  disabled={saving}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+        {renderAdvancedComponentSource()}
+      </div>
+    );
+  }
+
+  function renderPublicationsEditor(draft: PublicationsComponentDraft) {
+    return (
+      <div className={styles.newsEditor}>
+        <div className={styles.newsEditorHeader}>
+          <div>
+            <p className={styles.cardLabel}>Structured entries</p>
+            <h3>Publication rows</h3>
+            <p>
+              Edit the common fields directly. Advanced JSON stays preserved in source
+              for authors and venue details.
+            </p>
+          </div>
+          <Button onClick={addPublicationEntry} tone="accent" size="sm">
+            Add publication
+          </Button>
+        </div>
+        <div className={styles.newsEntryList}>
+          {draft.items.map((item, index) => (
+            <div key={item.id} className={styles.newsEntryCard}>
+              <div className={styles.newsEntryHeader}>
+                <strong>{item.title || "Untitled publication"}</strong>
+                {renderComponentItemActions({
+                  index,
+                  count: draft.items.length,
+                  onMove: (direction) => moveSelectedPublicationItem(index, direction),
+                  onDelete: () => deletePublicationItem(index),
+                })}
+              </div>
+              <div className={styles.componentEntryGrid}>
+                <label className={styles.fieldLabel}>
+                  Title
+                  <input
+                    className={styles.textField}
+                    value={item.title || ""}
+                    onChange={(event) =>
+                      updatePublicationItem(index, { title: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Year
+                  <input
+                    className={styles.textField}
+                    value={item.year || ""}
+                    onChange={(event) =>
+                      updatePublicationItem(index, { year: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  URL
+                  <input
+                    className={styles.textField}
+                    value={item.url || ""}
+                    onChange={(event) => updatePublicationItem(index, { url: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Labels
+                  <input
+                    className={styles.textField}
+                    value={(item.labels || []).join(", ")}
+                    onChange={(event) =>
+                      updatePublicationListField(index, "labels", event.target.value)
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Highlights
+                  <input
+                    className={styles.textField}
+                    value={(item.highlights || []).join(", ")}
+                    onChange={(event) =>
+                      updatePublicationListField(index, "highlights", event.target.value)
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  DOI URL
+                  <input
+                    className={styles.textField}
+                    value={item.doiUrl || ""}
+                    onChange={(event) =>
+                      updatePublicationItem(index, { doiUrl: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  arXiv URL
+                  <input
+                    className={styles.textField}
+                    value={item.arxivUrl || ""}
+                    onChange={(event) =>
+                      updatePublicationItem(index, { arxivUrl: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  External URLs
+                  <input
+                    className={styles.textField}
+                    value={(item.externalUrls || []).join(", ")}
+                    onChange={(event) =>
+                      updatePublicationListField(index, "externalUrls", event.target.value)
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        {renderAdvancedComponentSource()}
+      </div>
+    );
+  }
+
   async function selectManagedComponent(definition: ComponentDefinition) {
     setKind("components");
     await selectContent("components", definition.name);
@@ -1402,10 +2125,9 @@ export function SiteAdminWebConsole({
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Site Admin</p>
-          <h1 className={styles.title}>Dashboard</h1>
+          <h1 className={styles.title}>{areaTitle}</h1>
           <p className={styles.description}>
-            Signed in as <strong>{actor}</strong>. Manage draft website content,
-            review release state, and keep the public surface in sync.
+            Signed in as <strong>{actor}</strong>. {areaDescription}
           </p>
         </div>
         <div className={styles.heroActions}>
@@ -1427,8 +2149,10 @@ export function SiteAdminWebConsole({
 
       <nav className={styles.adminTabs} aria-label="Site Admin sections">
         {[
-          ["overview", "Overview"],
+          ["dashboard", "Dashboard"],
           ["content", "Content"],
+          ["collections", "Collections"],
+          ["release", "Release"],
           ["home", "Home"],
           ["now", "Now"],
         ].map(([id, label]) => (
@@ -1444,7 +2168,7 @@ export function SiteAdminWebConsole({
         ))}
       </nav>
 
-      {area === "overview" ? (
+      {area === "dashboard" ? (
         <>
           <section className={styles.summaryGrid} aria-label="Site Admin summary">
             <Card className={styles.card}>
@@ -1613,8 +2337,26 @@ export function SiteAdminWebConsole({
                 </button>
               ))}
             </div>
+            <label className={styles.fieldLabel}>
+              Search
+              <input
+                className={styles.textField}
+                value={contentSearch}
+                onChange={(event) => setContentSearch(event.target.value)}
+                placeholder={`Find ${titleForKind(kind).toLowerCase()}`}
+              />
+            </label>
+            <div className={styles.collectionCallout}>
+              <div>
+                <strong>Managed collections</strong>
+                <small>News, Publications, Works, Teaching</small>
+              </div>
+              <Button onClick={() => setArea("collections")} variant="subtle" size="sm">
+                Open
+              </Button>
+            </div>
             <div className={styles.itemList}>
-              {currentItems.map((item) => (
+              {visibleItems.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -1629,110 +2371,13 @@ export function SiteAdminWebConsole({
                   </small>
                 </button>
               ))}
+              {visibleItems.length === 0 ? (
+                <p className={styles.listEmpty}>No matching {titleForKind(kind).toLowerCase()}.</p>
+              ) : null}
             </div>
           </Card>
 
-          {contentMode === "create" ? (
-            <Card className={`${styles.editorPanel} ${styles.createPanel}`}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <p className={styles.cardLabel}>New content</p>
-                  <h2 className={styles.panelTitle}>
-                    {createKind === "posts" ? "New post" : "New page"}
-                  </h2>
-                </div>
-                <Button
-                  onClick={() => setContentMode(selected ? "edit" : "browse")}
-                  variant="subtle"
-                  size="sm"
-                >
-                  Cancel
-                </Button>
-              </div>
-              <div className={styles.segmented} role="group" aria-label="New content type">
-                {(["posts", "pages"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    data-active={createKind === value}
-                    onClick={() => {
-                      setCreateKind(value);
-                      setCreateTitle(value === "posts" ? "Untitled Post" : "Untitled Page");
-                      setCreateBody(value === "posts" ? "Write the post here." : "Write the page here.");
-                    }}
-                  >
-                    {titleForKind(value)}
-                  </button>
-                ))}
-              </div>
-              <label className={styles.fieldLabel}>
-                Title
-                <input
-                  className={styles.textField}
-                  value={createTitle}
-                  onChange={(event) => setCreateTitle(event.target.value)}
-                />
-              </label>
-              <details className={styles.editorDetails}>
-                <summary>
-                  <span>Metadata</span>
-                  <small>
-                    {resolvedCreateSlug}
-                    {createKind === "posts" ? ` · ${createDate}` : ""}
-                    {createDescription.trim() ? " · Description set" : ""}
-                  </small>
-                </summary>
-                <div className={styles.editorDetailsBody}>
-                  <label className={styles.fieldLabel}>
-                    Slug
-                    <input
-                      className={styles.textField}
-                      value={createSlug}
-                      onChange={(event) => setCreateSlug(event.target.value)}
-                      placeholder={resolvedCreateSlug}
-                    />
-                  </label>
-                  {createKind === "posts" ? (
-                    <label className={styles.fieldLabel}>
-                      Date
-                      <input
-                        className={styles.textField}
-                        type="date"
-                        value={createDate}
-                        onChange={(event) => setCreateDate(event.target.value)}
-                      />
-                    </label>
-                  ) : null}
-                  <label className={styles.fieldLabel}>
-                    Description
-                    <input
-                      className={styles.textField}
-                      value={createDescription}
-                      onChange={(event) => setCreateDescription(event.target.value)}
-                      placeholder="Optional"
-                    />
-                  </label>
-                </div>
-              </details>
-              <div className={styles.createEditorShell}>
-                <SiteAdminMarkdownEditor
-                  label="New content body"
-                  value={createBody}
-                  onChange={setCreateBody}
-                  minHeight={460}
-                  size="large"
-                  disabled={saving}
-                />
-              </div>
-              <Button
-                onClick={() => void createContent()}
-                tone="accent"
-                disabled={saving || !resolvedCreateSlug}
-              >
-                Create {createKind === "posts" ? "post" : "page"}
-              </Button>
-            </Card>
-          ) : selected ? (
+          {selected ? (
             <Card className={styles.editorPanel}>
                 <div className={styles.panelHeader}>
                   <div>
@@ -1744,17 +2389,6 @@ export function SiteAdminWebConsole({
                     {selected.href ? (
                       <Button href={selected.href} variant="ghost" size="sm">
                         Open
-                      </Button>
-                    ) : null}
-                    {isDeleteSupported(selected.kind) ? (
-                      <Button
-                        onClick={() => void deleteSelectedContent()}
-                        variant="subtle"
-                        tone="danger"
-                        size="sm"
-                        disabled={saving}
-                      >
-                        Delete
                       </Button>
                     ) : null}
                     <Button
@@ -1818,7 +2452,7 @@ export function SiteAdminWebConsole({
                 </div>
                 {selectedIsStructured ? (
                   <>
-                    <div className={styles.editorPrimaryGrid}>
+                    <div className={styles.editorTitleGrid}>
                       <label className={styles.fieldLabel}>
                         Title
                         <input
@@ -1832,143 +2466,7 @@ export function SiteAdminWebConsole({
                           }
                         />
                       </label>
-                      {selected.kind === "posts" ? (
-                        <label className={styles.fieldLabel}>
-                          Date
-                          <input
-                            className={styles.textField}
-                            type="date"
-                            value={contentForm.date}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                date: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      ) : (
-                        <label className={styles.fieldLabel}>
-                          Updated
-                          <input
-                            className={styles.textField}
-                            type="date"
-                            value={contentForm.updated}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                updated: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      )}
-                      <label className={styles.checkField}>
-                        <input
-                          type="checkbox"
-                          checked={contentForm.draft}
-                          onChange={(event) =>
-                            setContentForm((current) => ({
-                              ...current,
-                              draft: event.target.checked,
-                            }))
-                          }
-                        />
-                        Draft
-                      </label>
                     </div>
-                    <details className={styles.editorDetails}>
-                      <summary>
-                        <span>Metadata</span>
-                        <small>
-                          {slugDraft || selected.id}
-                          {contentForm.description.trim() ? " · Description set" : ""}
-                        </small>
-                      </summary>
-                      <div className={styles.editorDetailsBody}>
-                        {isDeleteSupported(selected.kind) ? (
-                          <div className={styles.slugMoveRow}>
-                            <label className={styles.fieldLabel}>
-                              Slug
-                              <input
-                                className={styles.textField}
-                                value={slugDraft}
-                                onChange={(event) => setSlugDraft(event.target.value)}
-                                spellCheck={false}
-                              />
-                            </label>
-                            <Button
-                              onClick={() => void moveSelectedContent()}
-                              variant="subtle"
-                              size="sm"
-                              disabled={saving || selectedDirty || !slugDirty}
-                            >
-                              Rename
-                            </Button>
-                          </div>
-                        ) : null}
-                        <label className={styles.fieldLabel}>
-                          Description
-                          <input
-                            className={styles.textField}
-                            value={contentForm.description}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                description: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
-                        </label>
-                        {selected.kind === "posts" ? (
-                          <div className={styles.editorMetaGrid}>
-                            <label className={styles.fieldLabel}>
-                              Tags
-                              <input
-                                className={styles.textField}
-                                value={contentForm.tags}
-                                onChange={(event) =>
-                                  setContentForm((current) => ({
-                                    ...current,
-                                    tags: event.target.value,
-                                  }))
-                                }
-                                placeholder="Comma separated"
-                              />
-                            </label>
-                            <label className={styles.fieldLabel}>
-                              Cover
-                              <input
-                                className={styles.textField}
-                                value={contentForm.cover}
-                                onChange={(event) =>
-                                  setContentForm((current) => ({
-                                    ...current,
-                                    cover: event.target.value,
-                                  }))
-                                }
-                                placeholder="Optional"
-                              />
-                            </label>
-                            <label className={styles.fieldLabel}>
-                              OG image
-                              <input
-                                className={styles.textField}
-                                value={contentForm.ogImage}
-                                onChange={(event) =>
-                                  setContentForm((current) => ({
-                                    ...current,
-                                    ogImage: event.target.value,
-                                  }))
-                                }
-                                placeholder="Optional"
-                              />
-                            </label>
-                          </div>
-                        ) : null}
-                      </div>
-                    </details>
                     {selectedManagedComponent ? (
                       <>
                         <div className={styles.managedPagePanel}>
@@ -2188,6 +2686,12 @@ export function SiteAdminWebConsole({
                           </div>
                         </details>
                       </div>
+                    ) : selectedTeachingDraft ? (
+                      renderTeachingEditor(selectedTeachingDraft)
+                    ) : selectedWorksDraft ? (
+                      renderWorksEditor(selectedWorksDraft)
+                    ) : selectedPublicationsDraft ? (
+                      renderPublicationsEditor(selectedPublicationsDraft)
                     ) : (
                       <div className={styles.editorBodyShell}>
                         <SiteAdminMarkdownEditor
@@ -2202,10 +2706,6 @@ export function SiteAdminWebConsole({
                     )}
                   </>
                 )}
-                <p className={styles.editorHint}>
-                  Version {shortSha(selected.version)}. Saves use optimistic conflict
-                  protection; reload if another client changed this file.
-                </p>
             </Card>
           ) : (
             <Card className={styles.editorPanel}>
@@ -2227,6 +2727,507 @@ export function SiteAdminWebConsole({
               </div>
             </Card>
           )}
+          <Card className={styles.inspectorPanel}>
+            {selected ? (
+              <>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.cardLabel}>Inspector</p>
+                    <h2 className={styles.panelTitle}>Draft settings</h2>
+                  </div>
+                </div>
+
+                <section className={styles.inspectorSection}>
+                  <p className={styles.inspectorLabel}>State</p>
+                  <div className={styles.inspectorPills}>
+                    <span className={styles.statusPill} data-state={draftStatusState}>
+                      {draftStatusLabel}
+                    </span>
+                    {selectedIsStructured ? (
+                      <span
+                        className={styles.statusPill}
+                        data-state={contentForm.draft ? "smart-release" : "noop"}
+                      >
+                        {contentForm.draft ? "Draft" : "Public"}
+                      </span>
+                    ) : null}
+                    <span className={styles.statusPill} data-state={liveStatusState}>
+                      {liveStatusLabel}
+                    </span>
+                  </div>
+                  <p className={styles.editorHint}>{editorStatusHint}</p>
+                </section>
+
+                {selectedIsStructured ? (
+                  <section className={styles.inspectorSection}>
+                    <p className={styles.inspectorLabel}>Metadata</p>
+                    {isDeleteSupported(selected.kind) ? (
+                      <div className={styles.slugMoveRow}>
+                        <label className={styles.fieldLabel}>
+                          Slug
+                          <input
+                            className={styles.textField}
+                            value={slugDraft}
+                            onChange={(event) => setSlugDraft(event.target.value)}
+                            spellCheck={false}
+                          />
+                        </label>
+                        <Button
+                          onClick={() => void moveSelectedContent()}
+                          variant="subtle"
+                          size="sm"
+                          disabled={saving || selectedDirty || !slugDirty}
+                        >
+                          Rename
+                        </Button>
+                      </div>
+                    ) : null}
+                    {selected.kind === "posts" ? (
+                      <label className={styles.fieldLabel}>
+                        Date
+                        <input
+                          className={styles.textField}
+                          type="date"
+                          value={contentForm.date}
+                          onChange={(event) =>
+                            setContentForm((current) => ({
+                              ...current,
+                              date: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    ) : (
+                      <label className={styles.fieldLabel}>
+                        Updated
+                        <input
+                          className={styles.textField}
+                          type="date"
+                          value={contentForm.updated}
+                          onChange={(event) =>
+                            setContentForm((current) => ({
+                              ...current,
+                              updated: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    )}
+                    <label className={styles.checkField}>
+                      <input
+                        type="checkbox"
+                        checked={contentForm.draft}
+                        onChange={(event) =>
+                          setContentForm((current) => ({
+                            ...current,
+                            draft: event.target.checked,
+                          }))
+                        }
+                      />
+                      Draft only
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Description
+                      <textarea
+                        className={styles.inspectorTextarea}
+                        value={contentForm.description}
+                        onChange={(event) =>
+                          setContentForm((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional"
+                      />
+                    </label>
+                    {selected.kind === "posts" ? (
+                      <>
+                        <label className={styles.fieldLabel}>
+                          Tags
+                          <input
+                            className={styles.textField}
+                            value={contentForm.tags}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                tags: event.target.value,
+                              }))
+                            }
+                            placeholder="Comma separated"
+                          />
+                        </label>
+                        <label className={styles.fieldLabel}>
+                          Cover
+                          <input
+                            className={styles.textField}
+                            value={contentForm.cover}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                cover: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </label>
+                        <label className={styles.fieldLabel}>
+                          OG image
+                          <input
+                            className={styles.textField}
+                            value={contentForm.ogImage}
+                            onChange={(event) =>
+                              setContentForm((current) => ({
+                                ...current,
+                                ogImage: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </label>
+                      </>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                {selectedManagedComponent ? (
+                  <section className={styles.inspectorSection}>
+                    <p className={styles.inspectorLabel}>Managed collection</p>
+                    <div className={styles.inspectorStat}>
+                      <span>{selectedManagedComponent.label}</span>
+                      <strong>
+                        {selectedManagedSummary?.count ?? 0}{" "}
+                        {selectedManagedSummary?.entryLabel ||
+                          selectedManagedComponent.entryLabel ||
+                          "entries"}
+                      </strong>
+                    </div>
+                    <Button
+                      onClick={() => void selectManagedComponent(selectedManagedComponent)}
+                      variant="subtle"
+                      size="sm"
+                    >
+                      Edit entries
+                    </Button>
+                  </section>
+                ) : null}
+
+                <section className={styles.inspectorSection}>
+                  <p className={styles.inspectorLabel}>Actions</p>
+                  <div className={styles.inspectorActions}>
+                    {selected.href ? (
+                      <Button href={selected.href} variant="subtle" size="sm">
+                        Open live
+                      </Button>
+                    ) : null}
+                    <Button href="/api/site-admin/release-jobs" variant="ghost" size="sm">
+                      Release jobs
+                    </Button>
+                    {isDeleteSupported(selected.kind) ? (
+                      <Button
+                        onClick={() => void deleteSelectedContent()}
+                        variant="ghost"
+                        tone="danger"
+                        size="sm"
+                        disabled={saving}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className={styles.inspectorSection}>
+                  <p className={styles.inspectorLabel}>Version</p>
+                  <div className={styles.inspectorStat}>
+                    <span>Draft version</span>
+                    <strong>{shortSha(selected.version)}</strong>
+                  </div>
+                  <p className={styles.editorHint}>
+                    Saves use optimistic conflict protection; reload if another client
+                    changed this file.
+                  </p>
+                </section>
+              </>
+            ) : (
+              <div className={styles.emptyInspector}>
+                <p className={styles.cardLabel}>Inspector</p>
+                <h2 className={styles.panelTitle}>No item selected</h2>
+                <p className={styles.cardText}>
+                  Select content to edit metadata, route, publish state, and recovery
+                  information.
+                </p>
+              </div>
+            )}
+          </Card>
+        </section>
+      ) : null}
+
+      {area === "content" && contentMode === "create" ? (
+        <div
+          className={styles.drawerScrim}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setContentMode(selected ? "edit" : "browse");
+            }
+          }}
+        >
+          <Card className={styles.createDrawer} role="dialog" aria-modal="true" aria-label="New content">
+            <div className={styles.panelHeader}>
+              <div>
+                <p className={styles.cardLabel}>New content</p>
+                <h2 className={styles.panelTitle}>
+                  {createKind === "posts" ? "New post" : "New page"}
+                </h2>
+              </div>
+              <Button
+                onClick={() => setContentMode(selected ? "edit" : "browse")}
+                variant="subtle"
+                size="sm"
+              >
+                Close
+              </Button>
+            </div>
+            <div className={styles.segmented} role="group" aria-label="New content type">
+              {(["posts", "pages"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  data-active={createKind === value}
+                  onClick={() => {
+                    setCreateKind(value);
+                    setCreateTitle(value === "posts" ? "Untitled Post" : "Untitled Page");
+                    setCreateBody(
+                      value === "posts" ? "Write the post here." : "Write the page here.",
+                    );
+                  }}
+                >
+                  {titleForKind(value)}
+                </button>
+              ))}
+            </div>
+            <label className={styles.fieldLabel}>
+              Title
+              <input
+                className={styles.textField}
+                value={createTitle}
+                onChange={(event) => setCreateTitle(event.target.value)}
+              />
+            </label>
+            <div className={styles.drawerFieldGrid}>
+              <label className={styles.fieldLabel}>
+                Slug
+                <input
+                  className={styles.textField}
+                  value={createSlug}
+                  onChange={(event) => setCreateSlug(event.target.value)}
+                  placeholder={resolvedCreateSlug}
+                />
+              </label>
+              {createKind === "posts" ? (
+                <label className={styles.fieldLabel}>
+                  Date
+                  <input
+                    className={styles.textField}
+                    type="date"
+                    value={createDate}
+                    onChange={(event) => setCreateDate(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </div>
+            <label className={styles.fieldLabel}>
+              Description
+              <input
+                className={styles.textField}
+                value={createDescription}
+                onChange={(event) => setCreateDescription(event.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            <div className={styles.createEditorShell}>
+              <SiteAdminMarkdownEditor
+                label="New content body"
+                value={createBody}
+                onChange={setCreateBody}
+                minHeight={360}
+                size="large"
+                disabled={saving}
+              />
+            </div>
+            <Button
+              onClick={() => void createContent()}
+              tone="accent"
+              disabled={saving || !resolvedCreateSlug}
+            >
+              Create {createKind === "posts" ? "post" : "page"}
+            </Button>
+          </Card>
+        </div>
+      ) : null}
+
+      {area === "collections" ? (
+        <section className={styles.collectionGrid}>
+          {componentDefinitions.map((definition) => {
+            const summary = componentSummaryFor(components, definition.name);
+            return (
+              <Card key={definition.name} className={styles.collectionCard}>
+                <div className={styles.cardHeader}>
+                  <div>
+                    <p className={styles.cardLabel}>Managed collection</p>
+                    <h2 className={styles.cardTitle}>{definition.label}</h2>
+                  </div>
+                  <span className={styles.statusPill} data-state="noop">
+                    {summary?.count ?? 0} {summary?.entryLabel || definition.entryLabel || "entries"}
+                  </span>
+                </div>
+                <p className={styles.cardText}>
+                  {definition.description ||
+                    "Structured content that powers a public page section."}
+                </p>
+                {summary?.rows?.length ? (
+                  <div className={styles.collectionRows}>
+                    {summary.rows.slice(0, 5).map((row, index) => (
+                      <div key={`${definition.name}-${row.title}-${index}`}>
+                        <strong>{row.title}</strong>
+                        {row.detail ? <small>{row.detail}</small> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className={styles.editorHint}>No preview rows available.</p>
+                )}
+                <div className={styles.panelActions}>
+                  <Button
+                    onClick={() => void selectManagedComponent(definition)}
+                    tone="accent"
+                    size="sm"
+                  >
+                    Edit entries
+                  </Button>
+                  {definition.primaryRoute ? (
+                    <Button href={definition.primaryRoute} variant="subtle" size="sm">
+                      Open live
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {area === "release" ? (
+        <section className={styles.releaseGrid}>
+          <Card className={styles.releasePrimaryCard}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.cardLabel}>Recommended action</p>
+                <h2 className={styles.cardTitle}>
+                  {release?.headline ||
+                    (summaryError ? "Release status unavailable" : "Refresh release status")}
+                </h2>
+              </div>
+              <span className={styles.statusPill} data-state={release?.recommendedAction.kind}>
+                {release?.recommendedAction.label || (summaryError ? "Unavailable" : "Refresh")}
+              </span>
+            </div>
+            <p className={styles.cardText}>
+              {release?.detail ||
+                (summaryError
+                  ? `Could not load release summary: ${summaryError}.`
+                  : "Release status has not loaded yet.")}
+            </p>
+            <div className={styles.releaseSteps} aria-label="Release flow">
+              <div data-active="true">
+                <span>1</span>
+                <strong>Draft</strong>
+                <small>Save content changes</small>
+              </div>
+              <div data-active={releaseNeedsPublish || releaseIsRunning ? "true" : "false"}>
+                <span>2</span>
+                <strong>Staging</strong>
+                <small>Preview the generated site</small>
+              </div>
+              <div data-active={release?.recommendedAction.kind === "noop" ? "true" : "false"}>
+                <span>3</span>
+                <strong>Live</strong>
+                <small>Production is current</small>
+              </div>
+            </div>
+            <div className={styles.panelActions}>
+              <Button
+                onClick={() => void runSmartRelease()}
+                tone="accent"
+                disabled={
+                  releaseSaving ||
+                  release?.recommendedAction.kind === "noop" ||
+                  release?.recommendedAction.kind === "refresh" ||
+                  !release?.recommendedAction
+                }
+              >
+                {releaseSaving
+                  ? "Starting"
+                  : release?.recommendedAction.kind === "noop"
+                    ? "Live current"
+                    : "Run recommended release"}
+              </Button>
+              <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
+                Refresh
+              </Button>
+              <Button href="/api/site-admin/release-jobs" variant="ghost">
+                Jobs
+              </Button>
+            </div>
+          </Card>
+
+          <Card className={styles.releaseSideCard}>
+            <p className={styles.cardLabel}>Source state</p>
+            <dl className={styles.kvGrid}>
+              <div>
+                <dt>Branch</dt>
+                <dd>{formatValue(source?.branch)}</dd>
+              </div>
+              <div>
+                <dt>Code</dt>
+                <dd>{shortSha(source?.codeSha)}</dd>
+              </div>
+              <div>
+                <dt>Content</dt>
+                <dd>{shortSha(source?.contentSha)}</dd>
+              </div>
+              <div>
+                <dt>Pending deploy</dt>
+                <dd>{source?.pendingDeploy === true ? "Yes" : "No"}</dd>
+              </div>
+            </dl>
+          </Card>
+
+          <Card className={styles.releaseSideCard}>
+            <div className={styles.cardHeader}>
+              <p className={styles.cardLabel}>Runner</p>
+              <span className={styles.muted}>
+                {release?.runners?.[0]?.status || (summaryError ? "Unavailable" : "Not seen")}
+              </span>
+            </div>
+            <p className={styles.cardText}>
+              Release jobs run through the shared Site Admin release queue. Logs and recovery
+              commands stay available without becoming the default path.
+            </p>
+            <details className={styles.editorDetails}>
+              <summary>
+                <span>Advanced recovery</span>
+                <small>Raw status endpoints</small>
+              </summary>
+              <div className={styles.editorDetailsBody}>
+                <div className={styles.linkRow}>
+                  <Link href="/api/site-admin/status">API status</Link>
+                  <Link href="/api/site-admin/mobile/summary">Summary</Link>
+                  <Link href="/api/site-admin/release-jobs">Release jobs</Link>
+                </div>
+              </div>
+            </details>
+          </Card>
         </section>
       ) : null}
 

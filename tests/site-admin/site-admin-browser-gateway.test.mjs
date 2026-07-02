@@ -34,7 +34,7 @@ test("site-admin browser console keeps form controls inside panels", () => {
   const globals = fs.readFileSync("app/globals.css", "utf8");
   const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
   assert.match(globals, /scrollbar-gutter: stable;/);
-  assert.match(css, /\.shell \{\n  width: min\(1480px, calc\(100% - 40px\)\);/);
+  assert.match(css, /\.shell \{\n  width: min\(1740px, calc\(100% - 40px\)\);/);
   assert.match(css, /\.shell,\n\.shell \* \{\n  box-sizing: border-box;/);
   assert.match(source, /data-area=\{area\}/);
   assert.match(
@@ -43,13 +43,16 @@ test("site-admin browser console keeps form controls inside panels", () => {
   );
   assert.match(
     css,
-    /\.contentWorkspace[\s\S]*grid-template-columns: minmax\(260px, 320px\) minmax\(720px, 1fr\);/,
+    /\.contentWorkspace[\s\S]*grid-template-columns: minmax\(250px, 320px\) minmax\(620px, 1fr\) minmax\(280px, 340px\);/,
   );
+  assert.match(css, /\.inspectorPanel[\s\S]*overflow: auto;/);
+  assert.match(css, /\.drawerScrim[\s\S]*position: fixed;/);
+  assert.match(css, /\.releaseSteps[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
   assert.match(css, /container-type: inline-size;/);
   assert.match(css, /@container \(max-width: 980px\)/);
   assert.match(css, /@media \(max-width: 1180px\)/);
   assert.match(css, /\.contentWorkspace,[\s\S]*\.nowGrid \{\n    grid-template-columns: 1fr;/);
-  assert.match(css, /\.editorPrimaryGrid[\s\S]*grid-template-columns: minmax\(0, 1\.35fr\)/);
+  assert.match(css, /\.editorTitleGrid[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /\.editorDetails[\s\S]*background: var\(--ds-surface-soft\);/);
   assert.match(css, /\.editorBodyShell[\s\S]*flex: 1;/);
 });
@@ -69,10 +72,13 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("Saved to Draft"));
   assert.ok(source.includes("Ready to publish"));
   assert.ok(source.includes("Save first"));
-  assert.ok(source.includes("editorPrimaryGrid"));
+  assert.ok(source.includes("editorTitleGrid"));
   assert.ok(source.includes("editorDetails"));
   assert.ok(source.includes("editorBodyShell"));
-  assert.ok(source.includes("editorMetaGrid"));
+  assert.ok(source.includes("inspectorPanel"));
+  assert.ok(source.includes("createDrawer"));
+  assert.ok(source.includes("collectionGrid"));
+  assert.ok(source.includes("releaseSteps"));
   assert.ok(source.includes("/api/site-admin/release-jobs/smart"));
   assert.ok(source.includes("moveSelectedContent"));
   assert.ok(source.includes("localDraftKey"));
@@ -108,11 +114,18 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(source.includes("News entries"));
   assert.ok(source.includes("parseNewsComponentDraft"));
   assert.ok(source.includes("serializeNewsComponentDraft"));
+  assert.ok(source.includes("Teaching rows"));
+  assert.ok(source.includes("Work rows"));
+  assert.ok(source.includes("Publication rows"));
+  assert.ok(source.includes("parseTeachingComponentDraft"));
+  assert.ok(source.includes("serializeWorksComponentDraft"));
+  assert.ok(source.includes("serializePublicationsComponentDraft"));
   assert.ok(source.includes("Advanced component source"));
   assert.ok(source.includes("Managed ·"));
   assert.ok(css.includes(".managedPagePanel"));
   assert.ok(css.includes(".newsEntryCard"));
   assert.ok(css.includes(".newsDividerRow"));
+  assert.ok(css.includes(".componentEntryGrid"));
 });
 
 test("site-admin content detail APIs expose structured editor fields", () => {

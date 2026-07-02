@@ -1,5 +1,5 @@
 .shell {
-  width: min(1480px, calc(100% - 40px));
+  width: min(1740px, calc(100% - 40px));
   margin: 0 auto;
   padding: clamp(36px, 7vh, 72px) 0 clamp(48px, 9vh, 96px);
 }
@@ -285,11 +285,13 @@
 }
 
 .contentWorkspace {
-  grid-template-columns: minmax(260px, 320px) minmax(720px, 1fr);
+  grid-template-columns: minmax(250px, 320px) minmax(620px, 1fr) minmax(280px, 340px);
+  align-items: start;
 }
 
 .sidePanel,
 .editorPanel,
+.inspectorPanel,
 .createPanel,
 .formPanel,
 .historyPanel {
@@ -299,12 +301,24 @@
 }
 
 .sidePanel,
+.inspectorPanel,
 .createPanel,
 .formPanel,
 .historyPanel {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.sidePanel,
+.inspectorPanel {
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 36px);
+}
+
+.inspectorPanel {
+  overflow: auto;
 }
 
 .editorPanel {
@@ -362,6 +376,45 @@
   max-height: 560px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.collectionCallout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.collectionCallout strong,
+.collectionCallout small {
+  display: block;
+  min-width: 0;
+}
+
+.collectionCallout strong {
+  color: var(--ds-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.collectionCallout small {
+  margin-top: 3px;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.listEmpty {
+  margin: 8px 0 0;
+  padding: 12px;
+  color: var(--ds-text-faint);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
 }
 
 .itemButton {
@@ -757,6 +810,36 @@
   flex: 1;
 }
 
+.drawerScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ds-surface-page) 54%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.createDrawer {
+  display: flex;
+  width: min(620px, 100%);
+  min-width: 0;
+  max-height: calc(100vh - 40px);
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding: 18px;
+  box-shadow: var(--ds-shadow-overlay);
+}
+
+.drawerFieldGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.46fr);
+  gap: 12px;
+  align-items: end;
+}
+
 .editorStatusBar {
   display: flex;
   min-width: 0;
@@ -781,9 +864,101 @@
   flex-wrap: wrap;
 }
 
+.inspectorSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.inspectorSection:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.inspectorLabel {
+  margin: 0;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.inspectorPills,
+.inspectorActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inspectorActions {
+  align-items: stretch;
+}
+
+.inspectorStat {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.inspectorStat span,
+.inspectorStat strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspectorStat span {
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.inspectorStat strong {
+  color: var(--ds-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.inspectorTextarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ds-surface-elevated) 52%, transparent);
+}
+
+.emptyInspector {
+  margin: auto 0;
+  padding: 18px 4px;
+  text-align: left;
+}
+
+.emptyInspector .panelTitle,
+.emptyInspector .cardText {
+  margin-top: 10px;
+}
+
 .slugMoveRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-items: end;
 }
@@ -791,6 +966,13 @@
 .editorPrimaryGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(170px, 0.45fr) minmax(110px, 0.28fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.editorTitleGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: end;
 }
@@ -991,8 +1173,25 @@
   background: var(--ds-surface-soft);
 }
 
+.newsEntryHeader strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .newsEntryHeader .fieldLabel {
   width: min(220px, 100%);
+}
+
+.componentEntryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .newsEntryBody {
@@ -1021,6 +1220,132 @@
   font-weight: 760;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.collectionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.collectionCard {
+  display: flex;
+  min-width: 0;
+  min-height: 260px;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.collectionRows {
+  display: grid;
+  gap: 8px;
+}
+
+.collectionRows div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.collectionRows strong,
+.collectionRows small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collectionRows strong {
+  color: var(--ds-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.collectionRows small {
+  margin-top: 3px;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.releaseGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 14px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.releasePrimaryCard,
+.releaseSideCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.releasePrimaryCard {
+  min-height: 420px;
+}
+
+.releaseSteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.releaseSteps div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+  opacity: 0.66;
+}
+
+.releaseSteps div[data-active="true"] {
+  border-color: var(--ds-success-border);
+  background: var(--ds-success-bg);
+  opacity: 1;
+}
+
+.releaseSteps span {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.releaseSteps strong,
+.releaseSteps small {
+  display: block;
+  min-width: 0;
+}
+
+.releaseSteps strong {
+  margin-top: 10px;
+  color: var(--ds-text-primary);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.releaseSteps small {
+  margin-top: 4px;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .checkField {
@@ -1135,7 +1460,9 @@
 
 @media (max-width: 1180px) {
   .summaryGrid,
-  .footerGrid {
+  .footerGrid,
+  .collectionGrid,
+  .releaseGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1150,7 +1477,9 @@
   }
 
   .sidePanel,
+  .inspectorPanel,
   .createPanel {
+    position: static;
     max-height: none;
   }
 
@@ -1180,14 +1509,23 @@
 
   .summaryGrid,
   .footerGrid,
+  .collectionGrid,
+  .releaseGrid,
+  .releaseSteps,
   .kvGrid,
   .fieldGrid,
   .editorPrimaryGrid,
   .editorMetaGrid,
+  .drawerFieldGrid,
   .slugMoveRow,
   .managedPagePanel,
-  .managedPreviewList {
+  .managedPreviewList,
+  .componentEntryGrid {
     grid-template-columns: 1fr;
+  }
+
+  .drawerScrim {
+    padding: 12px;
   }
 
   .panelHeader {
