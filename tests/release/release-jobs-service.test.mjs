@@ -30,6 +30,7 @@ test("release jobs: exposes only explicit release agent actions", () => {
   assert.deepEqual(actions, [
     "deploy-staging-code",
     "promote-production-code",
+    "publish-content-production",
     "publish-content-production-from-staging",
     "publish-content-staging",
     "publish-now-production-from-staging",
@@ -49,6 +50,7 @@ test("release jobs: exposes only explicit release agent actions", () => {
     "--",
     "--skip-job",
   ]);
+  assert.equal(releaseJobCommand("publish-content-production").npmScript, "publish:content:prod");
 });
 
 test("release jobs: create, claim, append events, and complete", async () => {

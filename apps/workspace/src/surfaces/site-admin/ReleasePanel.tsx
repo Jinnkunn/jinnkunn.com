@@ -258,6 +258,7 @@ function releasePlanFromLiveStatus(
     "publish-content-staging",
     "deploy-staging-code",
     "promote-production-code",
+    "publish-content-production",
     "publish-content-production-from-staging",
     "publish-now-production-from-staging",
     "noop",
@@ -754,6 +755,7 @@ function remoteActionForScript(
 ): RemoteReleaseJobAction | null {
   if (script === "release:status:json" || script === "release:status:staging:json") return "status";
   if (script === PUBLISH_CONTENT_STAGING_SCRIPT) return "publish-content-staging";
+  if (script === PUBLISH_CONTENT_PROD_SCRIPT) return "publish-content-production";
   if (script === RELEASE_STAGING_SCRIPT) return "deploy-staging-code";
   if (script === RELEASE_PROD_FROM_STAGING_SCRIPT) return "promote-production-code";
   if (script === PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT) {
@@ -1862,6 +1864,10 @@ export function ReleasePanel() {
       void startRelease(RELEASE_PROD_FROM_STAGING_SCRIPT);
       return;
     }
+    if (smartPlan.kind === "publish-content-production") {
+      void startRelease(PUBLISH_CONTENT_PROD_SCRIPT);
+      return;
+    }
     if (smartPlan.kind === "publish-content-production-from-staging") {
       void startRelease(PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT);
       return;
@@ -1889,6 +1895,7 @@ export function ReleasePanel() {
 
   const smartReleaseIsProductionAction =
     smartPlan.kind === "promote-production-code" ||
+    smartPlan.kind === "publish-content-production" ||
     smartPlan.kind === "publish-content-production-from-staging" ||
     smartPlan.kind === "publish-now-production-from-staging";
   const smartReleaseButtonLabel =
@@ -2308,6 +2315,7 @@ function ReleaseStepper({
       label: "Live site",
       state:
         plan.kind === "promote-production-code" ||
+        plan.kind === "publish-content-production" ||
         plan.kind === "publish-content-production-from-staging" ||
         plan.kind === "publish-now-production-from-staging"
           ? "active"
@@ -2317,13 +2325,15 @@ function ReleaseStepper({
       detail:
         plan.kind === "promote-production-code"
           ? "Update code"
-          : plan.kind === "publish-content-production-from-staging"
-            ? "Copy content"
-            : plan.kind === "publish-now-production-from-staging"
-              ? "Copy Now"
-            : productionCodeMatchesStaging
-              ? "Code matched"
-              : "Pending",
+          : plan.kind === "publish-content-production"
+            ? "Publish content"
+            : plan.kind === "publish-content-production-from-staging"
+              ? "Copy content"
+              : plan.kind === "publish-now-production-from-staging"
+                ? "Copy Now"
+                : productionCodeMatchesStaging
+                  ? "Code matched"
+                  : "Pending",
     },
     {
       key: "routes",
@@ -2382,6 +2392,7 @@ function ReleaseRoutineSummary({
     plan.kind === "deploy-staging-code" || plan.kind === "publish-content-staging";
   const liveNeedsUpdate =
     plan.kind === "promote-production-code" ||
+    plan.kind === "publish-content-production" ||
     plan.kind === "publish-content-production-from-staging" ||
     plan.kind === "publish-now-production-from-staging";
   const items = [
@@ -2605,10 +2616,10 @@ function ReleaseEnvironmentNotice({
   if (releaseTarget === "production" && contentChanged) {
     return (
       <section className="release-center__notice" data-tone="warn" aria-label="Content release route">
-        <strong>Content publishes in two steps</strong>
+        <strong>Live content can publish directly</strong>
         <span>
-          The first click updates Draft preview. After you verify it, the same
-          top action publishes that exact content to Live.
+          Smart Release will read production D1 and refresh the Live static
+          overlay without rebuilding or copying from Draft.
         </span>
       </section>
     );

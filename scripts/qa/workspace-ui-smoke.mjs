@@ -665,7 +665,7 @@ function main() {
   );
   assertIncludes(
     read("apps/workspace/src/shell/WorkspaceDashboard.tsx"),
-    "workspace-dashboard__action-grid",
+    "workspace-dashboard__tool-grid",
     "Workspace dashboard action grid",
   );
   assertIncludes(

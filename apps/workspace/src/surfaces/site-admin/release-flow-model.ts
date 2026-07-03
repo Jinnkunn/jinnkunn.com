@@ -104,6 +104,7 @@ export type ReleaseActionKind =
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
+  | "publish-content-production"
   | "publish-content-production-from-staging"
   | "publish-now-production-from-staging"
   | "noop"
@@ -119,6 +120,7 @@ export interface ReleasePlan {
   reason: string;
   script:
     | typeof PUBLISH_CONTENT_STAGING_SCRIPT
+    | typeof PUBLISH_CONTENT_PROD_SCRIPT
     | typeof PUBLISH_CONTENT_PROD_FROM_STAGING_SCRIPT
     | typeof PUBLISH_NOW_PROD_FROM_STAGING_SCRIPT
     | typeof RELEASE_STAGING_SCRIPT
@@ -220,18 +222,24 @@ export function deriveReleasePlan(input: ReleasePlanInput): ReleasePlan {
     };
   }
   if (input.contentChanged) {
+    if (input.target === "production") {
+      return {
+        detail:
+          "Saved Live database content changed. Publish a Live static overlay directly from production D1.",
+        disabled: false,
+        kind: "publish-content-production",
+        label: "Publish Live Content",
+        reason: "Production D1 content changed; update the Live static overlay.",
+        script: PUBLISH_CONTENT_PROD_SCRIPT,
+        tone: "warn",
+      };
+    }
     return {
-      detail:
-        input.target === "production"
-          ? "Saved website content changed. Publish Draft preview first, then copy the verified content to Live."
-          : "Saved website content changed. Publish the Draft preview only.",
+      detail: "Saved website content changed. Publish the Draft preview only.",
       disabled: false,
       kind: "publish-content-staging",
       label: "Publish Draft Preview",
-      reason:
-        input.target === "production"
-          ? "Content changed; Draft preview is the first step."
-          : "Content changed; update Draft preview.",
+      reason: "Content changed; update Draft preview.",
       script: PUBLISH_CONTENT_STAGING_SCRIPT,
       tone: "warn",
     };

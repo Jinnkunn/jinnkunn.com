@@ -791,6 +791,7 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(releaseFlow, /ReleaseTarget/);
   assert.match(releaseFlow, /RELEASE_STAGING_COMMAND/);
   assert.match(releaseFlow, /publish:content:staging/);
+  assert.match(releaseFlow, /publish:content:prod/);
   assert.match(releaseFlow, /publish:content:prod:from-staging/);
   assert.match(releaseFlow, /publish:content:staging:rollback/);
   assert.match(releasePanel, /ContentOverlayStatusPanel/);
@@ -810,6 +811,10 @@ test("tauri-ui-engineering: publish surfaces stale staging candidates as a rebui
   assert.match(
     releasePanel,
     /smartPlan\.kind === "promote-production-code"[\s\S]*startRelease\(RELEASE_PROD_FROM_STAGING_SCRIPT\)/,
+  );
+  assert.match(
+    releasePanel,
+    /smartPlan\.kind === "publish-content-production"[\s\S]*startRelease\(PUBLISH_CONTENT_PROD_SCRIPT\)/,
   );
   assert.match(
     releasePanel,

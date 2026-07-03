@@ -3761,6 +3761,7 @@ const RELEASE_ACTIONS = new Set([
   "publish-content-staging",
   "deploy-staging-code",
   "promote-production-code",
+  "publish-content-production",
   "publish-content-production-from-staging",
   "publish-now-production-from-staging",
 ]);
@@ -3876,6 +3877,7 @@ const RELEASE_ACTION_SCHEMA = {
     "publish-content-staging",
     "deploy-staging-code",
     "promote-production-code",
+    "publish-content-production",
     "publish-content-production-from-staging",
     "publish-now-production-from-staging",
   ],

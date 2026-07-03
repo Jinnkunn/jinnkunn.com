@@ -3,7 +3,8 @@
 The Tauri-driven local release path is now the primary way both staging
 and production releases are issued. Content-only web edits can use
 `npm run publish:content:staging` / `npm run publish:content:prod`, which
-updates D1 static-shell overlays without a Worker deploy. That path is
+reads the target D1 database and updates that environment's static-shell
+overlay without a Worker deploy. That path is
 incremental, captures rollback snapshots, and is surfaced in the Tauri
 Release Center as **Publish Content**. Full Worker releases clear stale
 content overlays after deploy. GitHub Actions remain wired only for manual

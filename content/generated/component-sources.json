@@ -2,9 +2,9 @@
   "components": {
     "news": {
       "path": "content/components/news.mdx",
-      "sha": "a70d5377f4fa3cf772dee8fb7718cfea823f70b6",
-      "contentSha": "4ce44f780a042e898ca31496285dfee341a58ed6",
-      "size": 2665
+      "sha": "7dd691a9c9b98a0e682f12fe0c44233120ebb73e",
+      "contentSha": "17da0d433167a60d196e0fa43296d564ecc439b2",
+      "size": 2947
     },
     "publications": {
       "path": "content/components/publications.mdx",

@@ -23,6 +23,7 @@ export const RELEASE_ACTION_SCRIPTS = new Map([
   ["deploy-staging-code", "release:staging"],
   ["noop", ""],
   ["promote-production-code", "release:prod:from-staging"],
+  ["publish-content-production", "publish:content:prod"],
   ["publish-content-production-from-staging", "publish:content:prod:from-staging"],
   ["publish-content-staging", "publish:content:staging"],
   ["publish-now-production-from-staging", "publish:now:prod:from-staging"],
@@ -32,6 +33,7 @@ export const RELEASE_ACTION_SCRIPTS = new Map([
 ]);
 export const PRODUCTION_RELEASE_ACTIONS = new Set([
   "promote-production-code",
+  "publish-content-production",
   "publish-content-production-from-staging",
   "publish-now-production-from-staging",
   "rollback-production-content",

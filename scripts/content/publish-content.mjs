@@ -33,9 +33,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     dryRun: argv.includes("--dry-run"),
     skipBuild: argv.includes("--skip-build"),
     skipVerify: argv.includes("--skip-verify"),
-    // Normal content publish treats staging D1 as Draft and never turns that
-    // draft into git commits. Use these flags only for explicit backup /
-    // recovery workflows.
+    // Normal content publish treats the target D1 as the content source and
+    // never turns database edits into git commits. Use these flags only for
+    // explicit backup / recovery workflows.
     syncContentToGit: argv.includes("--sync-content-to-git"),
     autoCommitContent: argv.includes("--auto-commit-content"),
     rollback: argv.includes("--rollback"),
@@ -428,19 +428,19 @@ async function assertTargetWorkerAcceptsContentOnly({ env, git }) {
   );
 }
 
-function syncStagingD1ToContent(targetRoot = ROOT) {
+function syncD1ToContent({ env, targetRoot = ROOT }) {
   const target = path.join(targetRoot, "content");
-  logPhase(`dumping staging D1 content to ${path.relative(ROOT, target) || "content/"}`);
+  logPhase(`dumping ${env} D1 content to ${path.relative(ROOT, target) || "content/"}`);
   run(
     "node",
     [
       "scripts/content/dump-content-from-db.mjs",
       "--remote",
-      "--env=staging",
+      `--env=${env}`,
       "--quiet",
       `--target=${target}`,
     ],
-    { label: "dump staging D1 to content/", cwd: ROOT },
+    { label: `dump ${env} D1 to content/`, cwd: ROOT },
   );
 }
 
@@ -1352,14 +1352,14 @@ async function main() {
 
   let git = readGitState();
   assertContentOnlyClean(git);
-  const useD1Snapshot = args.env === "staging" && !args.syncContentToGit;
+  const useD1Snapshot = !args.syncContentToGit;
   const releaseRoot = useD1Snapshot
     ? prepareContentPublishSnapshot({ repoRoot: ROOT, sha: git.sha })
     : ROOT;
-  if (args.env === "staging") syncStagingD1ToContent(releaseRoot);
+  if (useD1Snapshot) syncD1ToContent({ env: args.env, targetRoot: releaseRoot });
   if (useD1Snapshot) {
     logPhase(
-      `using D1 Draft snapshot at ${path.relative(ROOT, releaseRoot)}; git content files are left untouched`,
+      `using ${args.env} D1 snapshot at ${path.relative(ROOT, releaseRoot)}; git content files are left untouched`,
     );
   }
   if (args.env === "staging" && args.syncContentToGit) {
@@ -1463,9 +1463,9 @@ async function main() {
         source: git,
         contentAutoCommit,
         contentSourceMode: useD1Snapshot
-          ? "staging-d1-snapshot"
+          ? `${args.env}-d1-snapshot`
           : args.syncContentToGit
-            ? "staging-d1-git-sync"
+            ? `${args.env}-d1-git-sync`
             : "git",
         contentInputSha,
         workerCodeSha: targetWorker.workerCodeSha,

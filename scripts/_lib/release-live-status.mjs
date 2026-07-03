@@ -542,6 +542,7 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
   const production = status.deployments.production;
   const stagingOverlay = status.overlays.staging.status;
   const productionOverlay = status.overlays.production.status;
+  const productionDiffFromLocal = status.productionDiffFromLocal || { ok: true, files: [] };
   const nonBlockingDirty = git.productionHistoryOnlyDirty;
   const stagingOverlayCoversLocalContent =
     status.stagingDiffFromLocal.ok &&
@@ -564,6 +565,20 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
       script: "",
       reason: "Working tree has release-affecting changes.",
       dirtyFiles: git.dirtyFiles,
+    };
+  }
+  if (
+    target === "production" &&
+    contentChanged &&
+    production.ok &&
+    production.codeSha &&
+    productionDiffFromLocal.ok
+  ) {
+    return {
+      kind: "publish-content-production",
+      label: "Publish Live Content",
+      script: "publish:content:prod",
+      reason: "Saved production D1 content changed; publish a Live static overlay directly.",
     };
   }
   if (!staging.ok || !staging.codeSha) {
@@ -691,6 +706,11 @@ export async function buildLiveReleaseStatus({
     baseSha: staging.codeSha,
     headSha: git.sha,
   });
+  const productionDiffFromLocal = contentOnlyDiffFrom({
+    root,
+    baseSha: production.codeSha,
+    headSha: git.sha,
+  });
   let routeParity = null;
   if (includeRoutes) {
     try {
@@ -717,6 +737,7 @@ export async function buildLiveReleaseStatus({
     },
     now: buildNowPreview({ staging: stagingNow, production: productionNow }),
     stagingDiffFromLocal,
+    productionDiffFromLocal,
     routeParity,
   };
   status.contentPreview = buildContentPreview({

@@ -13,6 +13,7 @@ export type RemoteReleaseJobAction =
   | "publish-content-staging"
   | "deploy-staging-code"
   | "promote-production-code"
+  | "publish-content-production"
   | "publish-content-production-from-staging"
   | "publish-now-production-from-staging";
 

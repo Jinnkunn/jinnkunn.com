@@ -49,8 +49,13 @@ function parseArgs(argv = process.argv.slice(2)) {
     argv.find((arg) => arg.startsWith("--env="))?.slice("--env=".length) ||
     "staging";
   const env = ENVIRONMENTS.has(rawEnv) ? rawEnv : "staging";
+  const rawContentEnv = argv
+    .find((arg) => arg.startsWith("--content-env="))
+    ?.slice("--content-env=".length);
+  const contentEnv = rawContentEnv && ENVIRONMENTS.has(rawContentEnv) ? rawContentEnv : "";
   return {
     env,
+    contentEnv,
     dryRun: argv.includes("--dry-run"),
     skipChecks: argv.includes("--skip-checks"),
     skipBuild: argv.includes("--skip-build"),
@@ -261,19 +266,21 @@ function prepareCleanReleaseSnapshot({ repoRoot, sha }) {
   return snapshotRoot;
 }
 
-function dumpStagingD1Content({ targetRoot, label }) {
+function dumpD1Content({ targetRoot, env, label }) {
   const target = path.join(targetRoot, "content");
-  console.log(`[release-cloudflare] syncing staging D1 content into ${path.relative(ROOT, target) || "content"}`);
+  console.log(
+    `[release-cloudflare] syncing ${env} D1 content into ${path.relative(ROOT, target) || "content"}`,
+  );
   run(
     "node",
     [
       "scripts/content/dump-content-from-db.mjs",
       "--remote",
-      "--env=staging",
+      `--env=${env}`,
       "--quiet",
       `--target=${target}`,
     ],
-    { label, cwd: ROOT },
+    { label: label || `dump ${env} D1 to release snapshot content/`, cwd: ROOT },
   );
 }
 
@@ -360,21 +367,29 @@ function clearContentOverlayAfterCodeDeploy(env) {
   console.log(
     `[release-cloudflare] clearing ${env} content overlay after full code deploy`,
   );
-  const output = run(
-    "node",
-    [
-      "scripts/content/publish-content.mjs",
-      `--env=${env}`,
-      "--clear",
-      "--skip-verify",
-    ],
-    {
-      capture: true,
-      label: `publish-content clear ${env}`,
-      cwd: ROOT,
-    },
-  );
-  return parseDeployJson(output) || null;
+  try {
+    const output = run(
+      "node",
+      [
+        "scripts/content/publish-content.mjs",
+        `--env=${env}`,
+        "--clear",
+        "--skip-verify",
+      ],
+      {
+        capture: true,
+        label: `publish-content clear ${env}`,
+        cwd: ROOT,
+      },
+    );
+    return parseDeployJson(output) || null;
+  } catch (error) {
+    const message = error?.message || String(error);
+    console.warn(
+      `[release-cloudflare] warning: could not clear ${env} content overlay after code deploy: ${message}`,
+    );
+    return { ok: false, error: message };
+  }
 }
 
 async function fetchProductionVersionForRollback({ git }) {
@@ -443,11 +458,12 @@ async function main() {
   loadProjectEnv({ cwd: ROOT, override: true });
   Object.assign(process.env, cliEnv);
 
-  // The operator-facing source of truth is staging D1. Both staging and
-  // production releases build their static bundle from that database; the
-  // runtime storage mode still comes from wrangler.toml for each env.
+  // The operator-facing source of truth is staging D1 by default. Operators
+  // may pass --content-env=production when staging D1 is temporarily
+  // unreadable; keep every nested build/prebuild step on that same source.
   process.env.SITE_ADMIN_STORAGE = "db";
-  if (!process.env.SITE_ADMIN_DB_ENV) process.env.SITE_ADMIN_DB_ENV = "staging";
+  args.contentEnv = args.contentEnv || process.env.SITE_ADMIN_DB_ENV || "staging";
+  process.env.SITE_ADMIN_DB_ENV = args.contentEnv;
   if (!process.env.SITE_ADMIN_DB_LOCATION) process.env.SITE_ADMIN_DB_LOCATION = "remote";
 
   // Legacy sync-to-git mode rewrites root `content/*` from D1. Keep the old
@@ -480,9 +496,10 @@ async function main() {
   let contentAutoCommit = null;
 
   if (args.env === "staging" && !args.skipBuild && !args.dryRun && args.syncContentToGit) {
-    dumpStagingD1Content({
+    dumpD1Content({
       targetRoot: ROOT,
-      label: "dump staging D1 to root content/",
+      env: args.contentEnv,
+      label: `dump ${args.contentEnv} D1 to root content/`,
     });
     const syncGit = readGitState();
     const dirtyContent = syncGit.dirtyFiles.filter((file) => file.startsWith("content/"));
@@ -565,9 +582,10 @@ async function main() {
     );
   }
   if (useD1ContentSnapshot) {
-    dumpStagingD1Content({
+    dumpD1Content({
       targetRoot: releaseRoot,
-      label: "dump staging D1 to release snapshot content/",
+      env: args.contentEnv,
+      label: `dump ${args.contentEnv} D1 to release snapshot content/`,
     });
   }
 
@@ -711,7 +729,11 @@ async function main() {
     }
   }
 
-  const contentSnapshotSha = hashReleaseContent(releaseRoot) || git.sha;
+  const filesystemContentSnapshotSha = hashReleaseContent(releaseRoot) || git.sha;
+  const contentSnapshotSha =
+    buildCache.hit && buildCache.storedContentSha
+      ? buildCache.storedContentSha
+      : filesystemContentSnapshotSha;
   console.log(
     `[release-cloudflare] content snapshot ${contentSnapshotSha.slice(0, 12)}`,
   );
@@ -902,9 +924,10 @@ async function main() {
     args.syncContentToGit &&
     releaseRoot !== ROOT
   ) {
-    dumpStagingD1Content({
+    dumpD1Content({
       targetRoot: ROOT,
-      label: "dump staging D1 to root content/",
+      env: args.contentEnv,
+      label: `dump ${args.contentEnv} D1 to root content/`,
     });
   }
 
@@ -925,9 +948,9 @@ async function main() {
     contentDriftFromGit,
     contentAutoCommit,
     contentSourceMode: useD1ContentSnapshot
-      ? "staging-d1-snapshot"
+      ? `${args.contentEnv}-d1-snapshot`
       : args.syncContentToGit
-        ? "staging-d1-git-sync"
+        ? `${args.contentEnv}-d1-git-sync`
         : "git",
     rolledBack,
     rollbackTarget: args.env === "production" ? rollbackTarget : null,

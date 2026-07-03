@@ -172,7 +172,7 @@ export function WorkspaceCommandPalette({
         group: "Console",
         hint: `${eventCount} events`,
         id: "workspace:clear-activity",
-        label: "Clear Activity",
+        label: "Clear Workspace Activity",
         keywords: "workspace activity notifications events clear reset",
         run: onClearWorkspaceEvents,
       });

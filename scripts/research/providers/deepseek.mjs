@@ -116,8 +116,8 @@ function promptLinesForProfile(profile) {
 
   const structuredLines = [
     ...baseLines,
-    "Allowed action values are: noop, blocked, deploy-staging-code, publish-content-staging, promote-production-code, publish-content-production-from-staging, publish-now-production-from-staging, rollback-staging-content, rollback-production-content.",
-    "Allowed script values are: release:staging, publish:content:staging, release:prod:from-staging, publish:content:prod:from-staging, publish:now:prod:from-staging, publish:content:staging:rollback, publish:content:prod:rollback, or empty string.",
+    "Allowed action values are: noop, blocked, deploy-staging-code, publish-content-staging, promote-production-code, publish-content-production, publish-content-production-from-staging, publish-now-production-from-staging, rollback-staging-content, rollback-production-content.",
+    "Allowed script values are: release:staging, publish:content:staging, release:prod:from-staging, publish:content:prod, publish:content:prod:from-staging, publish:now:prod:from-staging, publish:content:staging:rollback, publish:content:prod:rollback, or empty string.",
     "Use exact action labels. For example use publish-content-staging, not publish-staging-content.",
     "If the target is already current and no command should run, use action noop and script empty string.",
     "Use action blocked only when a safety, auth, runner, branch, dirty-tree, route parity, static shell, or rollback policy prevents release.",
@@ -138,6 +138,7 @@ function promptLinesForProfile(profile) {
     "For a staging target, missing staging metadata or staging code behind local HEAD should use deploy-staging-code with release:staging.",
     "For a production target, if staging metadata is missing or staging is behind local HEAD, stage first with deploy-staging-code and release:staging.",
     "For a production target, if production metadata is missing but staging is current with local release source, use promote-production-code with release:prod:from-staging.",
+    "For a production target with production D1 content changes and production code compatible with the local release source, use publish-content-production with publish:content:prod. Do not copy from staging unless the goal is explicitly to promote an already verified Draft overlay.",
     "If routeParity.ok is false but the staging overlay snapshot is missing, publish content to staging first with publish-content-staging and publish:content:staging. Route parity mismatch is a blocker only after staging overlay exists or when attempting a production script.",
     `Example json output: ${JSON.stringify(PLANNER_SCHEMA_EXAMPLE)}`,
   ];

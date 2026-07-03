@@ -73,10 +73,10 @@ If we ever:
 - run a "Recover production worker without redeploying" flow that reads
   D1 at runtime,
 
-the promote workflow now keeps production D1 in sync by copying staging
-`content_files` after a successful production Worker deploy. If production-only
-editing ever becomes real, revisit this and split "published runtime mirror"
-from "editable source" explicitly.
+the promote workflow can keep production D1 in sync by copying staging
+`content_files` after a successful production Worker deploy. Production-only
+editing is also supported: `npm run publish:content:prod` now reads production
+D1 directly and writes the production static overlay without involving staging.
 
 ## Content-only overlay table
 
@@ -112,7 +112,7 @@ does not shadow the freshly deployed bundle.
 | Mirror staging D1 content into production D1 | `npm run db:copy:staging-to-production` |
 | Force a fresh git snapshot of staging D1 | dispatch `Snapshot staging D1 to git` workflow |
 | Publish content-only staging HTML without Worker deploy | `npm run publish:content:staging` |
-| Publish content-only production HTML without Worker deploy | `npm run publish:content:prod` |
+| Publish production D1 content to production static overlay without Worker deploy | `npm run publish:content:prod` |
 | Roll back staging content overlay | `npm run publish:content:staging:rollback` |
 | Clear staging content overlay | `npm run publish:content:staging:clear` |
 | List staging content overlay snapshots | `npm run publish:content:staging:snapshots` |

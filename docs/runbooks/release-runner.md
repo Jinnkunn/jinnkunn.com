@@ -171,6 +171,7 @@ The agent only runs explicit allowlisted actions:
 - `publish-content-staging` -> `npm run publish:content:staging`
 - `deploy-staging-code` -> `npm run release:staging`
 - `promote-production-code` -> `npm run release:prod:from-staging`
+- `publish-content-production` -> `npm run publish:content:prod`
 - `publish-content-production-from-staging` -> `npm run publish:content:prod:from-staging`
 
 ## Public Exposure

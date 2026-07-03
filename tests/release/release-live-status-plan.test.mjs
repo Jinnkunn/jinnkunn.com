@@ -73,15 +73,15 @@ function statusFixture(overrides = {}) {
   };
 }
 
-test("release live status: content-only HEAD after staging publish advances to production overlay copy", () => {
+test("release live status: production content changes publish production D1 to Live overlay", () => {
   const plan = deriveLiveReleasePlan({
     status: statusFixture(),
     target: "production",
     contentChanged: true,
   });
 
-  assert.equal(plan.kind, "publish-content-production-from-staging");
-  assert.equal(plan.script, "publish:content:prod:from-staging");
+  assert.equal(plan.kind, "publish-content-production");
+  assert.equal(plan.script, "publish:content:prod");
 });
 
 test("release live status: Now-only change publishes one D1 row to production", () => {
@@ -125,7 +125,7 @@ test("release live status: Now-only change publishes one D1 row to production", 
   assert.equal(plan.script, "publish:now:prod:from-staging");
 });
 
-test("release live status: content-only HEAD still publishes staging when overlay is stale", () => {
+test("release live status: staging target still publishes Draft when overlay is stale", () => {
   const plan = deriveLiveReleasePlan({
     status: statusFixture({
       overlays: {
@@ -145,7 +145,7 @@ test("release live status: content-only HEAD still publishes staging when overla
         },
       },
     }),
-    target: "production",
+    target: "staging",
     contentChanged: true,
   });
 

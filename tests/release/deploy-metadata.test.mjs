@@ -65,7 +65,6 @@ test("release script uses a clean snapshot for dirty staging releases", async ()
   );
   assert.match(script, /prepareCleanReleaseSnapshot/);
   assert.match(script, /dumpStagingD1Content/);
-  assert.match(script, /staging-d1-snapshot/);
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
@@ -86,7 +85,7 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   ]);
   assert.match(script, /fetchLiveBuildId/);
   assert.match(script, /prepareContentPublishSnapshot/);
-  assert.match(script, /staging-d1-snapshot/);
+  assert.match(script, /\$\{args\.env\}-d1-snapshot/);
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /hashContentInput/);
@@ -123,12 +122,15 @@ test("smart release CLI and package scripts expose content production copy", asy
   assert.match(releaseStatus, /Route Parity|routeParity|DEFAULT_RELEASE_ROUTES/);
   assert.match(liveStatus, /deriveLiveReleasePlan/);
   assert.match(liveStatus, /RUNTIME_CONTENT_INPUT_REL_PATHS/);
+  assert.match(liveStatus, /publish-content-production/);
+  assert.match(liveStatus, /publish:content:prod/);
   assert.match(liveStatus, /publish-content-production-from-staging/);
   assert.match(liveStatus, /publish:content:prod:from-staging/);
   assert.match(liveStatus, /publish-now-production-from-staging/);
   assert.match(packageJson, /"publish:now:prod:from-staging"/);
   assert.match(packageJson, /"release:site"/);
   assert.match(packageJson, /"release:status"/);
+  assert.match(packageJson, /"publish:content:prod"/);
   assert.match(packageJson, /"publish:content:prod:from-staging"/);
   assert.match(packageJson, /"release:staging:sync-git"/);
   assert.match(packageJson, /"publish:content:staging:sync-git"/);

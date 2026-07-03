@@ -400,14 +400,20 @@ export const releaseAgentBenchmarkScenarios = [
       },
     }),
     expected: gold({
-      action: "publish-content-staging",
-      allowedToExecute: true,
-      script: "publish:content:staging",
+      action: "publish-content-production",
+      requiredBlockers: ["production_requires_confirmation"],
+      requiresHumanConfirmation: true,
+      script: "publish:content:prod",
     }),
   }),
   scenario("saved-content-overlay-current", "saved content changed but overlays already match", {
     contentChanged: true,
-    expected: gold({ action: "noop" }),
+    expected: gold({
+      action: "publish-content-production",
+      requiredBlockers: ["production_requires_confirmation"],
+      requiresHumanConfirmation: true,
+      script: "publish:content:prod",
+    }),
   }),
   scenario("staging-target-saved-content-stale", "staging target publishes stale saved content", {
     contentChanged: true,
