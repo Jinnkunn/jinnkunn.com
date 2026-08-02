@@ -10,19 +10,18 @@ test("site-admin browser gateway route exists and is auth gated", () => {
   assert.ok(source.includes("/api/auth/signin"));
 });
 
-test("site-admin browser gateway renders a dashboard instead of a placeholder", () => {
+test("site-admin browser gateway renders the unified content workspace", () => {
   const pageSource = fs.readFileSync("app/site-admin/page.tsx", "utf8");
   const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
   assert.ok(pageSource.includes("SiteAdminWebConsole"));
-  assert.ok(source.includes("Dashboard"));
-  assert.ok(source.includes("Release"));
+  assert.ok(source.includes("Publish"));
   assert.ok(source.includes("Content"));
-  assert.ok(source.includes("Calendar"));
+  assert.ok(source.includes("Media"));
+  assert.ok(source.includes("Settings"));
   assert.ok(source.includes("Now"));
   assert.ok(source.includes("New content"));
-  assert.ok(source.includes("Save Home"));
-  assert.ok(source.includes("Publish draft"));
-  assert.ok(source.includes("Release status unavailable"));
+  assert.ok(source.includes("Publish live"));
+  assert.ok(source.includes("Publish status unavailable"));
   assert.ok(source.includes('<StatusNotice tone="warning">{warning}</StatusNotice>'));
   assert.ok(source.includes("isUnauthorizedMessage"));
   assert.ok(!source.includes("The browser gateway is signed in"));
@@ -51,7 +50,8 @@ test("site-admin browser console keeps form controls inside panels", () => {
   assert.match(css, /container-type: inline-size;/);
   assert.match(css, /@container \(max-width: 980px\)/);
   assert.match(css, /@media \(max-width: 1180px\)/);
-  assert.match(css, /\.contentWorkspace,[\s\S]*\.nowGrid \{\n    grid-template-columns: 1fr;/);
+  assert.match(css, /\.contentWorkspace \{\n    grid-template-columns: minmax\(230px, 290px\) minmax\(0, 1fr\);/);
+  assert.match(css, /\.inspectorPanel\[data-open="true"\]/);
   assert.match(css, /\.editorTitleGrid[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /\.editorDetails[\s\S]*background: var\(--ds-surface-soft\);/);
   assert.match(css, /\.editorBodyShell[\s\S]*flex: 1;/);
@@ -69,7 +69,7 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("sourceForEditedContent"));
   assert.ok(source.includes("frontmatterKeys"));
   assert.ok(source.includes("contentSavedAt"));
-  assert.ok(source.includes("Saved to Draft"));
+  assert.ok(source.includes("Unsaved edits"));
   assert.ok(source.includes("Ready to publish"));
   assert.ok(source.includes("Save first"));
   assert.ok(source.includes("editorTitleGrid"));
@@ -77,7 +77,7 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("editorBodyShell"));
   assert.ok(source.includes("inspectorPanel"));
   assert.ok(source.includes("createDrawer"));
-  assert.ok(source.includes("collectionGrid"));
+  assert.ok(source.includes("renderContentLibrary"));
   assert.ok(source.includes("releaseSteps"));
   assert.ok(source.includes("/api/site-admin/release-jobs/smart"));
   assert.ok(source.includes("moveSelectedContent"));
@@ -90,7 +90,8 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes('setContentMode("edit")'));
   assert.ok(source.includes('setContentMode("create")'));
   assert.ok(source.includes("Select content"));
-  assert.ok(source.includes('previewLayout="split"'));
+  assert.ok(!source.includes('previewLayout="split"'));
+  assert.ok(source.includes("Back"));
   assert.ok(editor.includes("Source"));
   assert.ok(editor.includes("Preview"));
   assert.ok(editor.includes("Refresh preview"));
@@ -102,6 +103,30 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(editor.includes("markdownToolbarCluster"));
   assert.ok(editor.includes("markdownToolButton"));
   assert.ok(editor.includes("markdownModeButton"));
+  assert.ok(editor.includes("uploadSiteAdminAsset"));
+  assert.ok(editor.includes("handlePaste"));
+});
+
+test("site-admin content management includes recovery, media, settings, and version history", () => {
+  const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
+  const versions = fs.readFileSync("app/api/site-admin/versions/route.ts", "utf8");
+
+  assert.ok(source.includes("SiteAdminMediaLibrary"));
+  assert.ok(source.includes("SiteAdminSettingsPanel"));
+  assert.ok(source.includes("SiteAdminVersionHistory"));
+  assert.ok(source.includes("SiteAdminConflictDialog"));
+  assert.ok(source.includes("beforeunload"));
+  assert.ok(source.includes("window.localStorage"));
+  assert.ok(source.includes("LOCAL_DRAFT_TTL_MS"));
+  assert.ok(source.includes("duplicatePublicationItem"));
+  assert.ok(source.includes("duplicateTeachingItem"));
+  assert.ok(source.includes("duplicateWorksItem"));
+  assert.ok(css.includes(".assetGrid"));
+  assert.ok(css.includes(".versionCompareGrid"));
+  assert.ok(css.includes(".settingsNavRow"));
+  assert.match(versions, /content\\\/components\\\//);
+  assert.ok(versions.includes("commitSha"));
 });
 
 test("site-admin browser console treats data pages as managed collections", () => {

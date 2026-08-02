@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
+import { uploadSiteAdminAsset } from "./site-admin-media-library";
 import styles from "./site-admin-dashboard.module.css";
 
 type MarkdownEditorSize = "regular" | "compact" | "large";
@@ -16,6 +24,7 @@ type MarkdownEditorProps = {
   size?: MarkdownEditorSize;
   disabled?: boolean;
   previewLayout?: MarkdownPreviewLayout;
+  allowImageUpload?: boolean;
 };
 
 type MarkdownAction = {
@@ -179,13 +188,17 @@ export function SiteAdminMarkdownEditor({
   size = "regular",
   disabled = false,
   previewLayout = "tabs",
+  allowImageUpload = true,
 }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const previewRequestIdRef = useRef(0);
   const [mode, setMode] = useState<"source" | "preview">("source");
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState("");
 
   const isSplitPreview = previewLayout === "split";
 
@@ -235,6 +248,67 @@ export function SiteAdminMarkdownEditor({
     if (next !== null) onChange(next);
   }
 
+  async function insertImage(file: File) {
+    const textarea = textareaRef.current;
+    if (!textarea || disabled || !file.type.startsWith("image/")) return;
+    setImageUploading(true);
+    setImageError("");
+    try {
+      const asset = await uploadSiteAdminAsset(file);
+      const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+      const next = insertBlock(textarea, `![${alt}](${asset.url})\n\n`);
+      onChange(next);
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setImageUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const image = Array.from(event.clipboardData.files).find((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (!image) return;
+    event.preventDefault();
+    void insertImage(image);
+  }
+
+  function handleDrop(event: DragEvent<HTMLTextAreaElement>) {
+    const image = Array.from(event.dataTransfer.files).find((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (!image) return;
+    event.preventDefault();
+    void insertImage(image);
+  }
+
+  const imageUploadControl = allowImageUpload ? (
+    <>
+      <button
+        type="button"
+        className={styles.markdownToolButton}
+        title="Upload image"
+        aria-label="Upload image"
+        onClick={() => imageInputRef.current?.click()}
+        disabled={disabled || imageUploading || (!isSplitPreview && mode === "preview")}
+      >
+        {imageUploading ? "Uploading" : "Image"}
+      </button>
+      <input
+        ref={imageInputRef}
+        className={styles.visuallyHidden}
+        type="file"
+        accept="image/*"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void insertImage(file);
+        }}
+      />
+    </>
+  ) : null;
+
   function renderPreviewPane() {
     return (
       <div className={styles.markdownPreviewShell} style={{ minHeight }}>
@@ -256,6 +330,11 @@ export function SiteAdminMarkdownEditor({
 
   return (
     <div className={styles.markdownEditor} data-size={size} data-layout={previewLayout}>
+      {imageError ? (
+        <p className={styles.editorInlineError} role="alert">
+          Image upload failed: {imageError}
+        </p>
+      ) : null}
       <div className={styles.markdownToolbar} role="toolbar" aria-label={`${label} toolbar`}>
         <div className={styles.markdownToolbarGroup} aria-label="Formatting tools">
           {markdownActionGroups.map((group) => (
@@ -280,6 +359,9 @@ export function SiteAdminMarkdownEditor({
               ))}
             </div>
           ))}
+          <div className={styles.markdownToolbarCluster} role="group" aria-label="Media">
+            {imageUploadControl}
+          </div>
         </div>
         <div className={styles.markdownToolbarCluster} role="group" aria-label="Editor view">
           {isSplitPreview ? (
@@ -319,6 +401,9 @@ export function SiteAdminMarkdownEditor({
             aria-label={label}
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onPaste={handlePaste}
+            onDrop={handleDrop}
+            onDragOver={(event) => event.preventDefault()}
             placeholder={placeholder}
             spellCheck={false}
             disabled={disabled}
@@ -333,6 +418,9 @@ export function SiteAdminMarkdownEditor({
           aria-label={label}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onPaste={handlePaste}
+          onDrop={handleDrop}
+          onDragOver={(event) => event.preventDefault()}
           placeholder={placeholder}
           spellCheck={false}
           disabled={disabled}

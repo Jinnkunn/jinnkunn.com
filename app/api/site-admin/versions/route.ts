@@ -19,9 +19,7 @@ const RATE_LIMIT = { namespace: "site-admin-versions", maxRequests: 40 };
 
 const STRUCTURED_CONTENT = new Set([
   "content/home.json",
-  // News + Works + Teaching + Publications all migrated to
-  // `content/pages/{...}.mdx`; the regex below picks them up via the
-  // page-mdx pattern so version-tracking still works.
+  "content/now.json",
 ]);
 
 function normalizeVersionPath(raw: unknown): string {
@@ -29,6 +27,7 @@ function normalizeVersionPath(raw: unknown): string {
   if (STRUCTURED_CONTENT.has(value)) return value;
   if (/^content\/posts\/[a-z0-9-]{1,80}\.mdx$/.test(value)) return value;
   if (/^content\/pages\/[a-z0-9-]{1,80}\.mdx$/.test(value)) return value;
+  if (/^content\/components\/[a-z0-9-]{1,80}\.mdx$/.test(value)) return value;
   return "";
 }
 
@@ -58,6 +57,7 @@ export async function GET(req: NextRequest) {
     async () => {
       const url = new URL(req.url);
       const path = normalizeVersionPath(url.searchParams.get("path"));
+      const commitSha = String(url.searchParams.get("commitSha") || "").trim();
       const limitRaw = Number(url.searchParams.get("limit") || "12");
       const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, limitRaw)) : 12;
       if (!path) {
@@ -67,14 +67,19 @@ export async function GET(req: NextRequest) {
         });
       }
       const store = getSiteAdminSourceStore();
-      const [current, history] = await Promise.all([
+      if (commitSha && !/^[a-f0-9]{7,40}$/i.test(commitSha)) {
+        return apiError("commitSha is invalid", { status: 400, code: "BAD_REQUEST" });
+      }
+      const [current, history, version] = await Promise.all([
         store.readTextFile(path),
         store.listTextFileHistory(path, limit),
+        commitSha ? store.readTextFileAtCommit(path, commitSha) : Promise.resolve(null),
       ]);
       return apiPayloadOk({
         path,
         sourceVersion: { fileSha: current?.sha ?? "" },
         history,
+        version,
       });
     },
     { rateLimit: RATE_LIMIT },

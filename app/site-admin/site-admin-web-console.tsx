@@ -25,7 +25,17 @@ import {
   type SiteComponentName,
 } from "@/lib/site-admin/component-registry";
 import type { SiteAdminMobileSummary } from "@/lib/site-admin/mobile-summary";
+import {
+  SiteAdminConflictDialog,
+  type SiteAdminConflict,
+} from "./site-admin-conflict-dialog";
+import {
+  SiteAdminMediaLibrary,
+  type SiteAdminAsset,
+} from "./site-admin-media-library";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
+import { SiteAdminVersionHistory } from "./site-admin-version-history";
 import styles from "./site-admin-dashboard.module.css";
 
 type ApiErrorPayload = {
@@ -195,7 +205,7 @@ type HomePostPayload = {
   sourceVersion: SourceVersion;
 };
 
-type Area = "dashboard" | "content" | "collections" | "release" | "home" | "now";
+type Area = "content" | "media" | "release" | "settings" | "home" | "now";
 type ContentMode = "browse" | "edit" | "create";
 
 const DEFAULT_CREATE_BODY = "Write the post here.";
@@ -675,6 +685,12 @@ function endpointFor(kind: EditableKind, id: string) {
   return `/api/site-admin/components/${encodeURIComponent(id)}`;
 }
 
+function versionPathFor(kind: EditableKind, id: string): string {
+  if (kind === "posts") return `content/posts/${id}.mdx`;
+  if (kind === "pages") return `content/pages/${id}.mdx`;
+  return `content/components/${id}.mdx`;
+}
+
 function titleForKind(kind: EditableKind) {
   if (kind === "pages") return "Pages";
   if (kind === "posts") return "Posts";
@@ -685,14 +701,21 @@ function localDraftKey(kind: EditableKind, id: string) {
   return `site-admin-content-draft:${kind}:${id}`;
 }
 
+const LOCAL_DRAFT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
 function readLocalDraft(kind: EditableKind, id: string): LocalDraftSnapshot | null {
   if (typeof window === "undefined") return null;
   const key = localDraftKey(kind, id);
   try {
-    const raw = window.sessionStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<LocalDraftSnapshot>;
     if (typeof parsed.source !== "string" || typeof parsed.savedAt !== "string") return null;
+    const savedAtMs = Date.parse(parsed.savedAt);
+    if (!Number.isFinite(savedAtMs) || Date.now() - savedAtMs > LOCAL_DRAFT_TTL_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
     return {
       key,
       source: parsed.source,
@@ -706,7 +729,21 @@ function readLocalDraft(kind: EditableKind, id: string): LocalDraftSnapshot | nu
 
 function clearLocalDraft(kind: EditableKind, id: string) {
   if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(localDraftKey(kind, id));
+  window.localStorage.removeItem(localDraftKey(kind, id));
+}
+
+class SiteAdminRequestError extends Error {
+  status: number;
+  code: string;
+  payload: unknown;
+
+  constructor(message: string, status: number, code = "", payload: unknown = null) {
+    super(message);
+    this.name = "SiteAdminRequestError";
+    this.status = status;
+    this.code = code;
+    this.payload = payload;
+  }
 }
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -729,9 +766,12 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const maybeError = payload as Partial<ApiErrorPayload> | null;
   if (!response.ok || maybeError?.ok === false) {
-    throw new Error(
+    throw new SiteAdminRequestError(
       maybeError?.error ||
         `${response.status} ${response.statusText || "Request failed"}`,
+      response.status,
+      maybeError?.code || "",
+      payload,
     );
   }
   if (
@@ -836,7 +876,7 @@ export function SiteAdminWebConsole({
   initialSummary: SiteAdminMobileSummary | null;
   initialSummaryError: string;
 }) {
-  const [area, setArea] = useState<Area>("dashboard");
+  const [area, setArea] = useState<Area>("content");
   const [summary, setSummary] = useState<SiteAdminMobileSummary | null>(
     initialSummary,
   );
@@ -844,11 +884,13 @@ export function SiteAdminWebConsole({
   const [home, setHome] = useState<HomePayload | null>(null);
   const [homeTitle, setHomeTitle] = useState("");
   const [homeBody, setHomeBody] = useState("");
+  const [homeBaseline, setHomeBaseline] = useState("");
   const [now, setNow] = useState<NowPayload | null>(null);
   const [nowText, setNowText] = useState("");
   const [nowContext, setNowContext] = useState("");
   const [nowLocation, setNowLocation] = useState("");
   const [nowDate, setNowDate] = useState(todayInHalifax());
+  const [nowBaseline, setNowBaseline] = useState("");
   const [editingHistoryId, setEditingHistoryId] = useState("");
   const [historyText, setHistoryText] = useState("");
   const [historyDate, setHistoryDate] = useState(todayInHalifax());
@@ -878,6 +920,12 @@ export function SiteAdminWebConsole({
   const [saving, setSaving] = useState(false);
   const [releaseSaving, setReleaseSaving] = useState(false);
   const [releaseWatchUntil, setReleaseWatchUntil] = useState(0);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [assetPickerTarget, setAssetPickerTarget] = useState<"cover" | "ogImage" | null>(null);
+  const [conflict, setConflict] = useState<(SiteAdminConflict & {
+    remote: EditableDetail;
+    remotePayload: EditableDetailPayload;
+  }) | null>(null);
   const [notice, setNotice] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
@@ -895,6 +943,19 @@ export function SiteAdminWebConsole({
       ),
     );
   }, [contentSearch, currentItems]);
+  const globalSearchItems = useMemo(() => {
+    const query = contentSearch.trim().toLowerCase();
+    if (!query) return [];
+    return (["posts", "pages", "components"] as EditableKind[]).flatMap((itemKind) =>
+      contentItems({ kind: itemKind, pages, posts, components })
+        .filter((item) =>
+          [item.title, item.id, item.meta].some((value) =>
+            String(value || "").toLowerCase().includes(query),
+          ),
+        )
+        .map((item) => ({ kind: itemKind, item })),
+    );
+  }, [components, contentSearch, pages, posts]);
   const componentDefinitions = useMemo(
     () => componentDefinitionsFromPayload(components),
     [components],
@@ -936,29 +997,21 @@ export function SiteAdminWebConsole({
   const release = summary?.release;
   const source = summary?.source;
   const areaTitle =
-    area === "dashboard"
-      ? "Dashboard"
-      : area === "content"
-        ? "Content"
-        : area === "collections"
-          ? "Collections"
-          : area === "release"
-            ? "Release"
-            : area === "home"
-              ? "Home"
-              : "Now";
+    area === "media"
+      ? "Media"
+      : area === "release"
+        ? "Publish"
+        : area === "settings"
+          ? "Settings"
+          : "Content";
   const areaDescription =
-    area === "content"
-      ? "Edit draft content with a stable writing surface, metadata inspector, and clear publish status."
-      : area === "collections"
-        ? "Manage structured sections such as News, Publications, Teaching, and Works without touching raw MDX shortcodes."
-        : area === "release"
-          ? "Review draft versus live state, start the recommended release action, and inspect recovery tools only when needed."
-          : area === "home"
-            ? "Edit the landing page draft."
-            : area === "now"
-              ? "Update the lightweight Now status and manage recent history."
-              : "Manage draft website content, review release state, and keep the public surface in sync.";
+    area === "media"
+      ? "Upload and reuse images across pages, posts, and social metadata."
+      : area === "release"
+        ? "Publish saved content to the live site and inspect recovery only when needed."
+        : area === "settings"
+          ? "Manage site identity and navigation."
+          : "Write, organize, and publish every part of the site from one workspace.";
   const selectedIsStructured = selected?.kind === "posts" || selected?.kind === "pages";
   const selectedSourceDraft = selected
     ? selectedIsStructured
@@ -971,6 +1024,10 @@ export function SiteAdminWebConsole({
         ? selectedSourceDraft !== contentFormBaseline
         : selectedSourceDraft !== selected.source),
   );
+  const homeDirty = Boolean(home && `${homeTitle}\n${homeBody}` !== homeBaseline);
+  const nowComparable = `${nowText}\n${nowContext}\n${nowLocation}\n${nowDate}`;
+  const nowDirty = Boolean(now && nowComparable !== nowBaseline);
+  const hasUnsavedChanges = selectedDirty || homeDirty || nowDirty;
   const slugDirty = Boolean(
     selected &&
       (selected.kind === "posts" || selected.kind === "pages") &&
@@ -987,12 +1044,10 @@ export function SiteAdminWebConsole({
       ? "smart-release"
       : "noop";
   const draftStatusLabel = saving
-    ? "Saving draft"
+    ? "Saving"
     : selectedDirty
       ? "Unsaved edits"
-      : contentSavedAt
-        ? "Saved to Draft"
-        : "Saved draft";
+      : "Saved";
   const liveStatusState = selectedDirty
     ? "blocked"
     : releaseIsRunning
@@ -1005,21 +1060,21 @@ export function SiteAdminWebConsole({
   const liveStatusLabel = selectedDirty
     ? "Save before publishing"
     : releaseIsRunning
-      ? "Release running"
+      ? "Publishing"
       : releaseNeedsPublish
         ? "Ready to publish"
         : releaseActionKind === "noop"
           ? "Live current"
-          : "Release unavailable";
+          : "Publish unavailable";
   const editorStatusHint = selectedDirty
     ? localAutosaveAt
-      ? `Local recovery saved ${formatWhen(localAutosaveAt)}. Save to Draft before publishing.`
-      : "Unsaved edits are only in this browser until saved to Draft."
+      ? `Recovery copy saved ${formatWhen(localAutosaveAt)}. Save before publishing.`
+      : "Unsaved edits are protected in this browser until saved."
     : releaseNeedsPublish
-      ? release?.detail || "Saved Draft is ahead of the live site."
+      ? release?.detail || "Saved content is ahead of the live site."
       : contentSavedAt
-        ? `Saved to Draft ${formatWhen(contentSavedAt)}. ${release?.detail || ""}`.trim()
-        : release?.headline || "Release status unavailable";
+        ? `Saved ${formatWhen(contentSavedAt)}. ${release?.detail || ""}`.trim()
+        : release?.headline || "Publish status unavailable";
   const publishButtonLabel = releaseSaving
     ? "Starting"
     : selectedDirty
@@ -1028,7 +1083,7 @@ export function SiteAdminWebConsole({
         ? "Live current"
         : releaseUnavailable
           ? "Refresh status"
-          : "Publish draft";
+          : "Publish live";
 
   async function refreshAll() {
     setLoading(true);
@@ -1057,6 +1112,7 @@ export function SiteAdminWebConsole({
       setHome(homeResult.value);
       setHomeTitle(homeResult.value.data.title || "");
       setHomeBody(homeResult.value.data.bodyMdx || "");
+      setHomeBaseline(`${homeResult.value.data.title || ""}\n${homeResult.value.data.bodyMdx || ""}`);
     } else {
       failures.push({ scope: "Home", message: homeResult.reason?.message || "failed" });
     }
@@ -1066,7 +1122,11 @@ export function SiteAdminWebConsole({
       setNowText(nowResult.value.data.current.text || "");
       setNowContext(nowResult.value.data.current.context || "");
       setNowLocation(nowResult.value.data.current.location || "");
-      setNowDate(dateInputFromIso(nowResult.value.data.current.updatedAt));
+      const nextNowDate = dateInputFromIso(nowResult.value.data.current.updatedAt);
+      setNowDate(nextNowDate);
+      setNowBaseline(
+        `${nowResult.value.data.current.text || ""}\n${nowResult.value.data.current.context || ""}\n${nowResult.value.data.current.location || ""}\n${nextNowDate}`,
+      );
     } else {
       failures.push({ scope: "Now", message: nowResult.reason?.message || "failed" });
     }
@@ -1130,7 +1190,7 @@ export function SiteAdminWebConsole({
     const form = selectedIsStructured ? contentForm : undefined;
     const timer = window.setTimeout(() => {
       const savedAt = new Date().toISOString();
-      window.sessionStorage.setItem(
+      window.localStorage.setItem(
         key,
         JSON.stringify({
           source,
@@ -1149,6 +1209,45 @@ export function SiteAdminWebConsole({
     selectedIsStructured,
     selectedSourceDraft,
   ]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (saving) return;
+      if (area === "home" && homeDirty) {
+        void saveHome();
+      } else if (area === "now" && nowDirty) {
+        void saveNow();
+      } else if (selectedDirty) {
+        void saveSelectedContent();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [area, homeDirty, nowDirty, saving, selectedDirty]);
+
+  function confirmDiscardChanges(): boolean {
+    if (!hasUnsavedChanges) return true;
+    return window.confirm("You have unsaved edits. Discard them and continue?");
+  }
+
+  function changeArea(nextArea: Area) {
+    if (nextArea === area || confirmDiscardChanges()) {
+      setArea(nextArea);
+      setInspectorOpen(false);
+    }
+  }
 
   useEffect(() => {
     if (!releaseWatchUntil) return;
@@ -1176,7 +1275,43 @@ export function SiteAdminWebConsole({
     }
   }
 
+  function applySelectedDetail(
+    nextKind: EditableKind,
+    id: string,
+    detail: EditableDetailPayload,
+  ) {
+    const next = toEditableDetail(nextKind, id, detail);
+    setKind(nextKind);
+    setContentMode("edit");
+    setSelected(next);
+    setSourceDraft(next.source);
+    setSlugDraft(id);
+    const form = formFromEditablePayload(nextKind, id, detail);
+    setContentForm(form);
+    const baseline =
+      nextKind === "posts" || nextKind === "pages"
+        ? sourceForEditedContent(nextKind, form)
+        : next.source;
+    setContentFormBaseline(baseline);
+    setLocalAutosaveAt("");
+    setContentSavedAt("");
+    const localDraft = readLocalDraft(nextKind, id);
+    setLocalDraftSnapshot(
+      localDraft && localDraft.source !== baseline ? localDraft : null,
+    );
+    setArea("content");
+    setInspectorOpen(false);
+    return next;
+  }
+
   async function selectContent(nextKind: EditableKind, id: string) {
+    if (
+      selected &&
+      (selected.kind !== nextKind || selected.id !== id) &&
+      !confirmDiscardChanges()
+    ) {
+      return;
+    }
     setLoading(true);
     setError("");
     setWarning("");
@@ -1185,26 +1320,7 @@ export function SiteAdminWebConsole({
       const detail = await readJson<EditableDetailPayload>(
         endpointFor(nextKind, id),
       );
-      const next = toEditableDetail(nextKind, id, detail);
-      setKind(nextKind);
-      setContentMode("edit");
-      setSelected(next);
-      setSourceDraft(next.source);
-      setSlugDraft(id);
-      const form = formFromEditablePayload(nextKind, id, detail);
-      setContentForm(form);
-      const baseline =
-        nextKind === "posts" || nextKind === "pages"
-          ? sourceForEditedContent(nextKind, form)
-          : next.source;
-      setContentFormBaseline(baseline);
-      setLocalAutosaveAt("");
-      setContentSavedAt("");
-      const localDraft = readLocalDraft(nextKind, id);
-      setLocalDraftSnapshot(
-        localDraft && localDraft.source !== baseline ? localDraft : null,
-      );
-      setArea("content");
+      applySelectedDetail(nextKind, id, detail);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1244,6 +1360,61 @@ export function SiteAdminWebConsole({
       await refreshLists();
       await refreshSummaryOnly();
       setNotice(`${next.title} saved.`);
+    } catch (err) {
+      if (err instanceof SiteAdminRequestError && err.status === 409 && selected) {
+        try {
+          const remotePayload = await readJson<EditableDetailPayload>(
+            endpointFor(selected.kind, selected.id),
+          );
+          const remote = toEditableDetail(selected.kind, selected.id, remotePayload);
+          setConflict({
+            title: selected.title,
+            localSource: selectedSourceDraft,
+            remoteSource: remote.source,
+            remote,
+            remotePayload,
+          });
+          setWarning("A newer saved version exists. Review both versions before continuing.");
+        } catch (refreshError) {
+          setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
+        }
+      } else {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function reloadConflictVersion() {
+    if (!conflict || !selected) return;
+    applySelectedDetail(selected.kind, selected.id, conflict.remotePayload);
+    clearLocalDraft(selected.kind, selected.id);
+    setConflict(null);
+    setWarning("");
+    setNotice("Latest saved version loaded.");
+  }
+
+  async function keepConflictEdits() {
+    if (!conflict || !selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      await writeJson<MutationPayload>(endpointFor(selected.kind, selected.id), "PATCH", {
+        source: conflict.localSource,
+        version: conflict.remote.version,
+      });
+      const detail = await readJson<EditableDetailPayload>(
+        endpointFor(selected.kind, selected.id),
+      );
+      applySelectedDetail(selected.kind, selected.id, detail);
+      clearLocalDraft(selected.kind, selected.id);
+      setConflict(null);
+      setWarning("");
+      setContentSavedAt(new Date().toISOString());
+      await refreshLists();
+      await refreshSummaryOnly();
+      setNotice("Your edits were saved as the latest Draft.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1415,7 +1586,7 @@ export function SiteAdminWebConsole({
         },
       );
       const jobId = payload.job?.id ? ` (${payload.job.id})` : "";
-      setNotice(`Release job created${jobId}.`);
+      setNotice(`Publish job created${jobId}.`);
       setReleaseWatchUntil(Date.now() + 3 * 60 * 1000);
       await refreshAll();
     } catch (err) {
@@ -1442,8 +1613,11 @@ export function SiteAdminWebConsole({
       });
       const next = await readJson<HomePayload>("/api/site-admin/home");
       setHome(next);
+      setHomeTitle(next.data.title || "");
+      setHomeBody(next.data.bodyMdx || "");
+      setHomeBaseline(`${next.data.title || ""}\n${next.data.bodyMdx || ""}`);
+      await refreshSummaryOnly();
       setNotice("Home saved.");
-      void refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1467,8 +1641,16 @@ export function SiteAdminWebConsole({
         expectedFileSha: now.sourceVersion.fileSha,
       });
       setNow(next);
+      setNowText(next.data.current.text || "");
+      setNowContext(next.data.current.context || "");
+      setNowLocation(next.data.current.location || "");
+      const nextDate = dateInputFromIso(next.data.current.updatedAt);
+      setNowDate(nextDate);
+      setNowBaseline(
+        `${next.data.current.text || ""}\n${next.data.current.context || ""}\n${next.data.current.location || ""}\n${nextDate}`,
+      );
+      await refreshSummaryOnly();
       setNotice("Now saved.");
-      void refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1583,6 +1765,18 @@ export function SiteAdminWebConsole({
     }));
   }
 
+  function duplicateNewsItem(index: number) {
+    updateNewsDraft((draft) => {
+      const source = draft.items[index];
+      if (!source || source.type !== "entry") return draft;
+      const copy = { ...source, id: `entry-copy-${Date.now()}` };
+      return {
+        ...draft,
+        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
+      };
+    });
+  }
+
   function moveSelectedNewsItem(index: number, direction: -1 | 1) {
     updateNewsDraft((draft) => ({
       ...draft,
@@ -1630,6 +1824,18 @@ export function SiteAdminWebConsole({
     }));
   }
 
+  function duplicateTeachingItem(index: number) {
+    updateTeachingDraft((draft) => {
+      const source = draft.items[index];
+      if (!source) return draft;
+      const copy = { ...source, id: `teaching-copy-${Date.now()}` };
+      return {
+        ...draft,
+        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
+      };
+    });
+  }
+
   function moveSelectedTeachingItem(index: number, direction: -1 | 1) {
     updateTeachingDraft((draft) => ({
       ...draft,
@@ -1674,6 +1880,18 @@ export function SiteAdminWebConsole({
       ...draft,
       items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
     }));
+  }
+
+  function duplicateWorksItem(index: number) {
+    updateWorksDraft((draft) => {
+      const source = draft.items[index];
+      if (!source) return draft;
+      const copy = { ...source, id: `works-copy-${Date.now()}` };
+      return {
+        ...draft,
+        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
+      };
+    });
   }
 
   function moveSelectedWorksItem(index: number, direction: -1 | 1) {
@@ -1735,6 +1953,18 @@ export function SiteAdminWebConsole({
     }));
   }
 
+  function duplicatePublicationItem(index: number) {
+    updatePublicationsDraft((draft) => {
+      const source = draft.items[index];
+      if (!source) return draft;
+      const copy = { ...source, id: `publication-copy-${Date.now()}` };
+      return {
+        ...draft,
+        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
+      };
+    });
+  }
+
   function moveSelectedPublicationItem(index: number, direction: -1 | 1) {
     updatePublicationsDraft((draft) => ({
       ...draft,
@@ -1746,6 +1976,7 @@ export function SiteAdminWebConsole({
     index: number;
     count: number;
     onMove: (direction: -1 | 1) => void;
+    onDuplicate: () => void;
     onDelete: () => void;
   }) {
     return (
@@ -1765,6 +1996,9 @@ export function SiteAdminWebConsole({
           disabled={input.index === input.count - 1}
         >
           Down
+        </Button>
+        <Button onClick={input.onDuplicate} variant="subtle" size="sm">
+          Duplicate
         </Button>
         <Button onClick={input.onDelete} variant="subtle" tone="danger" size="sm">
           Delete
@@ -1810,16 +2044,21 @@ export function SiteAdminWebConsole({
         </div>
         <div className={styles.newsEntryList}>
           {draft.items.map((item, index) => (
-            <div key={item.id} className={styles.newsEntryCard}>
-              <div className={styles.newsEntryHeader}>
+            <details
+              key={item.id}
+              className={styles.newsEntryCard}
+            >
+              <summary className={styles.collectionEntrySummary}>
                 <strong>{item.courseCode || item.courseName || item.term || "Untitled course"}</strong>
-                {renderComponentItemActions({
+                <small>{item.term || item.period || "Course"}</small>
+              </summary>
+              {renderComponentItemActions({
                   index,
                   count: draft.items.length,
                   onMove: (direction) => moveSelectedTeachingItem(index, direction),
+                  onDuplicate: () => duplicateTeachingItem(index),
                   onDelete: () => deleteTeachingItem(index),
                 })}
-              </div>
               <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Term
@@ -1886,7 +2125,7 @@ export function SiteAdminWebConsole({
                   />
                 </label>
               </div>
-            </div>
+            </details>
           ))}
         </div>
         {renderAdvancedComponentSource()}
@@ -1909,16 +2148,21 @@ export function SiteAdminWebConsole({
         </div>
         <div className={styles.newsEntryList}>
           {draft.items.map((item, index) => (
-            <div key={item.id} className={styles.newsEntryCard}>
-              <div className={styles.newsEntryHeader}>
+            <details
+              key={item.id}
+              className={styles.newsEntryCard}
+            >
+              <summary className={styles.collectionEntrySummary}>
                 <strong>{item.role || item.affiliation || "Untitled work"}</strong>
-                {renderComponentItemActions({
+                <small>{item.period || item.category}</small>
+              </summary>
+              {renderComponentItemActions({
                   index,
                   count: draft.items.length,
                   onMove: (direction) => moveSelectedWorksItem(index, direction),
+                  onDuplicate: () => duplicateWorksItem(index),
                   onDelete: () => deleteWorksItem(index),
                 })}
-              </div>
               <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Category
@@ -1989,7 +2233,7 @@ export function SiteAdminWebConsole({
                   disabled={saving}
                 />
               </label>
-            </div>
+            </details>
           ))}
         </div>
         {renderAdvancedComponentSource()}
@@ -2015,16 +2259,21 @@ export function SiteAdminWebConsole({
         </div>
         <div className={styles.newsEntryList}>
           {draft.items.map((item, index) => (
-            <div key={item.id} className={styles.newsEntryCard}>
-              <div className={styles.newsEntryHeader}>
+            <details
+              key={item.id}
+              className={styles.newsEntryCard}
+            >
+              <summary className={styles.collectionEntrySummary}>
                 <strong>{item.title || "Untitled publication"}</strong>
-                {renderComponentItemActions({
+                <small>{item.year || "Publication"}</small>
+              </summary>
+              {renderComponentItemActions({
                   index,
                   count: draft.items.length,
                   onMove: (direction) => moveSelectedPublicationItem(index, direction),
+                  onDuplicate: () => duplicatePublicationItem(index),
                   onDelete: () => deletePublicationItem(index),
                 })}
-              </div>
               <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Title
@@ -2105,7 +2354,7 @@ export function SiteAdminWebConsole({
                   />
                 </label>
               </div>
-            </div>
+            </details>
           ))}
         </div>
         {renderAdvancedComponentSource()}
@@ -2118,17 +2367,156 @@ export function SiteAdminWebConsole({
     await selectContent("components", definition.name);
   }
 
+  function openDocumentKind(nextKind: "posts" | "pages") {
+    if (!confirmDiscardChanges()) return;
+    setArea("content");
+    setKind(nextKind);
+    setContentMode("browse");
+    setSelected(null);
+    setSourceDraft("");
+    setContentForm(EMPTY_CONTENT_FORM);
+    setContentFormBaseline("");
+    setSlugDraft("");
+    setLocalAutosaveAt("");
+    setLocalDraftSnapshot(null);
+    setInspectorOpen(false);
+  }
+
+  function closeSelectedContent() {
+    if (!confirmDiscardChanges()) return;
+    setContentMode("browse");
+    setSelected(null);
+    setSourceDraft("");
+    setContentForm(EMPTY_CONTENT_FORM);
+    setContentFormBaseline("");
+    setSlugDraft("");
+    setLocalAutosaveAt("");
+    setLocalDraftSnapshot(null);
+    setInspectorOpen(false);
+  }
+
+  function renderContentLibrary() {
+    const searching = Boolean(contentSearch.trim());
+    return (
+      <Card className={styles.sidePanel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h2 className={styles.panelTitle}>Content</h2>
+          </div>
+          <Button
+            onClick={() => beginCreate(kind === "pages" ? "pages" : "posts")}
+            variant="subtle"
+            size="sm"
+          >
+            New
+          </Button>
+        </div>
+
+        <div className={styles.contentNavSection}>
+          <p className={styles.inspectorLabel}>Site</p>
+          <button
+            type="button"
+            className={styles.contentNavButton}
+            data-active={area === "home"}
+            onClick={() => changeArea("home")}
+          >
+            <span>Home</span>
+            <small>Landing page</small>
+          </button>
+          <button
+            type="button"
+            className={styles.contentNavButton}
+            data-active={area === "now"}
+            onClick={() => changeArea("now")}
+          >
+            <span>Now</span>
+            <small>Current status</small>
+          </button>
+        </div>
+
+        <div className={styles.contentNavSection}>
+          <div className={styles.contentNavSectionHeader}>
+            <p className={styles.inspectorLabel}>Documents</p>
+            <div className={styles.segmented} role="group" aria-label="Document type">
+              {(["posts", "pages"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  data-active={area === "content" && kind === value}
+                  onClick={() => openDocumentKind(value)}
+                >
+                  {titleForKind(value)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className={styles.fieldLabel}>
+            Search all content
+            <input
+              className={styles.textField}
+              value={contentSearch}
+              onChange={(event) => setContentSearch(event.target.value)}
+              placeholder="Title, slug, or metadata"
+            />
+          </label>
+          <div className={styles.itemList}>
+            {(searching
+              ? globalSearchItems
+              : visibleItems.map((item) => ({ kind, item })))
+              .filter(({ kind: itemKind }) => itemKind !== "components")
+              .map(({ kind: itemKind, item }) => (
+                <button
+                  key={`${itemKind}:${item.id}`}
+                  type="button"
+                  className={styles.itemButton}
+                  data-active={selected?.kind === itemKind && selected?.id === item.id}
+                  onClick={() => void selectContent(itemKind, item.id)}
+                >
+                  <span>{item.title}</span>
+                  <small>
+                    {searching ? `${titleForKind(itemKind)} · ` : ""}
+                    {item.draft ? "Hidden · " : ""}
+                    {item.meta}
+                  </small>
+                </button>
+              ))}
+            {(searching ? globalSearchItems : visibleItems).length === 0 ? (
+              <p className={styles.listEmpty}>No matching content.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className={styles.contentNavSection}>
+          <p className={styles.inspectorLabel}>Collections</p>
+          {componentDefinitions.map((definition) => {
+            const summary = componentSummaryFor(components, definition.name);
+            return (
+              <button
+                key={definition.name}
+                type="button"
+                className={styles.contentNavButton}
+                data-active={selected?.kind === "components" && selected.id === definition.name}
+                onClick={() => void selectManagedComponent(definition)}
+              >
+                <span>{definition.label}</span>
+                <small>{summary?.count ?? 0} {summary?.entryLabel || definition.entryLabel || "entries"}</small>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  }
+
   const resolvedCreateSlug = createSlug.trim() || slugFromTitle(createTitle);
 
   return (
     <main className={styles.shell} data-area={area}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Site Admin</p>
+          <p className={styles.eyebrow}>Site Admin · {actor}</p>
           <h1 className={styles.title}>{areaTitle}</h1>
-          <p className={styles.description}>
-            Signed in as <strong>{actor}</strong>. {areaDescription}
-          </p>
+          <p className={styles.description}>{areaDescription}</p>
         </div>
         <div className={styles.heroActions}>
           <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
@@ -2149,233 +2537,33 @@ export function SiteAdminWebConsole({
 
       <nav className={styles.adminTabs} aria-label="Site Admin sections">
         {[
-          ["dashboard", "Dashboard"],
           ["content", "Content"],
-          ["collections", "Collections"],
-          ["release", "Release"],
-          ["home", "Home"],
-          ["now", "Now"],
+          ["media", "Media"],
+          ["release", "Publish"],
+          ["settings", "Settings"],
         ].map(([id, label]) => (
           <button
             key={id}
             type="button"
             className={styles.adminTab}
-            data-active={area === id}
-            onClick={() => setArea(id as Area)}
+            data-active={
+              id === "content"
+                ? area === "content" || area === "home" || area === "now"
+                : area === id
+            }
+            onClick={() => changeArea(id as Area)}
           >
             {label}
           </button>
         ))}
       </nav>
 
-      {area === "dashboard" ? (
-        <>
-          <section className={styles.summaryGrid} aria-label="Site Admin summary">
-            <Card className={styles.card}>
-              <div className={styles.cardHeader}>
-                <p className={styles.cardLabel}>Release</p>
-                <span className={styles.statusPill} data-state={release?.recommendedAction.kind}>
-                  {release?.recommendedAction.label || (summaryError ? "Unavailable" : "Refresh")}
-                </span>
-              </div>
-              <h2 className={styles.cardTitle}>
-                {release?.headline ||
-                  (summaryError ? "Release status unavailable" : "Status unavailable")}
-              </h2>
-              <p className={styles.cardText}>
-                {release?.detail ||
-                  (summaryError
-                    ? `Could not load release summary: ${summaryError}. Content editing is still available.`
-                    : "Refresh release status.")}
-              </p>
-              <div className={styles.cardMeta}>
-                <span>Runner</span>
-                <strong>
-                  {release?.runners?.[0]?.status ||
-                    (summaryError ? "Unavailable" : "Not seen")}
-                </strong>
-              </div>
-            </Card>
-
-            <Card className={styles.card}>
-              <div className={styles.cardHeader}>
-                <p className={styles.cardLabel}>Content</p>
-                <span className={styles.muted}>Draft store</span>
-              </div>
-              <h2 className={styles.cardTitle}>
-                {posts?.count ?? summary?.content.posts ?? 0} posts ·{" "}
-                {pages?.count ?? summary?.content.pages ?? 0} pages
-              </h2>
-              <p className={styles.cardText}>
-                Create and edit MDX pages, posts, and reusable content components.
-              </p>
-              <div className={styles.linkRow}>
-                <button type="button" onClick={() => setArea("content")}>
-                  Manage content
-                </button>
-                <Link href="/api/site-admin/pages/tree">Pages tree</Link>
-              </div>
-            </Card>
-
-            <Card className={styles.card}>
-              <div className={styles.cardHeader}>
-                <p className={styles.cardLabel}>Now</p>
-                <span className={styles.muted}>
-                  {now?.data.updates.length ?? summary?.now.historyCount ?? 0} updates
-                </span>
-              </div>
-              <h2 className={styles.cardTitle}>
-                {formatValue(now?.data.current.text || summary?.now.text)}
-              </h2>
-              <p className={styles.cardText}>
-                {now?.data.current.context ||
-                  summary?.now.context ||
-                  now?.data.current.location ||
-                  summary?.now.location ||
-                  "No extra context."}
-              </p>
-              <div className={styles.cardMeta}>
-                <span>Updated</span>
-                <strong>
-                  {formatWhen(now?.data.current.updatedAt || summary?.now.updatedAt)}
-                </strong>
-              </div>
-            </Card>
-
-            <Card className={styles.card}>
-              <div className={styles.cardHeader}>
-                <p className={styles.cardLabel}>Calendar</p>
-                <span className={styles.muted}>Public projection</span>
-              </div>
-              <h2 className={styles.cardTitle}>
-                {summary?.calendar.eventCount ?? 0} events
-              </h2>
-              <p className={styles.cardText}>
-                Range starts {formatWhen(summary?.calendar.rangeStartsAt)}.
-              </p>
-              <div className={styles.linkRow}>
-                <Link href="/calendar">Calendar</Link>
-                <Link href="/api/public/calendar">Public API</Link>
-              </div>
-            </Card>
-          </section>
-
-          <section className={styles.footerGrid}>
-            <Card className={styles.wideCard}>
-              <p className={styles.cardLabel}>Source</p>
-              <dl className={styles.kvGrid}>
-                <div>
-                  <dt>Branch</dt>
-                  <dd>{formatValue(source?.branch)}</dd>
-                </div>
-                <div>
-                  <dt>Code</dt>
-                  <dd>{shortSha(source?.codeSha)}</dd>
-                </div>
-                <div>
-                  <dt>Content</dt>
-                  <dd>{shortSha(source?.contentSha)}</dd>
-                </div>
-                <div>
-                  <dt>Pending deploy</dt>
-                  <dd>{source?.pendingDeploy === true ? "Yes" : "No"}</dd>
-                </div>
-              </dl>
-            </Card>
-
-            <Card className={styles.wideCard}>
-              <p className={styles.cardLabel}>Online management</p>
-              <p className={styles.cardText}>
-                Browser editing writes to the same draft content store as desktop
-                and iOS. Publish from the existing Release Center after reviewing
-                changes.
-              </p>
-              <div className={styles.linkRow}>
-                <Link href="/api/site-admin/mobile/summary">Mobile summary</Link>
-                <Link href="/api/site-admin/release-jobs">Release jobs</Link>
-              </div>
-            </Card>
-          </section>
-        </>
-      ) : null}
-
       {area === "content" ? (
-        <section className={`${styles.workspaceGrid} ${styles.contentWorkspace}`}>
-          <Card className={styles.sidePanel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.cardLabel}>Content</p>
-                <h2 className={styles.panelTitle}>{titleForKind(kind)}</h2>
-              </div>
-              <Button
-                onClick={() => beginCreate(kind === "pages" ? "pages" : "posts")}
-                variant="subtle"
-                size="sm"
-              >
-                New
-              </Button>
-            </div>
-            <div className={styles.segmented} role="group" aria-label="Content type">
-              {(["posts", "pages", "components"] as EditableKind[]).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  data-active={kind === value}
-                  onClick={() => {
-                    setKind(value);
-                    setContentMode("browse");
-                    setSelected(null);
-                    setSourceDraft("");
-                    setContentForm(EMPTY_CONTENT_FORM);
-                    setContentFormBaseline("");
-                    setSlugDraft("");
-                    setLocalAutosaveAt("");
-                    setLocalDraftSnapshot(null);
-                  }}
-                >
-                  {titleForKind(value)}
-                </button>
-              ))}
-            </div>
-            <label className={styles.fieldLabel}>
-              Search
-              <input
-                className={styles.textField}
-                value={contentSearch}
-                onChange={(event) => setContentSearch(event.target.value)}
-                placeholder={`Find ${titleForKind(kind).toLowerCase()}`}
-              />
-            </label>
-            <div className={styles.collectionCallout}>
-              <div>
-                <strong>Managed collections</strong>
-                <small>News, Publications, Works, Teaching</small>
-              </div>
-              <Button onClick={() => setArea("collections")} variant="subtle" size="sm">
-                Open
-              </Button>
-            </div>
-            <div className={styles.itemList}>
-              {visibleItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={styles.itemButton}
-                  data-active={selected?.kind === kind && selected?.id === item.id}
-                  onClick={() => void selectContent(kind, item.id)}
-                >
-                  <span>{item.title}</span>
-                  <small>
-                    {item.draft ? "Draft · " : ""}
-                    {item.meta}
-                  </small>
-                </button>
-              ))}
-              {visibleItems.length === 0 ? (
-                <p className={styles.listEmpty}>No matching {titleForKind(kind).toLowerCase()}.</p>
-              ) : null}
-            </div>
-          </Card>
+        <section
+          className={`${styles.workspaceGrid} ${styles.contentWorkspace}`}
+          data-selected={selected ? "true" : "false"}
+        >
+          {renderContentLibrary()}
 
           {selected ? (
             <Card className={styles.editorPanel}>
@@ -2386,6 +2574,22 @@ export function SiteAdminWebConsole({
                     <p className={styles.cardText}>{selected.meta}</p>
                   </div>
                   <div className={styles.panelActions}>
+                    <Button
+                      onClick={closeSelectedContent}
+                      className={styles.backToContentButton}
+                      variant="subtle"
+                      size="sm"
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      onClick={() => setInspectorOpen((current) => !current)}
+                      variant="subtle"
+                      size="sm"
+                      aria-expanded={inspectorOpen}
+                    >
+                      Inspector
+                    </Button>
                     {selected.href ? (
                       <Button href={selected.href} variant="ghost" size="sm">
                         Open
@@ -2407,7 +2611,7 @@ export function SiteAdminWebConsole({
                   </span>
                   {selectedIsStructured ? (
                     <span className={styles.statusPill} data-state={contentForm.draft ? "smart-release" : "noop"}>
-                      {contentForm.draft ? "Draft" : "Public"}
+                      {contentForm.draft ? "Hidden" : "Public"}
                     </span>
                   ) : null}
                   <span className={styles.statusPill} data-state={liveStatusState}>
@@ -2525,7 +2729,6 @@ export function SiteAdminWebConsole({
                                 minHeight={320}
                                 size="large"
                                 disabled={saving}
-                                previewLayout="split"
                               />
                             </div>
                           </div>
@@ -2545,7 +2748,6 @@ export function SiteAdminWebConsole({
                           minHeight={560}
                           size="large"
                           disabled={saving}
-                          previewLayout="split"
                         />
                       </div>
                     )}
@@ -2614,19 +2816,14 @@ export function SiteAdminWebConsole({
                                 </div>
                               </div>
                             ) : (
-                              <div key={item.id} className={styles.newsEntryCard}>
-                                <div className={styles.newsEntryHeader}>
-                                  <label className={styles.fieldLabel}>
-                                    Date
-                                    <input
-                                      className={styles.textField}
-                                      type="date"
-                                      value={item.date}
-                                      onChange={(event) =>
-                                        updateNewsItem(index, { date: event.target.value })
-                                      }
-                                    />
-                                  </label>
+                              <details
+                                key={item.id}
+                                className={styles.newsEntryCard}
+                              >
+                                <summary className={styles.collectionEntrySummary}>
+                                  <strong>{item.body.split("\n")[0] || "Untitled update"}</strong>
+                                  <small>{item.date || "No date"}</small>
+                                </summary>
                                   <div className={styles.historyActions}>
                                     <Button
                                       onClick={() => moveSelectedNewsItem(index, -1)}
@@ -2645,6 +2842,13 @@ export function SiteAdminWebConsole({
                                       Down
                                     </Button>
                                     <Button
+                                      onClick={() => duplicateNewsItem(index)}
+                                      variant="subtle"
+                                      size="sm"
+                                    >
+                                      Duplicate
+                                    </Button>
+                                    <Button
                                       onClick={() => deleteNewsItem(index)}
                                       variant="subtle"
                                       tone="danger"
@@ -2653,7 +2857,17 @@ export function SiteAdminWebConsole({
                                       Delete
                                     </Button>
                                   </div>
-                                </div>
+                                <label className={styles.fieldLabel}>
+                                  Date
+                                  <input
+                                    className={styles.textField}
+                                    type="date"
+                                    value={item.date}
+                                    onChange={(event) =>
+                                      updateNewsItem(index, { date: event.target.value })
+                                    }
+                                  />
+                                </label>
                                 <label className={styles.fieldLabel}>
                                   Body
                                   <textarea
@@ -2665,7 +2879,7 @@ export function SiteAdminWebConsole({
                                     disabled={saving}
                                   />
                                 </label>
-                              </div>
+                              </details>
                             ),
                           )}
                         </div>
@@ -2727,7 +2941,15 @@ export function SiteAdminWebConsole({
               </div>
             </Card>
           )}
-          <Card className={styles.inspectorPanel}>
+          {inspectorOpen ? (
+            <button
+              type="button"
+              className={styles.inspectorScrim}
+              aria-label="Close inspector"
+              onClick={() => setInspectorOpen(false)}
+            />
+          ) : null}
+          <Card className={styles.inspectorPanel} data-open={inspectorOpen ? "true" : "false"}>
             {selected ? (
               <>
                 <div className={styles.panelHeader}>
@@ -2748,7 +2970,7 @@ export function SiteAdminWebConsole({
                         className={styles.statusPill}
                         data-state={contentForm.draft ? "smart-release" : "noop"}
                       >
-                        {contentForm.draft ? "Draft" : "Public"}
+                        {contentForm.draft ? "Hidden" : "Public"}
                       </span>
                     ) : null}
                     <span className={styles.statusPill} data-state={liveStatusState}>
@@ -2824,7 +3046,7 @@ export function SiteAdminWebConsole({
                           }))
                         }
                       />
-                      Draft only
+                      Hide from public site
                     </label>
                     <label className={styles.fieldLabel}>
                       Description
@@ -2856,34 +3078,52 @@ export function SiteAdminWebConsole({
                             placeholder="Comma separated"
                           />
                         </label>
-                        <label className={styles.fieldLabel}>
-                          Cover
-                          <input
-                            className={styles.textField}
-                            value={contentForm.cover}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                cover: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
-                        </label>
-                        <label className={styles.fieldLabel}>
-                          OG image
-                          <input
-                            className={styles.textField}
-                            value={contentForm.ogImage}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                ogImage: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
-                        </label>
+                        <div className={styles.assetField}>
+                          <label className={styles.fieldLabel}>
+                            Cover
+                            <input
+                              className={styles.textField}
+                              value={contentForm.cover}
+                              onChange={(event) =>
+                                setContentForm((current) => ({
+                                  ...current,
+                                  cover: event.target.value,
+                                }))
+                              }
+                              placeholder="Optional"
+                            />
+                          </label>
+                          <Button
+                            onClick={() => setAssetPickerTarget("cover")}
+                            variant="subtle"
+                            size="sm"
+                          >
+                            Choose
+                          </Button>
+                        </div>
+                        <div className={styles.assetField}>
+                          <label className={styles.fieldLabel}>
+                            OG image
+                            <input
+                              className={styles.textField}
+                              value={contentForm.ogImage}
+                              onChange={(event) =>
+                                setContentForm((current) => ({
+                                  ...current,
+                                  ogImage: event.target.value,
+                                }))
+                              }
+                              placeholder="Optional"
+                            />
+                          </label>
+                          <Button
+                            onClick={() => setAssetPickerTarget("ogImage")}
+                            variant="subtle"
+                            size="sm"
+                          >
+                            Choose
+                          </Button>
+                        </div>
                       </>
                     ) : null}
                   </section>
@@ -2939,13 +3179,24 @@ export function SiteAdminWebConsole({
                 <section className={styles.inspectorSection}>
                   <p className={styles.inspectorLabel}>Version</p>
                   <div className={styles.inspectorStat}>
-                    <span>Draft version</span>
+                    <span>Saved version</span>
                     <strong>{shortSha(selected.version)}</strong>
                   </div>
-                  <p className={styles.editorHint}>
-                    Saves use optimistic conflict protection; reload if another client
-                    changed this file.
-                  </p>
+                  <SiteAdminVersionHistory
+                    path={versionPathFor(selected.kind, selected.id)}
+                    currentSource={selectedSourceDraft}
+                    currentVersion={selected.version}
+                    onRestored={async () => {
+                      clearLocalDraft(selected.kind, selected.id);
+                      const detail = await readJson<EditableDetailPayload>(
+                        endpointFor(selected.kind, selected.id),
+                      );
+                      applySelectedDetail(selected.kind, selected.id, detail);
+                      await refreshLists();
+                      await refreshSummaryOnly();
+                      setNotice("Earlier version restored and saved.");
+                    }}
+                  />
                 </section>
               </>
             ) : (
@@ -3066,55 +3317,12 @@ export function SiteAdminWebConsole({
         </div>
       ) : null}
 
-      {area === "collections" ? (
-        <section className={styles.collectionGrid}>
-          {componentDefinitions.map((definition) => {
-            const summary = componentSummaryFor(components, definition.name);
-            return (
-              <Card key={definition.name} className={styles.collectionCard}>
-                <div className={styles.cardHeader}>
-                  <div>
-                    <p className={styles.cardLabel}>Managed collection</p>
-                    <h2 className={styles.cardTitle}>{definition.label}</h2>
-                  </div>
-                  <span className={styles.statusPill} data-state="noop">
-                    {summary?.count ?? 0} {summary?.entryLabel || definition.entryLabel || "entries"}
-                  </span>
-                </div>
-                <p className={styles.cardText}>
-                  {definition.description ||
-                    "Structured content that powers a public page section."}
-                </p>
-                {summary?.rows?.length ? (
-                  <div className={styles.collectionRows}>
-                    {summary.rows.slice(0, 5).map((row, index) => (
-                      <div key={`${definition.name}-${row.title}-${index}`}>
-                        <strong>{row.title}</strong>
-                        {row.detail ? <small>{row.detail}</small> : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className={styles.editorHint}>No preview rows available.</p>
-                )}
-                <div className={styles.panelActions}>
-                  <Button
-                    onClick={() => void selectManagedComponent(definition)}
-                    tone="accent"
-                    size="sm"
-                  >
-                    Edit entries
-                  </Button>
-                  {definition.primaryRoute ? (
-                    <Button href={definition.primaryRoute} variant="subtle" size="sm">
-                      Open live
-                    </Button>
-                  ) : null}
-                </div>
-              </Card>
-            );
-          })}
-        </section>
+      {area === "media" ? (
+        <SiteAdminMediaLibrary />
+      ) : null}
+
+      {area === "settings" ? (
+        <SiteAdminSettingsPanel />
       ) : null}
 
       {area === "release" ? (
@@ -3146,8 +3354,8 @@ export function SiteAdminWebConsole({
               </div>
               <div data-active={releaseNeedsPublish || releaseIsRunning ? "true" : "false"}>
                 <span>2</span>
-                <strong>Staging</strong>
-                <small>Preview the generated site</small>
+                <strong>Preview</strong>
+                <small>Optional for code and layout changes</small>
               </div>
               <div data-active={release?.recommendedAction.kind === "noop" ? "true" : "false"}>
                 <span>3</span>
@@ -3170,7 +3378,7 @@ export function SiteAdminWebConsole({
                   ? "Starting"
                   : release?.recommendedAction.kind === "noop"
                     ? "Live current"
-                    : "Run recommended release"}
+                    : "Publish live"}
               </Button>
               <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
                 Refresh
@@ -3232,7 +3440,9 @@ export function SiteAdminWebConsole({
       ) : null}
 
       {area === "home" ? (
-        <Card className={styles.formPanel}>
+        <section className={`${styles.workspaceGrid} ${styles.contentWorkspaceSimple}`}>
+          {renderContentLibrary()}
+          <Card className={styles.formPanel}>
           <div className={styles.panelHeader}>
             <div>
               <p className={styles.cardLabel}>Home</p>
@@ -3241,9 +3451,9 @@ export function SiteAdminWebConsole({
             <Button
               onClick={() => void saveHome()}
               tone="accent"
-              disabled={!home || saving}
+              disabled={!home || saving || !homeDirty}
             >
-              {saving ? "Saving" : "Save Home"}
+              {saving ? "Saving" : "Save"}
             </Button>
           </div>
           <label className={styles.fieldLabel}>
@@ -3269,19 +3479,41 @@ export function SiteAdminWebConsole({
             Source version {shortSha(home?.sourceVersion.fileSha)}. Empty body MDX
             renders the public home shell only.
           </p>
-        </Card>
+          {home ? (
+            <details className={styles.editorDetails}>
+              <summary>
+                <span>Version history</span>
+                <small>{shortSha(home.sourceVersion.fileSha)}</small>
+              </summary>
+              <div className={styles.editorDetailsBody}>
+                <SiteAdminVersionHistory
+                  path="content/home.json"
+                  currentSource={JSON.stringify(home.data, null, 2)}
+                  currentVersion={home.sourceVersion.fileSha}
+                  onRestored={async () => {
+                    await refreshAll();
+                    setNotice("Earlier Home version restored.");
+                  }}
+                />
+              </div>
+            </details>
+          ) : null}
+          </Card>
+        </section>
       ) : null}
 
       {area === "now" ? (
-        <section className={styles.nowGrid}>
-          <Card className={styles.formPanel}>
+        <section className={`${styles.workspaceGrid} ${styles.contentWorkspaceSimple}`}>
+          {renderContentLibrary()}
+          <div className={styles.nowEditorStack}>
+            <Card className={styles.formPanel}>
             <div className={styles.panelHeader}>
               <div>
                 <p className={styles.cardLabel}>Now</p>
                 <h2 className={styles.panelTitle}>Current status</h2>
               </div>
-              <Button onClick={() => void saveNow()} tone="accent" disabled={!now || saving}>
-                {saving ? "Saving" : "Publish draft"}
+              <Button onClick={() => void saveNow()} tone="accent" disabled={!now || saving || !nowDirty}>
+                {saving ? "Saving" : "Save"}
               </Button>
             </div>
             <label className={styles.fieldLabel}>
@@ -3320,12 +3552,30 @@ export function SiteAdminWebConsole({
               </label>
             </div>
             <p className={styles.editorHint}>
-              Saves update the draft Now file. Publish through Release Center when
-              ready for the public site.
+              Saved content can be published from the Publish tab.
             </p>
-          </Card>
+            {now ? (
+              <details className={styles.editorDetails}>
+                <summary>
+                  <span>Version history</span>
+                  <small>{shortSha(now.sourceVersion.fileSha)}</small>
+                </summary>
+                <div className={styles.editorDetailsBody}>
+                  <SiteAdminVersionHistory
+                    path="content/now.json"
+                    currentSource={JSON.stringify(now.data, null, 2)}
+                    currentVersion={now.sourceVersion.fileSha}
+                    onRestored={async () => {
+                      await refreshAll();
+                      setNotice("Earlier Now version restored.");
+                    }}
+                  />
+                </div>
+              </details>
+            ) : null}
+            </Card>
 
-          <Card className={styles.historyPanel}>
+            <Card className={styles.historyPanel}>
             <p className={styles.cardLabel}>History</p>
             <div className={styles.historyList}>
               {(now?.data.updates || []).map((item) => (
@@ -3388,8 +3638,35 @@ export function SiteAdminWebConsole({
                 </div>
               ))}
             </div>
-          </Card>
+            </Card>
+          </div>
         </section>
+      ) : null}
+
+      {assetPickerTarget ? (
+        <div className={styles.drawerScrim} role="presentation">
+          <div className={styles.mediaPickerDialog} role="dialog" aria-modal="true">
+            <SiteAdminMediaLibrary
+              mode="pick"
+              onClose={() => setAssetPickerTarget(null)}
+              onSelect={(asset: SiteAdminAsset) => {
+                const target = assetPickerTarget;
+                setContentForm((current) => ({ ...current, [target]: asset.url }));
+                setAssetPickerTarget(null);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {conflict ? (
+        <SiteAdminConflictDialog
+          conflict={conflict}
+          busy={saving}
+          onReload={reloadConflictVersion}
+          onKeepMine={() => void keepConflictEdits()}
+          onClose={() => setConflict(null)}
+        />
       ) : null}
     </main>
   );
