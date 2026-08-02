@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, CSSProperties, HTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, CSSProperties, HTMLAttributes, ImgHTMLAttributes } from "react";
 import { Children, isValidElement } from "react";
 import type { MDXComponents } from "mdx/types";
 
@@ -20,6 +20,13 @@ import { PageLink } from "./page-link";
 import { PublicationsBlock } from "./publications-block";
 import { PublicationsEntry } from "./publications-entry";
 import { PublicationsProfileLinks } from "./publications-profile-links";
+import {
+  ReasoningDriftBucketChart,
+  ReasoningDriftEarlyWarningChart,
+  ReasoningDriftFailureModes,
+  ReasoningDriftTimingChart,
+  ReasoningDriftTraceExamples,
+} from "./reasoning-drift-charts";
 import { TeachingBlock } from "./teaching-block";
 import { TeachingEntry } from "./teaching-entry";
 import { TeachingLinks } from "./teaching-links";
@@ -173,12 +180,37 @@ function MdxBlockquote({
   );
 }
 
+function MdxImage({ src, alt, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
+  const source = typeof src === "string" ? src : "";
+  const filename = source.split("/").pop()?.split("?")[0] ?? "";
+
+  if (filename === "bucket_trends_gsm8k300_llama_greedy.png") {
+    return <ReasoningDriftBucketChart />;
+  }
+  if (filename === "early_warning_auc_curve_gsm8k300_llama_greedy.png") {
+    return <ReasoningDriftEarlyWarningChart />;
+  }
+  if (filename === "peak_timing_accuracy_full_vocab_100trace.png") {
+    return <ReasoningDriftTimingChart />;
+  }
+  if (filename === "trace_examples_gsm8k300_llama_greedy.png") {
+    return <ReasoningDriftTraceExamples />;
+  }
+  if (filename === "failure_mode_partition_gsm8k300_llama_greedy.png") {
+    return <ReasoningDriftFailureModes />;
+  }
+
+  // eslint-disable-next-line @next/next/no-img-element -- Native MDX images should keep their authored shape.
+  return <img src={src} alt={alt ?? ""} {...props} />;
+}
+
 // Components exposed to MDX. Most native HTML elements render as plain HTML
 // and inherit the existing Notion/classic CSS. Code blocks are wrapped with the
 // legacy Notion code shell so copy/highlight behavior remains available.
 export const postMdxComponents: MDXComponents = {
   a: MdxLink,
   blockquote: MdxBlockquote,
+  img: MdxImage,
   pre: MdxPre,
   span: MdxSpan,
   Bookmark,
@@ -199,6 +231,11 @@ export const postMdxComponents: MDXComponents = {
   PublicationsBlock,
   PublicationsEntry,
   PublicationsProfileLinks,
+  ReasoningDriftBucketChart,
+  ReasoningDriftEarlyWarningChart,
+  ReasoningDriftFailureModes,
+  ReasoningDriftTimingChart,
+  ReasoningDriftTraceExamples,
   TeachingBlock,
   TeachingEntry,
   TeachingLinks,

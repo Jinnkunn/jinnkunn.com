@@ -64,7 +64,7 @@ test("release script uses a clean snapshot for dirty staging releases", async ()
     "utf8",
   );
   assert.match(script, /prepareCleanReleaseSnapshot/);
-  assert.match(script, /dumpStagingD1Content/);
+  assert.match(script, /dumpD1Content/);
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);

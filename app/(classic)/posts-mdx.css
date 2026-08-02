@@ -522,3 +522,230 @@
   opacity: 1;
   pointer-events: all;
 }
+
+/* Quiet inline charts for MDX essays. These should read like figures in the
+   prose column, not embedded dashboard cards. */
+.mdx-chart {
+  --mdx-chart-grid: color-mix(in srgb, var(--ds-border-subtle) 68%, transparent);
+  --mdx-chart-axis: color-mix(in srgb, var(--ds-text-primary) 34%, var(--ds-border-subtle));
+  --mdx-chart-line: color-mix(in srgb, var(--ds-text-primary) 78%, var(--ds-surface-page));
+  --mdx-chart-fill: color-mix(in srgb, var(--ds-text-primary) 70%, var(--ds-surface-page));
+  --mdx-chart-fill-soft: color-mix(in srgb, var(--ds-text-primary) 36%, var(--ds-surface-page));
+  --mdx-chart-correct: color-mix(in srgb, var(--ds-success-text) 72%, var(--ds-text-primary));
+  --mdx-chart-wrong: color-mix(in srgb, var(--ds-danger-text) 72%, var(--ds-text-primary));
+  --mdx-chart-warning: color-mix(in srgb, var(--ds-warning-text) 70%, var(--ds-text-primary));
+  --mdx-chart-info: color-mix(in srgb, var(--ds-info-text) 68%, var(--ds-text-primary));
+  margin: var(--ds-space-6) 0;
+  color: var(--ds-text-primary);
+}
+
+.mdx-chart__svg,
+.mdx-chart__trace-svg {
+  display: block;
+  width: min(100%, 720px);
+  height: auto;
+  overflow: visible;
+}
+
+.mdx-chart__svg {
+  margin: 0 auto;
+}
+
+.mdx-chart__grid {
+  stroke: var(--mdx-chart-grid);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.mdx-chart__axis {
+  stroke: var(--mdx-chart-axis);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.mdx-chart__tick,
+.mdx-chart__label,
+.mdx-chart__sublabel,
+.mdx-chart__value {
+  font-family: var(--ds-font-sans);
+  fill: var(--ds-text-muted);
+}
+
+.mdx-chart__tick {
+  font-size: 11px;
+}
+
+.mdx-chart__label {
+  font-size: 12px;
+  font-weight: 650;
+  fill: var(--ds-text-secondary);
+}
+
+.mdx-chart__sublabel {
+  font-size: 10px;
+  fill: var(--ds-text-faint);
+}
+
+.mdx-chart__value {
+  font-size: 11px;
+  font-weight: 650;
+  fill: var(--ds-text-secondary);
+}
+
+.mdx-chart__bar {
+  fill: var(--mdx-chart-fill);
+}
+
+.mdx-chart__bar--2,
+.mdx-chart__bar--3,
+.mdx-chart__bar--4,
+.mdx-chart__bar--5 {
+  fill: var(--mdx-chart-fill-soft);
+}
+
+.mdx-chart__svg--timing .mdx-chart__bar--1 {
+  fill: var(--mdx-chart-correct);
+}
+
+.mdx-chart__svg--timing .mdx-chart__bar--2 {
+  fill: color-mix(in srgb, var(--mdx-chart-info) 70%, var(--ds-surface-page));
+}
+
+.mdx-chart__svg--timing .mdx-chart__bar--3 {
+  fill: color-mix(in srgb, var(--mdx-chart-warning) 74%, var(--ds-surface-page));
+}
+
+.mdx-chart__line,
+.mdx-chart__trace-line {
+  fill: none;
+  stroke: var(--mdx-chart-line);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.mdx-chart__svg--line .mdx-chart__line {
+  stroke-width: 2.4;
+}
+
+.mdx-chart__caption.notion-caption {
+  max-width: 640px;
+  margin: 8px auto 0;
+  color: var(--ds-text-muted);
+}
+
+.mdx-chart__trace-list {
+  display: grid;
+  gap: 18px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.mdx-chart__trace {
+  display: grid;
+  gap: 5px;
+}
+
+.mdx-chart__trace-label {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--ds-text-secondary);
+}
+
+.mdx-chart__trace-svg {
+  width: 100%;
+}
+
+.mdx-chart__trace-svg--correct .mdx-chart__trace-line {
+  stroke: var(--mdx-chart-correct);
+}
+
+.mdx-chart__trace-svg--wrong .mdx-chart__trace-line {
+  stroke: var(--mdx-chart-wrong);
+}
+
+.mdx-chart__partition {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.mdx-chart__partition-bar {
+  display: flex;
+  width: 100%;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ds-surface-soft);
+}
+
+.mdx-chart__partition-segment {
+  display: block;
+  min-width: 1px;
+}
+
+.mdx-chart__partition-segment--stable {
+  background: var(--mdx-chart-fill-soft);
+}
+
+.mdx-chart__partition-segment--early {
+  background: var(--mdx-chart-warning);
+}
+
+.mdx-chart__partition-segment--unstable {
+  background: var(--mdx-chart-fill);
+}
+
+.mdx-chart__partition-legend {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.mdx-chart__partition-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ds-text-secondary);
+}
+
+.mdx-chart__partition-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.mdx-chart__partition-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdx-chart__partition-value {
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .mdx-chart {
+    margin: var(--ds-space-5) 0;
+  }
+
+  .mdx-chart__caption.notion-caption {
+    margin-top: 6px;
+  }
+
+  .mdx-chart__partition-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .mdx-chart__partition-value {
+    grid-column: 2;
+  }
+}
