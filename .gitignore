@@ -25,6 +25,7 @@ node_modules/
 /output/
 /content/local/
 /.cache/
+/.antigravitycli/
 
 # notion generated content/assets (synced at build time)
 /content/generated/*
