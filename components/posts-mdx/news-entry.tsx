@@ -10,6 +10,8 @@ function formatDateHeading(iso: string): string {
 }
 
 interface NewsEntryProps {
+  /** Stable editor identity. It is intentionally not rendered. */
+  entryId?: string;
   /** Entry date in YYYY-MM-DD form. Used both for the rendered heading
    * and (by NewsBlock) for chronological sort order. */
   date?: string;

@@ -11,6 +11,7 @@ const TEACHING_ENTRY_RE = /<TeachingEntry\b([\s\S]*?)\/>/g;
 const PUBLICATIONS_ENTRY_RE = /<PublicationsEntry\b([\s\S]*?)\/>/g;
 
 export type NewsComponentEntry = {
+  entryId?: string;
   dateIso: string;
   body: string;
 };
@@ -20,6 +21,7 @@ export type NewsComponentFeedItem =
   | { type: "divider"; id: string };
 
 export type TeachingComponentEntry = {
+  entryId?: string;
   term: string;
   period: string;
   role: string;
@@ -30,6 +32,7 @@ export type TeachingComponentEntry = {
 };
 
 export type WorksComponentEntry = {
+  entryId?: string;
   category: "recent" | "passed";
   role: string;
   affiliation?: string;
@@ -102,7 +105,11 @@ export function parseNewsFeedItems(source: string): NewsComponentFeedItem[] {
     const attrs = parseJsxAttrs(match[1] ?? "");
     const dateIso = attrs.date ?? "";
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
-      const entry = { dateIso, body: match[2] ?? "" };
+      const entry = {
+        entryId: attrs.entryId || undefined,
+        dateIso,
+        body: match[2] ?? "",
+      };
       items.push({ type: "entry", entry });
     }
     cursor = NEWS_ENTRY_RE.lastIndex;
@@ -118,6 +125,7 @@ export function parseTeachingEntries(source: string): TeachingComponentEntry[] {
   while ((match = TEACHING_ENTRY_RE.exec(body)) !== null) {
     const attrs = parseJsxAttrs(match[1] ?? "");
     entries.push({
+      entryId: attrs.entryId || undefined,
       term: attrs.term ?? "",
       period: attrs.period ?? "",
       role: attrs.role ?? "",
@@ -159,6 +167,7 @@ export function parseWorksEntries(source: string): WorksComponentEntry[] {
   while ((match = WORKS_ENTRY_RE.exec(body)) !== null) {
     const attrs = parseJsxAttrs(match[1] ?? "");
     entries.push({
+      entryId: attrs.entryId || undefined,
       category: attrs.category === "passed" ? "passed" : "recent",
       role: attrs.role ?? "",
       affiliation: attrs.affiliation || undefined,

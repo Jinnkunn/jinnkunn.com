@@ -5,6 +5,8 @@ import type { ReactElement, ReactNode } from "react";
 import { ClassicLink } from "@/components/classic/classic-link";
 
 interface WorksEntryProps {
+  /** Stable editor identity. It is intentionally not rendered. */
+  entryId?: string;
   /** Partition key — `recent` puts the entry in the active list,
    * `passed` in the archive. Drives no styling on its own; the
    * surrounding page (and the WorksBlock embed) groups by category. */

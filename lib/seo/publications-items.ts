@@ -22,6 +22,7 @@ export type PublicationVenue = {
 };
 
 export type PublicationStructuredEntry = PublicationStructuredItem & {
+  entryId?: string;
   authors?: string[];
   authorsRich?: PublicationAuthor[];
   externalUrls?: string[];

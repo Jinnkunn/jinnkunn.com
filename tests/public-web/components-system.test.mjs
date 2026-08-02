@@ -32,7 +32,7 @@ test("components-system: shared parsers extract collection entries", () => {
 title: "News"
 ---
 
-<NewsEntry date="2026-01-02">
+<NewsEntry entryId="news-alpha" date="2026-01-02">
 Newer
 </NewsEntry>
 
@@ -41,22 +41,26 @@ Older
 </NewsEntry>
 `);
   assert.deepEqual(news.map((entry) => entry.dateIso), ["2026-01-02", "2025-12-31"]);
+  assert.equal(news[0].entryId, "news-alpha");
 
   const teaching = parseTeachingEntries(
-    '<TeachingEntry term="Fall" period="Sep-Dec" role="Instructor" courseCode="CSCI3141" courseName="Foundations" />',
+    '<TeachingEntry entryId="teaching-alpha" term="Fall" period="Sep-Dec" role="Instructor" courseCode="CSCI3141" courseName="Foundations" />',
   );
   assert.equal(teaching[0].courseCode, "CSCI3141");
+  assert.equal(teaching[0].entryId, "teaching-alpha");
 
   const publications = parsePublicationsEntries(
-    '<PublicationsEntry data=\'{"title":"Paper","year":"2026","url":"","labels":[]}\' />',
+    '<PublicationsEntry data=\'{"entryId":"publication-alpha","title":"Paper","year":"2026","url":"","labels":[]}\' />',
   );
   assert.equal(publications[0].title, "Paper");
+  assert.equal(publications[0].entryId, "publication-alpha");
 
   const works = parseWorksEntries(
-    '<WorksEntry category="passed" role="Researcher" period="2024">Body</WorksEntry>',
+    '<WorksEntry entryId="works-alpha" category="passed" role="Researcher" period="2024">Body</WorksEntry>',
   );
   assert.equal(works[0].category, "passed");
   assert.equal(works[0].body, "Body");
+  assert.equal(works[0].entryId, "works-alpha");
 });
 
 test("components-system: news feed parser preserves entry dividers", () => {

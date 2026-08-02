@@ -5,6 +5,8 @@ import type { ReactElement } from "react";
 import { ClassicLink } from "@/components/classic/classic-link";
 
 interface TeachingEntryProps {
+  /** Stable editor identity. It is intentionally not rendered. */
+  entryId?: string;
   /** Term label (e.g. "Fall 2024") — bold-underlined heading. */
   term?: string;
   period?: string;

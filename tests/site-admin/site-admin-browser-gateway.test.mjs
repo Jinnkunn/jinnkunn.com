@@ -159,7 +159,12 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(source.includes("serializePublicationsComponentDraft"));
   assert.ok(source.includes("Advanced component source"));
   assert.ok(source.includes("componentSearch"));
-  assert.ok(source.includes("Needs details"));
+  assert.ok(source.includes("normalizeComponentEntryId"));
+  assert.ok(source.includes("entryId"));
+  assert.ok(source.includes("reorderSelectedComponentItems"));
+  assert.ok(source.includes("Review {selectedComponentIssues.length}"));
+  assert.ok(source.includes("Expand all"));
+  assert.ok(source.includes("Group entries"));
   assert.ok(source.includes("Highlighted author"));
   assert.ok(source.includes("Venue"));
   assert.ok(source.includes("Managed ·"));
@@ -170,6 +175,9 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(css.includes(".componentContextBar"));
   assert.ok(css.includes(".componentCollectionHeader"));
   assert.ok(css.includes(".entryReadiness"));
+  assert.ok(css.includes(".collectionGroupHeading"));
+  assert.ok(css.includes(".componentDragHandle"));
+  assert.ok(css.includes(".fieldError"));
 });
 
 test("site-admin content detail APIs expose structured editor fields", () => {

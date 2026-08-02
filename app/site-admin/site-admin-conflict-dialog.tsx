@@ -7,6 +7,7 @@ export type SiteAdminConflict = {
   title: string;
   localSource: string;
   remoteSource: string;
+  detail?: string;
 };
 
 export function SiteAdminConflictDialog({
@@ -42,7 +43,8 @@ export function SiteAdminConflictDialog({
           </Button>
         </div>
         <p className={styles.cardText}>
-          Compare both versions before choosing which content should become the latest Draft.
+          {conflict.detail ||
+            "Compare both versions before choosing which content should become the latest Draft."}
         </p>
         <div className={styles.versionCompareGrid}>
           <label>

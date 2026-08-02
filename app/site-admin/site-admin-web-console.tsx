@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -240,7 +241,7 @@ type NewsComponentDraft = {
   items: NewsDraftItem[];
 };
 
-type TeachingDraftEntry = TeachingComponentEntry & {
+type TeachingDraftEntry = Omit<TeachingComponentEntry, "entryId"> & {
   id: string;
 };
 
@@ -249,7 +250,7 @@ type TeachingComponentDraft = {
   items: TeachingDraftEntry[];
 };
 
-type WorksDraftEntry = WorksComponentEntry & {
+type WorksDraftEntry = Omit<WorksComponentEntry, "entryId"> & {
   id: string;
 };
 
@@ -258,7 +259,7 @@ type WorksComponentDraft = {
   items: WorksDraftEntry[];
 };
 
-type PublicationDraftEntry = PublicationStructuredEntry & {
+type PublicationDraftEntry = Omit<PublicationStructuredEntry, "entryId"> & {
   id: string;
 };
 
@@ -266,6 +267,14 @@ type PublicationsComponentDraft = {
   frontmatter: string;
   items: PublicationDraftEntry[];
 };
+
+type ComponentEntryIssue = {
+  entryId: string;
+  field: string;
+  message: string;
+};
+
+type ComponentGrouping = "auto" | "none";
 
 const EMPTY_CONTENT_FORM: EditableContentForm = {
   title: "",
@@ -408,6 +417,100 @@ function managedComponentMeta(
   }`;
 }
 
+function normalizeComponentEntryId(
+  value: string | undefined,
+  prefix: string,
+  index: number,
+) {
+  const candidate = String(value || "").trim();
+  return /^[a-z0-9][a-z0-9._:-]{0,95}$/i.test(candidate)
+    ? candidate
+    : `${prefix}-${index + 1}`;
+}
+
+function createComponentEntryId(prefix: string) {
+  const randomPart =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 12)
+      : Math.random().toString(36).slice(2, 14);
+  return `${prefix}-${Date.now().toString(36)}-${randomPart}`;
+}
+
+function optionalUrlIsValid(value: string | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("#")) return true;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function newsEntryIssues(item: NewsDraftEntry): ComponentEntryIssue[] {
+  const issues: ComponentEntryIssue[] = [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
+    issues.push({ entryId: item.id, field: "date", message: "Choose a valid date." });
+  }
+  if (!item.body.trim()) {
+    issues.push({ entryId: item.id, field: "body", message: "Add update text." });
+  }
+  return issues;
+}
+
+function teachingEntryIssues(item: TeachingDraftEntry): ComponentEntryIssue[] {
+  const issues: ComponentEntryIssue[] = [];
+  if (!item.term.trim()) {
+    issues.push({ entryId: item.id, field: "term", message: "Add a term." });
+  }
+  if (!item.courseCode.trim() && !item.courseName.trim()) {
+    issues.push({
+      entryId: item.id,
+      field: "courseName",
+      message: "Add a course code or course name.",
+    });
+  }
+  if (!optionalUrlIsValid(item.courseUrl)) {
+    issues.push({ entryId: item.id, field: "courseUrl", message: "Enter a valid URL." });
+  }
+  return issues;
+}
+
+function worksEntryIssues(item: WorksDraftEntry): ComponentEntryIssue[] {
+  const issues: ComponentEntryIssue[] = [];
+  if (!item.role.trim()) {
+    issues.push({ entryId: item.id, field: "role", message: "Add a role." });
+  }
+  if (!item.period.trim()) {
+    issues.push({ entryId: item.id, field: "period", message: "Add a period." });
+  }
+  if (!optionalUrlIsValid(item.affiliationUrl)) {
+    issues.push({ entryId: item.id, field: "affiliationUrl", message: "Enter a valid URL." });
+  }
+  return issues;
+}
+
+function publicationEntryIssues(item: PublicationDraftEntry): ComponentEntryIssue[] {
+  const issues: ComponentEntryIssue[] = [];
+  if (!item.title.trim()) {
+    issues.push({ entryId: item.id, field: "title", message: "Add a title." });
+  }
+  if (!item.year.trim()) {
+    issues.push({ entryId: item.id, field: "year", message: "Add a year or year group." });
+  }
+  const urlFields: Array<[string, string | undefined]> = [
+    ["url", item.url],
+    ["doiUrl", item.doiUrl],
+    ["arxivUrl", item.arxivUrl],
+  ];
+  for (const [field, value] of urlFields) {
+    if (!optionalUrlIsValid(value)) {
+      issues.push({ entryId: item.id, field, message: "Enter a valid URL." });
+    }
+  }
+  return issues;
+}
+
 const NEWS_ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})/g;
 const NEWS_ENTRY_RE = /<NewsEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
 
@@ -461,7 +564,7 @@ function parseNewsComponentDraft(source: string): NewsComponentDraft {
     items.push(...parseNewsDividerItems(body.slice(cursor, match.index), `before-${entryIndex}`));
     const attrs = parseNewsAttrs(match[1] ?? "");
     items.push({
-      id: `entry-${entryIndex}`,
+      id: normalizeComponentEntryId(attrs.entryId, "news", entryIndex),
       type: "entry",
       date: /^\d{4}-\d{2}-\d{2}$/.test(attrs.date || "") ? attrs.date : todayInHalifax(),
       body: (match[2] ?? "").trim(),
@@ -478,9 +581,13 @@ function serializeNewsComponentDraft(draft: NewsComponentDraft): string {
     .map((item) => {
       if (item.type === "divider") return "---";
       const date = item.date || todayInHalifax();
-      return [`<NewsEntry date="${date}">`, "", item.body.trimEnd(), "", "</NewsEntry>"].join(
-        "\n",
-      );
+      return [
+        `<NewsEntry ${compactAttrs([jsxAttr("entryId", item.id), jsxAttr("date", date)])}>`,
+        "",
+        item.body.trimEnd(),
+        "",
+        "</NewsEntry>",
+      ].join("\n");
     })
     .join("\n\n");
   return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
@@ -509,10 +616,13 @@ function parseTeachingComponentDraft(source: string): TeachingComponentDraft {
   const { frontmatter } = componentFrontmatterFromSource(source, "Teaching");
   return {
     frontmatter,
-    items: parseTeachingEntries(source).map((entry, index) => ({
-      id: `teaching-${index}`,
-      ...entry,
-    })),
+    items: parseTeachingEntries(source).map((entry, index) => {
+      const { entryId, ...value } = entry;
+      return {
+        id: normalizeComponentEntryId(entryId, "teaching", index),
+        ...value,
+      };
+    }),
   };
 }
 
@@ -520,6 +630,7 @@ function serializeTeachingComponentDraft(draft: TeachingComponentDraft): string 
   const body = draft.items
     .map((entry) => {
       const attrs = compactAttrs([
+        jsxAttr("entryId", entry.id),
         jsxAttr("term", entry.term),
         jsxAttr("period", entry.period),
         jsxAttr("role", entry.role),
@@ -538,10 +649,13 @@ function parseWorksComponentDraft(source: string): WorksComponentDraft {
   const { frontmatter } = componentFrontmatterFromSource(source, "Works");
   return {
     frontmatter,
-    items: parseWorksEntries(source).map((entry, index) => ({
-      id: `works-${index}`,
-      ...entry,
-    })),
+    items: parseWorksEntries(source).map((entry, index) => {
+      const { entryId, ...value } = entry;
+      return {
+        id: normalizeComponentEntryId(entryId, "works", index),
+        ...value,
+      };
+    }),
   };
 }
 
@@ -549,6 +663,7 @@ function serializeWorksComponentDraft(draft: WorksComponentDraft): string {
   const body = draft.items
     .map((entry) => {
       const attrs = compactAttrs([
+        jsxAttr("entryId", entry.id),
         jsxAttr("category", entry.category),
         jsxAttr("role", entry.role),
         jsxAttr("affiliation", entry.affiliation),
@@ -568,17 +683,20 @@ function parsePublicationsComponentDraft(source: string): PublicationsComponentD
   const { frontmatter } = componentFrontmatterFromSource(source, "Publications");
   return {
     frontmatter,
-    items: parsePublicationsEntries(source).map((entry, index) => ({
-      id: `publication-${index}`,
-      ...entry,
-    })),
+    items: parsePublicationsEntries(source).map((entry, index) => {
+      const { entryId, ...value } = entry;
+      return {
+        id: normalizeComponentEntryId(entryId, "publication", index),
+        ...value,
+      };
+    }),
   };
 }
 
 function serializePublicationsComponentDraft(draft: PublicationsComponentDraft): string {
   const body = draft.items
     .map((entry) => {
-      const data = { ...entry, id: undefined };
+      const data = { ...entry, entryId: entry.id, id: undefined };
       return `<PublicationsEntry data='${jsonDataAttr(data)}' />`;
     })
     .join("\n\n");
@@ -586,6 +704,7 @@ function serializePublicationsComponentDraft(draft: PublicationsComponentDraft):
 }
 
 function moveNewsItem(items: NewsDraftItem[], index: number, direction: -1 | 1) {
+  if (index < 0 || index >= items.length) return items;
   const nextIndex = index + direction;
   if (nextIndex < 0 || nextIndex >= items.length) return items;
   const next = [...items];
@@ -596,6 +715,7 @@ function moveNewsItem(items: NewsDraftItem[], index: number, direction: -1 | 1) 
 }
 
 function moveDraftEntry<T>(items: T[], index: number, direction: -1 | 1) {
+  if (index < 0 || index >= items.length) return items;
   const nextIndex = index + direction;
   if (nextIndex < 0 || nextIndex >= items.length) return items;
   const next = [...items];
@@ -603,6 +723,80 @@ function moveDraftEntry<T>(items: T[], index: number, direction: -1 | 1) {
   if (!item) return items;
   next.splice(nextIndex, 0, item);
   return next;
+}
+
+function reorderDraftEntries<T extends { id: string }>(
+  items: T[],
+  sourceId: string,
+  targetId: string,
+) {
+  if (!sourceId || !targetId || sourceId === targetId) return items;
+  const sourceIndex = items.findIndex((item) => item.id === sourceId);
+  const targetIndex = items.findIndex((item) => item.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return items;
+  const next = [...items];
+  const [source] = next.splice(sourceIndex, 1);
+  if (!source) return items;
+  const adjustedTarget = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  next.splice(adjustedTarget, 0, source);
+  return next;
+}
+
+function componentEntryDomId(id: string) {
+  return `component-entry-${id.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
+function componentEntryFingerprint(value: unknown) {
+  return JSON.stringify(value);
+}
+
+function componentDraftItemsForSource(name: SiteComponentName, source: string) {
+  if (name === "news") return parseNewsComponentDraft(source).items;
+  if (name === "teaching") return parseTeachingComponentDraft(source).items;
+  if (name === "works") return parseWorksComponentDraft(source).items;
+  return parsePublicationsComponentDraft(source).items;
+}
+
+function changedComponentEntryIds(
+  baseline: Array<{ id: string }>,
+  candidate: Array<{ id: string }>,
+) {
+  const baselineMap = new Map(
+    baseline.map((item) => [item.id, componentEntryFingerprint(item)]),
+  );
+  const candidateMap = new Map(
+    candidate.map((item) => [item.id, componentEntryFingerprint(item)]),
+  );
+  return new Set(
+    [...new Set([...baselineMap.keys(), ...candidateMap.keys()])].filter(
+      (id) => baselineMap.get(id) !== candidateMap.get(id),
+    ),
+  );
+}
+
+function componentConflictDetail(
+  name: SiteComponentName,
+  baselineSource: string,
+  localSource: string,
+  remoteSource: string,
+) {
+  const baseline = componentDraftItemsForSource(name, baselineSource);
+  const localChanged = changedComponentEntryIds(
+    baseline,
+    componentDraftItemsForSource(name, localSource),
+  );
+  const remoteChanged = changedComponentEntryIds(
+    baseline,
+    componentDraftItemsForSource(name, remoteSource),
+  );
+  const overlaps = [...localChanged].filter((id) => remoteChanged.has(id));
+  if (overlaps.length > 0) {
+    return `${overlaps.length} ${overlaps.length === 1 ? "entry was" : "entries were"} edited in both versions. Compare before choosing which version to keep.`;
+  }
+  if (localChanged.size > 0 && remoteChanged.size > 0) {
+    return "Your edits and the latest saved edits touch different entries, but the collection changed in both places. Compare the versions before continuing.";
+  }
+  return "The collection changed after you opened it. Compare both versions before choosing which content should become the latest Draft.";
 }
 
 function sourceForNewContent(input: {
@@ -910,6 +1104,11 @@ export function SiteAdminWebConsole({
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
   const [contentSearch, setContentSearch] = useState("");
   const [componentSearch, setComponentSearch] = useState("");
+  const [componentGrouping, setComponentGrouping] =
+    useState<ComponentGrouping>("auto");
+  const [componentExpandedIds, setComponentExpandedIds] = useState<string[]>([]);
+  const [componentDragId, setComponentDragId] = useState("");
+  const [componentDropId, setComponentDropId] = useState("");
   const [componentReturnTarget, setComponentReturnTarget] =
     useState<ComponentReturnTarget | null>(null);
   const [selected, setSelected] = useState<EditableDetail | null>(null);
@@ -1015,6 +1214,45 @@ export function SiteAdminWebConsole({
         : null,
     [selectedComponentName, sourceDraft],
   );
+  const selectedComponentIssues = useMemo(() => {
+    if (selectedNewsDraft) {
+      return selectedNewsDraft.items.flatMap((item) =>
+        item.type === "entry" ? newsEntryIssues(item) : [],
+      );
+    }
+    if (selectedTeachingDraft) {
+      return selectedTeachingDraft.items.flatMap(teachingEntryIssues);
+    }
+    if (selectedWorksDraft) {
+      return selectedWorksDraft.items.flatMap(worksEntryIssues);
+    }
+    if (selectedPublicationsDraft) {
+      return selectedPublicationsDraft.items.flatMap(publicationEntryIssues);
+    }
+    return [];
+  }, [
+    selectedNewsDraft,
+    selectedPublicationsDraft,
+    selectedTeachingDraft,
+    selectedWorksDraft,
+  ]);
+  const componentBaselineFingerprints = useMemo(() => {
+    if (!selected || selected.kind !== "components" || !selectedComponentName) {
+      return new Map<string, string>();
+    }
+    const items: Array<{ id: string }> =
+      selectedComponentName === "news"
+        ? parseNewsComponentDraft(selected.source).items
+        : selectedComponentName === "teaching"
+          ? parseTeachingComponentDraft(selected.source).items
+          : selectedComponentName === "works"
+            ? parseWorksComponentDraft(selected.source).items
+            : parsePublicationsComponentDraft(selected.source).items;
+    return new Map(
+      items.map((item) => [item.id, componentEntryFingerprint(item)]),
+    );
+  }, [selected, selectedComponentName]);
+  const componentSaveBlocked = selectedComponentIssues.length > 0;
   const release = summary?.release;
   const source = summary?.source;
   const areaTitle =
@@ -1065,11 +1303,15 @@ export function SiteAdminWebConsole({
   const releaseUnavailable = releaseActionKind === "refresh" || !release?.recommendedAction;
   const draftStatusState = saving
     ? "saving"
+    : componentSaveBlocked
+      ? "blocked"
     : selectedDirty
       ? "smart-release"
       : "noop";
   const draftStatusLabel = saving
     ? "Saving"
+    : componentSaveBlocked
+      ? "Needs attention"
     : selectedDirty
       ? "Unsaved edits"
       : "Saved";
@@ -1091,7 +1333,11 @@ export function SiteAdminWebConsole({
         : releaseActionKind === "noop"
           ? "Live current"
           : "Publish unavailable";
-  const editorStatusHint = selectedDirty
+  const editorStatusHint = componentSaveBlocked
+    ? `Fix ${selectedComponentIssues.length} validation ${
+        selectedComponentIssues.length === 1 ? "issue" : "issues"
+      } before saving. Your recovery copy is still kept in this browser.`
+    : selectedDirty
     ? localAutosaveAt
       ? `Recovery copy saved ${formatWhen(localAutosaveAt)}. Save before publishing.`
       : "Unsaved edits are protected in this browser until saved."
@@ -1236,14 +1482,21 @@ export function SiteAdminWebConsole({
   ]);
 
   useEffect(() => {
-    if (!selected || !selectedDirty || saving || conflict) return;
+    if (!selected || !selectedDirty || saving || conflict || componentSaveBlocked) return;
     const selectedKey = `${selected.kind}:${selected.id}`;
     const timer = window.setTimeout(() => {
       if (`${selected.kind}:${selected.id}` !== selectedKey) return;
       void saveSelectedContentRef.current({ quiet: true });
     }, 1600);
     return () => window.clearTimeout(timer);
-  }, [conflict, saving, selected, selectedDirty, selectedSourceDraft]);
+  }, [
+    componentSaveBlocked,
+    conflict,
+    saving,
+    selected,
+    selectedDirty,
+    selectedSourceDraft,
+  ]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -1329,6 +1582,10 @@ export function SiteAdminWebConsole({
         : next.source;
     setContentFormBaseline(baseline);
     setComponentSearch("");
+    setComponentGrouping("auto");
+    setComponentExpandedIds([]);
+    setComponentDragId("");
+    setComponentDropId("");
     setLocalAutosaveAt("");
     setContentSavedAt("");
     const localDraft = readLocalDraft(nextKind, id);
@@ -1368,6 +1625,14 @@ export function SiteAdminWebConsole({
 
   async function saveSelectedContent(options: { quiet?: boolean } = {}) {
     if (!selected) return;
+    if (componentSaveBlocked) {
+      setWarning(
+        `Fix ${selectedComponentIssues.length} validation ${
+          selectedComponentIssues.length === 1 ? "issue" : "issues"
+        } before saving.`,
+      );
+      return;
+    }
     const sourceAtStart = selectedSourceDraft;
     const selectedAtStart = selected;
     setSaving(true);
@@ -1422,6 +1687,16 @@ export function SiteAdminWebConsole({
             title: selectedAtStart.title,
             localSource: selectedSourceDraftRef.current,
             remoteSource: remote.source,
+            detail:
+              selectedAtStart.kind === "components" &&
+              isSiteComponentName(selectedAtStart.id)
+                ? componentConflictDetail(
+                    selectedAtStart.id,
+                    selectedAtStart.source,
+                    selectedSourceDraftRef.current,
+                    remote.source,
+                  )
+                : undefined,
             remote,
             remotePayload,
           });
@@ -1772,11 +2047,12 @@ export function SiteAdminWebConsole({
   }
 
   function addNewsEntry() {
+    const id = createComponentEntryId("news");
     updateNewsDraft((draft) => ({
       ...draft,
       items: [
         {
-          id: `entry-new-${Date.now()}`,
+          id,
           type: "entry",
           date: todayInHalifax(),
           body: "New update.",
@@ -1784,14 +2060,16 @@ export function SiteAdminWebConsole({
         ...draft.items,
       ],
     }));
+    setComponentExpandedIds([id]);
   }
 
   function addNewsDivider() {
+    const id = createComponentEntryId("divider");
     updateNewsDraft((draft) => ({
       ...draft,
       items: [
         {
-          id: `divider-new-${Date.now()}`,
+          id,
           type: "divider",
         },
         ...draft.items,
@@ -1799,40 +2077,48 @@ export function SiteAdminWebConsole({
     }));
   }
 
-  function updateNewsItem(index: number, patch: Partial<NewsDraftEntry>) {
+  function updateNewsItem(id: string, patch: Partial<NewsDraftEntry>) {
     updateNewsDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) => {
-        if (itemIndex !== index || item.type !== "entry") return item;
+      items: draft.items.map((item) => {
+        if (item.id !== id || item.type !== "entry") return item;
         return { ...item, ...patch };
       }),
     }));
   }
 
-  function deleteNewsItem(index: number) {
+  function deleteNewsItem(id: string) {
     if (!window.confirm("Delete this News item?")) return;
     updateNewsDraft((draft) => ({
       ...draft,
-      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+      items: draft.items.filter((item) => item.id !== id),
     }));
+    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
   }
 
-  function duplicateNewsItem(index: number) {
+  function duplicateNewsItem(id: string) {
+    const copyId = createComponentEntryId("news");
     updateNewsDraft((draft) => {
+      const index = draft.items.findIndex((item) => item.id === id);
       const source = draft.items[index];
       if (!source || source.type !== "entry") return draft;
-      const copy = { ...source, id: `entry-copy-${Date.now()}` };
+      const copy = { ...source, id: copyId };
       return {
         ...draft,
         items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
       };
     });
+    setComponentExpandedIds([copyId]);
   }
 
-  function moveSelectedNewsItem(index: number, direction: -1 | 1) {
+  function moveSelectedNewsItem(id: string, direction: -1 | 1) {
     updateNewsDraft((draft) => ({
       ...draft,
-      items: moveNewsItem(draft.items, index, direction),
+      items: moveNewsItem(
+        draft.items,
+        draft.items.findIndex((item) => item.id === id),
+        direction,
+      ),
     }));
   }
 
@@ -1844,11 +2130,12 @@ export function SiteAdminWebConsole({
   }
 
   function addTeachingEntry() {
+    const id = createComponentEntryId("teaching");
     updateTeachingDraft((draft) => ({
       ...draft,
       items: [
         {
-          id: `teaching-new-${Date.now()}`,
+          id,
           term: "New term",
           period: "",
           role: "",
@@ -1858,41 +2145,50 @@ export function SiteAdminWebConsole({
         ...draft.items,
       ],
     }));
+    setComponentExpandedIds([id]);
   }
 
-  function updateTeachingItem(index: number, patch: Partial<TeachingDraftEntry>) {
+  function updateTeachingItem(id: string, patch: Partial<TeachingDraftEntry>) {
     updateTeachingDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
+      items: draft.items.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
       ),
     }));
   }
 
-  function deleteTeachingItem(index: number) {
+  function deleteTeachingItem(id: string) {
     if (!window.confirm("Delete this Teaching row?")) return;
     updateTeachingDraft((draft) => ({
       ...draft,
-      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+      items: draft.items.filter((item) => item.id !== id),
     }));
+    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
   }
 
-  function duplicateTeachingItem(index: number) {
+  function duplicateTeachingItem(id: string) {
+    const copyId = createComponentEntryId("teaching");
     updateTeachingDraft((draft) => {
+      const index = draft.items.findIndex((item) => item.id === id);
       const source = draft.items[index];
       if (!source) return draft;
-      const copy = { ...source, id: `teaching-copy-${Date.now()}` };
+      const copy = { ...source, id: copyId };
       return {
         ...draft,
         items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
       };
     });
+    setComponentExpandedIds([copyId]);
   }
 
-  function moveSelectedTeachingItem(index: number, direction: -1 | 1) {
+  function moveSelectedTeachingItem(id: string, direction: -1 | 1) {
     updateTeachingDraft((draft) => ({
       ...draft,
-      items: moveDraftEntry(draft.items, index, direction),
+      items: moveDraftEntry(
+        draft.items,
+        draft.items.findIndex((item) => item.id === id),
+        direction,
+      ),
     }));
   }
 
@@ -1902,11 +2198,12 @@ export function SiteAdminWebConsole({
   }
 
   function addWorksEntry() {
+    const id = createComponentEntryId("works");
     updateWorksDraft((draft) => ({
       ...draft,
       items: [
         {
-          id: `works-new-${Date.now()}`,
+          id,
           category: "recent",
           role: "New role",
           affiliation: "",
@@ -1917,41 +2214,50 @@ export function SiteAdminWebConsole({
         ...draft.items,
       ],
     }));
+    setComponentExpandedIds([id]);
   }
 
-  function updateWorksItem(index: number, patch: Partial<WorksDraftEntry>) {
+  function updateWorksItem(id: string, patch: Partial<WorksDraftEntry>) {
     updateWorksDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
+      items: draft.items.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
       ),
     }));
   }
 
-  function deleteWorksItem(index: number) {
+  function deleteWorksItem(id: string) {
     if (!window.confirm("Delete this Work row?")) return;
     updateWorksDraft((draft) => ({
       ...draft,
-      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+      items: draft.items.filter((item) => item.id !== id),
     }));
+    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
   }
 
-  function duplicateWorksItem(index: number) {
+  function duplicateWorksItem(id: string) {
+    const copyId = createComponentEntryId("works");
     updateWorksDraft((draft) => {
+      const index = draft.items.findIndex((item) => item.id === id);
       const source = draft.items[index];
       if (!source) return draft;
-      const copy = { ...source, id: `works-copy-${Date.now()}` };
+      const copy = { ...source, id: copyId };
       return {
         ...draft,
         items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
       };
     });
+    setComponentExpandedIds([copyId]);
   }
 
-  function moveSelectedWorksItem(index: number, direction: -1 | 1) {
+  function moveSelectedWorksItem(id: string, direction: -1 | 1) {
     updateWorksDraft((draft) => ({
       ...draft,
-      items: moveDraftEntry(draft.items, index, direction),
+      items: moveDraftEntry(
+        draft.items,
+        draft.items.findIndex((item) => item.id === id),
+        direction,
+      ),
     }));
   }
 
@@ -1963,11 +2269,12 @@ export function SiteAdminWebConsole({
   }
 
   function addPublicationEntry() {
+    const id = createComponentEntryId("publication");
     updatePublicationsDraft((draft) => ({
       ...draft,
       items: [
         {
-          id: `publication-new-${Date.now()}`,
+          id,
           title: "Untitled publication",
           year: new Date().getFullYear().toString(),
           url: "",
@@ -1976,23 +2283,24 @@ export function SiteAdminWebConsole({
         ...draft.items,
       ],
     }));
+    setComponentExpandedIds([id]);
   }
 
-  function updatePublicationItem(index: number, patch: Partial<PublicationDraftEntry>) {
+  function updatePublicationItem(id: string, patch: Partial<PublicationDraftEntry>) {
     updatePublicationsDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
+      items: draft.items.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
       ),
     }));
   }
 
   function updatePublicationListField(
-    index: number,
+    id: string,
     field: "labels" | "highlights" | "externalUrls",
     value: string,
   ) {
-    updatePublicationItem(index, {
+    updatePublicationItem(id, {
       [field]: value
         .split(",")
         .map((item) => item.trim())
@@ -2005,15 +2313,15 @@ export function SiteAdminWebConsole({
     return (item.authorsRich || []).map((author) => author.name).filter(Boolean);
   }
 
-  function updatePublicationAuthors(index: number, value: string) {
+  function updatePublicationAuthors(id: string, value: string) {
     const names = value
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean);
     updatePublicationsDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
+      items: draft.items.map((item) => {
+        if (item.id !== id) return item;
         const selfNames = new Set(
           (item.authorsRich || [])
             .filter((author) => author.isSelf)
@@ -2031,11 +2339,11 @@ export function SiteAdminWebConsole({
     }));
   }
 
-  function updatePublicationSelfAuthor(index: number, selfAuthor: string) {
+  function updatePublicationSelfAuthor(id: string, selfAuthor: string) {
     updatePublicationsDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
+      items: draft.items.map((item) => {
+        if (item.id !== id) return item;
         const names = publicationAuthorNames(item);
         return {
           ...item,
@@ -2058,13 +2366,13 @@ export function SiteAdminWebConsole({
   }
 
   function updatePublicationPrimaryVenue(
-    index: number,
+    id: string,
     patch: Partial<PublicationVenue>,
   ) {
     updatePublicationsDraft((draft) => ({
       ...draft,
-      items: draft.items.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
+      items: draft.items.map((item) => {
+        if (item.id !== id) return item;
         const venues = [...(item.venues || [])];
         const venueIndex = venues.findIndex(
           (venue) => !/^(doi|arxiv(?:\.org)?)$/i.test(String(venue.type || "").trim()),
@@ -2085,31 +2393,138 @@ export function SiteAdminWebConsole({
     }));
   }
 
-  function deletePublicationItem(index: number) {
+  function deletePublicationItem(id: string) {
     if (!window.confirm("Delete this publication?")) return;
     updatePublicationsDraft((draft) => ({
       ...draft,
-      items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
+      items: draft.items.filter((item) => item.id !== id),
     }));
+    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
   }
 
-  function duplicatePublicationItem(index: number) {
+  function duplicatePublicationItem(id: string) {
+    const copyId = createComponentEntryId("publication");
     updatePublicationsDraft((draft) => {
+      const index = draft.items.findIndex((item) => item.id === id);
       const source = draft.items[index];
       if (!source) return draft;
-      const copy = { ...source, id: `publication-copy-${Date.now()}` };
+      const copy = { ...source, id: copyId };
       return {
         ...draft,
         items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
       };
     });
+    setComponentExpandedIds([copyId]);
   }
 
-  function moveSelectedPublicationItem(index: number, direction: -1 | 1) {
+  function moveSelectedPublicationItem(id: string, direction: -1 | 1) {
     updatePublicationsDraft((draft) => ({
       ...draft,
-      items: moveDraftEntry(draft.items, index, direction),
+      items: moveDraftEntry(
+        draft.items,
+        draft.items.findIndex((item) => item.id === id),
+        direction,
+      ),
     }));
+  }
+
+  function reorderSelectedComponentItems(sourceId: string, targetId: string) {
+    if (!sourceId || !targetId || componentSearch.trim()) return;
+    if (selectedComponentName === "news") {
+      updateNewsDraft((draft) => ({
+        ...draft,
+        items: reorderDraftEntries(draft.items, sourceId, targetId),
+      }));
+    } else if (selectedComponentName === "teaching") {
+      updateTeachingDraft((draft) => ({
+        ...draft,
+        items: reorderDraftEntries(draft.items, sourceId, targetId),
+      }));
+    } else if (selectedComponentName === "works") {
+      updateWorksDraft((draft) => ({
+        ...draft,
+        items: reorderDraftEntries(draft.items, sourceId, targetId),
+      }));
+    } else if (selectedComponentName === "publications") {
+      updatePublicationsDraft((draft) => ({
+        ...draft,
+        items: reorderDraftEntries(draft.items, sourceId, targetId),
+      }));
+    }
+  }
+
+  function handleComponentDragStart(event: DragEvent<HTMLElement>, id: string) {
+    if (componentSearch.trim()) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+    setComponentDragId(id);
+  }
+
+  function handleComponentDragOver(event: DragEvent<HTMLElement>, id: string) {
+    if (!componentDragId || componentSearch.trim()) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setComponentDropId(id);
+  }
+
+  function handleComponentDrop(event: DragEvent<HTMLElement>, id: string) {
+    event.preventDefault();
+    const sourceId = componentDragId || event.dataTransfer.getData("text/plain");
+    reorderSelectedComponentItems(sourceId, id);
+    setComponentDragId("");
+    setComponentDropId("");
+  }
+
+  function toggleComponentEntry(id: string) {
+    setComponentExpandedIds((current) =>
+      current.includes(id) ? current.filter((entryId) => entryId !== id) : [id],
+    );
+  }
+
+  function componentEntryState(item: { id: string }) {
+    const baseline = componentBaselineFingerprints.get(item.id);
+    if (!baseline) return "New";
+    return baseline === componentEntryFingerprint(item) ? "Saved" : "Edited";
+  }
+
+  function issuesForComponentEntry(id: string) {
+    return selectedComponentIssues.filter((issue) => issue.entryId === id);
+  }
+
+  function issueForComponentField(id: string, field: string) {
+    return selectedComponentIssues.find(
+      (issue) => issue.entryId === id && issue.field === field,
+    );
+  }
+
+  function renderComponentFieldIssue(id: string, field: string) {
+    const issue = issueForComponentField(id, field);
+    return issue ? <small className={styles.fieldError}>{issue.message}</small> : null;
+  }
+
+  function reviewFirstComponentIssue() {
+    const issue = selectedComponentIssues[0];
+    if (!issue) return;
+    setComponentSearch("");
+    setComponentExpandedIds([issue.entryId]);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const card = document.getElementById(componentEntryDomId(issue.entryId));
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const field = card?.querySelector<HTMLElement>(
+          `[data-component-field="${issue.field}"]`,
+        );
+        field?.focus({ preventScroll: true });
+      });
+    });
+  }
+
+  function renderCollectionGroup(label: string, previousLabel: string) {
+    if (componentGrouping === "none" || !label || label === previousLabel) return null;
+    return <div className={styles.collectionGroupHeading}>{label}</div>;
   }
 
   function renderComponentItemActions(input: {
@@ -2163,6 +2578,7 @@ export function SiteAdminWebConsole({
     onAdd: () => void;
     secondaryLabel?: string;
     onSecondary?: () => void;
+    visibleEntryIds: string[];
   }) {
     return (
       <div className={styles.componentCollectionHeader}>
@@ -2185,6 +2601,42 @@ export function SiteAdminWebConsole({
           <span className={styles.collectionCount}>
             {input.count} {input.entryLabel}
           </span>
+          <div className={styles.componentViewControls}>
+            <label>
+              <span className={styles.visuallyHidden}>Group entries</span>
+              <select
+                value={componentGrouping}
+                onChange={(event) =>
+                  setComponentGrouping(event.target.value === "none" ? "none" : "auto")
+                }
+                aria-label="Group entries"
+              >
+                <option value="auto">Grouped</option>
+                <option value="none">No groups</option>
+              </select>
+            </label>
+            <Button
+              onClick={() => setComponentExpandedIds(input.visibleEntryIds)}
+              variant="subtle"
+              size="sm"
+              disabled={input.visibleEntryIds.length === 0}
+            >
+              Expand all
+            </Button>
+            <Button
+              onClick={() => setComponentExpandedIds([])}
+              variant="subtle"
+              size="sm"
+              disabled={componentExpandedIds.length === 0}
+            >
+              Collapse
+            </Button>
+            {selectedComponentIssues.length > 0 ? (
+              <Button onClick={reviewFirstComponentIssue} variant="subtle" tone="warning" size="sm">
+                Review {selectedComponentIssues.length}
+              </Button>
+            ) : null}
+          </div>
           <div className={styles.panelActions}>
             {input.secondaryLabel && input.onSecondary ? (
               <Button onClick={input.onSecondary} variant="subtle" size="sm">
@@ -2200,13 +2652,40 @@ export function SiteAdminWebConsole({
     );
   }
 
-  function renderCollectionEntryMeta(detail: string, ready: boolean) {
+  function renderCollectionEntryMeta(
+    detail: string,
+    state: string,
+    issueCount: number,
+  ) {
     return (
       <span className={styles.collectionEntryMeta}>
         <small>{detail}</small>
-        <span className={styles.entryReadiness} data-ready={ready ? "true" : "false"}>
-          {ready ? "Ready" : "Needs details"}
+        <span
+          className={styles.entryReadiness}
+          data-state={issueCount > 0 ? "invalid" : state.toLocaleLowerCase()}
+        >
+          {issueCount > 0 ? `Fix ${issueCount}` : state}
         </span>
+      </span>
+    );
+  }
+
+  function renderComponentDragHandle(id: string, disabled: boolean) {
+    return (
+      <span
+        className={styles.componentDragHandle}
+        title={disabled ? "Clear search to reorder" : "Drag to reorder"}
+        aria-label={disabled ? "Clear search to reorder" : "Drag to reorder"}
+        role="img"
+        draggable={!disabled}
+        onClick={(event) => event.stopPropagation()}
+        onDragStart={(event) => handleComponentDragStart(event, id)}
+        onDragEnd={() => {
+          setComponentDragId("");
+          setComponentDropId("");
+        }}
+      >
+        ⣿
       </span>
     );
   }
@@ -2272,80 +2751,134 @@ export function SiteAdminWebConsole({
           onAdd: addNewsEntry,
           secondaryLabel: "Add divider",
           onSecondary: addNewsDivider,
+          visibleEntryIds: items
+            .filter(({ item }) => item.type === "entry")
+            .map(({ item }) => item.id),
         })}
         <div className={styles.newsEntryList}>
           {items.length === 0
             ? renderCollectionEmpty("updates")
             : null}
-          {items.map(({ item, index }) =>
-            item.type === "divider" ? (
-              <div key={item.id} className={styles.newsDividerRow}>
-                <span>Divider</span>
-                <div className={styles.historyActions}>
-                  <Button
-                    onClick={() => moveSelectedNewsItem(index, -1)}
-                    variant="subtle"
-                    size="sm"
-                    disabled={index === 0}
-                  >
-                    Up
-                  </Button>
-                  <Button
-                    onClick={() => moveSelectedNewsItem(index, 1)}
-                    variant="subtle"
-                    size="sm"
-                    disabled={index === draft.items.length - 1}
-                  >
-                    Down
-                  </Button>
-                  <Button
-                    onClick={() => deleteNewsItem(index)}
-                    variant="subtle"
-                    tone="danger"
-                    size="sm"
-                  >
-                    Delete
-                  </Button>
+          {items.map(({ item, index }, visibleIndex) => {
+            const previousItem = items[visibleIndex - 1]?.item;
+            const groupLabel =
+              item.type === "entry" ? item.date.slice(0, 4) || "Undated" : "";
+            const previousGroup =
+              previousItem?.type === "entry"
+                ? previousItem.date.slice(0, 4) || "Undated"
+                : "";
+            if (item.type === "divider") {
+              return (
+                <div
+                  key={item.id}
+                  className={styles.newsDividerRow}
+                  data-dragging={componentDragId === item.id}
+                  data-drop-target={componentDropId === item.id}
+                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
+                  onDrop={(event) => handleComponentDrop(event, item.id)}
+                >
+                  <span className={styles.newsDividerLabel}>
+                    {renderComponentDragHandle(item.id, searching)}
+                    Divider
+                  </span>
+                  <div className={styles.historyActions}>
+                    <Button
+                      onClick={() => moveSelectedNewsItem(item.id, -1)}
+                      variant="subtle"
+                      size="sm"
+                      disabled={searching || index === 0}
+                    >
+                      Up
+                    </Button>
+                    <Button
+                      onClick={() => moveSelectedNewsItem(item.id, 1)}
+                      variant="subtle"
+                      size="sm"
+                      disabled={searching || index === draft.items.length - 1}
+                    >
+                      Down
+                    </Button>
+                    <Button
+                      onClick={() => deleteNewsItem(item.id)}
+                      variant="subtle"
+                      tone="danger"
+                      size="sm"
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <details key={item.id} className={styles.newsEntryCard}>
-                <summary className={styles.collectionEntrySummary}>
-                  <strong>{item.body.split("\n")[0] || "Untitled update"}</strong>
-                  {renderCollectionEntryMeta(
-                    item.date || "No date",
-                    Boolean(item.date.trim() && item.body.trim()),
-                  )}
-                </summary>
-                {renderComponentItemActions({
-                  index,
-                  count: draft.items.length,
-                  reorderDisabled: searching,
-                  onMove: (direction) => moveSelectedNewsItem(index, direction),
-                  onDuplicate: () => duplicateNewsItem(index),
-                  onDelete: () => deleteNewsItem(index),
-                })}
-                <label className={styles.fieldLabel}>
-                  Date
-                  <input
-                    className={styles.textField}
-                    type="date"
-                    value={item.date}
-                    onChange={(event) => updateNewsItem(index, { date: event.target.value })}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Body
-                  <textarea
-                    className={styles.newsEntryBody}
-                    value={item.body}
-                    onChange={(event) => updateNewsItem(index, { body: event.target.value })}
-                    disabled={saving}
-                  />
-                </label>
-              </details>
-            ),
-          )}
+              );
+            }
+            const issues = issuesForComponentEntry(item.id);
+            return (
+              <Fragment key={item.id}>
+                {renderCollectionGroup(groupLabel, previousGroup)}
+                <details
+                  id={componentEntryDomId(item.id)}
+                  className={styles.newsEntryCard}
+                  open={componentExpandedIds.includes(item.id)}
+                  data-dragging={componentDragId === item.id}
+                  data-drop-target={componentDropId === item.id}
+                  data-invalid={issues.length > 0}
+                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
+                  onDrop={(event) => handleComponentDrop(event, item.id)}
+                >
+                  <summary
+                    className={styles.collectionEntrySummary}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      toggleComponentEntry(item.id);
+                    }}
+                  >
+                    {renderComponentDragHandle(item.id, searching)}
+                    <strong>{item.body.split("\n")[0] || "Untitled update"}</strong>
+                    {renderCollectionEntryMeta(
+                      item.date || "No date",
+                      componentEntryState(item),
+                      issues.length,
+                    )}
+                  </summary>
+                  {renderComponentItemActions({
+                    index,
+                    count: draft.items.length,
+                    reorderDisabled: searching,
+                    onMove: (direction) => moveSelectedNewsItem(item.id, direction),
+                    onDuplicate: () => duplicateNewsItem(item.id),
+                    onDelete: () => deleteNewsItem(item.id),
+                  })}
+                  <label className={styles.fieldLabel}>
+                    Date
+                    <input
+                      className={styles.textField}
+                      type="date"
+                      value={item.date}
+                      data-component-field="date"
+                      aria-invalid={Boolean(issueForComponentField(item.id, "date"))}
+                      onChange={(event) =>
+                        updateNewsItem(item.id, { date: event.target.value })
+                      }
+                    />
+                    {renderComponentFieldIssue(item.id, "date")}
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Body
+                    <textarea
+                      className={styles.newsEntryBody}
+                      value={item.body}
+                      data-component-field="body"
+                      aria-invalid={Boolean(issueForComponentField(item.id, "body"))}
+                      onChange={(event) =>
+                        updateNewsItem(item.id, { body: event.target.value })
+                      }
+                      disabled={saving}
+                    />
+                    {renderComponentFieldIssue(item.id, "body")}
+                  </label>
+                </details>
+              </Fragment>
+            );
+          })}
         </div>
         {renderAdvancedComponentSource()}
       </div>
@@ -2353,6 +2886,7 @@ export function SiteAdminWebConsole({
   }
 
   function renderTeachingEditor(draft: TeachingComponentDraft) {
+    const searching = Boolean(componentSearch.trim());
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
@@ -2375,98 +2909,144 @@ export function SiteAdminWebConsole({
           entryLabel: "courses",
           addLabel: "Add course",
           onAdd: addTeachingEntry,
+          visibleEntryIds: items.map(({ item }) => item.id),
         })}
         <div className={styles.newsEntryList}>
           {items.length === 0 ? renderCollectionEmpty("courses") : null}
-          {items.map(({ item, index }) => (
-            <details key={item.id} className={styles.newsEntryCard}>
-              <summary className={styles.collectionEntrySummary}>
-                <strong>
-                  {item.courseCode || item.courseName || item.term || "Untitled course"}
-                </strong>
-                {renderCollectionEntryMeta(
-                  item.term || item.period || "Course",
-                  Boolean(
-                    item.term.trim() && (item.courseCode.trim() || item.courseName.trim()),
-                  ),
-                )}
-              </summary>
-              {renderComponentItemActions({
-                index,
-                count: draft.items.length,
-                reorderDisabled: Boolean(componentSearch.trim()),
-                onMove: (direction) => moveSelectedTeachingItem(index, direction),
-                onDuplicate: () => duplicateTeachingItem(index),
-                onDelete: () => deleteTeachingItem(index),
-              })}
-              <div className={styles.componentEntryGrid}>
-                <label className={styles.fieldLabel}>
-                  Term
-                  <input
-                    className={styles.textField}
-                    value={item.term}
-                    onChange={(event) => updateTeachingItem(index, { term: event.target.value })}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Period
-                  <input
-                    className={styles.textField}
-                    value={item.period}
-                    onChange={(event) => updateTeachingItem(index, { period: event.target.value })}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Role
-                  <input
-                    className={styles.textField}
-                    value={item.role}
-                    onChange={(event) => updateTeachingItem(index, { role: event.target.value })}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Course code
-                  <input
-                    className={styles.textField}
-                    value={item.courseCode}
-                    onChange={(event) =>
-                      updateTeachingItem(index, { courseCode: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Course name
-                  <input
-                    className={styles.textField}
-                    value={item.courseName}
-                    onChange={(event) =>
-                      updateTeachingItem(index, { courseName: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Instructor
-                  <input
-                    className={styles.textField}
-                    value={item.instructor || ""}
-                    onChange={(event) =>
-                      updateTeachingItem(index, { instructor: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Course URL
-                  <input
-                    className={styles.textField}
-                    value={item.courseUrl || ""}
-                    onChange={(event) =>
-                      updateTeachingItem(index, { courseUrl: event.target.value })
-                    }
-                  />
-                </label>
-              </div>
-            </details>
-          ))}
+          {items.map(({ item, index }, visibleIndex) => {
+            const issues = issuesForComponentEntry(item.id);
+            const groupLabel =
+              item.term.match(/^\d{4}\/\d{2}/)?.[0] || item.term || "No term";
+            const previousTerm = items[visibleIndex - 1]?.item.term || "";
+            const previousGroup =
+              previousTerm.match(/^\d{4}\/\d{2}/)?.[0] || previousTerm;
+            return (
+              <Fragment key={item.id}>
+                {renderCollectionGroup(groupLabel, previousGroup)}
+                <details
+                  id={componentEntryDomId(item.id)}
+                  className={styles.newsEntryCard}
+                  open={componentExpandedIds.includes(item.id)}
+                  data-dragging={componentDragId === item.id}
+                  data-drop-target={componentDropId === item.id}
+                  data-invalid={issues.length > 0}
+                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
+                  onDrop={(event) => handleComponentDrop(event, item.id)}
+                >
+                  <summary
+                    className={styles.collectionEntrySummary}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      toggleComponentEntry(item.id);
+                    }}
+                  >
+                    {renderComponentDragHandle(item.id, searching)}
+                    <strong>
+                      {item.courseCode || item.courseName || item.term || "Untitled course"}
+                    </strong>
+                    {renderCollectionEntryMeta(
+                      item.term || item.period || "Course",
+                      componentEntryState(item),
+                      issues.length,
+                    )}
+                  </summary>
+                  {renderComponentItemActions({
+                    index,
+                    count: draft.items.length,
+                    reorderDisabled: searching,
+                    onMove: (direction) => moveSelectedTeachingItem(item.id, direction),
+                    onDuplicate: () => duplicateTeachingItem(item.id),
+                    onDelete: () => deleteTeachingItem(item.id),
+                  })}
+                  <div className={styles.componentEntryGrid}>
+                    <label className={styles.fieldLabel}>
+                      Term
+                      <input
+                        className={styles.textField}
+                        value={item.term}
+                        data-component-field="term"
+                        aria-invalid={Boolean(issueForComponentField(item.id, "term"))}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { term: event.target.value })
+                        }
+                      />
+                      {renderComponentFieldIssue(item.id, "term")}
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Period
+                      <input
+                        className={styles.textField}
+                        value={item.period}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { period: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Role
+                      <input
+                        className={styles.textField}
+                        value={item.role}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { role: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Course code
+                      <input
+                        className={styles.textField}
+                        value={item.courseCode}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { courseCode: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Course name
+                      <input
+                        className={styles.textField}
+                        value={item.courseName}
+                        data-component-field="courseName"
+                        aria-invalid={Boolean(
+                          issueForComponentField(item.id, "courseName"),
+                        )}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { courseName: event.target.value })
+                        }
+                      />
+                      {renderComponentFieldIssue(item.id, "courseName")}
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Instructor
+                      <input
+                        className={styles.textField}
+                        value={item.instructor || ""}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { instructor: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Course URL
+                      <input
+                        className={styles.textField}
+                        value={item.courseUrl || ""}
+                        data-component-field="courseUrl"
+                        aria-invalid={Boolean(
+                          issueForComponentField(item.id, "courseUrl"),
+                        )}
+                        onChange={(event) =>
+                          updateTeachingItem(item.id, { courseUrl: event.target.value })
+                        }
+                      />
+                      {renderComponentFieldIssue(item.id, "courseUrl")}
+                    </label>
+                  </div>
+                </details>
+              </Fragment>
+            );
+          })}
         </div>
         {renderAdvancedComponentSource()}
       </div>
@@ -2474,6 +3054,7 @@ export function SiteAdminWebConsole({
   }
 
   function renderWorksEditor(draft: WorksComponentDraft) {
+    const searching = Boolean(componentSearch.trim());
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
@@ -2496,98 +3077,148 @@ export function SiteAdminWebConsole({
           entryLabel: "roles",
           addLabel: "Add role",
           onAdd: addWorksEntry,
+          visibleEntryIds: items.map(({ item }) => item.id),
         })}
         <div className={styles.newsEntryList}>
           {items.length === 0 ? renderCollectionEmpty("roles") : null}
-          {items.map(({ item, index }) => (
-            <details key={item.id} className={styles.newsEntryCard}>
-              <summary className={styles.collectionEntrySummary}>
-                <strong>{item.role || item.affiliation || "Untitled work"}</strong>
-                {renderCollectionEntryMeta(
-                  item.period || item.category,
-                  Boolean(item.role.trim() && item.period.trim()),
-                )}
-              </summary>
-              {renderComponentItemActions({
-                index,
-                count: draft.items.length,
-                reorderDisabled: Boolean(componentSearch.trim()),
-                onMove: (direction) => moveSelectedWorksItem(index, direction),
-                onDuplicate: () => duplicateWorksItem(index),
-                onDelete: () => deleteWorksItem(index),
-              })}
-              <div className={styles.componentEntryGrid}>
-                <label className={styles.fieldLabel}>
-                  Category
-                  <select
-                    className={styles.textField}
-                    value={item.category}
-                    onChange={(event) =>
-                      updateWorksItem(index, {
-                        category: event.target.value === "passed" ? "passed" : "recent",
-                      })
-                    }
+          {items.map(({ item, index }, visibleIndex) => {
+            const issues = issuesForComponentEntry(item.id);
+            const groupLabel = item.category === "passed" ? "Past" : "Recent";
+            const previousItem = items[visibleIndex - 1]?.item;
+            const previousGroup = previousItem
+              ? previousItem.category === "passed"
+                ? "Past"
+                : "Recent"
+              : "";
+            return (
+              <Fragment key={item.id}>
+                {renderCollectionGroup(groupLabel, previousGroup)}
+                <details
+                  id={componentEntryDomId(item.id)}
+                  className={styles.newsEntryCard}
+                  open={componentExpandedIds.includes(item.id)}
+                  data-dragging={componentDragId === item.id}
+                  data-drop-target={componentDropId === item.id}
+                  data-invalid={issues.length > 0}
+                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
+                  onDrop={(event) => handleComponentDrop(event, item.id)}
+                >
+                  <summary
+                    className={styles.collectionEntrySummary}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      toggleComponentEntry(item.id);
+                    }}
                   >
-                    <option value="recent">Recent</option>
-                    <option value="passed">Past</option>
-                  </select>
-                </label>
-                <label className={styles.fieldLabel}>
-                  Role
-                  <input
-                    className={styles.textField}
-                    value={item.role}
-                    onChange={(event) => updateWorksItem(index, { role: event.target.value })}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Affiliation
-                  <input
-                    className={styles.textField}
-                    value={item.affiliation || ""}
-                    onChange={(event) =>
-                      updateWorksItem(index, { affiliation: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Affiliation URL
-                  <input
-                    className={styles.textField}
-                    value={item.affiliationUrl || ""}
-                    onChange={(event) =>
-                      updateWorksItem(index, { affiliationUrl: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Location
-                  <input
-                    className={styles.textField}
-                    value={item.location || ""}
-                    onChange={(event) => updateWorksItem(index, { location: event.target.value })}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Period
-                  <input
-                    className={styles.textField}
-                    value={item.period}
-                    onChange={(event) => updateWorksItem(index, { period: event.target.value })}
-                  />
-                </label>
-              </div>
-              <label className={styles.fieldLabel}>
-                Body
-                <textarea
-                  className={styles.newsEntryBody}
-                  value={item.body}
-                  onChange={(event) => updateWorksItem(index, { body: event.target.value })}
-                  disabled={saving}
-                />
-              </label>
-            </details>
-          ))}
+                    {renderComponentDragHandle(item.id, searching)}
+                    <strong>{item.role || item.affiliation || "Untitled work"}</strong>
+                    {renderCollectionEntryMeta(
+                      item.period || item.category,
+                      componentEntryState(item),
+                      issues.length,
+                    )}
+                  </summary>
+                  {renderComponentItemActions({
+                    index,
+                    count: draft.items.length,
+                    reorderDisabled: searching,
+                    onMove: (direction) => moveSelectedWorksItem(item.id, direction),
+                    onDuplicate: () => duplicateWorksItem(item.id),
+                    onDelete: () => deleteWorksItem(item.id),
+                  })}
+                  <div className={styles.componentEntryGrid}>
+                    <label className={styles.fieldLabel}>
+                      Category
+                      <select
+                        className={styles.textField}
+                        value={item.category}
+                        onChange={(event) =>
+                          updateWorksItem(item.id, {
+                            category: event.target.value === "passed" ? "passed" : "recent",
+                          })
+                        }
+                      >
+                        <option value="recent">Recent</option>
+                        <option value="passed">Past</option>
+                      </select>
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Role
+                      <input
+                        className={styles.textField}
+                        value={item.role}
+                        data-component-field="role"
+                        aria-invalid={Boolean(issueForComponentField(item.id, "role"))}
+                        onChange={(event) =>
+                          updateWorksItem(item.id, { role: event.target.value })
+                        }
+                      />
+                      {renderComponentFieldIssue(item.id, "role")}
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Affiliation
+                      <input
+                        className={styles.textField}
+                        value={item.affiliation || ""}
+                        onChange={(event) =>
+                          updateWorksItem(item.id, { affiliation: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Affiliation URL
+                      <input
+                        className={styles.textField}
+                        value={item.affiliationUrl || ""}
+                        data-component-field="affiliationUrl"
+                        aria-invalid={Boolean(
+                          issueForComponentField(item.id, "affiliationUrl"),
+                        )}
+                        onChange={(event) =>
+                          updateWorksItem(item.id, { affiliationUrl: event.target.value })
+                        }
+                      />
+                      {renderComponentFieldIssue(item.id, "affiliationUrl")}
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Location
+                      <input
+                        className={styles.textField}
+                        value={item.location || ""}
+                        onChange={(event) =>
+                          updateWorksItem(item.id, { location: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Period
+                      <input
+                        className={styles.textField}
+                        value={item.period}
+                        data-component-field="period"
+                        aria-invalid={Boolean(issueForComponentField(item.id, "period"))}
+                        onChange={(event) =>
+                          updateWorksItem(item.id, { period: event.target.value })
+                        }
+                      />
+                      {renderComponentFieldIssue(item.id, "period")}
+                    </label>
+                  </div>
+                  <label className={styles.fieldLabel}>
+                    Body
+                    <textarea
+                      className={styles.newsEntryBody}
+                      value={item.body}
+                      onChange={(event) =>
+                        updateWorksItem(item.id, { body: event.target.value })
+                      }
+                      disabled={saving}
+                    />
+                  </label>
+                </details>
+              </Fragment>
+            );
+          })}
         </div>
         {renderAdvancedComponentSource()}
       </div>
@@ -2595,6 +3226,7 @@ export function SiteAdminWebConsole({
   }
 
   function renderPublicationsEditor(draft: PublicationsComponentDraft) {
+    const searching = Boolean(componentSearch.trim());
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
@@ -2619,32 +3251,54 @@ export function SiteAdminWebConsole({
           entryLabel: "publications",
           addLabel: "Add publication",
           onAdd: addPublicationEntry,
+          visibleEntryIds: items.map(({ item }) => item.id),
         })}
         <div className={styles.newsEntryList}>
           {items.length === 0
             ? renderCollectionEmpty("publications")
             : null}
-          {items.map(({ item, index }) => {
+          {items.map(({ item, index }, visibleIndex) => {
             const authors = publicationAuthorNames(item);
             const selfAuthor =
               item.authorsRich?.find((author) => author.isSelf)?.name || "";
             const primaryVenue = publicationPrimaryVenue(item);
+            const issues = issuesForComponentEntry(item.id);
+            const previousGroup = items[visibleIndex - 1]?.item.year || "";
             return (
-              <details key={item.id} className={styles.newsEntryCard}>
-                <summary className={styles.collectionEntrySummary}>
+              <Fragment key={item.id}>
+              {renderCollectionGroup(item.year || "No year", previousGroup)}
+              <details
+                id={componentEntryDomId(item.id)}
+                className={styles.newsEntryCard}
+                open={componentExpandedIds.includes(item.id)}
+                data-dragging={componentDragId === item.id}
+                data-drop-target={componentDropId === item.id}
+                data-invalid={issues.length > 0}
+                onDragOver={(event) => handleComponentDragOver(event, item.id)}
+                onDrop={(event) => handleComponentDrop(event, item.id)}
+              >
+                <summary
+                  className={styles.collectionEntrySummary}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    toggleComponentEntry(item.id);
+                  }}
+                >
+                  {renderComponentDragHandle(item.id, searching)}
                   <strong>{item.title || "Untitled publication"}</strong>
                   {renderCollectionEntryMeta(
                     item.year || "Publication",
-                    Boolean(item.title.trim() && item.year.trim()),
+                    componentEntryState(item),
+                    issues.length,
                   )}
                 </summary>
                 {renderComponentItemActions({
                   index,
                   count: draft.items.length,
-                  reorderDisabled: Boolean(componentSearch.trim()),
-                  onMove: (direction) => moveSelectedPublicationItem(index, direction),
-                  onDuplicate: () => duplicatePublicationItem(index),
-                  onDelete: () => deletePublicationItem(index),
+                  reorderDisabled: searching,
+                  onMove: (direction) => moveSelectedPublicationItem(item.id, direction),
+                  onDuplicate: () => duplicatePublicationItem(item.id),
+                  onDelete: () => deletePublicationItem(item.id),
                 })}
                 <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
@@ -2652,35 +3306,46 @@ export function SiteAdminWebConsole({
                   <input
                     className={styles.textField}
                     value={item.title || ""}
+                    data-component-field="title"
+                    aria-invalid={Boolean(issueForComponentField(item.id, "title"))}
                     onChange={(event) =>
-                      updatePublicationItem(index, { title: event.target.value })
+                      updatePublicationItem(item.id, { title: event.target.value })
                     }
                   />
+                  {renderComponentFieldIssue(item.id, "title")}
                 </label>
                 <label className={styles.fieldLabel}>
                   Year
                   <input
                     className={styles.textField}
                     value={item.year || ""}
+                    data-component-field="year"
+                    aria-invalid={Boolean(issueForComponentField(item.id, "year"))}
                     onChange={(event) =>
-                      updatePublicationItem(index, { year: event.target.value })
+                      updatePublicationItem(item.id, { year: event.target.value })
                     }
                   />
+                  {renderComponentFieldIssue(item.id, "year")}
                 </label>
                 <label className={styles.fieldLabel}>
                   URL
                   <input
                     className={styles.textField}
                     value={item.url || ""}
-                    onChange={(event) => updatePublicationItem(index, { url: event.target.value })}
+                    data-component-field="url"
+                    aria-invalid={Boolean(issueForComponentField(item.id, "url"))}
+                    onChange={(event) =>
+                      updatePublicationItem(item.id, { url: event.target.value })
+                    }
                   />
+                  {renderComponentFieldIssue(item.id, "url")}
                 </label>
                 <label className={styles.fieldLabel}>
                   Authors
                   <input
                     className={styles.textField}
                     value={authors.join(", ")}
-                    onChange={(event) => updatePublicationAuthors(index, event.target.value)}
+                    onChange={(event) => updatePublicationAuthors(item.id, event.target.value)}
                     placeholder="Comma separated"
                   />
                 </label>
@@ -2690,7 +3355,7 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={selfAuthor}
                     onChange={(event) =>
-                      updatePublicationSelfAuthor(index, event.target.value)
+                      updatePublicationSelfAuthor(item.id, event.target.value)
                     }
                   >
                     <option value="">None</option>
@@ -2707,7 +3372,7 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={primaryVenue?.text || item.venue || ""}
                     onChange={(event) =>
-                      updatePublicationPrimaryVenue(index, { text: event.target.value })
+                      updatePublicationPrimaryVenue(item.id, { text: event.target.value })
                     }
                     placeholder="Conference or journal"
                   />
@@ -2718,7 +3383,7 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={primaryVenue?.type || ""}
                     onChange={(event) =>
-                      updatePublicationPrimaryVenue(index, { type: event.target.value })
+                      updatePublicationPrimaryVenue(item.id, { type: event.target.value })
                     }
                     placeholder="Conference, Journal, Workshop"
                   />
@@ -2729,7 +3394,7 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={primaryVenue?.url || ""}
                     onChange={(event) =>
-                      updatePublicationPrimaryVenue(index, { url: event.target.value })
+                      updatePublicationPrimaryVenue(item.id, { url: event.target.value })
                     }
                     placeholder="Optional"
                   />
@@ -2740,7 +3405,7 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={(item.labels || []).join(", ")}
                     onChange={(event) =>
-                      updatePublicationListField(index, "labels", event.target.value)
+                      updatePublicationListField(item.id, "labels", event.target.value)
                     }
                   />
                 </label>
@@ -2750,7 +3415,7 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={(item.highlights || []).join(", ")}
                     onChange={(event) =>
-                      updatePublicationListField(index, "highlights", event.target.value)
+                      updatePublicationListField(item.id, "highlights", event.target.value)
                     }
                   />
                 </label>
@@ -2759,20 +3424,26 @@ export function SiteAdminWebConsole({
                   <input
                     className={styles.textField}
                     value={item.doiUrl || ""}
+                    data-component-field="doiUrl"
+                    aria-invalid={Boolean(issueForComponentField(item.id, "doiUrl"))}
                     onChange={(event) =>
-                      updatePublicationItem(index, { doiUrl: event.target.value })
+                      updatePublicationItem(item.id, { doiUrl: event.target.value })
                     }
                   />
+                  {renderComponentFieldIssue(item.id, "doiUrl")}
                 </label>
                 <label className={styles.fieldLabel}>
                   arXiv URL
                   <input
                     className={styles.textField}
                     value={item.arxivUrl || ""}
+                    data-component-field="arxivUrl"
+                    aria-invalid={Boolean(issueForComponentField(item.id, "arxivUrl"))}
                     onChange={(event) =>
-                      updatePublicationItem(index, { arxivUrl: event.target.value })
+                      updatePublicationItem(item.id, { arxivUrl: event.target.value })
                     }
                   />
+                  {renderComponentFieldIssue(item.id, "arxivUrl")}
                 </label>
                 <label className={styles.fieldLabel}>
                   External URLs
@@ -2780,12 +3451,13 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={(item.externalUrls || []).join(", ")}
                     onChange={(event) =>
-                      updatePublicationListField(index, "externalUrls", event.target.value)
+                      updatePublicationListField(item.id, "externalUrls", event.target.value)
                     }
                   />
                 </label>
                 </div>
               </details>
+              </Fragment>
             );
           })}
         </div>
@@ -3073,7 +3745,7 @@ export function SiteAdminWebConsole({
                       onClick={() => void saveSelectedContent()}
                       tone="accent"
                       size="sm"
-                      disabled={saving || !selectedDirty}
+                      disabled={saving || !selectedDirty || componentSaveBlocked}
                     >
                       {saving ? "Saving" : "Save"}
                     </Button>
