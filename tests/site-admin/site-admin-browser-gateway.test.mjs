@@ -140,6 +140,15 @@ test("site-admin content management includes recovery, media, settings, and vers
 
 test("site-admin browser console treats data pages as managed collections", () => {
   const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  const collectionEditor = fs.readFileSync(
+    "app/site-admin/site-admin-structured-collection-editor.tsx",
+    "utf8",
+  );
+  const collectionModel = fs.readFileSync(
+    "app/site-admin/site-admin-structured-collection-model.ts",
+    "utf8",
+  );
+  const implementation = [source, collectionEditor, collectionModel].join("\n");
   const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
 
   assert.ok(source.includes("findManagedComponentInBody"));
@@ -148,23 +157,27 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(source.includes("componentReturnTarget"));
   assert.ok(source.includes("returnToComponentOrigin"));
   assert.ok(source.includes("editComponentByEmbedTag"));
-  assert.ok(source.includes("News entries"));
-  assert.ok(source.includes("parseNewsComponentDraft"));
-  assert.ok(source.includes("serializeNewsComponentDraft"));
-  assert.ok(source.includes("Teaching rows"));
-  assert.ok(source.includes("Work rows"));
-  assert.ok(source.includes("Publication rows"));
-  assert.ok(source.includes("parseTeachingComponentDraft"));
-  assert.ok(source.includes("serializeWorksComponentDraft"));
-  assert.ok(source.includes("serializePublicationsComponentDraft"));
-  assert.ok(source.includes("Advanced component source"));
+  assert.ok(implementation.includes("News entries"));
+  assert.ok(implementation.includes("parseNewsComponentDraft"));
+  assert.ok(implementation.includes("serializeNewsComponentDraft"));
+  assert.ok(implementation.includes("Teaching rows"));
+  assert.ok(implementation.includes("Work rows"));
+  assert.ok(implementation.includes("Publication rows"));
+  assert.ok(implementation.includes("parseTeachingComponentDraft"));
+  assert.ok(implementation.includes("serializeWorksComponentDraft"));
+  assert.ok(implementation.includes("serializePublicationsComponentDraft"));
+  assert.ok(collectionEditor.includes("Advanced component source"));
   assert.ok(source.includes("componentSearch"));
-  assert.ok(source.includes("normalizeComponentEntryId"));
-  assert.ok(source.includes("entryId"));
+  assert.ok(collectionModel.includes("normalizeComponentEntryId"));
+  assert.ok(collectionModel.includes("entryId"));
   assert.ok(source.includes("reorderSelectedComponentItems"));
-  assert.ok(source.includes("Review {selectedComponentIssues.length}"));
-  assert.ok(source.includes("Expand all"));
-  assert.ok(source.includes("Group entries"));
+  assert.ok(collectionEditor.includes("Review {issueCount}"));
+  assert.ok(collectionEditor.includes("Expand all"));
+  assert.ok(collectionEditor.includes("Group entries"));
+  assert.ok(collectionEditor.includes("StructuredCollectionEntry"));
+  assert.ok(source.includes("<StructuredCollectionEditor"));
+  assert.ok(!source.includes("function renderComponentEditorHeader"));
+  assert.ok(!source.includes("function renderComponentItemActions"));
   assert.ok(source.includes("Highlighted author"));
   assert.ok(source.includes("Venue"));
   assert.ok(source.includes("Managed ·"));

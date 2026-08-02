@@ -1,23 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusNotice } from "@/components/ui/status-notice";
-import {
-  parsePublicationsEntries,
-  parseTeachingEntries,
-  parseWorksEntries,
-  type TeachingComponentEntry,
-  type WorksComponentEntry,
-} from "@/lib/components/parse";
-import type {
-  PublicationStructuredEntry,
-  PublicationVenue,
-} from "@/lib/seo/publications-items";
+import type { PublicationVenue } from "@/lib/seo/publications-items";
 import type {
   SiteAdminHomeData,
   SiteAdminNowData,
@@ -33,6 +23,45 @@ import {
   SiteAdminConflictDialog,
   type SiteAdminConflict,
 } from "./site-admin-conflict-dialog";
+import {
+  StructuredCollectionDivider,
+  StructuredCollectionEditor,
+  StructuredCollectionEmpty,
+  StructuredCollectionEntry,
+  StructuredCollectionFieldIssue,
+} from "./site-admin-structured-collection-editor";
+import {
+  componentConflictDetail,
+  componentEntryDomId,
+  componentEntryFingerprint,
+  componentEntryState as deriveComponentEntryState,
+  componentItemMatches as matchesComponentItem,
+  createComponentEntryId,
+  moveDraftEntry,
+  newsEntryIssues,
+  parseNewsComponentDraft,
+  parsePublicationsComponentDraft,
+  parseTeachingComponentDraft,
+  parseWorksComponentDraft,
+  publicationEntryIssues,
+  reorderDraftEntries,
+  serializeNewsComponentDraft,
+  serializePublicationsComponentDraft,
+  serializeTeachingComponentDraft,
+  serializeWorksComponentDraft,
+  teachingEntryIssues,
+  todayInHalifax,
+  worksEntryIssues,
+  type ComponentGrouping,
+  type NewsComponentDraft,
+  type NewsDraftEntry,
+  type PublicationDraftEntry,
+  type PublicationsComponentDraft,
+  type TeachingComponentDraft,
+  type TeachingDraftEntry,
+  type WorksComponentDraft,
+  type WorksDraftEntry,
+} from "./site-admin-structured-collection-model";
 import {
   SiteAdminMediaLibrary,
   type SiteAdminAsset,
@@ -222,60 +251,6 @@ const DEFAULT_CREATE_BODY = "Write the post here.";
 const COMPONENT_DEFINITIONS =
   SITE_COMPONENT_DEFINITIONS as readonly ComponentDefinition[];
 
-type NewsDraftEntry = {
-  id: string;
-  type: "entry";
-  date: string;
-  body: string;
-};
-
-type NewsDraftDivider = {
-  id: string;
-  type: "divider";
-};
-
-type NewsDraftItem = NewsDraftEntry | NewsDraftDivider;
-
-type NewsComponentDraft = {
-  frontmatter: string;
-  items: NewsDraftItem[];
-};
-
-type TeachingDraftEntry = Omit<TeachingComponentEntry, "entryId"> & {
-  id: string;
-};
-
-type TeachingComponentDraft = {
-  frontmatter: string;
-  items: TeachingDraftEntry[];
-};
-
-type WorksDraftEntry = Omit<WorksComponentEntry, "entryId"> & {
-  id: string;
-};
-
-type WorksComponentDraft = {
-  frontmatter: string;
-  items: WorksDraftEntry[];
-};
-
-type PublicationDraftEntry = Omit<PublicationStructuredEntry, "entryId"> & {
-  id: string;
-};
-
-type PublicationsComponentDraft = {
-  frontmatter: string;
-  items: PublicationDraftEntry[];
-};
-
-type ComponentEntryIssue = {
-  entryId: string;
-  field: string;
-  message: string;
-};
-
-type ComponentGrouping = "auto" | "none";
-
 const EMPTY_CONTENT_FORM: EditableContentForm = {
   title: "",
   description: "",
@@ -288,17 +263,6 @@ const EMPTY_CONTENT_FORM: EditableContentForm = {
   body: "",
   frontmatterKeys: [],
 };
-
-function todayInHalifax(): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Halifax",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const read = (type: string) => parts.find((part) => part.type === type)?.value || "";
-  return `${read("year")}-${read("month")}-${read("day")}`;
-}
 
 function dateInputFromIso(value: string | undefined): string {
   if (!value) return todayInHalifax();
@@ -415,388 +379,6 @@ function managedComponentMeta(
   return `Managed · ${summary?.count ?? 0} ${
     summary?.entryLabel || definition.entryLabel || "entries"
   }`;
-}
-
-function normalizeComponentEntryId(
-  value: string | undefined,
-  prefix: string,
-  index: number,
-) {
-  const candidate = String(value || "").trim();
-  return /^[a-z0-9][a-z0-9._:-]{0,95}$/i.test(candidate)
-    ? candidate
-    : `${prefix}-${index + 1}`;
-}
-
-function createComponentEntryId(prefix: string) {
-  const randomPart =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID().slice(0, 12)
-      : Math.random().toString(36).slice(2, 14);
-  return `${prefix}-${Date.now().toString(36)}-${randomPart}`;
-}
-
-function optionalUrlIsValid(value: string | undefined) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("#")) return true;
-  try {
-    const url = new URL(trimmed);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function newsEntryIssues(item: NewsDraftEntry): ComponentEntryIssue[] {
-  const issues: ComponentEntryIssue[] = [];
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
-    issues.push({ entryId: item.id, field: "date", message: "Choose a valid date." });
-  }
-  if (!item.body.trim()) {
-    issues.push({ entryId: item.id, field: "body", message: "Add update text." });
-  }
-  return issues;
-}
-
-function teachingEntryIssues(item: TeachingDraftEntry): ComponentEntryIssue[] {
-  const issues: ComponentEntryIssue[] = [];
-  if (!item.term.trim()) {
-    issues.push({ entryId: item.id, field: "term", message: "Add a term." });
-  }
-  if (!item.courseCode.trim() && !item.courseName.trim()) {
-    issues.push({
-      entryId: item.id,
-      field: "courseName",
-      message: "Add a course code or course name.",
-    });
-  }
-  if (!optionalUrlIsValid(item.courseUrl)) {
-    issues.push({ entryId: item.id, field: "courseUrl", message: "Enter a valid URL." });
-  }
-  return issues;
-}
-
-function worksEntryIssues(item: WorksDraftEntry): ComponentEntryIssue[] {
-  const issues: ComponentEntryIssue[] = [];
-  if (!item.role.trim()) {
-    issues.push({ entryId: item.id, field: "role", message: "Add a role." });
-  }
-  if (!item.period.trim()) {
-    issues.push({ entryId: item.id, field: "period", message: "Add a period." });
-  }
-  if (!optionalUrlIsValid(item.affiliationUrl)) {
-    issues.push({ entryId: item.id, field: "affiliationUrl", message: "Enter a valid URL." });
-  }
-  return issues;
-}
-
-function publicationEntryIssues(item: PublicationDraftEntry): ComponentEntryIssue[] {
-  const issues: ComponentEntryIssue[] = [];
-  if (!item.title.trim()) {
-    issues.push({ entryId: item.id, field: "title", message: "Add a title." });
-  }
-  if (!item.year.trim()) {
-    issues.push({ entryId: item.id, field: "year", message: "Add a year or year group." });
-  }
-  const urlFields: Array<[string, string | undefined]> = [
-    ["url", item.url],
-    ["doiUrl", item.doiUrl],
-    ["arxivUrl", item.arxivUrl],
-  ];
-  for (const [field, value] of urlFields) {
-    if (!optionalUrlIsValid(value)) {
-      issues.push({ entryId: item.id, field, message: "Enter a valid URL." });
-    }
-  }
-  return issues;
-}
-
-const NEWS_ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})/g;
-const NEWS_ENTRY_RE = /<NewsEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
-
-function parseNewsAttrs(raw: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  for (const match of String(raw || "").matchAll(NEWS_ATTR_RE)) {
-    attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
-  }
-  return attrs;
-}
-
-function componentFrontmatterFromSource(
-  source: string,
-  fallbackTitle: string,
-): { frontmatter: string; body: string } {
-  const normalized = String(source || "").replace(/\r\n/g, "\n");
-  const match = normalized.match(/^---\n[\s\S]*?\n---\n*/);
-  if (!match) {
-    return {
-      frontmatter: ["---", `title: ${frontmatterString(fallbackTitle)}`, "---"].join("\n"),
-      body: normalized.trim(),
-    };
-  }
-  return {
-    frontmatter: match[0].trimEnd(),
-    body: normalized.slice(match[0].length),
-  };
-}
-
-function newsFrontmatterFromSource(source: string): { frontmatter: string; body: string } {
-  return componentFrontmatterFromSource(source, "News");
-}
-
-function parseNewsDividerItems(segment: string, prefix: string): NewsDraftDivider[] {
-  return String(segment || "")
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line, index) => ({ line: line.trim(), index }))
-    .filter(({ line }) => line === "---" || line === "***" || /^<hr\s*\/?>$/i.test(line))
-    .map(({ index }) => ({ id: `${prefix}-divider-${index}`, type: "divider" as const }));
-}
-
-function parseNewsComponentDraft(source: string): NewsComponentDraft {
-  const { frontmatter, body } = newsFrontmatterFromSource(source);
-  const items: NewsDraftItem[] = [];
-  let cursor = 0;
-  let entryIndex = 0;
-  let match: RegExpExecArray | null;
-  NEWS_ENTRY_RE.lastIndex = 0;
-  while ((match = NEWS_ENTRY_RE.exec(body)) !== null) {
-    items.push(...parseNewsDividerItems(body.slice(cursor, match.index), `before-${entryIndex}`));
-    const attrs = parseNewsAttrs(match[1] ?? "");
-    items.push({
-      id: normalizeComponentEntryId(attrs.entryId, "news", entryIndex),
-      type: "entry",
-      date: /^\d{4}-\d{2}-\d{2}$/.test(attrs.date || "") ? attrs.date : todayInHalifax(),
-      body: (match[2] ?? "").trim(),
-    });
-    entryIndex += 1;
-    cursor = NEWS_ENTRY_RE.lastIndex;
-  }
-  items.push(...parseNewsDividerItems(body.slice(cursor), "after"));
-  return { frontmatter, items };
-}
-
-function serializeNewsComponentDraft(draft: NewsComponentDraft): string {
-  const body = draft.items
-    .map((item) => {
-      if (item.type === "divider") return "---";
-      const date = item.date || todayInHalifax();
-      return [
-        `<NewsEntry ${compactAttrs([jsxAttr("entryId", item.id), jsxAttr("date", date)])}>`,
-        "",
-        item.body.trimEnd(),
-        "",
-        "</NewsEntry>",
-      ].join("\n");
-    })
-    .join("\n\n");
-  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
-}
-
-function jsxAttr(name: string, value: string | undefined) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed) return "";
-  const escaped = trimmed
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `${name}="${escaped}"`;
-}
-
-function compactAttrs(attrs: string[]) {
-  return attrs.filter(Boolean).join(" ");
-}
-
-function jsonDataAttr(value: unknown) {
-  return JSON.stringify(value).replace(/'/g, "\\u0027");
-}
-
-function parseTeachingComponentDraft(source: string): TeachingComponentDraft {
-  const { frontmatter } = componentFrontmatterFromSource(source, "Teaching");
-  return {
-    frontmatter,
-    items: parseTeachingEntries(source).map((entry, index) => {
-      const { entryId, ...value } = entry;
-      return {
-        id: normalizeComponentEntryId(entryId, "teaching", index),
-        ...value,
-      };
-    }),
-  };
-}
-
-function serializeTeachingComponentDraft(draft: TeachingComponentDraft): string {
-  const body = draft.items
-    .map((entry) => {
-      const attrs = compactAttrs([
-        jsxAttr("entryId", entry.id),
-        jsxAttr("term", entry.term),
-        jsxAttr("period", entry.period),
-        jsxAttr("role", entry.role),
-        jsxAttr("courseCode", entry.courseCode),
-        jsxAttr("courseName", entry.courseName),
-        jsxAttr("courseUrl", entry.courseUrl),
-        jsxAttr("instructor", entry.instructor),
-      ]);
-      return `<TeachingEntry ${attrs} />`;
-    })
-    .join("\n\n");
-  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
-}
-
-function parseWorksComponentDraft(source: string): WorksComponentDraft {
-  const { frontmatter } = componentFrontmatterFromSource(source, "Works");
-  return {
-    frontmatter,
-    items: parseWorksEntries(source).map((entry, index) => {
-      const { entryId, ...value } = entry;
-      return {
-        id: normalizeComponentEntryId(entryId, "works", index),
-        ...value,
-      };
-    }),
-  };
-}
-
-function serializeWorksComponentDraft(draft: WorksComponentDraft): string {
-  const body = draft.items
-    .map((entry) => {
-      const attrs = compactAttrs([
-        jsxAttr("entryId", entry.id),
-        jsxAttr("category", entry.category),
-        jsxAttr("role", entry.role),
-        jsxAttr("affiliation", entry.affiliation),
-        jsxAttr("affiliationUrl", entry.affiliationUrl),
-        jsxAttr("location", entry.location),
-        jsxAttr("period", entry.period),
-      ]);
-      return [`<WorksEntry ${attrs}>`, "", String(entry.body || "").trimEnd(), "", "</WorksEntry>"].join(
-        "\n",
-      );
-    })
-    .join("\n\n");
-  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
-}
-
-function parsePublicationsComponentDraft(source: string): PublicationsComponentDraft {
-  const { frontmatter } = componentFrontmatterFromSource(source, "Publications");
-  return {
-    frontmatter,
-    items: parsePublicationsEntries(source).map((entry, index) => {
-      const { entryId, ...value } = entry;
-      return {
-        id: normalizeComponentEntryId(entryId, "publication", index),
-        ...value,
-      };
-    }),
-  };
-}
-
-function serializePublicationsComponentDraft(draft: PublicationsComponentDraft): string {
-  const body = draft.items
-    .map((entry) => {
-      const data = { ...entry, entryId: entry.id, id: undefined };
-      return `<PublicationsEntry data='${jsonDataAttr(data)}' />`;
-    })
-    .join("\n\n");
-  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
-}
-
-function moveNewsItem(items: NewsDraftItem[], index: number, direction: -1 | 1) {
-  if (index < 0 || index >= items.length) return items;
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= items.length) return items;
-  const next = [...items];
-  const [item] = next.splice(index, 1);
-  if (!item) return items;
-  next.splice(nextIndex, 0, item);
-  return next;
-}
-
-function moveDraftEntry<T>(items: T[], index: number, direction: -1 | 1) {
-  if (index < 0 || index >= items.length) return items;
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= items.length) return items;
-  const next = [...items];
-  const [item] = next.splice(index, 1);
-  if (!item) return items;
-  next.splice(nextIndex, 0, item);
-  return next;
-}
-
-function reorderDraftEntries<T extends { id: string }>(
-  items: T[],
-  sourceId: string,
-  targetId: string,
-) {
-  if (!sourceId || !targetId || sourceId === targetId) return items;
-  const sourceIndex = items.findIndex((item) => item.id === sourceId);
-  const targetIndex = items.findIndex((item) => item.id === targetId);
-  if (sourceIndex < 0 || targetIndex < 0) return items;
-  const next = [...items];
-  const [source] = next.splice(sourceIndex, 1);
-  if (!source) return items;
-  const adjustedTarget = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-  next.splice(adjustedTarget, 0, source);
-  return next;
-}
-
-function componentEntryDomId(id: string) {
-  return `component-entry-${id.replace(/[^a-z0-9_-]/gi, "-")}`;
-}
-
-function componentEntryFingerprint(value: unknown) {
-  return JSON.stringify(value);
-}
-
-function componentDraftItemsForSource(name: SiteComponentName, source: string) {
-  if (name === "news") return parseNewsComponentDraft(source).items;
-  if (name === "teaching") return parseTeachingComponentDraft(source).items;
-  if (name === "works") return parseWorksComponentDraft(source).items;
-  return parsePublicationsComponentDraft(source).items;
-}
-
-function changedComponentEntryIds(
-  baseline: Array<{ id: string }>,
-  candidate: Array<{ id: string }>,
-) {
-  const baselineMap = new Map(
-    baseline.map((item) => [item.id, componentEntryFingerprint(item)]),
-  );
-  const candidateMap = new Map(
-    candidate.map((item) => [item.id, componentEntryFingerprint(item)]),
-  );
-  return new Set(
-    [...new Set([...baselineMap.keys(), ...candidateMap.keys()])].filter(
-      (id) => baselineMap.get(id) !== candidateMap.get(id),
-    ),
-  );
-}
-
-function componentConflictDetail(
-  name: SiteComponentName,
-  baselineSource: string,
-  localSource: string,
-  remoteSource: string,
-) {
-  const baseline = componentDraftItemsForSource(name, baselineSource);
-  const localChanged = changedComponentEntryIds(
-    baseline,
-    componentDraftItemsForSource(name, localSource),
-  );
-  const remoteChanged = changedComponentEntryIds(
-    baseline,
-    componentDraftItemsForSource(name, remoteSource),
-  );
-  const overlaps = [...localChanged].filter((id) => remoteChanged.has(id));
-  if (overlaps.length > 0) {
-    return `${overlaps.length} ${overlaps.length === 1 ? "entry was" : "entries were"} edited in both versions. Compare before choosing which version to keep.`;
-  }
-  if (localChanged.size > 0 && remoteChanged.size > 0) {
-    return "Your edits and the latest saved edits touch different entries, but the collection changed in both places. Compare the versions before continuing.";
-  }
-  return "The collection changed after you opened it. Compare both versions before choosing which content should become the latest Draft.";
 }
 
 function sourceForNewContent(input: {
@@ -2114,7 +1696,7 @@ export function SiteAdminWebConsole({
   function moveSelectedNewsItem(id: string, direction: -1 | 1) {
     updateNewsDraft((draft) => ({
       ...draft,
-      items: moveNewsItem(
+      items: moveDraftEntry(
         draft.items,
         draft.items.findIndex((item) => item.id === id),
         direction,
@@ -2484,12 +2066,6 @@ export function SiteAdminWebConsole({
     );
   }
 
-  function componentEntryState(item: { id: string }) {
-    const baseline = componentBaselineFingerprints.get(item.id);
-    if (!baseline) return "New";
-    return baseline === componentEntryFingerprint(item) ? "Saved" : "Edited";
-  }
-
   function issuesForComponentEntry(id: string) {
     return selectedComponentIssues.filter((issue) => issue.entryId === id);
   }
@@ -2498,11 +2074,6 @@ export function SiteAdminWebConsole({
     return selectedComponentIssues.find(
       (issue) => issue.entryId === id && issue.field === field,
     );
-  }
-
-  function renderComponentFieldIssue(id: string, field: string) {
-    const issue = issueForComponentField(id, field);
-    return issue ? <small className={styles.fieldError}>{issue.message}</small> : null;
   }
 
   function reviewFirstComponentIssue() {
@@ -2522,366 +2093,140 @@ export function SiteAdminWebConsole({
     });
   }
 
-  function renderCollectionGroup(label: string, previousLabel: string) {
-    if (componentGrouping === "none" || !label || label === previousLabel) return null;
-    return <div className={styles.collectionGroupHeading}>{label}</div>;
-  }
-
-  function renderComponentItemActions(input: {
-    index: number;
-    count: number;
-    onMove: (direction: -1 | 1) => void;
-    onDuplicate: () => void;
-    onDelete: () => void;
-    reorderDisabled?: boolean;
-  }) {
-    return (
-      <div className={styles.historyActions}>
-        <Button
-          onClick={() => input.onMove(-1)}
-          variant="subtle"
-          size="sm"
-          disabled={input.reorderDisabled || input.index === 0}
-        >
-          Up
-        </Button>
-        <Button
-          onClick={() => input.onMove(1)}
-          variant="subtle"
-          size="sm"
-          disabled={input.reorderDisabled || input.index === input.count - 1}
-        >
-          Down
-        </Button>
-        <Button onClick={input.onDuplicate} variant="subtle" size="sm">
-          Duplicate
-        </Button>
-        <Button onClick={input.onDelete} variant="subtle" tone="danger" size="sm">
-          Delete
-        </Button>
-      </div>
-    );
-  }
-
-  function componentItemMatches(values: Array<string | undefined>) {
-    const query = componentSearch.trim().toLocaleLowerCase();
-    if (!query) return true;
-    return values.some((value) => String(value || "").toLocaleLowerCase().includes(query));
-  }
-
-  function renderComponentEditorHeader(input: {
-    title: string;
-    description: string;
-    count: number;
-    entryLabel: string;
-    addLabel: string;
-    onAdd: () => void;
-    secondaryLabel?: string;
-    onSecondary?: () => void;
-    visibleEntryIds: string[];
-  }) {
-    return (
-      <div className={styles.componentCollectionHeader}>
-        <div className={styles.componentCollectionIntro}>
-          <p className={styles.cardLabel}>Structured entries</p>
-          <h3>{input.title}</h3>
-          <p>{input.description}</p>
-        </div>
-        <div className={styles.componentCollectionTools}>
-          <label className={styles.componentSearchField}>
-            <span className={styles.visuallyHidden}>Search {input.entryLabel}</span>
-            <input
-              className={styles.textField}
-              type="search"
-              value={componentSearch}
-              onChange={(event) => setComponentSearch(event.target.value)}
-              placeholder={`Search ${input.entryLabel}`}
-            />
-          </label>
-          <span className={styles.collectionCount}>
-            {input.count} {input.entryLabel}
-          </span>
-          <div className={styles.componentViewControls}>
-            <label>
-              <span className={styles.visuallyHidden}>Group entries</span>
-              <select
-                value={componentGrouping}
-                onChange={(event) =>
-                  setComponentGrouping(event.target.value === "none" ? "none" : "auto")
-                }
-                aria-label="Group entries"
-              >
-                <option value="auto">Grouped</option>
-                <option value="none">No groups</option>
-              </select>
-            </label>
-            <Button
-              onClick={() => setComponentExpandedIds(input.visibleEntryIds)}
-              variant="subtle"
-              size="sm"
-              disabled={input.visibleEntryIds.length === 0}
-            >
-              Expand all
-            </Button>
-            <Button
-              onClick={() => setComponentExpandedIds([])}
-              variant="subtle"
-              size="sm"
-              disabled={componentExpandedIds.length === 0}
-            >
-              Collapse
-            </Button>
-            {selectedComponentIssues.length > 0 ? (
-              <Button onClick={reviewFirstComponentIssue} variant="subtle" tone="warning" size="sm">
-                Review {selectedComponentIssues.length}
-              </Button>
-            ) : null}
-          </div>
-          <div className={styles.panelActions}>
-            {input.secondaryLabel && input.onSecondary ? (
-              <Button onClick={input.onSecondary} variant="subtle" size="sm">
-                {input.secondaryLabel}
-              </Button>
-            ) : null}
-            <Button onClick={input.onAdd} tone="accent" size="sm">
-              {input.addLabel}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderCollectionEntryMeta(
-    detail: string,
-    state: string,
-    issueCount: number,
-  ) {
-    return (
-      <span className={styles.collectionEntryMeta}>
-        <small>{detail}</small>
-        <span
-          className={styles.entryReadiness}
-          data-state={issueCount > 0 ? "invalid" : state.toLocaleLowerCase()}
-        >
-          {issueCount > 0 ? `Fix ${issueCount}` : state}
-        </span>
-      </span>
-    );
-  }
-
-  function renderComponentDragHandle(id: string, disabled: boolean) {
-    return (
-      <span
-        className={styles.componentDragHandle}
-        title={disabled ? "Clear search to reorder" : "Drag to reorder"}
-        aria-label={disabled ? "Clear search to reorder" : "Drag to reorder"}
-        role="img"
-        draggable={!disabled}
-        onClick={(event) => event.stopPropagation()}
-        onDragStart={(event) => handleComponentDragStart(event, id)}
-        onDragEnd={() => {
-          setComponentDragId("");
-          setComponentDropId("");
-        }}
-      >
-        ⣿
-      </span>
-    );
-  }
-
-  function renderCollectionEmpty(noun: string) {
-    const searching = Boolean(componentSearch.trim());
-    return (
-      <div className={styles.collectionEmpty}>
-        <strong>
-          {searching ? `No matching ${noun}` : `No ${noun} yet`}
-        </strong>
-        <span>
-          {searching
-            ? "Try a different title, date, or metadata value."
-            : "Add the first entry to populate this collection."}
-        </span>
-      </div>
-    );
-  }
-
-  function renderAdvancedComponentSource() {
-    if (!selected) return null;
-    return (
-      <details className={styles.editorDetails}>
-        <summary>
-          <span>Advanced component source</span>
-          <small>{selected.id}.mdx</small>
-        </summary>
-        <div className={styles.editorDetailsBody}>
-          <SiteAdminMarkdownEditor
-            label={`${selected.title} MDX source`}
-            value={sourceDraft}
-            onChange={setSourceDraft}
-            minHeight={420}
-            size="large"
-            disabled={saving}
-            initialMode="source"
-            visualEditing={false}
-          />
-        </div>
-      </details>
-    );
-  }
-
   function renderNewsEditor(draft: NewsComponentDraft) {
     const searching = Boolean(componentSearch.trim());
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => {
         if (item.type === "divider") return !searching;
-        return componentItemMatches([item.date, item.body]);
+        return matchesComponentItem(componentSearch, [item.date, item.body]);
       });
 
     return (
-      <div className={styles.newsEditor}>
-        {renderComponentEditorHeader({
-          title: "News entries",
-          description:
-            "Edit dated updates directly. The public News page keeps using the same reusable collection.",
-          count: draft.items.filter((item) => item.type === "entry").length,
-          entryLabel: "updates",
-          addLabel: "Add update",
-          onAdd: addNewsEntry,
-          secondaryLabel: "Add divider",
-          onSecondary: addNewsDivider,
-          visibleEntryIds: items
-            .filter(({ item }) => item.type === "entry")
-            .map(({ item }) => item.id),
-        })}
-        <div className={styles.newsEntryList}>
-          {items.length === 0
-            ? renderCollectionEmpty("updates")
-            : null}
-          {items.map(({ item, index }, visibleIndex) => {
-            const previousItem = items[visibleIndex - 1]?.item;
-            const groupLabel =
-              item.type === "entry" ? item.date.slice(0, 4) || "Undated" : "";
-            const previousGroup =
-              previousItem?.type === "entry"
-                ? previousItem.date.slice(0, 4) || "Undated"
-                : "";
-            if (item.type === "divider") {
-              return (
-                <div
-                  key={item.id}
-                  className={styles.newsDividerRow}
-                  data-dragging={componentDragId === item.id}
-                  data-drop-target={componentDropId === item.id}
-                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
-                  onDrop={(event) => handleComponentDrop(event, item.id)}
-                >
-                  <span className={styles.newsDividerLabel}>
-                    {renderComponentDragHandle(item.id, searching)}
-                    Divider
-                  </span>
-                  <div className={styles.historyActions}>
-                    <Button
-                      onClick={() => moveSelectedNewsItem(item.id, -1)}
-                      variant="subtle"
-                      size="sm"
-                      disabled={searching || index === 0}
-                    >
-                      Up
-                    </Button>
-                    <Button
-                      onClick={() => moveSelectedNewsItem(item.id, 1)}
-                      variant="subtle"
-                      size="sm"
-                      disabled={searching || index === draft.items.length - 1}
-                    >
-                      Down
-                    </Button>
-                    <Button
-                      onClick={() => deleteNewsItem(item.id)}
-                      variant="subtle"
-                      tone="danger"
-                      size="sm"
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              );
-            }
-            const issues = issuesForComponentEntry(item.id);
+      <StructuredCollectionEditor
+        title="News entries"
+        description="Edit dated updates directly. The public News page keeps using the same reusable collection."
+        count={draft.items.filter((item) => item.type === "entry").length}
+        entryLabel="updates"
+        addLabel="Add update"
+        onAdd={addNewsEntry}
+        secondaryLabel="Add divider"
+        onSecondary={addNewsDivider}
+        search={componentSearch}
+        onSearchChange={setComponentSearch}
+        grouping={componentGrouping}
+        onGroupingChange={setComponentGrouping}
+        visibleEntryIds={items
+          .filter(({ item }) => item.type === "entry")
+          .map(({ item }) => item.id)}
+        expandedEntryIds={componentExpandedIds}
+        onExpandedEntryIdsChange={setComponentExpandedIds}
+        issueCount={selectedComponentIssues.length}
+        onReviewIssues={reviewFirstComponentIssue}
+        source={{
+          fileName: `${selected?.id || "news"}.mdx`,
+          label: `${selected?.title || "News"} MDX source`,
+          value: sourceDraft,
+          onChange: setSourceDraft,
+          disabled: saving,
+        }}
+      >
+        {items.length === 0 ? (
+          <StructuredCollectionEmpty noun="updates" searching={searching} />
+        ) : null}
+        {items.map(({ item, index }, visibleIndex) => {
+          const previousItem = items[visibleIndex - 1]?.item;
+          const groupLabel =
+            item.type === "entry" ? item.date.slice(0, 4) || "Undated" : "";
+          const previousGroup =
+            previousItem?.type === "entry"
+              ? previousItem.date.slice(0, 4) || "Undated"
+              : "";
+          const clearDragState = () => {
+            setComponentDragId("");
+            setComponentDropId("");
+          };
+          if (item.type === "divider") {
             return (
-              <Fragment key={item.id}>
-                {renderCollectionGroup(groupLabel, previousGroup)}
-                <details
-                  id={componentEntryDomId(item.id)}
-                  className={styles.newsEntryCard}
-                  open={componentExpandedIds.includes(item.id)}
-                  data-dragging={componentDragId === item.id}
-                  data-drop-target={componentDropId === item.id}
-                  data-invalid={issues.length > 0}
-                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
-                  onDrop={(event) => handleComponentDrop(event, item.id)}
-                >
-                  <summary
-                    className={styles.collectionEntrySummary}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      toggleComponentEntry(item.id);
-                    }}
-                  >
-                    {renderComponentDragHandle(item.id, searching)}
-                    <strong>{item.body.split("\n")[0] || "Untitled update"}</strong>
-                    {renderCollectionEntryMeta(
-                      item.date || "No date",
-                      componentEntryState(item),
-                      issues.length,
-                    )}
-                  </summary>
-                  {renderComponentItemActions({
-                    index,
-                    count: draft.items.length,
-                    reorderDisabled: searching,
-                    onMove: (direction) => moveSelectedNewsItem(item.id, direction),
-                    onDuplicate: () => duplicateNewsItem(item.id),
-                    onDelete: () => deleteNewsItem(item.id),
-                  })}
-                  <label className={styles.fieldLabel}>
-                    Date
-                    <input
-                      className={styles.textField}
-                      type="date"
-                      value={item.date}
-                      data-component-field="date"
-                      aria-invalid={Boolean(issueForComponentField(item.id, "date"))}
-                      onChange={(event) =>
-                        updateNewsItem(item.id, { date: event.target.value })
-                      }
-                    />
-                    {renderComponentFieldIssue(item.id, "date")}
-                  </label>
-                  <label className={styles.fieldLabel}>
-                    Body
-                    <textarea
-                      className={styles.newsEntryBody}
-                      value={item.body}
-                      data-component-field="body"
-                      aria-invalid={Boolean(issueForComponentField(item.id, "body"))}
-                      onChange={(event) =>
-                        updateNewsItem(item.id, { body: event.target.value })
-                      }
-                      disabled={saving}
-                    />
-                    {renderComponentFieldIssue(item.id, "body")}
-                  </label>
-                </details>
-              </Fragment>
+              <StructuredCollectionDivider
+                key={item.id}
+                dragging={componentDragId === item.id}
+                dropTarget={componentDropId === item.id}
+                dragDisabled={searching}
+                index={index}
+                count={draft.items.length}
+                onMove={(direction) => moveSelectedNewsItem(item.id, direction)}
+                onDelete={() => deleteNewsItem(item.id)}
+                onDragStart={(event) => handleComponentDragStart(event, item.id)}
+                onDragEnd={clearDragState}
+                onDragOver={(event) => handleComponentDragOver(event, item.id)}
+                onDrop={(event) => handleComponentDrop(event, item.id)}
+              />
             );
-          })}
-        </div>
-        {renderAdvancedComponentSource()}
-      </div>
+          }
+          const issues = issuesForComponentEntry(item.id);
+          return (
+            <StructuredCollectionEntry
+              key={item.id}
+              id={item.id}
+              groupLabel={groupLabel}
+              previousGroupLabel={previousGroup}
+              grouping={componentGrouping}
+              title={item.body.split("\n")[0] || "Untitled update"}
+              detail={item.date || "No date"}
+              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
+              issues={issues}
+              expanded={componentExpandedIds.includes(item.id)}
+              dragging={componentDragId === item.id}
+              dropTarget={componentDropId === item.id}
+              dragDisabled={searching}
+              index={index}
+              count={draft.items.length}
+              onToggle={() => toggleComponentEntry(item.id)}
+              onMove={(direction) => moveSelectedNewsItem(item.id, direction)}
+              onDuplicate={() => duplicateNewsItem(item.id)}
+              onDelete={() => deleteNewsItem(item.id)}
+              onDragStart={(event) => handleComponentDragStart(event, item.id)}
+              onDragEnd={clearDragState}
+              onDragOver={(event) => handleComponentDragOver(event, item.id)}
+              onDrop={(event) => handleComponentDrop(event, item.id)}
+            >
+              <label className={styles.fieldLabel}>
+                Date
+                <input
+                  className={styles.textField}
+                  type="date"
+                  value={item.date}
+                  data-component-field="date"
+                  aria-invalid={Boolean(issueForComponentField(item.id, "date"))}
+                  onChange={(event) =>
+                    updateNewsItem(item.id, { date: event.target.value })
+                  }
+                />
+                <StructuredCollectionFieldIssue
+                  issue={issueForComponentField(item.id, "date")}
+                />
+              </label>
+              <label className={styles.fieldLabel}>
+                Body
+                <textarea
+                  className={styles.newsEntryBody}
+                  value={item.body}
+                  data-component-field="body"
+                  aria-invalid={Boolean(issueForComponentField(item.id, "body"))}
+                  onChange={(event) =>
+                    updateNewsItem(item.id, { body: event.target.value })
+                  }
+                  disabled={saving}
+                />
+                <StructuredCollectionFieldIssue
+                  issue={issueForComponentField(item.id, "body")}
+                />
+              </label>
+            </StructuredCollectionEntry>
+          );
+        })}
+      </StructuredCollectionEditor>
     );
   }
 
@@ -2890,7 +2235,7 @@ export function SiteAdminWebConsole({
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
-        componentItemMatches([
+        matchesComponentItem(componentSearch, [
           item.term,
           item.period,
           item.role,
@@ -2900,64 +2245,68 @@ export function SiteAdminWebConsole({
         ]),
       );
     return (
-      <div className={styles.newsEditor}>
-        {renderComponentEditorHeader({
-          title: "Teaching rows",
-          description:
-            "Edit course rows directly. The MDX source remains available under Advanced.",
-          count: draft.items.length,
-          entryLabel: "courses",
-          addLabel: "Add course",
-          onAdd: addTeachingEntry,
-          visibleEntryIds: items.map(({ item }) => item.id),
-        })}
-        <div className={styles.newsEntryList}>
-          {items.length === 0 ? renderCollectionEmpty("courses") : null}
-          {items.map(({ item, index }, visibleIndex) => {
-            const issues = issuesForComponentEntry(item.id);
-            const groupLabel =
-              item.term.match(/^\d{4}\/\d{2}/)?.[0] || item.term || "No term";
-            const previousTerm = items[visibleIndex - 1]?.item.term || "";
-            const previousGroup =
-              previousTerm.match(/^\d{4}\/\d{2}/)?.[0] || previousTerm;
-            return (
-              <Fragment key={item.id}>
-                {renderCollectionGroup(groupLabel, previousGroup)}
-                <details
-                  id={componentEntryDomId(item.id)}
-                  className={styles.newsEntryCard}
-                  open={componentExpandedIds.includes(item.id)}
-                  data-dragging={componentDragId === item.id}
-                  data-drop-target={componentDropId === item.id}
-                  data-invalid={issues.length > 0}
-                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
-                  onDrop={(event) => handleComponentDrop(event, item.id)}
-                >
-                  <summary
-                    className={styles.collectionEntrySummary}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      toggleComponentEntry(item.id);
-                    }}
-                  >
-                    {renderComponentDragHandle(item.id, searching)}
-                    <strong>
-                      {item.courseCode || item.courseName || item.term || "Untitled course"}
-                    </strong>
-                    {renderCollectionEntryMeta(
-                      item.term || item.period || "Course",
-                      componentEntryState(item),
-                      issues.length,
-                    )}
-                  </summary>
-                  {renderComponentItemActions({
-                    index,
-                    count: draft.items.length,
-                    reorderDisabled: searching,
-                    onMove: (direction) => moveSelectedTeachingItem(item.id, direction),
-                    onDuplicate: () => duplicateTeachingItem(item.id),
-                    onDelete: () => deleteTeachingItem(item.id),
-                  })}
+      <StructuredCollectionEditor
+        title="Teaching rows"
+        description="Edit course rows directly. The MDX source remains available under Advanced."
+        count={draft.items.length}
+        entryLabel="courses"
+        addLabel="Add course"
+        onAdd={addTeachingEntry}
+        search={componentSearch}
+        onSearchChange={setComponentSearch}
+        grouping={componentGrouping}
+        onGroupingChange={setComponentGrouping}
+        visibleEntryIds={items.map(({ item }) => item.id)}
+        expandedEntryIds={componentExpandedIds}
+        onExpandedEntryIdsChange={setComponentExpandedIds}
+        issueCount={selectedComponentIssues.length}
+        onReviewIssues={reviewFirstComponentIssue}
+        source={{
+          fileName: `${selected?.id || "teaching"}.mdx`,
+          label: `${selected?.title || "Teaching"} MDX source`,
+          value: sourceDraft,
+          onChange: setSourceDraft,
+          disabled: saving,
+        }}
+      >
+        {items.length === 0 ? (
+          <StructuredCollectionEmpty noun="courses" searching={searching} />
+        ) : null}
+        {items.map(({ item, index }, visibleIndex) => {
+          const issues = issuesForComponentEntry(item.id);
+          const groupLabel =
+            item.term.match(/^\d{4}\/\d{2}/)?.[0] || item.term || "No term";
+          const previousTerm = items[visibleIndex - 1]?.item.term || "";
+          const previousGroup = previousTerm.match(/^\d{4}\/\d{2}/)?.[0] || previousTerm;
+          return (
+            <StructuredCollectionEntry
+              key={item.id}
+              id={item.id}
+              groupLabel={groupLabel}
+              previousGroupLabel={previousGroup}
+              grouping={componentGrouping}
+              title={item.courseCode || item.courseName || item.term || "Untitled course"}
+              detail={item.term || item.period || "Course"}
+              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
+              issues={issues}
+              expanded={componentExpandedIds.includes(item.id)}
+              dragging={componentDragId === item.id}
+              dropTarget={componentDropId === item.id}
+              dragDisabled={searching}
+              index={index}
+              count={draft.items.length}
+              onToggle={() => toggleComponentEntry(item.id)}
+              onMove={(direction) => moveSelectedTeachingItem(item.id, direction)}
+              onDuplicate={() => duplicateTeachingItem(item.id)}
+              onDelete={() => deleteTeachingItem(item.id)}
+              onDragStart={(event) => handleComponentDragStart(event, item.id)}
+              onDragEnd={() => {
+                setComponentDragId("");
+                setComponentDropId("");
+              }}
+              onDragOver={(event) => handleComponentDragOver(event, item.id)}
+              onDrop={(event) => handleComponentDrop(event, item.id)}
+            >
                   <div className={styles.componentEntryGrid}>
                     <label className={styles.fieldLabel}>
                       Term
@@ -2970,7 +2319,9 @@ export function SiteAdminWebConsole({
                           updateTeachingItem(item.id, { term: event.target.value })
                         }
                       />
-                      {renderComponentFieldIssue(item.id, "term")}
+                      <StructuredCollectionFieldIssue
+                        issue={issueForComponentField(item.id, "term")}
+                      />
                     </label>
                     <label className={styles.fieldLabel}>
                       Period
@@ -3015,7 +2366,9 @@ export function SiteAdminWebConsole({
                           updateTeachingItem(item.id, { courseName: event.target.value })
                         }
                       />
-                      {renderComponentFieldIssue(item.id, "courseName")}
+                      <StructuredCollectionFieldIssue
+                        issue={issueForComponentField(item.id, "courseName")}
+                      />
                     </label>
                     <label className={styles.fieldLabel}>
                       Instructor
@@ -3040,16 +2393,15 @@ export function SiteAdminWebConsole({
                           updateTeachingItem(item.id, { courseUrl: event.target.value })
                         }
                       />
-                      {renderComponentFieldIssue(item.id, "courseUrl")}
+                      <StructuredCollectionFieldIssue
+                        issue={issueForComponentField(item.id, "courseUrl")}
+                      />
                     </label>
                   </div>
-                </details>
-              </Fragment>
-            );
-          })}
-        </div>
-        {renderAdvancedComponentSource()}
-      </div>
+            </StructuredCollectionEntry>
+          );
+        })}
+      </StructuredCollectionEditor>
     );
   }
 
@@ -3058,7 +2410,7 @@ export function SiteAdminWebConsole({
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
-        componentItemMatches([
+        matchesComponentItem(componentSearch, [
           item.category,
           item.role,
           item.affiliation,
@@ -3068,64 +2420,71 @@ export function SiteAdminWebConsole({
         ]),
       );
     return (
-      <div className={styles.newsEditor}>
-        {renderComponentEditorHeader({
-          title: "Work rows",
-          description:
-            "Edit roles, affiliations, periods, and body text without touching MDX tags.",
-          count: draft.items.length,
-          entryLabel: "roles",
-          addLabel: "Add role",
-          onAdd: addWorksEntry,
-          visibleEntryIds: items.map(({ item }) => item.id),
-        })}
-        <div className={styles.newsEntryList}>
-          {items.length === 0 ? renderCollectionEmpty("roles") : null}
-          {items.map(({ item, index }, visibleIndex) => {
-            const issues = issuesForComponentEntry(item.id);
-            const groupLabel = item.category === "passed" ? "Past" : "Recent";
-            const previousItem = items[visibleIndex - 1]?.item;
-            const previousGroup = previousItem
-              ? previousItem.category === "passed"
-                ? "Past"
-                : "Recent"
-              : "";
-            return (
-              <Fragment key={item.id}>
-                {renderCollectionGroup(groupLabel, previousGroup)}
-                <details
-                  id={componentEntryDomId(item.id)}
-                  className={styles.newsEntryCard}
-                  open={componentExpandedIds.includes(item.id)}
-                  data-dragging={componentDragId === item.id}
-                  data-drop-target={componentDropId === item.id}
-                  data-invalid={issues.length > 0}
-                  onDragOver={(event) => handleComponentDragOver(event, item.id)}
-                  onDrop={(event) => handleComponentDrop(event, item.id)}
-                >
-                  <summary
-                    className={styles.collectionEntrySummary}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      toggleComponentEntry(item.id);
-                    }}
-                  >
-                    {renderComponentDragHandle(item.id, searching)}
-                    <strong>{item.role || item.affiliation || "Untitled work"}</strong>
-                    {renderCollectionEntryMeta(
-                      item.period || item.category,
-                      componentEntryState(item),
-                      issues.length,
-                    )}
-                  </summary>
-                  {renderComponentItemActions({
-                    index,
-                    count: draft.items.length,
-                    reorderDisabled: searching,
-                    onMove: (direction) => moveSelectedWorksItem(item.id, direction),
-                    onDuplicate: () => duplicateWorksItem(item.id),
-                    onDelete: () => deleteWorksItem(item.id),
-                  })}
+      <StructuredCollectionEditor
+        title="Work rows"
+        description="Edit roles, affiliations, periods, and body text without touching MDX tags."
+        count={draft.items.length}
+        entryLabel="roles"
+        addLabel="Add role"
+        onAdd={addWorksEntry}
+        search={componentSearch}
+        onSearchChange={setComponentSearch}
+        grouping={componentGrouping}
+        onGroupingChange={setComponentGrouping}
+        visibleEntryIds={items.map(({ item }) => item.id)}
+        expandedEntryIds={componentExpandedIds}
+        onExpandedEntryIdsChange={setComponentExpandedIds}
+        issueCount={selectedComponentIssues.length}
+        onReviewIssues={reviewFirstComponentIssue}
+        source={{
+          fileName: `${selected?.id || "works"}.mdx`,
+          label: `${selected?.title || "Works"} MDX source`,
+          value: sourceDraft,
+          onChange: setSourceDraft,
+          disabled: saving,
+        }}
+      >
+        {items.length === 0 ? (
+          <StructuredCollectionEmpty noun="roles" searching={searching} />
+        ) : null}
+        {items.map(({ item, index }, visibleIndex) => {
+          const issues = issuesForComponentEntry(item.id);
+          const groupLabel = item.category === "passed" ? "Past" : "Recent";
+          const previousItem = items[visibleIndex - 1]?.item;
+          const previousGroup = previousItem
+            ? previousItem.category === "passed"
+              ? "Past"
+              : "Recent"
+            : "";
+          return (
+            <StructuredCollectionEntry
+              key={item.id}
+              id={item.id}
+              groupLabel={groupLabel}
+              previousGroupLabel={previousGroup}
+              grouping={componentGrouping}
+              title={item.role || item.affiliation || "Untitled work"}
+              detail={item.period || item.category}
+              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
+              issues={issues}
+              expanded={componentExpandedIds.includes(item.id)}
+              dragging={componentDragId === item.id}
+              dropTarget={componentDropId === item.id}
+              dragDisabled={searching}
+              index={index}
+              count={draft.items.length}
+              onToggle={() => toggleComponentEntry(item.id)}
+              onMove={(direction) => moveSelectedWorksItem(item.id, direction)}
+              onDuplicate={() => duplicateWorksItem(item.id)}
+              onDelete={() => deleteWorksItem(item.id)}
+              onDragStart={(event) => handleComponentDragStart(event, item.id)}
+              onDragEnd={() => {
+                setComponentDragId("");
+                setComponentDropId("");
+              }}
+              onDragOver={(event) => handleComponentDragOver(event, item.id)}
+              onDrop={(event) => handleComponentDrop(event, item.id)}
+            >
                   <div className={styles.componentEntryGrid}>
                     <label className={styles.fieldLabel}>
                       Category
@@ -3153,7 +2512,9 @@ export function SiteAdminWebConsole({
                           updateWorksItem(item.id, { role: event.target.value })
                         }
                       />
-                      {renderComponentFieldIssue(item.id, "role")}
+                      <StructuredCollectionFieldIssue
+                        issue={issueForComponentField(item.id, "role")}
+                      />
                     </label>
                     <label className={styles.fieldLabel}>
                       Affiliation
@@ -3178,7 +2539,9 @@ export function SiteAdminWebConsole({
                           updateWorksItem(item.id, { affiliationUrl: event.target.value })
                         }
                       />
-                      {renderComponentFieldIssue(item.id, "affiliationUrl")}
+                      <StructuredCollectionFieldIssue
+                        issue={issueForComponentField(item.id, "affiliationUrl")}
+                      />
                     </label>
                     <label className={styles.fieldLabel}>
                       Location
@@ -3201,7 +2564,9 @@ export function SiteAdminWebConsole({
                           updateWorksItem(item.id, { period: event.target.value })
                         }
                       />
-                      {renderComponentFieldIssue(item.id, "period")}
+                      <StructuredCollectionFieldIssue
+                        issue={issueForComponentField(item.id, "period")}
+                      />
                     </label>
                   </div>
                   <label className={styles.fieldLabel}>
@@ -3215,13 +2580,10 @@ export function SiteAdminWebConsole({
                       disabled={saving}
                     />
                   </label>
-                </details>
-              </Fragment>
-            );
-          })}
-        </div>
-        {renderAdvancedComponentSource()}
-      </div>
+            </StructuredCollectionEntry>
+          );
+        })}
+      </StructuredCollectionEditor>
     );
   }
 
@@ -3230,7 +2592,7 @@ export function SiteAdminWebConsole({
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
-        componentItemMatches([
+        matchesComponentItem(componentSearch, [
           item.title,
           item.year,
           item.url,
@@ -3242,64 +2604,68 @@ export function SiteAdminWebConsole({
         ]),
       );
     return (
-      <div className={styles.newsEditor}>
-        {renderComponentEditorHeader({
-          title: "Publication rows",
-          description:
-            "Edit titles, authors, venue, links, and labels directly. Advanced JSON remains preserved.",
-          count: draft.items.length,
-          entryLabel: "publications",
-          addLabel: "Add publication",
-          onAdd: addPublicationEntry,
-          visibleEntryIds: items.map(({ item }) => item.id),
-        })}
-        <div className={styles.newsEntryList}>
-          {items.length === 0
-            ? renderCollectionEmpty("publications")
-            : null}
-          {items.map(({ item, index }, visibleIndex) => {
-            const authors = publicationAuthorNames(item);
-            const selfAuthor =
-              item.authorsRich?.find((author) => author.isSelf)?.name || "";
-            const primaryVenue = publicationPrimaryVenue(item);
-            const issues = issuesForComponentEntry(item.id);
-            const previousGroup = items[visibleIndex - 1]?.item.year || "";
-            return (
-              <Fragment key={item.id}>
-              {renderCollectionGroup(item.year || "No year", previousGroup)}
-              <details
-                id={componentEntryDomId(item.id)}
-                className={styles.newsEntryCard}
-                open={componentExpandedIds.includes(item.id)}
-                data-dragging={componentDragId === item.id}
-                data-drop-target={componentDropId === item.id}
-                data-invalid={issues.length > 0}
-                onDragOver={(event) => handleComponentDragOver(event, item.id)}
-                onDrop={(event) => handleComponentDrop(event, item.id)}
-              >
-                <summary
-                  className={styles.collectionEntrySummary}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    toggleComponentEntry(item.id);
-                  }}
-                >
-                  {renderComponentDragHandle(item.id, searching)}
-                  <strong>{item.title || "Untitled publication"}</strong>
-                  {renderCollectionEntryMeta(
-                    item.year || "Publication",
-                    componentEntryState(item),
-                    issues.length,
-                  )}
-                </summary>
-                {renderComponentItemActions({
-                  index,
-                  count: draft.items.length,
-                  reorderDisabled: searching,
-                  onMove: (direction) => moveSelectedPublicationItem(item.id, direction),
-                  onDuplicate: () => duplicatePublicationItem(item.id),
-                  onDelete: () => deletePublicationItem(item.id),
-                })}
+      <StructuredCollectionEditor
+        title="Publication rows"
+        description="Edit titles, authors, venue, links, and labels directly. Advanced JSON remains preserved."
+        count={draft.items.length}
+        entryLabel="publications"
+        addLabel="Add publication"
+        onAdd={addPublicationEntry}
+        search={componentSearch}
+        onSearchChange={setComponentSearch}
+        grouping={componentGrouping}
+        onGroupingChange={setComponentGrouping}
+        visibleEntryIds={items.map(({ item }) => item.id)}
+        expandedEntryIds={componentExpandedIds}
+        onExpandedEntryIdsChange={setComponentExpandedIds}
+        issueCount={selectedComponentIssues.length}
+        onReviewIssues={reviewFirstComponentIssue}
+        source={{
+          fileName: `${selected?.id || "publications"}.mdx`,
+          label: `${selected?.title || "Publications"} MDX source`,
+          value: sourceDraft,
+          onChange: setSourceDraft,
+          disabled: saving,
+        }}
+      >
+        {items.length === 0 ? (
+          <StructuredCollectionEmpty noun="publications" searching={searching} />
+        ) : null}
+        {items.map(({ item, index }, visibleIndex) => {
+          const authors = publicationAuthorNames(item);
+          const selfAuthor = item.authorsRich?.find((author) => author.isSelf)?.name || "";
+          const primaryVenue = publicationPrimaryVenue(item);
+          const issues = issuesForComponentEntry(item.id);
+          const previousGroup = items[visibleIndex - 1]?.item.year || "";
+          return (
+            <StructuredCollectionEntry
+              key={item.id}
+              id={item.id}
+              groupLabel={item.year || "No year"}
+              previousGroupLabel={previousGroup}
+              grouping={componentGrouping}
+              title={item.title || "Untitled publication"}
+              detail={item.year || "Publication"}
+              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
+              issues={issues}
+              expanded={componentExpandedIds.includes(item.id)}
+              dragging={componentDragId === item.id}
+              dropTarget={componentDropId === item.id}
+              dragDisabled={searching}
+              index={index}
+              count={draft.items.length}
+              onToggle={() => toggleComponentEntry(item.id)}
+              onMove={(direction) => moveSelectedPublicationItem(item.id, direction)}
+              onDuplicate={() => duplicatePublicationItem(item.id)}
+              onDelete={() => deletePublicationItem(item.id)}
+              onDragStart={(event) => handleComponentDragStart(event, item.id)}
+              onDragEnd={() => {
+                setComponentDragId("");
+                setComponentDropId("");
+              }}
+              onDragOver={(event) => handleComponentDragOver(event, item.id)}
+              onDrop={(event) => handleComponentDrop(event, item.id)}
+            >
                 <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Title
@@ -3312,7 +2678,9 @@ export function SiteAdminWebConsole({
                       updatePublicationItem(item.id, { title: event.target.value })
                     }
                   />
-                  {renderComponentFieldIssue(item.id, "title")}
+                  <StructuredCollectionFieldIssue
+                    issue={issueForComponentField(item.id, "title")}
+                  />
                 </label>
                 <label className={styles.fieldLabel}>
                   Year
@@ -3325,7 +2693,9 @@ export function SiteAdminWebConsole({
                       updatePublicationItem(item.id, { year: event.target.value })
                     }
                   />
-                  {renderComponentFieldIssue(item.id, "year")}
+                  <StructuredCollectionFieldIssue
+                    issue={issueForComponentField(item.id, "year")}
+                  />
                 </label>
                 <label className={styles.fieldLabel}>
                   URL
@@ -3338,7 +2708,9 @@ export function SiteAdminWebConsole({
                       updatePublicationItem(item.id, { url: event.target.value })
                     }
                   />
-                  {renderComponentFieldIssue(item.id, "url")}
+                  <StructuredCollectionFieldIssue
+                    issue={issueForComponentField(item.id, "url")}
+                  />
                 </label>
                 <label className={styles.fieldLabel}>
                   Authors
@@ -3430,7 +2802,9 @@ export function SiteAdminWebConsole({
                       updatePublicationItem(item.id, { doiUrl: event.target.value })
                     }
                   />
-                  {renderComponentFieldIssue(item.id, "doiUrl")}
+                  <StructuredCollectionFieldIssue
+                    issue={issueForComponentField(item.id, "doiUrl")}
+                  />
                 </label>
                 <label className={styles.fieldLabel}>
                   arXiv URL
@@ -3443,7 +2817,9 @@ export function SiteAdminWebConsole({
                       updatePublicationItem(item.id, { arxivUrl: event.target.value })
                     }
                   />
-                  {renderComponentFieldIssue(item.id, "arxivUrl")}
+                  <StructuredCollectionFieldIssue
+                    issue={issueForComponentField(item.id, "arxivUrl")}
+                  />
                 </label>
                 <label className={styles.fieldLabel}>
                   External URLs
@@ -3456,13 +2832,10 @@ export function SiteAdminWebConsole({
                   />
                 </label>
                 </div>
-              </details>
-              </Fragment>
-            );
-          })}
-        </div>
-        {renderAdvancedComponentSource()}
-      </div>
+            </StructuredCollectionEntry>
+          );
+        })}
+      </StructuredCollectionEditor>
     );
   }
 
