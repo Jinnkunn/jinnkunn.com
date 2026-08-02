@@ -1,19 +1,31 @@
 "use client";
 
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { uploadSiteAdminAsset } from "./site-admin-media-library";
 import styles from "./site-admin-dashboard.module.css";
+
+const SiteAdminSourceEditor = dynamic(
+  () =>
+    import("./site-admin-source-editor").then((module) => module.SiteAdminSourceEditor),
+  {
+    ssr: false,
+    loading: () => <div className={styles.editorLoading}>Opening source editor…</div>,
+  },
+);
+
+const SiteAdminVisualEditor = dynamic(
+  () =>
+    import("./site-admin-visual-editor").then((module) => module.SiteAdminVisualEditor),
+  {
+    ssr: false,
+    loading: () => <div className={styles.editorLoading}>Opening editor…</div>,
+  },
+);
 
 type MarkdownEditorSize = "regular" | "compact" | "large";
 type MarkdownPreviewLayout = "tabs" | "split";
+type EditorMode = "visual" | "source" | "preview";
 
 type MarkdownEditorProps = {
   label?: string;
@@ -25,159 +37,20 @@ type MarkdownEditorProps = {
   disabled?: boolean;
   previewLayout?: MarkdownPreviewLayout;
   allowImageUpload?: boolean;
+  initialMode?: EditorMode;
+  visualEditing?: boolean;
 };
 
-type MarkdownAction = {
-  id: string;
-  label: string;
-  title: string;
-  run: (textarea: HTMLTextAreaElement) => string | null;
-};
-
-type MarkdownActionGroup = {
-  label: string;
-  actions: MarkdownAction[];
-};
-
-function selectedRange(textarea: HTMLTextAreaElement) {
-  return {
-    start: textarea.selectionStart,
-    end: textarea.selectionEnd,
-    value: textarea.value.slice(textarea.selectionStart, textarea.selectionEnd),
-  };
+function editorStats(value: string) {
+  const words = value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[`*_>#\[\](){}|-]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const components = value.match(/<([A-Z][A-Za-z0-9.]*)\b/g)?.length || 0;
+  return { words, components };
 }
-
-function replaceSelection(
-  textarea: HTMLTextAreaElement,
-  replacement: string,
-  caretOffset = replacement.length,
-) {
-  const { start, end } = selectedRange(textarea);
-  const next = `${textarea.value.slice(0, start)}${replacement}${textarea.value.slice(end)}`;
-  window.requestAnimationFrame(() => {
-    textarea.focus();
-    const nextCaret = start + caretOffset;
-    textarea.setSelectionRange(nextCaret, nextCaret);
-  });
-  return next;
-}
-
-function wrapSelection(
-  textarea: HTMLTextAreaElement,
-  before: string,
-  after = before,
-  fallback = "text",
-) {
-  const { start, end, value } = selectedRange(textarea);
-  const inner = value || fallback;
-  const replacement = `${before}${inner}${after}`;
-  const next = `${textarea.value.slice(0, start)}${replacement}${textarea.value.slice(end)}`;
-  window.requestAnimationFrame(() => {
-    textarea.focus();
-    textarea.setSelectionRange(start + before.length, start + before.length + inner.length);
-  });
-  return next;
-}
-
-function linePrefixSelection(
-  textarea: HTMLTextAreaElement,
-  prefix: string,
-  fallback = "New line",
-) {
-  const { value } = selectedRange(textarea);
-  if (!value) return replaceSelection(textarea, `${prefix}${fallback}`);
-  const nextSelection = value
-    .split("\n")
-    .map((line) => `${prefix}${line}`)
-    .join("\n");
-  return replaceSelection(textarea, nextSelection, nextSelection.length);
-}
-
-function insertBlock(textarea: HTMLTextAreaElement, block: string) {
-  const { start } = selectedRange(textarea);
-  const before = textarea.value.slice(0, start);
-  const needsLeadingBreak = before.length > 0 && !before.endsWith("\n\n");
-  const insert = `${needsLeadingBreak ? "\n\n" : ""}${block}`;
-  return replaceSelection(textarea, insert, insert.length);
-}
-
-const markdownActionGroups: MarkdownActionGroup[] = [
-  {
-    label: "Inline formatting",
-    actions: [
-      {
-        id: "bold",
-        label: "B",
-        title: "Bold",
-        run: (textarea) => wrapSelection(textarea, "**", "**", "bold text"),
-      },
-      {
-        id: "italic",
-        label: "I",
-        title: "Italic",
-        run: (textarea) => wrapSelection(textarea, "*", "*", "italic text"),
-      },
-      {
-        id: "inline-code",
-        label: "`",
-        title: "Inline code",
-        run: (textarea) => wrapSelection(textarea, "`", "`", "code"),
-      },
-      {
-        id: "link",
-        label: "Link",
-        title: "Link",
-        run: (textarea) => wrapSelection(textarea, "[", "](https://)", "link text"),
-      },
-    ],
-  },
-  {
-    label: "Block formatting",
-    actions: [
-      {
-        id: "heading-2",
-        label: "H2",
-        title: "Heading 2",
-        run: (textarea) => linePrefixSelection(textarea, "## ", "Heading"),
-      },
-      {
-        id: "heading-3",
-        label: "H3",
-        title: "Heading 3",
-        run: (textarea) => linePrefixSelection(textarea, "### ", "Heading"),
-      },
-      {
-        id: "bullet-list",
-        label: "UL",
-        title: "Bullet list",
-        run: (textarea) => linePrefixSelection(textarea, "- ", "List item"),
-      },
-      {
-        id: "quote",
-        label: ">",
-        title: "Quote",
-        run: (textarea) => linePrefixSelection(textarea, "> ", "Quote"),
-      },
-    ],
-  },
-  {
-    label: "Insert blocks",
-    actions: [
-      {
-        id: "divider",
-        label: "HR",
-        title: "Divider",
-        run: (textarea) => insertBlock(textarea, "---\n\n"),
-      },
-      {
-        id: "code-block",
-        label: "{}",
-        title: "Code block",
-        run: (textarea) => insertBlock(textarea, "```\ncode\n```\n\n"),
-      },
-    ],
-  },
-];
 
 export function SiteAdminMarkdownEditor({
   label = "MDX editor",
@@ -189,17 +62,18 @@ export function SiteAdminMarkdownEditor({
   disabled = false,
   previewLayout = "tabs",
   allowImageUpload = true,
+  initialMode = "visual",
+  visualEditing = true,
 }: MarkdownEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const previewRequestIdRef = useRef(0);
-  const [mode, setMode] = useState<"source" | "preview">("source");
+  const [mode, setMode] = useState<EditorMode>(
+    visualEditing ? initialMode : initialMode === "preview" ? "preview" : "source",
+  );
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [imageUploading, setImageUploading] = useState(false);
-  const [imageError, setImageError] = useState("");
-
+  const [visualError, setVisualError] = useState("");
+  const stats = useMemo(() => editorStats(value), [value]);
   const isSplitPreview = previewLayout === "split";
 
   const renderPreview = useCallback(async () => {
@@ -234,80 +108,15 @@ export function SiteAdminMarkdownEditor({
   }, [value]);
 
   useEffect(() => {
-    if (!isSplitPreview) return;
-    const timer = window.setTimeout(() => {
-      void renderPreview();
-    }, 350);
+    if (mode !== "preview" && !isSplitPreview) return;
+    const timer = window.setTimeout(() => void renderPreview(), 260);
     return () => window.clearTimeout(timer);
-  }, [isSplitPreview, renderPreview]);
+  }, [isSplitPreview, mode, renderPreview]);
 
-  function applyAction(action: MarkdownAction) {
-    const textarea = textareaRef.current;
-    if (!textarea || disabled) return;
-    const next = action.run(textarea);
-    if (next !== null) onChange(next);
+  function changeMode(nextMode: EditorMode) {
+    setMode(nextMode);
+    if (nextMode === "preview") void renderPreview();
   }
-
-  async function insertImage(file: File) {
-    const textarea = textareaRef.current;
-    if (!textarea || disabled || !file.type.startsWith("image/")) return;
-    setImageUploading(true);
-    setImageError("");
-    try {
-      const asset = await uploadSiteAdminAsset(file);
-      const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
-      const next = insertBlock(textarea, `![${alt}](${asset.url})\n\n`);
-      onChange(next);
-    } catch (error) {
-      setImageError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setImageUploading(false);
-      if (imageInputRef.current) imageInputRef.current.value = "";
-    }
-  }
-
-  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const image = Array.from(event.clipboardData.files).find((file) =>
-      file.type.startsWith("image/"),
-    );
-    if (!image) return;
-    event.preventDefault();
-    void insertImage(image);
-  }
-
-  function handleDrop(event: DragEvent<HTMLTextAreaElement>) {
-    const image = Array.from(event.dataTransfer.files).find((file) =>
-      file.type.startsWith("image/"),
-    );
-    if (!image) return;
-    event.preventDefault();
-    void insertImage(image);
-  }
-
-  const imageUploadControl = allowImageUpload ? (
-    <>
-      <button
-        type="button"
-        className={styles.markdownToolButton}
-        title="Upload image"
-        aria-label="Upload image"
-        onClick={() => imageInputRef.current?.click()}
-        disabled={disabled || imageUploading || (!isSplitPreview && mode === "preview")}
-      >
-        {imageUploading ? "Uploading" : "Image"}
-      </button>
-      <input
-        ref={imageInputRef}
-        className={styles.visuallyHidden}
-        type="file"
-        accept="image/*"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void insertImage(file);
-        }}
-      />
-    </>
-  ) : null;
 
   function renderPreviewPane() {
     return (
@@ -315,7 +124,10 @@ export function SiteAdminMarkdownEditor({
         {previewLoading ? (
           <p className={styles.previewEmpty}>Rendering preview…</p>
         ) : previewError ? (
-          <p className={styles.previewEmpty}>Preview unavailable: {previewError}</p>
+          <div className={styles.previewError} role="alert">
+            <strong>Preview unavailable</strong>
+            <span>{previewError}</span>
+          </div>
         ) : previewHtml.trim() ? (
           <div
             className={styles.markdownPreview}
@@ -328,104 +140,92 @@ export function SiteAdminMarkdownEditor({
     );
   }
 
+  const sourceEditor = (
+    <SiteAdminSourceEditor
+      label={label}
+      value={value}
+      onChange={onChange}
+      minHeight={minHeight}
+      placeholder={placeholder}
+      disabled={disabled}
+      allowImageUpload={allowImageUpload}
+    />
+  );
+
   return (
     <div className={styles.markdownEditor} data-size={size} data-layout={previewLayout}>
-      {imageError ? (
-        <p className={styles.editorInlineError} role="alert">
-          Image upload failed: {imageError}
-        </p>
-      ) : null}
-      <div className={styles.markdownToolbar} role="toolbar" aria-label={`${label} toolbar`}>
-        <div className={styles.markdownToolbarGroup} aria-label="Formatting tools">
-          {markdownActionGroups.map((group) => (
-            <div
-              key={group.label}
-              className={styles.markdownToolbarCluster}
-              role="group"
-              aria-label={group.label}
-            >
-              {group.actions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  className={styles.markdownToolButton}
-                  title={action.title}
-                  aria-label={action.title}
-                  onClick={() => applyAction(action)}
-                  disabled={disabled || (!isSplitPreview && mode === "preview")}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          ))}
-          <div className={styles.markdownToolbarCluster} role="group" aria-label="Media">
-            {imageUploadControl}
-          </div>
-        </div>
-        <div className={styles.markdownToolbarCluster} role="group" aria-label="Editor view">
-          {isSplitPreview ? (
+      <div className={styles.editorModeBar}>
+        <div className={styles.editorModeTabs} role="tablist" aria-label={`${label} view`}>
+          {visualEditing ? (
             <button
               type="button"
               className={styles.markdownModeButton}
-              onClick={() => void renderPreview()}
-              disabled={previewLoading}
-              title="Refresh preview"
+              data-active={mode === "visual"}
+              onClick={() => changeMode("visual")}
+              role="tab"
+              aria-selected={mode === "visual"}
             >
-              {previewLoading ? "Previewing" : "Refresh"}
+              Write
             </button>
-          ) : (
-            (["source", "preview"] as const).map((nextMode) => (
-              <button
-                key={nextMode}
-                type="button"
-                className={styles.markdownModeButton}
-                data-active={mode === nextMode}
-                onClick={() => {
-                  setMode(nextMode);
-                  if (nextMode === "preview") void renderPreview();
-                }}
-              >
-                {nextMode === "source" ? "Source" : "Preview"}
-              </button>
-            ))
-          )}
+          ) : null}
+          <button
+            type="button"
+            className={styles.markdownModeButton}
+            data-active={mode === "source"}
+            onClick={() => changeMode("source")}
+            role="tab"
+            aria-selected={mode === "source"}
+          >
+            Source
+          </button>
+          <button
+            type="button"
+            className={styles.markdownModeButton}
+            data-active={mode === "preview"}
+            onClick={() => changeMode("preview")}
+            role="tab"
+            aria-selected={mode === "preview"}
+          >
+            Preview
+          </button>
+        </div>
+        <div className={styles.editorModeMeta}>
+          {mode === "visual" ? <span>Type / for blocks</span> : null}
+          <span>{stats.words} words</span>
+          {stats.components > 0 ? <span>{stats.components} components</span> : null}
         </div>
       </div>
 
+      {visualError ? (
+        <div className={styles.editorModeNotice} role="status">
+          <span>This document includes MDX that needs Source mode.</span>
+          <button type="button" onClick={() => changeMode("source")}>
+            Open Source
+          </button>
+        </div>
+      ) : null}
+
       {isSplitPreview ? (
         <div className={styles.markdownSplit}>
-          <textarea
-            ref={textareaRef}
-            className={styles.markdownTextarea}
-            aria-label={label}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            onPaste={handlePaste}
-            onDrop={handleDrop}
-            onDragOver={(event) => event.preventDefault()}
-            placeholder={placeholder}
-            spellCheck={false}
-            disabled={disabled}
-            style={{ minHeight }}
-          />
+          {sourceEditor}
           {renderPreviewPane()}
         </div>
-      ) : mode === "source" ? (
-        <textarea
-          ref={textareaRef}
-          className={styles.markdownTextarea}
-          aria-label={label}
+      ) : mode === "visual" && visualEditing ? (
+        <SiteAdminVisualEditor
+          label={label}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onPaste={handlePaste}
-          onDrop={handleDrop}
-          onDragOver={(event) => event.preventDefault()}
+          onChange={onChange}
+          minHeight={minHeight}
           placeholder={placeholder}
-          spellCheck={false}
           disabled={disabled}
-          style={{ minHeight }}
+          allowImageUpload={allowImageUpload}
+          onVisualError={(message) => {
+            setVisualError(message);
+            setMode("source");
+          }}
         />
+      ) : mode === "source" ? (
+        sourceEditor
       ) : (
         renderPreviewPane()
       )}

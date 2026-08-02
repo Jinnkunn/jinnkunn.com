@@ -42,9 +42,9 @@ test("site-admin browser console keeps form controls inside panels", () => {
   );
   assert.match(
     css,
-    /\.contentWorkspace[\s\S]*grid-template-columns: minmax\(250px, 320px\) minmax\(620px, 1fr\) minmax\(280px, 340px\);/,
+    /\.contentWorkspace[\s\S]*grid-template-columns: minmax\(250px, 310px\) minmax\(680px, 1fr\);/,
   );
-  assert.match(css, /\.inspectorPanel[\s\S]*overflow: auto;/);
+  assert.match(css, /\.inspectorPanel[\s\S]*position: fixed;[\s\S]*overflow: auto;/);
   assert.match(css, /\.drawerScrim[\s\S]*position: fixed;/);
   assert.match(css, /\.releaseSteps[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
   assert.match(css, /container-type: inline-size;/);
@@ -57,9 +57,11 @@ test("site-admin browser console keeps form controls inside panels", () => {
   assert.match(css, /\.editorBodyShell[\s\S]*flex: 1;/);
 });
 
-test("site-admin browser console uses the lightweight MDX editor", () => {
+test("site-admin browser console uses the visual-first MDX editor", () => {
   const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
   const editor = fs.readFileSync("app/site-admin/site-admin-markdown-editor.tsx", "utf8");
+  const visual = fs.readFileSync("app/site-admin/site-admin-visual-editor.tsx", "utf8");
+  const sourceEditor = fs.readFileSync("app/site-admin/site-admin-source-editor.tsx", "utf8");
   assert.ok(source.includes("SiteAdminMarkdownEditor"));
   assert.ok(source.includes("sourceForNewContent"));
   assert.ok(source.includes("slugFromTitle"));
@@ -83,6 +85,9 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("moveSelectedContent"));
   assert.ok(source.includes("localDraftKey"));
   assert.ok(source.includes("releaseWatchUntil"));
+  assert.ok(source.includes("saveSelectedContentRef"));
+  assert.ok(source.includes("quiet: true"));
+  assert.ok(source.includes("newerLocalEdits"));
   assert.ok(source.includes("await refreshSummaryOnly();"));
   assert.ok(source.includes("beginCreate"));
   assert.ok(source.includes('type ContentMode = "browse" | "edit" | "create"'));
@@ -94,17 +99,18 @@ test("site-admin browser console uses the lightweight MDX editor", () => {
   assert.ok(source.includes("Back"));
   assert.ok(editor.includes("Source"));
   assert.ok(editor.includes("Preview"));
-  assert.ok(editor.includes("Refresh preview"));
+  assert.ok(editor.includes("Write"));
   assert.ok(editor.includes('data-layout={previewLayout}'));
-  assert.ok(editor.includes("markdownActionGroups"));
-  assert.ok(editor.includes("Inline formatting"));
-  assert.ok(editor.includes("Block formatting"));
-  assert.ok(editor.includes("Insert blocks"));
-  assert.ok(editor.includes("markdownToolbarCluster"));
-  assert.ok(editor.includes("markdownToolButton"));
   assert.ok(editor.includes("markdownModeButton"));
-  assert.ok(editor.includes("uploadSiteAdminAsset"));
-  assert.ok(editor.includes("handlePaste"));
+  assert.ok(editor.includes("SiteAdminVisualEditor"));
+  assert.ok(editor.includes("SiteAdminSourceEditor"));
+  assert.ok(visual.includes("new Crepe"));
+  assert.ok(visual.includes("MDX component"));
+  assert.ok(visual.includes("uploadSiteAdminAsset"));
+  assert.ok(visual.includes("markdownUpdated"));
+  assert.ok(sourceEditor.includes("new EditorView"));
+  assert.ok(sourceEditor.includes("handlePaste"));
+  assert.ok(sourceEditor.includes("uploadSiteAdminAsset"));
 });
 
 test("site-admin content management includes recovery, media, settings, and version history", () => {

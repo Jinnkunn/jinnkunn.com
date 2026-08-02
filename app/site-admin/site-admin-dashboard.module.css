@@ -285,7 +285,7 @@
 }
 
 .contentWorkspace {
-  grid-template-columns: minmax(250px, 320px) minmax(620px, 1fr) minmax(280px, 340px);
+  grid-template-columns: minmax(250px, 310px) minmax(680px, 1fr);
   align-items: start;
 }
 
@@ -310,15 +310,27 @@
   gap: 14px;
 }
 
-.sidePanel,
-.inspectorPanel {
+.sidePanel {
   position: sticky;
   top: 18px;
   max-height: calc(100vh - 36px);
 }
 
 .inspectorPanel {
+  position: fixed;
+  z-index: 42;
+  top: 18px;
+  right: 18px;
+  width: min(380px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
   overflow: auto;
+  transform: translateX(calc(100% + 40px));
+  transition: transform 180ms ease;
+  box-shadow: var(--ds-shadow-overlay);
+}
+
+.inspectorPanel[data-open="true"] {
+  transform: translateX(0);
 }
 
 .editorPanel {
@@ -326,7 +338,8 @@
   display: flex;
   min-height: 760px;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+  padding: clamp(18px, 2.2vw, 28px);
 }
 
 .createPanel {
@@ -531,7 +544,58 @@
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-md);
   background: var(--ds-surface-elevated);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ds-surface-elevated) 52%, transparent);
+  box-shadow: var(--ds-shadow-hairline);
+}
+
+.editorModeBar {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-soft);
+}
+
+.editorModeTabs,
+.editorModeMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.editorModeMeta {
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.editorModeNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--ds-warning-border);
+  background: var(--ds-warning-bg);
+  color: var(--ds-warning-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.editorModeNotice button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 
 .markdownToolbar {
@@ -583,7 +647,7 @@
 }
 
 .markdownModeButton {
-  min-width: 64px;
+  min-width: 58px;
 }
 
 .markdownToolButton:hover:not(:disabled),
@@ -639,13 +703,190 @@
 
 .markdownPreviewShell {
   overflow: auto;
-  padding: 18px;
+  padding: 38px clamp(22px, 6vw, 72px) 64px;
   background: var(--ds-surface-elevated);
 }
 
 .markdownPreview {
-  max-width: 78ch;
+  width: min(100%, 760px);
+  margin: 0 auto;
   color: var(--ds-text-primary);
+}
+
+.previewError,
+.visualEditorError {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ds-danger-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sourceEditorShell,
+.sourceEditor,
+.visualEditorShell,
+.visualEditor {
+  min-width: 0;
+  flex: 1;
+}
+
+.editorLoading {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
+  color: var(--ds-text-muted);
+  font-size: var(--ds-text-sm);
+}
+
+.sourceEditor {
+  overflow: hidden;
+  background: var(--ds-surface-elevated);
+}
+
+.sourceEditor :global(.cm-editor) {
+  height: 100%;
+}
+
+.visualEditorShell,
+.visualEditor {
+  background: var(--ds-surface-elevated);
+}
+
+.visualEditorShell {
+  position: relative;
+}
+
+.visualEditorError {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ds-danger-border);
+  background: var(--ds-danger-bg);
+}
+
+.visualEditor :global(.milkdown) {
+  --crepe-color-background: var(--ds-surface-elevated);
+  --crepe-color-on-background: var(--ds-text-primary);
+  --crepe-color-surface: var(--ds-surface-elevated);
+  --crepe-color-surface-low: var(--ds-surface-soft);
+  --crepe-color-on-surface: var(--ds-text-primary);
+  --crepe-color-on-surface-variant: var(--ds-text-muted);
+  --crepe-color-outline: var(--ds-border-strong);
+  --crepe-color-primary: var(--ds-accent);
+  --crepe-color-secondary: var(--ds-selection-bg);
+  --crepe-color-on-secondary: var(--ds-text-primary);
+  --crepe-color-inverse: var(--ds-text-primary);
+  --crepe-color-on-inverse: var(--ds-surface-page);
+  --crepe-color-inline-code: var(--ds-danger-text);
+  --crepe-color-error: var(--ds-danger-text);
+  --crepe-color-hover: var(--ds-surface-soft);
+  --crepe-color-selected: var(--ds-selection-bg);
+  --crepe-color-inline-area: var(--ds-surface-soft);
+  --crepe-font-title: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  --crepe-font-default: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  --crepe-font-code: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --crepe-shadow-1: var(--ds-shadow-hairline);
+  --crepe-shadow-2: var(--ds-shadow-overlay);
+  min-height: inherit;
+  background: transparent;
+}
+
+.visualEditor :global(.milkdown .ProseMirror) {
+  width: min(100%, 780px);
+  min-height: inherit;
+  margin: 0 auto;
+  padding: 44px clamp(28px, 7vw, 72px) 88px;
+  color: var(--ds-text-primary);
+  font-size: 16px;
+  line-height: 1.68;
+  outline: none;
+}
+
+.visualEditor :global(.milkdown .ProseMirror > *),
+.visualEditor :global(.milkdown .ProseMirror li > *) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.visualEditor :global(.milkdown .ProseMirror > * + *) {
+  margin-top: 16px;
+}
+
+.visualEditor :global(.milkdown .ProseMirror h1),
+.visualEditor :global(.milkdown .ProseMirror h2),
+.visualEditor :global(.milkdown .ProseMirror h3) {
+  color: var(--ds-text-primary);
+  line-height: 1.16;
+  letter-spacing: 0;
+}
+
+.visualEditor :global(.milkdown .ProseMirror h1) {
+  font-size: 34px;
+}
+
+.visualEditor :global(.milkdown .ProseMirror h2) {
+  margin-top: 32px;
+  font-size: 26px;
+}
+
+.visualEditor :global(.milkdown .ProseMirror h3) {
+  margin-top: 25px;
+  font-size: 20px;
+}
+
+.visualEditor :global(.milkdown .ProseMirror blockquote) {
+  margin-left: 0;
+  padding-left: 16px;
+  border-left: 3px solid var(--ds-text-primary);
+  color: var(--ds-text-muted);
+}
+
+.visualEditor :global(.milkdown .ProseMirror hr) {
+  margin-block: 30px;
+  border: 0;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.visualEditor :global(.milkdown .milkdown-toolbar),
+.visualEditor :global(.milkdown .milkdown-slash-menu),
+.visualEditor :global(.milkdown .milkdown-link-preview),
+.visualEditor :global(.milkdown .milkdown-link-edit) {
+  z-index: 60;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-elevated);
+  box-shadow: var(--ds-shadow-overlay);
+}
+
+.visualEditor :global(.milkdown span[data-mdx-component]) {
+  display: inline-flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-border-subtle);
+  border-left: 3px solid var(--ds-accent);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+  color: transparent;
+  font-size: 0;
+  line-height: 1;
+  user-select: none;
+}
+
+.visualEditor :global(.milkdown span[data-mdx-component])::before {
+  content: attr(data-mdx-component);
+  color: var(--ds-text-primary);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.visualEditor :global(.milkdown span[data-mdx-component])::after {
+  content: "MDX component · Source to edit";
+  margin-left: auto;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .markdownPreview > *,
@@ -1820,7 +2061,13 @@
 }
 
 .inspectorScrim {
-  display: none;
+  position: fixed;
+  z-index: 41;
+  inset: 0;
+  display: block;
+  border: 0;
+  background: color-mix(in srgb, var(--ds-text-primary) 16%, transparent);
+  backdrop-filter: blur(2px);
 }
 
 .backToContentButton {
@@ -1997,5 +2244,43 @@
   .codeEditor,
   .largeEditor {
     min-height: 420px;
+  }
+
+  .editorPanel {
+    min-height: calc(100vh - 110px);
+    padding: 14px;
+  }
+
+  .editorModeBar {
+    position: sticky;
+    z-index: 8;
+    top: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .editorModeMeta {
+    width: 100%;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+
+  .visualEditor :global(.milkdown .ProseMirror) {
+    padding: 30px 24px 110px;
+    font-size: 16px;
+  }
+
+  .visualEditor :global(.milkdown span[data-mdx-component]) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .visualEditor :global(.milkdown span[data-mdx-component])::after {
+    margin-left: 0;
+  }
+
+  .markdownPreviewShell {
+    padding: 28px 22px 96px;
   }
 }

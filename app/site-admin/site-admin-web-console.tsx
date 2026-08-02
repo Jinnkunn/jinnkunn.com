@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -569,7 +569,7 @@ function parsePublicationsComponentDraft(source: string): PublicationsComponentD
 function serializePublicationsComponentDraft(draft: PublicationsComponentDraft): string {
   const body = draft.items
     .map((entry) => {
-      const { id: _id, ...data } = entry;
+      const data = { ...entry, id: undefined };
       return `<PublicationsEntry data='${jsonDataAttr(data)}' />`;
     })
     .join("\n\n");
@@ -929,6 +929,12 @@ export function SiteAdminWebConsole({
   const [notice, setNotice] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
+  const selectedSourceDraftRef = useRef("");
+  const saveSelectedContentRef = useRef<
+    (options?: { quiet?: boolean }) => Promise<void>
+  >(async () => {});
+  const saveHomeRef = useRef<() => Promise<void>>(async () => {});
+  const saveNowRef = useRef<() => Promise<void>>(async () => {});
 
   const currentItems = useMemo(
     () => contentItems({ kind, pages, posts, components }),
@@ -1024,6 +1030,10 @@ export function SiteAdminWebConsole({
         ? selectedSourceDraft !== contentFormBaseline
         : selectedSourceDraft !== selected.source),
   );
+  selectedSourceDraftRef.current = selectedSourceDraft;
+  saveSelectedContentRef.current = saveSelectedContent;
+  saveHomeRef.current = saveHome;
+  saveNowRef.current = saveNow;
   const homeDirty = Boolean(home && `${homeTitle}\n${homeBody}` !== homeBaseline);
   const nowComparable = `${nowText}\n${nowContext}\n${nowLocation}\n${nowDate}`;
   const nowDirty = Boolean(now && nowComparable !== nowBaseline);
@@ -1211,6 +1221,16 @@ export function SiteAdminWebConsole({
   ]);
 
   useEffect(() => {
+    if (!selected || !selectedDirty || saving || conflict) return;
+    const selectedKey = `${selected.kind}:${selected.id}`;
+    const timer = window.setTimeout(() => {
+      if (`${selected.kind}:${selected.id}` !== selectedKey) return;
+      void saveSelectedContentRef.current({ quiet: true });
+    }, 1600);
+    return () => window.clearTimeout(timer);
+  }, [conflict, saving, selected, selectedDirty, selectedSourceDraft]);
+
+  useEffect(() => {
     if (!hasUnsavedChanges) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -1226,11 +1246,11 @@ export function SiteAdminWebConsole({
       event.preventDefault();
       if (saving) return;
       if (area === "home" && homeDirty) {
-        void saveHome();
+        void saveHomeRef.current();
       } else if (area === "now" && nowDirty) {
-        void saveNow();
+        void saveNowRef.current();
       } else if (selectedDirty) {
-        void saveSelectedContent();
+        void saveSelectedContentRef.current();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1328,48 +1348,61 @@ export function SiteAdminWebConsole({
     }
   }
 
-  async function saveSelectedContent() {
+  async function saveSelectedContent(options: { quiet?: boolean } = {}) {
     if (!selected) return;
+    const sourceAtStart = selectedSourceDraft;
+    const selectedAtStart = selected;
     setSaving(true);
     setError("");
     setWarning("");
     setNotice("");
     try {
       await writeJson<MutationPayload>(endpointFor(selected.kind, selected.id), "PATCH", {
-        source: selectedSourceDraft,
+        source: sourceAtStart,
         version: selected.version,
       });
       const detail = await readJson<EditableDetailPayload>(
         endpointFor(selected.kind, selected.id),
       );
       const next = toEditableDetail(selected.kind, selected.id, detail);
+      const newerLocalEdits = selectedSourceDraftRef.current !== sourceAtStart;
       setSelected(next);
-      setSourceDraft(next.source);
       setSlugDraft(next.id);
       const form = formFromEditablePayload(selected.kind, selected.id, detail);
-      setContentForm(form);
+      if (!newerLocalEdits) {
+        setSourceDraft(next.source);
+        setContentForm(form);
+      }
       setContentFormBaseline(
-        selected.kind === "posts" || selected.kind === "pages"
-          ? sourceForEditedContent(selected.kind, form)
-          : next.source,
+        newerLocalEdits
+          ? sourceAtStart
+          : selected.kind === "posts" || selected.kind === "pages"
+            ? sourceForEditedContent(selected.kind, form)
+            : next.source,
       );
-      clearLocalDraft(selected.kind, selected.id);
-      setLocalAutosaveAt("");
+      if (!newerLocalEdits) {
+        clearLocalDraft(selected.kind, selected.id);
+        setLocalAutosaveAt("");
+      }
       setContentSavedAt(new Date().toISOString());
-      setLocalDraftSnapshot(null);
+      if (!newerLocalEdits) setLocalDraftSnapshot(null);
       await refreshLists();
       await refreshSummaryOnly();
-      setNotice(`${next.title} saved.`);
+      if (!options.quiet) setNotice(`${next.title} saved.`);
     } catch (err) {
-      if (err instanceof SiteAdminRequestError && err.status === 409 && selected) {
+      if (err instanceof SiteAdminRequestError && err.status === 409 && selectedAtStart) {
         try {
           const remotePayload = await readJson<EditableDetailPayload>(
-            endpointFor(selected.kind, selected.id),
+            endpointFor(selectedAtStart.kind, selectedAtStart.id),
           );
-          const remote = toEditableDetail(selected.kind, selected.id, remotePayload);
+          const remote = toEditableDetail(
+            selectedAtStart.kind,
+            selectedAtStart.id,
+            remotePayload,
+          );
           setConflict({
-            title: selected.title,
-            localSource: selectedSourceDraft,
+            title: selectedAtStart.title,
+            localSource: selectedSourceDraftRef.current,
             remoteSource: remote.source,
             remote,
             remotePayload,
@@ -2023,6 +2056,8 @@ export function SiteAdminWebConsole({
             minHeight={420}
             size="large"
             disabled={saving}
+            initialMode="source"
+            visualEditing={false}
           />
         </div>
       </details>
@@ -2729,6 +2764,8 @@ export function SiteAdminWebConsole({
                                 minHeight={320}
                                 size="large"
                                 disabled={saving}
+                                initialMode="source"
+                                visualEditing={false}
                               />
                             </div>
                           </div>
@@ -2896,6 +2933,8 @@ export function SiteAdminWebConsole({
                               minHeight={420}
                               size="large"
                               disabled={saving}
+                              initialMode="source"
+                              visualEditing={false}
                             />
                           </div>
                         </details>
@@ -2915,6 +2954,8 @@ export function SiteAdminWebConsole({
                           minHeight={560}
                           size="large"
                           disabled={saving}
+                          initialMode="source"
+                          visualEditing={false}
                         />
                       </div>
                     )}

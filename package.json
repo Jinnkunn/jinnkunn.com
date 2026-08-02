@@ -96,9 +96,17 @@
     "workspace:mcp:reject": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --reject"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-markdown": "^6.5.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.7",
     "@mdx-js/mdx": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
+    "@milkdown/crepe": "^7.21.3",
+    "@milkdown/kit": "^7.21.3",
     "@opennextjs/cloudflare": "1.18.0",
+    "codemirror": "^6.0.2",
     "geist": "^1.7.2",
     "gray-matter": "^4.0.3",
     "katex": "^0.16.28",
