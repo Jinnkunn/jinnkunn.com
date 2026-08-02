@@ -874,6 +874,17 @@
   user-select: none;
 }
 
+.visualEditor :global(.milkdown span[data-mdx-component][data-component-action="edit"]) {
+  cursor: pointer;
+}
+
+.visualEditor :global(.milkdown span[data-mdx-component][data-component-action="edit"]:hover),
+.visualEditor :global(.milkdown span[data-mdx-component][data-component-action="edit"]:focus-visible) {
+  border-color: var(--ds-accent);
+  background: var(--ds-selection-bg);
+  outline: none;
+}
+
 .visualEditor :global(.milkdown span[data-mdx-component])::before {
   content: attr(data-mdx-component);
   color: var(--ds-text-primary);
@@ -887,6 +898,10 @@
   color: var(--ds-text-faint);
   font-size: 12px;
   font-weight: 650;
+}
+
+.visualEditor :global(.milkdown span[data-mdx-component][data-component-action="edit"])::after {
+  content: "Open structured entries";
 }
 
 .markdownPreview > *,
@@ -1385,10 +1400,15 @@
 .newsEditor {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
+.componentCollectionHeader,
 .newsEditorHeader,
 .newsEntryHeader,
 .newsDividerRow {
@@ -1397,6 +1417,79 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.componentCollectionHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.componentCollectionIntro {
+  min-width: 0;
+}
+
+.componentCollectionTools {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) auto;
+  align-items: end;
+  justify-items: end;
+  gap: 8px 12px;
+}
+
+.componentSearchField {
+  width: 100%;
+}
+
+.componentCollectionTools .panelActions {
+  grid-column: 1 / -1;
+}
+
+.collectionCount {
+  align-self: center;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.componentContextBar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-left: 2px solid var(--ds-accent);
+  background: var(--ds-surface-soft);
+}
+
+.componentContextBar > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.componentContextBar span,
+.componentContextBar small {
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.componentContextBar strong {
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.componentContextBar small {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .newsEntryList {
@@ -1412,6 +1505,57 @@
   gap: 12px;
   padding: 12px;
   background: var(--ds-surface-soft);
+}
+
+.collectionEntryMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.entryReadiness {
+  padding: 3px 7px;
+  border: 1px solid var(--ds-warning-border);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-warning-bg);
+  color: var(--ds-warning-text);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.entryReadiness[data-ready="true"] {
+  border-color: var(--ds-border-subtle);
+  background: transparent;
+  color: var(--ds-text-faint);
+}
+
+.collectionEmpty {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  padding: 20px;
+  border: 1px dashed var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  text-align: center;
+}
+
+.collectionEmpty strong {
+  color: var(--ds-text-primary);
+  font-size: 14px;
+}
+
+.collectionEmpty span {
+  max-width: 42ch;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .newsEntryHeader strong {
@@ -2229,11 +2373,43 @@
   }
 
   .newsEditorHeader,
+  .componentCollectionHeader,
   .newsEntryHeader,
   .newsDividerRow,
   .managedPageMeta {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .componentCollectionHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .componentCollectionTools {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-items: stretch;
+  }
+
+  .componentCollectionTools .panelActions {
+    width: 100%;
+  }
+
+  .componentContextBar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .componentContextBar small {
+    margin-left: 0;
+  }
+
+  .collectionEntrySummary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collectionEntryMeta {
+    justify-content: space-between;
   }
 
   .panelActions {

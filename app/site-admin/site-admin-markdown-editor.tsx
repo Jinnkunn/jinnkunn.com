@@ -39,6 +39,7 @@ type MarkdownEditorProps = {
   allowImageUpload?: boolean;
   initialMode?: EditorMode;
   visualEditing?: boolean;
+  onEditComponent?: (component: string) => void;
 };
 
 function editorStats(value: string) {
@@ -64,6 +65,7 @@ export function SiteAdminMarkdownEditor({
   allowImageUpload = true,
   initialMode = "visual",
   visualEditing = true,
+  onEditComponent,
 }: MarkdownEditorProps) {
   const previewRequestIdRef = useRef(0);
   const [mode, setMode] = useState<EditorMode>(
@@ -219,6 +221,7 @@ export function SiteAdminMarkdownEditor({
           placeholder={placeholder}
           disabled={disabled}
           allowImageUpload={allowImageUpload}
+          onEditComponent={onEditComponent}
           onVisualError={(message) => {
             setVisualError(message);
             setMode("source");

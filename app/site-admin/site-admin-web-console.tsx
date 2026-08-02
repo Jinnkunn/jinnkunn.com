@@ -13,7 +13,10 @@ import {
   type TeachingComponentEntry,
   type WorksComponentEntry,
 } from "@/lib/components/parse";
-import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
+import type {
+  PublicationStructuredEntry,
+  PublicationVenue,
+} from "@/lib/seo/publications-items";
 import type {
   SiteAdminHomeData,
   SiteAdminNowData,
@@ -207,6 +210,12 @@ type HomePostPayload = {
 
 type Area = "content" | "media" | "release" | "settings" | "home" | "now";
 type ContentMode = "browse" | "edit" | "create";
+
+type ComponentReturnTarget = {
+  kind: "posts" | "pages";
+  id: string;
+  title: string;
+};
 
 const DEFAULT_CREATE_BODY = "Write the post here.";
 const COMPONENT_DEFINITIONS =
@@ -900,6 +909,9 @@ export function SiteAdminWebConsole({
   const [kind, setKind] = useState<EditableKind>("posts");
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
   const [contentSearch, setContentSearch] = useState("");
+  const [componentSearch, setComponentSearch] = useState("");
+  const [componentReturnTarget, setComponentReturnTarget] =
+    useState<ComponentReturnTarget | null>(null);
   const [selected, setSelected] = useState<EditableDetail | null>(null);
   const [sourceDraft, setSourceDraft] = useState("");
   const [contentForm, setContentForm] =
@@ -977,6 +989,9 @@ export function SiteAdminWebConsole({
     selected?.kind === "components" && isSiteComponentName(selected.id)
       ? selected.id
       : null;
+  const selectedComponentDefinition = selectedComponentName
+    ? componentDefinitions.find((definition) => definition.name === selectedComponentName) || null
+    : null;
   const selectedIsNewsComponent = selectedComponentName === "news";
   const selectedNewsDraft = useMemo(
     () => (selectedIsNewsComponent ? parseNewsComponentDraft(sourceDraft) : null),
@@ -1313,6 +1328,7 @@ export function SiteAdminWebConsole({
         ? sourceForEditedContent(nextKind, form)
         : next.source;
     setContentFormBaseline(baseline);
+    setComponentSearch("");
     setLocalAutosaveAt("");
     setContentSavedAt("");
     const localDraft = readLocalDraft(nextKind, id);
@@ -1324,13 +1340,13 @@ export function SiteAdminWebConsole({
     return next;
   }
 
-  async function selectContent(nextKind: EditableKind, id: string) {
+  async function selectContent(nextKind: EditableKind, id: string): Promise<boolean> {
     if (
       selected &&
       (selected.kind !== nextKind || selected.id !== id) &&
       !confirmDiscardChanges()
     ) {
-      return;
+      return false;
     }
     setLoading(true);
     setError("");
@@ -1341,8 +1357,10 @@ export function SiteAdminWebConsole({
         endpointFor(nextKind, id),
       );
       applySelectedDetail(nextKind, id, detail);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -1792,6 +1810,7 @@ export function SiteAdminWebConsole({
   }
 
   function deleteNewsItem(index: number) {
+    if (!window.confirm("Delete this News item?")) return;
     updateNewsDraft((draft) => ({
       ...draft,
       items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
@@ -1851,6 +1870,7 @@ export function SiteAdminWebConsole({
   }
 
   function deleteTeachingItem(index: number) {
+    if (!window.confirm("Delete this Teaching row?")) return;
     updateTeachingDraft((draft) => ({
       ...draft,
       items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
@@ -1909,6 +1929,7 @@ export function SiteAdminWebConsole({
   }
 
   function deleteWorksItem(index: number) {
+    if (!window.confirm("Delete this Work row?")) return;
     updateWorksDraft((draft) => ({
       ...draft,
       items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
@@ -1979,7 +2000,93 @@ export function SiteAdminWebConsole({
     } as Partial<PublicationDraftEntry>);
   }
 
+  function publicationAuthorNames(item: PublicationDraftEntry) {
+    if (item.authors?.length) return item.authors;
+    return (item.authorsRich || []).map((author) => author.name).filter(Boolean);
+  }
+
+  function updatePublicationAuthors(index: number, value: string) {
+    const names = value
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const selfNames = new Set(
+          (item.authorsRich || [])
+            .filter((author) => author.isSelf)
+            .map((author) => author.name.toLocaleLowerCase()),
+        );
+        return {
+          ...item,
+          authors: names,
+          authorsRich: names.map((name) => ({
+            name,
+            isSelf: selfNames.has(name.toLocaleLowerCase()),
+          })),
+        };
+      }),
+    }));
+  }
+
+  function updatePublicationSelfAuthor(index: number, selfAuthor: string) {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const names = publicationAuthorNames(item);
+        return {
+          ...item,
+          authors: names,
+          authorsRich: names.map((name) => ({
+            name,
+            isSelf: name === selfAuthor,
+          })),
+        };
+      }),
+    }));
+  }
+
+  function publicationPrimaryVenue(item: PublicationDraftEntry): PublicationVenue | null {
+    return (
+      (item.venues || []).find(
+        (venue) => !/^(doi|arxiv(?:\.org)?)$/i.test(String(venue.type || "").trim()),
+      ) || null
+    );
+  }
+
+  function updatePublicationPrimaryVenue(
+    index: number,
+    patch: Partial<PublicationVenue>,
+  ) {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const venues = [...(item.venues || [])];
+        const venueIndex = venues.findIndex(
+          (venue) => !/^(doi|arxiv(?:\.org)?)$/i.test(String(venue.type || "").trim()),
+        );
+        const current =
+          venueIndex >= 0
+            ? venues[venueIndex]
+            : { type: "Venue", text: item.venue || "" };
+        const next = { ...current, ...patch };
+        if (venueIndex >= 0) venues[venueIndex] = next;
+        else venues.unshift(next);
+        return {
+          ...item,
+          venue: next.text,
+          venues,
+        };
+      }),
+    }));
+  }
+
   function deletePublicationItem(index: number) {
+    if (!window.confirm("Delete this publication?")) return;
     updatePublicationsDraft((draft) => ({
       ...draft,
       items: draft.items.filter((_item, itemIndex) => itemIndex !== index),
@@ -2011,6 +2118,7 @@ export function SiteAdminWebConsole({
     onMove: (direction: -1 | 1) => void;
     onDuplicate: () => void;
     onDelete: () => void;
+    reorderDisabled?: boolean;
   }) {
     return (
       <div className={styles.historyActions}>
@@ -2018,7 +2126,7 @@ export function SiteAdminWebConsole({
           onClick={() => input.onMove(-1)}
           variant="subtle"
           size="sm"
-          disabled={input.index === 0}
+          disabled={input.reorderDisabled || input.index === 0}
         >
           Up
         </Button>
@@ -2026,7 +2134,7 @@ export function SiteAdminWebConsole({
           onClick={() => input.onMove(1)}
           variant="subtle"
           size="sm"
-          disabled={input.index === input.count - 1}
+          disabled={input.reorderDisabled || input.index === input.count - 1}
         >
           Down
         </Button>
@@ -2036,6 +2144,85 @@ export function SiteAdminWebConsole({
         <Button onClick={input.onDelete} variant="subtle" tone="danger" size="sm">
           Delete
         </Button>
+      </div>
+    );
+  }
+
+  function componentItemMatches(values: Array<string | undefined>) {
+    const query = componentSearch.trim().toLocaleLowerCase();
+    if (!query) return true;
+    return values.some((value) => String(value || "").toLocaleLowerCase().includes(query));
+  }
+
+  function renderComponentEditorHeader(input: {
+    title: string;
+    description: string;
+    count: number;
+    entryLabel: string;
+    addLabel: string;
+    onAdd: () => void;
+    secondaryLabel?: string;
+    onSecondary?: () => void;
+  }) {
+    return (
+      <div className={styles.componentCollectionHeader}>
+        <div className={styles.componentCollectionIntro}>
+          <p className={styles.cardLabel}>Structured entries</p>
+          <h3>{input.title}</h3>
+          <p>{input.description}</p>
+        </div>
+        <div className={styles.componentCollectionTools}>
+          <label className={styles.componentSearchField}>
+            <span className={styles.visuallyHidden}>Search {input.entryLabel}</span>
+            <input
+              className={styles.textField}
+              type="search"
+              value={componentSearch}
+              onChange={(event) => setComponentSearch(event.target.value)}
+              placeholder={`Search ${input.entryLabel}`}
+            />
+          </label>
+          <span className={styles.collectionCount}>
+            {input.count} {input.entryLabel}
+          </span>
+          <div className={styles.panelActions}>
+            {input.secondaryLabel && input.onSecondary ? (
+              <Button onClick={input.onSecondary} variant="subtle" size="sm">
+                {input.secondaryLabel}
+              </Button>
+            ) : null}
+            <Button onClick={input.onAdd} tone="accent" size="sm">
+              {input.addLabel}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCollectionEntryMeta(detail: string, ready: boolean) {
+    return (
+      <span className={styles.collectionEntryMeta}>
+        <small>{detail}</small>
+        <span className={styles.entryReadiness} data-ready={ready ? "true" : "false"}>
+          {ready ? "Ready" : "Needs details"}
+        </span>
+      </span>
+    );
+  }
+
+  function renderCollectionEmpty(noun: string) {
+    const searching = Boolean(componentSearch.trim());
+    return (
+      <div className={styles.collectionEmpty}>
+        <strong>
+          {searching ? `No matching ${noun}` : `No ${noun} yet`}
+        </strong>
+        <span>
+          {searching
+            ? "Try a different title, date, or metadata value."
+            : "Add the first entry to populate this collection."}
+        </span>
       </div>
     );
   }
@@ -2064,36 +2251,154 @@ export function SiteAdminWebConsole({
     );
   }
 
-  function renderTeachingEditor(draft: TeachingComponentDraft) {
+  function renderNewsEditor(draft: NewsComponentDraft) {
+    const searching = Boolean(componentSearch.trim());
+    const items = draft.items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        if (item.type === "divider") return !searching;
+        return componentItemMatches([item.date, item.body]);
+      });
+
     return (
       <div className={styles.newsEditor}>
-        <div className={styles.newsEditorHeader}>
-          <div>
-            <p className={styles.cardLabel}>Structured entries</p>
-            <h3>Teaching rows</h3>
-            <p>Edit course rows directly. The MDX source remains available under Advanced.</p>
-          </div>
-          <Button onClick={addTeachingEntry} tone="accent" size="sm">
-            Add row
-          </Button>
-        </div>
+        {renderComponentEditorHeader({
+          title: "News entries",
+          description:
+            "Edit dated updates directly. The public News page keeps using the same reusable collection.",
+          count: draft.items.filter((item) => item.type === "entry").length,
+          entryLabel: "updates",
+          addLabel: "Add update",
+          onAdd: addNewsEntry,
+          secondaryLabel: "Add divider",
+          onSecondary: addNewsDivider,
+        })}
         <div className={styles.newsEntryList}>
-          {draft.items.map((item, index) => (
-            <details
-              key={item.id}
-              className={styles.newsEntryCard}
-            >
-              <summary className={styles.collectionEntrySummary}>
-                <strong>{item.courseCode || item.courseName || item.term || "Untitled course"}</strong>
-                <small>{item.term || item.period || "Course"}</small>
-              </summary>
-              {renderComponentItemActions({
+          {items.length === 0
+            ? renderCollectionEmpty("updates")
+            : null}
+          {items.map(({ item, index }) =>
+            item.type === "divider" ? (
+              <div key={item.id} className={styles.newsDividerRow}>
+                <span>Divider</span>
+                <div className={styles.historyActions}>
+                  <Button
+                    onClick={() => moveSelectedNewsItem(index, -1)}
+                    variant="subtle"
+                    size="sm"
+                    disabled={index === 0}
+                  >
+                    Up
+                  </Button>
+                  <Button
+                    onClick={() => moveSelectedNewsItem(index, 1)}
+                    variant="subtle"
+                    size="sm"
+                    disabled={index === draft.items.length - 1}
+                  >
+                    Down
+                  </Button>
+                  <Button
+                    onClick={() => deleteNewsItem(index)}
+                    variant="subtle"
+                    tone="danger"
+                    size="sm"
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <details key={item.id} className={styles.newsEntryCard}>
+                <summary className={styles.collectionEntrySummary}>
+                  <strong>{item.body.split("\n")[0] || "Untitled update"}</strong>
+                  {renderCollectionEntryMeta(
+                    item.date || "No date",
+                    Boolean(item.date.trim() && item.body.trim()),
+                  )}
+                </summary>
+                {renderComponentItemActions({
                   index,
                   count: draft.items.length,
-                  onMove: (direction) => moveSelectedTeachingItem(index, direction),
-                  onDuplicate: () => duplicateTeachingItem(index),
-                  onDelete: () => deleteTeachingItem(index),
+                  reorderDisabled: searching,
+                  onMove: (direction) => moveSelectedNewsItem(index, direction),
+                  onDuplicate: () => duplicateNewsItem(index),
+                  onDelete: () => deleteNewsItem(index),
                 })}
+                <label className={styles.fieldLabel}>
+                  Date
+                  <input
+                    className={styles.textField}
+                    type="date"
+                    value={item.date}
+                    onChange={(event) => updateNewsItem(index, { date: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Body
+                  <textarea
+                    className={styles.newsEntryBody}
+                    value={item.body}
+                    onChange={(event) => updateNewsItem(index, { body: event.target.value })}
+                    disabled={saving}
+                  />
+                </label>
+              </details>
+            ),
+          )}
+        </div>
+        {renderAdvancedComponentSource()}
+      </div>
+    );
+  }
+
+  function renderTeachingEditor(draft: TeachingComponentDraft) {
+    const items = draft.items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) =>
+        componentItemMatches([
+          item.term,
+          item.period,
+          item.role,
+          item.courseCode,
+          item.courseName,
+          item.instructor,
+        ]),
+      );
+    return (
+      <div className={styles.newsEditor}>
+        {renderComponentEditorHeader({
+          title: "Teaching rows",
+          description:
+            "Edit course rows directly. The MDX source remains available under Advanced.",
+          count: draft.items.length,
+          entryLabel: "courses",
+          addLabel: "Add course",
+          onAdd: addTeachingEntry,
+        })}
+        <div className={styles.newsEntryList}>
+          {items.length === 0 ? renderCollectionEmpty("courses") : null}
+          {items.map(({ item, index }) => (
+            <details key={item.id} className={styles.newsEntryCard}>
+              <summary className={styles.collectionEntrySummary}>
+                <strong>
+                  {item.courseCode || item.courseName || item.term || "Untitled course"}
+                </strong>
+                {renderCollectionEntryMeta(
+                  item.term || item.period || "Course",
+                  Boolean(
+                    item.term.trim() && (item.courseCode.trim() || item.courseName.trim()),
+                  ),
+                )}
+              </summary>
+              {renderComponentItemActions({
+                index,
+                count: draft.items.length,
+                reorderDisabled: Boolean(componentSearch.trim()),
+                onMove: (direction) => moveSelectedTeachingItem(index, direction),
+                onDuplicate: () => duplicateTeachingItem(index),
+                onDelete: () => deleteTeachingItem(index),
+              })}
               <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Term
@@ -2169,35 +2474,48 @@ export function SiteAdminWebConsole({
   }
 
   function renderWorksEditor(draft: WorksComponentDraft) {
+    const items = draft.items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) =>
+        componentItemMatches([
+          item.category,
+          item.role,
+          item.affiliation,
+          item.location,
+          item.period,
+          item.body,
+        ]),
+      );
     return (
       <div className={styles.newsEditor}>
-        <div className={styles.newsEditorHeader}>
-          <div>
-            <p className={styles.cardLabel}>Structured entries</p>
-            <h3>Work rows</h3>
-            <p>Edit roles, affiliations, periods, and body text without touching MDX tags.</p>
-          </div>
-          <Button onClick={addWorksEntry} tone="accent" size="sm">
-            Add row
-          </Button>
-        </div>
+        {renderComponentEditorHeader({
+          title: "Work rows",
+          description:
+            "Edit roles, affiliations, periods, and body text without touching MDX tags.",
+          count: draft.items.length,
+          entryLabel: "roles",
+          addLabel: "Add role",
+          onAdd: addWorksEntry,
+        })}
         <div className={styles.newsEntryList}>
-          {draft.items.map((item, index) => (
-            <details
-              key={item.id}
-              className={styles.newsEntryCard}
-            >
+          {items.length === 0 ? renderCollectionEmpty("roles") : null}
+          {items.map(({ item, index }) => (
+            <details key={item.id} className={styles.newsEntryCard}>
               <summary className={styles.collectionEntrySummary}>
                 <strong>{item.role || item.affiliation || "Untitled work"}</strong>
-                <small>{item.period || item.category}</small>
+                {renderCollectionEntryMeta(
+                  item.period || item.category,
+                  Boolean(item.role.trim() && item.period.trim()),
+                )}
               </summary>
               {renderComponentItemActions({
-                  index,
-                  count: draft.items.length,
-                  onMove: (direction) => moveSelectedWorksItem(index, direction),
-                  onDuplicate: () => duplicateWorksItem(index),
-                  onDelete: () => deleteWorksItem(index),
-                })}
+                index,
+                count: draft.items.length,
+                reorderDisabled: Boolean(componentSearch.trim()),
+                onMove: (direction) => moveSelectedWorksItem(index, direction),
+                onDuplicate: () => duplicateWorksItem(index),
+                onDelete: () => deleteWorksItem(index),
+              })}
               <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Category
@@ -2277,39 +2595,58 @@ export function SiteAdminWebConsole({
   }
 
   function renderPublicationsEditor(draft: PublicationsComponentDraft) {
+    const items = draft.items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) =>
+        componentItemMatches([
+          item.title,
+          item.year,
+          item.url,
+          item.venue,
+          ...(item.venues || []).flatMap((venue) => [venue.type, venue.text, venue.url]),
+          ...publicationAuthorNames(item),
+          ...(item.labels || []),
+          ...(item.highlights || []),
+        ]),
+      );
     return (
       <div className={styles.newsEditor}>
-        <div className={styles.newsEditorHeader}>
-          <div>
-            <p className={styles.cardLabel}>Structured entries</p>
-            <h3>Publication rows</h3>
-            <p>
-              Edit the common fields directly. Advanced JSON stays preserved in source
-              for authors and venue details.
-            </p>
-          </div>
-          <Button onClick={addPublicationEntry} tone="accent" size="sm">
-            Add publication
-          </Button>
-        </div>
+        {renderComponentEditorHeader({
+          title: "Publication rows",
+          description:
+            "Edit titles, authors, venue, links, and labels directly. Advanced JSON remains preserved.",
+          count: draft.items.length,
+          entryLabel: "publications",
+          addLabel: "Add publication",
+          onAdd: addPublicationEntry,
+        })}
         <div className={styles.newsEntryList}>
-          {draft.items.map((item, index) => (
-            <details
-              key={item.id}
-              className={styles.newsEntryCard}
-            >
-              <summary className={styles.collectionEntrySummary}>
-                <strong>{item.title || "Untitled publication"}</strong>
-                <small>{item.year || "Publication"}</small>
-              </summary>
-              {renderComponentItemActions({
+          {items.length === 0
+            ? renderCollectionEmpty("publications")
+            : null}
+          {items.map(({ item, index }) => {
+            const authors = publicationAuthorNames(item);
+            const selfAuthor =
+              item.authorsRich?.find((author) => author.isSelf)?.name || "";
+            const primaryVenue = publicationPrimaryVenue(item);
+            return (
+              <details key={item.id} className={styles.newsEntryCard}>
+                <summary className={styles.collectionEntrySummary}>
+                  <strong>{item.title || "Untitled publication"}</strong>
+                  {renderCollectionEntryMeta(
+                    item.year || "Publication",
+                    Boolean(item.title.trim() && item.year.trim()),
+                  )}
+                </summary>
+                {renderComponentItemActions({
                   index,
                   count: draft.items.length,
+                  reorderDisabled: Boolean(componentSearch.trim()),
                   onMove: (direction) => moveSelectedPublicationItem(index, direction),
                   onDuplicate: () => duplicatePublicationItem(index),
                   onDelete: () => deletePublicationItem(index),
                 })}
-              <div className={styles.componentEntryGrid}>
+                <div className={styles.componentEntryGrid}>
                 <label className={styles.fieldLabel}>
                   Title
                   <input
@@ -2336,6 +2673,65 @@ export function SiteAdminWebConsole({
                     className={styles.textField}
                     value={item.url || ""}
                     onChange={(event) => updatePublicationItem(index, { url: event.target.value })}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Authors
+                  <input
+                    className={styles.textField}
+                    value={authors.join(", ")}
+                    onChange={(event) => updatePublicationAuthors(index, event.target.value)}
+                    placeholder="Comma separated"
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Highlighted author
+                  <select
+                    className={styles.textField}
+                    value={selfAuthor}
+                    onChange={(event) =>
+                      updatePublicationSelfAuthor(index, event.target.value)
+                    }
+                  >
+                    <option value="">None</option>
+                    {authors.map((author) => (
+                      <option key={author} value={author}>
+                        {author}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.fieldLabel}>
+                  Venue
+                  <input
+                    className={styles.textField}
+                    value={primaryVenue?.text || item.venue || ""}
+                    onChange={(event) =>
+                      updatePublicationPrimaryVenue(index, { text: event.target.value })
+                    }
+                    placeholder="Conference or journal"
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Venue type
+                  <input
+                    className={styles.textField}
+                    value={primaryVenue?.type || ""}
+                    onChange={(event) =>
+                      updatePublicationPrimaryVenue(index, { type: event.target.value })
+                    }
+                    placeholder="Conference, Journal, Workshop"
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Venue URL
+                  <input
+                    className={styles.textField}
+                    value={primaryVenue?.url || ""}
+                    onChange={(event) =>
+                      updatePublicationPrimaryVenue(index, { url: event.target.value })
+                    }
+                    placeholder="Optional"
                   />
                 </label>
                 <label className={styles.fieldLabel}>
@@ -2388,18 +2784,55 @@ export function SiteAdminWebConsole({
                     }
                   />
                 </label>
-              </div>
-            </details>
-          ))}
+                </div>
+              </details>
+            );
+          })}
         </div>
         {renderAdvancedComponentSource()}
       </div>
     );
   }
 
-  async function selectManagedComponent(definition: ComponentDefinition) {
+  async function selectManagedComponent(
+    definition: ComponentDefinition,
+    returnTarget: ComponentReturnTarget | null = null,
+  ) {
+    const opened = await selectContent("components", definition.name);
+    if (!opened) return;
     setKind("components");
-    await selectContent("components", definition.name);
+    setComponentReturnTarget(returnTarget);
+  }
+
+  function editManagedComponent(definition: ComponentDefinition) {
+    const returnTarget =
+      selected && (selected.kind === "pages" || selected.kind === "posts")
+        ? { kind: selected.kind, id: selected.id, title: selected.title }
+        : null;
+    void selectManagedComponent(definition, returnTarget);
+  }
+
+  function editComponentByEmbedTag(embedTag: string) {
+    const definition = componentDefinitions.find(
+      (item) => item.embedTag === embedTag || item.name === embedTag,
+    );
+    if (!definition) {
+      setWarning(`${embedTag} does not have a structured editor yet.`);
+      return;
+    }
+    editManagedComponent(definition);
+  }
+
+  async function returnToComponentOrigin() {
+    if (!componentReturnTarget) return;
+    const target = componentReturnTarget;
+    const opened = await selectContent(target.kind, target.id);
+    if (opened) setComponentReturnTarget(null);
+  }
+
+  async function selectLibraryContent(nextKind: EditableKind, id: string) {
+    const opened = await selectContent(nextKind, id);
+    if (opened) setComponentReturnTarget(null);
   }
 
   function openDocumentKind(nextKind: "posts" | "pages") {
@@ -2415,6 +2848,7 @@ export function SiteAdminWebConsole({
     setLocalAutosaveAt("");
     setLocalDraftSnapshot(null);
     setInspectorOpen(false);
+    setComponentReturnTarget(null);
   }
 
   function closeSelectedContent() {
@@ -2428,6 +2862,7 @@ export function SiteAdminWebConsole({
     setLocalAutosaveAt("");
     setLocalDraftSnapshot(null);
     setInspectorOpen(false);
+    setComponentReturnTarget(null);
   }
 
   function renderContentLibrary() {
@@ -2505,7 +2940,7 @@ export function SiteAdminWebConsole({
                   type="button"
                   className={styles.itemButton}
                   data-active={selected?.kind === itemKind && selected?.id === item.id}
-                  onClick={() => void selectContent(itemKind, item.id)}
+                  onClick={() => void selectLibraryContent(itemKind, item.id)}
                 >
                   <span>{item.title}</span>
                   <small>
@@ -2610,12 +3045,16 @@ export function SiteAdminWebConsole({
                   </div>
                   <div className={styles.panelActions}>
                     <Button
-                      onClick={closeSelectedContent}
+                      onClick={
+                        componentReturnTarget
+                          ? () => void returnToComponentOrigin()
+                          : closeSelectedContent
+                      }
                       className={styles.backToContentButton}
                       variant="subtle"
                       size="sm"
                     >
-                      Back
+                      {componentReturnTarget ? `Back to ${componentReturnTarget.title}` : "Back"}
                     </Button>
                     <Button
                       onClick={() => setInspectorOpen((current) => !current)}
@@ -2640,6 +3079,24 @@ export function SiteAdminWebConsole({
                     </Button>
                   </div>
                 </div>
+                {selected.kind === "components" && componentReturnTarget ? (
+                  <div className={styles.componentContextBar}>
+                    <div>
+                      <span>Embedded in</span>
+                      <strong>{componentReturnTarget.title}</strong>
+                    </div>
+                    {selectedComponentDefinition?.primaryRoute ? (
+                      <small>{selectedComponentDefinition.primaryRoute}</small>
+                    ) : null}
+                    <Button
+                      onClick={() => void returnToComponentOrigin()}
+                      variant="subtle"
+                      size="sm"
+                    >
+                      Return to page
+                    </Button>
+                  </div>
+                ) : null}
                 <div className={styles.editorStatusBar}>
                   <span className={styles.statusPill} data-state={draftStatusState}>
                     {draftStatusLabel}
@@ -2715,8 +3172,8 @@ export function SiteAdminWebConsole({
                             <p>
                               This page renders the reusable{" "}
                               <code>{`<${selectedManagedComponent.embedTag || selectedManagedComponent.name} />`}</code>{" "}
-                              block. Edit the entries in Components; keep this page for title,
-                              route, metadata, and advanced layout changes.
+                              block. Open its structured entries here; this page continues to own
+                              the title, route, metadata, and advanced layout.
                             </p>
                           </div>
                           <div className={styles.managedPageMeta}>
@@ -2727,11 +3184,11 @@ export function SiteAdminWebConsole({
                                 "entries"}
                             </span>
                             <Button
-                              onClick={() => void selectManagedComponent(selectedManagedComponent)}
+                              onClick={() => editManagedComponent(selectedManagedComponent)}
                               tone="accent"
                               size="sm"
                             >
-                              Edit {selectedManagedComponent.label} entries
+                              Open structured entries
                             </Button>
                           </div>
                           {selectedManagedSummary?.rows?.length ? (
@@ -2785,6 +3242,7 @@ export function SiteAdminWebConsole({
                           minHeight={560}
                           size="large"
                           disabled={saving}
+                          onEditComponent={editComponentByEmbedTag}
                         />
                       </div>
                     )}
@@ -2792,153 +3250,7 @@ export function SiteAdminWebConsole({
                 ) : (
                   <>
                     {selectedIsNewsComponent && selectedNewsDraft ? (
-                      <div className={styles.newsEditor}>
-                        <div className={styles.newsEditorHeader}>
-                          <div>
-                            <p className={styles.cardLabel}>Structured entries</p>
-                            <h3>News entries</h3>
-                            <p>
-                              Edit each dated update directly. The underlying MDX
-                              remains compatible with <code>&lt;NewsEntry /&gt;</code>.
-                            </p>
-                          </div>
-                          <div className={styles.panelActions}>
-                            <Button onClick={addNewsEntry} tone="accent" size="sm">
-                              Add item
-                            </Button>
-                            <Button onClick={addNewsDivider} variant="subtle" size="sm">
-                              Add divider
-                            </Button>
-                          </div>
-                        </div>
-                        <div className={styles.newsEntryList}>
-                          {selectedNewsDraft.items.length === 0 ? (
-                            <div className={styles.emptyEditor}>
-                              <p className={styles.cardLabel}>Empty</p>
-                              <h2 className={styles.panelTitle}>No news yet</h2>
-                              <p className={styles.cardText}>
-                                Add the first dated update to populate the public News page.
-                              </p>
-                            </div>
-                          ) : null}
-                          {selectedNewsDraft.items.map((item, index) =>
-                            item.type === "divider" ? (
-                              <div key={item.id} className={styles.newsDividerRow}>
-                                <span>Divider</span>
-                                <div className={styles.historyActions}>
-                                  <Button
-                                    onClick={() => moveSelectedNewsItem(index, -1)}
-                                    variant="subtle"
-                                    size="sm"
-                                    disabled={index === 0}
-                                  >
-                                    Up
-                                  </Button>
-                                  <Button
-                                    onClick={() => moveSelectedNewsItem(index, 1)}
-                                    variant="subtle"
-                                    size="sm"
-                                    disabled={index === selectedNewsDraft.items.length - 1}
-                                  >
-                                    Down
-                                  </Button>
-                                  <Button
-                                    onClick={() => deleteNewsItem(index)}
-                                    variant="subtle"
-                                    tone="danger"
-                                    size="sm"
-                                  >
-                                    Delete
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <details
-                                key={item.id}
-                                className={styles.newsEntryCard}
-                              >
-                                <summary className={styles.collectionEntrySummary}>
-                                  <strong>{item.body.split("\n")[0] || "Untitled update"}</strong>
-                                  <small>{item.date || "No date"}</small>
-                                </summary>
-                                  <div className={styles.historyActions}>
-                                    <Button
-                                      onClick={() => moveSelectedNewsItem(index, -1)}
-                                      variant="subtle"
-                                      size="sm"
-                                      disabled={index === 0}
-                                    >
-                                      Up
-                                    </Button>
-                                    <Button
-                                      onClick={() => moveSelectedNewsItem(index, 1)}
-                                      variant="subtle"
-                                      size="sm"
-                                      disabled={index === selectedNewsDraft.items.length - 1}
-                                    >
-                                      Down
-                                    </Button>
-                                    <Button
-                                      onClick={() => duplicateNewsItem(index)}
-                                      variant="subtle"
-                                      size="sm"
-                                    >
-                                      Duplicate
-                                    </Button>
-                                    <Button
-                                      onClick={() => deleteNewsItem(index)}
-                                      variant="subtle"
-                                      tone="danger"
-                                      size="sm"
-                                    >
-                                      Delete
-                                    </Button>
-                                  </div>
-                                <label className={styles.fieldLabel}>
-                                  Date
-                                  <input
-                                    className={styles.textField}
-                                    type="date"
-                                    value={item.date}
-                                    onChange={(event) =>
-                                      updateNewsItem(index, { date: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className={styles.fieldLabel}>
-                                  Body
-                                  <textarea
-                                    className={styles.newsEntryBody}
-                                    value={item.body}
-                                    onChange={(event) =>
-                                      updateNewsItem(index, { body: event.target.value })
-                                    }
-                                    disabled={saving}
-                                  />
-                                </label>
-                              </details>
-                            ),
-                          )}
-                        </div>
-                        <details className={styles.editorDetails}>
-                          <summary>
-                            <span>Advanced component source</span>
-                            <small>{selected.id}.mdx</small>
-                          </summary>
-                          <div className={styles.editorDetailsBody}>
-                            <SiteAdminMarkdownEditor
-                              label={`${selected.title} MDX source`}
-                              value={sourceDraft}
-                              onChange={setSourceDraft}
-                              minHeight={420}
-                              size="large"
-                              disabled={saving}
-                              initialMode="source"
-                              visualEditing={false}
-                            />
-                          </div>
-                        </details>
-                      </div>
+                      renderNewsEditor(selectedNewsDraft)
                     ) : selectedTeachingDraft ? (
                       renderTeachingEditor(selectedTeachingDraft)
                     ) : selectedWorksDraft ? (
@@ -3183,7 +3495,7 @@ export function SiteAdminWebConsole({
                       </strong>
                     </div>
                     <Button
-                      onClick={() => void selectManagedComponent(selectedManagedComponent)}
+                      onClick={() => editManagedComponent(selectedManagedComponent)}
                       variant="subtle"
                       size="sm"
                     >

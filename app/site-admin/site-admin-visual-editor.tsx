@@ -22,6 +22,7 @@ type SiteAdminVisualEditorProps = {
   disabled?: boolean;
   allowImageUpload?: boolean;
   onVisualError?: (message: string) => void;
+  onEditComponent?: (component: string) => void;
 };
 
 const componentIcon = `
@@ -44,11 +45,13 @@ export function SiteAdminVisualEditor({
   disabled = false,
   allowImageUpload = true,
   onVisualError,
+  onEditComponent,
 }: SiteAdminVisualEditorProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const crepeRef = useRef<Crepe | null>(null);
   const onChangeRef = useRef(onChange);
   const onVisualErrorRef = useRef(onVisualError);
+  const onEditComponentRef = useRef(onEditComponent);
   const disabledRef = useRef(disabled);
   const lastMarkdownRef = useRef(value);
   const [editorError, setEditorError] = useState("");
@@ -56,7 +59,8 @@ export function SiteAdminVisualEditor({
   useEffect(() => {
     onChangeRef.current = onChange;
     onVisualErrorRef.current = onVisualError;
-  }, [onChange, onVisualError]);
+    onEditComponentRef.current = onEditComponent;
+  }, [onChange, onEditComponent, onVisualError]);
 
   useEffect(() => {
     disabledRef.current = disabled;
@@ -64,11 +68,12 @@ export function SiteAdminVisualEditor({
   }, [disabled]);
 
   useEffect(() => {
-    if (!rootRef.current) return;
+    const root = rootRef.current;
+    if (!root) return;
     let disposed = false;
 
     const crepe = new Crepe({
-      root: rootRef.current,
+      root,
       defaultValue: lastMarkdownRef.current,
       featureConfigs: {
         [Crepe.Feature.Placeholder]: {
@@ -110,14 +115,44 @@ export function SiteAdminVisualEditor({
         const attrs = previous(node);
         const component = mdxComponentName(node.attrs.value);
         if (!component) return attrs;
+        const canEdit = Boolean(onEditComponentRef.current);
         return {
           ...attrs,
           "data-mdx-component": component,
-          "aria-label": `${component} MDX component. Edit in Source mode.`,
-          title: `${component} component · edit in Source mode`,
+          "data-component-action": canEdit ? "edit" : "source",
+          "aria-label": canEdit
+            ? `${component} component. Open structured entries.`
+            : `${component} MDX component. Edit in Source mode.`,
+          contenteditable: "false",
+          ...(canEdit ? { role: "button", tabindex: "0" } : {}),
+          title: canEdit
+            ? `${component} · open structured entries`
+            : `${component} component · edit in Source mode`,
         };
       });
     });
+
+    const activateComponent = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      const componentNode = target.closest<HTMLElement>("[data-mdx-component]");
+      const component = componentNode?.dataset.mdxComponent || "";
+      if (!component || !onEditComponentRef.current) return false;
+      onEditComponentRef.current(component);
+      return true;
+    };
+    const handleClick = (event: MouseEvent) => {
+      if (!activateComponent(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!activateComponent(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    root.addEventListener("click", handleClick, true);
+    root.addEventListener("keydown", handleKeyDown, true);
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
@@ -147,6 +182,8 @@ export function SiteAdminVisualEditor({
 
     return () => {
       disposed = true;
+      root.removeEventListener("click", handleClick, true);
+      root.removeEventListener("keydown", handleKeyDown, true);
       crepeRef.current = null;
       void crepe.destroy();
     };

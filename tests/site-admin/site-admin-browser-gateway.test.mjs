@@ -103,11 +103,14 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(editor.includes('data-layout={previewLayout}'));
   assert.ok(editor.includes("markdownModeButton"));
   assert.ok(editor.includes("SiteAdminVisualEditor"));
+  assert.ok(editor.includes("onEditComponent"));
   assert.ok(editor.includes("SiteAdminSourceEditor"));
   assert.ok(visual.includes("new Crepe"));
   assert.ok(visual.includes("MDX component"));
   assert.ok(visual.includes("uploadSiteAdminAsset"));
   assert.ok(visual.includes("markdownUpdated"));
+  assert.ok(visual.includes('data-component-action'));
+  assert.ok(visual.includes('data-mdx-component'));
   assert.ok(sourceEditor.includes("new EditorView"));
   assert.ok(sourceEditor.includes("handlePaste"));
   assert.ok(sourceEditor.includes("uploadSiteAdminAsset"));
@@ -141,7 +144,10 @@ test("site-admin browser console treats data pages as managed collections", () =
 
   assert.ok(source.includes("findManagedComponentInBody"));
   assert.ok(source.includes("Managed collection"));
-  assert.ok(source.includes("Edit {selectedManagedComponent.label} entries"));
+  assert.ok(source.includes("Open structured entries"));
+  assert.ok(source.includes("componentReturnTarget"));
+  assert.ok(source.includes("returnToComponentOrigin"));
+  assert.ok(source.includes("editComponentByEmbedTag"));
   assert.ok(source.includes("News entries"));
   assert.ok(source.includes("parseNewsComponentDraft"));
   assert.ok(source.includes("serializeNewsComponentDraft"));
@@ -152,11 +158,18 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(source.includes("serializeWorksComponentDraft"));
   assert.ok(source.includes("serializePublicationsComponentDraft"));
   assert.ok(source.includes("Advanced component source"));
+  assert.ok(source.includes("componentSearch"));
+  assert.ok(source.includes("Needs details"));
+  assert.ok(source.includes("Highlighted author"));
+  assert.ok(source.includes("Venue"));
   assert.ok(source.includes("Managed ·"));
   assert.ok(css.includes(".managedPagePanel"));
   assert.ok(css.includes(".newsEntryCard"));
   assert.ok(css.includes(".newsDividerRow"));
   assert.ok(css.includes(".componentEntryGrid"));
+  assert.ok(css.includes(".componentContextBar"));
+  assert.ok(css.includes(".componentCollectionHeader"));
+  assert.ok(css.includes(".entryReadiness"));
 });
 
 test("site-admin content detail APIs expose structured editor fields", () => {
