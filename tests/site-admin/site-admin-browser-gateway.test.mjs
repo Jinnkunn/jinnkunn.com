@@ -148,7 +148,11 @@ test("site-admin browser console treats data pages as managed collections", () =
     "app/site-admin/site-admin-structured-collection-model.ts",
     "utf8",
   );
-  const implementation = [source, collectionEditor, collectionModel].join("\n");
+  const collectionSchema = fs.readFileSync(
+    "app/site-admin/site-admin-structured-collection-schema.ts",
+    "utf8",
+  );
+  const implementation = [source, collectionEditor, collectionModel, collectionSchema].join("\n");
   const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
 
   assert.ok(source.includes("findManagedComponentInBody"));
@@ -175,11 +179,20 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(collectionEditor.includes("Expand all"));
   assert.ok(collectionEditor.includes("Group entries"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntry"));
+  assert.ok(collectionEditor.includes("StructuredCollectionEntryForm"));
   assert.ok(source.includes("<StructuredCollectionEditor"));
+  assert.ok(source.includes("fields={NEWS_ENTRY_FIELDS}"));
+  assert.ok(source.includes("fields={TEACHING_ENTRY_FIELDS}"));
+  assert.ok(source.includes("fields={WORKS_ENTRY_FIELDS}"));
+  assert.ok(source.includes("fields={PUBLICATION_ENTRY_FIELDS}"));
+  assert.ok(collectionSchema.includes("writePublicationAuthors"));
+  assert.ok(collectionSchema.includes("writePrimaryPublicationVenue"));
+  assert.ok(collectionEditor.includes("Option + Down"));
+  assert.ok(collectionEditor.includes("⌘↵ Done"));
   assert.ok(!source.includes("function renderComponentEditorHeader"));
   assert.ok(!source.includes("function renderComponentItemActions"));
-  assert.ok(source.includes("Highlighted author"));
-  assert.ok(source.includes("Venue"));
+  assert.ok(collectionSchema.includes("Highlighted author"));
+  assert.ok(collectionSchema.includes("Venue"));
   assert.ok(source.includes("Managed ·"));
   assert.ok(css.includes(".managedPagePanel"));
   assert.ok(css.includes(".newsEntryCard"));

@@ -1456,6 +1456,12 @@
   flex-wrap: wrap;
 }
 
+.collectionIssueControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .componentViewControls select {
   min-height: 30px;
   padding: 0 26px 0 9px;
@@ -1645,6 +1651,18 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.componentFieldWide,
+.collectionShortcutHint {
+  grid-column: 1 / -1;
+}
+
+.collectionShortcutHint {
+  justify-self: end;
+  color: var(--ds-text-faint);
+  font-size: 10px;
+  font-weight: 650;
 }
 
 .newsEntryBody {

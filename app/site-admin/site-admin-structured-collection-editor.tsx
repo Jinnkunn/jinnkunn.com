@@ -1,4 +1,4 @@
-import type { DragEvent, ReactNode } from "react";
+import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
@@ -7,6 +7,7 @@ import {
   type ComponentEntryIssue,
   type ComponentGrouping,
 } from "./site-admin-structured-collection-model";
+import type { StructuredCollectionFieldSchema } from "./site-admin-structured-collection-schema";
 import styles from "./site-admin-dashboard.module.css";
 
 type MoveDirection = -1 | 1;
@@ -29,6 +30,8 @@ type StructuredCollectionEditorProps = {
   onExpandedEntryIdsChange: (value: string[]) => void;
   issueCount: number;
   onReviewIssues: () => void;
+  onReviewPreviousIssue: () => void;
+  onReviewNextIssue: () => void;
   source: {
     fileName: string;
     label: string;
@@ -97,11 +100,20 @@ export function StructuredCollectionEditor({
   onExpandedEntryIdsChange,
   issueCount,
   onReviewIssues,
+  onReviewPreviousIssue,
+  onReviewNextIssue,
   source,
   children,
 }: StructuredCollectionEditorProps) {
+  const handleEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    if (event.key === "ArrowUp") onReviewPreviousIssue();
+    else onReviewNextIssue();
+  };
+
   return (
-    <div className={styles.newsEditor}>
+    <div className={styles.newsEditor} onKeyDown={handleEditorKeyDown}>
       <div className={styles.componentCollectionHeader}>
         <div className={styles.componentCollectionIntro}>
           <p className={styles.cardLabel}>Structured entries</p>
@@ -153,9 +165,31 @@ export function StructuredCollectionEditor({
               Collapse
             </Button>
             {issueCount > 0 ? (
-              <Button onClick={onReviewIssues} variant="subtle" tone="warning" size="sm">
-                Review {issueCount}
-              </Button>
+              <div className={styles.collectionIssueControls}>
+                <Button
+                  onClick={onReviewPreviousIssue}
+                  variant="subtle"
+                  tone="warning"
+                  size="sm"
+                  title="Previous issue (Option + Up)"
+                  aria-label="Previous issue"
+                >
+                  ↑
+                </Button>
+                <Button onClick={onReviewIssues} variant="subtle" tone="warning" size="sm">
+                  Review {issueCount}
+                </Button>
+                <Button
+                  onClick={onReviewNextIssue}
+                  variant="subtle"
+                  tone="warning"
+                  size="sm"
+                  title="Next issue (Option + Down)"
+                  aria-label="Next issue"
+                >
+                  ↓
+                </Button>
+              </div>
             ) : null}
           </div>
           <div className={styles.panelActions}>
@@ -356,6 +390,80 @@ export function StructuredCollectionFieldIssue({
   issue: ComponentEntryIssue | undefined;
 }) {
   return issue ? <small className={styles.fieldError}>{issue.message}</small> : null;
+}
+
+export function StructuredCollectionEntryForm<T extends { id: string }>({
+  item,
+  fields,
+  issues,
+  disabled,
+  onChange,
+  onComplete,
+}: {
+  item: T;
+  fields: readonly StructuredCollectionFieldSchema<T>[];
+  issues: ComponentEntryIssue[];
+  disabled: boolean;
+  onChange: (next: T) => void;
+  onComplete: () => void;
+}) {
+  const issueFor = (field: string) => issues.find((issue) => issue.field === field);
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+    event.preventDefault();
+    onComplete();
+  };
+
+  return (
+    <div
+      className={styles.componentEntryGrid}
+      data-structured-entry-form={item.id}
+      onKeyDown={handleKeyDown}
+    >
+      {fields.map((field) => {
+        const issue = issueFor(field.key);
+        const value = field.read(item);
+        const fieldOptions =
+          typeof field.options === "function" ? field.options(item) : field.options || [];
+        const className = field.control === "textarea" ? styles.newsEntryBody : styles.textField;
+        const common = {
+          className,
+          value,
+          disabled,
+          placeholder: field.placeholder,
+          "data-component-field": field.key,
+          "aria-invalid": Boolean(issue),
+          onChange: (
+            event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+          ) => onChange(field.write(item, event.target.value)),
+        };
+
+        return (
+          <label
+            className={`${styles.fieldLabel}${field.wide ? ` ${styles.componentFieldWide}` : ""}`}
+            key={field.key}
+          >
+            {field.label}
+            {field.control === "textarea" ? (
+              <textarea {...common} />
+            ) : field.control === "select" ? (
+              <select {...common}>
+                {fieldOptions.map((option) => (
+                  <option key={`${field.key}-${option.value}`} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input {...common} type={field.inputType || "text"} />
+            )}
+            <StructuredCollectionFieldIssue issue={issue} />
+          </label>
+        );
+      })}
+      <small className={styles.collectionShortcutHint}>⌘↵ Done</small>
+    </div>
+  );
 }
 
 function CollectionEntryActions({

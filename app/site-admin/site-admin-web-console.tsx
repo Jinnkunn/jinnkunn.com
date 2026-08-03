@@ -7,7 +7,6 @@ import type { DragEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusNotice } from "@/components/ui/status-notice";
-import type { PublicationVenue } from "@/lib/seo/publications-items";
 import type {
   SiteAdminHomeData,
   SiteAdminNowData,
@@ -28,7 +27,7 @@ import {
   StructuredCollectionEditor,
   StructuredCollectionEmpty,
   StructuredCollectionEntry,
-  StructuredCollectionFieldIssue,
+  StructuredCollectionEntryForm,
 } from "./site-admin-structured-collection-editor";
 import {
   componentConflictDetail,
@@ -62,6 +61,13 @@ import {
   type WorksComponentDraft,
   type WorksDraftEntry,
 } from "./site-admin-structured-collection-model";
+import {
+  NEWS_ENTRY_FIELDS,
+  PUBLICATION_ENTRY_FIELDS,
+  TEACHING_ENTRY_FIELDS,
+  WORKS_ENTRY_FIELDS,
+  structuredCollectionSearchValues,
+} from "./site-admin-structured-collection-schema";
 import {
   SiteAdminMediaLibrary,
   type SiteAdminAsset,
@@ -1659,12 +1665,12 @@ export function SiteAdminWebConsole({
     }));
   }
 
-  function updateNewsItem(id: string, patch: Partial<NewsDraftEntry>) {
+  function updateNewsItem(nextItem: NewsDraftEntry) {
     updateNewsDraft((draft) => ({
       ...draft,
       items: draft.items.map((item) => {
-        if (item.id !== id || item.type !== "entry") return item;
-        return { ...item, ...patch };
+        if (item.id !== nextItem.id || item.type !== "entry") return item;
+        return nextItem;
       }),
     }));
   }
@@ -1730,11 +1736,11 @@ export function SiteAdminWebConsole({
     setComponentExpandedIds([id]);
   }
 
-  function updateTeachingItem(id: string, patch: Partial<TeachingDraftEntry>) {
+  function updateTeachingItem(nextItem: TeachingDraftEntry) {
     updateTeachingDraft((draft) => ({
       ...draft,
       items: draft.items.map((item) =>
-        item.id === id ? { ...item, ...patch } : item,
+        item.id === nextItem.id ? nextItem : item,
       ),
     }));
   }
@@ -1799,11 +1805,11 @@ export function SiteAdminWebConsole({
     setComponentExpandedIds([id]);
   }
 
-  function updateWorksItem(id: string, patch: Partial<WorksDraftEntry>) {
+  function updateWorksItem(nextItem: WorksDraftEntry) {
     updateWorksDraft((draft) => ({
       ...draft,
       items: draft.items.map((item) =>
-        item.id === id ? { ...item, ...patch } : item,
+        item.id === nextItem.id ? nextItem : item,
       ),
     }));
   }
@@ -1868,110 +1874,12 @@ export function SiteAdminWebConsole({
     setComponentExpandedIds([id]);
   }
 
-  function updatePublicationItem(id: string, patch: Partial<PublicationDraftEntry>) {
+  function updatePublicationItem(nextItem: PublicationDraftEntry) {
     updatePublicationsDraft((draft) => ({
       ...draft,
       items: draft.items.map((item) =>
-        item.id === id ? { ...item, ...patch } : item,
+        item.id === nextItem.id ? nextItem : item,
       ),
-    }));
-  }
-
-  function updatePublicationListField(
-    id: string,
-    field: "labels" | "highlights" | "externalUrls",
-    value: string,
-  ) {
-    updatePublicationItem(id, {
-      [field]: value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    } as Partial<PublicationDraftEntry>);
-  }
-
-  function publicationAuthorNames(item: PublicationDraftEntry) {
-    if (item.authors?.length) return item.authors;
-    return (item.authorsRich || []).map((author) => author.name).filter(Boolean);
-  }
-
-  function updatePublicationAuthors(id: string, value: string) {
-    const names = value
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean);
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) => {
-        if (item.id !== id) return item;
-        const selfNames = new Set(
-          (item.authorsRich || [])
-            .filter((author) => author.isSelf)
-            .map((author) => author.name.toLocaleLowerCase()),
-        );
-        return {
-          ...item,
-          authors: names,
-          authorsRich: names.map((name) => ({
-            name,
-            isSelf: selfNames.has(name.toLocaleLowerCase()),
-          })),
-        };
-      }),
-    }));
-  }
-
-  function updatePublicationSelfAuthor(id: string, selfAuthor: string) {
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) => {
-        if (item.id !== id) return item;
-        const names = publicationAuthorNames(item);
-        return {
-          ...item,
-          authors: names,
-          authorsRich: names.map((name) => ({
-            name,
-            isSelf: name === selfAuthor,
-          })),
-        };
-      }),
-    }));
-  }
-
-  function publicationPrimaryVenue(item: PublicationDraftEntry): PublicationVenue | null {
-    return (
-      (item.venues || []).find(
-        (venue) => !/^(doi|arxiv(?:\.org)?)$/i.test(String(venue.type || "").trim()),
-      ) || null
-    );
-  }
-
-  function updatePublicationPrimaryVenue(
-    id: string,
-    patch: Partial<PublicationVenue>,
-  ) {
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) => {
-        if (item.id !== id) return item;
-        const venues = [...(item.venues || [])];
-        const venueIndex = venues.findIndex(
-          (venue) => !/^(doi|arxiv(?:\.org)?)$/i.test(String(venue.type || "").trim()),
-        );
-        const current =
-          venueIndex >= 0
-            ? venues[venueIndex]
-            : { type: "Venue", text: item.venue || "" };
-        const next = { ...current, ...patch };
-        if (venueIndex >= 0) venues[venueIndex] = next;
-        else venues.unshift(next);
-        return {
-          ...item,
-          venue: next.text,
-          venues,
-        };
-      }),
     }));
   }
 
@@ -2070,14 +1978,7 @@ export function SiteAdminWebConsole({
     return selectedComponentIssues.filter((issue) => issue.entryId === id);
   }
 
-  function issueForComponentField(id: string, field: string) {
-    return selectedComponentIssues.find(
-      (issue) => issue.entryId === id && issue.field === field,
-    );
-  }
-
-  function reviewFirstComponentIssue() {
-    const issue = selectedComponentIssues[0];
+  function focusComponentIssue(issue: (typeof selectedComponentIssues)[number] | undefined) {
     if (!issue) return;
     setComponentSearch("");
     setComponentExpandedIds([issue.entryId]);
@@ -2093,13 +1994,46 @@ export function SiteAdminWebConsole({
     });
   }
 
+  function reviewComponentIssue(direction: -1 | 1) {
+    if (selectedComponentIssues.length === 0) return;
+    const activeField = document.activeElement?.closest<HTMLElement>(
+      "[data-structured-entry-form]",
+    );
+    const activeEntryId = activeField?.dataset.structuredEntryForm || "";
+    const activeFieldName = document.activeElement?.getAttribute("data-component-field") || "";
+    const currentIndex = selectedComponentIssues.findIndex(
+      (issue) => issue.entryId === activeEntryId && issue.field === activeFieldName,
+    );
+    const nextIndex =
+      currentIndex < 0
+        ? direction === 1
+          ? 0
+          : selectedComponentIssues.length - 1
+        : (currentIndex + direction + selectedComponentIssues.length) %
+          selectedComponentIssues.length;
+    focusComponentIssue(selectedComponentIssues[nextIndex]);
+  }
+
+  function completeComponentEntry(id: string) {
+    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(componentEntryDomId(id))
+        ?.querySelector<HTMLElement>("summary")
+        ?.focus({ preventScroll: true });
+    });
+  }
+
   function renderNewsEditor(draft: NewsComponentDraft) {
     const searching = Boolean(componentSearch.trim());
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => {
         if (item.type === "divider") return !searching;
-        return matchesComponentItem(componentSearch, [item.date, item.body]);
+        return matchesComponentItem(
+          componentSearch,
+          structuredCollectionSearchValues(item, NEWS_ENTRY_FIELDS),
+        );
       });
 
     return (
@@ -2122,7 +2056,9 @@ export function SiteAdminWebConsole({
         expandedEntryIds={componentExpandedIds}
         onExpandedEntryIdsChange={setComponentExpandedIds}
         issueCount={selectedComponentIssues.length}
-        onReviewIssues={reviewFirstComponentIssue}
+        onReviewIssues={() => reviewComponentIssue(1)}
+        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
+        onReviewNextIssue={() => reviewComponentIssue(1)}
         source={{
           fileName: `${selected?.id || "news"}.mdx`,
           label: `${selected?.title || "News"} MDX source`,
@@ -2191,38 +2127,14 @@ export function SiteAdminWebConsole({
               onDragOver={(event) => handleComponentDragOver(event, item.id)}
               onDrop={(event) => handleComponentDrop(event, item.id)}
             >
-              <label className={styles.fieldLabel}>
-                Date
-                <input
-                  className={styles.textField}
-                  type="date"
-                  value={item.date}
-                  data-component-field="date"
-                  aria-invalid={Boolean(issueForComponentField(item.id, "date"))}
-                  onChange={(event) =>
-                    updateNewsItem(item.id, { date: event.target.value })
-                  }
-                />
-                <StructuredCollectionFieldIssue
-                  issue={issueForComponentField(item.id, "date")}
-                />
-              </label>
-              <label className={styles.fieldLabel}>
-                Body
-                <textarea
-                  className={styles.newsEntryBody}
-                  value={item.body}
-                  data-component-field="body"
-                  aria-invalid={Boolean(issueForComponentField(item.id, "body"))}
-                  onChange={(event) =>
-                    updateNewsItem(item.id, { body: event.target.value })
-                  }
-                  disabled={saving}
-                />
-                <StructuredCollectionFieldIssue
-                  issue={issueForComponentField(item.id, "body")}
-                />
-              </label>
+              <StructuredCollectionEntryForm
+                item={item}
+                fields={NEWS_ENTRY_FIELDS}
+                issues={issues}
+                disabled={saving}
+                onChange={updateNewsItem}
+                onComplete={() => completeComponentEntry(item.id)}
+              />
             </StructuredCollectionEntry>
           );
         })}
@@ -2235,14 +2147,10 @@ export function SiteAdminWebConsole({
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
-        matchesComponentItem(componentSearch, [
-          item.term,
-          item.period,
-          item.role,
-          item.courseCode,
-          item.courseName,
-          item.instructor,
-        ]),
+        matchesComponentItem(
+          componentSearch,
+          structuredCollectionSearchValues(item, TEACHING_ENTRY_FIELDS),
+        ),
       );
     return (
       <StructuredCollectionEditor
@@ -2260,7 +2168,9 @@ export function SiteAdminWebConsole({
         expandedEntryIds={componentExpandedIds}
         onExpandedEntryIdsChange={setComponentExpandedIds}
         issueCount={selectedComponentIssues.length}
-        onReviewIssues={reviewFirstComponentIssue}
+        onReviewIssues={() => reviewComponentIssue(1)}
+        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
+        onReviewNextIssue={() => reviewComponentIssue(1)}
         source={{
           fileName: `${selected?.id || "teaching"}.mdx`,
           label: `${selected?.title || "Teaching"} MDX source`,
@@ -2307,97 +2217,14 @@ export function SiteAdminWebConsole({
               onDragOver={(event) => handleComponentDragOver(event, item.id)}
               onDrop={(event) => handleComponentDrop(event, item.id)}
             >
-                  <div className={styles.componentEntryGrid}>
-                    <label className={styles.fieldLabel}>
-                      Term
-                      <input
-                        className={styles.textField}
-                        value={item.term}
-                        data-component-field="term"
-                        aria-invalid={Boolean(issueForComponentField(item.id, "term"))}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { term: event.target.value })
-                        }
-                      />
-                      <StructuredCollectionFieldIssue
-                        issue={issueForComponentField(item.id, "term")}
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Period
-                      <input
-                        className={styles.textField}
-                        value={item.period}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { period: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Role
-                      <input
-                        className={styles.textField}
-                        value={item.role}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { role: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Course code
-                      <input
-                        className={styles.textField}
-                        value={item.courseCode}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { courseCode: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Course name
-                      <input
-                        className={styles.textField}
-                        value={item.courseName}
-                        data-component-field="courseName"
-                        aria-invalid={Boolean(
-                          issueForComponentField(item.id, "courseName"),
-                        )}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { courseName: event.target.value })
-                        }
-                      />
-                      <StructuredCollectionFieldIssue
-                        issue={issueForComponentField(item.id, "courseName")}
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Instructor
-                      <input
-                        className={styles.textField}
-                        value={item.instructor || ""}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { instructor: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Course URL
-                      <input
-                        className={styles.textField}
-                        value={item.courseUrl || ""}
-                        data-component-field="courseUrl"
-                        aria-invalid={Boolean(
-                          issueForComponentField(item.id, "courseUrl"),
-                        )}
-                        onChange={(event) =>
-                          updateTeachingItem(item.id, { courseUrl: event.target.value })
-                        }
-                      />
-                      <StructuredCollectionFieldIssue
-                        issue={issueForComponentField(item.id, "courseUrl")}
-                      />
-                    </label>
-                  </div>
+              <StructuredCollectionEntryForm
+                item={item}
+                fields={TEACHING_ENTRY_FIELDS}
+                issues={issues}
+                disabled={saving}
+                onChange={updateTeachingItem}
+                onComplete={() => completeComponentEntry(item.id)}
+              />
             </StructuredCollectionEntry>
           );
         })}
@@ -2410,14 +2237,10 @@ export function SiteAdminWebConsole({
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
-        matchesComponentItem(componentSearch, [
-          item.category,
-          item.role,
-          item.affiliation,
-          item.location,
-          item.period,
-          item.body,
-        ]),
+        matchesComponentItem(
+          componentSearch,
+          structuredCollectionSearchValues(item, WORKS_ENTRY_FIELDS),
+        ),
       );
     return (
       <StructuredCollectionEditor
@@ -2435,7 +2258,9 @@ export function SiteAdminWebConsole({
         expandedEntryIds={componentExpandedIds}
         onExpandedEntryIdsChange={setComponentExpandedIds}
         issueCount={selectedComponentIssues.length}
-        onReviewIssues={reviewFirstComponentIssue}
+        onReviewIssues={() => reviewComponentIssue(1)}
+        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
+        onReviewNextIssue={() => reviewComponentIssue(1)}
         source={{
           fileName: `${selected?.id || "works"}.mdx`,
           label: `${selected?.title || "Works"} MDX source`,
@@ -2485,101 +2310,14 @@ export function SiteAdminWebConsole({
               onDragOver={(event) => handleComponentDragOver(event, item.id)}
               onDrop={(event) => handleComponentDrop(event, item.id)}
             >
-                  <div className={styles.componentEntryGrid}>
-                    <label className={styles.fieldLabel}>
-                      Category
-                      <select
-                        className={styles.textField}
-                        value={item.category}
-                        onChange={(event) =>
-                          updateWorksItem(item.id, {
-                            category: event.target.value === "passed" ? "passed" : "recent",
-                          })
-                        }
-                      >
-                        <option value="recent">Recent</option>
-                        <option value="passed">Past</option>
-                      </select>
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Role
-                      <input
-                        className={styles.textField}
-                        value={item.role}
-                        data-component-field="role"
-                        aria-invalid={Boolean(issueForComponentField(item.id, "role"))}
-                        onChange={(event) =>
-                          updateWorksItem(item.id, { role: event.target.value })
-                        }
-                      />
-                      <StructuredCollectionFieldIssue
-                        issue={issueForComponentField(item.id, "role")}
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Affiliation
-                      <input
-                        className={styles.textField}
-                        value={item.affiliation || ""}
-                        onChange={(event) =>
-                          updateWorksItem(item.id, { affiliation: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Affiliation URL
-                      <input
-                        className={styles.textField}
-                        value={item.affiliationUrl || ""}
-                        data-component-field="affiliationUrl"
-                        aria-invalid={Boolean(
-                          issueForComponentField(item.id, "affiliationUrl"),
-                        )}
-                        onChange={(event) =>
-                          updateWorksItem(item.id, { affiliationUrl: event.target.value })
-                        }
-                      />
-                      <StructuredCollectionFieldIssue
-                        issue={issueForComponentField(item.id, "affiliationUrl")}
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Location
-                      <input
-                        className={styles.textField}
-                        value={item.location || ""}
-                        onChange={(event) =>
-                          updateWorksItem(item.id, { location: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Period
-                      <input
-                        className={styles.textField}
-                        value={item.period}
-                        data-component-field="period"
-                        aria-invalid={Boolean(issueForComponentField(item.id, "period"))}
-                        onChange={(event) =>
-                          updateWorksItem(item.id, { period: event.target.value })
-                        }
-                      />
-                      <StructuredCollectionFieldIssue
-                        issue={issueForComponentField(item.id, "period")}
-                      />
-                    </label>
-                  </div>
-                  <label className={styles.fieldLabel}>
-                    Body
-                    <textarea
-                      className={styles.newsEntryBody}
-                      value={item.body}
-                      onChange={(event) =>
-                        updateWorksItem(item.id, { body: event.target.value })
-                      }
-                      disabled={saving}
-                    />
-                  </label>
+              <StructuredCollectionEntryForm
+                item={item}
+                fields={WORKS_ENTRY_FIELDS}
+                issues={issues}
+                disabled={saving}
+                onChange={updateWorksItem}
+                onComplete={() => completeComponentEntry(item.id)}
+              />
             </StructuredCollectionEntry>
           );
         })}
@@ -2592,16 +2330,10 @@ export function SiteAdminWebConsole({
     const items = draft.items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) =>
-        matchesComponentItem(componentSearch, [
-          item.title,
-          item.year,
-          item.url,
-          item.venue,
-          ...(item.venues || []).flatMap((venue) => [venue.type, venue.text, venue.url]),
-          ...publicationAuthorNames(item),
-          ...(item.labels || []),
-          ...(item.highlights || []),
-        ]),
+        matchesComponentItem(
+          componentSearch,
+          structuredCollectionSearchValues(item, PUBLICATION_ENTRY_FIELDS),
+        ),
       );
     return (
       <StructuredCollectionEditor
@@ -2619,7 +2351,9 @@ export function SiteAdminWebConsole({
         expandedEntryIds={componentExpandedIds}
         onExpandedEntryIdsChange={setComponentExpandedIds}
         issueCount={selectedComponentIssues.length}
-        onReviewIssues={reviewFirstComponentIssue}
+        onReviewIssues={() => reviewComponentIssue(1)}
+        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
+        onReviewNextIssue={() => reviewComponentIssue(1)}
         source={{
           fileName: `${selected?.id || "publications"}.mdx`,
           label: `${selected?.title || "Publications"} MDX source`,
@@ -2632,9 +2366,6 @@ export function SiteAdminWebConsole({
           <StructuredCollectionEmpty noun="publications" searching={searching} />
         ) : null}
         {items.map(({ item, index }, visibleIndex) => {
-          const authors = publicationAuthorNames(item);
-          const selfAuthor = item.authorsRich?.find((author) => author.isSelf)?.name || "";
-          const primaryVenue = publicationPrimaryVenue(item);
           const issues = issuesForComponentEntry(item.id);
           const previousGroup = items[visibleIndex - 1]?.item.year || "";
           return (
@@ -2666,172 +2397,14 @@ export function SiteAdminWebConsole({
               onDragOver={(event) => handleComponentDragOver(event, item.id)}
               onDrop={(event) => handleComponentDrop(event, item.id)}
             >
-                <div className={styles.componentEntryGrid}>
-                <label className={styles.fieldLabel}>
-                  Title
-                  <input
-                    className={styles.textField}
-                    value={item.title || ""}
-                    data-component-field="title"
-                    aria-invalid={Boolean(issueForComponentField(item.id, "title"))}
-                    onChange={(event) =>
-                      updatePublicationItem(item.id, { title: event.target.value })
-                    }
-                  />
-                  <StructuredCollectionFieldIssue
-                    issue={issueForComponentField(item.id, "title")}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Year
-                  <input
-                    className={styles.textField}
-                    value={item.year || ""}
-                    data-component-field="year"
-                    aria-invalid={Boolean(issueForComponentField(item.id, "year"))}
-                    onChange={(event) =>
-                      updatePublicationItem(item.id, { year: event.target.value })
-                    }
-                  />
-                  <StructuredCollectionFieldIssue
-                    issue={issueForComponentField(item.id, "year")}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  URL
-                  <input
-                    className={styles.textField}
-                    value={item.url || ""}
-                    data-component-field="url"
-                    aria-invalid={Boolean(issueForComponentField(item.id, "url"))}
-                    onChange={(event) =>
-                      updatePublicationItem(item.id, { url: event.target.value })
-                    }
-                  />
-                  <StructuredCollectionFieldIssue
-                    issue={issueForComponentField(item.id, "url")}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Authors
-                  <input
-                    className={styles.textField}
-                    value={authors.join(", ")}
-                    onChange={(event) => updatePublicationAuthors(item.id, event.target.value)}
-                    placeholder="Comma separated"
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Highlighted author
-                  <select
-                    className={styles.textField}
-                    value={selfAuthor}
-                    onChange={(event) =>
-                      updatePublicationSelfAuthor(item.id, event.target.value)
-                    }
-                  >
-                    <option value="">None</option>
-                    {authors.map((author) => (
-                      <option key={author} value={author}>
-                        {author}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.fieldLabel}>
-                  Venue
-                  <input
-                    className={styles.textField}
-                    value={primaryVenue?.text || item.venue || ""}
-                    onChange={(event) =>
-                      updatePublicationPrimaryVenue(item.id, { text: event.target.value })
-                    }
-                    placeholder="Conference or journal"
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Venue type
-                  <input
-                    className={styles.textField}
-                    value={primaryVenue?.type || ""}
-                    onChange={(event) =>
-                      updatePublicationPrimaryVenue(item.id, { type: event.target.value })
-                    }
-                    placeholder="Conference, Journal, Workshop"
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Venue URL
-                  <input
-                    className={styles.textField}
-                    value={primaryVenue?.url || ""}
-                    onChange={(event) =>
-                      updatePublicationPrimaryVenue(item.id, { url: event.target.value })
-                    }
-                    placeholder="Optional"
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Labels
-                  <input
-                    className={styles.textField}
-                    value={(item.labels || []).join(", ")}
-                    onChange={(event) =>
-                      updatePublicationListField(item.id, "labels", event.target.value)
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Highlights
-                  <input
-                    className={styles.textField}
-                    value={(item.highlights || []).join(", ")}
-                    onChange={(event) =>
-                      updatePublicationListField(item.id, "highlights", event.target.value)
-                    }
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  DOI URL
-                  <input
-                    className={styles.textField}
-                    value={item.doiUrl || ""}
-                    data-component-field="doiUrl"
-                    aria-invalid={Boolean(issueForComponentField(item.id, "doiUrl"))}
-                    onChange={(event) =>
-                      updatePublicationItem(item.id, { doiUrl: event.target.value })
-                    }
-                  />
-                  <StructuredCollectionFieldIssue
-                    issue={issueForComponentField(item.id, "doiUrl")}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  arXiv URL
-                  <input
-                    className={styles.textField}
-                    value={item.arxivUrl || ""}
-                    data-component-field="arxivUrl"
-                    aria-invalid={Boolean(issueForComponentField(item.id, "arxivUrl"))}
-                    onChange={(event) =>
-                      updatePublicationItem(item.id, { arxivUrl: event.target.value })
-                    }
-                  />
-                  <StructuredCollectionFieldIssue
-                    issue={issueForComponentField(item.id, "arxivUrl")}
-                  />
-                </label>
-                <label className={styles.fieldLabel}>
-                  External URLs
-                  <input
-                    className={styles.textField}
-                    value={(item.externalUrls || []).join(", ")}
-                    onChange={(event) =>
-                      updatePublicationListField(item.id, "externalUrls", event.target.value)
-                    }
-                  />
-                </label>
-                </div>
+              <StructuredCollectionEntryForm
+                item={item}
+                fields={PUBLICATION_ENTRY_FIELDS}
+                issues={issues}
+                disabled={saving}
+                onChange={updatePublicationItem}
+                onComplete={() => completeComponentEntry(item.id)}
+              />
             </StructuredCollectionEntry>
           );
         })}
