@@ -58,12 +58,16 @@ test("site-admin mdx preview renderer detects Cloudflare codegen failures", () =
   assert.equal(isMdxRuntimeCodeGenerationError(new Error("ordinary MDX syntax error")), false);
 });
 
-test("site-admin generic mdx preview endpoint uses the static renderer", () => {
+test("site-admin generic mdx preview endpoint prefers the published renderer with a static fallback", () => {
   const source = fs.readFileSync("app/api/site-admin/preview/mdx/route.ts", "utf8");
+  assert.ok(source.includes("compilePostMdx"));
+  assert.ok(source.includes("postMdxComponents"));
   assert.ok(source.includes("renderMdxPreviewHtml"));
   assert.ok(source.includes("site-admin-mdx-preview"));
   assert.ok(source.includes("MAX_SOURCE_LENGTH"));
+  assert.ok(source.includes('renderer: "runtime-mdx-preview"'));
   assert.ok(source.includes('renderer: "static-mdx-preview"'));
+  assert.ok(source.includes("isMdxRuntimeCodeGenerationError"));
 });
 
 test("site-admin markdown editor requests the generic mdx preview endpoint", () => {
@@ -71,4 +75,5 @@ test("site-admin markdown editor requests the generic mdx preview endpoint", () 
   assert.ok(source.includes('fetch("/api/site-admin/preview/mdx"'));
   assert.ok(source.includes("dangerouslySetInnerHTML"));
   assert.ok(source.includes("Rendering preview"));
+  assert.ok(source.includes("Approximate preview"));
 });

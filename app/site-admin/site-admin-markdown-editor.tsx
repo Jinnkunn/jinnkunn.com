@@ -3,6 +3,10 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  analyzeVisualMdxCompatibility,
+  visualCompatibilitySummary,
+} from "@/lib/site-admin/mdx-visual-compatibility";
 import styles from "./site-admin-dashboard.module.css";
 
 const SiteAdminSourceEditor = dynamic(
@@ -74,8 +78,15 @@ export function SiteAdminMarkdownEditor({
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewRenderer, setPreviewRenderer] = useState("");
   const [visualError, setVisualError] = useState("");
   const stats = useMemo(() => editorStats(value), [value]);
+  const visualCompatibility = useMemo(
+    () => analyzeVisualMdxCompatibility(value),
+    [value],
+  );
+  const visualAvailable = visualEditing && visualCompatibility.compatible;
+  const activeMode = mode === "visual" && !visualAvailable ? "source" : mode;
   const isSplitPreview = previewLayout === "split";
 
   const renderPreview = useCallback(async () => {
@@ -83,6 +94,7 @@ export function SiteAdminMarkdownEditor({
     previewRequestIdRef.current = requestId;
     setPreviewLoading(true);
     setPreviewError("");
+    setPreviewRenderer("");
     try {
       const response = await fetch("/api/site-admin/preview/mdx", {
         method: "POST",
@@ -100,9 +112,11 @@ export function SiteAdminMarkdownEditor({
       }
       if (previewRequestIdRef.current !== requestId) return;
       setPreviewHtml(String(payload?.data?.html || payload?.html || ""));
+      setPreviewRenderer(String(payload?.data?.renderer || payload?.renderer || ""));
     } catch (error: unknown) {
       if (previewRequestIdRef.current !== requestId) return;
       setPreviewHtml("");
+      setPreviewRenderer("");
       setPreviewError(error instanceof Error ? error.message : String(error));
     } finally {
       if (previewRequestIdRef.current === requestId) setPreviewLoading(false);
@@ -110,12 +124,17 @@ export function SiteAdminMarkdownEditor({
   }, [value]);
 
   useEffect(() => {
-    if (mode !== "preview" && !isSplitPreview) return;
+    if (activeMode !== "preview" && !isSplitPreview) return;
     const timer = window.setTimeout(() => void renderPreview(), 260);
     return () => window.clearTimeout(timer);
-  }, [isSplitPreview, mode, renderPreview]);
+  }, [activeMode, isSplitPreview, renderPreview]);
+
+  useEffect(() => {
+    if (mode === "visual" && !visualAvailable) setMode("source");
+  }, [mode, visualAvailable]);
 
   function changeMode(nextMode: EditorMode) {
+    if (nextMode === "visual" && !visualAvailable) return;
     setMode(nextMode);
     if (nextMode === "preview") void renderPreview();
   }
@@ -123,6 +142,11 @@ export function SiteAdminMarkdownEditor({
   function renderPreviewPane() {
     return (
       <div className={styles.markdownPreviewShell} style={{ minHeight }}>
+        {previewRenderer === "static-mdx-preview" ? (
+          <div className={styles.editorModeNotice} role="note">
+            Approximate preview: complex MDX may differ from the published page.
+          </div>
+        ) : null}
         {previewLoading ? (
           <p className={styles.previewEmpty}>Rendering preview…</p>
         ) : previewError ? (
@@ -162,10 +186,16 @@ export function SiteAdminMarkdownEditor({
             <button
               type="button"
               className={styles.markdownModeButton}
-              data-active={mode === "visual"}
+              data-active={activeMode === "visual"}
               onClick={() => changeMode("visual")}
+              disabled={!visualAvailable}
+              title={
+                visualAvailable
+                  ? "Visual Markdown editor"
+                  : visualCompatibilitySummary(visualCompatibility)
+              }
               role="tab"
-              aria-selected={mode === "visual"}
+              aria-selected={activeMode === "visual"}
             >
               Write
             </button>
@@ -173,26 +203,29 @@ export function SiteAdminMarkdownEditor({
           <button
             type="button"
             className={styles.markdownModeButton}
-            data-active={mode === "source"}
+            data-active={activeMode === "source"}
             onClick={() => changeMode("source")}
             role="tab"
-            aria-selected={mode === "source"}
+            aria-selected={activeMode === "source"}
           >
             Source
           </button>
           <button
             type="button"
             className={styles.markdownModeButton}
-            data-active={mode === "preview"}
+            data-active={activeMode === "preview"}
             onClick={() => changeMode("preview")}
             role="tab"
-            aria-selected={mode === "preview"}
+            aria-selected={activeMode === "preview"}
           >
             Preview
           </button>
         </div>
         <div className={styles.editorModeMeta}>
-          {mode === "visual" ? <span>Type / for blocks</span> : null}
+          {activeMode === "visual" ? <span>Type / for blocks</span> : null}
+          {activeMode === "preview" && previewRenderer === "runtime-mdx-preview" ? (
+            <span>Published renderer</span>
+          ) : null}
           <span>{stats.words} words</span>
           {stats.components > 0 ? <span>{stats.components} components</span> : null}
         </div>
@@ -207,12 +240,20 @@ export function SiteAdminMarkdownEditor({
         </div>
       ) : null}
 
+      {visualEditing && !visualCompatibility.compatible ? (
+        <div className={styles.editorModeNotice} role="status">
+          <span>
+            Write mode is unavailable. {visualCompatibilitySummary(visualCompatibility)}
+          </span>
+        </div>
+      ) : null}
+
       {isSplitPreview ? (
         <div className={styles.markdownSplit}>
           {sourceEditor}
           {renderPreviewPane()}
         </div>
-      ) : mode === "visual" && visualEditing ? (
+      ) : activeMode === "visual" && visualAvailable ? (
         <SiteAdminVisualEditor
           label={label}
           value={value}
@@ -227,7 +268,7 @@ export function SiteAdminMarkdownEditor({
             setMode("source");
           }}
         />
-      ) : mode === "source" ? (
+      ) : activeMode === "source" ? (
         sourceEditor
       ) : (
         renderPreviewPane()

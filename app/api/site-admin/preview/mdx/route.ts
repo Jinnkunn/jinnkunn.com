@@ -1,8 +1,14 @@
 import type { NextRequest } from "next/server";
 
-import { renderMdxPreviewHtml } from "@/lib/site-admin/mdx-preview-render";
+import { postMdxComponents } from "@/components/posts-mdx/components";
+import { compilePostMdx } from "@/lib/posts/compile";
+import {
+  isMdxRuntimeCodeGenerationError,
+  renderMdxPreviewHtml,
+} from "@/lib/site-admin/mdx-preview-render";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 import {
+  apiError,
   apiPayloadOk,
   readSiteAdminJsonCommand,
   withSiteAdminContext,
@@ -35,10 +41,33 @@ export async function POST(req: NextRequest) {
     async () => {
       const parsed = await readSiteAdminJsonCommand(req, parseCommand);
       if (!parsed.ok) return parsed.res;
-      return apiPayloadOk({
-        html: renderMdxPreviewHtml(parsed.value.source),
-        renderer: "static-mdx-preview",
-      });
+      try {
+        const { Content } = await compilePostMdx(parsed.value.source);
+        const [{ createElement }, { renderToStaticMarkup }] = await Promise.all([
+          import("react"),
+          import("react-dom/server"),
+        ]);
+        const html = renderToStaticMarkup(
+          createElement(Content, { components: postMdxComponents }),
+        );
+        return apiPayloadOk({
+          html,
+          renderer: "runtime-mdx-preview",
+          approximate: false,
+        });
+      } catch (error) {
+        if (!isMdxRuntimeCodeGenerationError(error)) {
+          return apiError(
+            error instanceof Error ? error.message : "MDX preview failed",
+            { status: 400, code: "PREVIEW_FAILED" },
+          );
+        }
+        return apiPayloadOk({
+          html: renderMdxPreviewHtml(parsed.value.source),
+          renderer: "static-mdx-preview",
+          approximate: true,
+        });
+      }
     },
     { rateLimit: RATE_LIMIT },
   );

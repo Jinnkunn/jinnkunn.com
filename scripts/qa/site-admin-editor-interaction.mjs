@@ -26,6 +26,18 @@ function cookiePairs(cookieHeader) {
     .filter((cookie) => cookie.name && cookie.value);
 }
 
+function normalizeEditorText(value) {
+  return String(value || "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+}
+
+async function codeMirrorText(page) {
+  return page.locator(".cm-content").evaluate((element) =>
+    Array.from(element.querySelectorAll(".cm-line"))
+      .map((line) => line.textContent || "")
+      .join("\n"),
+  );
+}
+
 async function main() {
   loadProjectEnv({ override: false });
   const args = parseArgs(process.argv.slice(2));
@@ -60,8 +72,14 @@ async function main() {
   log("browser session ready");
   const page = await context.newPage();
   let writeAttempts = 0;
-  await page.route("**/api/site-admin/components/*", async (route) => {
-    if (route.request().method() === "GET") {
+  await page.route("**/api/site-admin/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const isContentMutation =
+      request.method() !== "GET" &&
+      /^\/api\/site-admin\/(components|pages|posts)\//.test(pathname) &&
+      !pathname.endsWith("/preview");
+    if (!isContentMutation) {
       await route.continue();
       return;
     }
@@ -79,7 +97,54 @@ async function main() {
     log(
       `site admin loaded; url=${page.url()}; text=${(await page.locator("body").innerText()).slice(0, 180).replace(/\s+/g, " ")}`,
     );
-    await page.getByRole("heading", { name: "Content" }).waitFor({ timeout: 20_000 });
+    await page
+      .getByRole("heading", { name: "Content", exact: true })
+      .first()
+      .waitFor({ timeout: 20_000 });
+
+    const bioResponse = await page.request.get(`${baseUrl}/api/site-admin/pages/bio`, {
+      headers: { accept: "application/json" },
+    });
+    assert.equal(bioResponse.ok(), true, "BIO source should load for round-trip QA");
+    const bioPayload = await bioResponse.json();
+    const bioBody = String(bioPayload?.data?.body || bioPayload?.body || "");
+    assert.ok(bioBody.trim(), "BIO source should include an editable body");
+
+    await page.getByRole("button", { name: /^BIO\b/ }).last().click();
+    const writeTab = page.getByRole("tab", { name: "Write" });
+    const sourceTab = page.getByRole("tab", { name: "Source" });
+    await writeTab.waitFor();
+    assert.equal(await writeTab.isEnabled(), true, "plain MDX should allow Write mode");
+    await page.locator('[contenteditable="true"][aria-label="BIO body"]').waitFor({
+      timeout: 20_000,
+    });
+    await sourceTab.click();
+    await page.locator(".cm-content").waitFor();
+    assert.equal(
+      normalizeEditorText(await codeMirrorText(page)),
+      normalizeEditorText(bioBody),
+      "opening Write mode must not change compatible MDX",
+    );
+    await writeTab.click();
+    await page.locator('[contenteditable="true"][aria-label="BIO body"]').waitFor({
+      timeout: 20_000,
+    });
+    await sourceTab.click();
+    await page.locator(".cm-content").waitFor();
+    assert.equal(
+      normalizeEditorText(await codeMirrorText(page)),
+      normalizeEditorText(bioBody),
+      "Write → Source → Write → Source must preserve compatible MDX",
+    );
+
+    await page
+      .getByRole("button", { name: /^Key Challenges in Current LLM Memory Systems\b/ })
+      .last()
+      .click();
+    await sourceTab.waitFor();
+    assert.equal(await writeTab.isDisabled(), true, "paired MDX should disable Write mode");
+    await page.getByText(/Write mode is unavailable.*Paired <Toggle>/).waitFor();
+
     await page.getByRole("button", { name: /^News\b/ }).last().click();
     await page.getByRole("heading", { name: "News entries" }).waitFor();
 

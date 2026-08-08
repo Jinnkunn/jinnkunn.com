@@ -62,6 +62,10 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   const editor = fs.readFileSync("app/site-admin/site-admin-markdown-editor.tsx", "utf8");
   const visual = fs.readFileSync("app/site-admin/site-admin-visual-editor.tsx", "utf8");
   const sourceEditor = fs.readFileSync("app/site-admin/site-admin-source-editor.tsx", "utf8");
+  const compatibility = fs.readFileSync(
+    "lib/site-admin/mdx-visual-compatibility.ts",
+    "utf8",
+  );
   assert.ok(source.includes("SiteAdminMarkdownEditor"));
   assert.ok(source.includes("sourceForNewContent"));
   assert.ok(source.includes("slugFromTitle"));
@@ -105,6 +109,9 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(editor.includes("SiteAdminVisualEditor"));
   assert.ok(editor.includes("onEditComponent"));
   assert.ok(editor.includes("SiteAdminSourceEditor"));
+  assert.ok(editor.includes("analyzeVisualMdxCompatibility"));
+  assert.ok(editor.includes("Write mode is unavailable"));
+  assert.ok(editor.includes('disabled={!visualAvailable}'));
   assert.ok(visual.includes("new Crepe"));
   assert.ok(visual.includes("MDX component"));
   assert.ok(visual.includes("uploadSiteAdminAsset"));
@@ -114,6 +121,8 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(sourceEditor.includes("new EditorView"));
   assert.ok(sourceEditor.includes("handlePaste"));
   assert.ok(sourceEditor.includes("uploadSiteAdminAsset"));
+  assert.ok(compatibility.includes('case "mdxJsxFlowElement"'));
+  assert.ok(compatibility.includes("isStaticSelfClosingComponent"));
 });
 
 test("site-admin content management includes recovery, media, settings, and version history", () => {
