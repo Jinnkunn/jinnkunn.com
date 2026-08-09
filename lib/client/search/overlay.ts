@@ -1,3 +1,4 @@
+import { setInert } from "@/lib/client/dom-utils";
 import { renderSearchResultsHtml } from "@/lib/client/site-search-render";
 import type { SearchItem } from "@/lib/shared/search-contract";
 import {
@@ -7,6 +8,14 @@ import {
   searchClearIconSvg,
   searchCloseIconSvg,
 } from "@/lib/client/search/overlay-template";
+
+// The result list renders an "empty" body in three situations that read very differently to
+// the user: before anything has been typed, after a query legitimately matched nothing, and
+// after the request itself never landed. Only the middle one is the template default
+// ("No results"), so the idle and error call sites pass their own title.
+export const SEARCH_EMPTY_IDLE_TITLE = "Type to search";
+export const SEARCH_EMPTY_ERROR_TITLE = "Search is unavailable";
+export const SEARCH_RETRY_ACTION_ID = "notion-search-retry";
 
 export type SearchOverlayElements = {
   root: HTMLElement;
@@ -57,6 +66,9 @@ export function ensureSearch(): SearchOverlayElements {
       // and persisted via client-side navigation.
       clearBtn.innerHTML = searchClearIconSvg();
       closeBtn.innerHTML = searchCloseIconSvg();
+      // Same for `inert`: an overlay left over from a build that predates it would otherwise
+      // stay tabbable until the first open/close cycle.
+      setInert(existing, existing.getAttribute("data-open") !== "true");
 
       return {
         root: existing,
@@ -81,6 +93,12 @@ export function ensureSearch(): SearchOverlayElements {
   root.className = "notion-search close";
 
   root.innerHTML = buildSearchOverlayHtml();
+
+  // The overlay is appended to <body> on every public page and is only *visually* hidden
+  // (opacity + pointer-events). Without `inert` its input, filter pills and close button stay
+  // at the end of the tab order and its role="dialog" stays in the accessibility tree on every
+  // page. It is created closed; `setOpen` flips this on each toggle.
+  setInert(root, true);
 
   document.body.appendChild(root);
 

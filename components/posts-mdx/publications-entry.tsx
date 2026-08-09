@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ReactElement } from "react";
 
-import { classifyLabel, type LabelKind } from "@/components/publications/publication-card";
+import { classifyLabel, type LabelKind } from "@/components/publications/labels";
 import { PublicationHighlightBadge } from "@/components/publications/publication-highlight-badge";
 
 interface PubAuthor {
@@ -31,7 +31,7 @@ interface PubData {
 
 interface PublicationsEntryProps {
   /** Single-quoted JSON-encoded entry record. Mirrors the per-row
-   * shape used by the legacy publication-list / publication-card. */
+   * shape used by the rendered publication-list. */
   data?: string;
 }
 

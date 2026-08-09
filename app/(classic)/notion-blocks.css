@@ -49,16 +49,30 @@
   color: var(--ds-warning-text);
 }
 
+/* Failure used to be a complete no-op: `data-copied` was a boolean, so a
+ * rejected clipboard write restored the idle label and looked identical to
+ * never having pressed the button. lib/client/notion/code.ts now emits
+ * `failed` (and announces it through a polite live region sibling), so give it
+ * the danger tone the state deserves. */
+.notion-code__copy-button[data-copied="failed"],
+.notion-code__copy-button[data-copied="failed"]:hover {
+  opacity: 1;
+  pointer-events: all;
+  background: var(--ds-danger-bg);
+  border-color: var(--ds-danger-border);
+  color: var(--ds-danger-text);
+}
+
 /* Notion toggles: visible keyboard focus + basic touch feedback (v1-consistent). */
 .notion-toggle__summary:focus-visible {
-  outline: 2px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
   border-radius: 6px;
 }
 
 .notion-toggle__trigger[role="button"]:focus-visible {
-  outline: 2px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
   border-radius: 6px;
 }
 
@@ -92,9 +106,15 @@
   }
 }
 
-/* Standard typography: captions + meta a bit smaller, references like footnotes. */
+/* Standard typography: captions + meta a bit smaller, references like footnotes.
+ * The caption also needs its own leading: the `.notion-semantic-string` that
+ * sits on the same <figcaption> pins `line-height: 1.5rem`, so a 14px caption
+ * was riding a 24px line (1.71) and read looser than the 16px/24px body it
+ * annotates. 1.45 keeps it visually tighter than body copy, as a caption
+ * should be. Same specificity as the imported rule, later file — this wins. */
 .notion-caption {
   font-size: var(--v1-type-small);
+  line-height: 1.45;
   color: var(--ds-text-secondary);
 }
 
@@ -217,6 +237,32 @@
 .notion-code pre {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+}
+
+/* NOTE: the surface + text colors for code blocks live in
+ * design-system-bridge.css, not here. Fixing dark mode needs a fallback off the
+ * imported sheet's own legacy code-background variable, and this file is held
+ * to a stricter contract (no raw color literals, no legacy variables) by
+ * tests/design-system/design-system-notion-blocks.test.mjs. Everything below is
+ * token-only: typography and the Prism palette. */
+
+/* Code typography. Three different monospace stacks were in play — the Notion
+ * sheet declares one on <pre> and another on <code>, and the Prism theme a
+ * third — so an unhighlighted block rendered in Monaco while a highlighted one
+ * rendered in Menlo. The two sheets also disagreed on size (1rem on the box,
+ * 0.9rem on the glyphs), so the <pre> was laid out at 16px and drawn at 14.4px.
+ *
+ * Unify everything onto the GeistMono stack the app already loads. The theme
+ * classes are in the selector because the Prism rules are written as
+ * `html.theme-light code[class*="language-"]` (0,2,2) — matching that
+ * specificity is the only way to win, and this file loads after classic.css. */
+html.theme-light .notion-code pre,
+html.theme-light .notion-code code,
+html.theme-dark .notion-code pre,
+html.theme-dark .notion-code code {
+  font-family: var(--ds-font-mono);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 /* Prism token colors driven by design tokens so dark mode keeps contrast. */

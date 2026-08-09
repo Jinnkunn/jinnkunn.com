@@ -1,16 +1,6 @@
-import { SpecialStatePage } from "@/components/special-state-page";
-import { Button } from "@/components/ui/button";
-
-export default function NotFound() {
-  return (
-    <SpecialStatePage
-      badge="404"
-      layout="inline"
-      title="This page could not be found."
-      description=""
-      actions={
-        <Button href="/">Back Home</Button>
-      }
-    />
-  );
-}
+// The classic segments' `notFound()` boundary. It intentionally renders the
+// exact same component as the global `/_not-found` entry rather than a second
+// copy of the markup: the only difference between the two is the shell, and
+// the classic layout already supplies SiteNav + SiteFooter around whatever
+// this boundary renders.
+export { default } from "../not-found";

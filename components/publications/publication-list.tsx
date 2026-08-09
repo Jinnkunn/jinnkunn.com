@@ -4,7 +4,7 @@ import type {
   PublicationVenue,
 } from "@/lib/seo/publications-items";
 
-import { classifyLabel, type LabelKind } from "./publication-card";
+import { classifyLabel, venueSummaryText, type LabelKind } from "./labels";
 import { PublicationHighlightBadge } from "./publication-highlight-badge";
 
 function orderYearKey(year: string): number {
@@ -128,7 +128,13 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const venues = fallbackVenues(entry);
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
-  const hasMetadata = labels.length > 0 || highlights.length > 0;
+  // Collapsed, an entry used to show only a title and a coloured tag — the
+  // venue was buried in the hidden container below, so the list read as a
+  // wall of titles with no way to tell a workshop paper from an AAAI oral
+  // without opening every row. The first venue is the one that identifies the
+  // work, so it joins the existing meta row rather than adding structure.
+  const primaryVenue = venues.length > 0 ? venueSummaryText(venues[0]) : "";
+  const hasMetadata = labels.length > 0 || highlights.length > 0 || Boolean(primaryVenue);
 
   return (
     <div className="notion-toggle closed publication-toggle">
@@ -157,6 +163,9 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
                       <PublicationHighlightBadge key={highlight} highlight={highlight} />
                     ))}
                   </span>
+                )}
+                {primaryVenue && (
+                  <span className="highlighted-color color-gray">{primaryVenue}</span>
                 )}
               </span>
             </>

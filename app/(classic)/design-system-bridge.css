@@ -44,16 +44,30 @@ html[data-theme],
 /* Display polish for the Geist grotesk. A modern grotesk reads tighter and
  * more confident at large sizes, so page/hero titles get negative tracking
  * and a touch more weight, and in-content headings get a lighter tightening.
- * Only tracking + weight change here — font-size and line-height stay exactly
- * on the classic style contract (16px/24px body, locked title sizes), so the
- * production-style and classic-style gates remain green. */
+ *
+ * The title also needs its own metrics. The imported Super sheet declares
+ * `font-size: var(--title-size); line-height: var(--title-size)` — a 1.0 ratio
+ * — with no breakpoint override, so a title that wraps to three lines has line
+ * boxes that literally touch and descenders collide with the next ascender.
+ * `line-height: 1.06` opens just enough leading to clear them without turning
+ * the title into loose display copy.
+ *
+ * The size becomes fluid so a 40px title is not crammed into a ~342px column
+ * on a phone. The clamp resolves to exactly 40px at every desktop width the
+ * style gates sample (5vw >= 40px from 800px up), so desktop pixels do not
+ * move; body font-size/line-height/color and the locked 900px content column
+ * are untouched, so the production-style and classic-style gates stay green. */
 .super-root .notion-header__title {
   font-weight: var(--ds-weight-display);
   letter-spacing: var(--ds-tracking-display);
+  font-size: clamp(30px, 5vw, 40px);
+  line-height: 1.06;
   text-wrap: balance;
 }
 
-.super-root .notion-root :is(h1, h2, h3),
+/* `balance` covers every heading level, not just the three Notion emits
+ * natively — MDX content can reach h4-h6 and they wrap just as badly. */
+.super-root .notion-root :is(h1, h2, h3, h4, h5, h6),
 .super-root .notion-heading,
 .super-root .notion-heading__content {
   letter-spacing: var(--ds-tracking-tight);
@@ -62,9 +76,13 @@ html[data-theme],
 
 /* Body prose: let the browser even out line lengths and avoid a lone
  * orphan word on the last line. Affects line breaking only — font-size,
- * line-height and color stay exactly on the classic contract. */
+ * line-height and color stay exactly on the classic contract. List items,
+ * quotes and captions are prose too, so they get the same treatment. */
 .super-root .notion-text__content,
-.super-root .mdx-post__body p {
+.super-root .mdx-post__body p,
+.super-root li,
+.super-root blockquote,
+.super-root .notion-caption {
   text-wrap: pretty;
 }
 
@@ -73,4 +91,32 @@ html[data-theme],
 .super-root .notion-navbar__title,
 .super-root .super-navbar__logo-text {
   letter-spacing: var(--ds-tracking-tight);
+}
+
+/* Code block surface + text. The imported Notion sheet pins `color: black` on
+ * the <pre> and a hard-coded ink value on the <code> with no theme scoping,
+ * while `--color-code-bg` and the whole One Light Prism palette are declared
+ * only inside `html.theme-light`. In dark mode the background variable is
+ * therefore undefined — the declaration drops out and the surface falls back to
+ * transparent — while the unscoped black text still wins, so any character
+ * Prism did not wrap in a token span lands near 1.5:1.
+ *
+ * This belongs in the bridge rather than notion-blocks.css because the
+ * background deliberately keeps the `var(--color-code-bg, …)` fallback form:
+ * light mode resolves to the imported sheet's own value, byte for byte, and
+ * only dark mode (where the legacy variable does not exist) falls through to
+ * the design token. Bridging legacy `--color-*` names onto `--ds-*` is exactly
+ * this file's job; notion-blocks.css is contractually token-only.
+ *
+ * Same specificity as the imported rules, and this file loads immediately after
+ * classic.css, so it wins on order. In light mode the Prism theme still owns
+ * highlighted code via `html.theme-light code[class*="language-"]` (0,2,2),
+ * which is the existing behavior and stays untouched. */
+.notion-code pre {
+  color: var(--ds-text-primary);
+  background-color: var(--color-code-bg, var(--ds-code-surface));
+}
+
+.notion-code code {
+  color: inherit;
 }

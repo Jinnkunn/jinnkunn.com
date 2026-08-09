@@ -1,6 +1,13 @@
 import { fetchSearchResults } from "@/lib/client/search/api";
 import { groupCountsFromMeta } from "@/lib/client/search/behavior-helpers";
-import { renderEmpty, renderLoader, renderResults } from "@/lib/client/search/overlay";
+import {
+  renderEmpty,
+  renderLoader,
+  renderResults,
+  SEARCH_EMPTY_ERROR_TITLE,
+  SEARCH_EMPTY_IDLE_TITLE,
+  SEARCH_RETRY_ACTION_ID,
+} from "@/lib/client/search/overlay";
 import type { SearchType } from "@/lib/client/search/types";
 
 import {
@@ -45,7 +52,7 @@ export function runSearchQuery(deps: SharedDeps, q: string): void {
     state.aborter?.abort();
     state.aborter = null;
     deps.applyMetaCounts(null);
-    renderEmpty(deps.list);
+    renderEmpty(deps.list, { title: SEARCH_EMPTY_IDLE_TITLE });
     state.currentItems = [];
     state.collapsedGroups.clear();
     state.activeIndex = -1;
@@ -54,13 +61,19 @@ export function runSearchQuery(deps: SharedDeps, q: string): void {
   }
 
   state.aborter?.abort();
-  state.aborter = new AbortController();
+  const aborter = new AbortController();
+  state.aborter = aborter;
   state.currentItems = [];
   state.collapsedGroups.clear();
   renderLoader(deps.list);
   state.activeIndex = -1;
 
+  // A superseded request must not paint over a newer one. The next keystroke *replaces*
+  // `state.aborter` after aborting it, so identity has to be compared as well as the signal.
+  const isStale = () => aborter.signal.aborted || state.aborter !== aborter;
+
   void (async () => {
+    let failed = false;
     const { items, meta } = await fetchSearchResults(
       query,
       {
@@ -69,9 +82,28 @@ export function runSearchQuery(deps: SharedDeps, q: string): void {
         offset: 0,
         limit: deps.pageLimit,
       },
-      state.aborter!.signal,
-    ).catch(() => ({ items: [], meta: null }));
-    if (state.aborter?.signal.aborted) return;
+      aborter.signal,
+    ).catch(() => {
+      failed = true;
+      return { items: [], meta: null };
+    });
+    if (isStale()) return;
+
+    if (failed) {
+      // A dead network / 5xx used to be indistinguishable from a genuine empty result, i.e.
+      // the overlay confidently claimed "No results" during an outage. Say what happened and
+      // give the user a way back in.
+      deps.applyMetaCounts(null);
+      state.currentItems = [];
+      state.activeIndex = -1;
+      renderEmpty(deps.list, {
+        title: SEARCH_EMPTY_ERROR_TITLE,
+        actions: [{ id: SEARCH_RETRY_ACTION_ID, label: "Retry" }],
+      });
+      deps.setFooterHint("results");
+      return;
+    }
+
     deps.applyMetaCounts(meta);
     state.currentItems = items;
 
@@ -105,12 +137,21 @@ export function runSearchQuery(deps: SharedDeps, q: string): void {
       }
 
       if (state.scopeEnabled && state.scopePrefix) {
+        // Best-effort probe for "are there matches outside this section?". A failure here is
+        // deliberately *not* escalated to the error state: the primary request already
+        // succeeded, so "No results" is the truthful answer — we just cannot offer the
+        // cross-section shortcut on top of it.
+        let probeFailed = false;
         const outOfScope = await fetchSearchResults(
           query,
           { type: state.filterType, scope: "", offset: 0, limit: 1 },
-          state.aborter!.signal,
-        ).catch(() => ({ items: [], meta: null }));
-        if (!state.aborter?.signal.aborted && Number(outOfScope.meta?.total || 0) > 0) {
+          aborter.signal,
+        ).catch(() => {
+          probeFailed = true;
+          return { items: [], meta: null };
+        });
+        if (isStale()) return;
+        if (!probeFailed && Number(outOfScope.meta?.total || 0) > 0) {
           actions.push({
             id: "notion-search-empty-disable-scope",
             label: "Search all sections",
@@ -139,6 +180,11 @@ export function handleSearchResultsClick(deps: SharedDeps, e: MouseEvent): void 
   if (emptyAction) {
     e.preventDefault();
     const id = emptyAction.id;
+    if (id === SEARCH_RETRY_ACTION_ID) {
+      // Re-run the query exactly as typed; the input is the single source of truth here.
+      runSearchQuery(deps, deps.input.value);
+      return;
+    }
     if (id === "notion-search-empty-disable-scope") {
       state.scopeEnabled = false;
       deps.persistState();
@@ -185,11 +231,13 @@ export function handleSearchResultsClick(deps: SharedDeps, e: MouseEvent): void 
   if (!state.lastMeta?.hasMore) return;
 
   state.aborter?.abort();
-  state.aborter = new AbortController();
+  const aborter = new AbortController();
+  state.aborter = aborter;
   moreBtn.disabled = true;
   moreBtn.textContent = "Loading...";
 
   void (async () => {
+    let failed = false;
     const { items: nextItems, meta } = await fetchSearchResults(
       state.currentQuery,
       {
@@ -198,9 +246,22 @@ export function handleSearchResultsClick(deps: SharedDeps, e: MouseEvent): void 
         offset: state.currentItems.length,
         limit: deps.pageLimit,
       },
-      state.aborter!.signal,
-    ).catch(() => ({ items: [], meta: null }));
-    if (state.aborter?.signal.aborted) return;
+      aborter.signal,
+    ).catch(() => {
+      failed = true;
+      return { items: [], meta: null };
+    });
+    if (aborter.signal.aborted || state.aborter !== aborter) return;
+
+    if (failed) {
+      // Keep the page we already have *and* the affordance itself. Falling through would
+      // apply a null meta, which silently drops the button and makes a failed page fetch
+      // look like the end of the result list.
+      moreBtn.disabled = false;
+      moreBtn.textContent = "Retry";
+      return;
+    }
+
     deps.applyMetaCounts(meta);
     const seen = new Set(state.currentItems.map((x) => x.routePath));
     for (const it of nextItems) {

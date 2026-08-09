@@ -55,6 +55,29 @@
   margin: 0 10px;
 }
 
+/* Mid-range content gutters.
+ *
+ * The vendored sheets only define two steps: the desktop pair
+ * (`--padding-left`/`--padding-right`, 96px — notion.css `.notion-root`,
+ * super.css `.notion-header__content`) and the phone pair
+ * (`--padding-left-mobile`/`--padding-right-mobile`, 24px) which only switches
+ * on at `max-width: 546px`. So 547-900px still carries the 96px desktop gutters
+ * and a 600px viewport spends a third of its width on margin. Add the missing
+ * intermediate step here rather than patching the vendored files. Shape mirrors
+ * notion.css's `padding-left: var(--padding-left)` pair, whose value is
+ * `calc(env(safe-area-inset-*) + 96px)`.
+ *
+ * Keep in sync with the matching footer step in runtime-polish.css.
+ */
+@media (min-width: 547px) and (max-width: 900px) {
+  .notion-root,
+  .notion-header__content,
+  .notion-header__collection-content {
+    padding-left: calc(env(safe-area-inset-left) + 48px);
+    padding-right: calc(env(safe-area-inset-right) + 48px);
+  }
+}
+
 /* Home page profile photo should not look interactive (no zoom). */
 .page__index .notion-column-list > .notion-column:first-child .notion-image img {
   cursor: default;

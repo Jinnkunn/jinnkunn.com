@@ -39,12 +39,28 @@
   box-shadow: var(--ds-shadow-overlay);
 }
 
+/* Better mobile viewport sizing on iOS/modern browsers (prevents 100vh
+ * issues): `vh` is measured against the expanded viewport, so with the URL
+ * bar showing, a 92vh image overflows the screen it is supposed to fit
+ * inside. The `vh` values above stay as the fallback. */
+@supports (height: 100dvh) {
+  .notion-lightbox__surface {
+    max-height: 92dvh;
+  }
+
+  .notion-lightbox__img {
+    max-height: 92dvh;
+  }
+}
+
 .notion-lightbox__close {
   position: fixed;
   top: 18px;
   right: 18px;
-  width: 40px;
-  height: 40px;
+  /* 44x44 matches the `.super-navbar__menu-close` tap-target convention in
+   * navigation.css — this is the only way out of the lightbox on touch. */
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: 1px solid var(--ds-border-strong);
   background: var(--ds-surface-elevated);

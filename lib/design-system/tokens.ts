@@ -8,15 +8,23 @@ type DesignTokenSections = {
   component: Record<string, string>;
 };
 
+/**
+ * Mirror of the custom properties declared in app/design-system.css. The CSS is
+ * the source of truth at runtime — nothing here is injected into the page — so
+ * these values exist for build-time consumers (document metadata, the theme
+ * colors below) and as the machine-readable inventory the token tests read.
+ * When a value changes in app/design-system.css it must change here too.
+ */
+
 export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
   light: {
     foundation: {
       fontBody:
-        '"Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
+        'var(--font-geist-sans), "Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
       fontHeading:
-        '"Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
+        'var(--font-geist-sans), "Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
       fontMono:
-        'ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace',
+        'var(--font-geist-mono), ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace',
       space1: "4px",
       space2: "8px",
       space3: "12px",
@@ -26,6 +34,8 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
       radiusMd: "14px",
       radiusLg: "16px",
       radiusPill: "999px",
+      focusRingWidth: "3px",
+      focusRingOffset: "2px",
       shadowSoft: "0 16px 40px rgba(15, 15, 15, 0.08)",
       shadowOverlay: "0 24px 60px rgba(15, 15, 15, 0.14)",
       durationFast: "140ms",
@@ -49,8 +59,8 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
       borderEmphasis: "rgba(55, 53, 47, 0.22)",
       interactiveHover: "rgba(55, 53, 47, 0.04)",
       interactiveActive: "rgba(55, 53, 47, 0.08)",
-      accent: "#2EAADC",
-      focusRing: "rgba(46, 170, 220, 0.35)",
+      accent: "#2D74B8",
+      focusRing: "rgba(45, 116, 184, 0.75)",
       successText: "rgba(21, 118, 66, 0.95)",
       successBg: "rgba(46, 204, 113, 0.12)",
       successBorder: "rgba(46, 204, 113, 0.22)",
@@ -67,6 +77,11 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
     component: {
       selectionBg: "rgba(216, 191, 131, 0.56)",
       selectionText: "#2f2c26",
+      linkUnderline: "rgba(55, 53, 47, 0.55)",
+      linkUnderlineHover: "rgba(55, 53, 47, 0.78)",
+      linkHighlight: "rgba(246, 228, 183, 0.88)",
+      linkIconChip: "#ffffff",
+      codeSurface: "rgba(135, 131, 120, 0.15)",
       tocUnderline: "rgba(55, 53, 47, 0.24)",
       anchorFlash: "hsla(38, 100%, 80%, 0.55)",
       navSurface: "#ffffff",
@@ -85,12 +100,6 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
       searchHighlight: "rgba(255, 237, 176, 0.9)",
       lightboxBackdrop: "rgba(0, 0, 0, 0.72)",
       lightboxSurface: "#ffffff",
-      publicationRedBg: "#f3d8d4",
-      publicationRedText: "#6b231d",
-      publicationPurpleBg: "#e7ddf8",
-      publicationPurpleText: "#4c2f73",
-      publicationOrangeBg: "#f6e3c7",
-      publicationOrangeText: "#7a4a17",
       scrollbarBg: "#FAFAFA",
       scrollbarThumb: "#C1C1C1",
       scrollbarBorder: "#E8E8E8",
@@ -99,11 +108,11 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
   dark: {
     foundation: {
       fontBody:
-        '"Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
+        'var(--font-geist-sans), "Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
       fontHeading:
-        '"Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
+        'var(--font-geist-sans), "Noto Sans", "Noto Sans-fallback", Helvetica, "Apple Color Emoji", Arial, sans-serif',
       fontMono:
-        'ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace',
+        'var(--font-geist-mono), ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace',
       space1: "4px",
       space2: "8px",
       space3: "12px",
@@ -113,6 +122,8 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
       radiusMd: "14px",
       radiusLg: "16px",
       radiusPill: "999px",
+      focusRingWidth: "3px",
+      focusRingOffset: "2px",
       shadowSoft: "0 16px 40px rgba(0, 0, 0, 0.28)",
       shadowOverlay: "0 26px 70px rgba(0, 0, 0, 0.4)",
       durationFast: "140ms",
@@ -136,8 +147,8 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
       borderEmphasis: "rgba(242, 235, 223, 0.24)",
       interactiveHover: "rgba(255, 255, 255, 0.06)",
       interactiveActive: "rgba(255, 255, 255, 0.1)",
-      accent: "#7ec6e7",
-      focusRing: "rgba(126, 198, 231, 0.42)",
+      accent: "#82c0e6",
+      focusRing: "rgba(130, 192, 230, 0.78)",
       successText: "#98d8b3",
       successBg: "rgba(78, 189, 122, 0.16)",
       successBorder: "rgba(78, 189, 122, 0.28)",
@@ -154,6 +165,11 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
     component: {
       selectionBg: "rgba(133, 104, 44, 0.58)",
       selectionText: "#fff8eb",
+      linkUnderline: "rgba(242, 235, 223, 0.55)",
+      linkUnderlineHover: "rgba(242, 235, 223, 0.82)",
+      linkHighlight: "rgba(133, 104, 44, 0.55)",
+      linkIconChip: "rgba(242, 235, 223, 0.92)",
+      codeSurface: "rgba(242, 235, 223, 0.08)",
       tocUnderline: "rgba(242, 235, 223, 0.3)",
       anchorFlash: "hsla(40, 84%, 58%, 0.24)",
       navSurface: "#1b1816",
@@ -172,12 +188,6 @@ export const designThemeTokens: Record<DesignTheme, DesignTokenSections> = {
       searchHighlight: "rgba(140, 104, 32, 0.45)",
       lightboxBackdrop: "rgba(6, 6, 6, 0.84)",
       lightboxSurface: "#201d1a",
-      publicationRedBg: "#4f2924",
-      publicationRedText: "#ffc6bc",
-      publicationPurpleBg: "#3e3155",
-      publicationPurpleText: "#e4d4ff",
-      publicationOrangeBg: "#4d3823",
-      publicationOrangeText: "#ffd9a5",
       scrollbarBg: "#1b1816",
       scrollbarThumb: "#635d55",
       scrollbarBorder: "#2a2623",

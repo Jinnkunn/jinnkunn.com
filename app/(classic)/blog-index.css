@@ -49,16 +49,29 @@
   opacity: 0.54;
 }
 
+/* Right rail: date + reading time. 104px only fitted a date; the widest
+ * long-form date measures ~124px and "NN min read" ~72px, so the floor now
+ * covers both plus the gap and every row's rail lands on the same width. */
 .page__blog .notion-collection-list__item-content {
   flex: 0 0 auto;
-  min-width: 104px;
+  min-width: 204px;
+  gap: var(--ds-space-2);
   color: var(--ds-text-muted);
 }
 
-.page__blog .notion-collection-list__item-property.notion-property__date {
+.page__blog .notion-collection-list__item-property.notion-property__date,
+.page__blog .notion-collection-list__item-property:not(.notion-property__date) {
   font-size: var(--ds-text-sm);
   line-height: var(--ds-leading-snug);
   color: inherit;
+}
+
+/* The reading-time property (the only untyped one in this list) reserves a
+ * fixed column so the dates to its left keep a common right edge instead of
+ * shifting row to row with "4" vs "12 min read". */
+.page__blog .notion-collection-list__item-property:not(.notion-property__date) {
+  min-width: 72px;
+  text-align: right;
 }
 
 @media (max-width: 640px) {
@@ -72,5 +85,12 @@
   .page__blog .notion-collection-list__item-content {
     min-width: 0;
     padding-left: 26px;
+  }
+
+  /* Stacked rows have no shared right edge to align to, so the reading time
+   * drops its fixed column and simply follows the date across the rail gap. */
+  .page__blog .notion-collection-list__item-property:not(.notion-property__date) {
+    min-width: 0;
+    text-align: left;
   }
 }

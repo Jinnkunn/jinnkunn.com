@@ -197,10 +197,13 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
   // hangs off — keep the class strings load-bearing so a future
   // refactor that drops one breaks here, not in production.
   const newsEntry = await read("components/posts-mdx/news-entry.tsx");
+  // The date label demoted from <h3> to <div> (a date is not a document
+  // heading) and gained `news-entry__date`, which carries the margin-top the
+  // h3 tag used to supply. The two legacy classes still have to be there.
   assertIncludes(
     newsEntry,
-    'className="notion-heading notion-semantic-string"',
-    "NewsEntry heading",
+    'className="notion-heading notion-semantic-string news-entry__date"',
+    "NewsEntry date label",
   );
   assertIncludes(
     newsEntry,

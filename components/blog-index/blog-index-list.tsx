@@ -26,40 +26,67 @@ export function BlogIndexList({ entries }: { entries: BlogPostIndexItem[] }) {
   return (
     <div className="notion-collection inline">
       <div className="notion-collection__header-wrapper">
-        <h3 className="notion-collection__header">
+        {/* h2, not h3: the page title is the only h1 and there is nothing
+          * between it and this section, so h3 skipped a level. The eyebrow
+          * styling comes from `.notion-collection__header` (blog-index.css
+          * sets size/weight/tracking/uppercase there), never from the tag,
+          * so the rendered type is unchanged. */}
+        <h2 className="notion-collection__header">
           <a className="notion-anchor" href="#blog-list" />
-          <span className="notion-semantic-string">List</span>
-        </h3>
+          <span className="notion-semantic-string">Posts</span>
+        </h2>
       </div>
       <div id="blog-list" className="notion-collection-list">
-        {entries.map((entry) => {
-          const id = blockId(entry);
-          return (
-            <div id={id} key={entry.slug} className="notion-collection-list__item ">
-              <Link
-                id={id}
-                href={entry.href}
-                className="notion-link notion-collection-list__item-anchor"
-                aria-label={entry.title}
-              >
-                <span className="sr-only">{entry.title}</span>
-              </Link>
-              <div className="notion-property notion-property__title notion-semantic-string">
-                <div className="notion-property__title__icon-wrapper">
-                  <PageIcon />
-                </div>
-                {entry.title}
+        {entries.length === 0 && (
+          <p className="notion-text notion-text__content notion-semantic-string">
+            No posts yet.
+          </p>
+        )}
+        {entries.map((entry) => (
+          // The id belongs to the wrapper only — it is the `#block-list-*`
+          // anchor target. Repeating it on the overlay <Link> produced eight
+          // duplicate ids on this page.
+          <div
+            id={blockId(entry)}
+            key={entry.slug}
+            className="notion-collection-list__item "
+          >
+            {/* aria-label already supplies the accessible name, so the
+              * .sr-only span it used to wrap was unreachable payload. */}
+            <Link
+              href={entry.href}
+              className="notion-link notion-collection-list__item-anchor"
+              aria-label={entry.title}
+            />
+            <div className="notion-property notion-property__title notion-semantic-string">
+              <div className="notion-property__title__icon-wrapper">
+                <PageIcon />
               </div>
-              <div className="notion-collection-list__item-content">
-                {entry.dateText && (
-                  <div className="notion-property notion-property__date notion-collection-list__item-property notion-semantic-string no-wrap">
-                    <span className="date">{entry.dateText}</span>
-                  </div>
-                )}
-              </div>
+              {entry.title}
             </div>
-          );
-        })}
+            <div className="notion-collection-list__item-content">
+              {entry.dateText && (
+                <div className="notion-property notion-property__date notion-collection-list__item-property notion-semantic-string no-wrap">
+                  {entry.dateIso ? (
+                    <time className="date" dateTime={entry.dateIso}>
+                      {entry.dateText}
+                    </time>
+                  ) : (
+                    <span className="date">{entry.dateText}</span>
+                  )}
+                </div>
+              )}
+              {/* Reading time is already computed per post (lib/posts/meta.ts)
+                * and already shown on the article page; the index threw it
+                * away. Same property vocabulary as the date sibling. */}
+              {(entry.readingMinutes ?? 0) > 0 && (
+                <div className="notion-property notion-collection-list__item-property notion-semantic-string no-wrap">
+                  {entry.readingMinutes} min read
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

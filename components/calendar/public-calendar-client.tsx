@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   PublicCalendarView,
+  isBottomSheetPlacement,
   type PublicCalendarAudienceMode,
   type PublicCalendarEventAnchor,
   type PublicCalendarViewMode,
@@ -197,11 +198,29 @@ export function PublicCalendarClient({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, { passive: true });
+    // The desktop popover is positioned from a viewport rect captured once,
+    // at click time, so any scroll detaches it from the event it points at
+    // and it has to close. Under 720px the same panel is a bottom sheet
+    // pinned to left/bottom (calendar.css) with no tether to the anchor —
+    // there a stray scroll would just swallow the tap and up to 74dvh of
+    // content, so leave it open.
+    const closesOnScroll = !isBottomSheetPlacement(selectedEvent.anchor);
+    // iOS fires `resize` when the address bar collapses mid-scroll, which
+    // would dismiss the sheet through the back door. Only a width change can
+    // invalidate the captured rect, so ignore height-only resizes.
+    let lastWidth = window.innerWidth;
+    const closeOnWidthChange = () => {
+      if (window.innerWidth === lastWidth) return;
+      lastWidth = window.innerWidth;
+      close();
+    };
+    window.addEventListener("resize", closeOnWidthChange);
+    if (closesOnScroll) {
+      window.addEventListener("scroll", close, { passive: true });
+    }
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      window.removeEventListener("resize", close);
+      window.removeEventListener("resize", closeOnWidthChange);
       window.removeEventListener("scroll", close);
       window.removeEventListener("keydown", closeOnEscape);
     };

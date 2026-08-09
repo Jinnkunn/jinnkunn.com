@@ -1,6 +1,6 @@
-import { lockBodyScroll, setClassicInert } from "@/lib/client/dom-utils";
+import { lockBodyScroll, setClassicInert, setInert } from "@/lib/client/dom-utils";
 import { computeScopeFromPathname, loadSearchState } from "@/lib/client/search/behavior-helpers";
-import { renderEmpty } from "@/lib/client/search/overlay";
+import { renderEmpty, SEARCH_EMPTY_IDLE_TITLE } from "@/lib/client/search/overlay";
 
 import type { SearchRuntimeState } from "./behavior-runtime-types";
 
@@ -32,6 +32,9 @@ export function createSearchOpenStateController({
     root.classList.toggle("open", state.open);
     root.classList.toggle("close", !state.open);
     root.setAttribute("data-open", state.open ? "true" : "false");
+    // The closed overlay is never unmounted — CSS only fades it out — so it has to be made
+    // inert, otherwise its input plus ~7 buttons remain keyboard-reachable behind the page.
+    setInert(root, !state.open);
     trigger.setAttribute("aria-expanded", state.open ? "true" : "false");
 
     if (state.open) {
@@ -50,7 +53,7 @@ export function createSearchOpenStateController({
       syncPillState();
       applyMetaCounts(null);
       syncClearState();
-      renderEmpty(list);
+      renderEmpty(list, { title: SEARCH_EMPTY_IDLE_TITLE });
       state.activeIndex = -1;
       setFooterHint("idle");
       window.setTimeout(() => input.focus(), 0);

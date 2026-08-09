@@ -86,6 +86,11 @@ export default function SiteNav() {
             type="button"
             className="super-navbar__button super-navbar__search"
             aria-label="Search"
+            // Surface the global shortcuts the search runtime already binds
+            // (lib/client/search/behavior-runtime-keyboard.ts): ⌘/Ctrl+K and "/".
+            // Without these the only discovery path was trial and error.
+            title="Search (⌘K)"
+            aria-keyshortcuts="Meta+K Control+K /"
             aria-haspopup="dialog"
             aria-expanded="false"
             aria-controls="notion-search"
@@ -152,10 +157,16 @@ export default function SiteNav() {
               "320px" as never,
           }}
         >
+          {/* `role="menu"` on #more-menu can only own the `role="menuitem"`
+           * links through elements that are themselves presentational, so this
+           * layout wrapper has to opt out of the accessibility tree the same
+           * way the <ul>/<li> below already do. Without it the menu → menuitem
+           * ownership chain is broken by a generic <div>. */}
           <div
             data-orientation="horizontal"
             className="super-navbar__list-content single-column"
             dir="ltr"
+            role="none"
           >
             <ul className="super-navbar__list-content-column" role="none">
               {moreItems.map((it) => (

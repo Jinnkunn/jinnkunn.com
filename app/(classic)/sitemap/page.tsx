@@ -60,7 +60,11 @@ export default function SitemapPage() {
   const byParent = buildChildrenMap(items);
 
   return (
-    <main id="page-sitemap" className="super-content page__sitemap parent-page__index">
+    // `#main-content` is a site-wide contract, not a per-page id: the classic
+    // layout's skip link targets it and `getClassicInertTargets()` uses it to
+    // make the page background inert while a dialog is open. The old
+    // `#page-sitemap` id silently opted this route out of both.
+    <main id="main-content" className="super-content page__sitemap parent-page__index">
       <div className="notion-header page">
         <div className="notion-header__cover no-cover no-icon" />
         <div className="notion-header__content max-width no-cover no-icon">

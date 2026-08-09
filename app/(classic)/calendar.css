@@ -24,13 +24,13 @@
   );
   --ds-control-button-bg: color-mix(
     in srgb,
-    var(--ds-bg-primary) 82%,
+    var(--ds-surface-page) 82%,
     var(--ds-text-primary) 3%
   );
   --ds-control-button-bg-hover: color-mix(
     in srgb,
     var(--ds-text-primary) 8%,
-    var(--ds-bg-primary)
+    var(--ds-surface-page)
   );
   --ds-control-button-color: var(--ds-text-secondary);
   --ds-control-button-color-hover: var(--ds-text-primary);
@@ -49,12 +49,12 @@
   --ds-control-button-accent-bg: color-mix(
     in srgb,
     var(--ds-accent) 10%,
-    var(--ds-bg-primary)
+    var(--ds-surface-page)
   );
   --ds-control-button-accent-bg-hover: color-mix(
     in srgb,
     var(--ds-accent) 18%,
-    var(--ds-bg-primary)
+    var(--ds-surface-page)
   );
   --ds-control-button-accent-color: var(--ds-text-primary);
   --ds-control-button-accent-color-hover: var(--ds-text-primary);
@@ -62,17 +62,24 @@
   --ds-select-pill-border-hover: color-mix(in srgb, var(--ds-text-primary) 20%, transparent);
   --ds-select-pill-bg: color-mix(
     in srgb,
-    var(--ds-bg-primary) 88%,
+    var(--ds-surface-page) 88%,
     var(--ds-text-primary) 3%
   );
   --ds-select-pill-bg-hover: color-mix(
     in srgb,
     var(--ds-text-primary) 7%,
-    var(--ds-bg-primary)
+    var(--ds-surface-page)
   );
   --ds-select-pill-color: var(--ds-text-secondary);
   --ds-select-pill-color-hover: var(--ds-text-primary);
-  --ds-select-pill-shadow: inset 0 1px 0 color-mix(in srgb, white 54%, transparent);
+  /* Top-edge highlight. Mixes from `--ds-surface-elevated` rather than a
+   * bare `white` keyword: a literal white is theme-blind and paints a fake
+   * bevel in dark mode, and a named color slips past
+   * `check-design-system.mjs`, whose scan only recognises the functional
+   * and hex notations. Light-mode alpha lands at 0.518 instead of 0.54,
+   * which is not perceptible over the pill's own fill. */
+  --ds-select-pill-shadow: inset 0 1px 0
+    color-mix(in srgb, var(--ds-surface-elevated) 54%, transparent);
   --ds-select-pill-duration: 140ms;
 }
 
@@ -152,9 +159,19 @@
   }
 }
 
-.public-calendar__subscribe:hover,
-.public-calendar__subscribe:focus-visible {
+/* The Subscribe CTA renders through `.ds-control-button`, which ships no
+ * focus treatment of its own — the blanket `outline: none` that used to
+ * cover both states left keyboard users with no focus affordance at all.
+ * Hover keeps the suppression (a hovered button never draws a UA outline,
+ * so mouse rendering is unchanged); `:focus-visible` comes last so a
+ * focused-and-hovered control still shows the ring. */
+.public-calendar__subscribe:hover {
   outline: none;
+}
+
+.public-calendar__subscribe:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 /* Tag filter chip row. Sits between the toolbar and the sync note,
@@ -176,7 +193,7 @@
   padding: 3px 9px;
   border: 1px solid color-mix(in srgb, var(--ds-text-primary) 12%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ds-bg-primary) 86%, var(--ds-text-primary) 4%);
+  background: color-mix(in srgb, var(--ds-surface-page) 86%, var(--ds-text-primary) 4%);
   color: var(--ds-text-secondary);
   font: inherit;
   font-size: 12px;
@@ -186,16 +203,26 @@
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
+/* Hover and keyboard focus share the same color shift, but only hover
+ * suppresses the outline — `:focus-visible` restores a real ring. */
 .public-calendar__tag-chip:hover,
 .public-calendar__tag-chip:focus-visible {
   border-color: color-mix(in srgb, var(--ds-text-primary) 22%, transparent);
   color: var(--ds-text-primary);
+}
+
+.public-calendar__tag-chip:hover {
   outline: none;
+}
+
+.public-calendar__tag-chip:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .public-calendar__tag-chip[data-active="true"] {
   border-color: color-mix(in srgb, var(--ds-accent) 60%, transparent);
-  background: color-mix(in srgb, var(--ds-accent) 22%, var(--ds-bg-primary));
+  background: color-mix(in srgb, var(--ds-accent) 22%, var(--ds-surface-page));
   color: var(--ds-text-primary);
 }
 
@@ -232,7 +259,15 @@
 .public-calendar__tag-clear:hover,
 .public-calendar__tag-clear:focus-visible {
   color: var(--ds-text-primary);
+}
+
+.public-calendar__tag-clear:hover {
   outline: none;
+}
+
+.public-calendar__tag-clear:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 /* Per-event detail page — `/calendar/[id]`. Layout mirrors the
@@ -316,7 +351,15 @@
 .public-calendar__event-permalink a:focus-visible {
   color: var(--ds-text-primary);
   text-decoration: underline;
+}
+
+.public-calendar__event-permalink a:hover {
   outline: none;
+}
+
+.public-calendar__event-permalink a:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .public-calendar__range-title {
@@ -361,8 +404,9 @@
       color-mix(in srgb, var(--calendar-color) 7%, transparent),
       transparent 54%
     );
+  /* Theme-aware top highlight — see the note on `--ds-select-pill-shadow`. */
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 45%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--ds-surface-elevated) 45%, transparent),
     0 18px 42px color-mix(in srgb, var(--ds-text-primary) 12%, transparent);
   overflow: auto;
   pointer-events: auto;
@@ -453,7 +497,15 @@
 .public-calendar__detail-close:hover,
 .public-calendar__detail-close:focus-visible {
   color: var(--ds-text-primary);
+}
+
+.public-calendar__detail-close:hover {
   outline: none;
+}
+
+.public-calendar__detail-close:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .public-calendar__detail-meta {
@@ -501,7 +553,15 @@
 .public-calendar__detail-actions a:hover,
 .public-calendar__detail-actions a:focus-visible {
   text-decoration: underline;
+}
+
+.public-calendar__detail-actions a:hover {
   outline: none;
+}
+
+.public-calendar__detail-actions a:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .public-calendar__shell {
@@ -575,9 +635,10 @@
 
 .public-calendar__event-card[data-selected="true"] {
   background: color-mix(in srgb, var(--calendar-color, var(--ds-accent)) 12%, transparent);
+  /* Theme-aware top highlight — see the note on `--ds-select-pill-shadow`. */
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--calendar-color, var(--ds-accent)) 28%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 35%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--ds-surface-elevated) 35%, transparent);
 }
 
 .public-calendar__event-color {
@@ -671,7 +732,7 @@
   border: 1px solid color-mix(in srgb, var(--ds-text-primary) 10%, transparent);
   border-radius: 8px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--ds-bg-primary) 94%, var(--ds-text-primary) 2%);
+  background: color-mix(in srgb, var(--ds-surface-page) 94%, var(--ds-text-primary) 2%);
 }
 
 .public-calendar__weekdays {
@@ -743,9 +804,12 @@
   cursor: pointer;
 }
 
+/* Uses the shared focus-ring tokens so every focusable control on this
+ * route draws an identical ring (this rule predates the tokens and used
+ * a hand-rolled accent mix). */
 .public-calendar__date-button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ds-accent) 55%, transparent);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .public-calendar__date-number {
@@ -814,11 +878,32 @@ html[data-theme="dark"] .public-calendar__date-number[data-today="true"] {
   font-weight: 550;
 }
 
+/* "+N more" is now a real <button> that opens the day (it used to be a <span>
+ * that looked like an expander and did nothing). Strip the UA button chrome so
+ * it stays pixel-identical to the span it replaced, and give it the same focus
+ * treatment as its sibling date/event buttons. */
 .public-calendar__more {
+  appearance: none;
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   padding: 1px 5px;
   color: var(--ds-text-secondary);
   font-size: 11px;
   font-weight: 600;
+}
+
+.public-calendar__more:hover {
+  color: var(--ds-text-primary);
+}
+
+.public-calendar__more:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .public-calendar__week-grid {
@@ -897,6 +982,34 @@ html[data-theme="dark"] .public-calendar__date-number[data-today="true"] {
     font-size: 16px;
   }
 
+  /* Touch hit area for the tag filters. The chip's painted box is only
+   * ~22.4px tall (12px text x 1.2 line-height + 3px padding + 1px border
+   * per side), which is well under a comfortable thumb target, and the
+   * 6px row gap left almost no room to grow into.
+   *
+   * Widen the row gap first, then expand the hit area with an invisible
+   * `::before` — the chip's own painted box is untouched, so the row
+   * looks identical.
+   *
+   * The insets are half of each gap so neighbouring expanders meet
+   * exactly rather than overlapping (an overlap would let a tap aimed at
+   * one chip be captured by the later-in-DOM sibling stacked on top of
+   * it): 6px vertical into the 12px row gap, 3px horizontal into the
+   * unchanged 6px column gap. Net target: ~34.4px tall. */
+  .public-calendar__tag-bar {
+    gap: 12px 6px;
+  }
+
+  .public-calendar__tag-chip {
+    position: relative;
+  }
+
+  .public-calendar__tag-chip::before {
+    content: "";
+    position: absolute;
+    inset: -6px -3px;
+  }
+
   .public-calendar__day {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
@@ -921,7 +1034,7 @@ html[data-theme="dark"] .public-calendar__date-number[data-today="true"] {
     inset: 0;
     display: block;
     border: 0;
-    background: color-mix(in srgb, var(--ds-bg-primary) 22%, transparent);
+    background: color-mix(in srgb, var(--ds-surface-page) 22%, transparent);
   }
 
   .public-calendar__detail-panel {
@@ -946,5 +1059,28 @@ html[data-theme="dark"] .public-calendar__date-number[data-today="true"] {
   .public-calendar__month-grid,
   .public-calendar__week-grid {
     min-width: 760px;
+  }
+}
+
+/* Respect reduced motion for the affordances this file introduces.
+ *
+ * Two of them are indirect: `--ds-control-button-duration` and
+ * `--ds-select-pill-duration` are declared on `.public-calendar` and read
+ * by the shared `.ds-control-button` / `.ds-select-pill` primitives in
+ * design-system.css, so zeroing the custom properties here disarms those
+ * transitions without reaching outside this stylesheet. The tag chip
+ * animates its own colors and is silenced directly.
+ *
+ * The `transform` declarations in this file (`.public-calendar__detail-arrow`
+ * rotations) are static geometry that turn a square into a caret, not
+ * motion — they are deliberately left intact. */
+@media (prefers-reduced-motion: reduce) {
+  .public-calendar {
+    --ds-control-button-duration: 0s;
+    --ds-select-pill-duration: 0s;
+  }
+
+  .public-calendar__tag-chip {
+    transition: none !important;
   }
 }

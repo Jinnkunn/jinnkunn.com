@@ -18,6 +18,20 @@
   margin-top: 0;
 }
 
+/* The date label is a <div>, not an <h3> (a date is not a document heading —
+ * see news-entry.tsx). Every visible value above is class-driven and carries
+ * over untouched, but the `margin: 28px 0 4px` shorthand above was being
+ * out-specified on margin-top alone by notion.css's
+ * `h3.notion-heading:not(.toggle) { margin-top: 0.75rem }` (0,2,1 beats
+ * 0,2,0), so the rendered gap has always been 12px, not 28px. Restoring it
+ * here — with three of the element's own classes so this wins on specificity
+ * without depending on stylesheet order — keeps the page pixel-identical:
+ * 13px / weight 620 / 16.9px line-height / 12px top / 4px bottom /
+ * 3px 2px padding / uppercase / --ds-text-muted. */
+.notion-heading.notion-semantic-string.news-entry__date {
+  margin-top: 0.75rem;
+}
+
 .news-entry__body {
   font-size: 16px;
   line-height: 24px;

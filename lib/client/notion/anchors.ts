@@ -9,9 +9,9 @@ function prefersReducedMotion(): boolean {
 }
 
 function getNavbarHeightPx(): number {
-  const nav =
-    document.querySelector<HTMLElement>(".notion-navbar") ??
-    document.getElementById("site-nav");
+  // `.notion-navbar` was a legacy Super container this site never renders (the real header is
+  // `#site-nav`), so the old first branch could only ever miss.
+  const nav = document.getElementById("site-nav");
   return nav ? Math.round(nav.getBoundingClientRect().height) : 0;
 }
 

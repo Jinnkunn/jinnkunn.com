@@ -21,3 +21,48 @@
 .works-note {
   margin-top: 32px;
 }
+
+/* "Recent Works" / "Past Works" are h2 now (they sit under the page h1), but
+ * they must keep the exact display type the h1 tag was giving them:
+ * 30px (--heading1-size) / weight 600 / 39px line-height / 20.1px margin-top /
+ * 0 margin-bottom / 3px 2px padding. Only two of those came from the tag —
+ * `h1.notion-heading` supplied the size, and the 20.1px top margin was the
+ * browser default `0.67em` at that size. Everything else is class-driven and
+ * carries over untouched. Three of the element's own classes are stacked here
+ * so this beats `h2.notion-heading:not(.toggle) { margin-top: 1rem }` on
+ * specificity rather than on stylesheet order. Keeping font-size at 30px also
+ * keeps the em-based --ds-tracking-tight letter-spacing identical. */
+.notion-heading.notion-semantic-string.works-block__heading {
+  margin-top: 0.67em;
+  font-size: var(--heading1-size);
+}
+
+/* Body-less entries (see works-entry.tsx) drop `notion-toggle` and
+ * `notion-toggle__summary` entirely so the toggle click delegation can never
+ * bind to them. These rules restore the box model those two classes supplied
+ * — notion.css `.notion-toggle { margin: 1px 0 }`, `.notion-toggle__summary
+ * { padding: 3px 0; display: flex }` and `> span.notion-semantic-string
+ * { margin: 3px 2px }` — plus a spacer standing in for the 1.5rem arrow
+ * column and its 6px gutter, so a static row's text stays on the same left
+ * edge as every expandable row above and below it. */
+.works-toggle--static {
+  margin: 1px 0;
+}
+
+.works-toggle__static-summary {
+  display: flex;
+  align-items: flex-start;
+  padding: 3px 0;
+}
+
+.works-toggle__static-summary > .notion-semantic-string {
+  margin: 3px 2px;
+}
+
+.works-toggle__static-spacer {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-right: 6px;
+  margin-top: 3px;
+}

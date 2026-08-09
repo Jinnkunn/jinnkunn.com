@@ -61,7 +61,11 @@ export async function WorksBlock({ limit }: WorksBlockProps): Promise<ReactEleme
   }
 
   const renderRow = async (entry: WorksComponentEntry, key: string) => {
-    const { Content } = entry.body
+    // `body` is the raw slice between the JSX tags, so an entry authored with
+    // a blank body still arrives as "\n\n\n". Compiling that produced a
+    // non-null Content, which made WorksEntry believe it had a body and
+    // render an expandable row that opened onto nothing.
+    const { Content } = entry.body.trim()
       ? await compilePostMdx(entry.body)
       : { Content: null };
     return (
@@ -88,10 +92,16 @@ export async function WorksBlock({ limit }: WorksBlockProps): Promise<ReactEleme
 
   return (
     <>
+      {/* Section headings are h2: these sit under the page's own h1 title, so
+        * emitting h1 here gave /works three top-level headings. Their 30px
+        * display size is preserved by `.works-block__heading` in works.css —
+        * see the comment there for the exact values being matched. */}
       {recentNodes.length > 0 && (
         <Fragment>
           <span className="notion-heading__anchor" />
-          <h1 className="notion-heading notion-semantic-string">Recent Works</h1>
+          <h2 className="notion-heading notion-semantic-string works-block__heading">
+            Recent Works
+          </h2>
           {recentNodes}
         </Fragment>
       )}
@@ -99,7 +109,9 @@ export async function WorksBlock({ limit }: WorksBlockProps): Promise<ReactEleme
         <Fragment>
           {recentNodes.length > 0 && <NotionSpacer />}
           <span className="notion-heading__anchor" />
-          <h1 className="notion-heading notion-semantic-string">Past Works</h1>
+          <h2 className="notion-heading notion-semantic-string works-block__heading">
+            Past Works
+          </h2>
           {passedNodes}
         </Fragment>
       )}

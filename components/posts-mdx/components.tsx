@@ -12,6 +12,7 @@ import { FeaturedPagesBlock } from "./featured-pages-block";
 import { Figure } from "./figure";
 import { FileLink } from "./file-link";
 import { HeroBlock } from "./hero-block";
+import { imageFilename, intrinsicImageSize, LCP_IMAGE_FILENAME } from "./image-sizes";
 import { LinkListBlock } from "./link-list-block";
 import { NewsBlock } from "./news-block";
 import { NewsEntry } from "./news-entry";
@@ -180,9 +181,25 @@ function MdxBlockquote({
   );
 }
 
+function MdxTable({ children, className, ...props }: HTMLAttributes<HTMLTableElement>) {
+  // MDX emits a bare <table> with nothing around it, so a dense table had only
+  // two bad options on a phone: push the page sideways (which trips the 390px
+  // no-horizontal-overflow assertion on /chen) or squeeze every column until
+  // `overflow-wrap` broke words mid-syllable. A wrapper gives it the third
+  // option — the table keeps its natural column widths and scrolls inside its
+  // own box, while the page itself never overflows.
+  return (
+    <div className="mdx-post__table-wrap" role="region" tabIndex={0} aria-label="Table">
+      <table className={className} {...props}>
+        {children}
+      </table>
+    </div>
+  );
+}
+
 function MdxImage({ src, alt, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
   const source = typeof src === "string" ? src : "";
-  const filename = source.split("/").pop()?.split("?")[0] ?? "";
+  const filename = imageFilename(source);
 
   if (filename === "bucket_trends_gsm8k300_llama_greedy.png") {
     return <ReasoningDriftBucketChart />;
@@ -200,8 +217,22 @@ function MdxImage({ src, alt, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
     return <ReasoningDriftFailureModes />;
   }
 
-  // eslint-disable-next-line @next/next/no-img-element -- Native MDX images should keep their authored shape.
-  return <img src={src} alt={alt ?? ""} {...props} />;
+  // Intrinsic width/height reserve the right box before the bitmap lands, so
+  // the content below stops jumping on load; `max-width: 100%; height: auto`
+  // in posts-mdx.css means they only ever act as an aspect ratio, never as a
+  // used width. Authored props win, so MDX can still override any of this.
+  const intrinsic = intrinsicImageSize(filename);
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- Native MDX images should keep their authored shape.
+    <img
+      src={src}
+      alt={alt ?? ""}
+      {...(intrinsic ? { width: intrinsic.width, height: intrinsic.height } : {})}
+      decoding="async"
+      {...(filename === LCP_IMAGE_FILENAME ? { fetchPriority: "high" as const } : {})}
+      {...props}
+    />
+  );
 }
 
 // Components exposed to MDX. Most native HTML elements render as plain HTML
@@ -213,6 +244,7 @@ export const postMdxComponents: MDXComponents = {
   img: MdxImage,
   pre: MdxPre,
   span: MdxSpan,
+  table: MdxTable,
   Bookmark,
   Callout,
   Color,

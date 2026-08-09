@@ -1,9 +1,8 @@
 import { decodeHashToId } from "./toggles";
 
 function getNavbarHeight(): number {
-  const nav =
-    document.querySelector<HTMLElement>(".notion-navbar") ??
-    document.getElementById("site-nav");
+  // Same dead branch as in anchors.ts: `.notion-navbar` is never rendered, `#site-nav` is.
+  const nav = document.getElementById("site-nav");
   return nav ? Math.round(nav.getBoundingClientRect().height) : 0;
 }
 

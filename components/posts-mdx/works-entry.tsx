@@ -31,11 +31,12 @@ interface WorksEntryProps {
   children?: ReactNode;
 }
 
-/** One work / role entry on the works page. Renders identical markup
- * to the legacy WorksToggle inside WorksBlock so existing CSS
- * (`notion-toggle closed works-toggle`, `works-toggle__body`) keeps
- * working untouched. Lives as `<WorksEntry [...]>body</WorksEntry>`
- * in `content/pages/works.mdx`. */
+/** One work / role entry on the works page. With a description body it
+ * renders identical markup to the legacy WorksToggle inside WorksBlock so
+ * existing CSS (`notion-toggle closed works-toggle`, `works-toggle__body`)
+ * keeps working untouched. Without one it renders a static, non-interactive
+ * row instead (`works-toggle--static`). Lives as
+ * `<WorksEntry [...]>body</WorksEntry>` in `content/pages/works.mdx`. */
 export function WorksEntry({
   role,
   affiliation,
@@ -65,6 +66,55 @@ export function WorksEntry({
     )
   ) : null;
 
+  const summary = (
+    <span className="notion-semantic-string">
+      <strong>
+        <u>{role ?? ""}</u>
+      </strong>
+      {(affNode || location || period) && <br />}
+      {affNode}
+      {location && (
+        <span className="highlighted-color color-gray">
+          {affNode ? ", " : ""}
+          {location}
+        </span>
+      )}
+      {period && (
+        <>
+          <br />
+          <span className="highlighted-color color-gray">
+            {period.endsWith("Now") ? (
+              <>
+                {period.slice(0, -3)}
+                <strong>Now</strong>
+              </>
+            ) : (
+              period
+            )}
+          </span>
+        </>
+      )}
+    </span>
+  );
+
+  // An entry with no description is not a disclosure widget. The
+  // `notion-toggle__summary` wrapper is what notion-block-behavior binds its
+  // click delegation to, so keeping it (even with an empty content box) left
+  // the row clickable and expanding onto nothing — the wrapper has to go, not
+  // just the arrow. works.css re-supplies the box model the two dropped
+  // Notion classes were providing so a static row still lines up with its
+  // expandable siblings.
+  if (!hasBody) {
+    return (
+      <div className="works-toggle works-toggle--static">
+        <div className="works-toggle__static-summary">
+          <div className="works-toggle__static-spacer" aria-hidden="true" />
+          {summary}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="notion-toggle closed works-toggle">
       <div className="notion-toggle__summary">
@@ -73,37 +123,10 @@ export function WorksEntry({
             <span>‣</span>
           </div>
         </div>
-        <span className="notion-semantic-string">
-          <strong>
-            <u>{role ?? ""}</u>
-          </strong>
-          {(affNode || location || period) && <br />}
-          {affNode}
-          {location && (
-            <span className="highlighted-color color-gray">
-              {affNode ? ", " : ""}
-              {location}
-            </span>
-          )}
-          {period && (
-            <>
-              <br />
-              <span className="highlighted-color color-gray">
-                {period.endsWith("Now") ? (
-                  <>
-                    {period.slice(0, -3)}
-                    <strong>Now</strong>
-                  </>
-                ) : (
-                  period
-                )}
-              </span>
-            </>
-          )}
-        </span>
+        {summary}
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {hasBody && <div className="mdx-post__body works-toggle__body">{children}</div>}
+        <div className="mdx-post__body works-toggle__body">{children}</div>
       </div>
     </div>
   );

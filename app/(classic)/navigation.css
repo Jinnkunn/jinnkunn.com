@@ -10,6 +10,20 @@
   touch-action: manipulation;
 }
 
+/* The vendored nav triggers combine `height: 100%` with padding but never got
+ * a `box-sizing: border-box` (public/styles/static.css's reset is @imported
+ * before super-nav.css and does not reach them). Their border boxes therefore
+ * overflow the 56px bar: the search trigger measured 68px tall (56 + 6 + 6,
+ * spanning y=-6..62) and the "More" trigger 88px (56 + 16 + 16, y=-16..72), so
+ * their hover backgrounds and focus rings bled above and below the navbar.
+ * `.super-navbar .ds-theme-toggle` below already carries this same correction.
+ * Horizontal geometry is untouched — padding is unchanged, only the box model. */
+.super-navbar .super-navbar__button,
+.super-navbar .super-navbar__list,
+.super-navbar .super-navbar__item {
+  box-sizing: border-box;
+}
+
 :root {
   --mobile-menu-bg: var(--ds-nav-surface);
 }
@@ -115,8 +129,17 @@
   display: none !important;
 }
 
-/* Hard-override mobile drawer behavior to guarantee a full-screen overlay. */
-@media (max-width: 546px) {
+/* Hard-override mobile drawer behavior to guarantee a full-screen overlay.
+ *
+ * The breakpoint must track where the hamburger actually takes over, not the
+ * phone breakpoint: `public/styles/super-nav.css` hides `.super-navbar__item-list`
+ * and shows `.super-navbar__menu-open` at `max-width: 860px`. Meanwhile
+ * `lib/client/nav/menu-animation.ts` paints the wrapper as a fixed, inset:0,
+ * 100svh nav-surface layer at ANY width. Gating this treatment at 546px left
+ * 547-860px (tablets, half-width desktop windows) with a full-screen tint
+ * behind the old Super dropdown card. 860px lines the two up.
+ */
+@media (max-width: 860px) {
   #mobile-menu,
   #mobile-menu.super-navbar__menu-wrapper {
     position: fixed !important;
@@ -264,8 +287,11 @@
   isolation: isolate;
 }
 
-/* Mobile menu layout polish (v1): items first, close action after the list. */
-@media (max-width: 546px) {
+/* Drawer layout polish (v1): items first, close action after the list.
+ * Same 860px hamburger breakpoint as the overlay block above — the two halves
+ * of the drawer treatment must switch on together or 547-860px gets the
+ * full-screen layer without the full-screen panel inside it. */
+@media (max-width: 860px) {
   .super-navbar__menu-wrapper {
     position: fixed;
     top: 0;
@@ -379,17 +405,40 @@
   transform: translateY(1px);
 }
 
-/* Mobile usability: increase tap targets without changing visual layout. */
+/* Keep search reachable on phones.
+ *
+ * `public/styles/super-nav.css` hides `.super-navbar__search` below 546px for
+ * every navbar whose actions container is not `.no-links` — that is Super's
+ * layout, where the search field is re-exposed inside the drawer via
+ * `.super-navbar__menu-actions .super-search-input`. Our drawer renders nav
+ * links only (see `components/site-nav.tsx`), so that vendored rule leaves the
+ * Cmd-K shortcut as the sole entry point on touch devices. Re-show the trigger
+ * instead of tagging the actions container `.no-links`: that class carries
+ * footer semantics elsewhere (`components/site-footer.tsx`) and would change
+ * more than visibility. Same specificity as the vendored rule (three classes),
+ * so this wins on source order — navigation.css is imported after classic.css.
+ */
+@media (max-width: 546px) {
+  .super-navbar .super-navbar__actions .super-navbar__search {
+    display: flex;
+  }
+}
+
+/* Mobile usability: increase tap targets without changing visual layout.
+ * `.ds-theme-toggle` sits between the logo and the action buttons and needs the
+ * same expansion — its rest size is 32x32, below the 44px touch minimum. */
 @media (max-width: 546px) {
   .super-navbar__logo,
   .super-navbar__button,
-  .super-navbar__list {
+  .super-navbar__list,
+  .ds-theme-toggle {
     position: relative;
   }
 
   .super-navbar__logo::before,
   .super-navbar__button::before,
-  .super-navbar__list::before {
+  .super-navbar__list::before,
+  .ds-theme-toggle::before {
     content: "";
     position: absolute;
     /* Expand hit area while keeping the visible layout identical. */
@@ -397,17 +446,19 @@
   }
 }
 
-/* Better mobile viewport sizing on iOS/modern browsers (prevents 100vh issues). */
+/* Better mobile viewport sizing on iOS/modern browsers (prevents 100vh issues).
+ * Part of the drawer treatment, so it follows the 860px hamburger breakpoint. */
 @supports (height: 100dvh) {
-  @media (max-width: 546px) {
+  @media (max-width: 860px) {
     .super-navbar__menu-wrapper {
       height: 100dvh;
     }
   }
 }
 
-/* iOS/Android: prevent background scroll chaining when the menu is open. */
-@media (max-width: 546px) {
+/* iOS/Android: prevent background scroll chaining when the menu is open.
+ * Also part of the drawer treatment — same 860px breakpoint. */
+@media (max-width: 860px) {
   .super-navbar__menu-wrapper {
     overscroll-behavior: contain;
   }
@@ -447,10 +498,18 @@
   }
 }
 
-/* Anchor jumps (TOC, deep links): keep targets visible under the sticky navbar,
- * and ease the jump so deep links/TOC navigation feels considered. */
+/* Anchor jumps (TOC, deep links): leave a small breathing gap above the target
+ * so it does not sit flush against the viewport edge, and ease the jump so deep
+ * links/TOC navigation feels considered.
+ *
+ * This is NOT navbar compensation. `.super-navbar` is `position: relative`
+ * (`public/styles/super-nav.css`, restated inline in `components/site-nav.tsx`)
+ * and scrolls away with the page; the only sticky `.notion-navbar` variant is
+ * never rendered. Reserving `--navbar-height` here just parked every #hash
+ * landing ~80px below the top of the screen.
+ */
 html {
-  scroll-padding-top: calc(var(--navbar-height) + 24px);
+  scroll-padding-top: 24px;
   scroll-behavior: smooth;
 }
 
@@ -471,11 +530,14 @@ html {
  * it matches its siblings without forking the primitive.
  * ------------------------------------------------------------------ */
 .super-navbar .ds-theme-toggle {
-  /* Match the `.super-navbar__button` sibling's hit area (~32x32 at
+  /* Match the `.super-navbar__button` sibling's visual box (32x32 at
    * rest). Use explicit border-box so the 6px padding is included in
    * the declared size rather than inflating the box — `width: auto`
    * combined with the primitive's `content-box` was resolving to the
-   * 20x20 icon alone, leaving a sub-minimum tap target. */
+   * 20x20 icon alone. 32px is a deliberate visual size, not the tap
+   * target: on touch widths the `::before` expander in the mobile
+   * hit-area block above grows it the same +10px its `.super-navbar__button`
+   * neighbours get. */
   box-sizing: border-box;
   width: 32px;
   height: 32px;

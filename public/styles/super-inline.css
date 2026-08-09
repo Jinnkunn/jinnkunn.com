@@ -1,10 +1,13 @@
 /* extracted style block 1 */
+/* `font-display: swap` on all four faces: Noto Sans is only the secondary body
+   face here (the Notion stack already supplies a system fallback), so blocking
+   first paint on a self-hosted woff2 buys nothing but an invisible-text window. */
 @font-face {
         font-family: "Noto Sans";
         font-style: normal;
         font-weight: 400;
         src: url("/fonts/noto-sans-v27-regular.woff2") format("woff2");
-        
+        font-display: swap;
       }
     
       @font-face {
@@ -12,7 +15,7 @@
         font-style: normal;
         font-weight: 500;
         src: url("/fonts/noto-sans-v27-500.woff2") format("woff2");
-        
+        font-display: swap;
       }
     
       @font-face {
@@ -20,7 +23,7 @@
         font-style: normal;
         font-weight: 600;
         src: url("/fonts/noto-sans-v27-600.woff2") format("woff2");
-        
+        font-display: swap;
       }
     
       @font-face {
@@ -28,7 +31,7 @@
         font-style: normal;
         font-weight: 700;
         src: url("/fonts/noto-sans-v27-700.woff2") format("woff2");
-        
+        font-display: swap;
       }
 
 
@@ -49,7 +52,10 @@ a[data-link-style="icon"].notion-link.link:before {
   width: var(--link-icon-size);
   background-size: 20px 20px;
   background-repeat: no-repeat;
-  background-color: white;
+  /* Chip plate behind the link glyph. It stays a light plate in dark mode too:
+     the default arrow below is a baked-in dark-stroked SVG, so the plate is what
+     keeps it legible. Fallback preserves the light-mode value byte-for-byte. */
+  background-color: var(--ds-link-icon-chip, white);
   background-position: center;
   border-radius: 6px;
 }
@@ -151,8 +157,12 @@ a[data-link-style="icon"][data-link-icon].notion-link.link:before {
   box-shadow: none;
 }
 
+/* Only the size is ours to set. Forcing a `font-family` here cascades into
+   KaTeX's own KaTeX_Math / KaTeX_Main faces, so a single formula ends up mixing
+   an italic math face with a UI sans. The 16px stays: dropping it widens every
+   formula ~21% and overflows the 390px viewport check in
+   scripts/qa/classic-style-contract.mjs. */
 .katex-html {
-  font-family: Noto Sans !important;
   font-size: 16px !important;
 }
 
@@ -1003,9 +1013,9 @@ html.theme-light {
       --sidebar-width: 280px;
       --sidebar-shadow: none;
     }
-    html {
-      scroll-padding-top: 62px;
-    }
+    /* `html { scroll-padding-top }` used to live here with a hardcoded 62px, but an
+       identical-specificity rule in app/(classic)/navigation.css loads later and
+       always won. Removed so the navbar-derived value there is the only source. */
     body {
       font-family: var(--secondary-font);
     }
@@ -1039,13 +1049,17 @@ a.notion-link.link {
   text-decoration-color: var(--ds-link-underline, rgba(55, 53, 47, 0.55));
   /* Two-layer background so hover can "rise" to a full highlight without the half-height artifact. */
   background-image:
-    linear-gradient(to top, rgba(246, 228, 183, 0.88), rgba(246, 228, 183, 0.88)),
+    linear-gradient(
+      to top,
+      var(--ds-link-highlight, rgba(246, 228, 183, 0.88)),
+      var(--ds-link-highlight, rgba(246, 228, 183, 0.88))
+    ),
     linear-gradient(
       to top,
       rgba(0, 0, 0, 0) 0%,
       rgba(0, 0, 0, 0) 55%,
-      rgba(246, 228, 183, 0.88) 55%,
-      rgba(246, 228, 183, 0.88) 100%
+      var(--ds-link-highlight, rgba(246, 228, 183, 0.88)) 55%,
+      var(--ds-link-highlight, rgba(246, 228, 183, 0.88)) 100%
     );
   background-repeat: no-repeat;
   /* Keep highlight/underline starting at the text, not behind the icon chip. */

@@ -38,11 +38,23 @@ export default function RootLayout({
       dir="ltr"
       data-theme="light"
       className={`theme-light ${GeistSans.variable} ${GeistMono.variable}`}
+      // The theme-init script below rewrites `data-theme` / `theme-*` on <html>
+      // before React hydrates, so the server markup and the DOM legitimately
+      // disagree for dark visitors. Suppress the resulting hydration warning.
+      suppressHydrationWarning
     >
       <body>
-        <Script id="design-theme-init" strategy="beforeInteractive">
-          {getDesignThemeInitScript()}
-        </Script>
+        {/* Theme init MUST be a plain parser-blocking inline <script>, not
+         * next/script. `strategy="beforeInteractive"` compiles into the
+         * `(self.__next_s=...).push(...)` queue that the client runtime drains
+         * after first paint, so dark-mode visitors would flash a full white
+         * screen on every cold load (there is no `prefers-color-scheme`
+         * fallback anywhere in the CSS). Inline here, it runs synchronously as
+         * the browser parses <body>, before any paint. */}
+        <script
+          id="design-theme-init"
+          dangerouslySetInnerHTML={{ __html: getDesignThemeInitScript() }}
+        />
         <Providers>{children}</Providers>
         {gaId ? (
           <>

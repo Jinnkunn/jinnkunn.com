@@ -1,4 +1,4 @@
-import { renderEmpty } from "@/lib/client/search/overlay";
+import { renderEmpty, SEARCH_EMPTY_IDLE_TITLE } from "@/lib/client/search/overlay";
 
 import { handleSearchResultsClick } from "./behavior-runtime-query";
 import { parseSearchType, type SearchRuntimeState } from "./behavior-runtime-types";
@@ -57,7 +57,7 @@ export function createSearchActionHandlers({
     input.value = "";
     input.focus();
     syncClearState();
-    renderEmpty(list);
+    renderEmpty(list, { title: SEARCH_EMPTY_IDLE_TITLE });
     state.activeIndex = -1;
     setFooterHint("idle");
   };

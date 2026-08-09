@@ -19,7 +19,14 @@ function toIsoDate(value: string): string | null {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function formatDisplayDate(iso: string): string {
+/** The site's one long-form date format ("January 5, 2026"). Exported
+ * because page-view renders the same "last updated" fact as post-view and
+ * used to leak the raw ISO string instead; every long date on the site
+ * should come through here so /chen, /yiling and the publications notes
+ * read like the blog does. `iso` may be a bare "YYYY-MM-DD" or a full
+ * timestamp — both are read in UTC so the rendered day never shifts with
+ * the build machine's timezone. */
+export function formatLongDate(iso: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return iso;
   const d = new Date(t);
@@ -123,7 +130,7 @@ export function parsePostFile(
     href: `/blog/${slug}`,
     title: frontmatter.title,
     dateIso: frontmatter.date,
-    dateText: formatDisplayDate(frontmatter.date),
+    dateText: formatLongDate(frontmatter.date),
     description,
     draft: Boolean(frontmatter.draft),
     tags: frontmatter.tags ?? [],

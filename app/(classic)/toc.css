@@ -1,34 +1,9 @@
-/* Table of contents + anchor arrival styles (scoped to the classic site segment). */
-
-/* Desktop: move TOC into a right rail and make it sticky (keeps v1 minimal but more usable). */
-@media (min-width: 1100px) {
-  .blog-post-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    grid-template-areas: "content toc";
-    gap: 34px;
-    align-items: start;
-  }
-
-  .blog-post-content {
-    grid-area: content;
-    min-width: 0;
-  }
-
-  .blog-post-toc {
-    grid-area: toc;
-    position: sticky;
-    top: calc(var(--navbar-height) + 24px);
-    align-self: start;
-    max-height: calc(100vh - var(--navbar-height) - 56px);
-    overflow: auto;
-    padding: 6px 0;
-  }
-
-  .blog-post-toc #block-blog-toc {
-    margin-top: 0;
-  }
-}
+/* Table of contents + anchor arrival styles (scoped to the classic site segment).
+ *
+ * The TOC renders inline in the post body; there is no right-rail layout. The
+ * `.blog-post-layout` / `.blog-post-content` / `.blog-post-toc` rail rules that
+ * used to live here were removed because nothing in the app emits those classes.
+ */
 
 /* TOC scroll-spy highlight (subtle, v1-consistent). */
 .notion-table-of-contents .notion-table-of-contents__item[data-active="true"] {
@@ -52,44 +27,6 @@
   .notion-semantic-string:not(.no-border) {
   text-decoration-color: var(--ds-toc-underline);
   text-decoration-thickness: 2px;
-}
-
-.blog-post-nav {
-  margin-top: 22px;
-}
-
-.blog-post-nav__row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 12px;
-}
-
-.blog-post-nav__col {
-  flex: 1;
-  min-width: 0;
-}
-
-.blog-post-nav__center {
-  text-align: center;
-  flex: 0 0 auto;
-}
-
-.blog-post-nav__right {
-  text-align: right;
-}
-
-@media (max-width: 546px) {
-  .blog-post-nav__row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .blog-post-nav__center,
-  .blog-post-nav__right {
-    text-align: left;
-  }
 }
 
 /* Anchor arrival: brief, subtle highlight on the target block after TOC jumps. */

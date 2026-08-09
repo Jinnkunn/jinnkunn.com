@@ -41,11 +41,27 @@
   background: var(--ds-search-backdrop);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  /* The wrapper is the scroll container for the panel. Without this the
+   * box is simply clipped by the fixed overlay: in landscape on a phone
+   * (e.g. 844x390) the panel wants ~472px against a 390px viewport, and
+   * the tail of the result list plus the "load more" button become
+   * unreachable. `overscroll-behavior` stops the scroll from chaining
+   * back to the page underneath once the panel hits its end. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @media (max-width: 546px) {
   .notion-search__wrapper {
     padding-top: 72px;
+  }
+}
+
+/* Short viewports (landscape phones) cannot afford the 84px drop that
+ * centers the panel on a tall screen — reclaim it for content. */
+@media (max-height: 520px) {
+  .notion-search__wrapper {
+    padding-top: 24px;
   }
 }
 
@@ -210,6 +226,21 @@
   transform: translateY(-1px);
 }
 
+/* The runtime sets `moreBtn.disabled = true` while a page is in flight.
+ * Mirror the `.notion-search__pill.is-disabled` treatment so the button
+ * stops advertising itself as clickable and the hover lift is suppressed. */
+.notion-search__more-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+  transform: none;
+}
+
+.notion-search__more-btn:disabled:hover {
+  background: var(--ds-surface-panel);
+  border-color: var(--ds-border-subtle);
+  transform: none;
+}
+
 .notion-search__icon {
   opacity: 0.55;
   display: inline-flex;
@@ -282,6 +313,91 @@
   max-height: min(58vh, 520px);
   overflow: auto;
   padding: 8px 0;
+}
+
+/* Better mobile viewport sizing on iOS/modern browsers (prevents 100vh
+ * issues): `vh` ignores the retracting URL bar, so the list is measured
+ * against a taller viewport than the one actually on screen. The `vh`
+ * value above stays as the fallback. */
+@supports (height: 100dvh) {
+  .notion-search__result-list {
+    max-height: min(58dvh, 520px);
+  }
+}
+
+/* Empty / error state, rendered into `.notion-search__result-list` by
+ * `buildSearchEmptyHtml()` in lib/client/search/overlay-template.ts. The
+ * markup is a title followed by an optional row of action buttons; the
+ * actions were previously raw OS-default `<button>`s sitting inside the
+ * overlay's surface.
+ *
+ * The 22px inline padding matches `.notion-search__group`, so the state
+ * hangs on the same left edge as the group headers it replaces. */
+.notion-search__empty-state {
+  display: flex;
+  flex-direction: column;
+  /* Keep the action row hugging its content instead of stretching to the
+   * panel width, which is what `column` alignment would otherwise do. */
+  align-items: flex-start;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-4) 22px var(--ds-space-5);
+}
+
+.notion-search__empty-title {
+  color: var(--ds-text-muted);
+  font-size: var(--ds-text-md);
+  line-height: 1.4;
+}
+
+.notion-search__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+
+.notion-search__empty-action {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-soft);
+  color: var(--ds-text-primary);
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--ds-duration-fast) ease,
+    border-color var(--ds-duration-fast) ease;
+}
+
+.notion-search__empty-action:hover {
+  background: var(--ds-interactive-hover);
+  border-color: var(--ds-border-emphasis);
+}
+
+.notion-search__empty-action:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+/* In-flight state. `buildSearchLoaderHtml()` emits a bare "Searching..." div;
+ * without this it rendered as unstyled body text flush against the panel edge,
+ * out of line with the group headers and the empty state next to it. */
+.notion-search__result-loader {
+  padding: var(--ds-space-4) 22px;
+  color: var(--ds-text-faint);
+  font-size: var(--ds-text-md);
+  line-height: 1.4;
+}
+
+/* Optional trailing hint (e.g. a keyboard shortcut) inside an action. */
+.notion-search__empty-action-hint {
+  color: var(--ds-text-faint);
+  font-size: var(--ds-text-xs);
 }
 
 .notion-search__group {
@@ -400,4 +516,28 @@
 
 .notion-search__result-footer-dot {
   opacity: 0.55;
+}
+
+/* Respect reduced motion for the overlay's animated affordances: the
+ * backdrop fade, the pill / caret / button transitions, and the decorative
+ * 1px hover lifts.
+ *
+ * The caret's `rotate(-90deg)` under `[aria-expanded="false"]` is
+ * collapsed-state geometry, not motion — only its transition is dropped,
+ * so a collapsed group still points its caret the right way. */
+@media (prefers-reduced-motion: reduce) {
+  .notion-search,
+  .notion-search__pill,
+  .notion-search__group-caret,
+  .notion-search__more-btn,
+  .notion-search__empty-action,
+  .notion-search__clear,
+  .notion-search__close {
+    transition: none !important;
+  }
+
+  .notion-search__pill:hover,
+  .notion-search__more-btn:hover {
+    transform: none !important;
+  }
 }

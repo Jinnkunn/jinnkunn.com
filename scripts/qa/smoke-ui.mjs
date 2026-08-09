@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
 import { ensureOutputDir, envFlag, isoStampForPath } from "../_lib/fs.mjs";
+import { maskMiddlewareManifestForLocalNext } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
 import { stopProcessTree } from "../_lib/process-tree.mjs";
 
@@ -131,9 +132,17 @@ async function main() {
 
   let server = null;
   let browser = null;
+  // `next start` cannot run this app's middleware locally: it answers every
+  // request with an empty 200, so every check below timed out waiting for
+  // selectors and the whole suite reported red regardless of the UI. The
+  // style-contract harnesses have always masked the middleware manifest via
+  // scripts/_lib/local-next.mjs; this script span its own server and skipped
+  // that step, which is why it failed 16/16 on a clean tree.
+  let restoreMiddlewareManifest = () => {};
 
   try {
     if (!skipBuild) ensureBuild();
+    restoreMiddlewareManifest = maskMiddlewareManifestForLocalNext(process.cwd());
     server = startServer(port);
 
     // Capture a small tail of server logs for debugging.
@@ -166,7 +175,10 @@ async function main() {
         const initialTheme = await readTheme(page);
         record("desktop:theme-default-light", initialTheme === "light", { initialTheme });
 
-        await page.getByRole("button", { name: "Switch to dark theme" }).click();
+        // The toggle's accessible name is intentionally theme-neutral: it is
+        // server-rendered before the visitor's stored/system theme is known,
+        // so a directional name ("Switch to dark theme") would ship wrong.
+        await page.getByRole("button", { name: "Toggle color theme" }).click();
         await page.waitForTimeout(140);
 
         const toggledTheme = await readTheme(page);
@@ -557,6 +569,7 @@ async function main() {
   } finally {
     if (browser) await browser.close().catch(() => {});
     if (server) await stopProcessTree(server);
+    restoreMiddlewareManifest();
   }
 }
 

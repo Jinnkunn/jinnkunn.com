@@ -190,7 +190,10 @@ function capHeadings(lines) {
 
 // Attributes that are plumbing rather than prose. Everything else is rendered
 // to the visitor somewhere, so it belongs in the index.
-const NON_TEXT_ATTR = /^(?:class|className|style|id|key|href|src|width|height)$|^(?:data|aria)-|(?:[Uu]rl|[Ii]d|Style)$/;
+// `lang` is plumbing too: the CJK runs on /, /chen and /yiling carry
+// `lang="zh-Hans"` for WCAG 3.1.2, and without this the tag values would be
+// indexed as prose ("zh-Hans zh-Hans zh-Latn-pinyin ...").
+const NON_TEXT_ATTR = /^(?:class|className|style|id|key|href|src|width|height|lang)$|^(?:data|aria)-|(?:[Uu]rl|[Ii]d|Style)$/;
 
 function isUrlish(value) {
   return /^(?:https?:|mailto:|\/|#|data:)/.test(value.trim());

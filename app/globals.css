@@ -47,14 +47,41 @@ html {
 
 .skip-link:focus-visible {
   transform: translateY(0);
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width, 3px) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset, 2px);
 }
 
-/* A11y: restore visible focus rings for keyboard users. */
-:where(.super-root) :where(a, button, [role="menuitem"]):focus-visible {
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+/* A11y: restore visible focus rings for keyboard users.
+ *
+ * Scope covers three roots, not one: the search overlay (#notion-search, built in
+ * lib/client/search/overlay.ts) and the image lightbox (#notion-lightbox, built in
+ * lib/client/notion/lightbox.ts) are appended straight to <body>, i.e. outside
+ * `.super-root`, so a `.super-root`-only scope left both modals with no visible
+ * keyboard focus at all.
+ *
+ * The element list covers the natively-focusable controls plus ARIA-role widgets
+ * and `[tabindex="0"]` (scrollable `<pre>` code blocks, inline equations, toggle
+ * triggers). `[tabindex="0"]` rather than bare `[tabindex]` on purpose: heading
+ * anchors get `tabindex="-1"` (lib/client/notion/anchors.ts) purely so
+ * programmatic focus sticks, and they must not draw a ring.
+ *
+ * Everything stays wrapped in :where() so the whole selector keeps specificity 0
+ * and any per-component focus treatment still wins. */
+:where(.super-root, #notion-search, #notion-lightbox)
+  :where(
+    a,
+    button,
+    select,
+    summary,
+    input,
+    textarea,
+    [role="button"],
+    [role="menuitem"],
+    [role="tab"],
+    [tabindex="0"]
+  ):focus-visible {
+  outline: var(--ds-focus-ring-width, 3px) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset, 2px);
   border-radius: 10px;
 }
 

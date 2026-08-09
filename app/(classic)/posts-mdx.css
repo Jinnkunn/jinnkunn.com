@@ -263,6 +263,94 @@
   color: var(--color-text-default);
 }
 
+/* MDX <-> Notion typographic parity.
+ *
+ * The MDX component map only overrides a/blockquote/img/pre/span, so plain
+ * Markdown headings, lists and tables fall through to the UA stylesheet. On
+ * /news and /works that lands MDX and Notion-native blocks side by side in the
+ * same column with visibly different metrics. The three groups below re-point
+ * the bare elements at the values the Notion sheet already uses, so the two
+ * vocabularies render identically.
+ *
+ * Headings: the UA paints h1-h6 at weight 700 while Notion headings are 600,
+ * and the UA sizes are on its own scale. Reuse the same --headingN-size custom
+ * properties `h1.notion-heading` … `h5.notion-heading` read, so the two stay in
+ * lockstep. Specificity here ties with `hN.notion-heading` (0,1,1) and this
+ * file loads later, but the resolved values are identical either way. */
+.mdx-post__body :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: var(--heading-weight);
+}
+
+.mdx-post__body h1 { font-size: var(--heading1-size); }
+.mdx-post__body h2 { font-size: var(--heading2-size); }
+.mdx-post__body h3 { font-size: var(--heading3-size); }
+.mdx-post__body h4 { font-size: var(--heading4-size); }
+/* Notion stops at h5; h6 has no counterpart, so it holds the smallest step. */
+.mdx-post__body h5,
+.mdx-post__body h6 { font-size: var(--heading5-size); }
+
+/* Lists: the UA indent is 40px against Notion's calc(1.5em + 4px) (=28px at
+ * 16px), and the UA block margins are 1em against Notion's 2px. Match Notion.
+ * Notion-classed lists are excluded — `.notion-bulleted-list`/`.notion-numbered-list`
+ * already declare exactly these values, and `ul.notion-table-of-contents` wants
+ * its own flush `padding: 5px 0` that this selector would otherwise outrank.
+ * On blog posts the `.page__blog-post .mdx-post__body > :where(…)` rhythm rules
+ * are more specific and still own the top-level block margins — this only
+ * governs nested lists and the non-blog MDX routes. */
+.mdx-post__body :is(ul, ol):not([class*="notion-"]) {
+  margin: 2px 0;
+  padding-inline-start: calc(1.5em + 4px);
+}
+
+/* Tables: nothing styled bare <table> anywhere, so real Markdown tables (the
+ * /chen chronicle, a couple of blog posts) rendered with UA defaults — no
+ * borders, 2px border-spacing, no cell padding. Notion's own tables are
+ * excluded by the :not(): they already carry borders on `.notion-table td` and
+ * padding on the inner `.notion-table__cell`, and this selector would otherwise
+ * tie on specificity and double both.
+ *
+ * `components.tsx` wraps every MDX table in `.mdx-post__table-wrap`, so the
+ * table keeps its natural column widths and scrolls inside its own box rather
+ * than either pushing the page sideways (which would trip the 390px
+ * no-horizontal-overflow assertion on /chen) or squeezing columns until
+ * `overflow-wrap` broke words mid-syllable. `min-width: 100%` keeps a narrow
+ * table full-bleed in the column; `width: max-content` lets a wide one scroll. */
+.mdx-post__body .mdx-post__table-wrap {
+  max-width: 100%;
+  margin: var(--ds-space-4) 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The wrapper is focusable so the scroll box is reachable by keyboard; give it
+ * the shared ring rather than the UA default. */
+.mdx-post__body .mdx-post__table-wrap:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+.mdx-post__body table:not(.notion-table, .notion-collection-table) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  margin: 0;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.mdx-post__body table:not(.notion-table, .notion-collection-table) :is(th, td) {
+  padding: 8px 12px;
+  border: 1px solid var(--ds-border-subtle);
+  text-align: start;
+  vertical-align: top;
+}
+
+.mdx-post__body table:not(.notion-table, .notion-collection-table) th {
+  font-weight: 600;
+  background: var(--ds-surface-soft);
+}
+
 .mdx-post__body a {
   color: inherit;
   max-width: 100%;
@@ -567,7 +655,7 @@
 .mdx-chart__label,
 .mdx-chart__sublabel,
 .mdx-chart__value {
-  font-family: var(--ds-font-sans);
+  font-family: var(--ds-font-body);
   fill: var(--ds-text-muted);
 }
 
@@ -748,4 +836,25 @@
   .mdx-chart__partition-value {
     grid-column: 2;
   }
+}
+
+/* Post footer navigation (prev / next / all posts).
+ *
+ * The markup is deliberately the plain Notion text vocabulary — a `<nav>` that
+ * also carries `.notion-text.notion-text__content`, so it inherits the article's
+ * 16/24 rhythm and the standard link recipe rather than introducing a pager
+ * component (`.blog-card` / `.blog-row` and friends are forbidden on this
+ * surface). All this rule adds is the separation an article ending needs: a
+ * hairline and the same section-scale breathing room used elsewhere. */
+.mdx-post__nav {
+  margin-top: var(--ds-space-7);
+  padding-top: var(--ds-space-5);
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+/* Each entry occupies its own line (the component emits <br> between them), so
+ * give the lines a little more air than inline body copy would get. */
+.mdx-post__nav br + span,
+.mdx-post__nav br {
+  line-height: 2;
 }

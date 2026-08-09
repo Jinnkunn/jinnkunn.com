@@ -169,10 +169,14 @@
   }
 }
 
-/* Keep special pages visually focused, similar to super.so's sparse states. */
+/* Keep special pages visually focused, similar to super.so's sparse states.
+ *
+ * Compound, not descendant: `.page-state` is the `#main-content` element itself
+ * (it is the <main>), so the old `#main-content .page-state` descendant form could
+ * never match and the footer stayed visible. The `.page-404` half of the selector
+ * was dropped — no component or route emits that class. */
 @supports selector(body:has(.page-state)) {
-  .super-root:has(#main-content .page-state) .super-footer,
-  .super-root:has(#main-content .page-404) .super-footer {
+  .super-root:has(#main-content.page-state) .super-footer {
     display: none;
   }
 }

@@ -22,7 +22,11 @@ export function SpecialStatePage({
 }: SpecialStatePageProps) {
   const isInline = layout === "inline";
   return (
-    <main className={`page-state super-content page-state--${tone}`}>
+    // Every rendered page owes the shell exactly one `#main-content`: the skip
+    // link points at it and `getClassicInertTargets()` (lib/client/dom-utils.ts)
+    // looks it up by id to inert the background behind dialogs. State pages
+    // were shipping without it, quietly disabling both.
+    <main id="main-content" className={`page-state super-content page-state--${tone}`}>
       <Panel className="page-state__panel" aria-live="polite">
         {isInline ? (
           <div className="page-state__inline" role="status" aria-label={`${badge}: ${title}`}>

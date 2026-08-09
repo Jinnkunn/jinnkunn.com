@@ -63,6 +63,12 @@ type DetailPlacement = "left" | "right" | "bottom" | "center";
 const DETAIL_POPOVER_WIDTH = 324;
 const DETAIL_POPOVER_ESTIMATED_HEIGHT = 220;
 const DETAIL_POPOVER_MARGIN = 14;
+// Mirrors the `@media (max-width: 720px)` breakpoint in calendar.css that
+// re-pins `.public-calendar__detail-panel` to left/bottom. Below it the panel
+// is a viewport-anchored bottom sheet rather than a popover hung off the
+// clicked element, so both the geometry here and the dismiss behaviour in
+// public-calendar-client.tsx have to branch on the same number.
+const DETAIL_BOTTOM_SHEET_MAX_WIDTH = 720;
 
 function clampNumber(value: number, min: number, max: number): number {
   if (max < min) return min;
@@ -100,7 +106,7 @@ function detailGeometryForAnchor(anchor?: PublicCalendarEventAnchor | null): {
     };
   }
 
-  if (anchor.viewportWidth <= 720) {
+  if (anchor.viewportWidth <= DETAIL_BOTTOM_SHEET_MAX_WIDTH) {
     return {
       placement: "bottom",
       style: {
@@ -138,6 +144,20 @@ function detailGeometryForAnchor(anchor?: PublicCalendarEventAnchor | null): {
       "--detail-arrow-y": `${arrowY}px`,
     } as CSSProperties,
   };
+}
+
+/**
+ * True when the detail panel for this anchor renders as the mobile bottom
+ * sheet (`placement === "bottom"`) rather than a popover tethered to the
+ * clicked element. Callers use it to decide whether viewport changes can
+ * desync the panel from what it points at — the bottom sheet is pinned to
+ * the viewport, so they cannot.
+ */
+export function isBottomSheetPlacement(
+  anchor?: PublicCalendarEventAnchor | null,
+): boolean {
+  if (!anchor) return false;
+  return anchor.viewportWidth <= DETAIL_BOTTOM_SHEET_MAX_WIDTH;
 }
 
 export function PublicCalendarView({
@@ -369,6 +389,9 @@ export function PublicCalendarView({
         </label>
         <div
           className="public-calendar__view-switch public-calendar__view-switch--views ds-control-group"
+          // `aria-label` is ignored on a role-less <div>; `role="group"`
+          // gives it something to name (same shape as the tag bar below).
+          role="group"
           aria-label="Calendar view"
         >
           {PUBLIC_CALENDAR_VIEW_LABELS.map((item) => (
@@ -377,6 +400,9 @@ export function PublicCalendarView({
               type="button"
               className="public-calendar__view-button ds-control-button"
               data-active={view === item.value ? "true" : "false"}
+              // `data-active` only reaches CSS. Screen readers need the
+              // selected state spelled out, so mirror it in aria-pressed.
+              aria-pressed={view === item.value}
               onClick={() => onViewChange?.(item.value)}
             >
               {item.label}
@@ -386,6 +412,7 @@ export function PublicCalendarView({
         {view === "agenda" ? (
           <div
             className="public-calendar__view-switch public-calendar__view-switch--agenda ds-control-group"
+            role="group"
             aria-label="Agenda range"
           >
             {([30, 90] as const).map((days) => (
@@ -394,6 +421,7 @@ export function PublicCalendarView({
                 type="button"
                 className="public-calendar__view-button ds-control-button"
                 data-active={agendaDays === days ? "true" : "false"}
+                aria-pressed={agendaDays === days}
                 onClick={() => onAgendaDaysChange?.(days)}
               >
                 {days} days
@@ -403,6 +431,7 @@ export function PublicCalendarView({
         ) : null}
         <div
           className="public-calendar__view-switch public-calendar__view-switch--audience ds-control-group"
+          role="group"
           aria-label="Calendar scope"
         >
           {PUBLIC_CALENDAR_AUDIENCE_LABELS.map((item) => (
@@ -638,9 +667,22 @@ function MonthCalendar({
                   />
                 ))}
                 {dayEvents.length > 3 ? (
-                  <span className="public-calendar__more">
+                  // Sits in a stack of real buttons (the date cell above,
+                  // EventPills beside it) and reads as an expander, so it
+                  // has to actually expand: same handler as the date cell,
+                  // which switches the calendar to this day's Day view.
+                  <button
+                    type="button"
+                    className="public-calendar__more"
+                    onClick={() => onDaySelect?.(day)}
+                    aria-label={`Show all ${dayEvents.length} events on ${formatInTimeZone(
+                      day,
+                      timeZone,
+                      { month: "long", day: "numeric", year: "numeric" },
+                    )}`}
+                  >
                     +{dayEvents.length - 3} more
-                  </span>
+                  </button>
                 ) : null}
               </div>
             </section>
@@ -671,34 +713,55 @@ function WeekCalendar({
       ),
     [anchor, timeZone],
   );
+  // Resolve all seven columns up front so the empty-week test below doesn't
+  // cost a second pass over the day index.
+  const weekEvents = useMemo(
+    () => days.map((day) => eventsForDay(dayIndex, day, timeZone)),
+    [days, dayIndex, timeZone],
+  );
+  const isEmptyWeek = weekEvents.every((dayEvents) => dayEvents.length === 0);
   return (
-    <div className="public-calendar__week">
-      <WeekdayLabels timeZone={timeZone} />
-      <div className="public-calendar__week-grid">
-        {days.map((day) => (
-          <section
-            className="public-calendar__week-day"
-            data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
-            key={day.toISOString()}
-          >
-            <div className="public-calendar__week-date">
-              <span>{formatInTimeZone(day, timeZone, { day: "numeric" })}</span>
-            </div>
-            <div className="public-calendar__week-events">
-              {eventsForDay(dayIndex, day, timeZone).map((event) => (
-                <EventCard
-                  event={event}
-                  key={`${event.id}-${event.startTimestamp}`}
-                  compact
-                  selected={expandedEventId === event.id}
-                  onEventToggle={onEventToggle}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+    <>
+      {/* Same branch DayCalendar carries: a tag filter can empty the whole
+          week. The grid's min-height keeps it from collapsing, but seven
+          blank columns read as a broken render — so say it once, in words.
+          It sits outside the bordered grid so it picks up the 22px column
+          gap from `.public-calendar` instead of hugging the card border. */}
+      {isEmptyWeek ? (
+        <p className="public-calendar__empty-day">
+          No public events this week.
+        </p>
+      ) : null}
+      <div className="public-calendar__week">
+        <WeekdayLabels timeZone={timeZone} />
+        <div className="public-calendar__week-grid">
+          {days.map((day, index) => (
+            <section
+              className="public-calendar__week-day"
+              data-weekend={isWeekend(day, timeZone) ? "true" : "false"}
+              key={day.toISOString()}
+            >
+              <div className="public-calendar__week-date">
+                <span>
+                  {formatInTimeZone(day, timeZone, { day: "numeric" })}
+                </span>
+              </div>
+              <div className="public-calendar__week-events">
+                {weekEvents[index].map((event) => (
+                  <EventCard
+                    event={event}
+                    key={`${event.id}-${event.startTimestamp}`}
+                    compact
+                    selected={expandedEventId === event.id}
+                    onEventToggle={onEventToggle}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -745,6 +808,19 @@ function AgendaCalendar({
   expandedEventId?: string | null;
   onEventToggle?: EventToggleHandler;
 }) {
+  // Agenda is the default view, and `buildAgendaGroups` returns nothing at
+  // all once you page past the last event or filter every event out with a
+  // tag — without this branch the page below the toolbar goes blank, which
+  // reads as a load failure rather than an answer.
+  if (groups.length === 0) {
+    return (
+      <div className="public-calendar__agenda">
+        <p className="public-calendar__empty-day">
+          No public events in this range.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="public-calendar__agenda">
       {groups.map(([day, dayEvents]) => (

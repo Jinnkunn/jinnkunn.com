@@ -14,7 +14,11 @@ export async function fetchSearchResults(
   if (opts.limit && opts.limit !== 20) url.searchParams.set("limit", String(opts.limit));
 
   const res = await fetch(url, { signal, headers: { "cache-control": "no-store" } });
-  if (!res.ok) return { items: [], meta: null };
+  // Reject instead of returning an empty payload: swallowing the status made a 500 from
+  // /api/search indistinguishable from a query that genuinely matched nothing, and the
+  // overlay then told the user "No results". The only 4xx this route emits is an invalid
+  // `type`, which the client can never send (the pills are a fixed whitelist).
+  if (!res.ok) throw new Error(`Search request failed (${res.status})`);
 
   const data = (await res.json().catch(() => null)) as unknown;
   return parseSearchResponse(data);

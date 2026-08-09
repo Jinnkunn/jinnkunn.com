@@ -3,8 +3,10 @@ import "server-only";
 import { Fragment } from "react";
 import type { ReactElement, ReactNode } from "react";
 
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 function formatDateHeading(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const m = ISO_DATE_RE.exec(iso);
   if (!m) return iso;
   return `${m[1]}/${m[2]}/${m[3]}`;
 }
@@ -35,9 +37,19 @@ export function NewsEntry({ date, children }: NewsEntryProps): ReactElement {
   return (
     <Fragment>
       <span className="notion-heading__anchor" />
-      <h3 className="notion-heading notion-semantic-string">
-        {formatDateHeading(safeDate)}
-      </h3>
+      {/* A date is a label, not a document heading: as an <h3> every entry
+        * announced a 13px "heading" whose whole text was a date, so /news
+        * exposed a dozen meaningless outline entries. It keeps the
+        * `notion-heading` class (all of the visible typography lives there
+        * and in news.css) plus a `news-entry__date` hook that restores the
+        * one value the h3 *tag* was supplying — see news.css. */}
+      <div className="notion-heading notion-semantic-string news-entry__date">
+        {ISO_DATE_RE.test(safeDate) ? (
+          <time dateTime={safeDate}>{formatDateHeading(safeDate)}</time>
+        ) : (
+          formatDateHeading(safeDate)
+        )}
+      </div>
       <div className="news-entry__body mdx-post__body">{children}</div>
     </Fragment>
   );

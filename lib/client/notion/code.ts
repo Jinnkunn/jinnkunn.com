@@ -155,15 +155,25 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
-function setCopyButtonState(btn: HTMLElement, copied: boolean) {
-  btn.setAttribute("data-copied", copied ? "true" : "false");
+type CopyState = "idle" | "copied" | "failed";
+
+const COPY_STATE_LABEL: Record<CopyState, string> = {
+  idle: "",
+  copied: "Copied",
+  failed: "Failed",
+};
+
+function setCopyButtonState(btn: HTMLElement, state: CopyState) {
+  // `data-copied` drives the only styled feedback this button has. It used to be a boolean,
+  // so a failed clipboard write restored the idle label and looked exactly like never having
+  // pressed the button at all.
+  btn.setAttribute("data-copied", state === "idle" ? "false" : state);
 
   // Keep this robust against Notion/Super markup variations (sometimes text is a node).
-  const fallback = copied ? "Copied" : "Copy";
   const original = btn.getAttribute("data-label") || "Copy";
   if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", original);
 
-  const desired = copied ? "Copied" : original;
+  const desired = state === "idle" ? original : COPY_STATE_LABEL[state];
   // Update the last text node if present; otherwise append a span label.
   const nodes = Array.from(btn.childNodes);
   const lastText = [...nodes].reverse().find((n) => n.nodeType === Node.TEXT_NODE);
@@ -178,7 +188,36 @@ function setCopyButtonState(btn: HTMLElement, copied: boolean) {
     label.setAttribute("data-copy-label", "true");
     btn.appendChild(label);
   }
-  label.textContent = fallback;
+  label.textContent = desired;
+}
+
+const COPY_STATUS_ATTR = "data-copy-status";
+
+function ensureCopyStatusRegion(codeRoot: Element): HTMLElement {
+  const existing = codeRoot.querySelector<HTMLElement>(`[${COPY_STATUS_ATTR}]`);
+  if (existing) return existing;
+
+  // Deliberately a sibling of the button rather than a child of it: the button's label is a
+  // bare text node (see components/posts-mdx/components.tsx), and live regions nested inside
+  // an interactive element are announced inconsistently across screen readers.
+  const region = document.createElement("span");
+  region.className = "sr-only";
+  region.setAttribute(COPY_STATUS_ATTR, "true");
+  region.setAttribute("aria-live", "polite");
+  codeRoot.appendChild(region);
+  return region;
+}
+
+function announceCopyStatus(codeRoot: Element | null, message: string) {
+  if (!codeRoot) return;
+  const region = ensureCopyStatusRegion(codeRoot);
+  // Blank first so a repeat of the same message still counts as a mutation, and defer the
+  // write by a task so a region created during this very click is already in the DOM (live
+  // regions do not announce the content they were inserted with).
+  region.textContent = "";
+  window.setTimeout(() => {
+    region.textContent = message;
+  }, 0);
 }
 
 export function shouldHandleCopyButtonClick(target: Element): HTMLElement | null {
@@ -191,7 +230,12 @@ export async function handleCopyButtonClick(copyBtn: HTMLElement) {
   const text = (codeEl?.textContent ?? "").replace(/\n$/, "");
 
   const ok = await copyTextToClipboard(text);
-  setCopyButtonState(copyBtn, ok);
-  window.setTimeout(() => setCopyButtonState(copyBtn, false), ok ? 1200 : 800);
+  setCopyButtonState(copyBtn, ok ? "copied" : "failed");
+  announceCopyStatus(
+    codeRoot,
+    ok ? "Code copied to clipboard" : "Copy failed. Select the code and copy manually.",
+  );
+  // Give the failure state longer on screen — it is the one the user has to act on.
+  window.setTimeout(() => setCopyButtonState(copyBtn, "idle"), ok ? 1200 : 2400);
 }
 

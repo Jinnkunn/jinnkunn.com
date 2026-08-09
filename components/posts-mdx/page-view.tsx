@@ -7,6 +7,7 @@ import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { getPageEntry } from "@/lib/pages/index";
 import type { PageEntry } from "@/lib/pages/types";
 import { compilePostMdx } from "@/lib/posts/compile";
+import { formatLongDate } from "@/lib/posts/meta";
 import { postMdxComponents } from "./components";
 
 interface BreadcrumbItem {
@@ -92,11 +93,25 @@ export async function PageView({
         </div>
       }
     >
+      {/* Same "last updated" fact as a blog post's publish date, so it uses
+        * the same designed property strip (post-view.tsx) instead of a bare
+        * properties row — and the same long-form format, since the raw ISO
+        * string used to leak through here onto /chen, /yiling and the
+        * publications notes. */}
       {entry.updatedIso && (
-        <div className="notion-page__properties">
-          <div className="notion-page__property">
-            <div className="notion-property notion-property__date notion-semantic-string">
-              <span className="date">Updated {entry.updatedIso}</span>
+        <div
+          className="notion-page__properties mdx-post__meta ds-property-strip"
+          aria-label="Page metadata"
+        >
+          <div className="notion-page__property mdx-post__meta-item ds-property-strip__item">
+            <div className="notion-property notion-property__date notion-semantic-string ds-property-strip__property">
+              <span className="notion-property__date-icon" aria-hidden="true" />
+              <span className="date">
+                Updated{" "}
+                <time dateTime={entry.updatedIso}>
+                  {formatLongDate(entry.updatedIso)}
+                </time>
+              </span>
             </div>
           </div>
         </div>

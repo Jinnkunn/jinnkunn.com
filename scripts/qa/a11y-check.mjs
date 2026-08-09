@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
 
 import { stopProcessTree } from "../_lib/process-tree.mjs";
+import { maskMiddlewareManifestForLocalNext } from "../_lib/local-next.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -309,8 +310,17 @@ async function main() {
     },
   };
 
+  // `next start` cannot run this app's middleware locally — it answers every
+  // request with an empty 200, so axe audited a blank document and every page
+  // reported the same two violations (document-title, html-has-lang) no matter
+  // what the markup said. scripts/_lib/local-next.mjs has always masked the
+  // middleware manifest for exactly this reason; this script span its own
+  // server and skipped it.
+  let restoreMiddlewareManifest = () => {};
+
   try {
     if (!skipBuild) ensureBuild();
+    restoreMiddlewareManifest = maskMiddlewareManifestForLocalNext(process.cwd());
     server = startServer(port);
     await waitForServer(`${baseURL}/`);
     browser = await launchBrowser();
@@ -387,6 +397,7 @@ async function main() {
   } finally {
     if (browser) await browser.close().catch(() => {});
     if (server) await stopProcessTree(server);
+    restoreMiddlewareManifest();
   }
 }
 

@@ -20,7 +20,6 @@
   --ds-space-7: 48px;
   --ds-space-8: 64px;
   --ds-space-9: 96px;
-  --ds-section-gap: clamp(48px, 7vw, 88px);
 
   /* Type scale (modular ~1.2 step). Headings and body share one family
    * (Geist); contrast is expressed through these size + weight + tracking
@@ -33,20 +32,22 @@
   --ds-text-lg: 18px;
   --ds-text-xl: 20px;
   --ds-text-2xl: 24px;
-  --ds-display-sm: clamp(24px, 3.2vw, 30px);
   --ds-display-md: clamp(28px, 4vw, 36px);
-  --ds-display-lg: clamp(34px, 5vw, 44px);
 
-  --ds-leading-tight: 1.15;
   --ds-leading-snug: 1.3;
-  --ds-leading-body: 1.5;
-  --ds-leading-relaxed: 1.6;
 
+  /* Geist's variable axis lets weight sit between the classic stops. The two
+   * off-stop values (650 / 750) are the ones the UI primitives actually reach
+   * for: 650 is a button/link label that needs to out-weigh body copy without
+   * reading as bold, 750 is the emphatic value used for selected values and
+   * list titles just under the display weight. */
   --ds-weight-regular: 400;
   --ds-weight-medium: 500;
   --ds-weight-semibold: 620;
+  --ds-weight-semibold-strong: 650;
   --ds-weight-bold: 700;
   --ds-weight-display: 740;
+  --ds-weight-black: 750;
 
   /* Geist tightens nicely at display sizes; reserve looser tracking for
    * small all-caps eyebrows where the extra air aids legibility. */
@@ -59,6 +60,13 @@
   --ds-radius-md: 14px;
   --ds-radius-lg: 16px;
   --ds-radius-pill: 999px;
+
+  /* Focus-ring geometry is theme-neutral — only the ring color changes between
+   * light and dark (--ds-focus-ring). Keeping width and offset here means every
+   * focus-visible rule in the system is one shared recipe rather than a
+   * hand-copied `3px solid` that drifts the next time someone tweaks a button. */
+  --ds-focus-ring-width: 3px;
+  --ds-focus-ring-offset: 2px;
 
   --ds-shadow-soft: 0 16px 40px rgba(15, 15, 15, 0.08);
   --ds-shadow-overlay: 0 24px 60px rgba(15, 15, 15, 0.14);
@@ -91,7 +99,11 @@ html[data-theme="light"] {
 
   --ds-interactive-hover: rgba(55, 53, 47, 0.04);
   --ds-interactive-active: rgba(55, 53, 47, 0.08);
-  --ds-focus-ring: rgba(45, 116, 184, 0.34);
+  /* WCAG 1.4.11 asks focus indicators to clear 3:1 against what they sit on.
+   * The former 0.34 alpha measured 1.59:1 over the white page — visible on a
+   * good monitor, gone on a laptop at an angle. 0.75 lands well past the floor
+   * while staying the same hue as --ds-accent, so the ring still reads as ours. */
+  --ds-focus-ring: rgba(45, 116, 184, 0.75);
 
   /* Accent moved off Notion's stock cyan (#2EAADC) to a calmer, deeper
    * azure that reads as a considered choice next to the warm neutrals.
@@ -149,6 +161,16 @@ html[data-theme="light"] {
   --ds-selection-text: #2f2c26;
   --ds-link-underline: rgba(55, 53, 47, 0.55);
   --ds-link-underline-hover: rgba(55, 53, 47, 0.78);
+  /* Warm highlighter wash a link fills with on hover — the "ink rise" the
+   * public link recipe paints as a gradient. Tuned to sit under body text
+   * without lifting it off the page the way a saturated tint would. */
+  --ds-link-highlight: rgba(246, 228, 183, 0.88);
+  /* Chip behind an external-link / favicon glyph, so a dark favicon keeps a
+   * light plate under it in both themes instead of dissolving into the page. */
+  --ds-link-icon-chip: #ffffff;
+  /* Inline `code` and pre backgrounds. Notion's own neutral wash, kept as a
+   * token so code surfaces stay one value across classic and admin. */
+  --ds-code-surface: rgba(135, 131, 120, 0.15);
   --ds-toc-underline: rgba(55, 53, 47, 0.24);
   --ds-anchor-flash: hsla(38, 100%, 80%, 0.55);
   --ds-nav-surface: #ffffff;
@@ -167,12 +189,6 @@ html[data-theme="light"] {
   --ds-search-highlight: rgba(255, 237, 176, 0.9);
   --ds-lightbox-backdrop: rgba(0, 0, 0, 0.72);
   --ds-lightbox-surface: #ffffff;
-  --ds-publication-red-bg: #f3d8d4;
-  --ds-publication-red-text: #6b231d;
-  --ds-publication-purple-bg: #e7ddf8;
-  --ds-publication-purple-text: #4c2f73;
-  --ds-publication-orange-bg: #f6e3c7;
-  --ds-publication-orange-text: #7a4a17;
   --ds-scrollbar-bg: #FAFAFA;
   --ds-scrollbar-thumb: #C1C1C1;
   --ds-scrollbar-border: #E8E8E8;
@@ -180,6 +196,13 @@ html[data-theme="light"] {
 
 html[data-theme="dark"] {
   color-scheme: dark;
+
+  /* Elevation reads differently on a dark page: the light shadows are tuned to
+   * darken a white surface, which is invisible here. Dark needs a deeper, more
+   * spread shadow to separate a panel from the page at all, so both shadow
+   * tokens are overridden rather than inherited from the neutral :root block. */
+  --ds-shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.28);
+  --ds-shadow-overlay: 0 26px 70px rgba(0, 0, 0, 0.4);
 
   --ds-surface-page: #171513;
   --ds-surface-panel: rgba(31, 28, 25, 0.92);
@@ -201,7 +224,9 @@ html[data-theme="dark"] {
 
   --ds-interactive-hover: rgba(255, 255, 255, 0.06);
   --ds-interactive-active: rgba(255, 255, 255, 0.1);
-  --ds-focus-ring: rgba(130, 192, 230, 0.42);
+  /* Same 3:1 story as light: 0.42 alpha measured 2.61:1 over the dark page.
+   * 0.78 clears the WCAG 1.4.11 floor and matches the light ring's presence. */
+  --ds-focus-ring: rgba(130, 192, 230, 0.78);
 
   --ds-accent: #82c0e6;
   --ds-accent-contrast: #171513;
@@ -245,6 +270,14 @@ html[data-theme="dark"] {
 
   --ds-selection-bg: rgba(133, 104, 44, 0.58);
   --ds-selection-text: #fff8eb;
+  /* Link chrome has to invert on dark: the light theme draws warm-dark ink on
+   * paper, dark draws warm-light ink on ink. Without these overrides the dark
+   * theme inherited the light block's near-black underline, which vanished. */
+  --ds-link-underline: rgba(242, 235, 223, 0.55);
+  --ds-link-underline-hover: rgba(242, 235, 223, 0.82);
+  --ds-link-highlight: rgba(133, 104, 44, 0.55);
+  --ds-link-icon-chip: rgba(242, 235, 223, 0.92);
+  --ds-code-surface: rgba(242, 235, 223, 0.08);
   --ds-toc-underline: rgba(242, 235, 223, 0.3);
   --ds-anchor-flash: hsla(40, 84%, 58%, 0.24);
   --ds-nav-surface: #1b1816;
@@ -263,12 +296,6 @@ html[data-theme="dark"] {
   --ds-search-highlight: rgba(140, 104, 32, 0.45);
   --ds-lightbox-backdrop: rgba(6, 6, 6, 0.84);
   --ds-lightbox-surface: #201d1a;
-  --ds-publication-red-bg: #4f2924;
-  --ds-publication-red-text: #ffc6bc;
-  --ds-publication-purple-bg: #3e3155;
-  --ds-publication-purple-text: #e4d4ff;
-  --ds-publication-orange-bg: #4d3823;
-  --ds-publication-orange-text: #ffd9a5;
   --ds-scrollbar-bg: #1b1816;
   --ds-scrollbar-thumb: #635d55;
   --ds-scrollbar-border: #2a2623;
@@ -343,7 +370,7 @@ html[data-theme],
   color: var(--ds-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-weight: 650;
+  font-weight: var(--ds-weight-semibold-strong);
   white-space: nowrap;
   text-decoration: none;
   transition:
@@ -366,8 +393,8 @@ html[data-theme],
 }
 
 .ds-button:focus-visible {
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .ds-button--size-sm {
@@ -485,7 +512,7 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   background: var(--ds-surface-soft);
   color: var(--ds-text-secondary);
   font-size: var(--ds-text-xs);
-  font-weight: 700;
+  font-weight: var(--ds-weight-bold);
 }
 
 .ds-badge--size-sm {
@@ -556,7 +583,7 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   gap: var(--ds-status-marker-gap, 6px);
   color: var(--ds-status-marker-color, var(--ds-text-secondary));
   font-size: var(--ds-status-marker-font-size, var(--ds-text-xs));
-  font-weight: var(--ds-status-marker-font-weight, 700);
+  font-weight: var(--ds-status-marker-font-weight, var(--ds-weight-bold));
   letter-spacing: var(--ds-status-marker-letter-spacing, 0);
   line-height: var(--ds-status-marker-line-height, 1);
   vertical-align: baseline;
@@ -700,8 +727,8 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
 
 .ds-field:focus-visible,
 .ds-textarea:focus-visible {
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .ds-checkbox-row {
@@ -848,9 +875,30 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   flex: 0 0 auto;
 }
 
+/* The toggle ships BOTH icons and lets the cascade choose, so the glyph is
+ * correct on the very first paint. `useDesignTheme()` has no request-time
+ * signal for the visitor's stored/system preference, so it resolves to "light"
+ * on the server; picking the icon from React state painted a sun at every
+ * dark-mode visitor until the <Suspense> boundary in site-nav.tsx hydrated.
+ * `html[data-theme]` is set by the parser-blocking init script in app/layout.tsx,
+ * which means this selector is already correct before the first frame.
+ * `display: block` mirrors the `.ds-icon-button__icon` base above; specificity
+ * (0,2,0) and (0,3,1) both clear it. */
+.ds-theme-toggle [data-icon="moon"] {
+  display: none;
+}
+
+html[data-theme="dark"] .ds-theme-toggle [data-icon="sun"] {
+  display: none;
+}
+
+html[data-theme="dark"] .ds-theme-toggle [data-icon="moon"] {
+  display: block;
+}
+
 .ds-text-link {
   color: inherit;
-  font-weight: 650;
+  font-weight: var(--ds-weight-semibold-strong);
   text-decoration-line: underline;
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.18em;
@@ -868,8 +916,8 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
 }
 
 .ds-text-link:focus-visible {
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
   border-radius: var(--ds-radius-sm);
 }
 
@@ -948,8 +996,8 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
 }
 
 .ds-list-row:focus-visible {
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .ds-list-row__leading,
@@ -1054,14 +1102,49 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   transition:
     background var(--ds-control-button-duration, var(--ds-duration-fast)) ease,
     color var(--ds-control-button-duration, var(--ds-duration-fast)) ease,
-    border-color var(--ds-control-button-duration, var(--ds-duration-fast)) ease;
+    border-color var(--ds-control-button-duration, var(--ds-duration-fast)) ease,
+    box-shadow var(--ds-control-button-duration, var(--ds-duration-fast)) ease;
 }
 
+/* Hover and selected share the same tint — that alone made a hovered button
+ * indistinguishable from the selected one, so a segmented control lost track of
+ * its own state under the pointer. */
 .ds-control-button:hover,
 .ds-control-button[data-active="true"] {
   border-color: var(--ds-control-button-border-hover, var(--ds-border-emphasis));
   background: var(--ds-control-button-bg-hover, var(--ds-surface-elevated));
   color: var(--ds-control-button-color-hover, var(--ds-text-primary));
+}
+
+/* Selection carries one signal hover never does: an inset bottom rule echoing
+ * the nav's active underline. It survives hovering a sibling, and it reads
+ * without color, which the shared tint does not. */
+.ds-control-button[data-active="true"] {
+  box-shadow: inset 0 -2px 0 var(--ds-border-emphasis);
+}
+
+.ds-control-button:focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+/* Anchors can carry this class too, and an <a> can never match :disabled —
+ * hence the aria-disabled twin, same as .ds-button. */
+.ds-control-button:disabled,
+.ds-control-button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+  transform: none;
+}
+
+/* :hover is matched on disabled buttons in every browser, so the hover rule
+ * above would still light up a control that cannot be pressed. Reset it back
+ * to the resting values rather than reordering the cascade. */
+.ds-control-button:disabled:hover,
+.ds-control-button[aria-disabled="true"]:hover {
+  border-color: var(--ds-control-button-border, var(--ds-border-subtle));
+  background: var(--ds-control-button-bg, var(--ds-surface-panel));
+  color: var(--ds-control-button-color, var(--ds-text-secondary));
 }
 
 .ds-control-button--icon {
@@ -1101,7 +1184,7 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   color: var(--ds-select-pill-color, var(--ds-text-secondary));
   cursor: pointer;
   font-size: var(--ds-select-pill-font-size, var(--ds-text-xs));
-  font-weight: var(--ds-select-pill-font-weight, 650);
+  font-weight: var(--ds-select-pill-font-weight, var(--ds-weight-semibold-strong));
   line-height: 1;
   box-shadow: var(--ds-select-pill-shadow, none);
   transition:
@@ -1144,7 +1227,7 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
 
 .ds-select-pill__value {
   color: var(--ds-select-pill-value-color, var(--ds-text-primary));
-  font-weight: var(--ds-select-pill-value-font-weight, 750);
+  font-weight: var(--ds-select-pill-value-font-weight, var(--ds-weight-black));
 }
 
 .ds-select-pill select {
@@ -1239,6 +1322,8 @@ html[data-theme="dark"] .ds-button--variant-solid.ds-button--tone-neutral {
   .ds-button,
   .ds-text-link,
   .ds-list-row,
+  .ds-control-button,
+  .ds-select-pill,
   .ds-loading-state__spinner {
     transition-duration: 1ms;
   }
