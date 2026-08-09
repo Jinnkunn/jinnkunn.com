@@ -91,6 +91,11 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("contentIndexList"));
   assert.ok(source.includes("releaseSteps"));
   assert.ok(source.includes("/api/site-admin/release-jobs/smart"));
+  assert.ok(source.includes("contentPublishActionForBrowser"));
+  assert.ok(source.includes('"publish-content-production"'));
+  assert.ok(source.includes('"publish-content-staging"'));
+  assert.ok(source.includes("queueSavedContentPublish"));
+  assert.ok(source.includes("Content was saved, but publishing could not be queued"));
   assert.ok(source.includes("moveSelectedContent"));
   assert.ok(source.includes("localDraftKey"));
   assert.ok(source.includes("releaseWatchUntil"));

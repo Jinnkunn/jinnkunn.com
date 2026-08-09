@@ -137,6 +137,10 @@ const RELEASE_JOB_COMMANDS: Record<ReleaseJobAction, ReleaseJobCommand> = {
 };
 
 const ACTIONS = new Set(Object.keys(RELEASE_JOB_COMMANDS));
+const COALESCED_QUEUED_ACTIONS = new Set<ReleaseJobAction>([
+  "publish-content-staging",
+  "publish-content-production",
+]);
 const STATUSES = new Set(["queued", "running", "succeeded", "failed", "canceled"]);
 const STREAMS = new Set(["stdout", "stderr", "status"]);
 const AGENT_STATUSES = new Set(["idle", "running"]);
@@ -383,6 +387,35 @@ export async function createReleaseJob(input: {
 
   const command = releaseJobCommand(action);
   const now = Date.now();
+  if (COALESCED_QUEUED_ACTIONS.has(action)) {
+    const queued = await executor.data.execute({
+      sql: `SELECT * FROM release_jobs
+             WHERE action = ? AND status = 'queued'
+             ORDER BY created_at ASC
+             LIMIT 1`,
+      args: [action],
+    });
+    const existing = queued.rows[0];
+    if (existing) {
+      await executor.data.execute({
+        sql: `UPDATE release_jobs
+                 SET actor = ?, request_json = ?, updated_at = ?
+               WHERE id = ? AND status = 'queued'`,
+        args: [
+          input.actor || "unknown",
+          JSON.stringify(input.request ?? {}),
+          now,
+          String(existing.id || ""),
+        ],
+      });
+      const current = await getReleaseJob({
+        id: String(existing.id || ""),
+        executor: executor.data,
+      });
+      if (!current.ok) return current;
+      return serviceOk(current.data.job);
+    }
+  }
   const id = randomUUID();
   await executor.data.execute({
     sql: `INSERT INTO release_jobs (

@@ -107,6 +107,56 @@ test("release jobs: create, claim, append events, and complete", async () => {
   assert.equal(listed.data.jobs[0].status, "succeeded");
 });
 
+test("release jobs: coalesces queued content publishes but preserves a follow-up after claim", async () => {
+  const executor = await makeExecutor();
+  const first = await createReleaseJob({
+    action: "publish-content-production",
+    actor: "first-editor",
+    request: { source: "first-save" },
+    executor,
+  });
+  const second = await createReleaseJob({
+    action: "publish-content-production",
+    actor: "second-editor",
+    request: { source: "second-save" },
+    executor,
+  });
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  if (!first.ok || !second.ok) throw new Error("expected queued jobs");
+  assert.equal(second.data.id, first.data.id);
+  assert.equal(second.data.actor, "second-editor");
+  assert.equal(second.data.request.source, "second-save");
+
+  const claimed = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["publish-content-production"],
+    executor,
+  });
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) throw new Error(claimed.error);
+  assert.equal(claimed.data.job?.id, first.data.id);
+
+  const followUp = await createReleaseJob({
+    action: "publish-content-production",
+    actor: "third-editor",
+    request: { source: "save-during-publish" },
+    executor,
+  });
+  assert.equal(followUp.ok, true);
+  if (!followUp.ok) throw new Error(followUp.error);
+  assert.notEqual(followUp.data.id, first.data.id);
+
+  const listed = await listReleaseJobs({ executor });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) throw new Error(listed.error);
+  assert.equal(listed.data.jobs.length, 2);
+  assert.deepEqual(
+    listed.data.jobs.map((job) => job.status).sort(),
+    ["queued", "running"],
+  );
+});
+
 test("release jobs: unsupported actions are rejected and capabilities filter claims", async () => {
   const executor = await makeExecutor();
   const rejected = await createReleaseJob({

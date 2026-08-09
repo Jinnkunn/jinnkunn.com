@@ -275,12 +275,16 @@ function appendReleaseHistory(entry) {
   }
 }
 
-function assertContentOnlyClean(git) {
+function assertContentPublishBranch(git) {
   if (git.branch !== "main" && readEnv("ALLOW_NON_MAIN_CONTENT_PUBLISH") !== "1") {
     throw new Error(
       `Content publish must run from main, not ${git.branch}. Set ALLOW_NON_MAIN_CONTENT_PUBLISH=1 only for an intentional emergency.`,
     );
   }
+}
+
+function assertContentOnlyClean(git) {
+  assertContentPublishBranch(git);
   const nonContent = git.dirtyFiles.filter((file) => !file.startsWith("content/"));
   if (nonContent.length === 0) return;
   throw new Error(
@@ -309,7 +313,7 @@ function prepareContentPublishSnapshot({ repoRoot, sha }) {
   fs.mkdirSync(snapshotRoot, { recursive: true });
   fs.mkdirSync(path.dirname(archivePath), { recursive: true });
   run("git", ["archive", "--format=tar", "-o", archivePath, sha], {
-    label: "git archive HEAD",
+    label: `git archive ${sha}`,
     cwd: repoRoot,
   });
   run("tar", ["-xf", archivePath, "-C", snapshotRoot], {
@@ -401,8 +405,39 @@ async function readTargetWorkerDeployment(env) {
   };
 }
 
-async function assertTargetWorkerAcceptsContentOnly({ env, git }) {
-  const deployment = await readTargetWorkerDeployment(env);
+function targetWorkerBuildSource({ deployment, git }) {
+  const workerCodeSha = deployment.workerCodeSha;
+  if (workerCodeSha === git.sha) return git;
+  try {
+    run("git", ["cat-file", "-e", `${workerCodeSha}^{commit}`], {
+      capture: true,
+      label: `git cat-file ${workerCodeSha}`,
+    });
+  } catch {
+    throw new Error(
+      [
+        `${deployment.workerName} is running code ${workerCodeSha}, but that commit is not available locally.`,
+        "Fetch the repository history or use the full code release path before publishing content.",
+      ].join("\n"),
+    );
+  }
+  const branch = String(
+    deployment.meta?.codeBranch ||
+      deployment.meta?.sourceBranch ||
+      git.branch,
+  ).trim() || git.branch;
+  logPhase(
+    `building content against active ${deployment.workerName} code ${workerCodeSha.slice(0, 12)} instead of local HEAD ${git.sha.slice(0, 12)}`,
+  );
+  return {
+    sha: workerCodeSha,
+    branch,
+    dirty: false,
+    dirtyFiles: [],
+  };
+}
+
+function assertWorkingTreeBuildCompatible({ deployment, env, git }) {
   if (deployment.workerCodeSha === git.sha) return deployment;
   const diff = contentOnlyDiffFrom(deployment.workerCodeSha, git.sha);
   if (diff.ok) {
@@ -496,6 +531,38 @@ function walkStaticOverlayFiles(root = staticRootFor(ROOT)) {
   return out;
 }
 
+function nextStaticContentType(assetPath) {
+  if (assetPath.endsWith(".js")) return "text/javascript; charset=utf-8";
+  if (assetPath.endsWith(".css")) return "text/css; charset=utf-8";
+  if (assetPath.endsWith(".json")) return "application/json; charset=utf-8";
+  if (assetPath.endsWith(".svg")) return "image/svg+xml; charset=utf-8";
+  return "text/plain; charset=utf-8";
+}
+
+function collectReferencedNextStaticFiles({ files, root = ROOT }) {
+  const refs = new Set();
+  for (const file of files) {
+    if (!file.assetPath.endsWith(".html")) continue;
+    const source = fs.readFileSync(file.abs, "utf8");
+    for (const ref of extractNextStaticRefs(source)) refs.add(ref);
+  }
+  const out = [];
+  for (const assetPath of [...refs].sort()) {
+    if (!/\.(?:css|js|json|svg)$/i.test(assetPath)) continue;
+    const rel = assetPath.replace(/^\/_next\//, "");
+    const abs = path.join(root, ".next", rel);
+    if (!fs.existsSync(abs)) {
+      throw new Error(`Built HTML references a missing local asset: ${assetPath}`);
+    }
+    out.push({
+      abs,
+      assetPath,
+      contentType: nextStaticContentType(assetPath),
+    });
+  }
+  return out;
+}
+
 function extractNextStaticRefs(source) {
   return [
     ...new Set(
@@ -543,7 +610,31 @@ async function stagingCookieIfNeeded(env) {
   return auth.cookie;
 }
 
-async function fetchLiveBuildId(env) {
+function cachedBuildIdForWorker(workerCodeSha) {
+  const candidates = [
+    path.join(ROOT, ".cache", "release", "build", workerCodeSha, ".next", "BUILD_ID"),
+    path.join(
+      ROOT,
+      ".cache",
+      "release",
+      "snapshots",
+      workerCodeSha.slice(0, 12),
+      ".next",
+      "BUILD_ID",
+    ),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const value = fs.readFileSync(candidate, "utf8").trim();
+      if (value) return value;
+    } catch {
+      // Try the next local release artifact.
+    }
+  }
+  return "";
+}
+
+async function fetchLiveBuildId(env, workerCodeSha) {
   const origin = normalizeOrigin(env);
   const cookie = await stagingCookieIfNeeded(env);
   const response = await fetch(`${origin}/`, {
@@ -560,7 +651,13 @@ async function fetchLiveBuildId(env) {
   const refs = extractNextStaticRefs(text);
   const liveBuildId = extractBuildIdFromStaticRefs(refs);
   if (liveBuildId) return liveBuildId;
-  const fallback = readEnv("NEXT_BUILD_ID") || "content-overlay";
+  const fallback =
+    readEnv("NEXT_BUILD_ID") || cachedBuildIdForWorker(workerCodeSha);
+  if (!fallback) {
+    throw new Error(
+      `Could not resolve the active ${env} Next build id for Worker ${workerCodeSha}. Run the full code release path once to refresh local release artifacts.`,
+    );
+  }
   if (refs.length > 0) {
     logPhase(`live ${env} HTML has no build-id manifest refs; using ${fallback}`);
     return fallback;
@@ -1351,17 +1448,9 @@ async function main() {
   }
 
   let git = readGitState();
-  assertContentOnlyClean(git);
   const useD1Snapshot = !args.syncContentToGit;
-  const releaseRoot = useD1Snapshot
-    ? prepareContentPublishSnapshot({ repoRoot: ROOT, sha: git.sha })
-    : ROOT;
-  if (useD1Snapshot) syncD1ToContent({ env: args.env, targetRoot: releaseRoot });
-  if (useD1Snapshot) {
-    logPhase(
-      `using ${args.env} D1 snapshot at ${path.relative(ROOT, releaseRoot)}; git content files are left untouched`,
-    );
-  }
+  if (useD1Snapshot) assertContentPublishBranch(git);
+  else assertContentOnlyClean(git);
   if (args.env === "staging" && args.syncContentToGit) {
     git = readGitState();
   }
@@ -1370,11 +1459,34 @@ async function main() {
     contentAutoCommit = autoCommitContent(git);
     git = readGitState();
   }
-  assertContentOnlyClean(git);
+  if (useD1Snapshot) assertContentPublishBranch(git);
+  else assertContentOnlyClean(git);
+
+  const targetWorker = await readTargetWorkerDeployment(args.env);
+  const buildSource = useD1Snapshot
+    ? targetWorkerBuildSource({ deployment: targetWorker, git })
+    : git;
+  if (!useD1Snapshot) {
+    assertWorkingTreeBuildCompatible({
+      deployment: targetWorker,
+      env: args.env,
+      git,
+    });
+  }
+  const releaseRoot = useD1Snapshot
+    ? prepareContentPublishSnapshot({ repoRoot: ROOT, sha: buildSource.sha })
+    : ROOT;
+  if (useD1Snapshot) syncD1ToContent({ env: args.env, targetRoot: releaseRoot });
+  if (useD1Snapshot) {
+    logPhase(
+      `using ${args.env} D1 snapshot at ${path.relative(ROOT, releaseRoot)}; git content files are left untouched`,
+    );
+  }
 
   const contentInputSha = hashContentInput(releaseRoot);
-  const targetWorker = await assertTargetWorkerAcceptsContentOnly({ env: args.env, git });
-  const liveBuildId = args.skipBuild ? "" : await fetchLiveBuildId(args.env);
+  const liveBuildId = args.skipBuild
+    ? ""
+    : await fetchLiveBuildId(args.env, targetWorker.workerCodeSha);
   const currentStatus = await readOverlayStatus(args.env);
   if (
     currentStatus?.ok === true &&
@@ -1391,7 +1503,8 @@ async function main() {
           dryRun: args.dryRun,
           operation: "noop",
           skippedBuild: true,
-          source: git,
+          source: buildSource,
+          executionSource: git,
           contentAutoCommit,
           contentInputSha,
           liveBuildId,
@@ -1412,40 +1525,49 @@ async function main() {
     return;
   }
   if (!args.skipBuild) buildStaticShells({ nextBuildId: liveBuildId, root: releaseRoot });
-  const files = walkStaticOverlayFiles(staticRootFor(releaseRoot));
-  if (files.length === 0) throw new Error("No static shell files found to publish.");
+  const shellFiles = walkStaticOverlayFiles(staticRootFor(releaseRoot));
+  if (shellFiles.length === 0) {
+    throw new Error("No static shell files found to publish.");
+  }
+  const nextStaticFiles = collectReferencedNextStaticFiles({
+    files: shellFiles,
+    root: releaseRoot,
+  });
+  const files = [...shellFiles, ...nextStaticFiles].sort((a, b) =>
+    a.assetPath.localeCompare(b.assetPath)
+  );
 
   const snapshotSha = overlaySnapshot(files);
   const diff = await prepareOverlayDiff({
     contentInputSha,
     env: args.env,
     files,
-    git,
+    git: buildSource,
     snapshotSha,
     targetBuildId: liveBuildId,
     workerCodeSha: targetWorker.workerCodeSha,
   });
-  const changedFiles = files.filter((file) => diff.changedAssetPaths.has(file.assetPath));
-  const assets = args.skipVerify
-    ? { checked: 0 }
-    : await assertReferencedAssetsExist({ env: args.env, files: changedFiles });
   const upload = await applyOverlayDiff({
     env: args.env,
     diff,
-    git,
+    git: buildSource,
     dryRun: args.dryRun,
   });
   const serving =
     args.dryRun || args.skipVerify || (upload.uploaded === 0 && upload.deleted === 0)
       ? null
       : await verifyOverlayServing(args.env);
+  const assets =
+    args.dryRun || args.skipVerify
+      ? { checked: nextStaticFiles.length }
+      : await assertReferencedAssetsExist({ env: args.env, files: shellFiles });
 
   if (!args.dryRun) {
     appendReleaseHistory({
       env: args.env,
-      sha: git.sha,
-      branch: git.branch,
-      dirty: git.dirty,
+      sha: buildSource.sha,
+      branch: buildSource.branch,
+      dirty: false,
       overlaySnapshotSha: snapshotSha,
       overlayBackupSnapshotId: upload.backupSnapshot?.id || "",
       note: upload.uploaded === 0 && upload.deleted === 0
@@ -1460,7 +1582,8 @@ async function main() {
         ok: true,
         env: args.env,
         dryRun: args.dryRun,
-        source: git,
+        source: buildSource,
+        executionSource: git,
         contentAutoCommit,
         contentSourceMode: useD1Snapshot
           ? `${args.env}-d1-snapshot`

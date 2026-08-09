@@ -85,6 +85,10 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   ]);
   assert.match(script, /fetchLiveBuildId/);
   assert.match(script, /prepareContentPublishSnapshot/);
+  assert.match(script, /targetWorkerBuildSource/);
+  assert.match(script, /active .* code/);
+  assert.match(script, /sha: buildSource\.sha/);
+  assert.match(script, /executionSource: git/);
   assert.match(script, /\$\{args\.env\}-d1-snapshot/);
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
@@ -96,6 +100,9 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(script, /skipping build and upload/);
   assert.match(script, /copyStagingOverlayToProduction/);
   assert.match(script, /NEXT_BUILD_ID/);
+  assert.match(script, /cachedBuildIdForWorker/);
+  assert.match(script, /collectReferencedNextStaticFiles/);
+  assert.match(script, /text\/javascript/);
   assert.match(script, /assertReferencedAssetsExist/);
   assert.match(script, /static_shell_overlays/);
   assert.match(script, /static_shell_overlay_snapshots/);
@@ -105,6 +112,9 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(script, /--from-staging/);
   assert.match(worker, /x-static-overlay/);
   assert.match(worker, /fetchStaticOverlay/);
+  assert.match(worker, /tryServeNextStaticAsset/);
+  assert.match(worker, /\/_next\/static\//);
+  assert.match(worker, /max-age=31536000, immutable/);
   assert.match(worker, /STATIC_SHELL_OVERLAY/);
   assert.match(worker, /cloneStaticRequest\(request, currentUrl, "GET"\)/);
   assert.match(worker, /request\.method === "HEAD" \? null : res\.body/);

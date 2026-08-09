@@ -585,6 +585,20 @@ function writeJson<T>(path: string, method: string, body: unknown): Promise<T> {
   });
 }
 
+type ContentPublishAction =
+  | "publish-content-staging"
+  | "publish-content-production";
+
+function contentPublishActionForBrowser(): ContentPublishAction | null {
+  if (typeof window === "undefined") return null;
+  const hostname = window.location.hostname.toLowerCase();
+  if (hostname === "staging.jinkunchen.com") return "publish-content-staging";
+  if (hostname === "jinkunchen.com" || hostname === "www.jinkunchen.com") {
+    return "publish-content-production";
+  }
+  return null;
+}
+
 function toEditableDetail(
   kind: EditableKind,
   id: string,
@@ -1263,8 +1277,11 @@ export function SiteAdminWebConsole({
       setContentSavedAt(new Date().toISOString());
       if (!newerLocalEdits) setLocalDraftSnapshot(null);
       await refreshLists();
+      const publishNotice = await queueSavedContentPublish(
+        `${selected.kind}:${selected.id}:save`,
+      );
       await refreshSummaryOnly();
-      if (!options.quiet) setNotice(`${next.title} saved.`);
+      if (!options.quiet) setNotice(`${next.title} saved.${publishNotice}`);
     } catch (err) {
       if (err instanceof SiteAdminRequestError && err.status === 409 && selectedAtStart) {
         try {
@@ -1332,8 +1349,11 @@ export function SiteAdminWebConsole({
       setWarning("");
       setContentSavedAt(new Date().toISOString());
       await refreshLists();
+      const publishNotice = await queueSavedContentPublish(
+        `${selected.kind}:${selected.id}:conflict-save`,
+      );
       await refreshSummaryOnly();
-      setNotice("Your edits were saved as the latest Draft.");
+      setNotice(`Your edits were saved as the latest Draft.${publishNotice}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1364,8 +1384,11 @@ export function SiteAdminWebConsole({
       setContentSavedAt("");
       setLocalDraftSnapshot(null);
       await refreshLists();
+      const publishNotice = await queueSavedContentPublish(
+        `${selected.kind}:${selected.id}:delete`,
+      );
       await refreshSummaryOnly();
-      setNotice(`${selected.title} deleted.`);
+      setNotice(`${selected.title} deleted.${publishNotice}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1403,8 +1426,11 @@ export function SiteAdminWebConsole({
       );
       await refreshLists();
       await selectContent(selected.kind, moved.toSlug || toSlug);
+      const publishNotice = await queueSavedContentPublish(
+        `${selected.kind}:${selected.id}:rename`,
+      );
       await refreshSummaryOnly();
-      setNotice(`${selected.title} renamed.`);
+      setNotice(`${selected.title} renamed.${publishNotice}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1463,13 +1489,16 @@ export function SiteAdminWebConsole({
       await refreshLists();
       await selectContent(createKind, slug);
       setContentSavedAt(new Date().toISOString());
+      const publishNotice = await queueSavedContentPublish(
+        `${createKind}:${slug}:create`,
+      );
       await refreshSummaryOnly();
       setCreateSlug("");
       setCreateTitle(createKind === "posts" ? "Untitled Post" : "Untitled Page");
       setCreateDescription("");
       setCreateDate(todayInHalifax());
       setCreateBody(createKind === "posts" ? "Write the post here." : "Write the page here.");
-      setNotice(`${slug} created.`);
+      setNotice(`${slug} created.${publishNotice}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1515,6 +1544,37 @@ export function SiteAdminWebConsole({
     }
   }
 
+  async function queueSavedContentPublish(reason: string): Promise<string> {
+    const action = contentPublishActionForBrowser();
+    if (!action) return "";
+    try {
+      const payload = await writeJson<{ job?: { id?: string } }>(
+        "/api/site-admin/release-jobs",
+        "POST",
+        {
+          action,
+          request: {
+            source: "site-admin-web-console",
+            reason,
+            area,
+          },
+        },
+      );
+      setReleaseWatchUntil(Date.now() + 5 * 60 * 1000);
+      const jobId = payload.job?.id ? ` Job ${payload.job.id}.` : "";
+      return action === "publish-content-production"
+        ? ` Publishing the saved content to the public site.${jobId}`
+        : ` Publishing the saved content to staging.${jobId}`;
+    } catch (err) {
+      setWarning(
+        `Content was saved, but publishing could not be queued: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return "";
+    }
+  }
+
   async function saveHome() {
     if (!home) return;
     setSaving(true);
@@ -1535,8 +1595,9 @@ export function SiteAdminWebConsole({
       setHomeTitle(next.data.title || "");
       setHomeBody(next.data.bodyMdx || "");
       setHomeBaseline(`${next.data.title || ""}\n${next.data.bodyMdx || ""}`);
+      const publishNotice = await queueSavedContentPublish("home:save");
       await refreshSummaryOnly();
-      setNotice("Home saved.");
+      setNotice(`Home saved.${publishNotice}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1568,8 +1629,9 @@ export function SiteAdminWebConsole({
       setNowBaseline(
         `${next.data.current.text || ""}\n${next.data.current.context || ""}\n${next.data.current.location || ""}\n${nextDate}`,
       );
+      const publishNotice = await queueSavedContentPublish("now:create");
       await refreshSummaryOnly();
-      setNotice("Now saved.");
+      setNotice(`Now saved.${publishNotice}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1599,7 +1661,8 @@ export function SiteAdminWebConsole({
       });
       setNow(next);
       setEditingHistoryId("");
-      setNotice("Now history updated.");
+      const publishNotice = await queueSavedContentPublish("now:update-history");
+      setNotice(`Now history updated.${publishNotice}`);
       void refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1623,7 +1686,8 @@ export function SiteAdminWebConsole({
         expectedFileSha: now.sourceVersion.fileSha,
       });
       setNow(next);
-      setNotice("Now history deleted.");
+      const publishNotice = await queueSavedContentPublish("now:delete-history");
+      setNotice(`Now history deleted.${publishNotice}`);
       void refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

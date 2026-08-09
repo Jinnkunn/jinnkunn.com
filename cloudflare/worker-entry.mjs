@@ -97,7 +97,11 @@ async function loadStaticOverlayManifest(env) {
     staticOverlayManifest = new Set(
       rows
         .map((row) => String(row?.asset_path || ""))
-        .filter((assetPath) => assetPath.startsWith("/__static/")),
+        .filter(
+          (assetPath) =>
+            assetPath.startsWith("/__static/") ||
+            assetPath.startsWith("/_next/static/"),
+        ),
     );
     staticOverlayManifestLoadedAt = now;
     return staticOverlayManifest;
@@ -241,12 +245,50 @@ async function tryServeStaticShell(request, env) {
   return null;
 }
 
+async function tryServeNextStaticAsset(request, env) {
+  const url = new URL(request.url);
+  const pathname = normalizePathname(url.pathname);
+  if (!pathname.startsWith("/_next/static/")) return null;
+
+  const overlay = await fetchStaticOverlay(env, pathname);
+  if (overlay?.body) {
+    const headers = new Headers();
+    headers.set(
+      "content-type",
+      String(overlay.content_type || "application/octet-stream"),
+    );
+    headers.set("cache-control", "public, max-age=31536000, immutable");
+    headers.set("etag", `"${String(overlay.content_sha || "")}"`);
+    headers.set("x-static-overlay", "1");
+    headers.set("x-static-overlay-path", pathname);
+    return new Response(request.method === "HEAD" ? null : overlay.body, {
+      status: 200,
+      headers,
+    });
+  }
+
+  const assetUrl = new URL(request.url);
+  assetUrl.search = "";
+  const bundled = await env.ASSETS.fetch(
+    cloneStaticRequest(request, assetUrl, request.method),
+  );
+  if (!bundled?.ok) return null;
+  return bundled;
+}
+
 const worker = {
   async fetch(request, env, ctx) {
     const method = String(request.method || "GET").toUpperCase();
     const url = new URL(request.url);
     if (normalizePathname(url.pathname) === "/api/site-admin/mobile/summary") {
       return handleMobileSummaryRequest(request, env);
+    }
+    if (
+      (method === "GET" || method === "HEAD") &&
+      normalizePathname(url.pathname).startsWith("/_next/static/")
+    ) {
+      const staticAsset = await tryServeNextStaticAsset(request, env);
+      if (staticAsset) return staticAsset;
     }
     // When `STAGING_GATE=1`, skip the static-asset shortcut so every
     // anonymous request flows through OpenNext and hits the Next.js
