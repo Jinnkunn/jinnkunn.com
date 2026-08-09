@@ -92,10 +92,10 @@ test("release agent health: hides runner details without wake token", () => {
   assert.deepEqual(wakeHealthPayload(snapshot, "Bearer secret-token", "secret-token"), snapshot);
 });
 
-test("release agent sync: executes the immutable origin/main revision", () => {
+test("release agent sync: executes fast-forwarded main", () => {
   const calls = [];
   const lines = [];
-  const outputs = ["", "fetched\n", "HEAD is now at abc1234\n", "abc1234\n"];
+  const outputs = ["", "fetched\n", "Switched to branch main\n", "Fast-forward\n", "abc1234\n"];
   syncRepo({
     onLine: (_stream, line) => lines.push(line),
     repo: "/runner/repo",
@@ -109,13 +109,14 @@ test("release agent sync: executes the immutable origin/main revision", () => {
     [
       ["status", "--porcelain", "--untracked-files=no"],
       ["fetch", "--prune", "origin", "main"],
-      ["switch", "--detach", "origin/main"],
+      ["switch", "main"],
+      ["merge", "--ff-only", "origin/main"],
       ["rev-parse", "--short", "HEAD"],
     ],
   );
   assert.equal(calls.every((call) => call.command === "git"), true);
   assert.equal(calls.every((call) => call.cwd === "/runner/repo"), true);
-  assert.equal(lines.at(-1), "Release runner source: origin/main abc1234");
+  assert.equal(lines.at(-1), "Release runner source: main abc1234");
 });
 
 test("release agent sync: refuses tracked runner changes before fetching", () => {

@@ -285,7 +285,7 @@ export function syncRepo({ repo, onLine, spawnSyncImpl = spawnSync }) {
     );
   }
 
-  onLine("status", "Syncing release runner repo: fetch origin/main and use detached HEAD");
+  onLine("status", "Syncing release runner repo: fetch and fast-forward main");
   runRunnerGit({
     args: ["fetch", "--prune", "origin", "main"],
     onLine,
@@ -293,7 +293,13 @@ export function syncRepo({ repo, onLine, spawnSyncImpl = spawnSync }) {
     spawnSyncImpl,
   });
   runRunnerGit({
-    args: ["switch", "--detach", "origin/main"],
+    args: ["switch", "main"],
+    onLine,
+    repo,
+    spawnSyncImpl,
+  });
+  runRunnerGit({
+    args: ["merge", "--ff-only", "origin/main"],
     onLine,
     repo,
     spawnSyncImpl,
@@ -304,7 +310,7 @@ export function syncRepo({ repo, onLine, spawnSyncImpl = spawnSync }) {
     repo,
     spawnSyncImpl,
   });
-  onLine("status", `Release runner source: origin/main ${sha}`);
+  onLine("status", `Release runner source: main ${sha}`);
 }
 
 function runCommand({ action, repo, dryRun, onLine, isCancelled }) {

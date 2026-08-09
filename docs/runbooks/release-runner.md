@@ -94,19 +94,20 @@ RELEASE_AGENT_HTTP_PORT=8789 RELEASE_AGENT_POLL_MS=60000 npm run release:agent
 ```
 
 Before executing a claimed job, the agent verifies that its tracked worktree is
-clean, fetches the canonical branch, and executes that immutable remote revision:
+clean, fetches the canonical branch, and fast-forwards its dedicated `main`:
 
 ```bash
 git status --porcelain --untracked-files=no
 git fetch --prune origin main
-git switch --detach origin/main
+git switch main
+git merge --ff-only origin/main
 ```
 
-Detached execution prevents old runner-generated commits from making the
-dedicated clone diverge from GitHub `main`; any historical local branch remains
-available for inspection. The agent refuses to switch revisions when tracked
-files are dirty. Use `npm run release:agent -- --no-sync` only for local dry-run
-debugging.
+The dedicated runner no longer creates content commits, so `main` remains a
+read-only execution branch while release guards continue to recognize it as the
+canonical production branch. The agent refuses to sync tracked changes or a
+diverged branch instead of discarding either. Use `npm run release:agent --
+--no-sync` only for local dry-run debugging.
 
 ## Mac mini LaunchAgent
 
@@ -138,7 +139,8 @@ Manually inspect or repair the runner repo if sync fails:
 cd ~/Services/jinnkunn-release-runner/repo
 git status --short
 git fetch --prune origin main
-git switch --detach origin/main
+git switch main
+git merge --ff-only origin/main
 ```
 
 Dry-run execution for validating the queue without deploying:
